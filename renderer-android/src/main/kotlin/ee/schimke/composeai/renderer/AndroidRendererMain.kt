@@ -1,59 +1,36 @@
 package ee.schimke.composeai.renderer
 
-import java.io.File
-import kotlin.system.exitProcess
-
 /**
- * Standalone entry point for rendering Android Compose previews to PNG via Robolectric.
+ * Standalone entry point for manual/debug invocation of the Android renderer.
  *
- * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile
+ * In normal operation, the Gradle plugin runs [RobolectricRenderTest] as a
+ * parameterized JUnit test via a Test-type Gradle task, which inherits AGP's
+ * full test infrastructure (android.jar, AAR->JAR extraction, test_config.properties).
  *
- * Delegates to JUnitCore which runs [RobolectricRenderTest]. The test runner bootstraps
- * the Robolectric sandbox (which provides Android framework classes) before the test
- * class is loaded, avoiding ClassNotFoundException for Android types.
+ * This main() is provided for manual testing outside of Gradle.
  *
- * Render parameters are passed via system properties.
+ * Usage:
+ *   java -Dcomposeai.render.manifest=path/to/previews.json \
+ *        -Dcomposeai.render.outputDir=path/to/output/ \
+ *        -cp <classpath> ee.schimke.composeai.renderer.AndroidRendererMainKt
  */
 fun main(args: Array<String>) {
-    if (args.size < 8) {
-        System.err.println("Usage: AndroidRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile>")
-        exitProcess(1)
+    val manifestPath = System.getProperty("composeai.render.manifest")
+    val outputDir = System.getProperty("composeai.render.outputDir")
+
+    if (manifestPath == null || outputDir == null) {
+        System.err.println("Required system properties: composeai.render.manifest, composeai.render.outputDir")
+        System.err.println("Normal usage is via the Gradle renderPreviews task, not this main().")
+        kotlin.system.exitProcess(1)
     }
 
-    System.setProperty("composeai.render.className", args[0])
-    System.setProperty("composeai.render.functionName", args[1])
-    System.setProperty("composeai.render.widthPx", args[2])
-    System.setProperty("composeai.render.heightPx", args[3])
-    System.setProperty("composeai.render.density", args[4])
-    System.setProperty("composeai.render.showBackground", args[5])
-    System.setProperty("composeai.render.backgroundColor", args[6])
-    System.setProperty("composeai.render.outputFile", args[7])
+    val result = org.junit.runner.JUnitCore.runClasses(RobolectricRenderTest::class.java)
 
-    // Load JUnitCore and RobolectricRenderTest by name to avoid touching Android classes
-    // before Robolectric has a chance to initialize its sandbox classloader.
-    val junitCoreClass = Class.forName("org.junit.runner.JUnitCore")
-    @Suppress("UNCHECKED_CAST")
-    val classArrayType = java.lang.reflect.Array.newInstance(Class::class.java, 0).javaClass as Class<Array<Class<*>>>
-    val runClassesMethod = junitCoreClass.getMethod("runClasses", classArrayType)
-    val testClass = Class.forName("ee.schimke.composeai.renderer.RobolectricRenderTest")
-
-    val result = runClassesMethod.invoke(null, arrayOf(testClass))
-
-    val wasSuccessful = result.javaClass.getMethod("wasSuccessful").invoke(result) as Boolean
-    if (!wasSuccessful) {
-        val failures = result.javaClass.getMethod("getFailures").invoke(result) as List<*>
-        for (failure in failures) {
-            val message = failure!!.javaClass.getMethod("getMessage").invoke(failure)
-            System.err.println("Render failed: $message")
-            val exception = failure.javaClass.getMethod("getException").invoke(failure) as? Throwable
-            exception?.printStackTrace()
+    if (!result.wasSuccessful()) {
+        for (failure in result.failures) {
+            System.err.println("Render failed: ${failure.message}")
+            failure.exception?.printStackTrace()
         }
-        exitProcess(2)
-    }
-
-    val outputFile = File(args[7])
-    if (!outputFile.exists()) {
-        System.err.println("Render produced no output file: ${outputFile.absolutePath}")
-        exitProcess(2)
+        kotlin.system.exitProcess(2)
     }
 }

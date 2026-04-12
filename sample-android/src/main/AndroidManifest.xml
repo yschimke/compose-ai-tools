@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="Sample Android"
-        android:theme="@style/Theme.Material3.DayNight">
+        android:label="Sample Android">
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.sampleandroid.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
