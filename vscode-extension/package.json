@@ -5,6 +5,15 @@
     "version": "0.1.0",
     "publisher": "schimke",
     "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/yschimke/compose-ai-tools.git",
+        "directory": "vscode-extension"
+    },
+    "bugs": {
+        "url": "https://github.com/yschimke/compose-ai-tools/issues"
+    },
+    "homepage": "https://github.com/yschimke/compose-ai-tools#readme",
     "engines": {
         "vscode": "^1.85.0"
     },
@@ -72,7 +81,8 @@
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
         "test": "npm run compile && mocha out/test/**/*.test.js",
-        "lint": "eslint src --ext ts"
+        "lint": "eslint src --ext ts",
+        "package": "npm run compile && vsce package --no-dependencies"
     },
     "devDependencies": {
         "@types/vscode": "^1.85.0",
