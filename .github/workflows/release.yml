@@ -85,7 +85,7 @@ jobs:
         run: npm ci
       - name: Set version
         working-directory: vscode-extension
-        run: npm version --no-git-tag-version ${{ needs.version.outputs.version }}
+        run: npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.version }}
       - name: Build VSIX
         working-directory: vscode-extension
         run: npm run package
