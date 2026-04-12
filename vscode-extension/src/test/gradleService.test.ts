@@ -206,6 +206,97 @@ describe('GradleService', () => {
         }));
     });
 
+    describe('listHistory', () => {
+        it('returns [] when no history folder exists', withTempDir((dir, api) => {
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(
+                service.listHistory('app', 'com.example.Foo.MyPreview'),
+                [],
+            );
+        }));
+
+        it('lists snapshots newest-first using sanitized folder name', withTempDir((dir, api) => {
+            // Preview id "com.example.Foo.MyPreview" sanitizes to itself (dots ok);
+            // a label with spaces is replaced with underscores — check both paths.
+            const historyDir = path.join(dir, 'app', '.compose-preview-history', 'com.example.Foo.MyPreview');
+            fs.mkdirSync(historyDir, { recursive: true });
+            fs.writeFileSync(path.join(historyDir, '20260410-100000.png'), 'old');
+            fs.writeFileSync(path.join(historyDir, '20260412-215512.png'), 'mid');
+            fs.writeFileSync(path.join(historyDir, '20260415-091020.png'), 'new');
+
+            const service = new GradleService(dir, api);
+            const entries = service.listHistory('app', 'com.example.Foo.MyPreview');
+
+            assert.strictEqual(entries.length, 3);
+            // Newest first
+            assert.strictEqual(entries[0].filename, '20260415-091020.png');
+            assert.strictEqual(entries[0].timestamp, '20260415-091020');
+            assert.strictEqual(entries[0].iso, '2026-04-15T09:10:20Z');
+            assert.strictEqual(entries[2].filename, '20260410-100000.png');
+        }));
+
+        it('sanitizes spaces and special characters in previewId', withTempDir((dir, api) => {
+            // "Red Box" label sanitizes "RedBoxPreview_Red Box" -> "RedBoxPreview_Red_Box"
+            const sanitizedDir = path.join(dir, 'app', '.compose-preview-history', 'RedBoxPreview_Red_Box');
+            fs.mkdirSync(sanitizedDir, { recursive: true });
+            fs.writeFileSync(path.join(sanitizedDir, '20260412-215512.png'), 'x');
+
+            const service = new GradleService(dir, api);
+            const entries = service.listHistory('app', 'RedBoxPreview_Red Box');
+            assert.strictEqual(entries.length, 1);
+        }));
+
+        it('skips files with malformed timestamps and non-png files', withTempDir((dir, api) => {
+            const historyDir = path.join(dir, 'app', '.compose-preview-history', 'Preview');
+            fs.mkdirSync(historyDir, { recursive: true });
+            fs.writeFileSync(path.join(historyDir, '20260412-215512.png'), 'ok');
+            fs.writeFileSync(path.join(historyDir, 'nothinghere.png'), 'bad');
+            fs.writeFileSync(path.join(historyDir, 'readme.txt'), 'ignore');
+
+            const service = new GradleService(dir, api);
+            const entries = service.listHistory('app', 'Preview');
+            assert.strictEqual(entries.length, 1);
+            assert.strictEqual(entries[0].filename, '20260412-215512.png');
+        }));
+
+        it('accepts -N collision suffix in timestamps', withTempDir((dir, api) => {
+            const historyDir = path.join(dir, 'app', '.compose-preview-history', 'Preview');
+            fs.mkdirSync(historyDir, { recursive: true });
+            fs.writeFileSync(path.join(historyDir, '20260412-215512.png'), 'a');
+            fs.writeFileSync(path.join(historyDir, '20260412-215512-1.png'), 'b');
+
+            const service = new GradleService(dir, api);
+            const entries = service.listHistory('app', 'Preview');
+            assert.strictEqual(entries.length, 2);
+        }));
+    });
+
+    describe('readHistoryImage', () => {
+        it('reads a history PNG as base64', withTempDir(async (dir, api) => {
+            const historyDir = path.join(dir, 'app', '.compose-preview-history', 'P');
+            fs.mkdirSync(historyDir, { recursive: true });
+            fs.writeFileSync(path.join(historyDir, '20260412-215512.png'),
+                Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+            const service = new GradleService(dir, api);
+            const b64 = await service.readHistoryImage('app', 'P', '20260412-215512.png');
+            assert.notStrictEqual(b64, null);
+            assert.strictEqual(Buffer.from(b64!, 'base64')[0], 0x89);
+        }));
+
+        it('rejects path traversal attempts', withTempDir(async (dir, api) => {
+            const service = new GradleService(dir, api);
+            assert.strictEqual(await service.readHistoryImage('app', 'P', '../../etc/passwd'), null);
+            assert.strictEqual(await service.readHistoryImage('app', 'P', '..\\win.ini'), null);
+            assert.strictEqual(await service.readHistoryImage('app', 'P', 'sub/file.png'), null);
+        }));
+
+        it('returns null for missing file', withTempDir(async (dir, api) => {
+            const service = new GradleService(dir, api);
+            assert.strictEqual(await service.readHistoryImage('app', 'P', 'nope.png'), null);
+        }));
+    });
+
     describe('cancel', () => {
         it('cancels in-flight tasks via API', withTempDir(async (dir, api) => {
             const service = new GradleService(dir, api);

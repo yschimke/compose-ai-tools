@@ -258,3 +258,113 @@ body {
 .has-error {
     border-color: var(--vscode-errorForeground);
 }
+
+/* ---- card title row + history button ------------------------------- */
+
+.card-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.card-title-row .card-title {
+    flex: 1;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 0;
+    font: inherit;
+}
+
+.card-history-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 1px 5px;
+}
+.card-history-btn:hover {
+    border-color: var(--card-border);
+    color: var(--text-primary);
+}
+
+/* ---- history drawer ------------------------------------------------- */
+
+.history-drawer {
+    border-top: 1px solid var(--card-border);
+    background: var(--vscode-editorWidget-background, var(--card-bg));
+    padding: 4px 6px 6px;
+}
+
+.history-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.history-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.history-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+.history-close:hover {
+    background: var(--card-hover);
+    color: var(--text-primary);
+}
+
+.history-strip {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 2px;
+}
+
+.history-chip {
+    flex: 0 0 auto;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.history-chip:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+.history-chip.selected {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.history-empty {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 4px 2px;
+}
+.history-empty code {
+    font-family: var(--vscode-editor-font-family);
+}
