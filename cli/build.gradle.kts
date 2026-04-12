@@ -4,8 +4,20 @@ plugins {
     application
 }
 
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
+
 application {
+    applicationName = "compose-preview"
     mainClass.set("ee.schimke.composeai.cli.MainKt")
+}
+
+tasks.named<Zip>("distZip") {
+    archiveFileName.set("compose-preview-${project.version}.zip")
+}
+
+tasks.named<Tar>("distTar") {
+    archiveFileName.set("compose-preview-${project.version}.tar.gz")
+    compression = Compression.GZIP
 }
 
 dependencies {

@@ -1,0 +1,116 @@
+name: Release
+
+# Triggered by pushing a tag like `v0.1.0`. Creates a GitHub Release with:
+#   - The CLI distribution (tar + zip) as release assets
+#   - The VS Code extension .vsix as a release asset
+#   - The Gradle plugin published to GitHub Packages
+#
+# Future: adding Plugin Portal / VS Code Marketplace / Open VSX is additive —
+# just add new jobs here. Nothing below would need to change.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write     # create releases, upload assets
+  packages: write     # push to GitHub Packages
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - id: extract
+        # Strip leading `v` from tag, e.g. v0.1.0 → 0.1.0
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  publish-gradle-plugin:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Publish plugin to GitHub Packages
+        env:
+          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./gradlew :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository --no-daemon
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build CLI distribution
+        env:
+          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
+        run: ./gradlew :cli:distZip :cli:distTar --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-dist
+          path: |
+            cli/build/distributions/compose-preview-*.zip
+            cli/build/distributions/compose-preview-*.tar.gz
+          retention-days: 1
+
+  build-vscode-extension:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+      - name: Set version
+        working-directory: vscode-extension
+        run: npm version --no-git-tag-version ${{ needs.version.outputs.version }}
+      - name: Build VSIX
+        working-directory: vscode-extension
+        run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: vscode-extension/*.vsix
+          retention-days: 1
+
+  release:
+    needs: [version, build-cli, build-vscode-extension, publish-gradle-plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "compose-ai-tools ${{ needs.version.outputs.version }}" \
+            --generate-notes \
+            artifacts/*.zip \
+            artifacts/*.tar.gz \
+            artifacts/*.vsix

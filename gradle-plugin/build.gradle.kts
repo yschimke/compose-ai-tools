@@ -1,18 +1,43 @@
 plugins {
     `java-gradle-plugin`
     `kotlin-dsl`
+    `maven-publish`
     alias(libs.plugins.kotlin.serialization)
 }
 
 group = "ee.schimke.composeai"
-version = "0.1.0"
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
 
 gradlePlugin {
+    website.set("https://github.com/yschimke/compose-ai-tools")
+    vcsUrl.set("https://github.com/yschimke/compose-ai-tools.git")
     plugins {
         create("composePreview") {
             id = "ee.schimke.composeai.preview"
             implementationClass = "ee.schimke.composeai.plugin.ComposePreviewPlugin"
             displayName = "Compose Preview Plugin"
+            description = "Discover and render Jetpack Compose / Compose Multiplatform @Preview functions to PNG"
+            tags.set(listOf("compose", "preview", "android", "jetpack-compose", "rendering"))
+        }
+    }
+}
+
+// Publish to GitHub Packages by default.
+// To switch to Gradle Plugin Portal later: apply the `com.gradle.plugin-publish`
+// plugin and remove the publishing block below — it wraps this config automatically.
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri(
+                providers.environmentVariable("GITHUB_REPOSITORY")
+                    .map { "https://maven.pkg.github.com/$it" }
+                    .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools"),
+            )
+            credentials {
+                username = providers.environmentVariable("GITHUB_ACTOR").orNull
+                password = providers.environmentVariable("GITHUB_TOKEN").orNull
+            }
         }
     }
 }
