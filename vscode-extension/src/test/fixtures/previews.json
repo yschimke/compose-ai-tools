@@ -1,0 +1,86 @@
+{
+    "module": "sample-android",
+    "variant": "debug",
+    "previews": [
+        {
+            "id": "com.example.PreviewsKt.RedBoxPreview_Red Box",
+            "functionName": "RedBoxPreview",
+            "className": "com.example.PreviewsKt",
+            "sourceFile": "Previews.kt",
+            "params": {
+                "name": "Red Box",
+                "device": null,
+                "widthDp": 0,
+                "heightDp": 0,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": true,
+                "backgroundColor": 4294901760,
+                "uiMode": 0,
+                "locale": null,
+                "group": "colors"
+            },
+            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png"
+        },
+        {
+            "id": "com.example.PreviewsKt.BlueBoxPreview_Blue Box",
+            "functionName": "BlueBoxPreview",
+            "className": "com.example.PreviewsKt",
+            "sourceFile": "Previews.kt",
+            "params": {
+                "name": "Blue Box",
+                "device": null,
+                "widthDp": 0,
+                "heightDp": 0,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": true,
+                "backgroundColor": 4278190335,
+                "uiMode": 0,
+                "locale": null,
+                "group": "colors"
+            },
+            "renderOutput": "renders/com.example.PreviewsKt.BlueBoxPreview_Blue Box.png"
+        },
+        {
+            "id": "com.example.MainKt.GreetingPreview",
+            "functionName": "GreetingPreview",
+            "className": "com.example.MainKt",
+            "sourceFile": "Main.kt",
+            "params": {
+                "name": null,
+                "device": null,
+                "widthDp": 0,
+                "heightDp": 0,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": true,
+                "backgroundColor": 0,
+                "uiMode": 0,
+                "locale": null,
+                "group": null
+            },
+            "renderOutput": "renders/com.example.MainKt.GreetingPreview.png"
+        },
+        {
+            "id": "com.example.PreviewsKt.RedBoxPreview_Dark Mode",
+            "functionName": "RedBoxPreview",
+            "className": "com.example.PreviewsKt",
+            "sourceFile": "Previews.kt",
+            "params": {
+                "name": "Dark Mode",
+                "device": null,
+                "widthDp": 0,
+                "heightDp": 0,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": true,
+                "backgroundColor": 0,
+                "uiMode": 32,
+                "locale": null,
+                "group": "colors"
+            },
+            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Dark Mode.png"
+        }
+    ]
+}
