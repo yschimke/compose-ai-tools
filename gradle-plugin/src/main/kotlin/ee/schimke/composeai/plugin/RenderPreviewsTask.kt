@@ -93,6 +93,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
                     preview.params.showBackground.toString(),
                     preview.params.backgroundColor.toString(),
                     outputFile.absolutePath,
+                    // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
+                    preview.params.wrapperClassName.orEmpty(),
                 )
             }
         }
