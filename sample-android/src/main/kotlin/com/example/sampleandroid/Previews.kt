@@ -2,7 +2,9 @@ package com.example.sampleandroid
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,5 +57,16 @@ fun GreenBoxPreview() {
 fun GreetingPreview() {
     MaterialTheme {
         Greeting("Preview")
+    }
+}
+
+@Preview(name = "Loading Spinner", showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+fun LoadingPreview() {
+    MaterialTheme {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Text("Loading...")
+        }
     }
 }

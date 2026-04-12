@@ -5,7 +5,6 @@ import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -93,7 +92,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val outFile = outputFile.get().asFile
         outFile.parentFile.mkdirs()
         outFile.writeText(json.encodeToString(manifest))
-        logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}'")
+
+        logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}':")
+        for (preview in deduped) {
+            val dims = if (preview.params.widthDp > 0 && preview.params.heightDp > 0) {
+                " ${preview.params.widthDp}x${preview.params.heightDp}dp"
+            } else ""
+            val label = preview.params.name?.let { " ($it)" } ?: ""
+            logger.lifecycle("  ${preview.className}.${preview.functionName}$label$dims")
+        }
     }
 
     private fun discoverFromMethod(

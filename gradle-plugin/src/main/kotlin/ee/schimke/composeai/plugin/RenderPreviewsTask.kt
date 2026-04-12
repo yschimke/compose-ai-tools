@@ -66,18 +66,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     }
 
     private fun renderWithCompose(manifest: PreviewManifest, outDir: java.io.File) {
-        val backend = renderBackend.get()
-        if (backend == "android") {
-            // TODO: Android Compose rendering via Robolectric subprocess.
-            //  The classpath assembly is not yet working — AGP resolves Android dependencies
-            //  as AARs which can't be used directly on a JVM classpath, and android.jar
-            //  must be included for Robolectric's annotation classes to load.
-            //  See DESIGN.md "Implementation Changes" for details.
-            logger.warn("compose-ai-tools: Android Compose rendering not yet implemented, using stub renderer")
-            renderWithStub(manifest, outDir)
-            return
-        }
-
+        // This path is only used for desktop rendering.
+        // Android rendering uses a separate Test-type task (see ComposePreviewPlugin).
         val mainClass = "ee.schimke.composeai.renderer.DesktopRendererMainKt"
 
         for (preview in manifest.previews) {

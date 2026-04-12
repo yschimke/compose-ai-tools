@@ -20,6 +20,7 @@ gradlePlugin {
 dependencies {
     implementation(libs.classgraph)
     implementation(libs.kotlinx.serialization.json)
+    compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
