@@ -1,0 +1,190 @@
+package ee.schimke.composeai.plugin
+
+import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.Json
+import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+class DiscoveryFunctionalTest {
+
+    @get:Rule
+    val tempDir = TemporaryFolder()
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun createCmpTestProject(): File {
+        val projectDir = tempDir.root
+
+        // settings.gradle.kts
+        File(projectDir, "settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    google()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "test-project"
+            """.trimIndent()
+        )
+
+        // build.gradle.kts
+        File(projectDir, "build.gradle.kts").writeText(
+            """
+            @file:Suppress("DEPRECATION")
+            plugins {
+                kotlin("jvm") version "2.3.20"
+                kotlin("plugin.compose") version "2.3.20"
+                id("org.jetbrains.compose") version "1.10.3"
+                id("ee.schimke.composeai.preview")
+            }
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(compose.material3)
+                implementation(compose.uiTooling)
+                implementation(compose.components.uiToolingPreview)
+            }
+            java {
+                toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
+            }
+            """.trimIndent()
+        )
+
+        File(projectDir, "gradle.properties").writeText(
+            "org.gradle.configuration-cache=true\n"
+        )
+
+        // Source file with previews
+        val srcDir = File(projectDir, "src/main/kotlin/test")
+        srcDir.mkdirs()
+        File(srcDir, "Previews.kt").writeText(
+            """
+            package test
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.material3.Text
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Preview
+            @Composable
+            fun RedBoxPreview() {
+                Box(modifier = Modifier.size(100.dp).background(Color.Red)) {
+                    Text("Red")
+                }
+            }
+
+            @Preview
+            @Composable
+            fun BlueBoxPreview() {
+                Box(modifier = Modifier.size(100.dp).background(Color.Blue)) {
+                    Text("Blue")
+                }
+            }
+            """.trimIndent()
+        )
+
+        return projectDir
+    }
+
+    @Test
+    fun `discoverPreviews finds annotated composables`() {
+        val projectDir = createCmpTestProject()
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifestFile = File(projectDir, "build/compose-previews/previews.json")
+        assertThat(manifestFile.exists()).isTrue()
+
+        val manifest = json.decodeFromString<PreviewManifest>(manifestFile.readText())
+        assertThat(manifest.previews).hasSize(2)
+
+        val names = manifest.previews.map { it.functionName }
+        assertThat(names).containsExactly("RedBoxPreview", "BlueBoxPreview")
+    }
+
+    @Test
+    fun `discoverPreviews is UP-TO-DATE on second run`() {
+        val projectDir = createCmpTestProject()
+
+        // First run
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews")
+            .withPluginClasspath()
+            .build()
+
+        // Second run — should be UP-TO-DATE
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+    }
+
+    @Test
+    fun `discoverPreviews re-runs when source changes`() {
+        val projectDir = createCmpTestProject()
+
+        // First run
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews")
+            .withPluginClasspath()
+            .build()
+
+        // Add a new preview
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.appendText(
+            """
+
+            @Preview
+            @Composable
+            fun GreenBoxPreview() {
+                Box(modifier = Modifier.size(100.dp).background(Color.Green)) {
+                    Text("Green")
+                }
+            }
+            """.trimIndent()
+        )
+
+        // Second run — should re-run and find 3 previews
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+        assertThat(manifest.previews).hasSize(3)
+    }
+}
