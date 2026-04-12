@@ -30,8 +30,11 @@ jobs:
         # Strip leading `v` from tag, e.g. v0.1.0 → 0.1.0
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+  # Run gradle publish AFTER the other builds succeed so we don't orphan a
+  # published Maven artifact if the VSIX or CLI build fails (GitHub Packages
+  # refuses to overwrite an already-published release version — see #409).
   publish-gradle-plugin:
-    needs: version
+    needs: [version, build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +99,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [version, build-cli, build-vscode-extension, publish-gradle-plugin]
+    needs: [version, publish-gradle-plugin]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
