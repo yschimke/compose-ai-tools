@@ -212,10 +212,20 @@ class ComposePreviewPlugin : Plugin<Project> {
         extension: PreviewExtension,
         configureDeps: DiscoverPreviewsTask.() -> Unit,
     ): org.gradle.api.tasks.TaskProvider<DiscoverPreviewsTask> {
+        val artifactType = Attribute.of("artifactType", String::class.java)
+
         return project.tasks.register("discoverPreviews", DiscoverPreviewsTask::class.java) {
             classDirs.from(sourceClassDirs)
             project.configurations.findByName(dependencyConfigName)?.let { config ->
-                dependencyJars.from(config)
+                // For Android projects, dependencies resolve as AARs. Use artifact view
+                // filtering to request the extracted classes.jar (AGP registers the
+                // transform). Desktop/JVM projects already return JARs so this is a no-op.
+                dependencyJars.from(config.incoming.artifactView {
+                    attributes.attribute(artifactType, "jar")
+                }.files)
+                dependencyJars.from(config.incoming.artifactView {
+                    attributes.attribute(artifactType, "android-classes")
+                }.files)
             }
             moduleName.set(project.name)
             variantName.set(extension.variant)
