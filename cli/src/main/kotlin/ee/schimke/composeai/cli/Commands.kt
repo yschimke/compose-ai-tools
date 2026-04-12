@@ -24,70 +24,97 @@ data class PreviewEntry(
 private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
 abstract class Command(protected val args: List<String>) {
-    protected val module: String? = args.flagValue("--module")
+    protected val explicitModule: String? = args.flagValue("--module")
     protected val variant: String = args.flagValue("--variant") ?: "debug"
     protected val filter: String? = args.flagValue("--filter")
+    protected val verbose: Boolean = "--verbose" in args || "-v" in args
+    protected val timeoutSeconds: Long = args.flagValue("--timeout")?.toLongOrNull() ?: 300
 
     abstract fun run()
 
-    protected fun runGradle(vararg tasks: String): Int {
-        val gradlew = findGradlew() ?: run {
-            System.err.println("Cannot find gradlew in current directory or parents")
+    protected fun withGradle(block: (GradleConnection) -> Unit) {
+        val projectDir = findProjectRoot() ?: run {
+            System.err.println("Cannot find Gradle project root (no gradlew found)")
             exitProcess(1)
         }
-        val cmd = mutableListOf(gradlew.absolutePath)
-        cmd.addAll(tasks)
-        val process = ProcessBuilder(cmd)
-            .inheritIO()
-            .start()
-        return process.waitFor()
+
+        GradleConnection(projectDir, verbose).use(block)
     }
 
-    protected fun readManifest(): PreviewManifest? {
-        val buildDir = if (module != null) File("$module/build") else File("build")
+    /**
+     * Resolve which modules to operate on.
+     * If --module is specified, use that. Otherwise, auto-detect by finding
+     * all modules that have a discoverPreviews task registered.
+     */
+    protected fun resolveModules(gradle: GradleConnection): List<String> {
+        if (explicitModule != null) return listOf(explicitModule!!)
+
+        val modules = gradle.findPreviewModules()
+        if (modules.isEmpty()) {
+            System.err.println("No modules with compose-ai-tools plugin found.")
+            System.err.println("Apply the plugin: id(\"ee.schimke.composeai.preview\")")
+            exitProcess(1)
+        }
+        if (verbose || modules.size > 1) {
+            System.err.println("Found preview modules: ${modules.joinToString(", ")}")
+        }
+        return modules
+    }
+
+    protected fun runGradle(gradle: GradleConnection, vararg tasks: String): Boolean {
+        return gradle.runTasks(*tasks, timeoutSeconds = timeoutSeconds)
+    }
+
+    protected fun readManifest(module: String): PreviewManifest? {
+        val buildDir = File("$module/build")
         val manifestFile = File(buildDir, "compose-previews/previews.json")
         if (!manifestFile.exists()) return null
         return json.decodeFromString(manifestFile.readText())
     }
 
-    private fun findGradlew(): File? {
+    protected fun readAllManifests(modules: List<String>): List<Pair<String, PreviewManifest>> {
+        return modules.mapNotNull { module ->
+            readManifest(module)?.let { module to it }
+        }
+    }
+
+    private fun findProjectRoot(): File? {
         var dir: File? = File(".").absoluteFile
         while (dir != null) {
-            val gradlew = File(dir, "gradlew")
-            if (gradlew.exists() && gradlew.canExecute()) return gradlew
+            if (File(dir, "gradlew").exists()) return dir
             dir = dir.parentFile
         }
         return null
-    }
-
-    private fun List<String>.flagValue(flag: String): String? {
-        val idx = indexOf(flag)
-        return if (idx >= 0 && idx + 1 < size) this[idx + 1] else null
     }
 }
 
 class ShowCommand(args: List<String>) : Command(args) {
     override fun run() {
-        val taskPrefix = if (module != null) ":$module:" else ":"
-        val exitCode = runGradle("${taskPrefix}renderAllPreviews")
-        if (exitCode != 0) {
-            System.err.println("Build failed with exit code $exitCode")
-            exitProcess(1)
-        }
+        withGradle { gradle ->
+            val modules = resolveModules(gradle)
+            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
 
-        val manifest = readManifest()
-        if (manifest == null || manifest.previews.isEmpty()) {
-            println("No previews found.")
-            exitProcess(3)
-        }
+            if (!runGradle(gradle, *tasks)) {
+                System.err.println("Render failed")
+                exitProcess(1)
+            }
 
-        for (preview in manifest.previews) {
-            println("${preview.functionName} (${preview.id})")
-            if (preview.renderOutput != null) {
-                val buildDir = if (module != null) "$module/build" else "build"
-                val pngFile = File("$buildDir/compose-previews/${preview.renderOutput}")
-                if (pngFile.exists()) {
-                    println("  → ${pngFile.absolutePath}")
+            val manifests = readAllManifests(modules)
+            if (manifests.isEmpty() || manifests.all { it.second.previews.isEmpty() }) {
+                println("No previews found.")
+                exitProcess(3)
+            }
+
+            for ((module, manifest) in manifests) {
+                if (manifests.size > 1) println("[$module]")
+                for (preview in manifest.previews) {
+                    println("${preview.functionName} (${preview.id})")
+                    if (preview.renderOutput != null) {
+                        val pngFile = File("$module/build/compose-previews/${preview.renderOutput}")
+                        if (pngFile.exists()) {
+                            println("  ${pngFile.absolutePath}")
+                        }
+                    }
                 }
             }
         }
@@ -98,61 +125,79 @@ class ListCommand(args: List<String>) : Command(args) {
     private val jsonOutput = "--json" in args
 
     override fun run() {
-        val taskPrefix = if (module != null) ":$module:" else ":"
-        val exitCode = runGradle("${taskPrefix}discoverPreviews")
-        if (exitCode != 0) exitProcess(1)
+        withGradle { gradle ->
+            val modules = resolveModules(gradle)
+            val tasks = modules.map { ":$it:discoverPreviews" }.toTypedArray()
 
-        val manifest = readManifest()
-        if (manifest == null || manifest.previews.isEmpty()) {
-            if (jsonOutput) println("[]") else println("No previews found.")
-            exitProcess(3)
-        }
+            if (!runGradle(gradle, *tasks)) exitProcess(1)
 
-        val filtered = if (filter != null) {
-            manifest.previews.filter { it.id.contains(filter!!, ignoreCase = true) }
-        } else {
-            manifest.previews
-        }
+            val manifests = readAllManifests(modules)
+            val allPreviews = manifests.flatMap { (_, m) -> m.previews }
 
-        if (jsonOutput) {
-            println(json.encodeToString(kotlinx.serialization.builtins.ListSerializer(PreviewEntry.serializer()), filtered))
-        } else {
-            for (p in filtered) {
-                println("${p.id}  (${p.sourceFile ?: "unknown"})")
+            val filtered = if (filter != null) {
+                allPreviews.filter { it.id.contains(filter!!, ignoreCase = true) }
+            } else {
+                allPreviews
+            }
+
+            if (filtered.isEmpty()) {
+                if (jsonOutput) println("[]") else println("No previews found.")
+                exitProcess(3)
+            }
+
+            if (jsonOutput) {
+                println(json.encodeToString(
+                    kotlinx.serialization.builtins.ListSerializer(PreviewEntry.serializer()),
+                    filtered,
+                ))
+            } else {
+                for (p in filtered) {
+                    println("${p.id}  (${p.sourceFile ?: "unknown"})")
+                }
             }
         }
     }
 }
 
 class RenderCommand(args: List<String>) : Command(args) {
-    private val output: String? = args.let {
-        val idx = it.indexOf("--output")
-        if (idx >= 0 && idx + 1 < it.size) it[idx + 1] else null
-    }
+    private val output: String? = args.flagValue("--output")
 
     override fun run() {
-        val taskPrefix = if (module != null) ":$module:" else ":"
-        val exitCode = runGradle("${taskPrefix}renderAllPreviews")
-        if (exitCode != 0) exitProcess(2)
+        withGradle { gradle ->
+            val modules = resolveModules(gradle)
+            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
 
-        val manifest = readManifest() ?: run {
-            System.err.println("No preview manifest found")
-            exitProcess(2)
-        }
+            if (!runGradle(gradle, *tasks)) exitProcess(2)
 
-        val target = args.firstOrNull { !it.startsWith("--") && it != module && it != variant && it != output }
-        if (target != null) {
-            val preview = manifest.previews.find { it.id.contains(target, ignoreCase = true) }
-            if (preview != null && preview.renderOutput != null && output != null) {
-                val buildDir = if (module != null) "$module/build" else "build"
-                val src = File("$buildDir/compose-previews/${preview.renderOutput}")
-                if (src.exists()) {
-                    src.copyTo(File(output), overwrite = true)
-                    println("Rendered to $output")
-                }
+            val manifests = readAllManifests(modules)
+
+            val target = args.firstOrNull {
+                !it.startsWith("--") && it != explicitModule && it != variant && it != output
             }
-        } else {
-            println("Rendered ${manifest.previews.size} preview(s)")
+            if (target != null && output != null) {
+                val allPreviews = manifests.flatMap { (module, m) ->
+                    m.previews.map { module to it }
+                }
+                val match = allPreviews.find { (_, p) -> p.id.contains(target, ignoreCase = true) }
+                if (match != null) {
+                    val (module, preview) = match
+                    if (preview.renderOutput != null) {
+                        val src = File("$module/build/compose-previews/${preview.renderOutput}")
+                        if (src.exists()) {
+                            src.copyTo(File(output), overwrite = true)
+                            println("Rendered to $output")
+                        }
+                    }
+                }
+            } else {
+                val total = manifests.sumOf { it.second.previews.size }
+                println("Rendered $total preview(s)")
+            }
         }
     }
+}
+
+private fun List<String>.flagValue(flag: String): String? {
+    val idx = indexOf(flag)
+    return if (idx >= 0 && idx + 1 < size) this[idx + 1] else null
 }
