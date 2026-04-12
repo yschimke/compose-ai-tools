@@ -13,6 +13,8 @@ let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
 let hasPreviewsLoaded = false;
+/** previewId → module, updated on every refresh. Used by history commands. */
+const previewModuleMap = new Map<string, string>();
 
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -157,7 +159,7 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
 
     try {
         const allPreviews: PreviewInfo[] = [];
-        const previewModuleMap = new Map<string, string>(); // previewId → module
+        previewModuleMap.clear();
 
         for (const mod of modules) {
             if (abort.signal.aborted) { return; }
@@ -242,6 +244,14 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             sendModuleList();
             if (selectedModule) { refresh(false); }
             break;
+        case 'showHistory':
+            if (msg.previewId) { sendHistoryList(msg.previewId); }
+            break;
+        case 'loadHistoryImage':
+            if (msg.previewId && msg.filename) {
+                sendHistoryImage(msg.previewId, msg.filename);
+            }
+            break;
     }
 }
 
@@ -251,6 +261,26 @@ interface WebviewToExtensionMessage {
     className?: string;
     functionName?: string;
     value?: string;
+    previewId?: string;
+    filename?: string;
+}
+
+function sendHistoryList(previewId: string) {
+    if (!gradleService || !panel) { return; }
+    const mod = previewModuleMap.get(previewId);
+    if (!mod) { return; }
+    const entries = gradleService.listHistory(mod, previewId);
+    panel.postMessage({ command: 'setHistory', previewId, entries });
+}
+
+async function sendHistoryImage(previewId: string, filename: string) {
+    if (!gradleService || !panel) { return; }
+    const mod = previewModuleMap.get(previewId);
+    if (!mod) { return; }
+    const imageData = await gradleService.readHistoryImage(mod, previewId, filename);
+    if (imageData) {
+        panel.postMessage({ command: 'updateHistoryImage', previewId, filename, imageData });
+    }
 }
 
 async function openPreviewSource(className: string, functionName: string) {

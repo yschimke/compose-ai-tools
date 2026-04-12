@@ -27,6 +27,18 @@ export interface PreviewManifest {
     previews: PreviewInfo[];
 }
 
+/**
+ * One historical snapshot for a preview. The Gradle plugin writes files
+ * named `yyyyMMdd-HHmmss[-N].png`; [timestamp] is the filename minus `.png`,
+ * kept as a display-friendly label. [iso] is a parsed ISO-8601 form for sort
+ * stability and tooltip display.
+ */
+export interface HistoryEntry {
+    filename: string;
+    timestamp: string;
+    iso: string;
+}
+
 /** Messages from extension to webview */
 export type ExtensionToWebview =
     | { command: 'setPreviews'; previews: PreviewInfo[]; moduleDir: string }
@@ -36,10 +48,14 @@ export type ExtensionToWebview =
     | { command: 'markAllLoading' }
     | { command: 'setError'; previewId: string; message: string }
     | { command: 'showMessage'; text: string }
-    | { command: 'setModules'; modules: string[]; selected: string };
+    | { command: 'setModules'; modules: string[]; selected: string }
+    | { command: 'setHistory'; previewId: string; entries: HistoryEntry[] }
+    | { command: 'updateHistoryImage'; previewId: string; filename: string; imageData: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
     | { command: 'refresh' }
     | { command: 'openFile'; className: string; functionName: string }
-    | { command: 'selectModule'; value: string };
+    | { command: 'selectModule'; value: string }
+    | { command: 'showHistory'; previewId: string }
+    | { command: 'loadHistoryImage'; previewId: string; filename: string };
