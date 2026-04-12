@@ -1,0 +1,260 @@
+:root {
+    --card-bg: var(--vscode-editor-background);
+    --card-border: var(--vscode-panel-border);
+    --card-hover: var(--vscode-list-hoverBackground);
+    --text-primary: var(--vscode-foreground);
+    --text-secondary: var(--vscode-descriptionForeground);
+    --skeleton-bg: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+body {
+    padding: 0;
+    margin: 0;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--text-primary);
+}
+
+.toolbar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--card-border);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.toolbar select {
+    flex: 1;
+    min-width: 80px;
+    max-width: 180px;
+    padding: 2px 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    font-size: 11px;
+}
+
+.toolbar button {
+    padding: 2px 8px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.toolbar button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.message {
+    display: none;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.preview-grid {
+    gap: 8px;
+    padding: 8px;
+}
+
+/* Default grid — responsive columns */
+.preview-grid.layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+/* Flow row — horizontally scrolling row of fixed-width cards */
+.preview-grid.layout-flow {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.preview-grid.layout-flow .preview-card {
+    flex: 0 0 240px;
+}
+
+/* Column — single wide column */
+.preview-grid.layout-column {
+    display: flex;
+    flex-direction: column;
+}
+.preview-grid.layout-column .preview-card {
+    max-width: 100%;
+}
+
+/* Focus — show only the focused card, full width */
+.preview-grid.layout-focus {
+    display: block;
+}
+.preview-grid.layout-focus .preview-card.hidden-by-focus {
+    display: none;
+}
+.preview-grid.layout-focus .preview-card.focused {
+    max-width: 100%;
+}
+.preview-grid.layout-focus .preview-card.focused .image-container img {
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+.preview-card.filtered-out {
+    display: none !important;
+}
+
+.focus-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--card-border);
+}
+.focus-controls button {
+    padding: 2px 10px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.focus-controls button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.focus-controls button:not(:disabled):hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+#focus-position {
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-width: 50px;
+    text-align: center;
+}
+
+.preview-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.preview-card:hover {
+    border-color: var(--vscode-focusBorder);
+}
+
+.card-header {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--card-border);
+}
+
+.card-title {
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    display: block;
+}
+
+.card-title:hover {
+    text-decoration: underline;
+    color: var(--vscode-textLink-foreground);
+}
+
+.card-subtitle {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.image-container {
+    position: relative;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--skeleton-bg);
+}
+
+.image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.image-container img.fade-in {
+    animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.skeleton {
+    width: 100%;
+    height: 120px;
+    background: linear-gradient(90deg, var(--skeleton-bg) 25%, transparent 50%, var(--skeleton-bg) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Subtle variant used during stealth refresh — minimal dimming, small corner spinner */
+.loading-overlay.subtle {
+    background: transparent;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding: 4px;
+    pointer-events: none;
+}
+
+.loading-overlay.subtle .spinner {
+    width: 12px;
+    height: 12px;
+    border-width: 2px;
+    opacity: 0.7;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--text-secondary);
+    border-top-color: var(--vscode-focusBorder);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error-message {
+    padding: 12px;
+    color: var(--vscode-errorForeground);
+    font-size: 11px;
+    word-break: break-word;
+}
+
+.has-error {
+    border-color: var(--vscode-errorForeground);
+}
