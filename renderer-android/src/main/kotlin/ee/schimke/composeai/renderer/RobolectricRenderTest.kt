@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -102,8 +104,19 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
                     preview.params.showBackground -> Color.White
                     else -> Color.Transparent
                 }
-                Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-                    InvokeComposable(composableMethod, null)
+                val body: @Composable () -> Unit = {
+                    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+                        InvokeComposable(composableMethod, null)
+                    }
+                }
+                // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively
+                // and call its `Wrap { body() }`. Reflection keeps this renderer compatible
+                // with apps on stable Compose (no `PreviewWrapperProvider` on classpath).
+                val wrapperFqn = preview.params.wrapperClassName
+                if (wrapperFqn != null) {
+                    InvokeWrappedComposable(wrapperFqn, body)
+                } else {
+                    body()
                 }
             }
         }
@@ -164,8 +177,36 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
 
 @Composable
 private fun InvokeComposable(
-    composableMethod: androidx.compose.runtime.reflect.ComposableMethod,
+    composableMethod: ComposableMethod,
     instance: Any?,
 ) {
     composableMethod.invoke(currentComposer, instance)
+}
+
+/**
+ * Reflectively instantiates the `PreviewWrapperProvider` identified by [wrapperFqn]
+ * and invokes its `Wrap(content)` composable around [body].
+ *
+ * `PreviewWrapperProvider.Wrap(content: @Composable () -> Unit)` compiles to
+ * `Wrap(Function2, Composer, int)` at the bytecode level — [getDeclaredComposableMethod]
+ * handles the synthetic Composer/changed args, so we look the method up by the
+ * content parameter's JVM type.
+ */
+@Composable
+private fun InvokeWrappedComposable(
+    wrapperFqn: String,
+    body: @Composable () -> Unit,
+) {
+    val resolved = remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
+    resolved.first.invoke(currentComposer, resolved.second, body)
+}
+
+internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
+    val cls = Class.forName(wrapperFqn)
+    val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+    // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
+    // Wrap(Function2, Composer, int). getDeclaredComposableMethod handles the
+    // synthetic Composer/changed tail, so we look up by the content param's JVM type.
+    val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
+    return method to instance
 }

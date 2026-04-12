@@ -32,4 +32,6 @@ data class RenderPreviewParams(
     val uiMode: Int = 0,
     val locale: String? = null,
     val group: String? = null,
+    /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
+    val wrapperClassName: String? = null,
 )

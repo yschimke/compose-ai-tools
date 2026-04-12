@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import io.github.classgraph.AnnotationClassRef
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
@@ -49,6 +50,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             "androidx.compose.ui.tooling.preview.Preview\$Container",
             "androidx.compose.ui.tooling.preview.Preview.Container",
         )
+        // androidx.compose.ui:ui-tooling-preview 1.11.0+ — wraps each preview in a custom
+        // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
+        // simply never surface the annotation and discovery is a no-op.
+        private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
     }
 
     @TaskAction
@@ -110,10 +115,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         scanResult: ScanResult,
         previews: MutableList<PreviewInfo>,
     ) {
+        // @PreviewWrapper is non-repeatable and applies to every @Preview on the
+        // function (including expansions from multi-preview meta-annotations).
+        val wrapperFqn = extractWrapperFqn(annotations)
+
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                previews.add(makePreview(classInfo, method, ann))
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn))
             }
             return
         }
@@ -121,8 +130,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                previews.add(makePreview(classInfo, method, resolvedAnn))
+                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn))
             }
+        }
+    }
+
+    private fun extractWrapperFqn(annotations: List<AnnotationInfo>): String? {
+        val wrapperAnn = annotations.firstOrNull { it.name == PREVIEW_WRAPPER_FQN } ?: return null
+        // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
+        // AnnotationClassRef — pull the FQN without triggering classloading.
+        return when (val value = wrapperAnn.parameterValues.getValue("wrapper")) {
+            is AnnotationClassRef -> value.name
+            is String -> value
+            else -> null
         }
     }
 
@@ -176,8 +196,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         return result
     }
 
-    private fun makePreview(classInfo: ClassInfo, method: MethodInfo, ann: AnnotationInfo): PreviewInfo {
-        val params = extractPreviewParams(ann)
+    private fun makePreview(
+        classInfo: ClassInfo,
+        method: MethodInfo,
+        ann: AnnotationInfo,
+        wrapperClassName: String?,
+    ): PreviewInfo {
+        val params = extractPreviewParams(ann, wrapperClassName)
         val fqn = "${classInfo.name}.${method.name}"
         val suffix = if (!params.name.isNullOrBlank()) "_${params.name}" else ""
         return PreviewInfo(
@@ -190,7 +215,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         )
     }
 
-    private fun extractPreviewParams(ann: AnnotationInfo): PreviewParams {
+    private fun extractPreviewParams(ann: AnnotationInfo, wrapperClassName: String?): PreviewParams {
         val pv = ann.parameterValues
         return PreviewParams(
             name = (pv.getValue("name") as? String)?.ifBlank { null },
@@ -204,6 +229,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             uiMode = (pv.getValue("uiMode") as? Int)?.takeIf { it > 0 } ?: 0,
             locale = (pv.getValue("locale") as? String)?.ifBlank { null },
             group = (pv.getValue("group") as? String)?.ifBlank { null },
+            wrapperClassName = wrapperClassName,
         )
     }
 }
