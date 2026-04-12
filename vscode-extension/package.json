@@ -1,0 +1,85 @@
+{
+    "name": "compose-preview",
+    "displayName": "Compose Preview",
+    "description": "Live preview rendering for Jetpack Compose and Compose Multiplatform @Preview functions",
+    "version": "0.1.0",
+    "publisher": "schimke",
+    "license": "Apache-2.0",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Visualization",
+        "Other"
+    ],
+    "activationEvents": [
+        "onLanguage:kotlin",
+        "workspaceContains:**/build.gradle.kts"
+    ],
+    "extensionDependencies": [
+        "vscjava.vscode-gradle"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "compose-preview",
+                    "title": "Compose Preview",
+                    "icon": "$(preview)"
+                }
+            ]
+        },
+        "views": {
+            "compose-preview": [
+                {
+                    "type": "webview",
+                    "id": "composePreview.panel",
+                    "name": "Previews"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "composePreview.refresh",
+                "title": "Refresh Previews",
+                "category": "Compose Preview",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "composePreview.renderAll",
+                "title": "Render All Previews",
+                "category": "Compose Preview"
+            }
+        ],
+        "configuration": {
+            "title": "Compose Preview",
+            "properties": {
+                "composePreview.variant": {
+                    "type": "string",
+                    "default": "debug",
+                    "description": "Build variant to use for preview rendering"
+                },
+                "composePreview.autoRefresh": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically refresh previews when Kotlin files are saved"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "test": "npm run compile && mocha out/test/**/*.test.js",
+        "lint": "eslint src --ext ts"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.85.0",
+        "@types/node": "^20.0.0",
+        "@types/mocha": "^10.0.0",
+        "typescript": "^5.3.0",
+        "mocha": "^10.7.0",
+        "@vscode/vsce": "^3.0.0"
+    }
+}

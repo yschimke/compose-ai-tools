@@ -28,3 +28,8 @@ Thumbs.db
 
 # Local properties
 local.properties
+
+# Node / VS Code extension
+node_modules/
+vscode-extension/out/
+*.vsix
