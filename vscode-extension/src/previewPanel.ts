@@ -264,6 +264,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const header = document.createElement('div');
             header.className = 'card-header';
 
+            const titleRow = document.createElement('div');
+            titleRow.className = 'card-title-row';
+
             const title = document.createElement('button');
             title.className = 'card-title';
             title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
@@ -275,7 +278,22 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     functionName: p.functionName,
                 });
             });
-            header.appendChild(title);
+            titleRow.appendChild(title);
+
+            // History toggle — asks the extension for this preview's snapshots.
+            // Hidden by default; shown once the extension replies with a non-empty
+            // setHistory payload, or re-hidden if the folder is empty.
+            const historyBtn = document.createElement('button');
+            historyBtn.className = 'card-history-btn';
+            historyBtn.title = 'Show render history';
+            historyBtn.setAttribute('aria-label', 'Show render history');
+            historyBtn.innerHTML = '&#x1F552;'; // clock face
+            historyBtn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'showHistory', previewId: p.id });
+            });
+            titleRow.appendChild(historyBtn);
+
+            header.appendChild(titleRow);
 
             if (p.sourceFile) {
                 const sub = document.createElement('div');
@@ -293,7 +311,129 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             skeleton.setAttribute('aria-label', 'Loading preview');
             imgContainer.appendChild(skeleton);
             card.appendChild(imgContainer);
+
+            // Lazy-built history drawer — only populated when the user clicks
+            // the history button and the extension returns entries.
+            const drawer = document.createElement('div');
+            drawer.className = 'history-drawer';
+            drawer.hidden = true;
+            card.appendChild(drawer);
             return card;
+        }
+
+        /**
+         * Populates a card's history drawer and reveals it. Called when the
+         * extension replies to our showHistory request.
+         */
+        function showHistory(previewId, entries) {
+            const card = document.getElementById('preview-' + sanitizeId(previewId));
+            if (!card) return;
+            const drawer = card.querySelector('.history-drawer');
+            if (!drawer) return;
+
+            if (!entries || entries.length === 0) {
+                drawer.hidden = false;
+                drawer.innerHTML = '<div class="history-empty">No history yet. Enable <code>historyEnabled</code> in composePreview to start archiving.</div>';
+                return;
+            }
+
+            drawer.innerHTML = '';
+
+            // Header with close button + position indicator
+            const head = document.createElement('div');
+            head.className = 'history-head';
+            const label = document.createElement('span');
+            label.className = 'history-label';
+            const close = document.createElement('button');
+            close.className = 'history-close';
+            close.innerHTML = '&times;';
+            close.title = 'Close history';
+            close.addEventListener('click', () => {
+                drawer.hidden = true;
+                restoreLatestImage(card);
+            });
+            head.appendChild(label);
+            head.appendChild(close);
+            drawer.appendChild(head);
+
+            // Horizontal timeline strip — click a chip to view that snapshot
+            const strip = document.createElement('div');
+            strip.className = 'history-strip';
+            strip.setAttribute('role', 'list');
+            for (const entry of entries) {
+                const chip = document.createElement('button');
+                chip.className = 'history-chip';
+                chip.dataset.filename = entry.filename;
+                chip.title = entry.iso;
+                chip.textContent = formatChipLabel(entry.timestamp);
+                chip.addEventListener('click', () => {
+                    // Visual feedback + state
+                    strip.querySelectorAll('.history-chip').forEach(c =>
+                        c.classList.toggle('selected', c === chip));
+                    label.textContent = 'Viewing ' + entry.iso;
+                    card.dataset.viewingHistory = entry.filename;
+                    // Show spinner in the main image container until the extension replies
+                    const container = card.querySelector('.image-container');
+                    if (container && !container.querySelector('.loading-overlay')) {
+                        const overlay = document.createElement('div');
+                        overlay.className = 'loading-overlay subtle';
+                        overlay.innerHTML = '<div class="spinner" aria-label="Loading snapshot"></div>';
+                        container.appendChild(overlay);
+                    }
+                    vscode.postMessage({
+                        command: 'loadHistoryImage',
+                        previewId: previewId,
+                        filename: entry.filename,
+                    });
+                });
+                strip.appendChild(chip);
+            }
+            drawer.appendChild(strip);
+            drawer.hidden = false;
+
+            // Preselect the newest entry and load it so the user sees content immediately.
+            const firstChip = strip.querySelector('.history-chip');
+            if (firstChip) { firstChip.click(); }
+        }
+
+        /** Snapshot filename 20260412-215512 becomes 2026-04-12 21:55 for display. */
+        function formatChipLabel(timestamp) {
+            const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\d{2}/.exec(timestamp);
+            if (!m) return timestamp;
+            return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
+        }
+
+        function updateHistoryImage(previewId, filename, imageData) {
+            const card = document.getElementById('preview-' + sanitizeId(previewId));
+            if (!card) return;
+            // Ignore stale replies — user may have clicked another chip or closed.
+            if (card.dataset.viewingHistory !== filename) return;
+            const container = card.querySelector('.image-container');
+            if (!container) return;
+            const overlay = container.querySelector('.loading-overlay');
+            if (overlay) overlay.remove();
+            let img = container.querySelector('img');
+            if (!img) {
+                img = document.createElement('img');
+                img.alt = card.dataset.function + ' preview';
+                container.appendChild(img);
+            }
+            // Preserve the latest render's data URL so we can restore it on close.
+            if (!card.dataset.latestImage) {
+                card.dataset.latestImage = img.src;
+            }
+            img.src = 'data:image/png;base64,' + imageData;
+            img.className = 'fade-in';
+        }
+
+        function restoreLatestImage(card) {
+            delete card.dataset.viewingHistory;
+            const container = card.querySelector('.image-container');
+            const img = container?.querySelector('img');
+            if (img && card.dataset.latestImage) {
+                img.src = card.dataset.latestImage;
+                delete card.dataset.latestImage;
+            }
         }
 
         function updateCardMetadata(card, p) {
@@ -388,13 +528,22 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (overlay) overlay.remove();
             card.classList.remove('has-error');
 
+            const newSrc = 'data:image/png;base64,' + imageData;
+
+            // If the user is viewing a history snapshot, don't clobber it —
+            // stash the new latest so closing the drawer reveals the update.
+            if (card.dataset.viewingHistory) {
+                card.dataset.latestImage = newSrc;
+                return;
+            }
+
             let img = container.querySelector('img');
             if (!img) {
                 img = document.createElement('img');
                 img.alt = card.dataset.function + ' preview';
                 container.appendChild(img);
             }
-            img.src = 'data:image/png;base64,' + imageData;
+            img.src = newSrc;
             img.className = 'fade-in';
         }
 
@@ -486,6 +635,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'showMessage':
                     message.textContent = msg.text;
                     message.style.display = msg.text ? 'block' : 'none';
+                    break;
+
+                case 'setHistory':
+                    showHistory(msg.previewId, msg.entries);
+                    break;
+
+                case 'updateHistoryImage':
+                    updateHistoryImage(msg.previewId, msg.filename, msg.imageData);
                     break;
             }
         });

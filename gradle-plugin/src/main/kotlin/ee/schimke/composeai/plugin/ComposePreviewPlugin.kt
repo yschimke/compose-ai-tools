@@ -139,12 +139,9 @@ class ComposePreviewPlugin : Plugin<Project> {
                 }
             }
 
-            project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
-                group = "compose preview"
-                dependsOn(renderTask)
-            }
+            registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
         } else {
-            registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask)
+            registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask, extension)
         }
     }
 
@@ -195,12 +192,9 @@ class ComposePreviewPlugin : Plugin<Project> {
                 description = "Render all previews to PNG"
                 dependsOn(discoverTask)
             }
-            project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
-                group = "compose preview"
-                dependsOn(renderTask)
-            }
+            registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
         } else {
-            registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask)
+            registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask, extension)
         }
     }
 
@@ -242,6 +236,7 @@ class ComposePreviewPlugin : Plugin<Project> {
         sourceClassDirs: org.gradle.api.file.FileCollection,
         dependencyConfigName: String,
         discoverTask: org.gradle.api.tasks.TaskProvider<DiscoverPreviewsTask>,
+        extension: PreviewExtension,
     ) {
         val renderTask = project.tasks.register("renderPreviews", RenderPreviewsTask::class.java) {
             previewsJson.set(previewOutputDir.map { it.file("previews.json") })
@@ -254,9 +249,42 @@ class ComposePreviewPlugin : Plugin<Project> {
             description = "Render all previews to PNG (stub)"
             dependsOn(discoverTask)
         }
+        registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+    }
+
+    /**
+     * Registers `renderAllPreviews` as the user-facing entry point. When
+     * `composePreview.historyEnabled = true`, inserts a `historizePreviews`
+     * task between the render task and the aggregate so every run archives
+     * changed PNGs into the configured history directory.
+     */
+    private fun registerRenderAllPreviews(
+        project: Project,
+        extension: PreviewExtension,
+        renderTask: org.gradle.api.tasks.TaskProvider<*>,
+        previewOutputDir: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+    ) {
+        val finalTask: org.gradle.api.tasks.TaskProvider<*> = if (extension.historyEnabled.get()) {
+            // Default history dir: <project>/.compose-preview-history — outside `build/`
+            // so snapshots survive `./gradlew clean`. Users can override via extension.
+            val defaultHistoryDir = project.layout.projectDirectory.dir(".compose-preview-history")
+            val resolvedHistoryDir = extension.historyDir.orElse(defaultHistoryDir)
+
+            project.tasks.register("historizePreviews", HistorizePreviewsTask::class.java) {
+                previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+                rendersDir.set(previewOutputDir.map { it.dir("renders") })
+                historyDir.set(resolvedHistoryDir)
+                group = "compose preview"
+                description = "Archive changed previews into the local history directory"
+                dependsOn(renderTask)
+            }
+        } else {
+            renderTask
+        }
+
         project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
             group = "compose preview"
-            dependsOn(renderTask)
+            dependsOn(finalTask)
         }
     }
 
