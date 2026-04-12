@@ -68,16 +68,81 @@ Both discovery and rendering are Gradle cacheable tasks with declared input/outp
 contracts. Unchanged source files produce no re-work on subsequent runs.
 Configuration caching is strict (`problems=fail`).
 
-## Usage
+## Setup
 
-Apply the plugin to any module with Compose:
+The plugin is published to [GitHub Packages](https://github.com/yschimke/compose-ai-tools/packages). GitHub
+requires authentication for reading Maven artifacts even from public repos,
+so you need a Personal Access Token.
+
+### 1. Create a GitHub PAT
+
+Generate a [classic PAT](https://github.com/settings/tokens/new) with the
+**`read:packages`** scope — that's the only scope consumers need.
+
+If you already use `gh`, you can reuse its token: `gh auth token`.
+
+### 2. Store credentials (not in the repo)
+
+Add to `~/.gradle/gradle.properties` so they apply to every build on your machine:
+
+```properties
+composeAiTools.githubUser=your-github-username
+composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+On CI, pass them via environment variables `GITHUB_ACTOR` / `GITHUB_TOKEN`
+(both are pre-populated in GitHub Actions — no config needed).
+
+### 3. Register the plugin repository
+
+In `settings.gradle.kts`:
 
 ```kotlin
-// build.gradle.kts
-plugins {
-    id("ee.schimke.composeai.preview")
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven {
+            name = "composeAiTools"
+            url = uri("https://maven.pkg.github.com/yschimke/compose-ai-tools")
+            credentials {
+                username = providers.gradleProperty("composeAiTools.githubUser").orNull
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("composeAiTools.githubToken").orNull
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "ee.schimke.composeai.preview") {
+                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
+            }
+        }
+    }
 }
 ```
+
+The `resolutionStrategy` block is required because GitHub Packages doesn't host
+Gradle plugin marker artifacts — we point the plugin id at the underlying Maven
+coordinates directly.
+
+### 4. Apply the plugin
+
+```kotlin
+// <module>/build.gradle.kts
+plugins {
+    id("ee.schimke.composeai.preview") version "0.1.1"
+}
+```
+
+Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for the
+latest version. CMP Desktop projects also need
+`implementation(compose.components.uiToolingPreview)` — the bundled
+`@Preview` annotation has `SOURCE` retention and is invisible to ClassGraph.
+
+## Usage
 
 Run discovery and rendering:
 
@@ -94,17 +159,6 @@ composePreview {
     sdkVersion.set(35)       // Robolectric SDK version (default: 35)
     enabled.set(true)        // disable to skip registration (default: true)
 }
-```
-
-### Preview annotations
-
-Use `androidx.compose.ui.tooling.preview.Preview` with `RUNTIME` retention. The CMP
-Desktop annotation (`androidx.compose.desktop.ui.tooling.preview.Preview`) has `SOURCE`
-retention and is invisible to ClassGraph.
-
-```kotlin
-// Add to CMP Desktop projects:
-implementation(compose.components.uiToolingPreview)
 ```
 
 ## Project structure
