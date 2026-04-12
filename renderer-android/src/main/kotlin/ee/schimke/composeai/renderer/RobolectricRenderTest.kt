@@ -144,11 +144,21 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
 
+        // Post-process round Wear previews (device=*round* + showSystemUi=true)
+        // so pixels outside the inscribed circle are transparent instead of bgColor.
+        val finalBitmap = if (isRoundDevice(preview.params.device) && preview.params.showSystemUi) {
+            val clipped = applyCircularClip(bitmap)
+            bitmap.recycle()
+            clipped
+        } else {
+            bitmap
+        }
+
         outputFile.parentFile?.mkdirs()
         FileOutputStream(outputFile).use { fos ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
         }
-        bitmap.recycle()
+        finalBitmap.recycle()
     }
 }
 
