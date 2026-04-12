@@ -148,6 +148,158 @@ class DiscoveryFunctionalTest {
     }
 
     @Test
+    fun `discoverPreviews resolves multi-preview meta-annotations`() {
+        val projectDir = createCmpTestProject()
+
+        // Define a custom meta-annotation that itself carries @Preview,
+        // mirroring the @WearPreviewDevices / @PreviewParameterProvider pattern.
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.material3.Text
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            // Custom multi-preview annotation — applies two @Preview variants
+            @Preview(name = "Light", backgroundColor = 0xFFFFFFFF, showBackground = true)
+            @Preview(name = "Dark", backgroundColor = 0xFF000000, showBackground = true)
+            annotation class LightAndDark
+
+            @LightAndDark
+            @Composable
+            fun ThemedBoxPreview() {
+                Box(modifier = Modifier.size(100.dp).background(Color.Red)) {
+                    Text("Red")
+                }
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+
+        // @LightAndDark expands to two previews on the one function
+        assertThat(manifest.previews).hasSize(2)
+        assertThat(manifest.previews.map { it.functionName }).containsExactly(
+            "ThemedBoxPreview", "ThemedBoxPreview",
+        )
+        val labels = manifest.previews.map { it.params.name }
+        assertThat(labels).containsExactly("Light", "Dark")
+    }
+
+    @Test
+    fun `discoverPreviews resolves nested meta-annotations`() {
+        val projectDir = createCmpTestProject()
+
+        // Two levels of meta-annotation: @Outer → @Inner → @Preview
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Preview(name = "Inner")
+            annotation class InnerPreview
+
+            @InnerPreview
+            annotation class OuterPreview
+
+            @OuterPreview
+            @Composable
+            fun NestedPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+        assertThat(manifest.previews).hasSize(1)
+        assertThat(manifest.previews[0].functionName).isEqualTo("NestedPreview")
+        assertThat(manifest.previews[0].params.name).isEqualTo("Inner")
+    }
+
+    @Test
+    fun `discoverPreviews handles cycles in meta-annotations without hanging`() {
+        val projectDir = createCmpTestProject()
+
+        // A → B → A cycle. Neither carries @Preview directly.
+        // Expected: no previews, no infinite loop / stack overflow.
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @AnnotB
+            annotation class AnnotA
+
+            @AnnotA
+            annotation class AnnotB
+
+            @AnnotA
+            @Composable
+            fun CyclicPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+        assertThat(manifest.previews).isEmpty()
+    }
+
+    @Test
     fun `discoverPreviews re-runs when source changes`() {
         val projectDir = createCmpTestProject()
 
