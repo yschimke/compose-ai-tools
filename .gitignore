@@ -9,6 +9,9 @@ build/
 *.ipr
 *.iws
 .vscode/
+# Eclipse-style compile output (IntelliJ writes this when "Use Build and run
+# using: IDE" is selected; Gradle puts its output in build/ instead).
+bin/
 
 # Kotlin
 .kotlin/
