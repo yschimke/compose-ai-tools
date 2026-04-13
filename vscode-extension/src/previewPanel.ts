@@ -49,24 +49,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="Preview filters">
-        <select id="filter-file" title="Filter by source file" aria-label="Source file filter">
-            <option value="all">All files</option>
-        </select>
         <select id="filter-function" title="Filter by function" aria-label="Function filter">
             <option value="all">All functions</option>
         </select>
-        <select id="filter-label" title="Filter by preview label" aria-label="Preview label filter">
-            <option value="all">All labels</option>
-        </select>
-        <select id="filter-group" title="Filter by group" aria-label="Group filter">
+        <select id="filter-group" title="Filter by @Preview group" aria-label="Group filter">
             <option value="all">All groups</option>
-        </select>
-        <select id="filter-module" title="Module" aria-label="Module selector">
-            <option value="">Auto</option>
         </select>
         <select id="layout-mode" title="Layout" aria-label="Layout mode">
             <option value="grid">Grid</option>
-            <option value="flow">Flow row</option>
+            <option value="flow">Flow</option>
             <option value="column">Column</option>
             <option value="focus">Focus</option>
         </select>
@@ -88,11 +79,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         const grid = document.getElementById('preview-grid');
         const message = document.getElementById('message');
-        const filterFile = document.getElementById('filter-file');
         const filterFunction = document.getElementById('filter-function');
-        const filterLabel = document.getElementById('filter-label');
         const filterGroup = document.getElementById('filter-group');
-        const filterModule = document.getElementById('filter-module');
         const layoutMode = document.getElementById('layout-mode');
         const focusControls = document.getElementById('focus-controls');
         const btnPrev = document.getElementById('btn-prev');
@@ -122,7 +110,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         btnRefresh.addEventListener('click', () => vscode.postMessage({ command: 'refresh' }));
 
-        for (const sel of [filterFile, filterFunction, filterLabel, filterGroup]) {
+        for (const sel of [filterFunction, filterGroup]) {
             sel.addEventListener('change', () => {
                 saveFilterState();
                 if (filterDebounce) clearTimeout(filterDebounce);
@@ -130,15 +118,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
         }
 
-        filterModule.addEventListener('change', () => {
-            vscode.postMessage({ command: 'selectModule', value: filterModule.value });
-        });
-
         function saveFilterState() {
             state.filters = {
-                file: filterFile.value,
                 fn: filterFunction.value,
-                label: filterLabel.value,
                 group: filterGroup.value,
             };
             vscode.setState(state);
@@ -146,9 +128,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function restoreFilterState() {
             const f = state.filters || {};
-            if (f.file && hasOption(filterFile, f.file)) filterFile.value = f.file;
             if (f.fn && hasOption(filterFunction, f.fn)) filterFunction.value = f.fn;
-            if (f.label && hasOption(filterLabel, f.label)) filterLabel.value = f.label;
             if (f.group && hasOption(filterGroup, f.group)) filterGroup.value = f.group;
         }
 
@@ -158,17 +138,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function applyFilters() {
             const fnVal = filterFunction.value;
-            const lblVal = filterLabel.value;
             const grpVal = filterGroup.value;
-            const fileVal = filterFile.value;
 
             let visibleCount = 0;
             document.querySelectorAll('.preview-card').forEach(card => {
                 const show =
                     (fnVal === 'all' || card.dataset.function === fnVal) &&
-                    (lblVal === 'all' || card.dataset.label === lblVal) &&
-                    (grpVal === 'all' || card.dataset.group === grpVal) &&
-                    (fileVal === 'all' || card.dataset.file === fileVal);
+                    (grpVal === 'all' || card.dataset.group === grpVal);
                 card.classList.toggle('filtered-out', !show);
                 if (show) visibleCount++;
             });
@@ -255,9 +231,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             card.id = 'preview-' + sanitizeId(p.id);
             card.setAttribute('role', 'listitem');
             card.dataset.function = p.functionName;
-            card.dataset.label = p.params.name || '';
             card.dataset.group = p.params.group || '';
-            card.dataset.file = p.sourceFile || '';
             card.dataset.previewId = p.id;
             card.dataset.className = p.className;
 
@@ -280,28 +254,22 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
             titleRow.appendChild(title);
 
-            // History toggle — asks the extension for this preview's snapshots.
-            // Hidden by default; shown once the extension replies with a non-empty
-            // setHistory payload, or re-hidden if the folder is empty.
-            const historyBtn = document.createElement('button');
-            historyBtn.className = 'card-history-btn';
-            historyBtn.title = 'Show render history';
-            historyBtn.setAttribute('aria-label', 'Show render history');
-            historyBtn.innerHTML = '&#x1F552;'; // clock face
-            historyBtn.addEventListener('click', () => {
-                vscode.postMessage({ command: 'showHistory', previewId: p.id });
-            });
-            titleRow.appendChild(historyBtn);
-
-            header.appendChild(titleRow);
-
-            if (p.sourceFile) {
-                const sub = document.createElement('div');
-                sub.className = 'card-subtitle';
-                sub.textContent = p.sourceFile;
-                header.appendChild(sub);
+            // History button only appears when the Gradle plugin has been
+            // configured with historyEnabled = true and at least one
+            // snapshot exists on disk — signalled by p.hasHistory.
+            if (p.hasHistory) {
+                const historyBtn = document.createElement('button');
+                historyBtn.className = 'card-history-btn';
+                historyBtn.title = 'Show render history';
+                historyBtn.setAttribute('aria-label', 'Show render history');
+                historyBtn.innerHTML = '&#x1F552;'; // clock face
+                historyBtn.addEventListener('click', () => {
+                    vscode.postMessage({ command: 'showHistory', previewId: p.id });
+                });
+                titleRow.appendChild(historyBtn);
             }
 
+            header.appendChild(titleRow);
             card.appendChild(header);
 
             const imgContainer = document.createElement('div');
@@ -438,15 +406,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function updateCardMetadata(card, p) {
             card.dataset.function = p.functionName;
-            card.dataset.label = p.params.name || '';
             card.dataset.group = p.params.group || '';
-            card.dataset.file = p.sourceFile || '';
             const title = card.querySelector('.card-title');
             if (title) {
                 title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
             }
-            const sub = card.querySelector('.card-subtitle');
-            if (sub) sub.textContent = p.sourceFile || '';
         }
 
         /**
@@ -556,13 +520,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     renderPreviews(msg.previews);
 
                     const fns = [...new Set(msg.previews.map(p => p.functionName))].sort();
-                    const labels = [...new Set(msg.previews.map(p => p.params.name).filter(Boolean))].sort();
                     const groups = [...new Set(msg.previews.map(p => p.params.group).filter(Boolean))].sort();
-                    const files = [...new Set(msg.previews.map(p => p.sourceFile).filter(Boolean))].sort();
 
-                    populateFilter(filterFile, files, 'files');
                     populateFilter(filterFunction, fns, 'functions');
-                    populateFilter(filterLabel, labels, 'labels');
                     populateFilter(filterGroup, groups, 'groups');
 
                     restoreFilterState();
@@ -575,25 +535,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     markAllLoading();
                     break;
 
+                case 'clearAll':
+                    allPreviews = [];
+                    grid.innerHTML = '';
+                    message.textContent = '';
+                    message.style.display = 'none';
+                    break;
+
                 case 'updateImage':
                     updateImage(msg.previewId, msg.imageData);
                     break;
 
-                case 'setModules': {
-                    filterModule.innerHTML = '';
-                    const autoOpt = document.createElement('option');
-                    autoOpt.value = '';
-                    autoOpt.textContent = 'Auto-detect';
-                    filterModule.appendChild(autoOpt);
-                    for (const m of msg.modules) {
-                        const opt = document.createElement('option');
-                        opt.value = m;
-                        opt.textContent = m;
-                        filterModule.appendChild(opt);
-                    }
-                    if (msg.selected) filterModule.value = msg.selected;
+                case 'setModules':
+                    // Module selector removed from UI — module is resolved from the active editor.
                     break;
-                }
 
                 case 'setLoading':
                     if (msg.previewId) {

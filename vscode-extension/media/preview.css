@@ -69,12 +69,12 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
-/* Flow row — horizontally scrolling row of fixed-width cards */
+/* Flow — fill each row with fixed-width cards, wrap to next row when full */
 .preview-grid.layout-flow {
     display: flex;
     flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
+    flex-wrap: wrap;
+    align-content: flex-start;
 }
 .preview-grid.layout-flow .preview-card {
     flex: 0 0 240px;
@@ -116,6 +116,9 @@ body {
     padding: 4px 8px;
     border-bottom: 1px solid var(--card-border);
 }
+.focus-controls[hidden] {
+    display: none;
+}
 .focus-controls button {
     padding: 2px 10px;
     background: var(--vscode-button-secondaryBackground);
@@ -139,6 +142,7 @@ body {
 }
 
 .preview-card {
+    position: relative;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 4px;
@@ -150,9 +154,26 @@ body {
     border-color: var(--vscode-focusBorder);
 }
 
+/* Header overlays the image, hidden until hover/focus. */
 .card-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     padding: 6px 8px;
-    border-bottom: 1px solid var(--card-border);
+    background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+}
+
+.preview-card:hover .card-header,
+.preview-card:focus-within .card-header {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .card-title {
@@ -165,12 +186,6 @@ body {
 .card-title:hover {
     text-decoration: underline;
     color: var(--vscode-textLink-foreground);
-}
-
-.card-subtitle {
-    font-size: 10px;
-    color: var(--text-secondary);
-    margin-top: 2px;
 }
 
 .image-container {
