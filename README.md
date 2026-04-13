@@ -179,3 +179,9 @@ composePreview {
 - AGP 9.1.0 (Android projects)
 - Kotlin 2.3.20
 - Compose Multiplatform 1.10.3 (Desktop projects)
+
+## Contributing
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building the plugin, CLI, and
+VS Code extension from source and running them locally against the bundled
+samples.
