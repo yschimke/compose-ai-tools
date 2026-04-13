@@ -5,9 +5,11 @@ import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
+import org.gradle.tooling.events.StartEvent
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.util.Collections
 
 class GradleConnection(
     private val projectDir: File,
@@ -19,6 +21,18 @@ class GradleConnection(
 
     fun runTasks(vararg tasks: String, timeoutSeconds: Long = 300): Boolean {
         val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
+        val startTime = System.currentTimeMillis()
+        val runningTasks = Collections.synchronizedSet(linkedSetOf<String>())
+
+        // Ctrl+C otherwise kills the CLI without going through the cancellation
+        // token — leaving the Gradle daemon still executing and any forked Test
+        // worker (Robolectric, etc.) orphaned. Hook ensures clean cancellation.
+        val shutdownHook = Thread {
+            System.err.println("\nInterrupted — cancelling Gradle build...")
+            tokenSource.cancel()
+            try { connection.close() } catch (_: Exception) {}
+        }
+        Runtime.getRuntime().addShutdownHook(shutdownHook)
 
         val timer = java.util.Timer(true).apply {
             schedule(object : java.util.TimerTask() {
@@ -28,6 +42,19 @@ class GradleConnection(
                     tokenSource.cancel()
                 }
             }, timeoutSeconds * 1000)
+
+            // Heartbeat so the user can see what is still running (Robolectric
+            // can take minutes on a cold start with no output).
+            val heartbeatMs = 15_000L
+            schedule(object : java.util.TimerTask() {
+                override fun run() {
+                    val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                    val running = synchronized(runningTasks) { runningTasks.toList() }
+                    if (running.isNotEmpty()) {
+                        System.err.println("  [${elapsed}s] running: ${running.joinToString(", ")}")
+                    }
+                }
+            }, heartbeatMs, heartbeatMs)
         }
 
         TerminalProgress.indeterminate()
@@ -50,25 +77,35 @@ class GradleConnection(
                 launcher.setStandardError(errorCapture)
             }
 
+            val listenerTypes = if (verbose) {
+                setOf(OperationType.TASK, OperationType.TEST)
+            } else {
+                setOf(OperationType.TASK)
+            }
+
             launcher.addProgressListener({ event: ProgressEvent ->
+                val desc = event.descriptor.name
                 when (event) {
+                    is StartEvent -> {
+                        taskCount++
+                        runningTasks.add(desc)
+                    }
                     is FinishEvent -> {
+                        runningTasks.remove(desc)
                         tasksFinished++
-                        val desc = event.descriptor.name
                         if (taskCount > 0) {
                             TerminalProgress.show((tasksFinished * 100) / taskCount)
                         }
                         if (!verbose && (desc.contains("discoverPreviews") || desc.contains("renderPreviews") ||
                                 desc.contains("renderAllPreviews"))
                         ) {
-                            System.err.println("  $desc")
+                            val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                            System.err.println("  [${elapsed}s] $desc")
                         }
                     }
-                    else -> {
-                        taskCount++
-                    }
+                    else -> {}
                 }
-            }, OperationType.TASK)
+            }, listenerTypes)
 
             launcher.run()
             TerminalProgress.show(100)
@@ -89,6 +126,7 @@ class GradleConnection(
             timer.cancel()
             tokenSource.cancel()
             TerminalProgress.hide()
+            try { Runtime.getRuntime().removeShutdownHook(shutdownHook) } catch (_: IllegalStateException) {}
         }
     }
 
