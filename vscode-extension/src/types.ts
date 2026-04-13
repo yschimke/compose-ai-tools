@@ -19,6 +19,10 @@ export interface PreviewInfo {
     sourceFile: string | null;
     params: PreviewParams;
     renderOutput: string | null;
+    /** Populated by the extension (not the Gradle manifest) — `true` iff
+     *  the preview has at least one archived snapshot on disk. The webview
+     *  uses this to decide whether to show the history button at all. */
+    hasHistory?: boolean;
 }
 
 export interface PreviewManifest {
@@ -48,6 +52,7 @@ export type ExtensionToWebview =
     | { command: 'markAllLoading' }
     | { command: 'setError'; previewId: string; message: string }
     | { command: 'showMessage'; text: string }
+    | { command: 'clearAll' }
     | { command: 'setModules'; modules: string[]; selected: string }
     | { command: 'setHistory'; previewId: string; entries: HistoryEntry[] }
     | { command: 'updateHistoryImage'; previewId: string; filename: string; imageData: string };

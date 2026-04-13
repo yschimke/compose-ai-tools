@@ -1,5 +1,6 @@
 .vscode/**
 .vscode-test/**
+DEVELOPMENT.md
 src/**
 **/*.map
 **/*.ts

@@ -35,7 +35,7 @@
                 {
                     "id": "compose-preview",
                     "title": "Compose Preview",
-                    "icon": "$(preview)"
+                    "icon": "media/preview-icon.svg"
                 }
             ]
         },
@@ -72,7 +72,12 @@
                 "composePreview.autoRefresh": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Automatically refresh previews when Kotlin files are saved"
+                    "description": "Run preview discovery when Kotlin files are saved. Fast — just scans compiled classes, does not re-render images."
+                },
+                "composePreview.renderOnSave": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Also re-render preview PNGs on save. Off by default because rendering can take seconds per preview and is disruptive during quick edits."
                 }
             }
         }

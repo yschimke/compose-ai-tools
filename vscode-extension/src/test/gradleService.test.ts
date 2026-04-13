@@ -120,6 +120,25 @@ describe('GradleService', () => {
             const service = new GradleService(dir, api);
             assert.deepStrictEqual(service.findPreviewModules(), []);
         }));
+
+        it('ignores the plugin module itself (declares but does not apply)', withTempDir((dir, api) => {
+            fs.mkdirSync(path.join(dir, 'gradle-plugin'));
+            fs.writeFileSync(path.join(dir, 'gradle-plugin', 'build.gradle.kts'), `
+                gradlePlugin {
+                    plugins {
+                        create("composePreview") {
+                            id = "ee.schimke.composeai.preview"
+                        }
+                    }
+                }
+            `);
+            fs.mkdirSync(path.join(dir, 'app'));
+            fs.writeFileSync(path.join(dir, 'app', 'build.gradle.kts'),
+                'plugins { id("ee.schimke.composeai.preview") }');
+
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(service.findPreviewModules(), ['app']);
+        }));
     });
 
     describe('resolveModule', () => {

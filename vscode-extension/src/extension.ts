@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { GradleService, GradleApi } from './gradleService';
 import { PreviewPanel } from './previewPanel';
+import { PreviewRegistry } from './previewRegistry';
+import { PreviewCodeLensProvider } from './previewCodeLensProvider';
+import { PreviewHoverProvider } from './previewHoverProvider';
 import { PreviewInfo } from './types';
 
 const DEBOUNCE_MS = 1500;
@@ -13,6 +16,8 @@ let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
 let hasPreviewsLoaded = false;
+let lastLoadedModules: string[] = [];
+const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used by history commands. */
 const previewModuleMap = new Map<string, string>();
 
@@ -45,6 +50,21 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('composePreview.refresh', () => refresh(true)),
         vscode.commands.registerCommand('composePreview.renderAll', () => refresh(true)),
+        vscode.commands.registerCommand('composePreview.runForFile', (filePath?: string) => {
+            const target = filePath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+            if (target) { refresh(true, target); }
+        }),
+    );
+
+    const detectLog = (msg: string) => outputChannel.appendLine(`[detect] ${msg}`);
+    const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
+    const hoverProvider = new PreviewHoverProvider(registry, detectLog);
+    const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
+        vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
+        codeLensProvider,
+        { dispose: () => registry.dispose() },
     );
 
     context.subscriptions.push(
@@ -76,11 +96,12 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push({ dispose: () => gradleService?.dispose() });
 
     setTimeout(() => {
-        sendModuleList();
         const active = vscode.window.activeTextEditor;
         if (active?.document.languageId === 'kotlin') {
             refresh(false, active.document.uri.fsPath);
         } else {
+            // No Kotlin file in focus — let refresh() emit the empty-state
+            // message without trying to load anything.
             refresh(false);
         }
     }, INIT_DELAY_MS);
@@ -91,12 +112,27 @@ export function deactivate() {
     pendingRefresh?.abort();
 }
 
+function sameScope(a: string[], b: string[]): boolean {
+    if (a.length !== b.length) { return false; }
+    const set = new Set(b);
+    return a.every(m => set.has(m));
+}
+
 function isSourceFile(filePath: string): boolean {
     if (filePath.includes(`${path.sep}build${path.sep}`)) { return false; }
     return /\.(kt|xml|json|properties)$/i.test(filePath);
 }
 
+/** True iff this is a Kotlin source file (.kt) — not a Gradle build script. */
+function isPreviewSourceFile(filePath: string): boolean {
+    return filePath.endsWith('.kt') && !filePath.endsWith('.gradle.kts');
+}
+
 function debouncedRefresh(filePath: string) {
+    const cfg = vscode.workspace.getConfiguration('composePreview');
+    if (!cfg.get<boolean>('autoRefresh', true)) { return; }
+    const render = cfg.get<boolean>('renderOnSave', false);
+
     // Invalidate cache for the changed module so the next discover isn't stale
     if (gradleService) {
         const module = gradleService.resolveModule(filePath);
@@ -106,11 +142,11 @@ function debouncedRefresh(filePath: string) {
     if (debounceTimer) { clearTimeout(debounceTimer); }
     debounceTimer = setTimeout(() => {
         if (filePath.endsWith('.kt')) {
-            refresh(false, filePath);
+            refresh(render, filePath);
         } else {
             const active = vscode.window.activeTextEditor;
             if (active?.document.languageId === 'kotlin') {
-                refresh(false, active.document.uri.fsPath);
+                refresh(render, active.document.uri.fsPath);
             }
         }
     }, DEBOUNCE_MS);
@@ -135,17 +171,36 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
     const abort = new AbortController();
     pendingRefresh = abort;
 
-    // Resolve which modules to load
-    const module = selectedModule
-        ?? (forFilePath ? gradleService.resolveModule(forFilePath) : null);
-
-    const modules = module ? [module] : gradleService.findPreviewModules();
-    if (modules.length === 0) {
-        panel.postMessage({ command: 'showMessage', text: 'No modules with compose-ai-tools plugin found' });
+    // The panel is always scoped to the active Kotlin source file's module.
+    // Anything else (build scripts, non-Kotlin files, no editor) → blank.
+    const activeFile = forFilePath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+    const module = activeFile && isPreviewSourceFile(activeFile)
+        ? gradleService.resolveModule(activeFile)
+        : null;
+    if (!module) {
+        panel.postMessage({ command: 'clearAll' });
+        panel.postMessage({
+            command: 'showMessage',
+            text: 'Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.',
+        });
+        lastLoadedModules = [];
+        hasPreviewsLoaded = false;
         return;
     }
 
-    const filterFile = forFilePath ? path.basename(forFilePath) : undefined;
+    const modules = [module];
+    const filterFile = activeFile ? path.basename(activeFile) : undefined;
+
+    // When the module scope changes (user switched files to a different
+    // module, or went from "all modules" to a single one) the old cards are
+    // from a different context and should be discarded up front rather than
+    // left visible until the diff in setPreviews prunes them — which won't
+    // happen if the new refresh cancels before setPreviews.
+    const scopeChanged = !sameScope(modules, lastLoadedModules);
+    if (scopeChanged) {
+        panel.postMessage({ command: 'clearAll' });
+        hasPreviewsLoaded = false;
+    }
 
     // If we already have previews on screen, use a stealth refresh:
     // keep the current cards visible and show per-card spinners rather than
@@ -155,6 +210,7 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
     } else {
         panel.postMessage({ command: 'setLoading' });
     }
+    lastLoadedModules = modules;
     gradleService.cancel();
 
     try {
@@ -168,12 +224,16 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
                 ? await gradleService.renderPreviews(mod)
                 : await gradleService.discoverPreviews(mod);
 
+            const perModule: PreviewInfo[] = [];
             if (manifest) {
                 for (const p of manifest.previews) {
+                    p.hasHistory = gradleService.listHistory(mod, p.id).length > 0;
                     allPreviews.push(p);
                     previewModuleMap.set(p.id, mod);
+                    perModule.push(p);
                 }
             }
+            registry.replaceModule(mod, perModule);
         }
 
         if (abort.signal.aborted) { return; }
@@ -184,11 +244,12 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         }
 
         // Filter to active file if applicable
-        let visiblePreviews = allPreviews;
-        if (filterFile) {
-            const matches = allPreviews.filter(p => p.sourceFile === filterFile);
-            if (matches.length > 0) { visiblePreviews = matches; }
-        }
+        // Always filter to the active file's previews. If the file has none
+        // (e.g. build.gradle.kts, or a Kotlin file without any @Preview),
+        // the panel shows an empty state rather than dumping the whole module.
+        const visiblePreviews = filterFile
+            ? allPreviews.filter(p => p.sourceFile === filterFile)
+            : allPreviews;
 
         panel.postMessage({
             command: 'setPreviews',
@@ -207,6 +268,7 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (abort.signal.aborted) { return; }
 
             if (imageData) {
+                registry.setImage(preview.id, imageData);
                 panel.postMessage({ command: 'updateImage', previewId: preview.id, imageData });
             } else {
                 panel.postMessage({
