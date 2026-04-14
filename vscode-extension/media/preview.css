@@ -5,6 +5,11 @@
     --text-primary: var(--vscode-foreground);
     --text-secondary: var(--vscode-descriptionForeground);
     --skeleton-bg: var(--vscode-editor-inactiveSelectionBackground);
+    /* Sidebar toolbars in VS Code use a transparent hover tint; fall back to
+       list-hover where the token isn't themed. */
+    --toolbar-hover: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+    --toolbar-active: var(--vscode-toolbar-activeBackground, var(--toolbar-hover));
+    --control-height: 22px;
 }
 
 body {
@@ -15,6 +20,8 @@ body {
     color: var(--text-primary);
 }
 
+/* -- Toolbar ---------------------------------------------------------- */
+
 .toolbar {
     display: flex;
     gap: 4px;
@@ -24,31 +31,101 @@ body {
     align-items: center;
 }
 
-.toolbar select {
+/* Standard VS Code combo box: flat background, themed border, custom chevron.
+   We hide the native arrow with appearance: none and overlay our own codicon
+   so the widget looks identical to the dropdowns VS Code's own views render. */
+.select-wrapper {
+    position: relative;
     flex: 1;
     min-width: 80px;
     max-width: 180px;
-    padding: 2px 4px;
-    background: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
 }
 
-.toolbar button {
-    padding: 2px 8px;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: none;
+.toolbar select {
+    flex: 1;
+    width: 100%;
+    height: var(--control-height);
+    padding: 0 22px 0 6px;
+    background-color: var(--vscode-dropdown-background);
+    background-image: none;
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-dropdown-background));
     border-radius: 2px;
+    font-family: inherit;
+    font-size: var(--vscode-font-size);
+    line-height: 1.4;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     cursor: pointer;
-    font-size: 14px;
+    outline: none;
 }
 
-.toolbar button:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
+.toolbar select:focus-visible {
+    border-color: var(--vscode-focusBorder);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
 }
+
+.toolbar select option {
+    background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background));
+    color: var(--vscode-dropdown-foreground);
+}
+
+.select-chevron {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--vscode-dropdown-foreground);
+    font-size: 14px !important;
+    opacity: 0.8;
+}
+
+/* -- Icon buttons (toolbar, focus nav, card chrome) ------------------- */
+
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-height);
+    height: var(--control-height);
+    padding: 0;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--text-primary));
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: inherit;
+}
+
+.icon-button:hover:not(:disabled) {
+    background: var(--toolbar-hover);
+}
+
+.icon-button:active:not(:disabled) {
+    background: var(--toolbar-active);
+}
+
+.icon-button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.icon-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.icon-button .codicon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* -- Messages & status ------------------------------------------------ */
 
 .message {
     display: none;
@@ -57,6 +134,8 @@ body {
     color: var(--text-secondary);
     font-style: italic;
 }
+
+/* -- Preview grid layouts -------------------------------------------- */
 
 .preview-grid {
     gap: 8px;
@@ -115,34 +194,22 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     padding: 4px 8px;
     border-bottom: 1px solid var(--card-border);
 }
 .focus-controls[hidden] {
     display: none;
 }
-.focus-controls button {
-    padding: 2px 10px;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: none;
-    border-radius: 2px;
-    cursor: pointer;
-}
-.focus-controls button:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-.focus-controls button:not(:disabled):hover {
-    background: var(--vscode-button-secondaryHoverBackground);
-}
 #focus-position {
-    font-size: 11px;
+    font-size: calc(var(--vscode-font-size) - 1px);
     color: var(--text-secondary);
     min-width: 50px;
     text-align: center;
+    font-variant-numeric: tabular-nums;
 }
+
+/* -- Preview card ----------------------------------------------------- */
 
 .preview-card {
     position: relative;
@@ -153,7 +220,8 @@ body {
     transition: border-color 0.15s;
 }
 
-.preview-card:hover {
+.preview-card:hover,
+.preview-card:focus-within {
     border-color: var(--vscode-focusBorder);
 }
 
@@ -181,9 +249,15 @@ body {
 
 .card-title {
     font-weight: 600;
-    font-size: 12px;
+    font-size: calc(var(--vscode-font-size) - 1px);
     cursor: pointer;
     display: block;
+}
+
+.card-title:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+    border-radius: 2px;
 }
 
 .card-title:hover {
@@ -285,7 +359,7 @@ body {
     width: 24px;
     height: 24px;
     border: 3px solid var(--text-secondary);
-    border-top-color: var(--vscode-focusBorder);
+    border-top-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -297,7 +371,7 @@ body {
 .error-message {
     padding: 12px;
     color: var(--vscode-errorForeground);
-    font-size: 11px;
+    font-size: calc(var(--vscode-font-size) - 2px);
     word-break: break-word;
 }
 
@@ -314,7 +388,7 @@ body {
     left: 0;
     right: 0;
     padding: 3px 6px;
-    font-size: 10px;
+    font-size: calc(var(--vscode-font-size) - 3px);
     line-height: 1.3;
     color: var(--text-secondary);
     background: color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
@@ -329,13 +403,13 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-/* ---- card title row + history button ------------------------------- */
+/* -- Card title row + history button --------------------------------- */
 
 .card-title-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 4px;
 }
 
 .card-title-row .card-title {
@@ -346,24 +420,19 @@ body {
     color: inherit;
     padding: 0;
     font: inherit;
+    font-weight: 600;
 }
 
 .card-history-btn {
     flex: 0 0 auto;
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text-secondary);
-    border-radius: 2px;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 1px 5px;
+    width: 20px;
+    height: 20px;
 }
-.card-history-btn:hover {
-    border-color: var(--card-border);
-    color: var(--text-primary);
+.card-history-btn .codicon {
+    font-size: 14px;
 }
 
-/* ---- history drawer ------------------------------------------------- */
+/* -- History drawer --------------------------------------------------- */
 
 .history-drawer {
     border-top: 1px solid var(--card-border);
@@ -380,24 +449,17 @@ body {
 }
 
 .history-label {
-    font-size: 10px;
+    font-size: calc(var(--vscode-font-size) - 3px);
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
 }
 
 .history-close {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 14px;
-    line-height: 1;
-    padding: 0 4px;
-    cursor: pointer;
-    border-radius: 2px;
+    width: 18px;
+    height: 18px;
 }
-.history-close:hover {
-    background: var(--card-hover);
-    color: var(--text-primary);
+.history-close .codicon {
+    font-size: 12px;
 }
 
 .history-strip {
@@ -414,7 +476,8 @@ body {
     color: var(--vscode-button-secondaryForeground);
     border: 1px solid transparent;
     border-radius: 2px;
-    font-size: 10px;
+    font-family: inherit;
+    font-size: calc(var(--vscode-font-size) - 3px);
     padding: 2px 6px;
     cursor: pointer;
     white-space: nowrap;
@@ -423,6 +486,10 @@ body {
 .history-chip:hover {
     background: var(--vscode-button-secondaryHoverBackground);
 }
+.history-chip:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 .history-chip.selected {
     border-color: var(--vscode-focusBorder);
     background: var(--vscode-button-background);
@@ -430,7 +497,7 @@ body {
 }
 
 .history-empty {
-    font-size: 10px;
+    font-size: calc(var(--vscode-font-size) - 3px);
     color: var(--text-secondary);
     font-style: italic;
     padding: 4px 2px;

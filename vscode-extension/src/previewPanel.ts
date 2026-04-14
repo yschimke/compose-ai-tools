@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PreviewInfo, ExtensionToWebview, WebviewToExtension } from './types';
+import { ExtensionToWebview, WebviewToExtension } from './types';
 
 export class PreviewPanel implements vscode.WebviewViewProvider {
     public static readonly viewId = 'composePreview.panel';
@@ -38,37 +38,53 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, 'media', 'preview.css'),
         );
+        const codiconUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.extensionUri, 'media', 'codicon.css'),
+        );
 
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; img-src data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+          content="default-src 'none'; img-src data:; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+    <link href="${codiconUri}" rel="stylesheet">
     <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="Preview filters">
-        <select id="filter-function" title="Filter by function" aria-label="Function filter">
-            <option value="all">All functions</option>
-        </select>
-        <select id="filter-group" title="Filter by @Preview group" aria-label="Group filter">
-            <option value="all">All groups</option>
-        </select>
-        <select id="layout-mode" title="Layout" aria-label="Layout mode">
-            <option value="grid">Grid</option>
-            <option value="flow">Flow</option>
-            <option value="column">Column</option>
-            <option value="focus">Focus</option>
-        </select>
-        <button id="btn-refresh" title="Refresh previews" aria-label="Refresh previews">&#x21bb;</button>
+        <div class="select-wrapper">
+            <select id="filter-function" title="Filter by function" aria-label="Function filter">
+                <option value="all">All functions</option>
+            </select>
+            <i class="codicon codicon-chevron-down select-chevron" aria-hidden="true"></i>
+        </div>
+        <div class="select-wrapper">
+            <select id="filter-group" title="Filter by @Preview group" aria-label="Group filter">
+                <option value="all">All groups</option>
+            </select>
+            <i class="codicon codicon-chevron-down select-chevron" aria-hidden="true"></i>
+        </div>
+        <div class="select-wrapper">
+            <select id="layout-mode" title="Layout" aria-label="Layout mode">
+                <option value="grid">Grid</option>
+                <option value="flow">Flow</option>
+                <option value="column">Column</option>
+                <option value="focus">Focus</option>
+            </select>
+            <i class="codicon codicon-chevron-down select-chevron" aria-hidden="true"></i>
+        </div>
     </div>
 
     <div id="message" class="message" role="status" aria-live="polite"></div>
     <div id="focus-controls" class="focus-controls" hidden>
-        <button id="btn-prev" title="Previous preview" aria-label="Previous preview">&#x2190;</button>
+        <button class="icon-button" id="btn-prev" title="Previous preview" aria-label="Previous preview">
+            <i class="codicon codicon-arrow-left" aria-hidden="true"></i>
+        </button>
         <span id="focus-position" aria-live="polite"></span>
-        <button id="btn-next" title="Next preview" aria-label="Next preview">&#x2192;</button>
+        <button class="icon-button" id="btn-next" title="Next preview" aria-label="Next preview">
+            <i class="codicon codicon-arrow-right" aria-hidden="true"></i>
+        </button>
     </div>
     <div id="preview-grid" class="preview-grid" role="list" aria-label="Preview cards"></div>
 
@@ -86,7 +102,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnPrev = document.getElementById('btn-prev');
         const btnNext = document.getElementById('btn-next');
         const focusPosition = document.getElementById('focus-position');
-        const btnRefresh = document.getElementById('btn-refresh');
 
         let allPreviews = [];
         let moduleDir = '';
@@ -107,8 +122,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         btnPrev.addEventListener('click', () => navigateFocus(-1));
         btnNext.addEventListener('click', () => navigateFocus(1));
-
-        btnRefresh.addEventListener('click', () => vscode.postMessage({ command: 'refresh' }));
 
         for (const sel of [filterFunction, filterGroup]) {
             sel.addEventListener('change', () => {
@@ -259,10 +272,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // snapshot exists on disk — signalled by p.hasHistory.
             if (p.hasHistory) {
                 const historyBtn = document.createElement('button');
-                historyBtn.className = 'card-history-btn';
+                historyBtn.className = 'icon-button card-history-btn';
                 historyBtn.title = 'Show render history';
                 historyBtn.setAttribute('aria-label', 'Show render history');
-                historyBtn.innerHTML = '&#x1F552;'; // clock face
+                historyBtn.innerHTML = '<i class="codicon codicon-history" aria-hidden="true"></i>';
                 historyBtn.addEventListener('click', () => {
                     vscode.postMessage({ command: 'showHistory', previewId: p.id });
                 });
@@ -321,8 +334,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const label = document.createElement('span');
             label.className = 'history-label';
             const close = document.createElement('button');
-            close.className = 'history-close';
-            close.innerHTML = '&times;';
+            close.className = 'icon-button history-close';
+            close.innerHTML = '<i class="codicon codicon-close" aria-hidden="true"></i>';
             close.title = 'Close history';
             close.addEventListener('click', () => {
                 drawer.hidden = true;
@@ -374,7 +387,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         /** Snapshot filename 20260412-215512 becomes 2026-04-12 21:55 for display. */
         function formatChipLabel(timestamp) {
-            const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\d{2}/.exec(timestamp);
+            const m = /^(\\d{4})(\\d{2})(\\d{2})-(\\d{2})(\\d{2})\\d{2}/.exec(timestamp);
             if (!m) return timestamp;
             return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
         }
@@ -475,7 +488,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (p.params.uiMode) parts.push('uiMode=' + p.params.uiMode);
             if (p.params.locale) parts.push(p.params.locale);
             if (p.params.group) parts.push('group: ' + p.params.group);
-            return parts.length ? base + '\n' + parts.join(' \u00B7 ') : base;
+            return parts.length ? base + '\\n' + parts.join(' \u00B7 ') : base;
         }
 
         // Scale image containers so preview variants at different device sizes
@@ -640,6 +653,24 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'setModules':
                     // Module selector removed from UI — module is resolved from the active editor.
                     break;
+
+                case 'setFunctionFilter': {
+                    // Driven by the gutter-icon hover link: narrow the grid
+                    // to a single @Preview function. If the option isn't yet
+                    // in the dropdown (arrived before setPreviews populated
+                    // it) add it so the value sticks and filter still applies.
+                    const fn = msg.functionName;
+                    if (!hasOption(filterFunction, fn)) {
+                        const opt = document.createElement('option');
+                        opt.value = fn;
+                        opt.textContent = fn;
+                        filterFunction.appendChild(opt);
+                    }
+                    filterFunction.value = fn;
+                    saveFilterState();
+                    applyFilters();
+                    break;
+                }
 
                 case 'setLoading':
                     if (msg.previewId) {
