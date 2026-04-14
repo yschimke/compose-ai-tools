@@ -244,7 +244,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const title = document.createElement('button');
             title.className = 'card-title';
             title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
-            title.title = 'Open source: ' + p.className + '.' + p.functionName;
+            title.title = buildTooltip(p);
             title.addEventListener('click', () => {
                 vscode.postMessage({
                     command: 'openFile',
@@ -410,6 +410,49 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const title = card.querySelector('.card-title');
             if (title) {
                 title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
+                title.title = buildTooltip(p);
+            }
+        }
+
+        function buildTooltip(p) {
+            const base = 'Open source: ' + p.className + '.' + p.functionName;
+            const parts = [];
+            if (p.params.name) parts.push(p.params.name);
+            if (p.params.device) parts.push(p.params.device);
+            if (p.params.widthDp && p.params.heightDp) {
+                parts.push(p.params.widthDp + '\u00D7' + p.params.heightDp + 'dp');
+            }
+            if (p.params.fontScale && p.params.fontScale !== 1.0) {
+                parts.push('font ' + p.params.fontScale + '\u00D7');
+            }
+            if (p.params.uiMode) parts.push('uiMode=' + p.params.uiMode);
+            if (p.params.locale) parts.push(p.params.locale);
+            if (p.params.group) parts.push('group: ' + p.params.group);
+            return parts.length ? base + '\n' + parts.join(' \u00B7 ') : base;
+        }
+
+        // Scale image containers so preview variants at different device sizes
+        // (e.g. wearos_large_round 227dp vs wearos_small_round 192dp) render at
+        // relative sizes in fixed-layout modes. Only applied when we have real
+        // widthDp/heightDp — variants without known dimensions fall back to
+        // the default CSS (full card width, auto aspect).
+        function applyRelativeSizing(previews) {
+            const widths = previews
+                .map(p => p.params.widthDp || 0)
+                .filter(w => w > 0);
+            const maxW = widths.length > 0 ? Math.max.apply(null, widths) : 0;
+            for (const p of previews) {
+                const card = document.getElementById('preview-' + sanitizeId(p.id));
+                if (!card) continue;
+                const w = p.params.widthDp;
+                const h = p.params.heightDp;
+                if (w && h && maxW > 0) {
+                    card.style.setProperty('--size-ratio', (w / maxW).toFixed(4));
+                    card.style.setProperty('--aspect-ratio', w + ' / ' + h);
+                } else {
+                    card.style.removeProperty('--size-ratio');
+                    card.style.removeProperty('--aspect-ratio');
+                }
             }
         }
 
@@ -518,6 +561,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     allPreviews = msg.previews;
                     moduleDir = msg.moduleDir;
                     renderPreviews(msg.previews);
+                    applyRelativeSizing(msg.previews);
 
                     const fns = [...new Set(msg.previews.map(p => p.functionName))].sort();
                     const groups = [...new Set(msg.previews.map(p => p.params.group).filter(Boolean))].sort();

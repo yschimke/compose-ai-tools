@@ -100,12 +100,26 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
         logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}':")
         for (preview in deduped) {
-            val w = preview.params.widthDp
-            val h = preview.params.heightDp
-            val dims = if (w != null && h != null) " ${w}x${h}dp" else ""
-            val label = preview.params.name?.let { " ($it)" } ?: ""
-            logger.lifecycle("  ${preview.className}.${preview.functionName}$label$dims")
+            logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview.params)}")
         }
+    }
+
+    // Renders the distinguishing bits of a preview variant for the discovery log
+    // so sibling expansions (e.g. @WearPreviewFontScales × 6) aren't visually
+    // identical. Format mirrors the VSCode tooltip: `name` / `device` /
+    // `WxHdp` / `font Nx` / `uiMode=N` / `locale` / `group`.
+    private fun describeVariant(p: PreviewParams): String {
+        val parts = mutableListOf<String>()
+        p.name?.let(parts::add)
+        p.device?.let(parts::add)
+        val w = p.widthDp
+        val h = p.heightDp
+        if (w != null && h != null) parts.add("${w}x${h}dp")
+        if (p.fontScale != 1.0f) parts.add("font ${p.fontScale}x")
+        if (p.uiMode != 0) parts.add("uiMode=${p.uiMode}")
+        p.locale?.let(parts::add)
+        p.group?.let { parts.add("group=$it") }
+        return if (parts.isEmpty()) "" else "  [" + parts.joinToString(" · ") + "]"
     }
 
     private fun discoverFromMethod(

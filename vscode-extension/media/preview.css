@@ -203,6 +203,26 @@ body {
     display: block;
 }
 
+/* Fixed-layout sizing — scale image containers by --size-ratio (largest
+   variant in the set = 1.0) so e.g. wearos_large_round (227dp) renders
+   visibly bigger than wearos_small_round (192dp). --aspect-ratio locks
+   the container to the preview's native aspect so the image isn't
+   letterboxed inside a generic card box. Both vars are set per-card by
+   applyRelativeSizing; cards without known dimensions get default CSS. */
+.preview-grid.layout-grid .preview-card[style*="--size-ratio"] .image-container,
+.preview-grid.layout-flow .preview-card[style*="--size-ratio"] .image-container {
+    width: calc(100% * var(--size-ratio, 1));
+    aspect-ratio: var(--aspect-ratio, auto);
+    margin-inline: auto;
+    min-height: 0;
+}
+
+.preview-grid.layout-grid .preview-card[style*="--size-ratio"] .image-container img,
+.preview-grid.layout-flow .preview-card[style*="--size-ratio"] .image-container img {
+    height: 100%;
+    object-fit: contain;
+}
+
 .image-container img.fade-in {
     animation: fadeIn 0.2s ease-in;
 }
