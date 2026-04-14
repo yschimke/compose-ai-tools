@@ -6,6 +6,20 @@ Desktop projects.
 
 See [SKILL.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SKILL.md)
 
+```
+$ compose-preview list --module sample-wear
+com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Larger  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Largest  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Medium  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Normal  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Small  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round  (com/example/samplewear/Previews.kt)
+com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Small Round  (com/example/samplewear/Previews.kt)
+```
+
 Also provides a VS Code plugin that displays them
 
 <img height="400" alt="image" src="https://github.com/user-attachments/assets/fe9be596-13d9-4880-9e20-cedd6992f650" />
