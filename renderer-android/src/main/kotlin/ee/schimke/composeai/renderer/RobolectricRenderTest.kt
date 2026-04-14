@@ -85,8 +85,8 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
         }
     }
 
-    private val widthDp: Int = preview.params.widthDp.takeIf { it > 0 } ?: DEFAULT_WIDTH
-    private val heightDp: Int = preview.params.heightDp.takeIf { it > 0 } ?: DEFAULT_HEIGHT
+    private val widthDp: Int = preview.params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
+    private val heightDp: Int = preview.params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
     private val widthPx: Int = (widthDp * DENSITY).toInt()
     private val heightPx: Int = (heightDp * DENSITY).toInt()
 

@@ -41,8 +41,8 @@ class PreviewDataTest {
     @Test
     fun `default params have sensible values`() {
         val params = PreviewParams()
-        assertThat(params.widthDp).isEqualTo(0)
-        assertThat(params.heightDp).isEqualTo(0)
+        assertThat(params.widthDp).isNull()
+        assertThat(params.heightDp).isNull()
         assertThat(params.fontScale).isEqualTo(1.0f)
         assertThat(params.showBackground).isFalse()
         assertThat(params.backgroundColor).isEqualTo(0L)

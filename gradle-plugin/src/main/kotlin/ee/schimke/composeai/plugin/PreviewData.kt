@@ -6,8 +6,8 @@ import kotlinx.serialization.Serializable
 data class PreviewParams(
     val name: String? = null,
     val device: String? = null,
-    val widthDp: Int = 0,
-    val heightDp: Int = 0,
+    val widthDp: Int? = null,
+    val heightDp: Int? = null,
     val fontScale: Float = 1.0f,
     val showSystemUi: Boolean = false,
     val showBackground: Boolean = false,

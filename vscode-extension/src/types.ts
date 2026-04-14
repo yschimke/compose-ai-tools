@@ -1,8 +1,8 @@
 export interface PreviewParams {
     name: string | null;
     device: string | null;
-    widthDp: number;
-    heightDp: number;
+    widthDp: number | null;
+    heightDp: number | null;
     fontScale: number;
     showSystemUi: boolean;
     showBackground: boolean;
