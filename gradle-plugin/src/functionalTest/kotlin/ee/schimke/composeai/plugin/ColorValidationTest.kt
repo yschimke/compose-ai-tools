@@ -46,8 +46,8 @@ class ColorValidationTest {
             """
             @file:Suppress("DEPRECATION")
             plugins {
-                kotlin("jvm") version "2.3.20"
-                kotlin("plugin.compose") version "2.3.20"
+                kotlin("jvm") version "2.2.21"
+                kotlin("plugin.compose") version "2.2.21"
                 id("org.jetbrains.compose") version "1.10.3"
                 id("ee.schimke.composeai.preview")
             }

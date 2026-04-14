@@ -63,7 +63,7 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
 
 - **Configuration cache is strict** (`problems=fail` in [gradle.properties](gradle.properties)). Changes to plugin code must resolve classpaths/JVM args at configuration time via lazy providers — never call `.files` inside a task action or touch `project.*` at execution time.
 - **CMP Desktop previews require `implementation(compose.components.uiToolingPreview)`** — the bundled `@Preview` has `SOURCE` retention and is invisible to ClassGraph otherwise.
-- **Toolchain:** Java 21, Kotlin 2.3.20, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper.
+- **Toolchain:** Java 21, Kotlin 2.2.21, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper.
 - **Do not run `collectPreviewInfo` / other internal plugin tasks by hand** — the plugin wires them as dependencies of `renderAllPreviews`.
 - **Plugin version** defaults to `0.1.0-SNAPSHOT` unless `PLUGIN_VERSION` env var is set (see [gradle-plugin/build.gradle.kts:9](gradle-plugin/build.gradle.kts#L9)).
 
