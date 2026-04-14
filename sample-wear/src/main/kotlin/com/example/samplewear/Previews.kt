@@ -125,7 +125,6 @@ fun ActivityListFontScalesPreview() {
     WearApp()
 }
 
-@WearPreviewSmallRound
 @WearPreviewLargeRound
 @Composable
 fun ButtonPreview() {
