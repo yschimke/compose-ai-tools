@@ -20,6 +20,7 @@ rootProject.name = "compose-ai-tools"
 includeBuild("gradle-plugin")
 include(":cli")
 include(":sample-android")
+include(":sample-wear")
 include(":sample-cmp")
 include(":renderer-desktop")
 include(":renderer-android")
