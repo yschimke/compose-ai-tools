@@ -10,6 +10,11 @@ import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
 const DEBOUNCE_MS = 1500;
+// Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
+// writing to Previews.kt) are nearly always a single discrete event, not a
+// burst — cut the wait so the refresh feels responsive. The refreshInFlight
+// gate still protects against stacking builds if something happens faster.
+const SCOPE_DEBOUNCE_MS = 300;
 const INIT_DELAY_MS = 1000;
 
 let gradleService: GradleService | null = null;
@@ -228,13 +233,14 @@ function enqueueSaveRefresh(filePath: string): void {
     pendingSavePath = target;
     invalidateModuleCache(target);
 
+    const delay = target === currentScopeFile ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
     if (debounceTimer) { clearTimeout(debounceTimer); }
     debounceElapsed = false;
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
         debounceElapsed = true;
         maybeFirePendingRefresh();
-    }, DEBOUNCE_MS);
+    }, delay);
 }
 
 /** Fires the pending refresh only when the debounce window has elapsed AND

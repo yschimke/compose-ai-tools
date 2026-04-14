@@ -339,20 +339,31 @@ body {
     justify-content: center;
 }
 
-/* Subtle variant used during stealth refresh — minimal dimming, small corner spinner */
+/* Subtle variant used during stealth refresh — dims + blurs the stale image
+   and drops a clearly visible spinner in the corner so it reads as "updating"
+   at a glance without clobbering the image you're editing. */
 .loading-overlay.subtle {
-    background: transparent;
+    background: color-mix(in srgb, var(--vscode-editor-background) 35%, transparent);
+    backdrop-filter: blur(1.5px);
+    -webkit-backdrop-filter: blur(1.5px);
     justify-content: flex-end;
     align-items: flex-start;
-    padding: 4px;
+    padding: 6px;
     pointer-events: none;
 }
 
 .loading-overlay.subtle .spinner {
-    width: 12px;
-    height: 12px;
-    border-width: 2px;
-    opacity: 0.7;
+    width: 18px;
+    height: 18px;
+    border-width: 2.5px;
+    opacity: 0.95;
+}
+
+/* Fade the image a touch so the blur + spinner read as "refreshing". Uses
+   :has() so we don't have to touch the TS that manages the overlay DOM. */
+.image-container:has(> .loading-overlay.subtle) img {
+    opacity: 0.55;
+    transition: opacity 0.15s ease-out;
 }
 
 .spinner {
