@@ -1,5 +1,5 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
+import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
 export interface RegistryEntry {
@@ -10,8 +10,8 @@ export interface RegistryEntry {
 
 /**
  * In-memory mirror of the latest preview manifest, keyed for fast lookup by
- * (source file basename, function name). CodeLens and Hover providers read
- * this rather than re-parsing `previews.json` per call.
+ * (package-qualified source path, function name). CodeLens and Hover providers
+ * read this rather than re-parsing `previews.json` per call.
  *
  * Multiple `@Preview` annotations on one function collapse to a single entry
  * — CodeLens only needs a position + action, and the hover shows one image.
@@ -47,7 +47,7 @@ export class PreviewRegistry {
     }
 
     find(filePath: string, functionName: string): RegistryEntry | undefined {
-        return this.bySourceAndName.get(keyOf(path.basename(filePath), functionName));
+        return this.bySourceAndName.get(keyOf(packageQualifiedSourcePath(filePath), functionName));
     }
 
     dispose(): void {
