@@ -51,7 +51,7 @@ Launch a subprocess with the module's full classpath plus the renderer-desktop m
 5. Encode the Skia surface to PNG and write to the output file.
 ```
 
-### Rendering (Android — WIP)
+### Rendering (Android)
 
 Launch a subprocess inside a Robolectric sandbox with native graphics.
 
@@ -83,10 +83,27 @@ so you need a Personal Access Token.
 
 ### 1. Create a GitHub PAT
 
-Generate a [classic PAT](https://github.com/settings/tokens/new) with the
-**`read:packages`** scope — that's the only scope consumers need.
+You need a Personal Access Token to read Maven artifacts from GitHub Packages
+(authentication is required even for public repos). You only need the
+**`read:packages`** scope — nothing else.
 
-If you already use `gh`, you can reuse its token: `gh auth token`.
+**Classic token (simplest):**
+
+1. Go to <https://github.com/settings/tokens/new>.
+2. Name: e.g. `compose-ai-tools`. Expiration: whatever you prefer.
+3. Tick only **`read:packages`**.
+4. Click **Generate token** and copy the value (starts with `ghp_`).
+
+**Fine-grained token:** at
+<https://github.com/settings/personal-access-tokens/new> grant **Account
+permissions → Packages: Read-only**. Repository access can stay at "Public
+repositories (read-only)".
+
+**Or reuse your `gh` CLI token** if you're already signed in:
+
+```sh
+gh auth token   # prints a token with read:packages by default
+```
 
 ### 2. Store credentials (not in the repo)
 
@@ -121,26 +138,15 @@ pluginManagement {
             }
         }
     }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "ee.schimke.composeai.preview") {
-                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
-            }
-        }
-    }
 }
 ```
-
-The `resolutionStrategy` block is required because GitHub Packages doesn't host
-Gradle plugin marker artifacts — we point the plugin id at the underlying Maven
-coordinates directly.
 
 ### 4. Apply the plugin
 
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.1.1"
+    id("ee.schimke.composeai.preview") version "0.2.0"
 }
 ```
 
@@ -148,6 +154,38 @@ Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for the
 latest version. CMP Desktop projects also need
 `implementation(compose.components.uiToolingPreview)` — the bundled
 `@Preview` annotation has `SOURCE` retention and is invisible to ClassGraph.
+
+## Install the CLI
+
+Download `compose-preview-0.2.0.tar.gz` (or `.zip`) from the
+[v0.2.0 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.2.0)
+and put the `bin/` directory on your `PATH`:
+
+```sh
+curl -L -o compose-preview.tar.gz \
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.2.0/compose-preview-0.2.0.tar.gz
+tar -xzf compose-preview.tar.gz
+export PATH="$PWD/compose-preview-0.2.0/bin:$PATH"
+
+compose-preview --help
+```
+
+Requires Java 21 on `PATH` (or `JAVA_HOME`).
+
+## Install the VS Code extension
+
+Download `compose-preview-0.2.0.vsix` from the
+[v0.2.0 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.2.0)
+and install it:
+
+```sh
+code --install-extension compose-preview-0.2.0.vsix
+```
+
+Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
+
+The extension uses the Gradle plugin to render previews, so apply
+`ee.schimke.composeai.preview` version `0.2.0` in your project as shown above.
 
 ## Usage
 
@@ -174,7 +212,7 @@ composePreview {
 |--------|---------|
 | `gradle-plugin/` | Gradle plugin — discovery, rendering task orchestration |
 | `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
-| `renderer-android/` | Android renderer — Robolectric harness (WIP) |
+| `renderer-android/` | Android renderer — Robolectric harness |
 | `cli/` | CLI with GraalVM native-image support |
 | `sample-android/` | Android sample with colored box `@Preview` composables |
 | `sample-cmp/` | CMP Desktop sample with colored box `@Preview` composables |
