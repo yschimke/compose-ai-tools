@@ -69,7 +69,10 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
-/* Flow — fill each row with fixed-width cards, wrap to next row when full */
+/* Flow — fill each row with cards, wrap to next row when full. Card width
+   tracks --size-ratio so e.g. wearos_large_round (227dp) renders wider
+   than wearos_small_round (192dp). --size-ratio defaults to 1 for previews
+   without known dimensions, giving them the full base width. */
 .preview-grid.layout-flow {
     display: flex;
     flex-direction: row;
@@ -77,7 +80,7 @@ body {
     align-content: flex-start;
 }
 .preview-grid.layout-flow .preview-card {
-    flex: 0 0 240px;
+    flex: 0 0 calc(240px * var(--size-ratio, 1));
 }
 
 /* Column — single wide column */
@@ -203,22 +206,30 @@ body {
     display: block;
 }
 
-/* Fixed-layout sizing — scale image containers by --size-ratio (largest
-   variant in the set = 1.0) so e.g. wearos_large_round (227dp) renders
-   visibly bigger than wearos_small_round (192dp). --aspect-ratio locks
-   the container to the preview's native aspect so the image isn't
-   letterboxed inside a generic card box. Both vars are set per-card by
-   applyRelativeSizing; cards without known dimensions get default CSS. */
-.preview-grid.layout-grid .preview-card[style*="--size-ratio"] .image-container,
-.preview-grid.layout-flow .preview-card[style*="--size-ratio"] .image-container {
-    width: calc(100% * var(--size-ratio, 1));
+/* Fixed-layout sizing — only applies when applyRelativeSizing has stamped
+   --size-ratio / --aspect-ratio onto the card (i.e. we have real
+   widthDp/heightDp). Cards without known dimensions fall through to the
+   default .image-container rules above so their 120dp skeleton stays
+   visible during load.
+   - Flow: card width already tracks --size-ratio (set on .preview-card
+     above), so the image container fills the card and just locks aspect.
+     Different-sized previews ⇒ different-sized cards.
+   - Grid: cards stay uniform (auto-fill columns), so we shrink the image
+     container *inside* the card by --size-ratio instead. Smaller previews
+     read as smaller, centered within their grid cell. */
+.preview-grid.layout-flow .preview-card[style*="--aspect-ratio"] .image-container {
+    aspect-ratio: var(--aspect-ratio);
+    min-height: 0;
+}
+
+.preview-grid.layout-grid .preview-card[style*="--size-ratio"] .image-container {
+    width: calc(100% * var(--size-ratio));
     aspect-ratio: var(--aspect-ratio, auto);
     margin-inline: auto;
     min-height: 0;
 }
 
-.preview-grid.layout-grid .preview-card[style*="--size-ratio"] .image-container img,
-.preview-grid.layout-flow .preview-card[style*="--size-ratio"] .image-container img {
+.preview-card[style*="--aspect-ratio"] .image-container img {
     height: 100%;
     object-fit: contain;
 }
@@ -292,6 +303,30 @@ body {
 
 .has-error {
     border-color: var(--vscode-errorForeground);
+}
+
+/* Persistent variant summary — always visible at the bottom of each card
+   so sibling previews (e.g. @WearPreviewFontScales × 6) read as distinct
+   without needing the hover header. */
+.variant-badge {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 3px 6px;
+    font-size: 10px;
+    line-height: 1.3;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none;
+    z-index: 1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ---- card title row + history button ------------------------------- */

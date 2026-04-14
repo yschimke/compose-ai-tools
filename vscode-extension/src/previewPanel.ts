@@ -280,6 +280,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             imgContainer.appendChild(skeleton);
             card.appendChild(imgContainer);
 
+            const variantLabel = buildVariantLabel(p);
+            if (variantLabel) {
+                const badge = document.createElement('div');
+                badge.className = 'variant-badge';
+                badge.textContent = variantLabel;
+                card.appendChild(badge);
+            }
+
             // Lazy-built history drawer — only populated when the user clicks
             // the history button and the extension returns entries.
             const drawer = document.createElement('div');
@@ -412,6 +420,45 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
                 title.title = buildTooltip(p);
             }
+            const variantLabel = buildVariantLabel(p);
+            let badge = card.querySelector('.variant-badge');
+            if (variantLabel) {
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.className = 'variant-badge';
+                    card.appendChild(badge);
+                }
+                badge.textContent = variantLabel;
+            } else if (badge) {
+                badge.remove();
+            }
+        }
+
+        // Compact single-line variant summary rendered in a persistent badge
+        // on each card. Longer-form info still lives in the hover tooltip
+        // (buildTooltip) — here we only surface what distinguishes siblings:
+        // name/group/device first, then dimensions, non-default fontScale,
+        // uiMode. Skips redundant bits (e.g. no "1.0×" for default font).
+        function buildVariantLabel(p) {
+            const parts = [];
+            const primary = p.params.name
+                || p.params.group
+                || shortDevice(p.params.device);
+            if (primary) parts.push(primary);
+            if (p.params.widthDp && p.params.heightDp) {
+                parts.push(p.params.widthDp + '\u00D7' + p.params.heightDp);
+            }
+            if (p.params.fontScale && p.params.fontScale !== 1.0) {
+                parts.push(p.params.fontScale + '\u00D7');
+            }
+            if (p.params.uiMode) parts.push('uiMode ' + p.params.uiMode);
+            if (p.params.locale) parts.push(p.params.locale);
+            return parts.join(' \u00B7 ');
+        }
+
+        function shortDevice(d) {
+            if (!d) return '';
+            return d.replace(/^id:/, '').replace(/_/g, ' ');
         }
 
         function buildTooltip(p) {
