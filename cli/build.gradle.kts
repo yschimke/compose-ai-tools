@@ -6,6 +6,10 @@ plugins {
 
 version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
 
+base {
+    archivesName.set("compose-preview")
+}
+
 application {
     applicationName = "compose-preview"
     mainClass.set("ee.schimke.composeai.cli.MainKt")
