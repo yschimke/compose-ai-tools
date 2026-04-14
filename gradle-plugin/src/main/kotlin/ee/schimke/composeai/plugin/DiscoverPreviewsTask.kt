@@ -84,9 +84,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 }
         }
 
-        val deduped = previews.distinctBy {
-            "${it.id}_${it.params.name}_${it.params.device}_${it.params.widthDp}_${it.params.heightDp}"
-        }
+        // id already encodes the name + (device, fontScale, uiMode) variant suffix, so
+        // dedup by id alone. Two identical preview variants on the same function collapse.
+        val deduped = previews.distinctBy { it.id }
 
         val manifest = PreviewManifest(
             module = moduleName.get(),
@@ -100,9 +100,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
         logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}':")
         for (preview in deduped) {
-            val dims = if (preview.params.widthDp > 0 && preview.params.heightDp > 0) {
-                " ${preview.params.widthDp}x${preview.params.heightDp}dp"
-            } else ""
+            val w = preview.params.widthDp
+            val h = preview.params.heightDp
+            val dims = if (w != null && h != null) " ${w}x${h}dp" else ""
             val label = preview.params.name?.let { " ($it)" } ?: ""
             logger.lifecycle("  ${preview.className}.${preview.functionName}$label$dims")
         }
@@ -204,7 +204,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     ): PreviewInfo {
         val params = extractPreviewParams(ann, wrapperClassName)
         val fqn = "${classInfo.name}.${method.name}"
-        val suffix = if (!params.name.isNullOrBlank()) "_${params.name}" else ""
+        val suffix = buildVariantSuffix(params)
         return PreviewInfo(
             id = fqn + suffix,
             functionName = method.name,
@@ -215,13 +215,44 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         )
     }
 
+    // Disambiguates multi-preview expansions (e.g. @WearPreviewDevices → large_round
+    // + small_round) when the inner @Preview has no explicit `name`. Without this
+    // every variant collides on the same id / PNG path.
+    //
+    // Prefer `group` — Horologist's @WearPreview* annotations set a distinct, human
+    // readable group per variant (e.g. "Fonts - Large"), so it captures exactly what
+    // varies. Fall back to device + fontScale + uiMode only if neither name nor
+    // group is present.
+    private fun buildVariantSuffix(params: PreviewParams): String {
+        if (!params.name.isNullOrBlank()) return "_${params.name}"
+        if (!params.group.isNullOrBlank()) return "_${sanitizeForPath(params.group)}"
+        val parts = mutableListOf<String>()
+        params.device?.substringAfterLast(":")?.takeIf { it.isNotBlank() }?.let(parts::add)
+        if (params.fontScale != 1.0f) parts.add("fs${params.fontScale}")
+        if (params.uiMode != 0) parts.add("ui${params.uiMode}")
+        return if (parts.isEmpty()) "" else "_" + parts.joinToString("_")
+    }
+
+    // Strip characters that would break file paths or IDs. Spaces are left alone
+    // (they already appear in existing `_Red Box.png`-style outputs).
+    private fun sanitizeForPath(s: String): String =
+        s.replace(Regex("""[/\\:*?"<>|]"""), "_")
+
     private fun extractPreviewParams(ann: AnnotationInfo, wrapperClassName: String?): PreviewParams {
         val pv = ann.parameterValues
+        val device = (pv.getValue("device") as? String)?.ifBlank { null }
+        val rawWidth = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
+        val rawHeight = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 }
+        // Resolve dimensions up-front so downstream consumers (renderers, VSCode
+        // extension, CLI) see the effective widthDp/heightDp instead of having to
+        // each re-implement DeviceDimensions. RenderPreviewsTask still calls resolve()
+        // — passing already-resolved values is a no-op path.
+        val dims = DeviceDimensions.resolve(device, rawWidth, rawHeight)
         return PreviewParams(
             name = (pv.getValue("name") as? String)?.ifBlank { null },
-            device = (pv.getValue("device") as? String)?.ifBlank { null },
-            widthDp = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 } ?: 0,
-            heightDp = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 } ?: 0,
+            device = device,
+            widthDp = dims.widthDp,
+            heightDp = dims.heightDp,
             fontScale = (pv.getValue("fontScale") as? Float)?.takeIf { it > 0 } ?: 1.0f,
             showSystemUi = (pv.getValue("showSystemUi") as? Boolean) ?: false,
             showBackground = (pv.getValue("showBackground") as? Boolean) ?: false,

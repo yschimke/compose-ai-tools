@@ -19,8 +19,10 @@ object DeviceDimensions {
     val DEFAULT = DeviceSpec(400, 800)
     val DEFAULT_WEAR = DeviceSpec(227, 227)
 
-    fun resolve(device: String?, widthDp: Int, heightDp: Int): DeviceSpec {
-        if (widthDp > 0 && heightDp > 0) return DeviceSpec(widthDp, heightDp)
+    fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
+        if (widthDp != null && widthDp > 0 && heightDp != null && heightDp > 0) {
+            return DeviceSpec(widthDp, heightDp)
+        }
 
         if (device != null) {
             KNOWN_DEVICES[device]?.let { return it }
