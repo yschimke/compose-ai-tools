@@ -1,16 +1,23 @@
 package com.example.sampleandroid
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
@@ -69,4 +76,26 @@ fun LoadingPreview() {
             Text("Loading...")
         }
     }
+}
+
+@Composable
+private fun ConfigProbe() {
+    val scheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    val locale = LocalConfiguration.current.locales[0].toLanguageTag()
+    MaterialTheme(colorScheme = scheme) {
+        Surface(modifier = Modifier.size(220.dp, 120.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("dark=${isSystemInDarkTheme()}")
+                Text("locale=$locale")
+            }
+        }
+    }
+}
+
+@Preview(name = "Default")
+@Preview(name = "Night", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "German", locale = "de")
+@Composable
+fun ConfigProbePreview() {
+    ConfigProbe()
 }

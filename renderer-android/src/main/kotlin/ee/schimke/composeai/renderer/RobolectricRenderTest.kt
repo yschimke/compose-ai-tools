@@ -267,6 +267,9 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         config.screenWidthDp = widthDp
         config.screenHeightDp = heightDp
         config.densityDpi = (DENSITY * 160).toInt()
+        config.fontScale = preview.params.fontScale
+        if (preview.params.uiMode != 0) config.uiMode = preview.params.uiMode
+        preview.params.locale?.let { config.setLocale(java.util.Locale.forLanguageTag(it)) }
         @Suppress("DEPRECATION")
         activity.resources.updateConfiguration(config, activity.resources.displayMetrics)
     }
