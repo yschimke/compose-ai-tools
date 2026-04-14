@@ -53,7 +53,7 @@ Four-stage pipeline, spread across the modules:
    - **Android:** uses AGP `artifactView` filters (`artifactType=jar`, `android-classes`) to resolve AAR-extracted class jars, copies JVM args from AGP's `test<Variant>UnitTest` task, and launches a Gradle `Test` task that runs [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) inside a Robolectric sandbox with `graphicsMode=NATIVE`. `android.jar` is added so the Robolectric runner classes load before the sandbox classloader takes over.
    - **Desktop/JVM:** creates a `composePreviewRenderer` configuration pointing at `:renderer-desktop`, then launches [DesktopRendererMain.kt](renderer-desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt) as a subprocess with the module's runtime classpath plus the renderer.
 
-3. **Rendering** — both backends reflect the target composable function, invoke it inside a background fill with `LocalInspectionMode=true`, and capture to PNG. Desktop uses `ImageComposeScene` at 2x density; Android advances the paused main looper frame-by-frame until a pixel checksum stabilizes.
+3. **Rendering** — both backends reflect the target composable function, invoke it inside a background fill with `LocalInspectionMode=true`, and capture to PNG. Desktop uses `ImageComposeScene` at 2x density. Android boots a `ComponentActivity` under `Theme_Material_Light_NoActionBar`, installs a paused `BroadcastFrameClock`-backed `Recomposer` (so infinite animations park on their initial frame), forces the injected `ComposeView` to `MATCH_PARENT`, measures/lays-out the decor at the preview's pixel size, and captures via `org.robolectric.shadows.HardwareRenderingScreenshot.takeScreenshot` (reached through reflection to bypass `PixelCopy`'s `canHaveDisplayList` gate, which Robolectric doesn't satisfy even under NATIVE graphics).
 
 4. **History (optional)** — [HistorizePreviewsTask.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/HistorizePreviewsTask.kt) archives changed PNGs into `.compose-preview-history/` (outside `build/`, survives `clean`). Enabled via `composePreview.historyEnabled`.
 
@@ -66,6 +66,7 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
 - **Toolchain:** Java 21, Kotlin 2.2.21, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper.
 - **Do not run `collectPreviewInfo` / other internal plugin tasks by hand** — the plugin wires them as dependencies of `renderAllPreviews`.
 - **Plugin version** defaults to `0.1.0-SNAPSHOT` unless `PLUGIN_VERSION` env var is set (see [gradle-plugin/build.gradle.kts:9](gradle-plugin/build.gradle.kts#L9)).
+- **Android renderer is pinned to Robolectric SDK 34** via `@Config(sdk = [34])` in [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt). Robolectric 4.16.1's `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is gated `maxSdk=UPSIDE_DOWN_CAKE`; on API 35+ the un-shadowed AOSP native yields `Image.planes[0] == null` and capture fails. Re-test and remove the pin when bumping Robolectric.
 
 ## Tests
 

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +27,8 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
 import java.util.concurrent.TimeUnit
 
@@ -39,6 +42,8 @@ import java.util.concurrent.TimeUnit
  * interface (which lives in Compose 1.11+, not in the test classpath).
  */
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PreviewWrapperTest {
 
     /**
@@ -114,8 +119,11 @@ class PreviewWrapperTest {
         body: @Composable () -> Unit,
     ): Bitmap {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java)
-        controller.get().window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
-        val activity = controller.create().start().resume().visible().get()
+        val activity = controller.get()
+        activity.setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        val hwAccel = WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        activity.window.setFlags(hwAccel, hwAccel)
+        controller.create().start().resume().visible()
 
         @Suppress("DEPRECATION")
         val shadowDisplay = Shadows.shadowOf(activity.windowManager.defaultDisplay)
@@ -128,21 +136,37 @@ class PreviewWrapperTest {
             }
         }
 
-        val view = activity.window.decorView
+        val decor = activity.window.decorView
+        findComposeView(decor)?.apply {
+            layoutParams = layoutParams.apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+        }
+
         val wSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY)
         val hSpec = View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
-
         repeat(5) {
             ShadowLooper.idleMainLooper(16L, TimeUnit.MILLISECONDS)
-            view.measure(wSpec, hSpec)
-            view.layout(0, 0, widthPx, heightPx)
-            view.invalidate()
+            decor.measure(wSpec, hSpec)
+            decor.layout(0, 0, widthPx, heightPx)
+            decor.invalidate()
             ShadowLooper.idleMainLooper(16L, TimeUnit.MILLISECONDS)
         }
 
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
-        view.draw(Canvas(bitmap))
+        decor.draw(Canvas(bitmap))
         return bitmap
+    }
+
+    private fun findComposeView(view: View): View? {
+        if (view.javaClass.simpleName == "ComposeView") return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findComposeView(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
     }
 
     @Composable

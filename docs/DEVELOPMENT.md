@@ -199,6 +199,31 @@ cd vscode-extension && npm test   # extension unit tests (mocha)
 
 ## Troubleshooting
 
+### Android renders fail with `planes[0] is null` after bumping Robolectric
+
+The Android renderer captures via
+[`HardwareRenderingScreenshot.takeScreenshot`](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt),
+which goes through `ImageReader` + `HardwareRenderer.syncAndDraw`. In Robolectric
+4.16.1, `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is gated
+`maxSdk = UPSIDE_DOWN_CAKE` (API 34). Running against API 35+ leaves the native
+method un-shadowed, so `acquireNextImage().getPlanes()[0]` comes back null.
+
+The renderer pins itself to SDK 34 via `@Config(sdk = [34])` on
+`RobolectricRenderTest`. When upgrading Robolectric, re-run
+`./gradlew :sample-android:renderPreviews` with the pin removed (or bumped); if
+it passes, drop the pin. Tracking issues: robolectric/robolectric#9595, #9745,
+#9971.
+
+### `IllegalAccessException: … DirectByteBuffer … modifiers "public"`
+
+Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer` reflects into
+`java.nio.DirectByteBuffer.address()`; under JDK 17+ module rules that fails
+without `--add-opens=java.base/java.nio=ALL-UNNAMED`. The `renderPreviews`
+Gradle task already adds that opens (along with `java.lang` and
+`java.lang.reflect`) in
+[ComposePreviewPlugin.kt](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewPlugin.kt);
+if a downstream Test task hits this error, mirror the JVM args.
+
 ### `jlink executable … does not exist` when building from VS Code
 
 The `vscjava.vscode-gradle` extension inherits its JDK from
