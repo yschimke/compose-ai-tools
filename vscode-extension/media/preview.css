@@ -70,8 +70,8 @@ body {
 }
 
 .toolbar select option {
-    background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background));
-    color: var(--vscode-dropdown-foreground);
+    background-color: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background));
+    color: var(--vscode-foreground);
 }
 
 .select-chevron {
@@ -379,23 +379,16 @@ body {
     border-color: var(--vscode-errorForeground);
 }
 
-/* Persistent variant summary — always visible at the bottom of each card
-   so sibling previews (e.g. @WearPreviewFontScales × 6) read as distinct
-   without needing the hover header. */
+/* Persistent variant summary — sits below the preview image so it never
+   overlaps content, while still letting sibling previews (e.g.
+   @WearPreviewFontScales × 6) read as distinct without a hover header. */
 .variant-badge {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
     padding: 3px 6px;
     font-size: calc(var(--vscode-font-size) - 3px);
     line-height: 1.3;
     color: var(--text-secondary);
-    background: color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    pointer-events: none;
-    z-index: 1;
+    background: var(--card-bg);
+    border-top: 1px solid var(--card-border);
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
