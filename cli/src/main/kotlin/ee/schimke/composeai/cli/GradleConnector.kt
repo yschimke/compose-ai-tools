@@ -14,6 +14,7 @@ import java.util.Collections
 class GradleConnection(
     private val projectDir: File,
     private val verbose: Boolean,
+    private val progress: Boolean = false,
 ) : AutoCloseable {
     private val connector = GradleConnector.newConnector()
         .forProjectDirectory(projectDir)
@@ -44,17 +45,20 @@ class GradleConnection(
             }, timeoutSeconds * 1000)
 
             // Heartbeat so the user can see what is still running (Robolectric
-            // can take minutes on a cold start with no output).
-            val heartbeatMs = 15_000L
-            schedule(object : java.util.TimerTask() {
-                override fun run() {
-                    val elapsed = (System.currentTimeMillis() - startTime) / 1000
-                    val running = synchronized(runningTasks) { runningTasks.toList() }
-                    if (running.isNotEmpty()) {
-                        System.err.println("  [${elapsed}s] running: ${running.joinToString(", ")}")
+            // can take minutes on a cold start with no output). Opt-in via
+            // --progress / --verbose so default CLI output stays quiet.
+            if (progress) {
+                val heartbeatMs = 15_000L
+                schedule(object : java.util.TimerTask() {
+                    override fun run() {
+                        val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                        val running = synchronized(runningTasks) { runningTasks.toList() }
+                        if (running.isNotEmpty()) {
+                            System.err.println("  [${elapsed}s] running: ${running.joinToString(", ")}")
+                        }
                     }
-                }
-            }, heartbeatMs, heartbeatMs)
+                }, heartbeatMs, heartbeatMs)
+            }
         }
 
         TerminalProgress.indeterminate()
@@ -96,8 +100,8 @@ class GradleConnection(
                         if (taskCount > 0) {
                             TerminalProgress.show((tasksFinished * 100) / taskCount)
                         }
-                        if (!verbose && (desc.contains("discoverPreviews") || desc.contains("renderPreviews") ||
-                                desc.contains("renderAllPreviews"))
+                        if (progress && !verbose && (desc.contains("discoverPreviews") ||
+                                desc.contains("renderPreviews") || desc.contains("renderAllPreviews"))
                         ) {
                             val elapsed = (System.currentTimeMillis() - startTime) / 1000
                             System.err.println("  [${elapsed}s] $desc")
