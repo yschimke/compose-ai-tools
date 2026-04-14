@@ -67,9 +67,16 @@ class ComposePreviewPlugin : Plugin<Project> {
             val testConfig = project.configurations.findByName("${variant}UnitTestRuntimeClasspath")
             val rendererConfig = rendererProject.configurations.findByName("${variant}RuntimeClasspath")
 
-            // android.jar is needed on the classpath for Robolectric's runner classes
-            // to load (they reference android.app.Application during initialization).
-            // Robolectric's sandbox classloader takes priority during actual rendering.
+            // The SDK stub android.jar is on the OUTER classpath so JUnit can introspect
+            // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
+            // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
+            // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
+            // before Robolectric's sandbox classloader is even created.
+            //
+            // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
+            // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
+            // resolution to its own `android-all` artifact (real framework classes, with
+            // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
             val android = project.extensions.findByName("android") as? CommonExtension
             val compileSdk = android?.compileSdk ?: 36
             val sdkDir = findAndroidSdkDir(project)
@@ -90,7 +97,7 @@ class ComposePreviewPlugin : Plugin<Project> {
                 }
                 from(rendererClassDirs)
                 from(sourceClassDirs)
-                // android.jar for Robolectric runner bootstrap
+                // android.jar for JUnit's outer-classloader test discovery (see above).
                 if (sdkDir != null) {
                     val androidJar = java.io.File("$sdkDir/platforms/android-$compileSdk/android.jar")
                     if (androidJar.exists()) from(androidJar)
@@ -116,15 +123,32 @@ class ComposePreviewPlugin : Plugin<Project> {
                 jvmArgs(
                     "--add-opens=java.base/java.lang=ALL-UNNAMED",
                     "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+                    // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
+                    // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
+                    // module rules this fails with IllegalAccessException without this
+                    // opens. Reached via `PathIterator` — triggered here by Wear Compose's
+                    // curved text renderer.
+                    "--add-opens=java.base/java.nio=ALL-UNNAMED",
                 )
 
                 // Configure Robolectric via system properties instead of @Config/@GraphicsMode
                 // annotations — annotations trigger eager android.app.Application resolution
                 // before the sandbox classloader exists.
-                systemProperty("robolectric.sdk", "35")
+                // Graphics + looper modes plumbed via system properties rather than
+                // `@GraphicsMode` / `@LooperMode` annotations — historically the annotation
+                // path was suspected of eagerly resolving `android.app.Application` before
+                // the sandbox classloader was up. With NATIVE/PAUSED fixed in code via
+                // `@GraphicsMode(NATIVE)` on the test class we could drop these, but they
+                // are cheap and act as belt-and-suspenders.
                 systemProperty("robolectric.graphicsMode", "NATIVE")
                 systemProperty("robolectric.looperMode", "PAUSED")
-                systemProperty("robolectric.screenshot.hwrdr.native", "true")
+                // `robolectric.pixelCopyRenderMode=hardware` routes ShadowPixelCopy through
+                // `HardwareRenderingScreenshot` → `ImageReader` + `HardwareRenderer.syncAndDraw`,
+                // which is the only path that replays Compose's RenderNodes correctly. The
+                // legacy `robolectric.screenshot.hwrdr.native` flag (pre-4.10) is no longer
+                // read. The test class pins `@Config(sdk = [34])` because Robolectric 4.16.1
+                // stops shadowing `nativeCreatePlanes` above API 34, so capturing against
+                // SDK 35+ returns an Image with `planes[0] == null`.
                 systemProperty("robolectric.pixelCopyRenderMode", "hardware")
 
                 systemProperty("composeai.render.manifest", manifestFile.get())

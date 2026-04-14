@@ -1,8 +1,8 @@
 package ee.schimke.composeai.renderer
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.view.View
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -32,6 +32,8 @@ import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.Robolectric
 import org.robolectric.Shadows
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
 import java.io.File
 import java.io.FileOutputStream
@@ -64,6 +66,11 @@ import java.util.concurrent.TimeUnit
  *   composeai.render.outputDir — directory for rendered PNGs
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
+// SDK 34 is the highest API where Robolectric 4.16.1 still shadows
+// `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes`. Above that, the
+// HardwareRenderingScreenshot path returns an Image with `planes[0] == null`.
+@Config(sdk = [34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
 
     companion object {
@@ -126,8 +133,16 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
 
     private fun render(): Bitmap {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java)
-        controller.get().window.addFlags(android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
-        val activity = controller.create().start().resume().visible().get()
+        val activity = controller.get()
+        // NoActionBar: the default theme's ActionBar takes 56dp off the top of the
+        // content frame, clipping Compose content that expects the full viewport.
+        activity.setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        // `setFlags` with explicit mask (not `addFlags`) guarantees the flag is set
+        // before the window attaches to WindowManager, so AndroidComposeView sees it
+        // during its first onAttachedToWindow pass.
+        val hwAccel = android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        activity.window.setFlags(hwAccel, hwAccel)
+        controller.create().start().resume().visible()
         configureDisplay(activity)
 
         activity.setContent {
@@ -156,20 +171,72 @@ class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
             }
         }
 
-        // Drain pending snapshot apply work. The paused clock means no
-        // frame callbacks will fire, so this terminates instead of cascading.
-        ShadowLooper.idleMainLooper(0L, TimeUnit.MILLISECONDS)
+        // ComposeView defaults to wrap_content, which resolves `Modifier.fillMaxSize()`
+        // to the view's intrinsic (post-measure) size rather than the viewport. Force
+        // MATCH_PARENT so EXACTLY constraints cascade through the Compose tree.
+        findComposeView(activity.window.decorView)?.apply {
+            layoutParams = layoutParams.apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+        }
 
-        val view = activity.window.decorView
-        view.measure(
-            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
-        )
-        view.layout(0, 0, widthPx, heightPx)
+        val decor = activity.window.decorView
+        val wSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY)
+        val hSpec = View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
 
-        val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
-        view.draw(Canvas(bitmap))
+        // Several measure/layout passes let Compose's snapshot state, layout, and
+        // RenderNode recording converge. The paused frame clock parks `withFrameNanos`
+        // awaiters (so infinite animations don't stall us), but composition still
+        // requires the main looper to drain runnables that setContent posts.
+        repeat(5) {
+            ShadowLooper.idleMainLooper(16L, TimeUnit.MILLISECONDS)
+            decor.measure(wSpec, hSpec)
+            decor.layout(0, 0, widthPx, heightPx)
+            decor.invalidate()
+            ShadowLooper.idleMainLooper(16L, TimeUnit.MILLISECONDS)
+        }
+
+        return captureHardware(decor, widthPx, heightPx)
+    }
+
+    /**
+     * Captures the view tree using Robolectric's hardware screenshot path directly,
+     * bypassing [android.view.PixelCopy] so we skip its `canHaveDisplayList()` gate —
+     * that check reads `mAttachInfo.mThreadedRenderer`, which Robolectric doesn't
+     * populate even under `GraphicsMode.NATIVE`. When the gate fails, `PixelCopy`
+     * silently falls back to `view.draw(Canvas)`, which under NATIVE graphics renders
+     * Compose's RenderNode-recorded fills as 1-pixel outlines (pure red at the edge,
+     * white interior — verified empirically in this project's history).
+     *
+     * `HardwareRenderingScreenshot.takeScreenshot` internally fetches the
+     * `ShadowViewRootImpl`'s `ThreadedRenderer`, points it at an `ImageReader` surface,
+     * calls `updateDisplayListIfDirty()` + `syncAndDraw()`, and copies the `Image`'s
+     * pixel buffer into the destination bitmap. That is the same path
+     * `androidx.compose.ui.test.captureToImage()` and Roborazzi use, minus the
+     * `test_config.properties` plumbing overhead.
+     */
+    private fun captureHardware(view: View, width: Int, height: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val clazz = Class.forName("org.robolectric.shadows.HardwareRenderingScreenshot")
+        val takeScreenshot = clazz.getDeclaredMethod(
+            "takeScreenshot",
+            View::class.java,
+            Bitmap::class.java,
+        ).apply { isAccessible = true }
+        takeScreenshot.invoke(null, view, bitmap)
         return bitmap
+    }
+
+    private fun findComposeView(view: View): View? {
+        // Matches by simple name to avoid a hard dep on Compose-internal types.
+        if (view.javaClass.simpleName == "ComposeView") return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findComposeView(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun configureDisplay(activity: ComponentActivity) {
