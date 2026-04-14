@@ -4,7 +4,7 @@ A Gradle plugin and CLI that discovers `@Preview` composables and renders them t
 of Android Studio. Works with both Android (Jetpack Compose) and Compose Multiplatform
 Desktop projects.
 
-See [AGENTS.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md)
+See [SKILL.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SKILL.md)
 
 Also provides a VS Code plugin that displays them
 
