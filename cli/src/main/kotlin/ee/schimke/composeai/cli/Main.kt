@@ -9,8 +9,8 @@ fun main(args: Array<String>) {
     }
 
     // Find the command — first non-flag argument that isn't a flag's value.
-    // Flags that take values: --module, --variant, --filter, --output, --timeout
-    val valuedFlags = setOf("--module", "--variant", "--filter", "--output", "--timeout")
+    // Flags that take values: --module, --variant, --filter, --id, --output, --timeout
+    val valuedFlags = setOf("--module", "--variant", "--filter", "--id", "--output", "--timeout")
     val commands = setOf("show", "list", "render", "help")
 
     var commandIndex = -1
@@ -63,19 +63,28 @@ private fun printUsage() {
         Usage: compose-preview [options] <command> [options]
 
         Commands:
-          show    Discover and render previews, display inline
-          list    List discovered preview names
-          render  Render a specific preview to a file
+          show    Discover and render previews; print id, path, sha256, changed flag
+          list    List discovered previews
+          render  Render previews; with --output copies a single match to disk
           help    Show this help message
 
         Options:
           --module <name>      Target module (default: auto-detect all)
           --variant <variant>  Build variant (default: debug)
-          --filter <pattern>   Filter previews by name pattern
-          --json               Output as JSON (list command)
-          --output <path>      Output file path (render command)
-          --verbose, -v        Show Gradle build output
+          --filter <pattern>   Case-insensitive substring match on preview id
+          --id <exact>         Exact match on preview id
+          --json               Emit JSON (show, list)
+          --output <path>      Copy matched preview PNG to this path (render)
+          --progress           Print per-task milestone/heartbeat lines to stderr
+          --verbose, -v        Show full Gradle build output (implies --progress)
           --timeout <seconds>  Gradle build timeout (default: 300)
+
+        OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
+        default in a TTY and auto-disables when stdout is piped or redirected.
+
+        JSON output includes sha256 of each rendered PNG and a `changed` flag
+        computed against the previous invocation (state under
+        <module>/build/compose-previews/.cli-state.json; wiped on `clean`).
         """.trimIndent()
     )
 }

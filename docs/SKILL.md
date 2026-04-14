@@ -39,31 +39,46 @@ default, every module that has the plugin applied.
 preview-cli <command> [options]
 
 Commands:
-  show     Discover + render previews; print id + absolute PNG path per entry
-  list     List discovered previews (optional --json)
-  render   Render all previews, or copy one match to --output <path>
+  show     Discover + render previews; print id, path, sha256, changed flag
+  list     List discovered previews
+  render   Render previews; with --output copies a single match to disk
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
   --variant <variant>  Android build variant (default: debug)
-  --filter <pattern>   Substring filter on preview id
-  --json               Emit JSON (list)
-  --output <path>      Destination for render (render)
-  --verbose, -v        Show Gradle build output
+  --filter <pattern>   Case-insensitive substring match on preview id
+  --id <exact>         Exact match on preview id
+  --json               Emit JSON (show, list)
+  --output <path>      Copy matched preview PNG to this path (render)
+  --progress           Print per-task milestone/heartbeat lines to stderr
+  --verbose, -v        Full Gradle build output (implies --progress)
   --timeout <seconds>  Gradle build timeout (default: 300)
 ```
 
+OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by default
+in a TTY and auto-disables when stdout is piped. Textual progress lines are
+off by default and opt-in via `--progress`.
+
 Exit codes: `0` success, `1` build failure, `2` render failure, `3` no previews.
+
+JSON output per entry includes the full `PreviewParams` (device, widthDp,
+heightDp, fontScale, uiMode, …), the absolute `pngPath`, the `sha256` of
+the PNG bytes, and a `changed` boolean computed against the previous
+invocation. State is persisted per-module under
+`<module>/build/compose-previews/.cli-state.json` and gets wiped by
+`./gradlew clean`.
 
 ## Workflow: iterate on a design
 
-1. **List** previews: `preview-cli list` (optionally `--filter <name>`).
-2. **Render** current state: `preview-cli show`. Each entry prints an absolute
-   PNG path — read it to view the image.
+1. **List** previews: `preview-cli list` (optionally `--filter <name>` or
+   `--id <exact>`).
+2. **Render** current state: `preview-cli show --json`. Each entry includes
+   the absolute `pngPath`, its `sha256`, and a `changed` flag relative to the
+   previous invocation — read the PNG to view the image.
 3. **Edit** the composable.
-4. **Re-render**: `preview-cli show` again. Gradle task caching reruns only what
-   changed; first render is slower (compile + renderer bootstrap), subsequent
-   renders are fast.
+4. **Re-render**: `preview-cli show --json` again. Gradle task caching reruns
+   only what changed; agents can inspect `changed: true` entries to know
+   which PNGs need re-reading, avoiding wasted reads of unchanged images.
 5. **Verify visually** — always read the PNG after a UI change. Don't assume
    the change looks correct.
 

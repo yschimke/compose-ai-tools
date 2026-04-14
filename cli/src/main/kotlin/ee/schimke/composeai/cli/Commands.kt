@@ -1,51 +1,92 @@
 package ee.schimke.composeai.cli
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.security.MessageDigest
 import kotlin.system.exitProcess
+
+/** On-disk shape mirrors gradle-plugin/PreviewData.kt (parsed with ignoreUnknownKeys). */
+@Serializable
+data class PreviewParams(
+    val name: String? = null,
+    val device: String? = null,
+    val widthDp: Int? = null,
+    val heightDp: Int? = null,
+    val fontScale: Float = 1.0f,
+    val showSystemUi: Boolean = false,
+    val showBackground: Boolean = false,
+    val backgroundColor: Long = 0,
+    val uiMode: Int = 0,
+    val locale: String? = null,
+    val group: String? = null,
+    val wrapperClassName: String? = null,
+)
+
+@Serializable
+data class PreviewInfo(
+    val id: String,
+    val functionName: String,
+    val className: String,
+    val sourceFile: String? = null,
+    val params: PreviewParams = PreviewParams(),
+    val renderOutput: String? = null,
+)
 
 @Serializable
 data class PreviewManifest(
     val module: String,
     val variant: String,
-    val previews: List<PreviewEntry>,
+    val previews: List<PreviewInfo>,
 )
 
+/** CLI output DTO — enriches manifest entries with runtime data agents need. */
 @Serializable
-data class PreviewEntry(
+data class PreviewResult(
     val id: String,
+    val module: String,
     val functionName: String,
     val className: String,
     val sourceFile: String? = null,
-    val renderOutput: String? = null,
+    val params: PreviewParams = PreviewParams(),
+    val pngPath: String? = null,
+    val sha256: String? = null,
+    val changed: Boolean? = null,
 )
 
-private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+@Serializable
+private data class CliState(val shas: Map<String, String> = emptyMap())
+
+private val json = Json {
+    ignoreUnknownKeys = true
+    prettyPrint = true
+    encodeDefaults = true
+}
 
 abstract class Command(protected val args: List<String>) {
     protected val explicitModule: String? = args.flagValue("--module")
     protected val variant: String = args.flagValue("--variant") ?: "debug"
     protected val filter: String? = args.flagValue("--filter")
+    protected val exactId: String? = args.flagValue("--id")
     protected val verbose: Boolean = "--verbose" in args || "-v" in args
+    protected val progress: Boolean = verbose || "--progress" in args
     protected val timeoutSeconds: Long = args.flagValue("--timeout")?.toLongOrNull() ?: 300
+
+    protected lateinit var projectDir: File
+        private set
 
     abstract fun run()
 
     protected fun withGradle(block: (GradleConnection) -> Unit) {
-        val projectDir = findProjectRoot() ?: run {
+        val root = findProjectRoot() ?: run {
             System.err.println("Cannot find Gradle project root (no gradlew found)")
             exitProcess(1)
         }
-
-        GradleConnection(projectDir, verbose).use(block)
+        projectDir = root
+        GradleConnection(root, verbose, progress).use(block)
     }
 
-    /**
-     * Resolve which modules to operate on.
-     * If --module is specified, use that. Otherwise, auto-detect by finding
-     * all modules that have a discoverPreviews task registered.
-     */
     protected fun resolveModules(gradle: GradleConnection): List<String> {
         if (explicitModule != null) return listOf(explicitModule!!)
 
@@ -66,8 +107,7 @@ abstract class Command(protected val args: List<String>) {
     }
 
     protected fun readManifest(module: String): PreviewManifest? {
-        val buildDir = File("$module/build")
-        val manifestFile = File(buildDir, "compose-previews/previews.json")
+        val manifestFile = projectDir.resolve("$module/build/compose-previews/previews.json")
         if (!manifestFile.exists()) return null
         return json.decodeFromString(manifestFile.readText())
     }
@@ -76,6 +116,74 @@ abstract class Command(protected val args: List<String>) {
         return modules.mapNotNull { module ->
             readManifest(module)?.let { module to it }
         }
+    }
+
+    /**
+     * Reads PNGs for every manifest entry, hashes them, compares against the
+     * per-module sidecar state file to emit `changed`, and persists the new
+     * hashes. Sidecar lives under `build/compose-previews/` so it gets wiped on
+     * `./gradlew clean`.
+     */
+    protected fun buildResults(manifests: List<Pair<String, PreviewManifest>>): List<PreviewResult> {
+        val results = mutableListOf<PreviewResult>()
+
+        for ((module, manifest) in manifests) {
+            val prior = readState(module).shas
+            val updated = mutableMapOf<String, String>()
+
+            for (p in manifest.previews) {
+                val pngFile = p.renderOutput
+                    ?.let { projectDir.resolve("$module/build/compose-previews/$it").canonicalFile }
+                    ?.takeIf { it.exists() }
+                val sha = pngFile?.let { sha256(it.readBytes()) }
+                if (sha != null) updated[p.id] = sha
+                val priorSha = prior[p.id]
+                val changed = when {
+                    sha == null -> null
+                    priorSha == null -> true
+                    else -> priorSha != sha
+                }
+                results += PreviewResult(
+                    id = p.id,
+                    module = module,
+                    functionName = p.functionName,
+                    className = p.className,
+                    sourceFile = p.sourceFile,
+                    params = p.params,
+                    pngPath = pngFile?.absolutePath,
+                    sha256 = sha,
+                    changed = changed,
+                )
+            }
+
+            writeState(module, CliState(updated))
+        }
+        return results
+    }
+
+    protected fun matchesRequest(result: PreviewResult): Boolean {
+        if (exactId != null && result.id != exactId) return false
+        if (filter != null && !result.id.contains(filter!!, ignoreCase = true)) return false
+        return true
+    }
+
+    private fun stateFile(module: String): File =
+        projectDir.resolve("$module/build/compose-previews/.cli-state.json")
+
+    private fun readState(module: String): CliState {
+        val f = stateFile(module)
+        if (!f.exists()) return CliState()
+        return try {
+            json.decodeFromString(CliState.serializer(), f.readText())
+        } catch (_: Exception) {
+            CliState()
+        }
+    }
+
+    private fun writeState(module: String, state: CliState) {
+        val f = stateFile(module)
+        f.parentFile?.mkdirs()
+        f.writeText(json.encodeToString(CliState.serializer(), state))
     }
 
     private fun findProjectRoot(): File? {
@@ -89,6 +197,8 @@ abstract class Command(protected val args: List<String>) {
 }
 
 class ShowCommand(args: List<String>) : Command(args) {
+    private val jsonOutput = "--json" in args
+
     override fun run() {
         withGradle { gradle ->
             val modules = resolveModules(gradle)
@@ -96,25 +206,40 @@ class ShowCommand(args: List<String>) : Command(args) {
 
             if (!runGradle(gradle, *tasks)) {
                 System.err.println("Render failed")
-                exitProcess(1)
+                exitProcess(2)
             }
 
             val manifests = readAllManifests(modules)
             if (manifests.isEmpty() || manifests.all { it.second.previews.isEmpty() }) {
-                println("No previews found.")
+                if (jsonOutput) println("[]") else println("No previews found.")
                 exitProcess(3)
             }
 
-            for ((module, manifest) in manifests) {
-                if (manifests.size > 1) println("[$module]")
-                for (preview in manifest.previews) {
-                    println("${preview.functionName} (${preview.id})")
-                    if (preview.renderOutput != null) {
-                        val pngFile = File("$module/build/compose-previews/${preview.renderOutput}")
-                        if (pngFile.exists()) {
-                            println("  ${pngFile.absolutePath}")
-                        }
+            val all = buildResults(manifests)
+            val filtered = all.filter { matchesRequest(it) }
+
+            if (filtered.isEmpty()) {
+                if (jsonOutput) println("[]") else println("No previews matched.")
+                exitProcess(3)
+            }
+
+            if (jsonOutput) {
+                println(json.encodeToString(ListSerializer(PreviewResult.serializer()), filtered))
+            } else {
+                var lastModule: String? = null
+                for (r in filtered) {
+                    if (modules.size > 1 && r.module != lastModule) {
+                        println("[${r.module}]")
+                        lastModule = r.module
                     }
+                    val changedTag = when (r.changed) {
+                        true -> " [changed]"
+                        false -> ""
+                        null -> ""
+                    }
+                    val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
+                    println("${r.functionName} (${r.id})$changedTag$shaTag")
+                    if (r.pngPath != null) println("  ${r.pngPath}")
                 }
             }
         }
@@ -132,13 +257,9 @@ class ListCommand(args: List<String>) : Command(args) {
             if (!runGradle(gradle, *tasks)) exitProcess(1)
 
             val manifests = readAllManifests(modules)
-            val allPreviews = manifests.flatMap { (_, m) -> m.previews }
-
-            val filtered = if (filter != null) {
-                allPreviews.filter { it.id.contains(filter!!, ignoreCase = true) }
-            } else {
-                allPreviews
-            }
+            // List runs discovery only — PNGs may not exist, so sha/changed are null.
+            val all = buildResults(manifests)
+            val filtered = all.filter { matchesRequest(it) }
 
             if (filtered.isEmpty()) {
                 if (jsonOutput) println("[]") else println("No previews found.")
@@ -146,13 +267,10 @@ class ListCommand(args: List<String>) : Command(args) {
             }
 
             if (jsonOutput) {
-                println(json.encodeToString(
-                    kotlinx.serialization.builtins.ListSerializer(PreviewEntry.serializer()),
-                    filtered,
-                ))
+                println(json.encodeToString(ListSerializer(PreviewResult.serializer()), filtered))
             } else {
-                for (p in filtered) {
-                    println("${p.id}  (${p.sourceFile ?: "unknown"})")
+                for (r in filtered) {
+                    println("${r.id}  (${r.sourceFile ?: "unknown"})")
                 }
             }
         }
@@ -170,31 +288,41 @@ class RenderCommand(args: List<String>) : Command(args) {
             if (!runGradle(gradle, *tasks)) exitProcess(2)
 
             val manifests = readAllManifests(modules)
+            val all = buildResults(manifests)
+            val filtered = all.filter { matchesRequest(it) }
 
-            val target = args.firstOrNull {
-                !it.startsWith("--") && it != explicitModule && it != variant && it != output
+            if (filtered.isEmpty()) {
+                System.err.println("No previews matched.")
+                exitProcess(3)
             }
-            if (target != null && output != null) {
-                val allPreviews = manifests.flatMap { (module, m) ->
-                    m.previews.map { module to it }
+
+            if (output != null) {
+                if (filtered.size != 1) {
+                    System.err.println(
+                        "--output requires a single match (got ${filtered.size}). " +
+                            "Narrow with --id <exact> or --filter <substring>.",
+                    )
+                    exitProcess(1)
                 }
-                val match = allPreviews.find { (_, p) -> p.id.contains(target, ignoreCase = true) }
-                if (match != null) {
-                    val (module, preview) = match
-                    if (preview.renderOutput != null) {
-                        val src = File("$module/build/compose-previews/${preview.renderOutput}")
-                        if (src.exists()) {
-                            src.copyTo(File(output), overwrite = true)
-                            println("Rendered to $output")
-                        }
-                    }
+                val one = filtered.single()
+                if (one.pngPath == null) {
+                    System.err.println("Match has no rendered PNG: ${one.id}")
+                    exitProcess(2)
                 }
+                File(one.pngPath).copyTo(File(output), overwrite = true)
+                println("Rendered ${one.id} to $output")
             } else {
-                val total = manifests.sumOf { it.second.previews.size }
-                println("Rendered $total preview(s)")
+                println("Rendered ${filtered.size} preview(s)")
+                val changedCount = filtered.count { it.changed == true }
+                if (changedCount > 0) println("  $changedCount changed since last run")
             }
         }
     }
+}
+
+private fun sha256(bytes: ByteArray): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    return md.digest(bytes).joinToString("") { "%02x".format(it) }
 }
 
 private fun List<String>.flagValue(flag: String): String? {
