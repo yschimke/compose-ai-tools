@@ -65,31 +65,50 @@ import java.util.concurrent.TimeUnit
  *   composeai.render.manifest  — path to previews.json
  *   composeai.render.outputDir — directory for rendered PNGs
  */
-@RunWith(ParameterizedRobolectricTestRunner::class)
+/**
+ * Loads the previews manifest and returns the subset assigned to `shardIndex`
+ * out of `shardCount` shards. Generated shard subclasses delegate their
+ * `@Parameters` method here (see the plugin's `generateShardTests` task).
+ *
+ * With `shardCount = 1`, returns every preview — that's the default single-class path.
+ */
+object PreviewManifestLoader {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @JvmStatic
+    fun loadShard(shardIndex: Int, shardCount: Int): List<Array<Any>> {
+        require(shardCount >= 1) { "shardCount must be >= 1" }
+        require(shardIndex in 0 until shardCount) { "shardIndex must be in [0, $shardCount)" }
+        val manifestPath = System.getProperty("composeai.render.manifest")
+            ?: return emptyList()
+        val file = File(manifestPath)
+        if (!file.exists()) return emptyList()
+
+        val manifest = json.decodeFromString<RenderManifest>(file.readText())
+        return manifest.previews
+            .withIndex()
+            .filter { (i, _) -> i % shardCount == shardIndex }
+            .map { (_, p) -> arrayOf<Any>(p) }
+    }
+}
+
+/**
+ * Rendering logic — driven by a single [RenderPreviewEntry]. Subclasses supply
+ * the `@RunWith` + `@Parameters` wiring. [RobolectricRenderTest] is the default
+ * single-class entry; the plugin generates `RobolectricRenderTest_ShardN` subclasses
+ * when `composeAiPreview.shards > 1`.
+ */
 // SDK 34 is the highest API where Robolectric 4.16.1 still shadows
 // `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes`. Above that, the
 // HardwareRenderingScreenshot path returns an Image with `planes[0] == null`.
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class RobolectricRenderTest(private val preview: RenderPreviewEntry) {
+abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry) {
 
     companion object {
         private const val DEFAULT_WIDTH = 400
         private const val DEFAULT_HEIGHT = 800
         private const val DENSITY = 2.0f
-        private val json = Json { ignoreUnknownKeys = true }
-
-        @JvmStatic
-        @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun previews(): List<Array<Any>> {
-            val manifestPath = System.getProperty("composeai.render.manifest")
-                ?: return emptyList()
-            val file = File(manifestPath)
-            if (!file.exists()) return emptyList()
-
-            val manifest = json.decodeFromString<RenderManifest>(file.readText())
-            return manifest.previews.map { arrayOf<Any>(it) }
-        }
     }
 
     private val widthDp: Int = preview.params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
@@ -287,4 +306,19 @@ internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
     // synthetic Composer/changed tail, so we look up by the content param's JVM type.
     val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
     return method to instance
+}
+
+/**
+ * Default single-shard entry. Runs every preview in the manifest in one JVM,
+ * reusing the sandbox across all parameter values. Generated shard subclasses
+ * (see the plugin's `generateShardTests` task) replace this class when
+ * `composeAiPreview.shards > 1`.
+ */
+@RunWith(ParameterizedRobolectricTestRunner::class)
+class RobolectricRenderTest(preview: RenderPreviewEntry) : RobolectricRenderTestBase(preview) {
+    companion object {
+        @JvmStatic
+        @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
+        fun previews(): List<Array<Any>> = PreviewManifestLoader.loadShard(0, 1)
+    }
 }

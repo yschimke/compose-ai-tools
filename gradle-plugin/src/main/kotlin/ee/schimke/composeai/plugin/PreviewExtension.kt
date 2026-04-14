@@ -22,4 +22,22 @@ abstract class PreviewExtension @Inject constructor(objects: ObjectFactory) {
      * Lives outside `build/` by default so `./gradlew clean` doesn't wipe it.
      */
     val historyDir: DirectoryProperty = objects.directoryProperty()
+
+    /**
+     * Number of parallel JVM forks used to render previews. Default 1 (no sharding).
+     *
+     * Special values:
+     *  - `1` (default): no sharding; a single JVM renders every preview.
+     *  - `0`: auto — the plugin picks a shard count based on the discovered
+     *    preview count and available CPU cores, using [ShardTuning]'s cost
+     *    model. Falls back to 1 if previews.json hasn't been generated yet.
+     *  - `≥2`: explicit shard count.
+     *
+     * Each shard runs a generated `RobolectricRenderTest_ShardN` subclass with its
+     * own slice of the manifest (round-robin partition). Within a shard, the
+     * Robolectric sandbox is reused across that shard's previews; across shards
+     * each JVM pays its own ~3–4s cold-start cost, so sharding is a net win only
+     * when the module has enough previews to amortise that overhead.
+     */
+    val shards: Property<Int> = objects.property(Int::class.java).convention(1)
 }

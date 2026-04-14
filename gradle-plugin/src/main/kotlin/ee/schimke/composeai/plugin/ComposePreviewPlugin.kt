@@ -5,6 +5,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 
 class ComposePreviewPlugin : Plugin<Project> {
@@ -111,12 +112,59 @@ class ComposePreviewPlugin : Plugin<Project> {
             val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
             val rendersDir = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
 
+            val shardCount = resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
+            val shardsEnabled = shardCount > 1
+
+            // When sharded, generate N Java subclasses of RobolectricRenderTestBase, each with
+            // its own static @Parameters method that loads only that shard's slice of the manifest.
+            // Gradle distributes tests across forks at the class level, so a single parameterized
+            // class can't be split — we give it N classes. Each shard subclass inherits @Config
+            // and @GraphicsMode from the base, so every JVM's sandbox key matches and each fork
+            // reuses its own cached sandbox across all previews in its slice.
+            val shardSourcesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/java")
+            val shardClassesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/classes")
+
+            val generateShardsTask = if (shardsEnabled) {
+                project.tasks.register("generateRenderShards", GenerateRenderShardsTask::class.java) {
+                    group = "compose preview"
+                    description = "Generate $shardCount RobolectricRenderTest_Shard subclasses"
+                    shards.set(shardCount)
+                    outputDir.set(shardSourcesDir)
+                }
+            } else null
+
+            val compileShardsTask = if (generateShardsTask != null) {
+                project.tasks.register("compileRenderShards", JavaCompile::class.java) {
+                    group = "compose preview"
+                    description = "Compile generated shard test subclasses"
+                    source(generateShardsTask.map { it.outputDir.asFileTree })
+                    classpath = resolvedClasspath
+                    destinationDirectory.set(shardClassesDir)
+                    options.release.set(21)
+                    dependsOn(generateShardsTask)
+                    dependsOn(":renderer-android:compile${capVariant}Kotlin")
+                }
+            } else null
+
             val renderTask = project.tasks.register("renderPreviews", Test::class.java) {
                 group = "compose preview"
                 description = "Render Android previews via Robolectric"
-                testClassesDirs = rendererClassDirs
-                classpath = resolvedClasspath
-                include("**/RobolectricRenderTest.class")
+                testClassesDirs = if (compileShardsTask != null) {
+                    rendererClassDirs + project.files(compileShardsTask.map { it.destinationDirectory })
+                } else {
+                    rendererClassDirs
+                }
+                classpath = if (compileShardsTask != null) {
+                    resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory })
+                } else {
+                    resolvedClasspath
+                }
+                if (shardsEnabled) {
+                    include("**/RobolectricRenderTest_Shard*.class")
+                    maxParallelForks = shardCount
+                } else {
+                    include("**/RobolectricRenderTest.class")
+                }
                 useJUnit()
 
                 jvmArgs(agpJvmArgs)
@@ -160,6 +208,9 @@ class ComposePreviewPlugin : Plugin<Project> {
                 val configTaskName = "generate${capVariant}UnitTestConfig"
                 if (project.tasks.findByName(configTaskName) != null) {
                     dependsOn(configTaskName)
+                }
+                if (compileShardsTask != null) {
+                    dependsOn(compileShardsTask)
                 }
             }
 
@@ -325,4 +376,31 @@ class ComposePreviewPlugin : Plugin<Project> {
 
     private fun String.cap(): String =
         replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+    /**
+     * Resolves the effective shard count from [PreviewExtension.shards]:
+     *
+     *  - `≥1`: use the value as-is.
+     *  - `0` (auto): read [previewsJson] if it exists from a previous discover run and
+     *    hand the count to [ShardTuning.autoShards]. If the file is missing (very first
+     *    build), fall back to 1 — the next run will have better data and can
+     *    pick a higher count then.
+     */
+    private fun resolveShardCount(
+        project: Project,
+        extension: PreviewExtension,
+        previewsJson: java.io.File,
+    ): Int {
+        val requested = extension.shards.get()
+        if (requested > 0) return requested
+        if (!previewsJson.exists()) {
+            project.logger.info("compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run")
+            return 1
+        }
+        // Simple count of `"id"` entries — cheap and avoids pulling kotlinx.serialization into the plugin classpath.
+        val previewCount = Regex("\"id\"\\s*:").findAll(previewsJson.readText()).count()
+        val resolved = ShardTuning.autoShards(previewCount)
+        project.logger.lifecycle("compose-ai-tools: shards=auto → $resolved (previewCount=$previewCount, cores=${Runtime.getRuntime().availableProcessors()})")
+        return resolved
+    }
 }
