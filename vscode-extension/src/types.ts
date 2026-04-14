@@ -54,12 +54,12 @@ export type ExtensionToWebview =
     | { command: 'showMessage'; text: string }
     | { command: 'clearAll' }
     | { command: 'setModules'; modules: string[]; selected: string }
+    | { command: 'setFunctionFilter'; functionName: string }
     | { command: 'setHistory'; previewId: string; entries: HistoryEntry[] }
     | { command: 'updateHistoryImage'; previewId: string; filename: string; imageData: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
-    | { command: 'refresh' }
     | { command: 'openFile'; className: string; functionName: string }
     | { command: 'selectModule'; value: string }
     | { command: 'showHistory'; previewId: string }

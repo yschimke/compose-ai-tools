@@ -3,8 +3,9 @@ import * as path from 'path';
 import { GradleService, GradleApi } from './gradleService';
 import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
-import { PreviewCodeLensProvider } from './previewCodeLensProvider';
+import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
+import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
 const DEBOUNCE_MS = 1500;
@@ -27,6 +28,13 @@ let currentScopeFile: string | null = null;
 const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used by history commands. */
 const previewModuleMap = new Map<string, string>();
+/** Tracks files saved at least once since activation. First save on a file
+ *  renders immediately; subsequent saves go through the debounce path. */
+const firstSaveSeen = new Set<string>();
+/** Save-driven refresh coalescing state. See {@link enqueueSaveRefresh}. */
+let pendingSavePath: string | null = null;
+let debounceElapsed = true;
+let refreshInFlight = false;
 
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -63,16 +71,29 @@ export async function activate(context: vscode.ExtensionContext) {
             const target = filePath ?? currentScopeFile ?? undefined;
             if (target) { refresh(true, target); }
         }),
+        vscode.commands.registerCommand('composePreview.focusPreview',
+            async (functionName: string, filePath?: string) => {
+                if (!panel) { return; }
+                // Reveal the sidebar view. This is the stable command contributed
+                // by VS Code for any registered view (`<viewId>.focus`).
+                await vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
+                // If the caller passed a file, scope the panel to it before
+                // filtering — otherwise the currently-scoped module is reused.
+                if (filePath && filePath !== currentScopeFile) {
+                    await refresh(false, filePath);
+                }
+                panel.postMessage({ command: 'setFunctionFilter', functionName });
+            },
+        ),
     );
 
     const detectLog = (msg: string) => outputChannel.appendLine(`[detect] ${msg}`);
-    const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
+    const gutterDecorations = new PreviewGutterDecorations(context.extensionUri, registry, detectLog);
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
     context.subscriptions.push(
-        vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
-        codeLensProvider,
+        gutterDecorations,
         { dispose: () => registry.dispose() },
     );
 
@@ -84,11 +105,20 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // Editor saves (Ctrl+S, auto-save)
+    // Editor saves (Ctrl+S, auto-save). The first save of a given file since
+    // activation refreshes immediately so the user sees their change right
+    // away; subsequent saves coalesce through a debounced + in-flight-aware
+    // queue so we never stack builds on top of each other.
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(doc => {
-            if (isSourceFile(doc.uri.fsPath)) {
-                debouncedRefresh(doc.uri.fsPath);
+            if (!isSourceFile(doc.uri.fsPath)) { return; }
+            if (!firstSaveSeen.has(doc.uri.fsPath) && !refreshInFlight && pendingSavePath === null) {
+                firstSaveSeen.add(doc.uri.fsPath);
+                invalidateModuleCache(doc.uri.fsPath);
+                void runRefreshExclusive(doc.uri.fsPath);
+            } else {
+                firstSaveSeen.add(doc.uri.fsPath);
+                enqueueSaveRefresh(doc.uri.fsPath);
             }
         }),
     );
@@ -96,9 +126,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // External file system changes (git, refactor tools)
     for (const glob of ['**/*.kt', '**/res/**/*.xml']) {
         const watcher = vscode.workspace.createFileSystemWatcher(glob);
-        watcher.onDidChange(uri => debouncedRefresh(uri.fsPath));
-        watcher.onDidCreate(uri => debouncedRefresh(uri.fsPath));
-        watcher.onDidDelete(uri => debouncedRefresh(uri.fsPath));
+        watcher.onDidChange(uri => enqueueSaveRefresh(uri.fsPath));
+        watcher.onDidCreate(uri => enqueueSaveRefresh(uri.fsPath));
+        watcher.onDidDelete(uri => enqueueSaveRefresh(uri.fsPath));
         context.subscriptions.push(watcher);
     }
 
@@ -137,28 +167,93 @@ function isPreviewSourceFile(filePath: string): boolean {
     return filePath.endsWith('.kt') && !filePath.endsWith('.gradle.kts');
 }
 
-function debouncedRefresh(filePath: string) {
-    const cfg = vscode.workspace.getConfiguration('composePreview');
-    if (!cfg.get<boolean>('autoRefresh', true)) { return; }
-    const render = cfg.get<boolean>('renderOnSave', false);
+/**
+ * Resolve which file the panel should scope to, in priority order:
+ *   1. Caller-provided path (explicit user action).
+ *   2. The active text editor, if it's a Kotlin source file.
+ *   3. The first visible Kotlin editor (covers focus-on-webview, Log,
+ *      Problems pane, etc. — activeTextEditor is undefined/non-Kotlin then).
+ *   4. The last file a refresh successfully scoped to, so transient focus
+ *      changes don't unscope the panel.
+ * Returns the resolved path and a short tag describing which fallback was used,
+ * for logging.
+ */
+function resolveScopeFile(forFilePath?: string): { file?: string; source: string } {
+    if (forFilePath) { return { file: forFilePath, source: 'caller' }; }
 
-    // Invalidate cache for the changed module so the next discover isn't stale
-    if (gradleService) {
-        const module = gradleService.resolveModule(filePath);
-        if (module) { gradleService.invalidateCache(module); }
+    const active = vscode.window.activeTextEditor?.document;
+    if (active && active.languageId === 'kotlin' && isPreviewSourceFile(active.uri.fsPath)) {
+        return { file: active.uri.fsPath, source: 'active' };
     }
 
-    if (debounceTimer) { clearTimeout(debounceTimer); }
-    debounceTimer = setTimeout(() => {
-        if (filePath.endsWith('.kt')) {
-            refresh(render, filePath);
-        } else {
-            const active = vscode.window.activeTextEditor;
-            if (active?.document.languageId === 'kotlin') {
-                refresh(render, active.document.uri.fsPath);
-            }
+    for (const editor of vscode.window.visibleTextEditors) {
+        const doc = editor.document;
+        if (doc.languageId === 'kotlin' && isPreviewSourceFile(doc.uri.fsPath)) {
+            return { file: doc.uri.fsPath, source: 'visible' };
         }
+    }
+
+    if (currentScopeFile && isPreviewSourceFile(currentScopeFile)) {
+        return { file: currentScopeFile, source: 'sticky' };
+    }
+
+    return { source: 'none' };
+}
+
+function invalidateModuleCache(filePath: string): void {
+    if (!gradleService) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (module) { gradleService.invalidateCache(module); }
+}
+
+/**
+ * Coalesce save-driven refreshes. The next refresh fires when BOTH:
+ *   1. `DEBOUNCE_MS` has elapsed since the last save (absorbs bursts), and
+ *   2. any in-flight refresh has finished (never stacks builds).
+ * Whichever takes longer wins — effectively `max(1.5s, in-flight completion)`.
+ * Rapid saves collapse into a single final refresh scoped to the latest file.
+ */
+function enqueueSaveRefresh(filePath: string): void {
+    // Prefer the saved file path, but fall back to the active editor when the
+    // saved file isn't a Kotlin source (e.g. a resource XML changed).
+    const target = filePath.endsWith('.kt')
+        ? filePath
+        : (vscode.window.activeTextEditor?.document.languageId === 'kotlin'
+            ? vscode.window.activeTextEditor.document.uri.fsPath
+            : filePath);
+    pendingSavePath = target;
+    invalidateModuleCache(target);
+
+    if (debounceTimer) { clearTimeout(debounceTimer); }
+    debounceElapsed = false;
+    debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        debounceElapsed = true;
+        maybeFirePendingRefresh();
     }, DEBOUNCE_MS);
+}
+
+/** Fires the pending refresh only when the debounce window has elapsed AND
+ *  no other refresh is running. Called from the debounce timer and from the
+ *  tail of {@link runRefreshExclusive}. */
+function maybeFirePendingRefresh(): void {
+    if (refreshInFlight || !debounceElapsed || pendingSavePath === null) { return; }
+    const target = pendingSavePath;
+    pendingSavePath = null;
+    void runRefreshExclusive(target);
+}
+
+/** Runs {@link refresh} with the `refreshInFlight` gate so the debounce queue
+ *  can tell whether to defer. On completion picks up anything that arrived
+ *  during the run, re-applying the debounce-elapsed check. */
+async function runRefreshExclusive(filePath: string): Promise<void> {
+    refreshInFlight = true;
+    try {
+        await refresh(true, filePath);
+    } finally {
+        refreshInFlight = false;
+        maybeFirePendingRefresh();
+    }
 }
 
 function sendModuleList() {
@@ -182,11 +277,11 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
 
     // The panel is always scoped to exactly one Kotlin source file. If no
     // suitable file is available (webview has focus → activeTextEditor is
-    // undefined, build script, non-Kotlin file) the panel shows the empty
-    // state rather than falling through to an ambiguous multi-file view.
-    const activeEditorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
-    const activeFile = forFilePath
-        ?? (activeEditorFile && isPreviewSourceFile(activeEditorFile) ? activeEditorFile : undefined);
+    // undefined, build script, Log/Output pane has focus) the panel shows the
+    // empty state rather than falling through to an ambiguous multi-file view.
+    // Picks, in priority: caller > active editor > any visible Kotlin editor >
+    // last-scoped file. See resolveScopeFile for the full chain.
+    const { file: activeFile } = resolveScopeFile(forFilePath);
     const module = activeFile && isPreviewSourceFile(activeFile)
         ? gradleService.resolveModule(activeFile)
         : null;
@@ -204,7 +299,10 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
 
     currentScopeFile = activeFile;
     const modules = [module];
-    const filterFile = path.basename(activeFile);
+    // Package-qualified path (e.g. `com/example/samplewear/Previews.kt`) so
+    // files with the same basename in different packages don't collide.
+    // Must match what DiscoverPreviewsTask emits into manifest.sourceFile.
+    const filterFile = packageQualifiedSourcePath(activeFile);
 
     // When the module scope changes (user switched files to a different
     // module, or went from "all modules" to a single one) the old cards are
@@ -285,7 +383,7 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
                 panel.postMessage({
                     command: 'setImageError',
                     previewId: preview.id,
-                    message: 'Render not found — click refresh to render',
+                    message: 'Render pending — save the file to trigger a render',
                 });
             }
         }
@@ -304,13 +402,6 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
 
 function handleWebviewMessage(msg: WebviewToExtensionMessage) {
     switch (msg.command) {
-        case 'refresh':
-            // When the webview has focus (e.g. the user just clicked the
-            // refresh button) `activeTextEditor` is undefined, so falling
-            // back to it here would unscope the panel. Reuse the file the
-            // panel is already pinned to instead.
-            refresh(true, currentScopeFile ?? undefined);
-            break;
         case 'openFile':
             if (msg.className && msg.functionName) {
                 openPreviewSource(msg.className, msg.functionName);

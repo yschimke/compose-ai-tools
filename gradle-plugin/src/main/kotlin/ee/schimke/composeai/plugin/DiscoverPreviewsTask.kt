@@ -223,10 +223,21 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             id = fqn + suffix,
             functionName = method.name,
             className = classInfo.name,
-            sourceFile = classInfo.sourceFile,
+            sourceFile = packageQualifiedSourcePath(classInfo),
             params = params,
             renderOutput = "renders/${fqn}${suffix}.png",
         )
+    }
+
+    // Package-qualified source path, e.g. "com/example/samplewear/Previews.kt".
+    // The bytecode SourceFile attribute is just the basename, which collides
+    // when two files with the same name live in different packages within one
+    // module. Prefixing with the package path makes the value unique and lets
+    // the VSCode extension / CLI resolve a preview back to the exact file.
+    private fun packageQualifiedSourcePath(classInfo: ClassInfo): String? {
+        val simpleName = classInfo.sourceFile ?: return null
+        val pkg = classInfo.packageName.orEmpty()
+        return if (pkg.isEmpty()) simpleName else "${pkg.replace('.', '/')}/$simpleName"
     }
 
     // Disambiguates multi-preview expansions (e.g. @WearPreviewDevices → large_round
