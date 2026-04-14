@@ -399,6 +399,66 @@ class DiscoveryFunctionalTest {
     }
 
     @Test
+    fun `discoverPreviews resolves device dimensions and disambiguates ids`() {
+        val projectDir = createCmpTestProject()
+
+        // Multi-preview with two devices, no explicit name — mirrors @WearPreviewDevices.
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Preview(device = "id:pixel_6")
+            @Preview(device = "id:pixel_tablet")
+            annotation class PhoneAndTablet
+
+            @PhoneAndTablet
+            @Composable
+            fun MultiDevicePreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+
+        assertThat(manifest.previews).hasSize(2)
+
+        val phone = manifest.previews.single { it.params.device == "id:pixel_6" }
+        assertThat(phone.params.widthDp).isEqualTo(411)
+        assertThat(phone.params.heightDp).isEqualTo(891)
+        assertThat(phone.id).endsWith("_pixel_6")
+        assertThat(phone.renderOutput).endsWith("_pixel_6.png")
+
+        val tablet = manifest.previews.single { it.params.device == "id:pixel_tablet" }
+        assertThat(tablet.params.widthDp).isEqualTo(1280)
+        assertThat(tablet.params.heightDp).isEqualTo(800)
+        assertThat(tablet.id).endsWith("_pixel_tablet")
+
+        // The two variants must not collide on renderOutput.
+        assertThat(manifest.previews.map { it.renderOutput }.toSet()).hasSize(2)
+    }
+
+    @Test
     fun `discoverPreviews re-runs when source changes`() {
         val projectDir = createCmpTestProject()
 
