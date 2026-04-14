@@ -105,7 +105,7 @@ private fun ButtonPreviewContent() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Button(onClick = {}) {
-                        Text("Tap me")
+                        Text("Tap me!")
                     }
                 }
             }
