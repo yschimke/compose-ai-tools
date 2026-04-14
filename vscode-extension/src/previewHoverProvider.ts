@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import { detectPreviews } from './previewDetection';
 import { PreviewRegistry } from './previewRegistry';
 
-// Hover image is a compact thumbnail, not a full-size preview — keep it
-// well under 100px so it sits beside the function name without dominating
-// the hover card. The full-size render lives in the side panel.
-const HOVER_IMG_MAX = 80;
+// Hover image is a peek of the rendered preview. VS Code's hover markdown
+// doesn't reliably honor inline `max-width`/`max-height` on images (the
+// render appears clipped), so we set explicit `width`/`height` HTML
+// attributes instead. 120px is small enough to keep the hover compact and
+// leave room for the function name above it.
+const HOVER_IMG_MAX = 120;
 
 export class PreviewHoverProvider implements vscode.HoverProvider {
     constructor(
@@ -28,7 +30,7 @@ export class PreviewHoverProvider implements vscode.HoverProvider {
             if (entry?.imageBase64) {
                 md.appendMarkdown(
                     `<img src="data:image/png;base64,${entry.imageBase64}" `
-                    + `style="max-width:${HOVER_IMG_MAX}px;max-height:${HOVER_IMG_MAX}px;object-fit:contain" />`,
+                    + `width="${HOVER_IMG_MAX}" height="${HOVER_IMG_MAX}" />`,
                 );
             } else {
                 md.appendMarkdown('_No render yet._ ');

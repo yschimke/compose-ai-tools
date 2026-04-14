@@ -60,10 +60,10 @@ export class PreviewGutterDecorations implements vscode.Disposable {
         const detected = await detectPreviews(editor.document, this.registry, this.log);
         const filePath = editor.document.uri.fsPath;
         const options: vscode.DecorationOptions[] = detected.map(det => {
-            // Hover the gutter icon (or any part of the `fun` line) to expose
-            // a command link that filters the side panel to this function and
-            // reveals the view. Approximates "click the gutter icon to focus"
-            // since decoration gutter icons don't support direct click events.
+            // Decoration gutter icons can't receive click events, so the
+            // CodeLens above the function is the actual click target. The
+            // hover here is a fallback affordance — hovering the gutter icon
+            // also exposes the same focus command.
             const args = encodeURIComponent(JSON.stringify([det.functionName, filePath]));
             const hover = new vscode.MarkdownString(
                 `[Focus \`${det.functionName}\` in Preview panel](command:composePreview.focusPreview?${args})`,

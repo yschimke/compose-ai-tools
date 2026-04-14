@@ -5,6 +5,7 @@ import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
 import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
+import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
@@ -90,9 +91,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const detectLog = (msg: string) => outputChannel.appendLine(`[detect] ${msg}`);
     const gutterDecorations = new PreviewGutterDecorations(context.extensionUri, registry, detectLog);
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
+    const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
+        vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
+        codeLensProvider,
         gutterDecorations,
         { dispose: () => registry.dispose() },
     );
