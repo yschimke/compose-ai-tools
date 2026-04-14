@@ -17,6 +17,13 @@ let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
 let hasPreviewsLoaded = false;
 let lastLoadedModules: string[] = [];
+/**
+ * The file path the panel is currently scoped to. Updated whenever a refresh
+ * successfully resolves a module. Webview-initiated refreshes reuse this
+ * rather than falling back to `activeTextEditor`, which can drift when the
+ * webview has focus (undefined) or resolve to an unrelated editor.
+ */
+let currentScopeFile: string | null = null;
 const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used by history commands. */
 const previewModuleMap = new Map<string, string>();
@@ -48,10 +55,12 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('composePreview.refresh', () => refresh(true)),
-        vscode.commands.registerCommand('composePreview.renderAll', () => refresh(true)),
+        vscode.commands.registerCommand('composePreview.refresh', () =>
+            refresh(true, currentScopeFile ?? undefined)),
+        vscode.commands.registerCommand('composePreview.renderAll', () =>
+            refresh(true, currentScopeFile ?? undefined)),
         vscode.commands.registerCommand('composePreview.runForFile', (filePath?: string) => {
-            const target = filePath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+            const target = filePath ?? currentScopeFile ?? undefined;
             if (target) { refresh(true, target); }
         }),
     );
@@ -171,13 +180,17 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
     const abort = new AbortController();
     pendingRefresh = abort;
 
-    // The panel is always scoped to the active Kotlin source file's module.
-    // Anything else (build scripts, non-Kotlin files, no editor) → blank.
-    const activeFile = forFilePath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+    // The panel is always scoped to exactly one Kotlin source file. If no
+    // suitable file is available (webview has focus → activeTextEditor is
+    // undefined, build script, non-Kotlin file) the panel shows the empty
+    // state rather than falling through to an ambiguous multi-file view.
+    const activeEditorFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+    const activeFile = forFilePath
+        ?? (activeEditorFile && isPreviewSourceFile(activeEditorFile) ? activeEditorFile : undefined);
     const module = activeFile && isPreviewSourceFile(activeFile)
         ? gradleService.resolveModule(activeFile)
         : null;
-    if (!module) {
+    if (!activeFile || !module) {
         panel.postMessage({ command: 'clearAll' });
         panel.postMessage({
             command: 'showMessage',
@@ -185,11 +198,13 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
+        currentScopeFile = null;
         return;
     }
 
+    currentScopeFile = activeFile;
     const modules = [module];
-    const filterFile = activeFile ? path.basename(activeFile) : undefined;
+    const filterFile = path.basename(activeFile);
 
     // When the module scope changes (user switched files to a different
     // module, or went from "all modules" to a single one) the old cards are
@@ -243,13 +258,9 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             return;
         }
 
-        // Filter to active file if applicable
-        // Always filter to the active file's previews. If the file has none
-        // (e.g. build.gradle.kts, or a Kotlin file without any @Preview),
-        // the panel shows an empty state rather than dumping the whole module.
-        const visiblePreviews = filterFile
-            ? allPreviews.filter(p => p.sourceFile === filterFile)
-            : allPreviews;
+        // Scope strictly to the active file. If the file has no @Preview
+        // functions, the panel shows an empty state — never the whole module.
+        const visiblePreviews = allPreviews.filter(p => p.sourceFile === filterFile);
 
         panel.postMessage({
             command: 'setPreviews',
@@ -294,7 +305,11 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
 function handleWebviewMessage(msg: WebviewToExtensionMessage) {
     switch (msg.command) {
         case 'refresh':
-            refresh(true);
+            // When the webview has focus (e.g. the user just clicked the
+            // refresh button) `activeTextEditor` is undefined, so falling
+            // back to it here would unscope the panel. Reuse the file the
+            // panel is already pinned to instead.
+            refresh(true, currentScopeFile ?? undefined);
             break;
         case 'openFile':
             if (msg.className && msg.functionName) {
