@@ -177,7 +177,7 @@ composePreview {
 - Gradle 9.4.1+
 - Java 21
 - AGP 9.1.0 (Android projects)
-- Kotlin 2.3.20
+- Kotlin 2.2.21
 - Compose Multiplatform 1.10.3 (Desktop projects)
 
 ## Contributing

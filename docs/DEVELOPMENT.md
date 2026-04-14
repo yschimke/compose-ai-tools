@@ -196,3 +196,31 @@ The `package` script runs `vsce package --no-dependencies`, which requires
 ./gradlew check                   # gradle-plugin unit + functional tests, CLI tests
 cd vscode-extension && npm test   # extension unit tests (mocha)
 ```
+
+## Troubleshooting
+
+### `jlink executable … does not exist` when building from VS Code
+
+The `vscjava.vscode-gradle` extension inherits its JDK from
+`redhat.java`, which ships a **JRE** (no `jlink`). The Android Gradle
+Plugin's `JdkImageTransform` needs `jlink`, so Android builds triggered
+from inside VS Code fail with:
+
+```
+jlink executable …/redhat.java-*/jre/*/bin/jlink does not exist.
+```
+
+Point both the Java language server and the Gradle integration at a
+full JDK 21 install in your **user** `settings.json`:
+
+```jsonc
+{
+  "java.jdt.ls.java.home": "/usr/lib/jvm/java-21-openjdk",
+  "java.import.gradle.java.home": "/usr/lib/jvm/java-21-openjdk"
+}
+```
+
+Adjust the path for your OS (`/Library/Java/JavaVirtualMachines/…/Contents/Home`
+on macOS, `C:\\Program Files\\Java\\jdk-21` on Windows). Reload the
+window after changing. Verify with `ls $JDK_PATH/bin/jlink` — it must
+exist.
