@@ -20,6 +20,13 @@ import ee.schimke.composeai.plugin.ComposePreviewPlugin
 
 initscript {
     val pluginVersion = System.getenv("COMPOSE_AI_PLUGIN_VERSION") ?: "0.1.0-SNAPSHOT"
+    // Our plugin declares AGP as compileOnly, so the published POM does not pull it
+    // in at runtime. The init-script classloader is a *sibling* (not parent) of the
+    // consumer buildscript classloader in Gradle's scope model, so AGP classes the
+    // consumer loaded are not visible to our plugin, and AGP classes we load here
+    // do not leak into the consumer. We therefore add AGP to the init classpath so
+    // our plugin can resolve `com.android.build.api.dsl.CommonExtension` etc.
+    val agpVersion = System.getenv("COMPOSE_AI_AGP_VERSION") ?: "8.7.3"
     repositories {
         mavenLocal()
         mavenCentral()
@@ -28,6 +35,7 @@ initscript {
     }
     dependencies {
         classpath("ee.schimke.composeai:gradle-plugin:$pluginVersion")
+        classpath("com.android.tools.build:gradle:$agpVersion")
     }
 }
 
