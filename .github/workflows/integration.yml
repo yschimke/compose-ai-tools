@@ -1,9 +1,14 @@
 name: Integration
 
 # Integration tests that build the Gradle plugin + CLI, publish the plugin to
-# mavenLocal, then check out a handful of real-world Compose projects, apply
-# the plugin via an init script (no fork/patch required on the consumer) and
-# verify the CLI discovers and renders at least one preview.
+# mavenLocal, check out a handful of real-world Compose projects, patch each
+# target module's `plugins { }` block to add our plugin id, and verify the
+# plugin discovers and renders at least one preview.
+#
+# We load the plugin via the consumer's plugin classpath (same classloader as
+# the consumer's AGP) so Class identity for AGP types matches — applying the
+# plugin from an init script's classpath failed because our AGP copy and the
+# consumer's were distinct Class objects with the same FQN.
 #
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
@@ -48,12 +53,13 @@ jobs:
       - name: Bundle artifacts
         run: |
           set -euo pipefail
-          mkdir -p bundle/m2 bundle/cli bundle/init
+          mkdir -p bundle/m2 bundle/cli bundle/init bundle/ci
           # Ship only our own group to keep the tarball small — the consumer
           # resolves every other dep from its own repositories.
           cp -R "$HOME/.m2/repository/ee" bundle/m2/
           cp -R cli/build/install/compose-preview/. bundle/cli/
           cp .github/ci/apply-compose-ai.init.gradle.kts bundle/init/
+          cp .github/ci/patch-consumer.py bundle/ci/
           tar -czf compose-ai-bundle.tar.gz -C bundle .
 
       - uses: actions/upload-artifact@v4
@@ -83,12 +89,23 @@ jobs:
               -Dorg.gradle.unsafe.isolated-projects=false
               -Dorg.gradle.isolated-projects=false
               --no-configuration-cache
-          # Confetti is pinned to AGP 8.x and our plugin requires AGP 9.x — skip
-          # until upstream upgrades (re-add here when libs.versions.toml shows
-          # agp = "9.x"). See https://github.com/joreilly/Confetti.
+          - name: confetti
+            slug: confetti
+            repo: joreilly/Confetti
+            ref: main
+            workdir: .
+            module: androidApp
+            extra_gradle_args: --no-configuration-cache
           - name: androidify
             slug: androidify
             repo: android/androidify
+            ref: main
+            workdir: .
+            module: app
+            extra_gradle_args: --no-configuration-cache
+          - name: people-in-space
+            slug: people-in-space
+            repo: joreilly/PeopleInSpace
             ref: main
             workdir: .
             module: app
@@ -138,6 +155,26 @@ jobs:
       - name: Make external gradlew executable
         working-directory: external/${{ matrix.workdir }}
         run: chmod +x ./gradlew
+
+      - name: Patch consumer to apply the plugin
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          module_build_kts="${{ matrix.module }}/build.gradle.kts"
+          module_build_groovy="${{ matrix.module }}/build.gradle"
+          if [ -f "$module_build_kts" ]; then
+            module_build="$module_build_kts"
+          elif [ -f "$module_build_groovy" ]; then
+            module_build="$module_build_groovy"
+          else
+            echo "::error::No build.gradle(.kts) found for module ${{ matrix.module }}"
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/bundle/ci/patch-consumer.py" \
+            --module-build "$module_build" \
+            --plugin-version "${{ env.PLUGIN_VERSION }}"
+          echo "--- patched $module_build ---"
+          head -20 "$module_build"
 
       - name: Discover previews via Gradle
         working-directory: external/${{ matrix.workdir }}
