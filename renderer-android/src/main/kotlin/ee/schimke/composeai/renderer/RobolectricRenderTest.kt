@@ -1,15 +1,20 @@
 package ee.schimke.composeai.renderer
 
-import android.content.res.Configuration
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.test.core.app.ApplicationProvider
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.RoborazziComposeOptions
+import com.github.takahirom.roborazzi.RoborazziComposeSetupOption
 import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.background
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.fontScale
+import com.github.takahirom.roborazzi.inspectionMode
+import com.github.takahirom.roborazzi.locale
+import com.github.takahirom.roborazzi.size
+import com.github.takahirom.roborazzi.uiMode
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Test
@@ -58,7 +63,9 @@ object PreviewManifestLoader {
  * Uses `roborazzi-compose`'s `captureRoboImage { @Composable }` overload, which
  * registers `RoborazziActivity` with Robolectric's ShadowPackageManager and drives
  * the composition without requiring `createComposeRule()` or a consumer-side
- * ui-test-manifest.
+ * ui-test-manifest. Per-preview width/height/fontScale/locale/uiMode/background
+ * are applied through [RoborazziComposeOptions]; it re-applies the Robolectric
+ * qualifiers around each capture so different previews render at different sizes.
  *
  * The content itself is produced by a [PreviewRenderStrategy] keyed off
  * [RenderPreviewParams.kind] — @Composable previews use the reflective Compose
@@ -68,33 +75,39 @@ object PreviewManifestLoader {
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry) {
 
+    @OptIn(ExperimentalRoborazziApi::class)
     @Test
     fun renderPreview() {
         val outputDir = File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
         val outputFile = File(outputDir, "${preview.id}.png")
         outputFile.parentFile?.mkdirs()
 
-        // Roborazzi's `applyDeviceCrop` crops to a circle when
-        // `resources.configuration.isScreenRound` is true. Flip the bit before
-        // capture for previews that target round Wear devices so we get the
-        // matching crop for free, instead of post-processing the bitmap.
-        if (isRoundDevice(preview.params.device) && preview.params.showSystemUi) {
-            val appContext = ApplicationProvider.getApplicationContext<android.content.Context>()
-            appContext.resources.configuration.screenLayout =
-                (appContext.resources.configuration.screenLayout and Configuration.SCREENLAYOUT_ROUND_MASK.inv()) or
-                    Configuration.SCREENLAYOUT_ROUND_YES
-        }
+        val params = preview.params
+        val widthDp = params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
+        val heightDp = params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
+        val isRound = isRoundDevice(params.device) && params.showSystemUi
+
+        val composeOptions = RoborazziComposeOptions.Builder().apply {
+            size(widthDp, heightDp)
+            if (isRound) addOption(RoundScreenOption)
+            if (params.fontScale != 1.0f) fontScale(params.fontScale)
+            if (params.uiMode != 0) uiMode(params.uiMode)
+            params.locale?.let { locale(it) }
+            background(params.showBackground, params.backgroundColor)
+            inspectionMode(true)
+        }.build()
 
         val roborazziOptions = RoborazziOptions(
-            recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = true),
+            recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
         )
 
-        val widthDp = preview.params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
-        val heightDp = preview.params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
-
-        captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions) {
+        captureRoboImage(
+            file = outputFile,
+            roborazziOptions = roborazziOptions,
+            roborazziComposeOptions = composeOptions,
+        ) {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                strategyFor(preview.params.kind).Render(preview, widthDp, heightDp)
+                strategyFor(params.kind).Render(preview, widthDp, heightDp)
             }
         }
     }
@@ -102,6 +115,18 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
     companion object {
         private const val DEFAULT_WIDTH = 400
         private const val DEFAULT_HEIGHT = 800
+    }
+}
+
+/**
+ * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
+ * true before capture — that's what Roborazzi's `applyDeviceCrop` keys off to
+ * produce a circular crop.
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+private object RoundScreenOption : RoborazziComposeSetupOption {
+    override fun configure(configBuilder: RoborazziComposeSetupOption.ConfigBuilder) {
+        configBuilder.addRobolectricQualifier("round")
     }
 }
 
