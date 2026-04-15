@@ -83,13 +83,9 @@ jobs:
               -Dorg.gradle.unsafe.isolated-projects=false
               -Dorg.gradle.isolated-projects=false
               --no-configuration-cache
-          - name: confetti
-            slug: confetti
-            repo: joreilly/Confetti
-            ref: main
-            workdir: .
-            module: androidApp
-            extra_gradle_args: --no-configuration-cache
+          # Confetti is pinned to AGP 8.x and our plugin requires AGP 9.x — skip
+          # until upstream upgrades (re-add here when libs.versions.toml shows
+          # agp = "9.x"). See https://github.com/joreilly/Confetti.
           - name: androidify
             slug: androidify
             repo: android/androidify

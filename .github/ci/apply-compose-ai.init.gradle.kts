@@ -26,7 +26,10 @@ initscript {
     // consumer loaded are not visible to our plugin, and AGP classes we load here
     // do not leak into the consumer. We therefore add AGP to the init classpath so
     // our plugin can resolve `com.android.build.api.dsl.CommonExtension` etc.
-    val agpVersion = System.getenv("COMPOSE_AI_AGP_VERSION") ?: "8.7.3"
+    // Must match the AGP version the plugin was compiled against (see
+    // gradle/libs.versions.toml). Our plugin only supports AGP 9.x consumers —
+    // the integration matrix filters out AGP 8.x projects for that reason.
+    val agpVersion = System.getenv("COMPOSE_AI_AGP_VERSION") ?: "9.1.0"
     repositories {
         mavenLocal()
         mavenCentral()
