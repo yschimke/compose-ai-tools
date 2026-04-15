@@ -99,3 +99,19 @@ private fun ConfigProbe() {
 fun ConfigProbePreview() {
     ConfigProbe()
 }
+
+@Preview(
+    name = "Phone",
+    device = "spec:width=411dp,height=891dp",
+    showSystemUi = true,
+)
+@Composable
+fun PhoneGreetingPreview() {
+    MaterialTheme {
+        Surface {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Greeting("Phone")
+            }
+        }
+    }
+}
