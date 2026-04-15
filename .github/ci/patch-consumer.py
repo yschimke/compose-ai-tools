@@ -25,14 +25,27 @@ from pathlib import Path
 
 PLUGIN_ID = "ee.schimke.composeai.preview"
 
-# A module build file is a candidate for patching if it applies any of these
-# plugin ids. Match either `id("…")`, `id '…'`, or the `alias(...)` shorthand
-# whose target happens to contain the id in its version-catalog declaration.
-TRIGGER_SUBSTRINGS = (
+# A module build file is a candidate for patching if its top-level
+# `plugins { }` block applies an Android or Compose-multiplatform plugin.
+# Match direct ids as well as convention-plugin aliases — Androidify uses
+# `alias(libs.plugins.androidify.androidApplication)`, for example, so the
+# literal `com.android.application` never appears in its build files.
+PLUGINS_BLOCK_RE = re.compile(
+    r"^plugins\s*\{([^}]*)\}",
+    re.MULTILINE | re.DOTALL,
+)
+
+DIRECT_IDS = (
     "com.android.application",
     "com.android.library",
     "org.jetbrains.compose",
-    "jetbrainsCompose",  # common alias name in version catalogs
+)
+
+# Convention-plugin alias patterns. We look for tokens that end with
+# `androidApplication`, `androidLibrary`, or `jetbrainsCompose` (case-sensitive,
+# camelCase boundary) inside the plugins block.
+ALIAS_RE = re.compile(
+    r"(?:\b|\.)(?:android(?:Application|Library)|jetbrainsCompose)\b",
 )
 
 
@@ -71,7 +84,13 @@ def is_candidate(path: Path) -> bool:
         text = path.read_text()
     except (OSError, UnicodeDecodeError):
         return False
-    return any(s in text for s in TRIGGER_SUBSTRINGS)
+    m = PLUGINS_BLOCK_RE.search(text)
+    if not m:
+        return False
+    block = m.group(1)
+    if any(s in block for s in DIRECT_IDS):
+        return True
+    return ALIAS_RE.search(block) is not None
 
 
 def walk_and_patch(root: Path, version: str) -> int:
