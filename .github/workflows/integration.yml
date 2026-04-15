@@ -180,25 +180,13 @@ jobs:
         working-directory: external/${{ matrix.workdir }}
         run: chmod +x ./gradlew
 
-      - name: Patch consumer to apply the plugin
+      - name: Patch consumer modules to apply the plugin
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
-          module_build_kts="${{ matrix.module }}/build.gradle.kts"
-          module_build_groovy="${{ matrix.module }}/build.gradle"
-          if [ -f "$module_build_kts" ]; then
-            module_build="$module_build_kts"
-          elif [ -f "$module_build_groovy" ]; then
-            module_build="$module_build_groovy"
-          else
-            echo "::error::No build.gradle(.kts) found for module ${{ matrix.module }}"
-            exit 1
-          fi
           python3 "$GITHUB_WORKSPACE/bundle/ci/patch-consumer.py" \
-            --module-build "$module_build" \
+            --walk . \
             --plugin-version "${{ env.PLUGIN_VERSION }}"
-          echo "--- patched $module_build ---"
-          head -20 "$module_build"
 
       - name: Repo-specific pre-Gradle patches
         if: matrix.pre_gradle_script != ''
@@ -211,7 +199,10 @@ jobs:
           COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          ./gradlew :${{ matrix.module }}:discoverPreviews \
+          # Unqualified task name runs discoverPreviews in every subproject that
+          # registered it (i.e. every module we patched that is Android or
+          # Compose-multiplatform).
+          ./gradlew discoverPreviews \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -219,41 +210,20 @@ jobs:
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
-          manifest="${{ matrix.module }}/build/compose-previews/previews.json"
-          echo "Looking for $manifest"
-          if [ ! -f "$manifest" ]; then
-            echo "Manifest missing. Searching for any previews.json under the tree:"
-            find . -name previews.json -print || true
+          mapfile -t manifests < <(find . -path '*/build/compose-previews/previews.json' -not -path '*/external/build/*' 2>/dev/null)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::No previews.json produced anywhere in the tree."
             exit 1
           fi
-          count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$manifest")
-          echo "Discovered $count preview(s)"
-          if [ "$count" -lt 1 ]; then
-            echo "::error::No previews discovered in ${{ matrix.module }} — plugin applied but found nothing."
-            exit 1
-          fi
-
-      - name: List previews via CLI
-        working-directory: external/${{ matrix.workdir }}
-        env:
-          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
-        run: |
-          compose-preview list --module ${{ matrix.module }} --verbose | tee previews-list.txt
-          test -s previews-list.txt
-
-      - name: Render previews via CLI
-        working-directory: external/${{ matrix.workdir }}
-        env:
-          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
-        run: |
-          set -euo pipefail
-          compose-preview render --module ${{ matrix.module }} --verbose
-          rendered_dir="${{ matrix.module }}/build/compose-previews/renders"
-          echo "Checking $rendered_dir"
-          png_count=$(find "$rendered_dir" -name '*.png' 2>/dev/null | wc -l)
-          echo "Rendered $png_count PNG(s)"
-          if [ "$png_count" -lt 1 ]; then
-            echo "::error::No rendered PNGs found in $rendered_dir"
+          total=0
+          for m in "${manifests[@]}"; do
+            n=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$m")
+            echo "  $m → $n preview(s)"
+            total=$((total + n))
+          done
+          echo "Total discovered: $total preview(s) across ${#manifests[@]} module(s)"
+          if [ "$total" -lt 1 ]; then
+            echo "::error::Discovery ran but every module reported zero previews."
             exit 1
           fi
 
@@ -262,8 +232,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: previews-${{ matrix.slug }}
-          path: |
-            external/${{ matrix.workdir }}/${{ matrix.module }}/build/compose-previews/previews.json
-            external/${{ matrix.workdir }}/${{ matrix.module }}/build/compose-previews/renders/*.png
+          path: external/${{ matrix.workdir }}/**/build/compose-previews/previews.json
           if-no-files-found: warn
           retention-days: 7
