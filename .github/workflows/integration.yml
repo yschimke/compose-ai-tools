@@ -232,6 +232,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: previews-${{ matrix.slug }}
-          path: external/${{ matrix.workdir }}/**/build/compose-previews/previews.json
+          path: external/**/build/compose-previews/previews.json
           if-no-files-found: warn
           retention-days: 7
