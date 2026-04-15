@@ -45,15 +45,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         private val PREVIEW_FQNS = setOf(
             "androidx.compose.ui.tooling.preview.Preview",
             "androidx.compose.desktop.ui.tooling.preview.Preview",
+            TILE_PREVIEW_FQN,
         )
         private val CONTAINER_FQNS = setOf(
             "androidx.compose.ui.tooling.preview.Preview\$Container",
             "androidx.compose.ui.tooling.preview.Preview.Container",
+            // Tiles @Preview is @Repeatable, so the compiler synthesises a
+            // `Preview.Container` too. Picking it up here lets us see every
+            // stacked tile preview (e.g. SMALL_ROUND + LARGE_ROUND on one fn).
+            "androidx.wear.tiles.tooling.preview.Preview\$Container",
+            "androidx.wear.tiles.tooling.preview.Preview.Container",
         )
         // androidx.compose.ui:ui-tooling-preview 1.11.0+ — wraps each preview in a custom
         // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
         // simply never surface the annotation and discovery is a no-op.
         private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
+
+        internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
     }
 
     @TaskAction
@@ -265,6 +273,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
     private fun extractPreviewParams(ann: AnnotationInfo, wrapperClassName: String?): PreviewParams {
         val pv = ann.parameterValues
+        val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE
         val device = (pv.getValue("device") as? String)?.ifBlank { null }
         val rawWidth = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
         val rawHeight = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 }
@@ -285,7 +294,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             uiMode = (pv.getValue("uiMode") as? Int)?.takeIf { it > 0 } ?: 0,
             locale = (pv.getValue("locale") as? String)?.ifBlank { null },
             group = (pv.getValue("group") as? String)?.ifBlank { null },
-            wrapperClassName = wrapperClassName,
+            // @PreviewWrapper targets composables. Tile previews aren't composable,
+            // so even if the annotation happened to be present on the function,
+            // the wrapper's `Wrap(content)` would never wrap the tile View.
+            wrapperClassName = if (kind == PreviewKind.TILE) null else wrapperClassName,
+            kind = kind,
         )
     }
 }

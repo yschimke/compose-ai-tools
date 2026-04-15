@@ -36,4 +36,14 @@ dependencies {
     implementation(libs.wear.compose.ui.tooling)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
+    // rendered via TilePreviewRenderer in renderer-android.
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.tiles.renderer)
+    implementation(libs.wear.tiles.tooling.preview)
+    implementation(libs.wear.protolayout)
+    implementation(libs.wear.protolayout.expression)
+    implementation(libs.wear.protolayout.material3)
+    implementation(libs.wear.tooling.preview)
 }
