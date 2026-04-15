@@ -13,7 +13,7 @@ Desktop (via `ImageComposeScene` + Skia).
 
 - A Gradle plugin (`ee.schimke.composeai.preview`) that discovers `@Preview`
   annotations from compiled classes and registers rendering tasks.
-- A `preview-cli` CLI (GraalVM native-image) that drives the Gradle build via the
+- A `compose-preview` CLI (GraalVM native-image) that drives the Gradle build via the
   Tooling API and surfaces rendered PNG paths.
 - A VS Code extension with a preview panel, CodeLens and hover actions on
   `@Preview` functions, and commands for rendering all or a single file.
@@ -36,7 +36,7 @@ The CLI auto-detects the Gradle project root (walks up for `gradlew`) and, by
 default, every module that has the plugin applied.
 
 ```
-preview-cli <command> [options]
+compose-preview <command> [options]
 
 Commands:
   show     Discover + render previews; print id, path, sha256, changed flag
@@ -70,13 +70,13 @@ invocation. State is persisted per-module under
 
 ## Workflow: iterate on a design
 
-1. **List** previews: `preview-cli list` (optionally `--filter <name>` or
+1. **List** previews: `compose-preview list` (optionally `--filter <name>` or
    `--id <exact>`).
-2. **Render** current state: `preview-cli show --json`. Each entry includes
+2. **Render** current state: `compose-preview show --json`. Each entry includes
    the absolute `pngPath`, its `sha256`, and a `changed` flag relative to the
    previous invocation — read the PNG to view the image.
 3. **Edit** the composable.
-4. **Re-render**: `preview-cli show --json` again. Gradle task caching reruns
+4. **Re-render**: `compose-preview show --json` again. Gradle task caching reruns
    only what changed; agents can inspect `changed: true` entries to know
    which PNGs need re-reading, avoiding wasted reads of unchanged images.
 5. **Verify visually** — always read the PNG after a UI change. Don't assume
