@@ -1,17 +1,11 @@
 package ee.schimke.composeai.renderer
 
 import android.content.res.Configuration
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -65,6 +59,10 @@ object PreviewManifestLoader {
  * registers `RoborazziActivity` with Robolectric's ShadowPackageManager and drives
  * the composition without requiring `createComposeRule()` or a consumer-side
  * ui-test-manifest.
+ *
+ * The content itself is produced by a [PreviewRenderStrategy] keyed off
+ * [RenderPreviewParams.kind] — @Composable previews use the reflective Compose
+ * strategy, tile previews route through [TilePreviewComposable].
  */
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -87,60 +85,24 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                     Configuration.SCREENLAYOUT_ROUND_YES
         }
 
-        val bgColor = when {
-            preview.params.backgroundColor != 0L -> Color(preview.params.backgroundColor.toInt())
-            preview.params.showBackground -> Color.White
-            else -> Color.Transparent
-        }
-
         val roborazziOptions = RoborazziOptions(
             recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = true),
         )
 
+        val widthDp = preview.params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
+        val heightDp = preview.params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
+
         captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions) {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                val clazz = Class.forName(preview.className)
-                val composableMethod = clazz.getDeclaredComposableMethod(preview.functionName)
-                val body: @Composable () -> Unit = {
-                    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-                        InvokeComposable(composableMethod, null)
-                    }
-                }
-                val wrapperFqn = preview.params.wrapperClassName
-                if (wrapperFqn != null) {
-                    InvokeWrappedComposable(wrapperFqn, body)
-                } else {
-                    body()
-                }
+                strategyFor(preview.params.kind).Render(preview, widthDp, heightDp)
             }
         }
     }
-}
 
-@Composable
-private fun InvokeComposable(
-    composableMethod: ComposableMethod,
-    instance: Any?,
-) {
-    composableMethod.invoke(currentComposer, instance)
-}
-
-/**
- * Reflectively instantiates the `PreviewWrapperProvider` identified by [wrapperFqn]
- * and invokes its `Wrap(content)` composable around [body].
- *
- * `PreviewWrapperProvider.Wrap(content: @Composable () -> Unit)` compiles to
- * `Wrap(Function2, Composer, int)` at the bytecode level — [getDeclaredComposableMethod]
- * handles the synthetic Composer/changed args, so we look the method up by the
- * content parameter's JVM type.
- */
-@Composable
-private fun InvokeWrappedComposable(
-    wrapperFqn: String,
-    body: @Composable () -> Unit,
-) {
-    val resolved = remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
-    resolved.first.invoke(currentComposer, resolved.second, body)
+    companion object {
+        private const val DEFAULT_WIDTH = 400
+        private const val DEFAULT_HEIGHT = 800
+    }
 }
 
 internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {

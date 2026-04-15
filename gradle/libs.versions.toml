@@ -7,6 +7,9 @@ compose-bom = "2026.03.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
 wear-compose = "1.6.0"
+wear-tiles = "1.6.0"
+wear-protolayout = "1.4.0"
+wear-tooling-preview = "1.0.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
@@ -25,6 +28,14 @@ activity-compose = { module = "androidx.activity:activity-compose", version.ref 
 wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wear-compose" }
 wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wear-compose" }
 wear-compose-ui-tooling = { module = "androidx.wear.compose:compose-ui-tooling", version.ref = "wear-compose" }
+wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wear-tiles" }
+wear-tiles-renderer = { module = "androidx.wear.tiles:tiles-renderer", version.ref = "wear-tiles" }
+wear-tiles-tooling = { module = "androidx.wear.tiles:tiles-tooling", version.ref = "wear-tiles" }
+wear-tiles-tooling-preview = { module = "androidx.wear.tiles:tiles-tooling-preview", version.ref = "wear-tiles" }
+wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
+wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
+wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
+wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }

@@ -14,6 +14,10 @@ object DeviceDimensions {
         "id:pixel_tablet" to DeviceSpec(1280, 800),
         "id:wearos_small_round" to DeviceSpec(192, 192),
         "id:wearos_large_round" to DeviceSpec(227, 227),
+        // WearDevices constants from androidx.wear.tooling.preview.devices —
+        // used by @androidx.wear.tiles.tooling.preview.Preview.
+        "id:wearos_square" to DeviceSpec(180, 180),
+        "id:wearos_rect" to DeviceSpec(201, 238),
     )
 
     val DEFAULT = DeviceSpec(400, 800)

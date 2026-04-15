@@ -2,6 +2,11 @@ package ee.schimke.composeai.renderer
 
 import kotlinx.serialization.Serializable
 
+enum class PreviewKind {
+    COMPOSE,
+    TILE,
+}
+
 @Serializable
 data class RenderManifest(
     val module: String,
@@ -34,4 +39,5 @@ data class RenderPreviewParams(
     val group: String? = null,
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
+    val kind: PreviewKind = PreviewKind.COMPOSE,
 )
