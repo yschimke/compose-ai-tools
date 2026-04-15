@@ -103,13 +103,35 @@ jobs:
             workdir: .
             module: app
             extra_gradle_args: --no-configuration-cache
-          - name: people-in-space
-            slug: people-in-space
-            repo: joreilly/PeopleInSpace
-            ref: main
-            workdir: .
-            module: app
-            extra_gradle_args: --no-configuration-cache
+            # Firebase Crashlytics + Google Services need a real
+            # google-services.json that we don't ship. Comment the aliases
+            # and the CrashlyticsExtension configure block out.
+            pre_gradle_script: |
+              python3 - <<'PY'
+              import re
+              from pathlib import Path
+              p = Path("app/build.gradle.kts")
+              t = p.read_text()
+              for line in (
+                  "alias(libs.plugins.google.services)",
+                  "alias(libs.plugins.crashlytics)",
+                  "import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension",
+                  "implementation(libs.firebase.crashlytics)",
+              ):
+                  t = t.replace(line, f"// {line} // disabled for integration CI")
+              t = re.sub(
+                  r"[ \t]*configure<CrashlyticsExtension>\s*\{[^}]*\}\s*\n",
+                  "\n",
+                  t,
+              )
+              p.write_text(t)
+              print(f"patched {p}")
+              PY
+          # PeopleInSpace is a KMP project — the :app module is a thin Android
+          # wrapper with no @Preview functions; all Compose UI lives in the
+          # :common KMP module. Targeting :common needs KMP-Android-target
+          # handling we don't have yet. Re-add once the plugin supports KMP
+          # Android source sets cleanly.
     steps:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@v4
@@ -175,6 +197,11 @@ jobs:
             --plugin-version "${{ env.PLUGIN_VERSION }}"
           echo "--- patched $module_build ---"
           head -20 "$module_build"
+
+      - name: Repo-specific pre-Gradle patches
+        if: matrix.pre_gradle_script != ''
+        working-directory: external/${{ matrix.workdir }}
+        run: ${{ matrix.pre_gradle_script }}
 
       - name: Discover previews via Gradle
         working-directory: external/${{ matrix.workdir }}
