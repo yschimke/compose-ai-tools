@@ -1,7 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import android.content.Context
-import android.view.ContextThemeWrapper
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -83,37 +83,31 @@ private fun renderTileInto(
         ?.layout
         ?: error("TilePreview '${preview.functionName}' produced no layout (empty timeline)")
 
-    // `TileRenderer.<init>` builds a default `ProtoLayoutTheme` against the passed
-    // context's current theme — and that theme must define the `ProtoLayout*FontFamily`
-    // attrs. The Robolectric host activity uses `Theme_Material_Light_NoActionBar`, which
-    // doesn't; wrap with `ProtoLayoutBaseTheme` (from protolayout-renderer) instead.
-    // This mirrors what `tiles-tooling`'s preview adapter does under the hood.
-    val themedContext = ContextThemeWrapper(context, protoLayoutBaseThemeResId(context))
-
     // Inline executor — Robolectric has the main looper paused, so posting
     // to a background thread and awaiting back on main would deadlock. Inflating
     // on the caller thread completes before the future leaves the method.
-    val renderer = TileRenderer(themedContext, Runnable::run) { _ -> /* no-op loader */ }
-    val future = renderer.inflateAsync(layout, resources, parent)
-    future.get(10, TimeUnit.SECONDS)
+    //
+    // `TileRenderer` builds its default `ProtoLayoutTheme` from
+    // `R.style.ProtoLayoutBaseTheme` via `context.getResources()`. That style
+    // ships with `protolayout-renderer`'s AAR — it resolves correctly here
+    // because the Gradle plugin puts AGP's `unit_test_config_directory` on
+    // the renderer test classpath, so Robolectric loads the merged resource
+    // APK containing every AAR's resources (including the tile theme). Without
+    // that, every `getIdentifier` returns 0 and `TileRenderer` crashes with
+    // `Unknown resource value type 0`.
+    val renderer = TileRenderer(context, Runnable::run) { _ -> /* no-op loader */ }
+    val view = renderer.inflateAsync(layout, resources, parent)
+        .get(10, TimeUnit.SECONDS)
         ?: error("TileRenderer returned no view for preview '${preview.functionName}'")
-}
 
-/**
- * Resolves `ProtoLayoutBaseTheme` by name — avoids a compile-time dep on the
- * `protolayout-renderer` R class. Resources are looked up via `getIdentifier`,
- * which returns 0 if the style isn't present; in that case we fall through to
- * the host theme and let TileRenderer fail loudly with its own error.
- */
-private fun protoLayoutBaseThemeResId(context: Context): Int {
-    val id = context.resources.getIdentifier(
-        "ProtoLayoutBaseTheme",
-        "style",
-        "androidx.wear.protolayout.renderer",
-    )
-    if (id != 0) return id
-    // Fallback — return 0 means ContextThemeWrapper leaves the theme untouched.
-    return 0
+    // Tile inflation defaults to WRAP_CONTENT, which collapses against an
+    // AndroidView that's still measuring. Mirror `TileServiceViewAdapter`:
+    // centre the inflated tile and give it explicit MATCH_PARENT layout.
+    (view.layoutParams as? FrameLayout.LayoutParams)?.apply {
+        width = ViewGroup.LayoutParams.MATCH_PARENT
+        height = ViewGroup.LayoutParams.MATCH_PARENT
+        gravity = Gravity.CENTER
+    }
 }
 
 private fun invokeTilePreviewFunction(

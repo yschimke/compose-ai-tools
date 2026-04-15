@@ -107,6 +107,20 @@ internal object AndroidPreviewSupport {
                 // dirs are on disk.
             }
 
+            // AGP's `generate${Variant}UnitTestConfig` task emits
+            // `com/android/tools/test_config.properties` under
+            // `intermediates/unit_test_config_directory/<variant>UnitTest/.../out/`.
+            // Robolectric loads it from the classpath and uses it to find the merged
+            // resource APK (`apk-for-local-test.ap_`) — the one that contains every
+            // AAR's merged resources (protolayout-renderer's `ProtoLayoutBaseTheme`
+            // etc.). Without this directory on the classpath, `getIdentifier` returns
+            // 0 for any library-provided style and TileRenderer's theme construction
+            // explodes on `Unknown resource value type 0`. Compose-only previews
+            // don't read AAR resources, which is why this only surfaced with tiles.
+            val unitTestConfigDir = project.layout.buildDirectory.dir(
+                "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
+            )
+
             // Renderer classpath FIRST — renderer depends on kotlinx-serialization
             // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
             // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
@@ -127,6 +141,7 @@ internal object AndroidPreviewSupport {
                     }.files)
                 }
                 from(sourceClassDirs)
+                from(unitTestConfigDir)
                 // SDK stub android.jar on the OUTER classpath so JUnit can introspect
                 // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
                 // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
