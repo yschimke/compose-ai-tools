@@ -35,4 +35,7 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
+    implementation(libs.ui.test.junit4)
+    implementation(libs.ui.test.manifest)
+    implementation(libs.roborazzi)
 }

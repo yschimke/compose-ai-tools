@@ -28,6 +28,15 @@ internal object AndroidPreviewSupport {
             }
         }
 
+        // createComposeRule() launches androidx.activity.ComponentActivity via
+        // ActivityScenario. That activity must be declared in the consumer's
+        // merged test manifest — ui-test-manifest is the AAR that ships it.
+        // Adding eagerly (not inside finalizeDsl) because AGP freezes test
+        // component configuration before afterEvaluate.
+        if (extension.enabled.get()) {
+            project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-manifest")
+        }
+
         // Register render tasks once, for the variant the user picked. onVariants
         // fires after AGP has created variant-specific configurations like
         // `${variant}UnitTestRuntimeClasspath`, so everything we need is there.
@@ -121,6 +130,10 @@ internal object AndroidPreviewSupport {
                 }.files)
                 from(rendererClassDirs)
                 from(sourceClassDirs)
+                // Robolectric reads com/android/tools/test_config.properties as a
+                // classpath resource to locate the merged unit-test manifest (which
+                // declares androidx.activity.ComponentActivity for createComposeRule).
+                from(project.layout.buildDirectory.dir("intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"))
                 // SDK stub android.jar on the OUTER classpath so JUnit can introspect
                 // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
                 // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
