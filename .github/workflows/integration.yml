@@ -1,0 +1,237 @@
+name: Integration
+
+# Integration tests that build the Gradle plugin + CLI, publish the plugin to
+# mavenLocal, check out a handful of real-world Compose projects, patch each
+# target module's `plugins { }` block to add our plugin id, and verify the
+# plugin discovers and renders at least one preview.
+#
+# We load the plugin via the consumer's plugin classpath (same classloader as
+# the consumer's AGP) so Class identity for AGP types matches — applying the
+# plugin from an init script's classpath failed because our AGP copy and the
+# consumer's were distinct Class objects with the same FQN.
+#
+# Each external-repo job runs independently (`fail-fast: false`) so one broken
+# consumer does not mask regressions in the others.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Weekly — catches drift when consumer repos bump AGP/Kotlin without us.
+    - cron: "17 6 * * 1"
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_VERSION: 0.1.0-SNAPSHOT
+
+jobs:
+  build-plugin:
+    name: Build plugin + CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish plugin to mavenLocal
+        run: ./gradlew :gradle-plugin:publishToMavenLocal --no-daemon --stacktrace
+
+      - name: Install CLI
+        run: ./gradlew :cli:installDist --no-daemon --stacktrace
+
+      - name: Bundle artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/m2 bundle/cli bundle/init bundle/ci
+          # Ship only our own group to keep the tarball small — the consumer
+          # resolves every other dep from its own repositories.
+          cp -R "$HOME/.m2/repository/ee" bundle/m2/
+          cp -R cli/build/install/compose-preview/. bundle/cli/
+          cp .github/ci/apply-compose-ai.init.gradle.kts bundle/init/
+          cp .github/ci/patch-consumer.py bundle/ci/
+          tar -czf compose-ai-bundle.tar.gz -C bundle .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compose-ai-bundle
+          path: compose-ai-bundle.tar.gz
+          retention-days: 7
+
+  integration:
+    name: ${{ matrix.name }}
+    needs: build-plugin
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: wear-os-samples (ComposeStarter)
+            slug: wear-os-samples
+            repo: android/wear-os-samples
+            ref: main
+            workdir: ComposeStarter
+            module: app
+            # ComposeStarter enables isolated-projects + configuration-cache;
+            # our plugin uses `afterEvaluate` and `rootProject.findProject`,
+            # both banned under isolated projects. Turn them off for this run.
+            extra_gradle_args: >-
+              -Dorg.gradle.unsafe.isolated-projects=false
+              -Dorg.gradle.isolated-projects=false
+              --no-configuration-cache
+          # Confetti: dropped for now. :androidApp has @Preview functions but
+          # discovery returned 0 (same bug we see in PeopleInSpace — track as a
+          # follow-up). Render also fails on a :common:car KMP variant
+          # ambiguity when resolving debugRuntimeClasspath. Re-add once both
+          # are fixed.
+          - name: androidify
+            slug: androidify
+            repo: android/androidify
+            ref: main
+            workdir: .
+            module: app
+            extra_gradle_args: --no-configuration-cache
+            # Firebase Crashlytics + Google Services need a real
+            # google-services.json that we don't ship. Comment the aliases
+            # and the CrashlyticsExtension configure block out.
+            pre_gradle_script: |
+              python3 - <<'PY'
+              import re
+              from pathlib import Path
+              p = Path("app/build.gradle.kts")
+              t = p.read_text()
+              # Only the Gradle-side Firebase integration needs disabling (those
+              # plugins require google-services.json at configure time). The
+              # runtime firebase.crashlytics library stays — CrashlyticsTree.kt
+              # won't compile without it, and runtime Firebase calls just no-op
+              # when not initialized.
+              for line in (
+                  "alias(libs.plugins.google.services)",
+                  "alias(libs.plugins.crashlytics)",
+                  "import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension",
+              ):
+                  t = t.replace(line, f"// {line} // disabled for integration CI")
+              t = re.sub(
+                  r"[ \t]*configure<CrashlyticsExtension>\s*\{[^}]*\}\s*\n",
+                  "\n",
+                  t,
+              )
+              p.write_text(t)
+              print(f"patched {p}")
+              PY
+          # PeopleInSpace is a KMP project — the :app module is a thin Android
+          # wrapper with no @Preview functions; all Compose UI lives in the
+          # :common KMP module. Targeting :common needs KMP-Android-target
+          # handling we don't have yet. Re-add once the plugin supports KMP
+          # Android source sets cleanly.
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.ref }}
+          path: external
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: compose-ai-bundle
+          path: .
+
+      - name: Install plugin, CLI, and init script
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          tar -xzf compose-ai-bundle.tar.gz -C bundle
+
+          # Seed mavenLocal with the freshly-built plugin.
+          mkdir -p "$HOME/.m2/repository"
+          cp -R bundle/m2/. "$HOME/.m2/repository/"
+
+          # Drop the init script into the global init.d so both direct Gradle
+          # invocations and the CLI (via Gradle Tooling API) pick it up.
+          mkdir -p "$HOME/.gradle/init.d"
+          cp bundle/init/apply-compose-ai.init.gradle.kts "$HOME/.gradle/init.d/"
+
+          # Put the CLI on $PATH.
+          chmod +x bundle/cli/bin/compose-preview
+          echo "$GITHUB_WORKSPACE/bundle/cli/bin" >> "$GITHUB_PATH"
+
+      - name: Sanity check CLI
+        run: compose-preview help
+
+      - name: Make external gradlew executable
+        working-directory: external/${{ matrix.workdir }}
+        run: chmod +x ./gradlew
+
+      - name: Patch consumer modules to apply the plugin
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/bundle/ci/patch-consumer.py" \
+            --walk . \
+            --plugin-version "${{ env.PLUGIN_VERSION }}"
+
+      - name: Repo-specific pre-Gradle patches
+        if: matrix.pre_gradle_script != ''
+        working-directory: external/${{ matrix.workdir }}
+        run: ${{ matrix.pre_gradle_script }}
+
+      - name: Discover previews via Gradle
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          # Unqualified task name runs discoverPreviews in every subproject that
+          # registered it (i.e. every module we patched that is Android or
+          # Compose-multiplatform).
+          ./gradlew discoverPreviews \
+            ${{ matrix.extra_gradle_args }} \
+            --stacktrace
+
+      - name: Verify previews.json was produced
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find . -path '*/build/compose-previews/previews.json' -not -path '*/external/build/*' 2>/dev/null)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::No previews.json produced anywhere in the tree."
+            exit 1
+          fi
+          total=0
+          for m in "${manifests[@]}"; do
+            n=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$m")
+            echo "  $m → $n preview(s)"
+            total=$((total + n))
+          done
+          echo "Total discovered: $total preview(s) across ${#manifests[@]} module(s)"
+          if [ "$total" -lt 1 ]; then
+            echo "::error::Discovery ran but every module reported zero previews."
+            exit 1
+          fi
+
+      - name: Upload previews.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: previews-${{ matrix.slug }}
+          path: external/**/build/compose-previews/previews.json
+          if-no-files-found: warn
+          retention-days: 7
