@@ -28,15 +28,6 @@ internal object AndroidPreviewSupport {
             }
         }
 
-        // createComposeRule() launches androidx.activity.ComponentActivity via
-        // ActivityScenario. That activity must be declared in the consumer's
-        // merged test manifest — ui-test-manifest is the AAR that ships it.
-        // Adding eagerly (not inside finalizeDsl) because AGP freezes test
-        // component configuration before afterEvaluate.
-        if (extension.enabled.get()) {
-            project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-manifest")
-        }
-
         // Register render tasks once, for the variant the user picked. onVariants
         // fires after AGP has created variant-specific configurations like
         // `${variant}UnitTestRuntimeClasspath`, so everything we need is there.
@@ -116,7 +107,17 @@ internal object AndroidPreviewSupport {
                 // dirs are on disk.
             }
 
+            // Renderer classpath FIRST — renderer depends on kotlinx-serialization
+            // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
+            // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
+            // doesn't do conflict resolution, so whichever JAR comes first wins at
+            // classload time. Putting the renderer's dependencies first ensures the
+            // test code gets the versions it was compiled against.
             val resolvedClasspath = project.files().apply {
+                from(rendererConfig.incoming.artifactView {
+                    attributes.attribute(artifactType, "jar")
+                }.files)
+                from(rendererClassDirs)
                 if (testConfig != null) {
                     from(testConfig.incoming.artifactView {
                         attributes.attribute(artifactType, "jar")
@@ -125,15 +126,7 @@ internal object AndroidPreviewSupport {
                         attributes.attribute(artifactType, "android-classes")
                     }.files)
                 }
-                from(rendererConfig.incoming.artifactView {
-                    attributes.attribute(artifactType, "jar")
-                }.files)
-                from(rendererClassDirs)
                 from(sourceClassDirs)
-                // Robolectric reads com/android/tools/test_config.properties as a
-                // classpath resource to locate the merged unit-test manifest (which
-                // declares androidx.activity.ComponentActivity for createComposeRule).
-                from(project.layout.buildDirectory.dir("intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"))
                 // SDK stub android.jar on the OUTER classpath so JUnit can introspect
                 // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
                 // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
@@ -225,25 +218,19 @@ internal object AndroidPreviewSupport {
                     "--add-opens=java.base/java.nio=ALL-UNNAMED",
                 )
 
-                // Configure Robolectric via system properties instead of @Config/@GraphicsMode
-                // annotations — annotations trigger eager android.app.Application resolution
-                // before the sandbox classloader exists.
-                // Graphics + looper modes plumbed via system properties rather than
-                // `@GraphicsMode` / `@LooperMode` annotations — historically the annotation
-                // path was suspected of eagerly resolving `android.app.Application` before
-                // the sandbox classloader was up. With NATIVE/PAUSED fixed in code via
-                // `@GraphicsMode(NATIVE)` on the test class we could drop these, but they
-                // are cheap and act as belt-and-suspenders.
+                // Belt-and-suspenders for the graphics/looper modes — the test class
+                // already pins `@GraphicsMode(NATIVE)`, but if those annotations ever
+                // regress to eager resolution we still want NATIVE/PAUSED.
                 systemProperty("robolectric.graphicsMode", "NATIVE")
                 systemProperty("robolectric.looperMode", "PAUSED")
-                // `robolectric.pixelCopyRenderMode=hardware` routes ShadowPixelCopy through
-                // `HardwareRenderingScreenshot` → `ImageReader` + `HardwareRenderer.syncAndDraw`,
-                // which is the only path that replays Compose's RenderNodes correctly. The
-                // legacy `robolectric.screenshot.hwrdr.native` flag (pre-4.10) is no longer
-                // read. The test class pins `@Config(sdk = [34])` because Robolectric 4.16.1
-                // stops shadowing `nativeCreatePlanes` above API 34, so capturing against
-                // SDK 35+ returns an Image with `planes[0] == null`.
+                // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
+                // ImageReader + HardwareRenderer.syncAndDraw, the only path that
+                // replays Compose's RenderNodes correctly.
                 systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+                // Roborazzi defaults to "compare" mode (which doesn't write pixels
+                // unless the expected baseline exists). Force "record" so every run
+                // writes fresh PNGs.
+                systemProperty("roborazzi.test.record", "true")
 
                 systemProperty("composeai.render.manifest", manifestFile.get())
                 systemProperty("composeai.render.outputDir", rendersDir.get())

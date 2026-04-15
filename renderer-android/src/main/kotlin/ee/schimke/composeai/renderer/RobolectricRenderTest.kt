@@ -1,6 +1,6 @@
 package ee.schimke.composeai.renderer
 
-import android.graphics.Bitmap
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,12 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.test.core.app.ApplicationProvider
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
-import java.io.FileOutputStream
 import kotlinx.serialization.json.Json
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
@@ -61,28 +60,47 @@ object PreviewManifestLoader {
  * the `@RunWith` + `@Parameters` wiring. [RobolectricRenderTest] is the default
  * single-class entry; the plugin generates `RobolectricRenderTest_ShardN` subclasses
  * when `composeAiPreview.shards > 1`.
+ *
+ * Uses `roborazzi-compose`'s `captureRoboImage { @Composable }` overload, which
+ * registers `RoborazziActivity` with Robolectric's ShadowPackageManager and drives
+ * the composition without requiring `createComposeRule()` or a consumer-side
+ * ui-test-manifest.
  */
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry) {
 
-    @get:Rule
-    val composeTestRule = createComposeRule()
-
     @Test
     fun renderPreview() {
-        composeTestRule.setContent {
+        val outputDir = File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
+        val outputFile = File(outputDir, "${preview.id}.png")
+        outputFile.parentFile?.mkdirs()
+
+        // Roborazzi's `applyDeviceCrop` crops to a circle when
+        // `resources.configuration.isScreenRound` is true. Flip the bit before
+        // capture for previews that target round Wear devices so we get the
+        // matching crop for free, instead of post-processing the bitmap.
+        if (isRoundDevice(preview.params.device) && preview.params.showSystemUi) {
+            val appContext = ApplicationProvider.getApplicationContext<android.content.Context>()
+            appContext.resources.configuration.screenLayout =
+                (appContext.resources.configuration.screenLayout and Configuration.SCREENLAYOUT_ROUND_MASK.inv()) or
+                    Configuration.SCREENLAYOUT_ROUND_YES
+        }
+
+        val bgColor = when {
+            preview.params.backgroundColor != 0L -> Color(preview.params.backgroundColor.toInt())
+            preview.params.showBackground -> Color.White
+            else -> Color.Transparent
+        }
+
+        val roborazziOptions = RoborazziOptions(
+            recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = true),
+        )
+
+        captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions) {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 val clazz = Class.forName(preview.className)
-                // @PreviewWrapper(Provider::class) — instantiate the provider reflectively
-                // and wrap the composable body so preview-only scaffolding (themes,
-                // CompositionLocals, insets) is applied consistently with the IDE preview.
                 val composableMethod = clazz.getDeclaredComposableMethod(preview.functionName)
-                val bgColor = when {
-                    preview.params.backgroundColor != 0L -> Color(preview.params.backgroundColor.toInt())
-                    preview.params.showBackground -> Color.White
-                    else -> Color.Transparent
-                }
                 val body: @Composable () -> Unit = {
                     Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
                         InvokeComposable(composableMethod, null)
@@ -96,31 +114,6 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 }
             }
         }
-
-        composeTestRule.waitForIdle()
-
-        val outputDir = File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
-        val outputFile = File(outputDir, "${preview.id}.png")
-        outputFile.parentFile?.mkdirs()
-
-        val tempFile = File.createTempFile("roborazzi", ".png")
-        val rootNode = composeTestRule.onAllNodes(androidx.compose.ui.test.isRoot())[0]
-        rootNode.captureRoboImage(tempFile.absolutePath)
-        val bitmap = android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath)
-        tempFile.delete()
-
-        val finalBitmap = if (isRoundDevice(preview.params.device) && preview.params.showSystemUi) {
-            val clipped = applyCircularClip(bitmap)
-            bitmap.recycle()
-            clipped
-        } else {
-            bitmap
-        }
-
-        FileOutputStream(outputFile).use { fos ->
-            finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
-        }
-        finalBitmap.recycle()
     }
 }
 
