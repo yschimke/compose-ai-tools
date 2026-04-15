@@ -89,13 +89,11 @@ jobs:
               -Dorg.gradle.unsafe.isolated-projects=false
               -Dorg.gradle.isolated-projects=false
               --no-configuration-cache
-          - name: confetti
-            slug: confetti
-            repo: joreilly/Confetti
-            ref: main
-            workdir: .
-            module: androidApp
-            extra_gradle_args: --no-configuration-cache
+          # Confetti: dropped for now. :androidApp has @Preview functions but
+          # discovery returned 0 (same bug we see in PeopleInSpace — track as a
+          # follow-up). Render also fails on a :common:car KMP variant
+          # ambiguity when resolving debugRuntimeClasspath. Re-add once both
+          # are fixed.
           - name: androidify
             slug: androidify
             repo: android/androidify
@@ -112,11 +110,15 @@ jobs:
               from pathlib import Path
               p = Path("app/build.gradle.kts")
               t = p.read_text()
+              # Only the Gradle-side Firebase integration needs disabling (those
+              # plugins require google-services.json at configure time). The
+              # runtime firebase.crashlytics library stays — CrashlyticsTree.kt
+              # won't compile without it, and runtime Firebase calls just no-op
+              # when not initialized.
               for line in (
                   "alias(libs.plugins.google.services)",
                   "alias(libs.plugins.crashlytics)",
                   "import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension",
-                  "implementation(libs.firebase.crashlytics)",
               ):
                   t = t.replace(line, f"// {line} // disabled for integration CI")
               t = re.sub(
