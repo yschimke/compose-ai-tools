@@ -1,0 +1,207 @@
+name: Integration
+
+# Integration tests that build the Gradle plugin + CLI, publish the plugin to
+# mavenLocal, then check out a handful of real-world Compose projects, apply
+# the plugin via an init script (no fork/patch required on the consumer) and
+# verify the CLI discovers and renders at least one preview.
+#
+# Each external-repo job runs independently (`fail-fast: false`) so one broken
+# consumer does not mask regressions in the others.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Weekly — catches drift when consumer repos bump AGP/Kotlin without us.
+    - cron: "17 6 * * 1"
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_VERSION: 0.1.0-SNAPSHOT
+
+jobs:
+  build-plugin:
+    name: Build plugin + CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish plugin to mavenLocal
+        run: ./gradlew :gradle-plugin:publishToMavenLocal --no-daemon --stacktrace
+
+      - name: Install CLI
+        run: ./gradlew :cli:installDist --no-daemon --stacktrace
+
+      - name: Bundle artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/m2 bundle/cli bundle/init
+          # Ship only our own group to keep the tarball small — the consumer
+          # resolves every other dep from its own repositories.
+          cp -R "$HOME/.m2/repository/ee" bundle/m2/
+          cp -R cli/build/install/compose-preview/. bundle/cli/
+          cp .github/ci/apply-compose-ai.init.gradle.kts bundle/init/
+          tar -czf compose-ai-bundle.tar.gz -C bundle .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compose-ai-bundle
+          path: compose-ai-bundle.tar.gz
+          retention-days: 7
+
+  integration:
+    name: ${{ matrix.name }}
+    needs: build-plugin
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: wear-os-samples (ComposeStarter)
+            slug: wear-os-samples
+            repo: android/wear-os-samples
+            ref: main
+            workdir: ComposeStarter
+            module: app
+            # ComposeStarter enables isolated-projects + configuration-cache;
+            # our plugin uses `afterEvaluate` and `rootProject.findProject`,
+            # both banned under isolated projects. Turn them off for this run.
+            extra_gradle_args: >-
+              -Dorg.gradle.unsafe.isolated-projects=false
+              -Dorg.gradle.isolated-projects=false
+              --no-configuration-cache
+          - name: confetti
+            slug: confetti
+            repo: joreilly/Confetti
+            ref: main
+            workdir: .
+            module: androidApp
+            extra_gradle_args: --no-configuration-cache
+          - name: androidify
+            slug: androidify
+            repo: android/androidify
+            ref: main
+            workdir: .
+            module: app
+            extra_gradle_args: --no-configuration-cache
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.ref }}
+          path: external
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: compose-ai-bundle
+          path: .
+
+      - name: Install plugin, CLI, and init script
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          tar -xzf compose-ai-bundle.tar.gz -C bundle
+
+          # Seed mavenLocal with the freshly-built plugin.
+          mkdir -p "$HOME/.m2/repository"
+          cp -R bundle/m2/. "$HOME/.m2/repository/"
+
+          # Drop the init script into the global init.d so both direct Gradle
+          # invocations and the CLI (via Gradle Tooling API) pick it up.
+          mkdir -p "$HOME/.gradle/init.d"
+          cp bundle/init/apply-compose-ai.init.gradle.kts "$HOME/.gradle/init.d/"
+
+          # Put the CLI on $PATH.
+          chmod +x bundle/cli/bin/compose-preview
+          echo "$GITHUB_WORKSPACE/bundle/cli/bin" >> "$GITHUB_PATH"
+
+      - name: Sanity check CLI
+        run: compose-preview help
+
+      - name: Make external gradlew executable
+        working-directory: external/${{ matrix.workdir }}
+        run: chmod +x ./gradlew
+
+      - name: Discover previews via Gradle
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew :${{ matrix.module }}:discoverPreviews \
+            ${{ matrix.extra_gradle_args }} \
+            --stacktrace
+
+      - name: Verify previews.json was produced
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          manifest="${{ matrix.module }}/build/compose-previews/previews.json"
+          echo "Looking for $manifest"
+          if [ ! -f "$manifest" ]; then
+            echo "Manifest missing. Searching for any previews.json under the tree:"
+            find . -name previews.json -print || true
+            exit 1
+          fi
+          count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$manifest")
+          echo "Discovered $count preview(s)"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::No previews discovered in ${{ matrix.module }} — plugin applied but found nothing."
+            exit 1
+          fi
+
+      - name: List previews via CLI
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
+        run: |
+          compose-preview list --module ${{ matrix.module }} --verbose | tee previews-list.txt
+          test -s previews-list.txt
+
+      - name: Render previews via CLI
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
+        run: |
+          set -euo pipefail
+          compose-preview render --module ${{ matrix.module }} --verbose
+          rendered_dir="${{ matrix.module }}/build/compose-previews/renders"
+          echo "Checking $rendered_dir"
+          png_count=$(find "$rendered_dir" -name '*.png' 2>/dev/null | wc -l)
+          echo "Rendered $png_count PNG(s)"
+          if [ "$png_count" -lt 1 ]; then
+            echo "::error::No rendered PNGs found in $rendered_dir"
+            exit 1
+          fi
+
+      - name: Upload previews.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: previews-${{ matrix.slug }}
+          path: |
+            external/${{ matrix.workdir }}/${{ matrix.module }}/build/compose-previews/previews.json
+            external/${{ matrix.workdir }}/${{ matrix.module }}/build/compose-previews/renders/*.png
+          if-no-files-found: warn
+          retention-days: 7
