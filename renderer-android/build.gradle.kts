@@ -37,4 +37,14 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.roborazzi)
     implementation(libs.roborazzi.compose)
+
+    // Tiles rendering is reflection-driven at runtime (the consumer module
+    // supplies the actual classes on the JUnit classpath), so we only need
+    // these to compile TilePreviewRenderer — a consumer without tile deps
+    // will never hit the TILE branch in RobolectricRenderTestBase.
+    compileOnly(libs.wear.tiles)
+    compileOnly(libs.wear.tiles.renderer)
+    compileOnly(libs.wear.tiles.tooling.preview)
+    compileOnly(libs.wear.protolayout)
+    compileOnly(libs.wear.protolayout.expression)
 }

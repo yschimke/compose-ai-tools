@@ -2,6 +2,18 @@ package ee.schimke.composeai.plugin
 
 import kotlinx.serialization.Serializable
 
+/**
+ * Which @Preview flavour the entry came from. Drives renderer selection —
+ * [COMPOSE] previews are `@Composable` functions invoked through the normal
+ * Compose machinery; [TILE] previews are plain functions returning
+ * `androidx.wear.tiles.tooling.preview.TilePreviewData` that need to be
+ * inflated via `androidx.wear.tiles.renderer.TileRenderer`.
+ */
+enum class PreviewKind {
+    COMPOSE,
+    TILE,
+}
+
 @Serializable
 data class PreviewParams(
     val name: String? = null,
@@ -17,6 +29,7 @@ data class PreviewParams(
     val group: String? = null,
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
+    val kind: PreviewKind = PreviewKind.COMPOSE,
 )
 
 @Serializable
