@@ -54,7 +54,7 @@ Then in a consumer `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.1"
+    id("ee.schimke.composeai.preview") version "0.3.2"
 }
 ```
 
@@ -67,9 +67,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.3.1.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.3.2.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-0.3.1/bin/compose-preview list
+./compose-preview-0.3.2/bin/compose-preview list
 ```
 
 ### VS Code extension
@@ -77,7 +77,7 @@ tar xzf compose-preview.tar.gz
 Download the `.vsix` from the Releases page and install:
 
 ```bash
-code --install-extension compose-preview-0.3.1.vsix
+code --install-extension compose-preview-0.3.2.vsix
 ```
 
 ## Future: publishing to public registries

@@ -9,8 +9,8 @@
 #
 # Usage:
 #   scripts/install.sh               # install latest release
-#   scripts/install.sh 0.3.1         # install a specific version
-#   VERSION=0.3.1 scripts/install.sh # same, via env
+#   scripts/install.sh 0.3.2         # install a specific version
+#   VERSION=0.3.2 scripts/install.sh # same, via env
 #
 # Override locations:
 #   PREFIX=$HOME/.local scripts/install.sh
