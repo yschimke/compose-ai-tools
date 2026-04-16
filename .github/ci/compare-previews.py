@@ -144,25 +144,11 @@ def _variant_label(preview_id: str) -> str:
     return parts[1] if len(parts) == 2 else ""
 
 
-def _is_default_variant(preview_id: str) -> bool:
-    label = _variant_label(preview_id).lower()
-    return label in ("", "default")
-
-
 def _render_url(repo: str, branch: str, module: str, preview_id: str) -> str:
     return (
         f"https://raw.githubusercontent.com/{repo}/{branch}"
         f"/renders/{module}/{preview_id}.png"
     )
-
-
-def _pick_hero(entries: list) -> tuple[int, object]:
-    """Pick the best variant to show inline (prefer Default, else first)."""
-    for i, entry in enumerate(entries):
-        pid = entry[0].split("/", 1)[1]  # key -> preview_id
-        if _is_default_variant(pid):
-            return i, entry
-    return 0, entries[0]
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
@@ -217,7 +203,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
 
         for (module, fn), entries in sorted(groups.items()):
-            hero_idx, (hero_key, hero_cur, hero_bl) = _pick_hero(entries)
+            hero_key, hero_cur, hero_bl = entries[0]
             hero_pid = hero_key.split("/", 1)[1]
             before = _render_url(repo, base_branch, module, hero_pid)
             after = _render_url(repo, head_branch, module, hero_pid)
@@ -232,10 +218,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
             )
 
             # Link remaining variants
-            others = [e for i, e in enumerate(entries) if i != hero_idx]
-            if others:
+            if len(entries) > 1:
                 variant_links = []
-                for okey, ocur, obl in others:
+                for okey, ocur, obl in entries[1:]:
                     opid = okey.split("/", 1)[1]
                     label = _variant_label(opid) or opid
                     link = _render_url(repo, head_branch, module, opid)
@@ -255,7 +240,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
 
         for (module, fn), entries in sorted(groups_new.items()):
-            hero_idx, (hero_key, hero_info) = _pick_hero(entries)
+            hero_key, hero_info = entries[0]
             hero_pid = hero_key.split("/", 1)[1]
             after = _render_url(repo, head_branch, module, hero_pid)
 
@@ -264,10 +249,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 f"<img src=\"{after}\" width=\"200\" />"
             )
 
-            others = [e for i, e in enumerate(entries) if i != hero_idx]
-            if others:
+            if len(entries) > 1:
                 variant_links = []
-                for okey, oinfo in others:
+                for okey, oinfo in entries[1:]:
                     opid = okey.split("/", 1)[1]
                     label = _variant_label(opid) or opid
                     link = _render_url(repo, head_branch, module, opid)
