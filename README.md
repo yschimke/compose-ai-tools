@@ -160,7 +160,7 @@ pluginManagement {
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.1"
+    id("ee.schimke.composeai.preview") version "0.3.2"
 }
 ```
 
@@ -171,15 +171,15 @@ latest version. CMP Desktop projects also need
 
 ## Install the CLI
 
-Download `compose-preview-0.3.1.tar.gz` (or `.zip`) from the
-[v0.3.1 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.1)
+Download `compose-preview-0.3.2.tar.gz` (or `.zip`) from the
+[v0.3.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.2)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.1/compose-preview-0.3.1.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.2/compose-preview-0.3.2.tar.gz
 tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.3.1/bin:$PATH"
+export PATH="$PWD/compose-preview-0.3.2/bin:$PATH"
 
 compose-preview --help
 ```
@@ -188,18 +188,18 @@ Requires Java 21 on `PATH` (or `JAVA_HOME`).
 
 ## Install the VS Code extension
 
-Download `compose-preview-0.3.1.vsix` from the
-[v0.3.1 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.1)
+Download `compose-preview-0.3.2.vsix` from the
+[v0.3.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.2)
 and install it:
 
 ```sh
-code --install-extension compose-preview-0.3.1.vsix
+code --install-extension compose-preview-0.3.2.vsix
 ```
 
 Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.3.1` in your project as shown above.
+`ee.schimke.composeai.preview` version `0.3.2` in your project as shown above.
 
 ## Usage
 

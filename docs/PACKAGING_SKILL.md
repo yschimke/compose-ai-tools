@@ -76,7 +76,7 @@ curl -fsSL https://codeload.github.com/yschimke/compose-ai-tools/tar.gz/refs/hea
 Or, pinned to a release:
 
 ```sh
-curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.1/compose-preview-skill.tar.gz \
+curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.2/compose-preview-skill.tar.gz \
   | tar -xz -C ~/.claude/skills/
 ```
 
@@ -146,7 +146,7 @@ can ship the CLI binaries directly:
 touches `~/.local/bin`, and there's no PATH setup.
 
 Trade-off: the skill tarball grows to match the CLI tarball size (~6.4 MB
-for 0.3.1). Still small in absolute terms, but it means every skill update
+for 0.3.2). Still small in absolute terms, but it means every skill update
 re-ships the whole CLI. The upside is that `install.sh` becomes truly
 optional; `compose-preview doctor` runs directly from the skill.
 
