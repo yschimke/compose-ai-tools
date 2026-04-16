@@ -42,6 +42,7 @@ Commands:
   show     Discover + render previews; print id, path, sha256, changed flag
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
+  doctor   Verify Java 21 + GitHub Packages credentials (run before Setup)
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
@@ -98,7 +99,55 @@ extension provides:
 
 ## Setup
 
-### 1. Register the plugin repository in `settings.gradle.kts`
+Run the steps in order. Step 0 is a precheck — if it fails, **stop** and fix
+credentials before editing any Gradle files. The plugin is hosted on GitHub
+Packages, which requires authentication even for public repos, so a missing
+token produces an `HTTP 401` that is easy to misdiagnose once Gradle is in
+the mix.
+
+### 0. Install the CLI and run `doctor`
+
+Bootstrap the CLI, then verify Java 21 and GitHub Packages credentials are in
+place:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+
+compose-preview doctor
+```
+
+The install script is idempotent, pulls the latest release into
+`~/.local/opt/compose-preview/<version>/`, and symlinks
+`~/.local/bin/compose-preview`. If that directory isn't on your `PATH`, the
+script prints the exact command to add it (`fish_add_path …` or a `PATH=`
+line for bash/zsh).
+
+`compose-preview doctor` verifies:
+
+1. Java 21 on `PATH`.
+2. `composeAiTools.githubToken` in `~/.gradle/gradle.properties`, or
+   `GITHUB_TOKEN` in the environment.
+3. The token actually resolves a package on `maven.pkg.github.com` (HEAD
+   probe). This catches the most common failure mode: a `gh` CLI token
+   reused as `GITHUB_TOKEN` that doesn't have the `read:packages` scope.
+
+If doctor reports missing credentials, fix them before continuing:
+
+```properties
+# ~/.gradle/gradle.properties
+composeAiTools.githubUser=your-github-username
+composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Or refresh the `gh` CLI token with the right scope:
+
+```sh
+gh auth refresh -h github.com -s read:packages
+```
+
+### 1. Register the plugin repository
+
+**Kotlin DSL — `settings.gradle.kts`:**
 
 ```kotlin
 pluginManagement {
@@ -127,18 +176,39 @@ pluginManagement {
 }
 ```
 
-Credentials live in `~/.gradle/gradle.properties` (a GitHub PAT with
-`read:packages` is enough):
+**Groovy DSL — `settings.gradle`** (used by many Android sample projects
+including the AOSP `wear-os-samples`):
 
-```properties
-composeAiTools.githubUser=your-github-username
-composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```groovy
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven {
+            name = 'composeAiTools'
+            url = uri('https://maven.pkg.github.com/yschimke/compose-ai-tools')
+            credentials {
+                username = providers.gradleProperty('composeAiTools.githubUser').orNull ?: System.getenv('GITHUB_ACTOR')
+                password = providers.gradleProperty('composeAiTools.githubToken').orNull ?: System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'ee.schimke.composeai.preview') {
+                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
+            }
+        }
+    }
+}
 ```
 
 ### 2. Apply the plugin
 
+**Kotlin DSL — `<module>/build.gradle.kts`:**
+
 ```kotlin
-// <module>/build.gradle.kts
 plugins {
     id("ee.schimke.composeai.preview") version "0.3.1"
 }
@@ -147,6 +217,20 @@ composePreview {
     variant.set("debug")   // Android build variant (default: "debug")
     sdkVersion.set(35)     // Robolectric SDK version (default: 35)
     enabled.set(true)      // set false to skip task registration
+}
+```
+
+**Groovy DSL — `<module>/build.gradle`:**
+
+```groovy
+plugins {
+    id 'ee.schimke.composeai.preview' version '0.3.1'
+}
+
+composePreview {
+    variant = 'debug'
+    sdkVersion = 35
+    enabled = true
 }
 ```
 
