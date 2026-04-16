@@ -137,6 +137,34 @@ def cmd_generate(args: argparse.Namespace) -> int:
 # compare mode
 # ---------------------------------------------------------------------------
 
+def _variant_label(preview_id: str) -> str:
+    """Extract the variant label from a preview ID (suffix after the last ``_``)."""
+    # e.g. "com.example.PreviewsKt.ConfigProbePreview_German" -> "German"
+    parts = preview_id.rsplit("_", 1)
+    return parts[1] if len(parts) == 2 else ""
+
+
+def _is_default_variant(preview_id: str) -> bool:
+    label = _variant_label(preview_id).lower()
+    return label in ("", "default")
+
+
+def _render_url(repo: str, branch: str, module: str, preview_id: str) -> str:
+    return (
+        f"https://raw.githubusercontent.com/{repo}/{branch}"
+        f"/renders/{module}/{preview_id}.png"
+    )
+
+
+def _pick_hero(entries: list) -> tuple[int, object]:
+    """Pick the best variant to show inline (prefer Default, else first)."""
+    for i, entry in enumerate(entries):
+        pid = entry[0].split("/", 1)[1]  # key -> preview_id
+        if _is_default_variant(pid):
+            return i, entry
+    return 0, entries[0]
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
@@ -179,60 +207,88 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return 0
 
     if changed:
-        lines.append(f"### Changed ({len(changed)})")
-        lines.append("")
+        # Group changed variants by (module, functionName).
+        groups: dict[tuple[str, str], list[tuple[str, dict, dict]]] = {}
         for key, cur, bl in changed:
-            module, preview_id = key.split("/", 1)
-            fn = cur["functionName"]
-            before_url = (
-                f"https://raw.githubusercontent.com/{repo}/{base_branch}"
-                f"/renders/{module}/{preview_id}.png"
-            )
-            after_url = (
-                f"https://raw.githubusercontent.com/{repo}/{head_branch}"
-                f"/renders/{module}/{preview_id}.png"
-            )
+            gk = (cur["module"], cur["functionName"])
+            groups.setdefault(gk, []).append((key, cur, bl))
+
+        lines.append(f"### Changed ({len(changed)} variant(s) across {len(groups)} function(s))")
+        lines.append("")
+
+        for (module, fn), entries in sorted(groups.items()):
+            hero_idx, (hero_key, hero_cur, hero_bl) = _pick_hero(entries)
+            hero_pid = hero_key.split("/", 1)[1]
+            before = _render_url(repo, base_branch, module, hero_pid)
+            after = _render_url(repo, head_branch, module, hero_pid)
+
             lines.append(f"**`{fn}`** ({module})")
             lines.append("")
             lines.append("| Before | After |")
             lines.append("|--------|-------|")
             lines.append(
-                f"| <img src=\"{before_url}\" width=\"200\" /> "
-                f"| <img src=\"{after_url}\" width=\"200\" /> |"
+                f"| <img src=\"{before}\" width=\"200\" /> "
+                f"| <img src=\"{after}\" width=\"200\" /> |"
             )
+
+            # Link remaining variants
+            others = [e for i, e in enumerate(entries) if i != hero_idx]
+            if others:
+                variant_links = []
+                for okey, ocur, obl in others:
+                    opid = okey.split("/", 1)[1]
+                    label = _variant_label(opid) or opid
+                    link = _render_url(repo, head_branch, module, opid)
+                    variant_links.append(f"[{label}]({link})")
+                lines.append("")
+                lines.append(f"Other variants: {', '.join(variant_links)}")
             lines.append("")
 
     if new:
-        lines.append(f"### New ({len(new)})")
-        lines.append("")
-        lines.append("| Preview | Render |")
-        lines.append("|---------|--------|")
+        # Group new previews similarly.
+        groups_new: dict[tuple[str, str], list[tuple[str, dict]]] = {}
         for key, info in new:
-            module, preview_id = key.split("/", 1)
-            fn = info["functionName"]
-            after_url = (
-                f"https://raw.githubusercontent.com/{repo}/{head_branch}"
-                f"/renders/{module}/{preview_id}.png"
-            )
-            lines.append(
-                f"| `{fn}` ({module}) "
-                f"| <img src=\"{after_url}\" width=\"200\" /> |"
-            )
+            gk = (info["module"], info["functionName"])
+            groups_new.setdefault(gk, []).append((key, info))
+
+        lines.append(f"### New ({len(new)} variant(s) across {len(groups_new)} function(s))")
         lines.append("")
 
+        for (module, fn), entries in sorted(groups_new.items()):
+            hero_idx, (hero_key, hero_info) = _pick_hero(entries)
+            hero_pid = hero_key.split("/", 1)[1]
+            after = _render_url(repo, head_branch, module, hero_pid)
+
+            lines.append(
+                f"**`{fn}`** ({module}) "
+                f"<img src=\"{after}\" width=\"200\" />"
+            )
+
+            others = [e for i, e in enumerate(entries) if i != hero_idx]
+            if others:
+                variant_links = []
+                for okey, oinfo in others:
+                    opid = okey.split("/", 1)[1]
+                    label = _variant_label(opid) or opid
+                    link = _render_url(repo, head_branch, module, opid)
+                    variant_links.append(f"[{label}]({link})")
+                lines.append(f"Variants: {', '.join(variant_links)}")
+            lines.append("")
+
     if removed:
-        lines.append(f"### Removed ({len(removed)})")
+        fn_set = {bl_info.get("functionName", "?") for _, bl_info in removed}
+        lines.append(f"### Removed ({len(removed)} variant(s))")
         lines.append("")
-        for _, bl_info in removed:
-            fn = bl_info.get("functionName", "unknown")
+        for fn in sorted(fn_set):
             lines.append(f"- ~`{fn}`~")
         lines.append("")
 
     if unchanged:
-        lines.append(f"<details><summary>Unchanged ({len(unchanged)})</summary>")
+        fn_set = {info["functionName"] for _, info in unchanged}
+        lines.append(f"<details><summary>Unchanged ({len(fn_set)} function(s), {len(unchanged)} variant(s))</summary>")
         lines.append("")
-        for _, info in unchanged:
-            lines.append(f"- `{info['functionName']}`")
+        for fn in sorted(fn_set):
+            lines.append(f"- `{fn}`")
         lines.append("")
         lines.append("</details>")
 
