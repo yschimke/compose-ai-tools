@@ -9,9 +9,11 @@ fun main(args: Array<String>) {
     }
 
     // Find the command — first non-flag argument that isn't a flag's value.
-    // Flags that take values: --module, --variant, --filter, --id, --output, --timeout
-    val valuedFlags = setOf("--module", "--variant", "--filter", "--id", "--output", "--timeout")
-    val commands = setOf("show", "list", "render", "help")
+    // Flags that take values: --module, --variant, --filter, --id, --output, --timeout, --plugin-version
+    val valuedFlags = setOf(
+        "--module", "--variant", "--filter", "--id", "--output", "--timeout", "--plugin-version",
+    )
+    val commands = setOf("show", "list", "render", "doctor", "help")
 
     var commandIndex = -1
     var i = 0
@@ -46,6 +48,7 @@ fun main(args: Array<String>) {
         "show" -> ShowCommand(allArgs).run()
         "list" -> ListCommand(allArgs).run()
         "render" -> RenderCommand(allArgs).run()
+        "doctor" -> DoctorCommand(allArgs).run()
         "help" -> printUsage()
         else -> {
             System.err.println("Unknown command: $command")
@@ -66,6 +69,7 @@ private fun printUsage() {
           show    Discover and render previews; print id, path, sha256, changed flag
           list    List discovered previews
           render  Render previews; with --output copies a single match to disk
+          doctor  Verify Java 21 + GitHub Packages credentials before editing Gradle files
           help    Show this help message
 
         Options:
