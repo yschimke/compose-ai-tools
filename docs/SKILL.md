@@ -178,6 +178,51 @@ When creating or iterating on Wear OS designs, refer to the
 - Proper **System UI** integration (e.g., `TimeText`, `AppScaffold`).
 - **Responsive layout** strategies across screen sizes.
 
+## CI preview baselines (`preview_main` branch)
+
+Projects that use the Gradle plugin can set up CI workflows to maintain a
+`preview_main` branch with rendered PNGs and a `baselines.json` file (preview
+ID → SHA-256). This serves two purposes:
+
+1. **Browsable gallery** — the branch has a `README.md` with inline images,
+   viewable directly on GitHub.
+2. **PR diff comments** — a companion workflow renders previews on each PR,
+   compares against the baselines, and posts a before/after comment.
+
+### Checking if baselines are available
+
+```bash
+git ls-remote --exit-code origin preview_main
+```
+
+### Fetching current main previews
+
+```bash
+# Get the baselines manifest
+git fetch origin preview_main
+git show origin/preview_main:baselines.json
+
+# Get a specific rendered PNG
+git show origin/preview_main:renders/<module>/<preview-id>.png > preview.png
+```
+
+Or via raw URL:
+```
+https://raw.githubusercontent.com/<owner>/<repo>/preview_main/renders/<module>/<preview-id>.png
+```
+
+### Setting up the workflows
+
+Copy these files from `compose-ai-tools` into your project:
+
+- `.github/workflows/preview-baselines.yml` — updates `preview_main` on push
+  to main
+- `.github/workflows/preview-comment.yml` — posts before/after comments on PRs
+- `.github/ci/compare-previews.py` — comparison script (used by both workflows)
+
+The workflows download the `compose-preview` CLI from the latest release and
+auto-discover all modules that apply the plugin.
+
 ## Tips
 
 - First render is slow (module compile + renderer bootstrap); later renders
