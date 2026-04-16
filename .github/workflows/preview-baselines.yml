@@ -37,12 +37,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Install CLI
-        run: ./gradlew :cli:installDist --no-daemon
+        run: |
+          gh release download --pattern 'compose-preview-*.tar.gz' --dir /tmp
+          tar -xzf /tmp/compose-preview-*.tar.gz -C /tmp
+          echo "/tmp/compose-preview-$(gh release view --json tagName -q .tagName | sed 's/^v//')/bin" \
+            >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Render previews
-        run: |
-          cli/build/install/compose-preview/bin/compose-preview show --json \
-            --timeout 600 > _previews.json
+        run: compose-preview show --json --timeout 600 > _previews.json
 
       - name: Generate baselines
         run: |
