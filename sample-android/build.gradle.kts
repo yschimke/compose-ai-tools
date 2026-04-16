@@ -24,6 +24,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests.all {
+            it.jvmArgs("-Xmx2048m")
+        }
+    }
 }
 
 dependencies {
