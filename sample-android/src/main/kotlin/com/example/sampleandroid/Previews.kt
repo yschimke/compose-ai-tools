@@ -72,7 +72,7 @@ fun GreetingPreview() {
 fun LoadingPreview() {
     MaterialTheme {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(progress = { 0.5f })
             Text("Loading...")
         }
     }
