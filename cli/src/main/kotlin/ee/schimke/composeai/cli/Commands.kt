@@ -175,7 +175,8 @@ abstract class Command(protected val args: List<String>) {
         if (!f.exists()) return CliState()
         return try {
             json.decodeFromString(CliState.serializer(), f.readText())
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (verbose) System.err.println("Warning: corrupt state file ${f.path}, resetting: ${e.message}")
             CliState()
         }
     }

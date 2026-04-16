@@ -46,7 +46,8 @@ internal object ComposePreviewTasks {
         val hasDesktopRenderer = try {
             project.dependencies.add(rendererConfigName, project.dependencies.project(mapOf("path" to ":renderer-desktop")))
             true
-        } catch (_: Exception) {
+        } catch (e: org.gradle.api.UnknownProjectException) {
+            project.logger.debug("compose-ai-tools: :renderer-desktop project not found, skipping", e)
             false
         }
 

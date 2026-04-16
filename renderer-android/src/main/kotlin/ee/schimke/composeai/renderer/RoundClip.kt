@@ -20,9 +20,12 @@ import android.graphics.Shader
 internal fun isRoundDevice(device: String?): Boolean {
     if (device.isNullOrBlank()) return false
     val lower = device.lowercase()
-    // `contains("round")` covers both `*_round` device IDs and
-    // `isRound=true` / `shape=round` spec parameters after lowercasing.
-    return lower.contains("round")
+    // Match `*_round` device IDs (e.g. `id:wearos_small_round`) and
+    // spec parameters `isRound=true` / `shape=Round`. The regex avoids
+    // false positives on unrelated words like "ground" or "background".
+    return lower.contains("_round") ||
+            lower.contains("isround=true") ||
+            lower.contains("shape=round")
 }
 
 /**

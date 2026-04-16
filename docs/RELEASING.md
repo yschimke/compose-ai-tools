@@ -5,8 +5,8 @@ All three artifacts ship from a single GitHub Actions workflow triggered by a ve
 ## Cutting a release
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v<version>
+git push origin v<version>
 ```
 
 The `release.yml` workflow then:
@@ -33,9 +33,9 @@ pluginManagement {
         maven {
             url = uri("https://maven.pkg.github.com/yschimke/compose-ai-tools")
             credentials {
-                username = providers.gradleProperty("gpr.user").orNull
+                username = providers.gradleProperty("composeAiTools.githubUser").orNull
                     ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.token").orNull
+                password = providers.gradleProperty("composeAiTools.githubToken").orNull
                     ?: System.getenv("GITHUB_TOKEN")
             }
         }
@@ -54,7 +54,7 @@ Then in a consumer `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.1.0"
+    id("ee.schimke.composeai.preview") version "0.3.0"
 }
 ```
 
@@ -67,9 +67,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.1.0.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.3.0.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-0.1.0/bin/compose-preview list
+./compose-preview-0.3.0/bin/compose-preview list
 ```
 
 ### VS Code extension
@@ -77,7 +77,7 @@ tar xzf compose-preview.tar.gz
 Download the `.vsix` from the Releases page and install:
 
 ```bash
-code --install-extension compose-preview-0.1.0.vsix
+code --install-extension compose-preview-0.3.0.vsix
 ```
 
 ## Future: publishing to public registries

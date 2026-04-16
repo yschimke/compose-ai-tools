@@ -32,10 +32,10 @@ object DeviceDimensions {
             KNOWN_DEVICES[device]?.let { return it }
 
             if (device.startsWith("spec:")) {
-                val params = device.removePrefix("spec:").split(",").associate {
-                    val (k, v) = it.split("=")
-                    k.trim() to v.trim().removeSuffix("dp")
-                }
+                val params = device.removePrefix("spec:").split(",").mapNotNull {
+                    val parts = it.split("=", limit = 2)
+                    if (parts.size == 2) parts[0].trim() to parts[1].trim().removeSuffix("dp") else null
+                }.toMap()
                 val w = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
                 val h = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
                 return DeviceSpec(w, h)
