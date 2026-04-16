@@ -1,0 +1,118 @@
+name: 'Compose Preview Comment'
+description: >
+  Render previews on a PR, compare against the baselines on preview_main,
+  and post a before/after comment. Changed PNGs are pushed to a per-PR
+  branch so images are URL-accessible in the comment.
+
+inputs:
+  timeout:
+    description: 'CLI render timeout in seconds'
+    default: '600'
+  base-branch:
+    description: 'Branch name for baselines'
+    default: 'preview_main'
+  pr-number:
+    description: 'Pull request number (auto-detected from context if omitted)'
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION=$(gh release view --repo yschimke/compose-ai-tools --json tagName -q .tagName | sed 's/^v//')
+        echo "Downloading compose-preview ${VERSION}..."
+        gh release download "v${VERSION}" --repo yschimke/compose-ai-tools \
+          --pattern "compose-preview-${VERSION}.tar.gz" --dir /tmp
+        mkdir -p /opt/compose-preview
+        tar -xzf "/tmp/compose-preview-${VERSION}.tar.gz" -C /opt/compose-preview --strip-components=1
+        echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Render previews
+      shell: bash
+      run: compose-preview show --json --timeout ${{ inputs.timeout }} > _previews.json
+
+    - name: Fetch baselines
+      shell: bash
+      run: |
+        mkdir -p _baselines
+        if git ls-remote --exit-code origin ${{ inputs.base-branch }} >/dev/null 2>&1; then
+          git fetch origin ${{ inputs.base-branch }}
+          git show origin/${{ inputs.base-branch }}:baselines.json \
+            > _baselines/baselines.json 2>/dev/null || true
+        else
+          echo "No ${{ inputs.base-branch }} branch yet — treating all previews as new."
+        fi
+
+    - name: Copy changed PNGs
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/../lib/compare-previews.py" copy-changed _previews.json \
+          --baselines _baselines/baselines.json \
+          --output-dir _pr_renders
+
+    - name: Push PR renders
+      shell: bash
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+        BRANCH="preview_pr/${PR_NUMBER}"
+
+        if [ ! -d _pr_renders/renders ] || \
+           [ -z "$(ls -A _pr_renders/renders 2>/dev/null)" ]; then
+          echo "No changed renders to push."
+          exit 0
+        fi
+
+        cd _pr_renders
+        git init
+        git checkout -b "$BRANCH"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git commit -m "Preview renders for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+
+        git remote add origin \
+          "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+        git push --force origin "$BRANCH"
+
+    - name: Generate comment
+      shell: bash
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+
+        python3 "${{ github.action_path }}/../lib/compare-previews.py" compare _previews.json \
+          --baselines _baselines/baselines.json \
+          --repo "${{ github.repository }}" \
+          --pr "$PR_NUMBER" \
+          --base-branch "${{ inputs.base-branch }}" \
+          --head-branch "preview_pr/${PR_NUMBER}" \
+          > _comment_body.md
+
+    - name: Post or update PR comment
+      shell: bash
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+        BODY=$(cat _comment_body.md)
+        MARKER="<!-- preview-diff -->"
+
+        COMMENT_ID=$(gh api \
+          "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+
+        if [ -n "$COMMENT_ID" ]; then
+          gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$BODY"
+        else
+          gh pr comment "$PR_NUMBER" --body "$BODY"
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}

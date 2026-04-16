@@ -1,0 +1,60 @@
+name: 'Compose Preview Baselines'
+description: >
+  Render all @Preview functions via the compose-preview CLI and push
+  PNGs + baselines.json to a preview_main orphan branch. The branch is
+  browsable on GitHub (README with inline images) and serves as the
+  "before" state for PR diff comments.
+
+inputs:
+  timeout:
+    description: 'CLI render timeout in seconds'
+    default: '600'
+  branch:
+    description: 'Branch name for baselines'
+    default: 'preview_main'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION=$(gh release view --repo yschimke/compose-ai-tools --json tagName -q .tagName | sed 's/^v//')
+        echo "Downloading compose-preview ${VERSION}..."
+        gh release download "v${VERSION}" --repo yschimke/compose-ai-tools \
+          --pattern "compose-preview-${VERSION}.tar.gz" --dir /tmp
+        mkdir -p /opt/compose-preview
+        tar -xzf "/tmp/compose-preview-${VERSION}.tar.gz" -C /opt/compose-preview --strip-components=1
+        echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Render previews
+      shell: bash
+      run: compose-preview show --json --timeout ${{ inputs.timeout }} > _previews.json
+
+    - name: Generate baselines
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/../lib/compare-previews.py" generate _previews.json \
+          --output-dir _baselines \
+          --repo "${{ github.repository }}" \
+          --branch "${{ inputs.branch }}"
+
+    - name: Push to baselines branch
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd _baselines
+
+        git init
+        git checkout -b "${{ inputs.branch }}"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git commit -m "Update preview baselines from ${GITHUB_SHA::8}"
+
+        git remote add origin \
+          "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+        git push --force origin "${{ inputs.branch }}"
