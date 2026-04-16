@@ -42,7 +42,7 @@ jobs:
       - name: Render previews
         run: |
           cli/build/install/compose-preview/bin/compose-preview show --json \
-            > _previews.json
+            --timeout 600 > _previews.json
 
       - name: Generate baselines
         run: |
