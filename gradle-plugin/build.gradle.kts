@@ -79,3 +79,20 @@ val functionalTestTask = tasks.register<Test>("functionalTest") {
 tasks.check {
     dependsOn(functionalTestTask)
 }
+
+// Bake the plugin's own version into a resource so it can resolve a matching
+// `renderer-android` AAR at runtime for external consumers (who apply the
+// plugin via GitHub Packages rather than includeBuild).
+val generatePluginVersionResource by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/plugin-version-resource")
+    val pluginVersion = project.version.toString()
+    inputs.property("version", pluginVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=$pluginVersion\n")
+    }
+}
+
+sourceSets.main.get().resources.srcDir(generatePluginVersionResource)

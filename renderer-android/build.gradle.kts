@@ -2,8 +2,11 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
-    id("maven-publish")
+    `maven-publish`
 }
+
+group = "ee.schimke.composeai"
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
 
 android {
     namespace = "ee.schimke.composeai.renderer"
@@ -54,14 +57,29 @@ dependencies {
     compileOnly(libs.wear.protolayout.expression)
 }
 
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri(
+                providers.environmentVariable("GITHUB_REPOSITORY")
+                    .map { "https://maven.pkg.github.com/$it" }
+                    .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools"),
+            )
+            credentials {
+                username = providers.environmentVariable("GITHUB_ACTOR").orNull
+                password = providers.environmentVariable("GITHUB_TOKEN").orNull
+            }
+        }
+    }
+}
+
 afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
-                groupId = "ee.schimke.composeai"
                 artifactId = "renderer-android"
-                version = "0.1.0-SNAPSHOT"
             }
         }
     }

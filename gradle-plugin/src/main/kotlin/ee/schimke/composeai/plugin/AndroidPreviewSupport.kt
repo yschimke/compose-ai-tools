@@ -70,29 +70,22 @@ internal object AndroidPreviewSupport {
         val artifactType = Attribute.of("artifactType", String::class.java)
         val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
 
-        // renderer-android's compiled classes live at a convention path inside its
-        // own build dir. Under Isolated Projects we can't ask another project for
-        // its `layout.buildDirectory` (that's what the old `rootProject.project(":renderer-android")`
-        // was doing). `project.rootDir` is just a File — reading a path from it is
-        // an IP-safe filesystem operation, not a cross-project Gradle-model access.
-        // Ordering is expressed as a task-path `dependsOn(":renderer-android:compile…")`,
-        // which Gradle resolves at graph-building time without peeking at the other
-        // project's configuration state.
+        // The default path for external consumers: resolve
+        // `ee.schimke.composeai:renderer-android:<plugin-version>` from Maven.
+        // The plugin's own version is baked into the jar at build time so the
+        // matching renderer AAR is chosen automatically — see [PluginVersion].
+        //
+        // Dev-mode shortcut: when the plugin runs *inside* the compose-ai-tools
+        // build itself (in-repo samples), bypass Maven and depend on the sibling
+        // `:renderer-android` Gradle project directly. That way live renderer
+        // edits show up without a publish step. The signal is the presence of
+        // the sibling build script on disk; we deliberately avoid calling
+        // `rootProject.findProject(...)` here because reading the sibling's
+        // model under Isolated Projects is disallowed — a filesystem check is
+        // IP-safe, and only the in-repo layout matches it.
         val rendererProjectDir = project.rootDir.resolve("renderer-android")
-        val hasAndroidRenderer = rendererProjectDir.resolve("build.gradle.kts").exists()
+        val useLocalRenderer = rendererProjectDir.resolve("build.gradle.kts").exists()
                 || rendererProjectDir.resolve("build.gradle").exists()
-
-        val rendererClassDirs = if (hasAndroidRenderer) {
-            project.files(
-                rendererProjectDir.resolve("build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"),
-                rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
-            )
-        } else {
-            project.files(
-                project.layout.buildDirectory.dir("intermediates/built_in_kotlinc/${variantName}UnitTest/compile${capVariant}UnitTestKotlin/classes"),
-                project.layout.buildDirectory.dir("intermediates/javac/${variantName}UnitTest/compile${capVariant}UnitTestJavaWithJavac/classes")
-            )
-        }
 
         // Renderer's transitive runtime dependencies come through a dedicated
         // resolvable configuration in *this* project. Attributes are copied
@@ -106,178 +99,207 @@ internal object AndroidPreviewSupport {
             }
         }
 
-        if (hasAndroidRenderer) {
+        if (useLocalRenderer) {
             try {
                 project.dependencies.add(rendererConfig.name, project.dependencies.project(mapOf("path" to ":renderer-android")))
             } catch (e: org.gradle.api.UnknownProjectException) {
                 project.logger.debug("compose-ai-tools: :renderer-android project not found, skipping", e)
             }
         } else {
-            project.dependencies.add(rendererConfig.name, "ee.schimke.composeai:renderer-android:0.1.0-SNAPSHOT")
+            project.dependencies.add(
+                rendererConfig.name,
+                "ee.schimke.composeai:renderer-android:${PluginVersion.value}",
+            )
         }
 
-            // AGP's `generate${Variant}UnitTestConfig` task emits
-            // `com/android/tools/test_config.properties` under
-            // `intermediates/unit_test_config_directory/<variant>UnitTest/.../out/`.
-            // Robolectric loads it from the classpath and uses it to find the merged
-            // resource APK (`apk-for-local-test.ap_`) — the one that contains every
-            // AAR's merged resources (protolayout-renderer's `ProtoLayoutBaseTheme`
-            // etc.). Without this directory on the classpath, `getIdentifier` returns
-            // 0 for any library-provided style and TileRenderer's theme construction
-            // explodes on `Unknown resource value type 0`. Compose-only previews
-            // don't read AAR resources, which is why this only surfaced with tiles.
-            val unitTestConfigDir = project.layout.buildDirectory.dir(
-                "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
+        // Classes directory used for Gradle's test-class scanning. Local mode:
+        // the renderer-android project's compiled output. External mode: the
+        // extracted android-classes artifact (AGP's transform unpacks the AAR's
+        // classes.jar). Either way, Gradle scans this for `@RunWith(…)` classes
+        // to run and finds `RobolectricRenderTest`.
+        val rendererClassDirs = if (useLocalRenderer) {
+            project.files(
+                rendererProjectDir.resolve("build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"),
+                rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
             )
+        } else {
+            project.files(rendererConfig.incoming.artifactView {
+                attributes.attribute(artifactType, "android-classes")
+                componentFilter { id ->
+                    id is org.gradle.api.artifacts.component.ModuleComponentIdentifier
+                            && id.group == "ee.schimke.composeai"
+                            && id.module == "renderer-android"
+                }
+            }.files)
+        }
 
-            // Renderer classpath FIRST — renderer depends on kotlinx-serialization
-            // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
-            // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
-            // doesn't do conflict resolution, so whichever JAR comes first wins at
-            // classload time. Putting the renderer's dependencies first ensures the
-            // test code gets the versions it was compiled against.
-            val resolvedClasspath = project.files().apply {
-                from(rendererConfig.incoming.artifactView {
+        // AGP's `generate${Variant}UnitTestConfig` task emits
+        // `com/android/tools/test_config.properties` under
+        // `intermediates/unit_test_config_directory/<variant>UnitTest/.../out/`.
+        // Robolectric loads it from the classpath and uses it to find the merged
+        // resource APK (`apk-for-local-test.ap_`) — the one that contains every
+        // AAR's merged resources (protolayout-renderer's `ProtoLayoutBaseTheme`
+        // etc.). Without this directory on the classpath, `getIdentifier` returns
+        // 0 for any library-provided style and TileRenderer's theme construction
+        // explodes on `Unknown resource value type 0`. Compose-only previews
+        // don't read AAR resources, which is why this only surfaced with tiles.
+        val unitTestConfigDir = project.layout.buildDirectory.dir(
+            "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
+        )
+
+        // Renderer classpath FIRST — renderer depends on kotlinx-serialization
+        // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
+        // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
+        // doesn't do conflict resolution, so whichever JAR comes first wins at
+        // classload time. Putting the renderer's dependencies first ensures the
+        // test code gets the versions it was compiled against.
+        val resolvedClasspath = project.files().apply {
+            from(rendererConfig.incoming.artifactView {
+                attributes.attribute(artifactType, "jar")
+            }.files)
+            from(rendererClassDirs)
+            if (testConfig != null) {
+                from(testConfig.incoming.artifactView {
                     attributes.attribute(artifactType, "jar")
                 }.files)
-                from(rendererClassDirs)
-                if (testConfig != null) {
-                    from(testConfig.incoming.artifactView {
-                        attributes.attribute(artifactType, "jar")
-                    }.files)
-                    from(testConfig.incoming.artifactView {
-                        attributes.attribute(artifactType, "android-classes")
-                    }.files)
-                }
-                from(sourceClassDirs)
-                from(unitTestConfigDir)
-                // SDK stub android.jar on the OUTER classpath so JUnit can introspect
-                // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
-                // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
-                // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
-                // before Robolectric's sandbox classloader is even created.
-                //
-                // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
-                // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
-                // resolution to its own `android-all` artifact (real framework classes, with
-                // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
-                //
-                // Sourced from AGP's SdkComponents so we don't have to parse local.properties
-                // or read rootProject.file(...).
-                from(project.files(bootClasspath))
+                from(testConfig.incoming.artifactView {
+                    attributes.attribute(artifactType, "android-classes")
+                }.files)
             }
+            from(sourceClassDirs)
+            from(unitTestConfigDir)
+            // SDK stub android.jar on the OUTER classpath so JUnit can introspect
+            // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
+            // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
+            // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
+            // before Robolectric's sandbox classloader is even created.
+            //
+            // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
+            // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
+            // resolution to its own `android-all` artifact (real framework classes, with
+            // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
+            //
+            // Sourced from AGP's SdkComponents so we don't have to parse local.properties
+            // or read rootProject.file(...).
+            from(project.files(bootClasspath))
+        }
 
-            val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
-            val rendersDir = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
+        val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
+        val rendersDir = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
 
-            val shardCount = resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
-            val shardsEnabled = shardCount > 1
+        val shardCount = resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
+        val shardsEnabled = shardCount > 1
 
-            // When sharded, generate N Java subclasses of RobolectricRenderTestBase, each with
-            // its own static @Parameters method that loads only that shard's slice of the manifest.
-            // Gradle distributes tests across forks at the class level, so a single parameterized
-            // class can't be split — we give it N classes. Each shard subclass inherits @Config
-            // and @GraphicsMode from the base, so every JVM's sandbox key matches and each fork
-            // reuses its own cached sandbox across all previews in its slice.
-            val shardSourcesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/java")
-            val shardClassesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/classes")
+        // When sharded, generate N Java subclasses of RobolectricRenderTestBase, each with
+        // its own static @Parameters method that loads only that shard's slice of the manifest.
+        // Gradle distributes tests across forks at the class level, so a single parameterized
+        // class can't be split — we give it N classes. Each shard subclass inherits @Config
+        // and @GraphicsMode from the base, so every JVM's sandbox key matches and each fork
+        // reuses its own cached sandbox across all previews in its slice.
+        val shardSourcesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/java")
+        val shardClassesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/classes")
 
-            val generateShardsTask = if (shardsEnabled) {
-                project.tasks.register("generateRenderShards", GenerateRenderShardsTask::class.java) {
-                    group = "compose preview"
-                    description = "Generate $shardCount RobolectricRenderTest_Shard subclasses"
-                    shards.set(shardCount)
-                    outputDir.set(shardSourcesDir)
-                }
-            } else null
-
-            val compileShardsTask = if (generateShardsTask != null) {
-                project.tasks.register("compileRenderShards", JavaCompile::class.java) {
-                    group = "compose preview"
-                    description = "Compile generated shard test subclasses"
-                    source(generateShardsTask.map { it.outputDir.asFileTree })
-                    classpath = resolvedClasspath
-                    destinationDirectory.set(shardClassesDir)
-                    options.release.set(21)
-                    dependsOn(generateShardsTask)
-                    if (hasAndroidRenderer) {
-                        dependsOn(":renderer-android:compile${capVariant}Kotlin")
-                    }
-                }
-            } else null
-
-            val renderTask = project.tasks.register("renderPreviews", Test::class.java) {
+        val generateShardsTask = if (shardsEnabled) {
+            project.tasks.register("generateRenderShards", GenerateRenderShardsTask::class.java) {
                 group = "compose preview"
-                description = "Render Android previews via Robolectric"
-                testClassesDirs = if (compileShardsTask != null) {
-                    rendererClassDirs + project.files(compileShardsTask.map { it.destinationDirectory })
-                } else {
-                    rendererClassDirs
-                }
-                classpath = if (compileShardsTask != null) {
-                    resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory })
-                } else {
-                    resolvedClasspath
-                }
-                if (shardsEnabled) {
-                    include("**/RobolectricRenderTest_Shard*.class")
-                    maxParallelForks = shardCount
-                } else {
-                    include("**/RobolectricRenderTest.class")
-                }
-                useJUnit()
+                description = "Generate $shardCount RobolectricRenderTest_Shard subclasses"
+                shards.set(shardCount)
+                outputDir.set(shardSourcesDir)
+            }
+        } else null
 
-                // Copy JVM args from AGP's test task. Deferred to the configuration
-                // lambda (rather than called at registration time) so AGP has had
-                // a chance to register `test${capVariant}UnitTest` by the time this
-                // runs — onVariants fires before unit-test tasks are wired.
-                val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
-                jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
-                jvmArgs(
-                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                    "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-                    // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
-                    // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
-                    // module rules this fails with IllegalAccessException without this
-                    // opens. Reached via `PathIterator` — triggered here by Wear Compose's
-                    // curved text renderer.
-                    "--add-opens=java.base/java.nio=ALL-UNNAMED",
-                )
-
-                // Belt-and-suspenders for the graphics/looper modes — the test class
-                // already pins `@GraphicsMode(NATIVE)`, but if those annotations ever
-                // regress to eager resolution we still want NATIVE/PAUSED.
-                systemProperty("robolectric.graphicsMode", "NATIVE")
-                systemProperty("robolectric.looperMode", "PAUSED")
-                // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
-                // ImageReader + HardwareRenderer.syncAndDraw, the only path that
-                // replays Compose's RenderNodes correctly.
-                systemProperty("robolectric.pixelCopyRenderMode", "hardware")
-                // Roborazzi defaults to "compare" mode (which doesn't write pixels
-                // unless the expected baseline exists). Force "record" so every run
-                // writes fresh PNGs.
-                jvmArgs("-Droborazzi.test.record=true")
-
-                systemProperty("composeai.render.manifest", manifestFile.get())
-                systemProperty("composeai.render.outputDir", rendersDir.get())
-
-                dependsOn(discoverTask)
-                if (hasAndroidRenderer) {
+        val compileShardsTask = if (generateShardsTask != null) {
+            project.tasks.register("compileRenderShards", JavaCompile::class.java) {
+                group = "compose preview"
+                description = "Compile generated shard test subclasses"
+                source(generateShardsTask.map { it.outputDir.asFileTree })
+                classpath = resolvedClasspath
+                destinationDirectory.set(shardClassesDir)
+                options.release.set(21)
+                dependsOn(generateShardsTask)
+                if (useLocalRenderer) {
                     dependsOn(":renderer-android:compile${capVariant}Kotlin")
-                } else {
-                    dependsOn("compile${capVariant}UnitTestKotlin")
-                }
-                dependsOn("process${capVariant}Resources")
-                val configTaskName = "generate${capVariant}UnitTestConfig"
-                if (project.tasks.findByName(configTaskName) != null) {
-                    dependsOn(configTaskName)
-                }
-                if (compileShardsTask != null) {
-                    dependsOn(compileShardsTask)
                 }
             }
+        } else null
 
-            ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+        val renderTask = project.tasks.register("renderPreviews", Test::class.java) {
+            group = "compose preview"
+            description = "Render Android previews via Robolectric"
+            testClassesDirs = if (compileShardsTask != null) {
+                rendererClassDirs + project.files(compileShardsTask.map { it.destinationDirectory })
+            } else {
+                rendererClassDirs
+            }
+            classpath = if (compileShardsTask != null) {
+                resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory })
+            } else {
+                resolvedClasspath
+            }
+            if (shardsEnabled) {
+                include("**/RobolectricRenderTest_Shard*.class")
+                maxParallelForks = shardCount
+            } else {
+                include("**/RobolectricRenderTest.class")
+            }
+            useJUnit()
+
+            // Copy JVM args from AGP's test task. Deferred to the configuration
+            // lambda (rather than called at registration time) so AGP has had
+            // a chance to register `test${capVariant}UnitTest` by the time this
+            // runs — onVariants fires before unit-test tasks are wired.
+            val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+            jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
+            jvmArgs(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+                // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
+                // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
+                // module rules this fails with IllegalAccessException without this
+                // opens. Reached via `PathIterator` — triggered here by Wear Compose's
+                // curved text renderer.
+                "--add-opens=java.base/java.nio=ALL-UNNAMED",
+            )
+
+            // Belt-and-suspenders for the graphics/looper modes — the test class
+            // already pins `@GraphicsMode(NATIVE)`, but if those annotations ever
+            // regress to eager resolution we still want NATIVE/PAUSED.
+            systemProperty("robolectric.graphicsMode", "NATIVE")
+            systemProperty("robolectric.looperMode", "PAUSED")
+            // Conscrypt isn't needed for preview rendering (no TLS/HTTP paths
+            // execute) and its native library is flaky on some Linux sandboxes
+            // — e.g. missing/ABI-mismatched `libstdc++.so.6`. Telling Robolectric
+            // to skip the install avoids those failures without shipping our
+            // own Conscrypt stubs. See `ConscryptMode` /
+            // `ConscryptModeConfigurer` in Robolectric.
+            systemProperty("robolectric.conscryptMode", "OFF")
+            // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
+            // ImageReader + HardwareRenderer.syncAndDraw, the only path that
+            // replays Compose's RenderNodes correctly.
+            systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+            // Roborazzi defaults to "compare" mode (which doesn't write pixels
+            // unless the expected baseline exists). Force "record" so every run
+            // writes fresh PNGs.
+            systemProperty("roborazzi.test.record", "true")
+
+            systemProperty("composeai.render.manifest", manifestFile.get())
+            systemProperty("composeai.render.outputDir", rendersDir.get())
+
+            dependsOn(discoverTask)
+            if (useLocalRenderer) {
+                dependsOn(":renderer-android:compile${capVariant}Kotlin")
+            }
+            dependsOn("process${capVariant}Resources")
+            val configTaskName = "generate${capVariant}UnitTestConfig"
+            if (project.tasks.findByName(configTaskName) != null) {
+                dependsOn(configTaskName)
+            }
+            if (compileShardsTask != null) {
+                dependsOn(compileShardsTask)
+            }
+        }
+
+        ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
     }
 
     private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {

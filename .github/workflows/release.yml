@@ -33,6 +33,9 @@ jobs:
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
   # published Maven artifact if the VSIX or CLI build fails (GitHub Packages
   # refuses to overwrite an already-published release version — see #409).
+  # `renderer-android` is published alongside the plugin so external consumers
+  # that apply the plugin via GitHub Packages also get the Robolectric-based
+  # Android renderer AAR — the plugin resolves it via matching version.
   publish-gradle-plugin:
     needs: [version, build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
@@ -43,13 +46,17 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Publish plugin to GitHub Packages
+      - name: Publish plugin and renderer-android to GitHub Packages
         env:
           PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: ./gradlew :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository --no-daemon
+        run: |
+          ./gradlew \
+            :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
+            :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
+            --no-daemon
 
   build-cli:
     needs: version
