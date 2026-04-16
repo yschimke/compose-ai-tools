@@ -38,10 +38,13 @@ jobs:
 
       - name: Install CLI
         run: |
-          gh release download --pattern 'compose-preview-*.tar.gz' --dir /tmp
-          tar -xzf /tmp/compose-preview-*.tar.gz -C /tmp
-          echo "/tmp/compose-preview-$(gh release view --json tagName -q .tagName | sed 's/^v//')/bin" \
-            >> "$GITHUB_PATH"
+          set -euo pipefail
+          VERSION=$(gh release view --json tagName -q .tagName | sed 's/^v//')
+          echo "Downloading compose-preview ${VERSION}..."
+          gh release download "v${VERSION}" --pattern "compose-preview-${VERSION}.tar.gz" --dir /tmp
+          mkdir -p /opt/compose-preview
+          tar -xzf "/tmp/compose-preview-${VERSION}.tar.gz" -C /opt/compose-preview --strip-components=1
+          echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
