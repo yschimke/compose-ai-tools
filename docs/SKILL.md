@@ -140,7 +140,7 @@ composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.0"
+    id("ee.schimke.composeai.preview") version "0.3.1"
 }
 
 composePreview {
