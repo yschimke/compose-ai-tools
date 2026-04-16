@@ -101,10 +101,8 @@ internal object AndroidPreviewSupport {
             }
             try {
                 project.dependencies.add(rendererConfig.name, project.dependencies.project(mapOf("path" to ":renderer-android")))
-            } catch (_: Exception) {
-                // The :renderer-android project may be missing in some builds;
-                // fall through — tasks below still work against whatever class
-                // dirs are on disk.
+            } catch (e: org.gradle.api.UnknownProjectException) {
+                project.logger.debug("compose-ai-tools: :renderer-android project not found, skipping", e)
             }
 
             // AGP's `generate${Variant}UnitTestConfig` task emits

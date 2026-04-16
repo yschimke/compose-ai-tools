@@ -34,11 +34,23 @@ fun main(args: Array<String>) {
 
     val className = args[0]
     val functionName = args[1]
-    val widthPx = args[2].toInt()
-    val heightPx = args[3].toInt()
-    val density = args[4].toFloat()
+    val widthPx = args[2].toIntOrNull() ?: run {
+        System.err.println("Invalid widthPx: '${args[2]}' (expected integer)")
+        exitProcess(1)
+    }
+    val heightPx = args[3].toIntOrNull() ?: run {
+        System.err.println("Invalid heightPx: '${args[3]}' (expected integer)")
+        exitProcess(1)
+    }
+    val density = args[4].toFloatOrNull() ?: run {
+        System.err.println("Invalid density: '${args[4]}' (expected float)")
+        exitProcess(1)
+    }
     val showBackground = args[5].toBoolean()
-    val backgroundColor = args[6].toLong()
+    val backgroundColor = args[6].toLongOrNull() ?: run {
+        System.err.println("Invalid backgroundColor: '${args[6]}' (expected long)")
+        exitProcess(1)
+    }
     val outputFile = File(args[7])
     val wrapperClassName = args.getOrNull(8)?.takeIf { it.isNotBlank() }
 

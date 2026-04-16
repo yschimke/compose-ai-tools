@@ -85,12 +85,11 @@ abstract class HistorizePreviewsTask : DefaultTask() {
     private fun uniqueDest(dir: File, timestamp: String): File {
         val primary = dir.resolve("$timestamp.png")
         if (!primary.exists()) return primary
-        var n = 1
-        while (true) {
+        for (n in 1..999) {
             val alt = dir.resolve("$timestamp-$n.png")
             if (!alt.exists()) return alt
-            n++
         }
+        error("Too many history snapshots for timestamp $timestamp in ${dir.path}")
     }
 
     private fun sha256(bytes: ByteArray): String {

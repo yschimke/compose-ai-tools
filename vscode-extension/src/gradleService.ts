@@ -95,8 +95,9 @@ export class GradleService {
                 return null;
             }
             return manifest;
-        } catch (e: any) {
-            this.logger.appendLine(`Failed to parse ${manifestPath}: ${e.message}`);
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            this.logger.appendLine(`Failed to parse ${manifestPath}: ${message}`);
             return null;
         }
     }

@@ -382,7 +382,8 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (abort.signal.aborted) { return; }
             if (!preview.renderOutput) { continue; }
 
-            const mod = previewModuleMap.get(preview.id)!;
+            const mod = previewModuleMap.get(preview.id);
+            if (!mod) { continue; }
             const imageData = await gradleService.readPreviewImage(mod, preview.renderOutput);
             if (abort.signal.aborted) { return; }
 
@@ -399,11 +400,12 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         }
 
         panel.postMessage({ command: 'showMessage', text: '' });
-    } catch (err: any) {
+    } catch (err: unknown) {
         if (abort.signal.aborted) { return; }
+        const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
         panel.postMessage({
             command: 'showMessage',
-            text: err.message?.slice(0, 300) ?? 'Build failed',
+            text: message,
         });
     } finally {
         if (pendingRefresh === abort) { pendingRefresh = null; }
@@ -473,7 +475,8 @@ async function openPreviewSource(className: string, functionName: string) {
     const editor = await vscode.window.showTextDocument(doc);
 
     const text = doc.getText();
-    const match = new RegExp(`fun\\s+${functionName}\\s*\\(`).exec(text);
+    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`fun\\s+${escaped}\\s*\\(`).exec(text);
     if (match) {
         const pos = doc.positionAt(match.index);
         editor.selection = new vscode.Selection(pos, pos);
