@@ -211,17 +211,69 @@ Or via raw URL:
 https://raw.githubusercontent.com/<owner>/<repo>/preview_main/renders/<module>/<preview-id>.png
 ```
 
-### Setting up the workflows
+### Adding preview CI to your project
 
-Copy these files from `compose-ai-tools` into your project:
+The actions are published as composite GitHub Actions. Add two workflow files
+to your project:
 
-- `.github/workflows/preview-baselines.yml` — updates `preview_main` on push
-  to main
-- `.github/workflows/preview-comment.yml` — posts before/after comments on PRs
-- `.github/ci/compare-previews.py` — comparison script (used by both workflows)
+**`.github/workflows/preview-baselines.yml`** — updates `preview_main` on push
+to main:
 
-The workflows download the `compose-preview` CLI from the latest release and
-auto-discover all modules that apply the plugin.
+```yaml
+name: Preview Baselines
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@main
+```
+
+**`.github/workflows/preview-comment.yml`** — posts before/after comments on
+PRs and cleans up on close:
+
+```yaml
+name: Preview Comment
+on:
+  pull_request:
+    types: [opened, synchronize, closed]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  compare:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@main
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: yschimke/compose-ai-tools/.github/actions/preview-cleanup@main
+```
+
+The actions download the `compose-preview` CLI from the latest release,
+auto-discover all modules that apply the plugin, and handle the baselines
+branch and PR comment lifecycle. Gradle build caching via `setup-gradle`
+keeps subsequent renders fast.
 
 ## Tips
 
