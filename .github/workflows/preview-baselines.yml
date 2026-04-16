@@ -1,0 +1,68 @@
+name: Preview Baselines
+
+# Renders all previews on main via the compose-preview CLI and publishes
+# the PNGs + baselines.json (preview ID -> SHA-256) to the `preview_main`
+# orphan branch.
+#
+# The branch is browsable on GitHub (README.md with inline image gallery)
+# and serves as the "before" state for PR preview-diff comments.
+#
+# Works for any project that applies ee.schimke.composeai.preview — modules
+# are auto-discovered by the CLI.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview-baselines
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Update preview_main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install CLI
+        run: ./gradlew :cli:installDist --no-daemon
+
+      - name: Render previews
+        run: |
+          cli/build/install/compose-preview/bin/compose-preview show --json \
+            > _previews.json
+
+      - name: Generate baselines
+        run: |
+          python3 .github/ci/compare-previews.py generate _previews.json \
+            --output-dir _baselines \
+            --repo "${{ github.repository }}" \
+            --branch preview_main
+
+      - name: Push to preview_main
+        run: |
+          set -euo pipefail
+          cd _baselines
+
+          git init
+          git checkout -b preview_main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update preview baselines from ${GITHUB_SHA::8}"
+
+          git remote add origin \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push --force origin preview_main
