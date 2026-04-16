@@ -82,28 +82,39 @@ internal object AndroidPreviewSupport {
         val hasAndroidRenderer = rendererProjectDir.resolve("build.gradle.kts").exists()
                 || rendererProjectDir.resolve("build.gradle").exists()
 
-        if (hasAndroidRenderer) {
-            val rendererClassDirs = project.files(
+        val rendererClassDirs = if (hasAndroidRenderer) {
+            project.files(
                 rendererProjectDir.resolve("build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"),
                 rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
             )
+        } else {
+            project.files(
+                project.layout.buildDirectory.dir("intermediates/built_in_kotlinc/${variantName}UnitTest/compile${capVariant}UnitTestKotlin/classes"),
+                project.layout.buildDirectory.dir("intermediates/javac/${variantName}UnitTest/compile${capVariant}UnitTestJavaWithJavac/classes")
+            )
+        }
 
-            // Renderer's transitive runtime dependencies come through a dedicated
-            // resolvable configuration in *this* project. Attributes are copied
-            // from the sample's unit-test runtime classpath so Gradle picks the
-            // right Android variant without us declaring them by hand.
-            val rendererConfig = project.configurations.maybeCreate("composePreviewAndroidRenderer$capVariant").apply {
-                isCanBeResolved = true
-                isCanBeConsumed = false
-                if (testConfig != null) {
-                    copyAttributes(attributes, testConfig.attributes)
-                }
+        // Renderer's transitive runtime dependencies come through a dedicated
+        // resolvable configuration in *this* project. Attributes are copied
+        // from the sample's unit-test runtime classpath so Gradle picks the
+        // right Android variant without us declaring them by hand.
+        val rendererConfig = project.configurations.maybeCreate("composePreviewAndroidRenderer$capVariant").apply {
+            isCanBeResolved = true
+            isCanBeConsumed = false
+            if (testConfig != null) {
+                copyAttributes(attributes, testConfig.attributes)
             }
+        }
+
+        if (hasAndroidRenderer) {
             try {
                 project.dependencies.add(rendererConfig.name, project.dependencies.project(mapOf("path" to ":renderer-android")))
             } catch (e: org.gradle.api.UnknownProjectException) {
                 project.logger.debug("compose-ai-tools: :renderer-android project not found, skipping", e)
             }
+        } else {
+            project.dependencies.add(rendererConfig.name, "ee.schimke.composeai:renderer-android:0.1.0-SNAPSHOT")
+        }
 
             // AGP's `generate${Variant}UnitTestConfig` task emits
             // `com/android/tools/test_config.properties` under
@@ -189,7 +200,9 @@ internal object AndroidPreviewSupport {
                     destinationDirectory.set(shardClassesDir)
                     options.release.set(21)
                     dependsOn(generateShardsTask)
-                    dependsOn(":renderer-android:compile${capVariant}Kotlin")
+                    if (hasAndroidRenderer) {
+                        dependsOn(":renderer-android:compile${capVariant}Kotlin")
+                    }
                 }
             } else null
 
@@ -243,13 +256,17 @@ internal object AndroidPreviewSupport {
                 // Roborazzi defaults to "compare" mode (which doesn't write pixels
                 // unless the expected baseline exists). Force "record" so every run
                 // writes fresh PNGs.
-                systemProperty("roborazzi.test.record", "true")
+                jvmArgs("-Droborazzi.test.record=true")
 
                 systemProperty("composeai.render.manifest", manifestFile.get())
                 systemProperty("composeai.render.outputDir", rendersDir.get())
 
                 dependsOn(discoverTask)
-                dependsOn(":renderer-android:compile${capVariant}Kotlin")
+                if (hasAndroidRenderer) {
+                    dependsOn(":renderer-android:compile${capVariant}Kotlin")
+                } else {
+                    dependsOn("compile${capVariant}UnitTestKotlin")
+                }
                 dependsOn("process${capVariant}Resources")
                 val configTaskName = "generate${capVariant}UnitTestConfig"
                 if (project.tasks.findByName(configTaskName) != null) {
@@ -261,11 +278,6 @@ internal object AndroidPreviewSupport {
             }
 
             ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
-        } else {
-            ComposePreviewTasks.registerStubRenderTask(
-                project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask, extension,
-            )
-        }
     }
 
     private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {

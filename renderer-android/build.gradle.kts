@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
+    id("maven-publish")
 }
 
 android {
@@ -21,6 +22,10 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+    }
+
+    publishing {
+        singleVariant("release")
     }
 }
 
@@ -47,4 +52,17 @@ dependencies {
     compileOnly(libs.wear.tiles.tooling.preview)
     compileOnly(libs.wear.protolayout)
     compileOnly(libs.wear.protolayout.expression)
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                groupId = "ee.schimke.composeai"
+                artifactId = "renderer-android"
+                version = "0.1.0-SNAPSHOT"
+            }
+        }
+    }
 }
