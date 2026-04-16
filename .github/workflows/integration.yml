@@ -89,6 +89,13 @@ jobs:
               -Dorg.gradle.unsafe.isolated-projects=false
               -Dorg.gradle.isolated-projects=false
               --no-configuration-cache
+          - name: wear-os-samples (WearTilesKotlin)
+            slug: wear-tiles
+            repo: android/wear-os-samples
+            ref: main
+            workdir: WearTilesKotlin
+            module: app
+            extra_gradle_args: ""
           # Confetti: dropped for now. :androidApp has @Preview functions but
           # discovery returned 0 (same bug we see in PeopleInSpace — track as a
           # follow-up). Render also fails on a :common:car KMP variant
