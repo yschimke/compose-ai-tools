@@ -9,8 +9,9 @@ plugins {
 group = "ee.schimke.composeai"
 // CI sets PLUGIN_VERSION: release.yml passes the git tag (stripped of `v`);
 // snapshot.yml passes `<last-tag-patch+1>-SNAPSHOT`. The string below is only
-// used for local `publishToMavenLocal`; bump it when the release version drifts.
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.3-SNAPSHOT"
+// used for local `publishToMavenLocal`; bump it after each tag so local
+// builds produce a version ahead of the last release.
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.4-SNAPSHOT"
 
 gradlePlugin {
     website.set("https://github.com/yschimke/compose-ai-tools")

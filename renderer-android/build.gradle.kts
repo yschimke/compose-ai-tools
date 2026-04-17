@@ -13,7 +13,7 @@ plugins {
 
 group = "ee.schimke.composeai"
 // See gradle-plugin/build.gradle.kts for how CI sets PLUGIN_VERSION.
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.3-SNAPSHOT"
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.4-SNAPSHOT"
 
 android {
     namespace = "ee.schimke.composeai.renderer"

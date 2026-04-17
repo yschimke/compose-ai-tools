@@ -42,7 +42,7 @@ Commands:
   show     Discover + render previews; print id, path, sha256, changed flag
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
-  doctor   Verify Java 21 + GitHub Packages credentials (run before Setup)
+  doctor   Verify Java 21 and plugin-repo connectivity (run before Setup)
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
@@ -99,16 +99,17 @@ extension provides:
 
 ## Setup
 
-Run the steps in order. Step 0 is a precheck — if it fails, **stop** and fix
-credentials before editing any Gradle files. The plugin is hosted on GitHub
-Packages, which requires authentication even for public repos, so a missing
-token produces an `HTTP 401` that is easy to misdiagnose once Gradle is in
-the mix.
+The plugin is published to Maven Central, so no credentials, PAT, or
+registry configuration is required. Most projects already have
+`mavenCentral()` in their plugin repositories (AGP and the Kotlin Gradle
+Plugin are both hosted there).
+
+Run the steps in order. Step 0 is a precheck — if it fails, **stop** and
+fix the environment before editing any Gradle files.
 
 ### 0. Install the CLI and run `doctor`
 
-Bootstrap the CLI, then verify Java 21 and GitHub Packages credentials are in
-place:
+Bootstrap the CLI, then verify the environment:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
@@ -122,30 +123,13 @@ The install script is idempotent, pulls the latest release into
 script prints the exact command to add it (`fish_add_path …` or a `PATH=`
 line for bash/zsh).
 
-`compose-preview doctor` verifies:
+`compose-preview doctor` verifies Java 21 is on `PATH` (the only hard
+prereq for the plugin now that Maven Central resolution needs no auth).
 
-1. Java 21 on `PATH`.
-2. `composeAiTools.githubToken` in `~/.gradle/gradle.properties`, or
-   `GITHUB_TOKEN` in the environment.
-3. The token actually resolves a package on `maven.pkg.github.com` (HEAD
-   probe). This catches the most common failure mode: a `gh` CLI token
-   reused as `GITHUB_TOKEN` that doesn't have the `read:packages` scope.
+### 1. Register the plugin repository (only if mavenCentral is missing)
 
-If doctor reports missing credentials, fix them before continuing:
-
-```properties
-# ~/.gradle/gradle.properties
-composeAiTools.githubUser=your-github-username
-composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-Or refresh the `gh` CLI token with the right scope:
-
-```sh
-gh auth refresh -h github.com -s read:packages
-```
-
-### 1. Register the plugin repository
+Most Android/KMP projects already include `mavenCentral()` in
+`pluginManagement.repositories`. If yours doesn't, add it.
 
 **Kotlin DSL — `settings.gradle.kts`:**
 
@@ -155,29 +139,11 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven {
-            name = "composeAiTools"
-            url = uri("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-            credentials {
-                username = providers.gradleProperty("composeAiTools.githubUser").orNull
-                    ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("composeAiTools.githubToken").orNull
-                    ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "ee.schimke.composeai.preview") {
-                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
-            }
-        }
     }
 }
 ```
 
-**Groovy DSL — `settings.gradle`** (used by many Android sample projects
-including the AOSP `wear-os-samples`):
+**Groovy DSL — `settings.gradle`:**
 
 ```groovy
 pluginManagement {
@@ -185,21 +151,6 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven {
-            name = 'composeAiTools'
-            url = uri('https://maven.pkg.github.com/yschimke/compose-ai-tools')
-            credentials {
-                username = providers.gradleProperty('composeAiTools.githubUser').orNull ?: System.getenv('GITHUB_ACTOR')
-                password = providers.gradleProperty('composeAiTools.githubToken').orNull ?: System.getenv('GITHUB_TOKEN')
-            }
-        }
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == 'ee.schimke.composeai.preview') {
-                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
-            }
-        }
     }
 }
 ```
@@ -210,7 +161,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.2"
+    id("ee.schimke.composeai.preview") version "0.3.3"
 }
 
 composePreview {
@@ -224,7 +175,7 @@ composePreview {
 
 ```groovy
 plugins {
-    id 'ee.schimke.composeai.preview' version '0.3.2'
+    id 'ee.schimke.composeai.preview' version '0.3.3'
 }
 
 composePreview {

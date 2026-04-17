@@ -91,95 +91,53 @@ Configuration caching is strict (`problems=fail`).
 
 ## Setup
 
-The plugin is published to [GitHub Packages](https://github.com/yschimke/compose-ai-tools/packages). GitHub
-requires authentication for reading Maven artifacts even from public repos,
-so you need a Personal Access Token.
+The plugin is published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin).
+No authentication, no PAT — just apply it.
 
-### 1. Create a GitHub PAT
-
-You need a Personal Access Token to read Maven artifacts from GitHub Packages
-(authentication is required even for public repos). You only need the
-**`read:packages`** scope — nothing else.
-
-**Classic token (simplest):**
-
-1. Go to <https://github.com/settings/tokens/new>.
-2. Name: e.g. `compose-ai-tools`. Expiration: whatever you prefer.
-3. Tick only **`read:packages`**.
-4. Click **Generate token** and copy the value (starts with `ghp_`).
-
-**Fine-grained token:** at
-<https://github.com/settings/personal-access-tokens/new> grant **Account
-permissions → Packages: Read-only**. Repository access can stay at "Public
-repositories (read-only)".
-
-**Or reuse your `gh` CLI token** if you're already signed in:
-
-```sh
-gh auth token   # prints a token with read:packages by default
-```
-
-### 2. Store credentials (not in the repo)
-
-Add to `~/.gradle/gradle.properties` so they apply to every build on your machine:
-
-```properties
-composeAiTools.githubUser=your-github-username
-composeAiTools.githubToken=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-On CI, pass them via environment variables `GITHUB_ACTOR` / `GITHUB_TOKEN`
-(both are pre-populated in GitHub Actions — no config needed).
-
-### 3. Register the plugin repository
-
-In `settings.gradle.kts`:
+### 1. Apply the plugin
 
 ```kotlin
+// <module>/build.gradle.kts
+plugins {
+    id("ee.schimke.composeai.preview") version "0.3.3"
+}
+```
+
+Most projects already have `mavenCentral()` in their
+`pluginManagement.repositories` (AGP and the Kotlin Gradle Plugin are both
+on Central). If yours doesn't, add it:
+
+```kotlin
+// settings.gradle.kts
 pluginManagement {
     repositories {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven {
-            name = "composeAiTools"
-            url = uri("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-            credentials {
-                username = providers.gradleProperty("composeAiTools.githubUser").orNull
-                    ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("composeAiTools.githubToken").orNull
-                    ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
     }
 }
 ```
 
-### 4. Apply the plugin
-
-```kotlin
-// <module>/build.gradle.kts
-plugins {
-    id("ee.schimke.composeai.preview") version "0.3.2"
-}
-```
-
-Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for the
-latest version. CMP Desktop projects also need
+CMP Desktop projects additionally need
 `implementation(compose.components.uiToolingPreview)` — the bundled
 `@Preview` annotation has `SOURCE` retention and is invisible to ClassGraph.
 
+Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for
+the latest version. Snapshots publish to the Central snapshots repo on
+every push to `main` — see [docs/RELEASING.md](docs/RELEASING.md) if you
+want to consume pre-release builds.
+
 ## Install the CLI
 
-Download `compose-preview-0.3.2.tar.gz` (or `.zip`) from the
-[v0.3.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.2)
+Download `compose-preview-0.3.3.tar.gz` (or `.zip`) from the
+[v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.2/compose-preview-0.3.2.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.3/compose-preview-0.3.3.tar.gz
 tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.3.2/bin:$PATH"
+export PATH="$PWD/compose-preview-0.3.3/bin:$PATH"
 
 compose-preview --help
 ```
@@ -188,18 +146,18 @@ Requires Java 21 on `PATH` (or `JAVA_HOME`).
 
 ## Install the VS Code extension
 
-Download `compose-preview-0.3.2.vsix` from the
-[v0.3.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.2)
+Download `compose-preview-0.3.3.vsix` from the
+[v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
 and install it:
 
 ```sh
-code --install-extension compose-preview-0.3.2.vsix
+code --install-extension compose-preview-0.3.3.vsix
 ```
 
 Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.3.2` in your project as shown above.
+`ee.schimke.composeai.preview` version `0.3.3` in your project as shown above.
 
 ## Usage
 

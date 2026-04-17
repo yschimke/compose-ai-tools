@@ -69,7 +69,7 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
 - **CMP Desktop previews require `implementation(compose.components.uiToolingPreview)`** — the bundled `@Preview` has `SOURCE` retention and is invisible to ClassGraph otherwise.
 - **Toolchain:** Java 21, Kotlin 2.2.21, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper.
 - **Do not run `collectPreviewInfo` / other internal plugin tasks by hand** — the plugin wires them as dependencies of `renderAllPreviews`.
-- **Plugin version** defaults to `0.1.0-SNAPSHOT` unless `PLUGIN_VERSION` env var is set (see [gradle-plugin/build.gradle.kts:9](gradle-plugin/build.gradle.kts#L9)).
+- **Plugin version** defaults to the next-patch `-SNAPSHOT` (e.g. `0.3.4-SNAPSHOT` when `v0.3.3` is the last tag) unless `PLUGIN_VERSION` env var is set (see [gradle-plugin/build.gradle.kts](gradle-plugin/build.gradle.kts)). Bump the fallback in the build files after each tag so local `publishToMavenLocal` yields a meaningful version.
 - **Android renderer is pinned to Robolectric SDK 34** via `@Config(sdk = [34])` in [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt). Robolectric 4.16.1's `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is gated `maxSdk=UPSIDE_DOWN_CAKE`; on API 35+ the un-shadowed AOSP native yields `Image.planes[0] == null` and capture fails. Re-test and remove the pin when bumping Robolectric.
 
 ## Tests

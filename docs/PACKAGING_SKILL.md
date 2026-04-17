@@ -3,8 +3,9 @@
 Notes for making the Compose Preview skill trivially installable from a fresh
 Claude Code environment. The goal: a single command that gives an agent both
 the skill instructions *and* a working CLI, without the agent having to
-improvise install paths, translate Kotlin→Groovy, or diagnose GitHub Packages
-401s on its own.
+improvise install paths or translate Kotlin→Groovy on its own. Now that the
+plugin is published to Maven Central, no credentials or PAT are needed —
+one less class of setup failure to diagnose.
 
 The recommendations below move the repo from "docs + binary, figure it out"
 to "an agent can run through Setup mechanically."
@@ -40,13 +41,14 @@ inside the source tree, but to actually *use* it an agent has to:
 
 1. Find it (not on a standard skill path).
 2. Download a release tarball and guess an install location.
-3. Write Gradle credentials to the right file.
-4. Translate Kotlin DSL snippets to Groovy for projects that use
+3. Translate Kotlin DSL snippets to Groovy for projects that use
    `settings.gradle`.
 
-With the install script and `compose-preview doctor` added in this change,
-steps 2 and 3 are now scripted. Step 4 is addressed with dual snippets in
-`SKILL.md`. Step 1 is what this doc is about.
+With the install script added in this change, step 2 is now scripted. Step
+3 is addressed with dual snippets in `SKILL.md`. Maven Central publishing
+eliminated a previous "write Gradle credentials" step entirely — apply
+the plugin by id/version and it resolves from the default `mavenCentral()`
+repo. Step 1 is what this doc is about.
 
 ## Option A — "copy this directory into `.claude/skills/`"
 
@@ -76,7 +78,7 @@ curl -fsSL https://codeload.github.com/yschimke/compose-ai-tools/tar.gz/refs/hea
 Or, pinned to a release:
 
 ```sh
-curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.2/compose-preview-skill.tar.gz \
+curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.3/compose-preview-skill.tar.gz \
   | tar -xz -C ~/.claude/skills/
 ```
 
@@ -145,9 +147,9 @@ can ship the CLI binaries directly:
 (an env var Claude Code sets when running skill helpers) — the agent never
 touches `~/.local/bin`, and there's no PATH setup.
 
-Trade-off: the skill tarball grows to match the CLI tarball size (~6.4 MB
-for 0.3.2). Still small in absolute terms, but it means every skill update
-re-ships the whole CLI. The upside is that `install.sh` becomes truly
+Trade-off: the skill tarball grows to match the CLI tarball size (roughly
+6–7 MB at current). Still small in absolute terms, but it means every
+skill update re-ships the whole CLI. The upside is that `install.sh` becomes truly
 optional; `compose-preview doctor` runs directly from the skill.
 
 ## Recommendation
