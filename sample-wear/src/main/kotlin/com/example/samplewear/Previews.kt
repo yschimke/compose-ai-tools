@@ -26,6 +26,8 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TimeSource
+import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -33,6 +35,11 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
 import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
+
+private object FixedTimeSource : TimeSource {
+    @Composable
+    override fun currentTime(): String = "10:10"
+}
 
 private data class Item(val title: String, val subtitle: String)
 
@@ -48,7 +55,9 @@ private val sampleItems = listOf(
 @Composable
 fun WearApp() {
     MaterialTheme {
-        AppScaffold {
+        AppScaffold(
+            timeText = { TimeText(timeSource = FixedTimeSource) },
+        ) {
             ActivityListScreen()
         }
     }
@@ -115,7 +124,9 @@ fun ActivityListScreen() {
 @Composable
 private fun ButtonPreviewContent() {
     MaterialTheme {
-        AppScaffold {
+        AppScaffold(
+            timeText = { TimeText(timeSource = FixedTimeSource) },
+        ) {
             ScreenScaffold { contentPadding ->
                 Box(
                     modifier = Modifier
