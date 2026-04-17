@@ -47,10 +47,10 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Publish plugin to mavenLocal
-        run: ./gradlew :gradle-plugin:publishToMavenLocal --no-daemon --stacktrace
+        run: ./gradlew :gradle-plugin:publishToMavenLocal --stacktrace
 
       - name: Install CLI
-        run: ./gradlew :cli:installDist --no-daemon --stacktrace
+        run: ./gradlew :cli:installDist --stacktrace
 
       - name: Bundle artifacts
         run: |

@@ -1,0 +1,23 @@
+name: 'Install compose-preview CLI'
+description: >
+  Download the latest tagged compose-preview release tarball and put its
+  `bin/` on $GITHUB_PATH. Shared by the preview-baselines and
+  preview-comment composite actions — identical logic previously lived in
+  both.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install CLI
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        VERSION=$(gh release view --repo yschimke/compose-ai-tools --json tagName -q .tagName | sed 's/^v//')
+        echo "Downloading compose-preview ${VERSION}..."
+        gh release download "v${VERSION}" --repo yschimke/compose-ai-tools \
+          --pattern "compose-preview-${VERSION}.tar.gz" --dir /tmp
+        mkdir -p /opt/compose-preview
+        tar -xzf "/tmp/compose-preview-${VERSION}.tar.gz" -C /opt/compose-preview --strip-components=1
+        echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"

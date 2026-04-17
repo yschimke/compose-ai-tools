@@ -23,15 +23,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  version:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.extract.outputs.version }}
-    steps:
-      - id: extract
-        # Strip leading `v` from tag, e.g. v0.1.0 → 0.1.0
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
   # published Maven artifact if the VSIX or CLI build fails (GitHub Packages
   # refuses to overwrite an already-published release version — see #409).
@@ -39,67 +30,61 @@ jobs:
   # that apply the plugin via GitHub Packages also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
   publish-gradle-plugin:
-    needs: [version, build-cli, build-vscode-extension]
+    needs: [build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write   # push to GitHub Packages
+    env:
+      # Signing creds are shared by both publish steps. vanniktech's
+      # `signAllPublications()` wires the `sign*` tasks as dependencies of
+      # every publish task — including the GH Packages publication — so
+      # "no configured signatory" errors out either publish without them.
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - name: Derive plugin version from tag
+        # Strip leading `v` from tag, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION is
+        # then inherited by every subsequent step in this job.
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
       - name: Publish plugin and renderer-android to GitHub Packages
-        # Signing credentials are required here too: vanniktech's
-        # `signAllPublications()` wires the `sign*` tasks as dependencies of
-        # every publish task — including `publishAllPublicationsToGitHubPackagesRepository`
-        # — so this step fails with "no configured signatory" without them.
-        # The resulting `.asc` sidecars on GH Packages are harmless.
         env:
-          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
-            :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
-            --no-daemon
+            :renderer-android:publishAllPublicationsToGitHubPackagesRepository
       - name: Publish plugin and renderer-android to Maven Central
         env:
-          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
-            :renderer-android:publishAndReleaseToMavenCentral \
-            --no-daemon
-          # `--no-configuration-cache` is rejected when
-          # `org.gradle.unsafe.isolated-projects=true` (see gradle.properties).
+            :renderer-android:publishAndReleaseToMavenCentral
 
   build-cli:
-    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - name: Derive plugin version from tag
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
       - name: Build CLI distribution
-        env:
-          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
-        run: ./gradlew :cli:distZip :cli:distTar --no-daemon
+        run: ./gradlew :cli:distZip :cli:distTar
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-dist
@@ -109,7 +94,6 @@ jobs:
           retention-days: 1
 
   build-vscode-extension:
-    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -125,11 +109,10 @@ jobs:
         run: npm ci
       - name: Set version
         working-directory: vscode-extension
-        # Pass the version via env so the tag value (attacker-influenceable
-        # through the git tag name) can't inject arguments into `npm version`.
-        env:
-          PKG_VERSION: ${{ needs.version.outputs.version }}
-        run: npm version --no-git-tag-version --allow-same-version "$PKG_VERSION"
+        # Read tag from $GITHUB_REF_NAME (runner-set, not templated into the
+        # script) so the tag name — attacker-influenceable through git — can't
+        # inject arguments into `npm version`.
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
       - name: Build VSIX
         working-directory: vscode-extension
         run: npm run package
@@ -140,7 +123,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [version, publish-gradle-plugin]
+    needs: publish-gradle-plugin
     runs-on: ubuntu-latest
     permissions:
       contents: write   # create release, upload assets
@@ -153,15 +136,13 @@ jobs:
           path: artifacts
           merge-multiple: true
       - name: Create GitHub Release
-        # Pass the resolved version through env, not inline ${{ }}, so the
-        # tag name (attacker-controllable in theory) can't break out of the
-        # quotation and inject extra arguments to `gh release create`.
+        # $GITHUB_REF_NAME is runner-set (not templated into the script), so
+        # the tag name can't break out of the quotation and inject extra args.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "compose-ai-tools ${RELEASE_VERSION}" \
+            --title "compose-ai-tools ${GITHUB_REF_NAME#v}" \
             --generate-notes \
             artifacts/*.zip \
             artifacts/*.tar.gz \
