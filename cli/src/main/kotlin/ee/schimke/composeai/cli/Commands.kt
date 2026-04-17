@@ -233,15 +233,28 @@ class ShowCommand(args: List<String>) : Command(args) {
                         println("[${r.module}]")
                         lastModule = r.module
                     }
-                    val changedTag = when (r.changed) {
-                        true -> " [changed]"
-                        false -> ""
-                        null -> ""
+                    val statusTag = when {
+                        r.pngPath == null -> " [no PNG]"
+                        r.changed == true -> " [changed]"
+                        else -> ""
                     }
                     val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
-                    println("${r.functionName} (${r.id})$changedTag$shaTag")
+                    println("${r.functionName} (${r.id})$statusTag$shaTag")
                     if (r.pngPath != null) println("  ${r.pngPath}")
                 }
+            }
+
+            val missing = filtered.filter { it.pngPath == null }
+            if (missing.isNotEmpty()) {
+                System.err.println(
+                    "Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s).",
+                )
+                System.err.println(
+                    "Check the Gradle output above — a common cause is the `renderPreviews` task " +
+                        "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
+                        "testClassesDirs.",
+                )
+                exitProcess(2)
             }
         }
     }
@@ -297,6 +310,8 @@ class RenderCommand(args: List<String>) : Command(args) {
                 exitProcess(3)
             }
 
+            val missing = filtered.filter { it.pngPath == null }
+
             if (output != null) {
                 if (filtered.size != 1) {
                     System.err.println(
@@ -307,15 +322,23 @@ class RenderCommand(args: List<String>) : Command(args) {
                 }
                 val one = filtered.single()
                 if (one.pngPath == null) {
-                    System.err.println("Match has no rendered PNG: ${one.id}")
+                    System.err.println("Render produced no PNG for: ${one.id}")
                     exitProcess(2)
                 }
                 File(one.pngPath).copyTo(File(output), overwrite = true)
                 println("Rendered ${one.id} to $output")
             } else {
-                println("Rendered ${filtered.size} preview(s)")
+                val rendered = filtered.size - missing.size
+                println("Rendered $rendered preview(s)")
                 val changedCount = filtered.count { it.changed == true }
                 if (changedCount > 0) println("  $changedCount changed since last run")
+                if (missing.isNotEmpty()) {
+                    System.err.println(
+                        "Render task completed but produced no PNG for ${missing.size} preview(s):",
+                    )
+                    for (r in missing) System.err.println("  ${r.id}")
+                    exitProcess(2)
+                }
             }
         }
     }
