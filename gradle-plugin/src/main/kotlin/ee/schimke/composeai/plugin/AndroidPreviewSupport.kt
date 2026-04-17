@@ -233,9 +233,9 @@ internal object AndroidPreviewSupport {
                 rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
             }
             classpath = if (compileShardsTask != null) {
-                resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory })
+                resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory }) + (agpTestTask?.testClassesDirs ?: project.files())
             } else {
-                resolvedClasspath
+                resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files())
             }
             if (shardsEnabled) {
                 include("**/RobolectricRenderTest_Shard*.class")
