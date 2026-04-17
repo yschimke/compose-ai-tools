@@ -1,0 +1,33 @@
+name: Release PR
+
+# Keeps a "chore(main): release X.Y.Z" pull request up to date based on
+# conventional-commit history since the last tag. Does NOT tag or create a
+# GitHub Release — once the release PR is merged, the maintainer pushes the
+# tag manually, which triggers release.yml. See docs/RELEASING.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Do NOT let release-please create the tag/GitHub Release. The
+          # maintainer tags manually after merging the release PR — this keeps
+          # tag creation visible and triggers release.yml (which won't fire
+          # from a GITHUB_TOKEN-created tag anyway).
+          skip-github-release: true
