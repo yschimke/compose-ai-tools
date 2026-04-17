@@ -53,7 +53,7 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
             "sourceFile": entry.get("sourceFile", ""),
             "module": entry["module"],
             "previewId": entry["id"],
-            "pngPath": entry.get("pngPath", ""),
+            "pngPath": entry.get("pngPath") or "",
         }
     return result
 
@@ -92,6 +92,8 @@ def cmd_generate(args: argparse.Namespace) -> int:
     if renders_out.exists():
         shutil.rmtree(renders_out)
     for info in previews.values():
+        if not info["pngPath"]:
+            continue
         png = Path(info["pngPath"])
         if not png.exists():
             continue
@@ -296,6 +298,8 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
     copied = 0
     for key, info in current.items():
         if not info["sha256"]:
+            continue
+        if not info["pngPath"]:
             continue
         png = Path(info["pngPath"])
         if not png.exists():
