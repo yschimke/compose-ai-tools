@@ -71,6 +71,11 @@
                 "command": "composePreview.renderAll",
                 "title": "Render All Previews",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.openModuleBuildFile",
+                "title": "Open Module build.gradle.kts",
+                "category": "Compose Preview"
             }
         ],
         "configuration": {

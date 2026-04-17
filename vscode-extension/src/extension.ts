@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { GradleService, GradleApi } from './gradleService';
 import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
@@ -41,11 +42,26 @@ const firstSaveSeen = new Set<string>();
 let pendingSavePath: string | null = null;
 let debounceElapsed = true;
 let refreshInFlight = false;
+/** Workspace-state key that suppresses the "plugin not applied" notification. */
+const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
+/** Captured in activate() so notification helpers can reach workspaceState. */
+let extensionContext: vscode.ExtensionContext | null = null;
+/** Guard against firing the "plugin not applied" notification more than once
+ *  per session — users shouldn't see it on every refresh tick. */
+let warnedMissingPluginThisSession = false;
+// Decide whether a file "probably wants previews" with the plugin off. Kept
+// deliberately loose: the file just needs to contain the substring "Preview"
+// (covers `@Preview`, `@PreviewLightDark`, preview-tooling imports, and
+// custom-multipreview definition sites) and be a Composable file at all.
+// False positives are cheap — an extra informational message. False
+// negatives (silence when the user wanted a nudge) are the worse outcome.
+const SETUP_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme';
 
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) { return; }
 
+    extensionContext = context;
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const outputChannel = vscode.window.createOutputChannel('Compose Preview');
     context.subscriptions.push(outputChannel);
@@ -77,6 +93,8 @@ export async function activate(context: vscode.ExtensionContext) {
             const target = filePath ?? currentScopeFile ?? undefined;
             if (target) { refresh(true, target); }
         }),
+        vscode.commands.registerCommand('composePreview.openModuleBuildFile',
+            (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath)),
         vscode.commands.registerCommand('composePreview.focusPreview',
             async (functionName: string, filePath?: string) => {
                 if (!panel) { return; }
@@ -297,13 +315,13 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         : null;
     if (!activeFile || !module) {
         panel.postMessage({ command: 'clearAll' });
-        panel.postMessage({
-            command: 'showMessage',
-            text: 'Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.',
-        });
+        panel.postMessage({ command: 'showMessage', text: emptyStateMessage(activeFile) });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
         currentScopeFile = null;
+        if (activeFile && isPreviewSourceFile(activeFile)) {
+            maybeShowSetupPrompt(activeFile);
+        }
         return;
     }
 
@@ -467,6 +485,121 @@ async function sendHistoryImage(previewId: string, filename: string) {
     if (imageData) {
         panel.postMessage({ command: 'updateHistoryImage', previewId, filename, imageData });
     }
+}
+
+/**
+ * Picks the right empty-state message for the webview based on why the panel
+ * couldn't resolve a preview-enabled module for the active file:
+ *
+ *   - No Kotlin file active / build script in focus: generic hint.
+ *   - Plugin isn't applied in any module in the workspace: call that out
+ *     explicitly. Users who've just installed the extension hit this one and
+ *     the generic "open a Kotlin file" message is misleading there.
+ *   - Plugin is applied somewhere, but not in this file's module, AND the
+ *     file contains `@Preview` annotations: the user almost certainly wants
+ *     previews here — nudge them toward adding the plugin to this module.
+ *   - Plugin is applied somewhere, but this file has no `@Preview` usage:
+ *     stay quiet. The file probably just isn't a preview file (false alarm
+ *     for case C).
+ */
+function emptyStateMessage(activeFile: string | undefined): string {
+    if (!gradleService) { return ''; }
+    if (!activeFile || !isPreviewSourceFile(activeFile)) {
+        return 'Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.';
+    }
+    const previewModules = gradleService.findPreviewModules();
+    if (previewModules.length === 0) {
+        return 'The Compose Preview Gradle plugin isn\'t applied in this workspace. '
+            + 'Add id("ee.schimke.composeai.preview") to a module\'s build.gradle.kts to enable previews.';
+    }
+    if (fileHasPreviewAnnotation(activeFile)) {
+        const topDir = topLevelDirOf(activeFile) ?? '(this module)';
+        return `'${topDir}' doesn't apply ee.schimke.composeai.preview. `
+            + `Modules with previews in this workspace: ${previewModules.join(', ')}.`;
+    }
+    // No @Preview references in the active file — stay out of the way.
+    return 'No @Preview functions in this file.';
+}
+
+/**
+ * Show a one-shot VS Code notification with remediation actions for the
+ * "plugin not applied" cases. De-duped per session and dismissable per
+ * workspace. Skips the nudge entirely when the file has no `@Preview` usage
+ * and the workspace already has other preview-enabled modules (case C'),
+ * because that's almost certainly a false alarm.
+ */
+function maybeShowSetupPrompt(activeFile: string): void {
+    if (warnedMissingPluginThisSession || !gradleService || !extensionContext) { return; }
+    if (extensionContext.workspaceState.get<boolean>(DISMISS_KEY)) { return; }
+
+    const previewModules = gradleService.findPreviewModules();
+    const missingAnywhere = previewModules.length === 0;
+    const missingForThisModule = !missingAnywhere && fileHasPreviewAnnotation(activeFile);
+    if (!missingAnywhere && !missingForThisModule) { return; }
+
+    warnedMissingPluginThisSession = true;
+    const message = missingAnywhere
+        ? 'Compose Preview: the Gradle plugin isn\'t applied in this workspace yet.'
+        : 'Compose Preview: this module doesn\'t apply the Gradle plugin, but the file uses @Preview.';
+    const OPEN = 'Open build.gradle.kts';
+    const DOCS = 'View setup docs';
+    const NEVER = 'Don\'t show again';
+    void vscode.window.showInformationMessage(message, OPEN, DOCS, NEVER).then(action => {
+        if (action === OPEN) {
+            void vscode.commands.executeCommand('composePreview.openModuleBuildFile', activeFile);
+        } else if (action === DOCS) {
+            void vscode.env.openExternal(vscode.Uri.parse(SETUP_DOCS_URL));
+        } else if (action === NEVER) {
+            void extensionContext?.workspaceState.update(DISMISS_KEY, true);
+        }
+    });
+}
+
+/**
+ * Opens the nearest ancestor `build.gradle.kts` of the given file — the
+ * likely target for adding `id("ee.schimke.composeai.preview")`. Walks up
+ * from the file's directory; if nothing is found before the workspace root,
+ * falls back to the root's own build script. This handles both top-level
+ * modules (the only kind findPreviewModules scans for) and nested layouts.
+ */
+async function openModuleBuildFile(workspaceRoot: string, filePath?: string): Promise<void> {
+    const target = filePath
+        ?? currentScopeFile
+        ?? vscode.window.activeTextEditor?.document.uri.fsPath
+        ?? workspaceRoot;
+
+    let dir = target === workspaceRoot ? workspaceRoot : path.dirname(target);
+    const root = path.resolve(workspaceRoot);
+    while (path.resolve(dir).startsWith(root)) {
+        const candidate = path.join(dir, 'build.gradle.kts');
+        if (fs.existsSync(candidate)) {
+            const doc = await vscode.workspace.openTextDocument(candidate);
+            await vscode.window.showTextDocument(doc);
+            return;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) { break; }
+        dir = parent;
+    }
+    vscode.window.showWarningMessage('No build.gradle.kts found for this file.');
+}
+
+function fileHasPreviewAnnotation(filePath: string): boolean {
+    // Prefer the already-loaded editor buffer over a disk read so unsaved
+    // edits (the user just typed `@Preview`) are picked up.
+    const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === filePath);
+    const text = doc
+        ? doc.getText()
+        : (() => { try { return fs.readFileSync(filePath, 'utf-8'); } catch { return ''; } })();
+    return text.includes('Preview') && text.includes('@Composable');
+}
+
+function topLevelDirOf(filePath: string): string | null {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) { return null; }
+    const rel = path.relative(folders[0].uri.fsPath, filePath);
+    const first = rel.split(path.sep)[0];
+    return first && first !== '..' ? first : null;
 }
 
 async function openPreviewSource(className: string, functionName: string) {
