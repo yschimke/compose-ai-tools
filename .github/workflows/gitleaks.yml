@@ -1,0 +1,31 @@
+name: gitleaks
+
+# Scans every PR and every push for accidentally-committed secrets (API keys,
+# private keys, tokens, signing material, etc). Findings fail the job so a
+# leaked secret cannot land on main without an explicit override.
+#
+# Particularly important for this repo because the release/snapshot workflows
+# handle GPG signing keys and Maven Central tokens — a stray paste into a
+# commit message or source file would be exactly the kind of incident this
+# catches before merge.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Full history so gitleaks can scan every commit on a PR, not just HEAD.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
