@@ -26,6 +26,7 @@ jobs:
         with:
           # Full history so gitleaks can scan every commit on a PR, not just HEAD.
           fetch-depth: 0
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

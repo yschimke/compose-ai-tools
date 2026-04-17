@@ -12,9 +12,11 @@ on:
     tags:
       - 'v*'
 
+# Workflow-level default is read-only. Each job widens only what it needs:
+# - publish-gradle-plugin: packages: write (for GH Packages)
+# - release: contents: write (creates the GitHub Release, uploads assets)
 permissions:
-  contents: write     # create releases, upload assets
-  packages: write     # push to GitHub Packages
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -39,13 +41,23 @@ jobs:
   publish-gradle-plugin:
     needs: [version, build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # push to GitHub Packages
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+        with:
+          # Don't populate the Gradle cache from release builds — untrusted
+          # PR runs could read those entries on subsequent workflow runs and
+          # end up with poisoned inputs. (zizmor: cache-poisoning)
+          cache-read-only: true
       - name: Publish plugin and renderer-android to GitHub Packages
         env:
           PLUGIN_VERSION: ${{ needs.version.outputs.version }}
@@ -78,11 +90,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+        with:
+          cache-read-only: true
       - name: Build CLI distribution
         env:
           PLUGIN_VERSION: ${{ needs.version.outputs.version }}
@@ -100,6 +116,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 20
@@ -110,7 +128,11 @@ jobs:
         run: npm ci
       - name: Set version
         working-directory: vscode-extension
-        run: npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.version }}
+        # Pass the version via env so the tag value (attacker-influenceable
+        # through the git tag name) can't inject arguments into `npm version`.
+        env:
+          PKG_VERSION: ${{ needs.version.outputs.version }}
+        run: npm version --no-git-tag-version --allow-same-version "$PKG_VERSION"
       - name: Build VSIX
         working-directory: vscode-extension
         run: npm run package
@@ -123,18 +145,26 @@ jobs:
   release:
     needs: [version, publish-gradle-plugin]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create release, upload assets
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
           merge-multiple: true
       - name: Create GitHub Release
+        # Pass the resolved version through env, not inline ${{ }}, so the
+        # tag name (attacker-controllable in theory) can't break out of the
+        # quotation and inject extra arguments to `gh release create`.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "compose-ai-tools ${{ needs.version.outputs.version }}" \
+            --title "compose-ai-tools ${RELEASE_VERSION}" \
             --generate-notes \
             artifacts/*.zip \
             artifacts/*.tar.gz \
