@@ -1,11 +1,16 @@
 name: CodeQL
 
-# Advanced-setup CodeQL for Java/Kotlin. The default setup's autobuild injects
-# Gradle init scripts that use `allprojects { repositories { ... } }` and
-# `allprojects { tasks... }`, which are rejected by this repo's strict config
-# (`org.gradle.configuration-cache=true` with `problems=fail`, and
-# `org.gradle.unsafe.isolated-projects=true`). Manual build-mode lets us run
-# Gradle with those flags turned off for the scan only.
+# Advanced-setup CodeQL, matching the languages Default Setup previously
+# auto-detected (java-kotlin, javascript-typescript, actions).
+#
+# Why advanced setup at all: Default Setup's autobuild injects Gradle init
+# scripts (`setup-proxy.gradle`, `semmleTempDir/init.gradle`) that call
+# `allprojects { repositories { ... } }` and `allprojects { tasks... }`,
+# both rejected by this repo's strict config (`configuration-cache=true`
+# with `problems=fail`, plus `isolated-projects=true`). For java-kotlin we
+# run Gradle ourselves with those flags disabled, scoped to the scan only.
+# The other languages use `build-mode: none` — Kotlin isn't supported in
+# `none` mode but JS/TS and Actions are.
 #
 # Switch the repo from Default to Advanced setup in
 # Settings → Code security → Code scanning for this workflow to take effect.
@@ -28,7 +33,7 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze (java-kotlin)
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       # Required for all workflows
@@ -36,18 +41,31 @@ jobs:
       # Required to fetch internal or private CodeQL packs
       packages: read
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup
+      - name: Set up JDK + Gradle
+        if: matrix.language == 'java-kotlin'
+        uses: ./.github/actions/setup
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
-          languages: java-kotlin
-          build-mode: manual
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
       # CodeQL traces the Kotlin/Java compiler to build its database, so we
       # need a real compile — but with configuration-cache and isolated-projects
@@ -55,6 +73,7 @@ jobs:
       # `compileKotlin` covers all Kotlin source sets across the multi-module
       # build via task-name matching in subprojects.
       - name: Compile Kotlin for CodeQL
+        if: matrix.language == 'java-kotlin'
         run: |
           ./gradlew compileKotlin compileDebugKotlin compileReleaseKotlin \
             --no-configuration-cache \
@@ -64,4 +83,4 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
-          category: "/language:java-kotlin"
+          category: "/language:${{ matrix.language }}"
