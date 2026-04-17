@@ -4,7 +4,8 @@ plugins {
     application
 }
 
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
+// See gradle-plugin/build.gradle.kts for how CI sets PLUGIN_VERSION.
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.3-SNAPSHOT"
 
 base {
     archivesName.set("compose-preview")
