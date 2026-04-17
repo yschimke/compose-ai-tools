@@ -1,12 +1,16 @@
 package ee.schimke.composeai.plugin
 
+import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
+
+private val previewManifestJson = Json { ignoreUnknownKeys = true }
 
 /**
  * AGP-free task wiring shared between the Android and desktop code paths.
@@ -159,9 +163,42 @@ internal object ComposePreviewTasks {
             dependsOn(renderTask)
         }
 
+        // Post-condition check: every entry in the manifest must have a PNG
+        // on disk after the render dependency ran. We ship the renderer
+        // (RobolectricRenderTest on Android, RenderPreviewsTask on desktop)
+        // so we KNOW the task should run for a non-empty manifest — a missing
+        // PNG is a wiring bug, never expected. The most common offender on
+        // Android is `renderPreviews` reporting NO-SOURCE because the AAR's
+        // classes.jar wasn't expanded via `zipTree` before being added to
+        // `testClassesDirs`, which silently skips rendering; without this
+        // check the failure surfaces only in downstream tools (CLI / VSCode).
+        val manifestFile = previewOutputDir.map { it.file("previews.json") }
+        val rendersDir = previewOutputDir.map { it.dir("renders") }
         project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
             group = "compose preview"
             dependsOn(extension.historyEnabled.map { enabled -> if (enabled) historizeTask else renderTask })
+            doLast {
+                val manifestOnDisk = manifestFile.get().asFile
+                if (!manifestOnDisk.exists()) return@doLast
+                val manifest = previewManifestJson
+                    .decodeFromString(PreviewManifest.serializer(), manifestOnDisk.readText())
+                if (manifest.previews.isEmpty()) return@doLast
+                val rd = rendersDir.get().asFile
+                val missing = manifest.previews
+                    .mapNotNull { p -> p.id.takeIf { !rd.resolve("$it.png").exists() } }
+                if (missing.isNotEmpty()) {
+                    val preview = missing.take(3).joinToString(", ")
+                    val andMore = if (missing.size > 3) " (+${missing.size - 3} more)" else ""
+                    throw GradleException(
+                        "renderAllPreviews: render produced no PNG for ${missing.size} of " +
+                            "${manifest.previews.size} preview(s): $preview$andMore. This means " +
+                            "`renderPreviews` was skipped or silently did nothing — on Android " +
+                            "that usually means it reported NO-SOURCE because " +
+                            "RobolectricRenderTest.class wasn't discoverable on its " +
+                            "testClassesDirs. Run with --info to see the task outcome.",
+                    )
+                }
+            }
         }
     }
 }
