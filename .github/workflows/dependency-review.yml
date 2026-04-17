@@ -1,0 +1,27 @@
+name: dependency-review
+
+# On every PR, diffs the dependency graph and fails if the change introduces
+# a dependency with a known CVE at `fail-on-severity` or higher. This is a
+# defense against drive-by supply-chain attacks where a PR bumps a transitive
+# dep to a compromised version.
+#
+# Requires GitHub's Dependency Graph to be enabled (on by default for public
+# repos).
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+          # Comment a summary on the PR. Requires `pull-requests: write` —
+          # add it to `permissions:` above and uncomment if you want the comment.
+          # comment-summary-in-pr: always

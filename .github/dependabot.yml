@@ -1,0 +1,17 @@
+# Dependabot keeps SHA-pinned GitHub Actions up to date.
+# Without it, pinning actions to commits means you never get security/bug
+# updates — Dependabot bumps the SHA AND the trailing `# vX.Y.Z` comment
+# so reviewers can see what version the pin represents.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Bundle routine patch/minor bumps into a single PR to reduce noise.
+      actions-minor:
+        update-types: [minor, patch]
