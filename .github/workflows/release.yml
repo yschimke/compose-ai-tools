@@ -69,7 +69,9 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
             :renderer-android:publishAndReleaseToMavenCentral \
-            --no-daemon --no-configuration-cache
+            --no-daemon
+          # `--no-configuration-cache` is rejected when
+          # `org.gradle.unsafe.isolated-projects=true` (see gradle.properties).
 
   build-cli:
     needs: version
