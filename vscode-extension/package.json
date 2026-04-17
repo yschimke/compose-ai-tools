@@ -17,9 +17,21 @@
     "engines": {
         "vscode": "^1.85.0"
     },
+    "icon": "media/icon.png",
+    "galleryBanner": {
+        "color": "#1B1B1F",
+        "theme": "dark"
+    },
     "categories": [
-        "Visualization",
-        "Other"
+        "Visualization"
+    ],
+    "keywords": [
+        "compose",
+        "jetpack-compose",
+        "compose-multiplatform",
+        "android",
+        "preview",
+        "kotlin"
     ],
     "activationEvents": [
         "onLanguage:kotlin",
