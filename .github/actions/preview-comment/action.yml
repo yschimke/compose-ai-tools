@@ -34,32 +34,46 @@ runs:
 
     - name: Render previews
       shell: bash
-      run: compose-preview show --json --timeout ${{ inputs.timeout }} > _previews.json
+      env:
+        RENDER_TIMEOUT: ${{ inputs.timeout }}
+      run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
 
     - name: Fetch baselines
       shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
       run: |
         mkdir -p _baselines
-        if git ls-remote --exit-code origin ${{ inputs.base-branch }} >/dev/null 2>&1; then
-          git fetch origin ${{ inputs.base-branch }}
-          git show origin/${{ inputs.base-branch }}:baselines.json \
+        if git ls-remote --exit-code origin "$BASE_BRANCH" >/dev/null 2>&1; then
+          git fetch origin "$BASE_BRANCH"
+          git show "origin/${BASE_BRANCH}:baselines.json" \
             > _baselines/baselines.json 2>/dev/null || true
         else
-          echo "No ${{ inputs.base-branch }} branch yet — treating all previews as new."
+          echo "No $BASE_BRANCH branch yet — treating all previews as new."
         fi
 
     - name: Copy changed PNGs
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        python3 "${{ github.action_path }}/../lib/compare-previews.py" copy-changed _previews.json \
+        python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed _previews.json \
           --baselines _baselines/baselines.json \
           --output-dir _pr_renders
 
     - name: Push PR renders
       shell: bash
+      env:
+        # `inputs.pr-number` defaults to "" so the `||` resolves to the
+        # number from the event payload. Routing both through env removes
+        # the template from the `run:` body entirely. (zizmor: template-injection)
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
       run: |
         set -euo pipefail
-        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         BRANCH="preview_pr/${PR_NUMBER}"
 
         if [ ! -d _pr_renders/renders ] || \
@@ -77,42 +91,51 @@ runs:
         git commit -m "Preview renders for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
 
         git remote add origin \
-          "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
         git push --force origin "$BRANCH"
 
     - name: Generate comment
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
       run: |
         set -euo pipefail
-        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
 
-        python3 "${{ github.action_path }}/../lib/compare-previews.py" compare _previews.json \
+        python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
-          --repo "${{ github.repository }}" \
+          --repo "$REPO" \
           --pr "$PR_NUMBER" \
-          --base-branch "${{ inputs.base-branch }}" \
+          --base-branch "$BASE_BRANCH" \
           --head-branch "preview_pr/${PR_NUMBER}" \
           > _comment_body.md
 
     - name: Post or update PR comment
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
-        PR_NUMBER="${{ inputs.pr-number || github.event.pull_request.number }}"
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         BODY=$(cat _comment_body.md)
         MARKER="<!-- preview-diff -->"
 
         COMMENT_ID=$(gh api \
-          "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
           --paginate \
           --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
           | head -1)
 
         if [ -n "$COMMENT_ID" ]; then
-          gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
             -X PATCH -f body="$BODY"
         else
           gh pr comment "$PR_NUMBER" --body "$BODY"
         fi
-      env:
-        GH_TOKEN: ${{ github.token }}
