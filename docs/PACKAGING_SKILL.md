@@ -77,10 +77,12 @@ curl -fsSL https://codeload.github.com/yschimke/compose-ai-tools/tar.gz/refs/hea
 
 Or, pinned to a release:
 
+<!-- x-release-please-start-version -->
 ```sh
 curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.3/compose-preview-skill.tar.gz \
   | tar -xz -C ~/.claude/skills/
 ```
+<!-- x-release-please-end -->
 
 Implement by adding a `compose-preview-skill.tar.gz` to the release pipeline
 — a one-line `tar czf` over the `.claude-skill/` directory. No new

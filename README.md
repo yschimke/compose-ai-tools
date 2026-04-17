@@ -96,12 +96,14 @@ No authentication, no PAT — just apply it.
 
 ### 1. Apply the plugin
 
+<!-- x-release-please-start-version -->
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
     id("ee.schimke.composeai.preview") version "0.3.3"
 }
 ```
+<!-- x-release-please-end -->
 
 Most projects already have `mavenCentral()` in their
 `pluginManagement.repositories` (AGP and the Kotlin Gradle Plugin are both
@@ -129,6 +131,7 @@ want to consume pre-release builds.
 
 ## Install the CLI
 
+<!-- x-release-please-start-version -->
 Download `compose-preview-0.3.3.tar.gz` (or `.zip`) from the
 [v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
 and put the `bin/` directory on your `PATH`:
@@ -141,11 +144,13 @@ export PATH="$PWD/compose-preview-0.3.3/bin:$PATH"
 
 compose-preview --help
 ```
+<!-- x-release-please-end -->
 
 Requires Java 21 on `PATH` (or `JAVA_HOME`).
 
 ## Install the VS Code extension
 
+<!-- x-release-please-start-version -->
 Download `compose-preview-0.3.3.vsix` from the
 [v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
 and install it:
@@ -153,11 +158,12 @@ and install it:
 ```sh
 code --install-extension compose-preview-0.3.3.vsix
 ```
+<!-- x-release-please-end -->
 
 Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.3.3` in your project as shown above.
+`ee.schimke.composeai.preview` version `0.3.3` <!-- x-release-please-version --> in your project as shown above.
 
 ## Usage
 

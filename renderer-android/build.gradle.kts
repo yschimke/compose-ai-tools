@@ -12,8 +12,14 @@ plugins {
 }
 
 group = "ee.schimke.composeai"
-// See gradle-plugin/build.gradle.kts for how CI sets PLUGIN_VERSION.
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.4-SNAPSHOT"
+// See gradle-plugin/build.gradle.kts for how CI sets PLUGIN_VERSION. Local
+// builds derive the SNAPSHOT version from `.release-please-manifest.json`.
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: run {
+    val manifest = rootDir.resolve(".release-please-manifest.json").readText()
+    val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
+    val (major, minor, patch) = current.split(".").map { it.toInt() }
+    "$major.$minor.${patch + 1}-SNAPSHOT"
+}
 
 android {
     namespace = "ee.schimke.composeai.renderer"

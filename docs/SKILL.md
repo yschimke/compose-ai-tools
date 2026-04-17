@@ -159,6 +159,7 @@ pluginManagement {
 
 **Kotlin DSL — `<module>/build.gradle.kts`:**
 
+<!-- x-release-please-start-version -->
 ```kotlin
 plugins {
     id("ee.schimke.composeai.preview") version "0.3.3"
@@ -170,9 +171,11 @@ composePreview {
     enabled.set(true)      // set false to skip task registration
 }
 ```
+<!-- x-release-please-end -->
 
 **Groovy DSL — `<module>/build.gradle`:**
 
+<!-- x-release-please-start-version -->
 ```groovy
 plugins {
     id 'ee.schimke.composeai.preview' version '0.3.3'
@@ -184,6 +187,7 @@ composePreview {
     enabled = true
 }
 ```
+<!-- x-release-please-end -->
 
 CMP Desktop projects additionally need
 `implementation(compose.components.uiToolingPreview)` — the bundled `@Preview`
