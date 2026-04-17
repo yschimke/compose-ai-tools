@@ -43,11 +43,7 @@ jobs:
           next="${major}.${minor}.$((patch + 1))-SNAPSHOT"
           echo "Last tag: $last_tag → snapshot version: $next"
           echo "version=$next" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: ./.github/actions/setup
       - name: Publish -SNAPSHOT to Maven Central snapshots
         env:
           PLUGIN_VERSION: ${{ steps.version.outputs.version }}

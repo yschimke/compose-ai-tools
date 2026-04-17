@@ -48,16 +48,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      - uses: ./.github/actions/setup
         with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        with:
-          # Don't populate the Gradle cache from release builds — untrusted
-          # PR runs could read those entries on subsequent workflow runs and
-          # end up with poisoned inputs. (zizmor: cache-poisoning)
-          cache-read-only: true
+          cache-read-only: 'true'
       - name: Publish plugin and renderer-android to GitHub Packages
         # Signing credentials are required here too: vanniktech's
         # `signAllPublications()` wires the `sign*` tasks as dependencies of
@@ -100,13 +93,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      - uses: ./.github/actions/setup
         with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        with:
-          cache-read-only: true
+          cache-read-only: 'true'
       - name: Build CLI distribution
         env:
           PLUGIN_VERSION: ${{ needs.version.outputs.version }}
