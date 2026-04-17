@@ -62,13 +62,23 @@ fi
 
 ASSET="compose-preview-${VERSION}.tar.gz"
 DEST="$OPT_DIR/$VERSION"
-LAUNCHER="$DEST/compose-preview-${VERSION}/bin/compose-preview"
+
+# Locate the extracted launcher by search rather than by hardcoded path —
+# some release tarballs have a top-level dir named literally
+# `compose-preview-<version>.tar.gz/` instead of `compose-preview-<version>/`.
+find_launcher() {
+  [[ -d "$1" ]] || return 1
+  find "$1" -type f -name compose-preview -path '*/bin/compose-preview' \
+    -print -quit 2>/dev/null
+}
 
 # ---- Idempotent short-circuit --------------------------------------------
 
-if [[ -x "$LAUNCHER" && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" ]]; then
+EXISTING_LAUNCHER="$(find_launcher "$DEST" || true)"
+if [[ -n "$EXISTING_LAUNCHER" && -x "$EXISTING_LAUNCHER" \
+      && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$EXISTING_LAUNCHER" ]]; then
   log "compose-preview $VERSION already installed and linked"
-  "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
+  "$EXISTING_LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $EXISTING_LAUNCHER"
   exit 0
 fi
 
@@ -119,7 +129,9 @@ log "installing to $DEST"
 mkdir -p "$DEST"
 tar -xzf "$TMP/$ASSET" -C "$DEST"
 
-[[ -x "$LAUNCHER" ]] || die "launcher not found after extract: $LAUNCHER"
+LAUNCHER="$(find_launcher "$DEST" || true)"
+[[ -n "$LAUNCHER" && -x "$LAUNCHER" ]] \
+  || die "launcher not found after extract under $DEST (looked for */bin/compose-preview)"
 
 mkdir -p "$BIN_DIR"
 ln -sf "$LAUNCHER" "$BIN_DIR/compose-preview"
