@@ -1,5 +1,5 @@
 ---
-name: preview
+name: compose-preview
 description: Render Compose @Preview functions to PNG outside Android Studio. Use this to verify UI changes, iterate on designs, and compare before/after states across Android (Jetpack Compose) and Compose Multiplatform Desktop projects.
 ---
 
