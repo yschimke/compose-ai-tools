@@ -3,7 +3,7 @@
     "displayName": "Compose Preview",
     "description": "Live preview rendering for Jetpack Compose and Compose Multiplatform @Preview functions",
     "version": "0.1.0",
-    "publisher": "schimke",
+    "publisher": "yuri-schimke",
     "license": "Apache-2.0",
     "repository": {
         "type": "git",
