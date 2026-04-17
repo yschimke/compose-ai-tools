@@ -59,11 +59,19 @@ jobs:
           # end up with poisoned inputs. (zizmor: cache-poisoning)
           cache-read-only: true
       - name: Publish plugin and renderer-android to GitHub Packages
+        # Signing credentials are required here too: vanniktech's
+        # `signAllPublications()` wires the `sign*` tasks as dependencies of
+        # every publish task — including `publishAllPublicationsToGitHubPackagesRepository`
+        # — so this step fails with "no configured signatory" without them.
+        # The resulting `.asc` sidecars on GH Packages are harmless.
         env:
           PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
