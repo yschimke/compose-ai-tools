@@ -132,6 +132,37 @@ class RenderFunctionalTest {
     }
 
     @Test
+    fun `renderAllPreviews fails loudly when render produces no PNGs for a non-empty manifest`() {
+        val projectDir = createTestProject()
+
+        // Discover first so `previews.json` exists with real entries; that's
+        // the precondition for the post-condition check. We run discovery
+        // directly rather than going through renderAllPreviews so no PNGs
+        // get produced as a side-effect.
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews")
+            .withPluginClasspath()
+            .build()
+
+        val manifest = File(projectDir, "build/compose-previews/previews.json")
+        assertThat(manifest.exists()).isTrue()
+
+        // Force the failure mode: invoke `renderAllPreviews` but exclude the
+        // render task. This mirrors the real-world regression where
+        // `renderPreviews` silently becomes NO-SOURCE — the aggregate task
+        // still fires but no PNGs land on disk.
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("renderAllPreviews", "-x", "renderPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .buildAndFail()
+
+        assertThat(result.output).contains("render produced no PNG")
+        assertThat(result.output).contains("NO-SOURCE")
+    }
+
+    @Test
     fun `renderPreviews is UP-TO-DATE on second run`() {
         val projectDir = createTestProject()
 

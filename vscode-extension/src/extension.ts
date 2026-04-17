@@ -390,13 +390,19 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (imageData) {
                 registry.setImage(preview.id, imageData);
                 panel.postMessage({ command: 'updateImage', previewId: preview.id, imageData });
-            } else {
+            } else if (forceRender) {
+                // Render task completed but produced no PNG for this preview —
+                // a per-preview failure that didn't fail the whole task (e.g.
+                // one parameterized Robolectric test threw). Surface it on the
+                // card; the root-cause log is in Output ▸ Compose Preview.
                 panel.postMessage({
                     command: 'setImageError',
                     previewId: preview.id,
-                    message: 'Render pending — save the file to trigger a render',
+                    message: 'Render failed — see Output ▸ Compose Preview',
                 });
             }
+            // else: discover-only pass, PNG not produced yet. Leave the skeleton
+            // in place; the next save-triggered render will populate it.
         }
 
         panel.postMessage({ command: 'showMessage', text: '' });
