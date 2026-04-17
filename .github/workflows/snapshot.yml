@@ -52,8 +52,7 @@ jobs:
         run: |
           ./gradlew \
             :gradle-plugin:publishToMavenCentral \
-            :renderer-android:publishToMavenCentral \
-            --no-daemon
+            :renderer-android:publishToMavenCentral
           # Note: `--no-configuration-cache` is incompatible with
           # `org.gradle.unsafe.isolated-projects=true` set in gradle.properties
           # (Gradle fails with "Configuration Cache cannot be disabled when
