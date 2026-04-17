@@ -23,9 +23,5 @@ jobs:
           # URL (see `preview-baselines/action.yml`), so we don't need the
           # default git credentials persisted here.
           persist-credentials: false
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+      - uses: ./.github/actions/setup
       - uses: ./.github/actions/preview-baselines

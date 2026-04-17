@@ -1,0 +1,24 @@
+name: 'Setup JDK + Gradle'
+description: >
+  Install Temurin JDK 21 and configure gradle/actions/setup-gradle with the
+  action versions pinned consistently across this repo. Centralised so
+  dependabot only has to bump these in one place.
+
+inputs:
+  cache-read-only:
+    description: >
+      Pass 'true' in release/publish jobs to prevent Gradle cache writes —
+      avoids cache poisoning from untrusted PR runs reading those entries
+      on subsequent workflow invocations. (zizmor: cache-poisoning)
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: temurin
+        java-version: 21
+    - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+      with:
+        cache-read-only: ${{ inputs.cache-read-only }}
