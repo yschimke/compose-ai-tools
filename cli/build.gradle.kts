@@ -15,12 +15,14 @@ application {
     mainClass.set("ee.schimke.composeai.cli.MainKt")
 }
 
-tasks.named<Zip>("distZip") {
-    archiveFileName.set("compose-preview-${project.version}.zip")
-}
-
+// Note: don't set `archiveFileName` directly — Gradle's distribution plugin
+// uses it to derive the root directory inside the archive, so a full filename
+// like `compose-preview-<version>.tar.gz` leaks the `.tar.gz` suffix into the
+// extracted folder name. Setting `archiveExtension` instead lets Gradle compute
+// the file name as `<archivesName>-<version>.<extension>` while keeping the
+// internal root as `<archivesName>-<version>/`.
 tasks.named<Tar>("distTar") {
-    archiveFileName.set("compose-preview-${project.version}.tar.gz")
+    archiveExtension.set("tar.gz")
     compression = Compression.GZIP
 }
 
