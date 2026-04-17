@@ -226,10 +226,11 @@ internal object AndroidPreviewSupport {
         val renderTask = project.tasks.register("renderPreviews", Test::class.java) {
             group = "compose preview"
             description = "Render Android previews via Robolectric"
+            val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
             testClassesDirs = if (compileShardsTask != null) {
-                rendererClassDirs + project.files(compileShardsTask.map { it.destinationDirectory })
+                rendererClassDirs + project.files(compileShardsTask.map { it.destinationDirectory }) + (agpTestTask?.testClassesDirs ?: project.files())
             } else {
-                rendererClassDirs
+                rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
             }
             classpath = if (compileShardsTask != null) {
                 resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory })
@@ -248,7 +249,6 @@ internal object AndroidPreviewSupport {
             // lambda (rather than called at registration time) so AGP has had
             // a chance to register `test${capVariant}UnitTest` by the time this
             // runs — onVariants fires before unit-test tasks are wired.
-            val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
             jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
             jvmArgs(
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
