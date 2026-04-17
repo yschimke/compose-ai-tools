@@ -588,11 +588,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const card = document.getElementById('preview-' + sanitizeId(previewId));
             if (!card) return;
             const container = card.querySelector('.image-container');
-            // Remove skeleton/spinner but keep error state if present
+            // Tear down every prior state before showing the new image.
+            // Leftover .error-message divs here are what caused the
+            // "Render pending — save the file to trigger a render" banner
+            // to stay visible forever even after a successful render.
             const skeleton = container.querySelector('.skeleton');
             const overlay = container.querySelector('.loading-overlay');
+            const errorMsg = container.querySelector('.error-message');
             if (skeleton) skeleton.remove();
             if (overlay) overlay.remove();
+            if (errorMsg) errorMsg.remove();
             card.classList.remove('has-error');
 
             const newSrc = 'data:image/png;base64,' + imageData;
