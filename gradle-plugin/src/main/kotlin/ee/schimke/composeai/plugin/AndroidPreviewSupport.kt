@@ -185,7 +185,8 @@ internal object AndroidPreviewSupport {
         }
 
         val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
-        val rendersDir = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
+        val rendersDirectory = previewOutputDir.map { it.dir("renders") }
+        val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
         val shardCount = resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
         val shardsEnabled = shardCount > 1
@@ -284,6 +285,15 @@ internal object AndroidPreviewSupport {
 
             systemProperty("composeai.render.manifest", manifestFile.get())
             systemProperty("composeai.render.outputDir", rendersDir.get())
+
+            // The PNG files are written to `rendersDirectory` via the
+            // `composeai.render.outputDir` system property, not through any
+            // Gradle-managed output. Declare the directory as an additional
+            // output so the build cache round-trips the PNGs alongside the
+            // test reports; without this the task gets a cache hit on a fresh
+            // checkout but the renders are never restored, which is exactly
+            // how previous modules silently vanished from `preview_main`.
+            outputs.dir(rendersDirectory).withPropertyName("rendersDir")
 
             dependsOn(discoverTask)
             if (useLocalRenderer) {
