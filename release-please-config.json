@@ -8,8 +8,7 @@
       "include-component-in-tag": false,
       "extra-files": [
         "README.md",
-        "docs/SKILL.md",
-        "docs/PACKAGING_SKILL.md",
+        "skills/compose-preview/SKILL.md",
         "docs/RELEASING.md",
         {
           "type": "generic",
