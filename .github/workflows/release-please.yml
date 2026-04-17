@@ -1,9 +1,12 @@
 name: Release PR
 
 # Keeps a "chore(main): release X.Y.Z" pull request up to date based on
-# conventional-commit history since the last tag. Does NOT tag or create a
-# GitHub Release — once the release PR is merged, the maintainer pushes the
-# tag manually, which triggers release.yml. See docs/RELEASING.md.
+# conventional-commit history since the last tag. When that PR is merged,
+# release-please creates the tag + GitHub Release, then this workflow calls
+# release.yml to build and publish the three artifacts onto that Release.
+#
+# One button: merging the release PR triggers the full publish. No manual
+# tag push, no dispatch step. See docs/RELEASING.md.
 
 on:
   push:
@@ -11,8 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: release-please-${{ github.ref }}
@@ -21,13 +23,36 @@ concurrency:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create tags + GitHub Releases
+      pull-requests: write   # open/update the release PR
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Do NOT let release-please create the tag/GitHub Release. The
-          # maintainer tags manually after merging the release PR — this keeps
-          # tag creation visible and triggers release.yml (which won't fire
-          # from a GITHUB_TOKEN-created tag anyway).
-          skip-github-release: true
+          # When the release PR is merged, release-please creates the tag and
+          # an empty GitHub Release (populated with the CHANGELOG entry as the
+          # body). The `release` job below then uploads CLI + VSIX assets to
+          # that Release. We used to skip this and tag manually, but chaining
+          # within a single workflow run sidesteps the GITHUB_TOKEN-doesn't-
+          # trigger-workflows limitation that motivated the manual step.
+
+  # Build and publish the artifacts whenever release-please actually cuts a
+  # release. Skipped on "just updating the release PR" runs.
+  release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    # Inherit secrets so the called workflow can reach MAVEN_CENTRAL_* and
+    # SIGNING_*. `secrets: inherit` passes every secret the caller can see.
+    secrets: inherit
+    permissions:
+      contents: write   # needed by the called workflow's `release` job
+      packages: write   # needed by the called workflow's GH Packages publish
