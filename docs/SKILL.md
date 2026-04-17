@@ -162,7 +162,7 @@ pluginManagement {
 <!-- x-release-please-start-version -->
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.3"
+    id("ee.schimke.composeai.preview") version "0.3.4"
 }
 
 composePreview {
@@ -178,7 +178,7 @@ composePreview {
 <!-- x-release-please-start-version -->
 ```groovy
 plugins {
-    id 'ee.schimke.composeai.preview' version '0.3.3'
+    id 'ee.schimke.composeai.preview' version '0.3.4'
 }
 
 composePreview {

@@ -100,7 +100,7 @@ No authentication, no PAT — just apply it.
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.3"
+    id("ee.schimke.composeai.preview") version "0.3.4"
 }
 ```
 <!-- x-release-please-end -->
@@ -132,15 +132,15 @@ want to consume pre-release builds.
 ## Install the CLI
 
 <!-- x-release-please-start-version -->
-Download `compose-preview-0.3.3.tar.gz` (or `.zip`) from the
-[v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
+Download `compose-preview-0.3.4.tar.gz` (or `.zip`) from the
+[v0.3.4 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.4)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.3/compose-preview-0.3.3.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.4/compose-preview-0.3.4.tar.gz
 tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.3.3/bin:$PATH"
+export PATH="$PWD/compose-preview-0.3.4/bin:$PATH"
 
 compose-preview --help
 ```
@@ -151,19 +151,19 @@ Requires Java 21 on `PATH` (or `JAVA_HOME`).
 ## Install the VS Code extension
 
 <!-- x-release-please-start-version -->
-Download `compose-preview-0.3.3.vsix` from the
-[v0.3.3 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.3)
+Download `compose-preview-0.3.4.vsix` from the
+[v0.3.4 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.4)
 and install it:
 
 ```sh
-code --install-extension compose-preview-0.3.3.vsix
+code --install-extension compose-preview-0.3.4.vsix
 ```
 <!-- x-release-please-end -->
 
 Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.3.3` <!-- x-release-please-version --> in your project as shown above.
+`ee.schimke.composeai.preview` version `0.3.4` <!-- x-release-please-version --> in your project as shown above.
 
 ## Usage
 
