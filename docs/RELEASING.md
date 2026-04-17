@@ -137,13 +137,14 @@ tar xzf compose-preview.tar.gz
 
 ### VS Code extension
 
-Download the `.vsix` from the Releases page and install:
+Install [Compose Preview](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
+from the VS Code Marketplace, or from the command line:
 
-<!-- x-release-please-start-version -->
 ```bash
-code --install-extension compose-preview-0.3.5.vsix
+code --install-extension yuri-schimke.compose-preview
 ```
-<!-- x-release-please-end -->
+
+The `.vsix` is also attached to each GitHub Release as a fallback.
 
 ## Future: publishing to public registries
 
@@ -154,7 +155,7 @@ consumers:
 | Artifact | Current | Public registry | Migration |
 |----------|---------|-----------------|-----------|
 | Gradle plugin | **Maven Central** (+ GH Packages mirror) | Gradle Plugin Portal | Apply `com.gradle.plugin-publish` plugin; add `publishPlugins` task to the workflow with `GRADLE_PUBLISH_KEY`/`GRADLE_PUBLISH_SECRET` secrets |
-| VS Code extension | Release .vsix | VS Code Marketplace + Open VSX | Add `vsce publish` and `ovsx publish` steps with `VSCE_PAT` / `OVSX_PAT` secrets |
+| VS Code extension | **VS Code Marketplace** (+ Release .vsix fallback) | Open VSX | Add an `ovsx publish` step with an `OVSX_PAT` secret |
 | CLI | Release .zip/.tar | Homebrew tap | Add a `dispatches` step that updates a separate `homebrew-tap` repo |
 
 Existing GitHub Release artifacts remain as a fallback and don't need to go away.
