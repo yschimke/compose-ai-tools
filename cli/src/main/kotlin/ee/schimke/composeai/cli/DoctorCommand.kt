@@ -205,7 +205,7 @@ class DoctorCommand(args: List<String>) {
     companion object {
         private const val REPO = "yschimke/compose-ai-tools"
         private const val MAVEN_BASE = "https://maven.pkg.github.com/$REPO"
-        private const val DEFAULT_PLUGIN_VERSION = "0.3.3" // x-release-please-version
+        private const val DEFAULT_PLUGIN_VERSION = "0.3.4" // x-release-please-version
     }
 }
 
