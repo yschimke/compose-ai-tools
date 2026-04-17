@@ -1,7 +1,7 @@
 # Development
 
 Instructions for building the project from source and running it locally against
-the bundled samples, without going through GitHub Packages or the VS Code
+the bundled samples, without going through Maven Central or the VS Code
 Marketplace.
 
 There are three shipping artifacts, each with its own local install story:
@@ -67,9 +67,8 @@ can't reach the plugin sources (e.g. Docker build, other machine via rsync).
 ./gradlew :gradle-plugin:publishToMavenLocal
 ```
 
-Then in the consumer's `settings.gradle.kts`, swap the GitHub Packages block
-from the [README](../README.md#3-register-the-plugin-repository) for
-`mavenLocal()`:
+Then in the consumer's `settings.gradle.kts`, add `mavenLocal()` to the
+plugin repositories:
 
 ```kotlin
 pluginManagement {
@@ -79,19 +78,22 @@ pluginManagement {
         mavenCentral()
         mavenLocal()
     }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "ee.schimke.composeai.preview") {
-                useModule("ee.schimke.composeai:gradle-plugin:${requested.version}")
-            }
-        }
-    }
+}
+```
+
+And apply the plugin with whatever version the local build produced:
+
+```kotlin
+plugins {
+    id("ee.schimke.composeai.preview") version "0.3.4-SNAPSHOT"
 }
 ```
 
 The version string must match the one in
-[gradle-plugin/build.gradle.kts](../gradle-plugin/build.gradle.kts#L9) — default
-is `0.1.0-SNAPSHOT` unless `PLUGIN_VERSION` is set.
+[gradle-plugin/build.gradle.kts](../gradle-plugin/build.gradle.kts) — the
+local fallback (used when `PLUGIN_VERSION` is not set) tracks the next
+upcoming release (e.g. after tagging `v0.3.3`, the fallback is
+`0.3.4-SNAPSHOT`).
 
 ### Smoke test
 
@@ -184,7 +186,7 @@ Closest to what a real user gets:
 
 ```
 npm run package
-code --install-extension compose-preview-0.1.0.vsix
+code --install-extension compose-preview-0.3.3.vsix
 ```
 
 The `package` script runs `vsce package --no-dependencies`, which requires
