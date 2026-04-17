@@ -1,26 +1,53 @@
 name: Release
 
-# Triggered by pushing a tag like `v0.1.0`. Creates a GitHub Release with:
-#   - The CLI distribution (tar + zip) as release assets
-#   - The VS Code extension .vsix as a release asset
-#   - The Gradle plugin published to GitHub Packages
+# Builds and publishes the CLI, VS Code extension, and Gradle plugin +
+# renderer-android for a given tag. Uploads the CLI/VSIX assets onto the
+# GitHub Release (creating it if it doesn't exist yet).
 #
-# Future: adding Plugin Portal / VS Code Marketplace / Open VSX is additive —
-# just add new jobs here. Nothing below would need to change.
+# Entry points:
+#   - workflow_call: called from release-please.yml after release-please
+#     merges the release PR and creates the tag + Release. Primary path.
+#   - workflow_dispatch: re-run the release build for an existing tag (e.g.
+#     after a transient publish failure).
+#   - push: tags (v*): escape hatch for manually-pushed tags.
+#
+# All three paths resolve to `TAG_NAME`, so downstream jobs don't care which
+# fired. See docs/RELEASING.md.
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag name to release (e.g. v0.3.5).'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re)release, e.g. v0.3.5. Must already exist.'
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
 
 # Workflow-level default is read-only. Each job widens only what it needs:
 # - publish-gradle-plugin: packages: write (for GH Packages)
-# - release: contents: write (creates the GitHub Release, uploads assets)
+# - release: contents: write (creates/updates the GitHub Release, uploads assets)
 permissions:
   contents: read
 
+# Both tag-push and workflow_call/dispatch for the same tag serialize through
+# the same concurrency group, so a re-run can't race a fresh release.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
+
+# Every job consumes TAG_NAME (never GITHUB_REF_NAME) so the steps work the
+# same whether triggered by tag push or by workflow_call/dispatch. Templated
+# once here; scripts read it via `$TAG_NAME` from the env, which keeps tag
+# content out of shell arg positions.
+env:
+  TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
@@ -46,11 +73,12 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Derive plugin version from tag
-        # Strip leading `v` from tag, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION is
-        # then inherited by every subsequent step in this job.
-        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
+        # is inherited by every subsequent step in this job.
+        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
@@ -77,9 +105,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Derive plugin version from tag
-        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
@@ -98,6 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ env.TAG_NAME }}
           persist-credentials: false
       # Do not cache `npm` here: release builds produce artifacts that get
       # published, and a poisoned cache from an unrelated branch/run could
@@ -111,10 +141,10 @@ jobs:
         run: npm ci
       - name: Set version
         working-directory: vscode-extension
-        # Read tag from $GITHUB_REF_NAME (runner-set, not templated into the
-        # script) so the tag name — attacker-influenceable through git — can't
-        # inject arguments into `npm version`.
-        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+        # Read tag from $TAG_NAME (from env, not templated into the script) so
+        # the tag name — attacker-influenceable through git or the dispatch
+        # input — can't inject arguments into `npm version`.
+        run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
       - name: Build VSIX
         working-directory: vscode-extension
         run: npm run package
@@ -128,24 +158,38 @@ jobs:
     needs: publish-gradle-plugin
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # create release, upload assets
+      contents: write   # update the release, upload assets
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
           merge-multiple: true
-      - name: Create GitHub Release
-        # $GITHUB_REF_NAME is runner-set (not templated into the script), so
-        # the tag name can't break out of the quotation and inject extra args.
+      - name: Upload or create GitHub Release
+        # $TAG_NAME is read from env (not templated into the script), so the
+        # tag name — attacker-influenceable through git or the dispatch input
+        # — can't break out of the quotation and inject extra args.
+        #
+        # Idempotent: release-please has usually already created the Release
+        # (with the CHANGELOG entry as the body) by the time this runs, so we
+        # just upload assets onto it. Falls back to creating the Release for
+        # tag-push / workflow_dispatch paths where it may not exist yet.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "compose-ai-tools ${GITHUB_REF_NAME#v}" \
-            --generate-notes \
-            artifacts/*.zip \
-            artifacts/*.tar.gz \
-            artifacts/*.vsix
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME exists — uploading assets."
+            gh release upload "$TAG_NAME" \
+              --clobber \
+              artifacts/*.zip \
+              artifacts/*.tar.gz \
+              artifacts/*.vsix
+          else
+            echo "Release $TAG_NAME does not exist — creating."
+            gh release create "$TAG_NAME" \
+              --title "compose-ai-tools ${TAG_NAME#v}" \
+              --generate-notes \
+              artifacts/*.zip \
+              artifacts/*.tar.gz \
+              artifacts/*.vsix
+          fi

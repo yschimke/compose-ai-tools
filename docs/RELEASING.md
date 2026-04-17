@@ -1,30 +1,42 @@
 # Releasing
 
-All three artifacts ship from a single GitHub Actions workflow triggered by a version tag. The version bump and changelog are prepared by [release-please](https://github.com/googleapis/release-please); the maintainer only needs to merge the release PR and push the tag.
+## TL;DR
 
-## Cutting a release
+**Merge the open `chore(main): release X.Y.Z` PR.** That's it — `release-please.yml` creates the tag and GitHub Release, then chains into `release.yml` to build and publish the CLI, VS Code extension, Gradle plugin, and Android renderer AAR onto that Release.
 
-The flow is:
+## Prerequisites (one-time)
 
-1. **Land conventional-commit PRs to `main`** — e.g. `fix:`, `feat:`, `feat!:` / `BREAKING CHANGE`. Other prefixes (`chore:`, `docs:`, `ci:`, `refactor:`, `test:`) do not trigger a release. Force a bump when needed by adding a `Release-As: 0.3.4` footer to any commit, or run the `Release PR` workflow via `workflow_dispatch`.
-2. **`release-please.yml` opens or updates a release PR** titled `chore(main): release X.Y.Z`. Inspect the proposed `CHANGELOG.md`, version bumps in `README.md` / `docs/*.md` / `DoctorCommand.kt`, and `.release-please-manifest.json`. Adjust commit messages on `main` if the bump isn't what you want; the PR updates automatically.
-3. **Merge the release PR.** `main` now has the bumped files and updated manifest. No tag is created yet — see the box below.
-4. **Tag and push:**
-   ```bash
-   git pull origin main
-   git tag "v$(jq -r '."."' .release-please-manifest.json)"
-   git push origin --tags
-   ```
-   This fires `release.yml`, which publishes all three artifacts and creates the GitHub Release.
+In **Settings → Actions → General → Workflow permissions**, tick **"Allow GitHub Actions to create and approve pull requests"**. Without this, `release-please.yml` fails with `GitHub Actions is not permitted to create or approve pull requests` and no release PR ever appears.
 
-> **Why the tag step is manual:** release-please could create the tag itself, but a tag created by `GITHUB_TOKEN` doesn't trigger other workflows — so `release.yml` (which listens for `push: tags`) would never fire. Keeping the tag push manual sidesteps the need for a PAT.
+## How a release gets cut
+
+[release-please](https://github.com/googleapis/release-please) watches `main` for conventional-commit history and keeps a release PR up to date. Merging the PR is the only manual step.
+
+1. **Land conventional-commit PRs to `main`.** `fix:`, `feat:`, and `feat!:` / `BREAKING CHANGE` trigger a release. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump, add a `Release-As: 0.3.4` footer to any commit, or run the `Release PR` workflow via `workflow_dispatch`.
+2. **Review the release PR.** Titled `chore(main): release X.Y.Z`. Check the proposed `CHANGELOG.md`, the version bumps in `README.md`, `docs/*.md`, `DoctorCommand.kt`, and `.release-please-manifest.json`. Amend commit messages on `main` if the bump isn't right — the PR updates itself.
+3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + GitHub Release, then invokes `release.yml` to build and upload the artifacts.
+
+## Fallback paths
+
+If the automatic chain ever leaves a release half-published (e.g. Maven Central rejected an upload, CLI build failed), you can re-run the build/publish against an existing tag without touching release-please:
+
+- **From the web:** Actions → **Release** → **Run workflow** → enter the tag (e.g. `v0.3.5`) → Run.
+- **From the command line (escape hatch for a manually tagged release):**
+
+  ```bash
+  git tag v0.3.5 && git push origin v0.3.5
+  ```
+
+  The `push: tags` trigger on `release.yml` picks it up. Only use this when you deliberately want to release without a release-please PR.
+
+Both fallbacks share the same concurrency group as the primary path, so they can't race each other. The final upload step is idempotent — it uploads onto an existing Release (or creates one if none exists).
 
 ### What the `release.yml` workflow does
 
 1. Publishes the **Gradle plugin** (`ee.schimke.composeai:compose-preview-plugin`) and the **Android renderer AAR** (`ee.schimke.composeai:renderer-android`) to **Maven Central** via the Central Portal, and mirrors them to GitHub Packages.
 2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
 3. Packages the **VS Code extension** as a `.vsix` file.
-4. Creates a GitHub Release with auto-generated notes and all three artifacts attached.
+4. Uploads all three artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Required secrets on the repository:
 
