@@ -79,7 +79,7 @@ Or, pinned to a release:
 
 <!-- x-release-please-start-version -->
 ```sh
-curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.4/compose-preview-skill.tar.gz \
+curl -fsSL https://github.com/yschimke/compose-ai-tools/releases/download/v0.3.5/compose-preview-skill.tar.gz \
   | tar -xz -C ~/.claude/skills/
 ```
 <!-- x-release-please-end -->
