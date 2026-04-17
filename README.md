@@ -125,9 +125,39 @@ CMP Desktop projects additionally need
 `@Preview` annotation has `SOURCE` retention and is invisible to ClassGraph.
 
 Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for
-the latest version. Snapshots publish to the Central snapshots repo on
-every push to `main` — see [docs/RELEASING.md](docs/RELEASING.md) if you
-want to consume pre-release builds.
+the latest version.
+
+### Testing against a snapshot
+
+Every push to `main` publishes a `-SNAPSHOT` build to the Central snapshots
+repository. To try an unreleased change, add the snapshots repo to
+`pluginManagement` and bump the plugin version to the next patch
+`-SNAPSHOT`:
+
+```kotlin
+// settings.gradle.kts
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven("https://central.sonatype.com/repository/maven-snapshots/") {
+            mavenContent { snapshotsOnly() }
+        }
+    }
+}
+```
+
+```kotlin
+// <module>/build.gradle.kts
+plugins {
+    id("ee.schimke.composeai.preview") version "0.3.5-SNAPSHOT"
+}
+```
+
+The snapshot version is the next patch ahead of the latest release
+(e.g. last tag `v0.3.4` → `0.3.5-SNAPSHOT`). Snapshots are unsigned. See
+[docs/RELEASING.md](docs/RELEASING.md) for more detail.
 
 ## Install the CLI
 
