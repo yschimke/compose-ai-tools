@@ -112,25 +112,34 @@ internal object AndroidPreviewSupport {
             )
         }
 
-        // Classes directory used for Gradle's test-class scanning. Local mode:
-        // the renderer-android project's compiled output. External mode: the
-        // extracted android-classes artifact (AGP's transform unpacks the AAR's
-        // classes.jar). Either way, Gradle scans this for `@RunWith(…)` classes
-        // to run and finds `RobolectricRenderTest`.
+        // Classes used for Gradle's test-class scanning. Local mode: the
+        // renderer-android project's compiled output directories. External
+        // mode: the AAR's `classes.jar`, expanded via `zipTree` so Gradle's
+        // `Test.include("**/…Test.class")` filter can walk it — the include
+        // filter traverses file trees but does NOT descend into JAR entries,
+        // so feeding a raw JAR here silently produces `renderPreviews NO-SOURCE`
+        // and every preview ends up with no PNG. `android-classes` is AGP's
+        // `ArtifactType.CLASSES_JAR` (a JAR), not the extracted directory
+        // (that would be `android-classes-directory`).
         val rendererClassDirs = if (useLocalRenderer) {
             project.files(
                 rendererProjectDir.resolve("build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"),
                 rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
             )
         } else {
-            project.files(rendererConfig.incoming.artifactView {
+            val rendererJars = rendererConfig.incoming.artifactView {
                 attributes.attribute(artifactType, "android-classes")
                 componentFilter { id ->
                     id is org.gradle.api.artifacts.component.ModuleComponentIdentifier
                             && id.group == "ee.schimke.composeai"
                             && id.module == "renderer-android"
                 }
-            }.files)
+            }.files
+            // Callable defers `.files` resolution until the Test task queries
+            // this FileCollection, keeping the configuration lazy.
+            project.files(java.util.concurrent.Callable {
+                rendererJars.files.map { project.zipTree(it) }
+            })
         }
 
         // AGP's `generate${Variant}UnitTestConfig` task emits
