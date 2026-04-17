@@ -3,6 +3,7 @@ package ee.schimke.composeai.plugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
@@ -18,6 +19,7 @@ import org.gradle.api.tasks.TaskAction
  * generated-source path. `javac --release 21` is enough since the base class is a plain
  * JVM class from the plugin's perspective.
  */
+@CacheableTask
 abstract class GenerateRenderShardsTask : DefaultTask() {
     @get:Input
     abstract val shards: Property<Int>

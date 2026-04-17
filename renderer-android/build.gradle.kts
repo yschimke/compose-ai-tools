@@ -1,12 +1,19 @@
+@file:Suppress("DEPRECATION") // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
+// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
+
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 group = "ee.schimke.composeai"
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
+// See gradle-plugin/build.gradle.kts for how CI sets PLUGIN_VERSION.
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.3-SNAPSHOT"
 
 android {
     namespace = "ee.schimke.composeai.renderer"
@@ -26,10 +33,8 @@ android {
             isIncludeAndroidResources = true
         }
     }
-
-    publishing {
-        singleVariant("release")
-    }
+    // `AndroidSingleVariantLibrary` in `mavenPublishing {}` below wires the
+    // `singleVariant("release")` publication for us — don't declare it twice.
 }
 
 dependencies {
@@ -57,6 +62,9 @@ dependencies {
     compileOnly(libs.wear.protolayout.expression)
 }
 
+// GitHub Packages repo kept alongside Maven Central for internal/CI convenience.
+// Vanniktech's `AndroidSingleVariantLibrary` creates the release publication
+// (with sources + javadoc jar) — do not create one manually; it clashes.
 publishing {
     repositories {
         maven {
@@ -74,13 +82,41 @@ publishing {
     }
 }
 
-afterEvaluate {
-    publishing {
-        publications {
-            create<MavenPublication>("release") {
-                from(components["release"])
-                artifactId = "renderer-android"
+mavenPublishing {
+    publishToMavenCentral(automaticRelease = true)
+    configure(AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true))
+    if (!version.toString().endsWith("SNAPSHOT")) {
+        signAllPublications()
+    }
+
+    coordinates("ee.schimke.composeai", "renderer-android", version.toString())
+
+    pom {
+        name.set("Compose Preview — Android Renderer")
+        description.set(
+            "Robolectric-based renderer for Jetpack Compose @Preview functions, " +
+                "used by the compose-preview Gradle plugin to produce PNGs off-device.",
+        )
+        url.set("https://github.com/yschimke/compose-ai-tools")
+        inceptionYear.set("2025")
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                distribution.set("repo")
             }
+        }
+        developers {
+            developer {
+                id.set("yschimke")
+                name.set("Yuri Schimke")
+                url.set("https://github.com/yschimke")
+            }
+        }
+        scm {
+            url.set("https://github.com/yschimke/compose-ai-tools")
+            connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+            developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
         }
     }
 }

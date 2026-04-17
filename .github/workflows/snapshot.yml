@@ -1,0 +1,54 @@
+name: Publish snapshot
+
+# Publish a -SNAPSHOT build to the Maven Central snapshots repo
+# (https://central.sonatype.com/repository/maven-snapshots/) on every push to
+# main. The vanniktech plugin routes `-SNAPSHOT` versions to that URL
+# automatically; snapshots are unsigned.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need tags to compute the next snapshot version.
+          fetch-depth: 0
+      - id: version
+        name: Compute snapshot version from last tag
+        # Take the latest `v*` tag, strip leading `v`, bump the patch digit,
+        # append `-SNAPSHOT`. Falls back to 0.0.1-SNAPSHOT if no tag exists yet.
+        run: |
+          last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)"
+          base="${last_tag#v}"
+          major="${base%%.*}"
+          rest="${base#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+          patch="${patch%%-*}"                    # drop any pre-release suffix
+          next="${major}.${minor}.$((patch + 1))-SNAPSHOT"
+          echo "Last tag: $last_tag → snapshot version: $next"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Publish -SNAPSHOT to Maven Central snapshots
+        env:
+          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          ./gradlew \
+            :gradle-plugin:publishToMavenCentral \
+            :renderer-android:publishToMavenCentral \
+            --no-daemon --no-configuration-cache
