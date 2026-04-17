@@ -11,12 +11,13 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
-    # Let a new version sit on the registry for a few days before we pull it
+    # Let a new version sit on the registry for a week before we pull it
     # in, so typosquat/supply-chain compromises published and then pulled
-    # don't auto-land as a Dependabot PR. (zizmor: dependabot-cooldown)
+    # don't auto-land as a Dependabot PR. (zizmor: dependabot-cooldown
+    # requires at least 7 days of cooldown across the board.)
     cooldown:
-      default-days: 3
-      semver-major-days: 7
+      default-days: 7
+      semver-major-days: 14
     groups:
       # Bundle routine patch/minor bumps into a single PR to reduce noise.
       actions-minor:
