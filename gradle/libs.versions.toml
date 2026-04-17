@@ -14,6 +14,7 @@ kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
 truth = "1.4.4"
+maven-publish = "0.36.0"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -54,3 +55,4 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref 
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }

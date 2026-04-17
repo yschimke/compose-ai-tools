@@ -3,10 +3,14 @@ plugins {
     `kotlin-dsl`
     `maven-publish`
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.maven.publish)
 }
 
 group = "ee.schimke.composeai"
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.1.0-SNAPSHOT"
+// CI sets PLUGIN_VERSION: release.yml passes the git tag (stripped of `v`);
+// snapshot.yml passes `<last-tag-patch+1>-SNAPSHOT`. The string below is only
+// used for local `publishToMavenLocal`; bump it when the release version drifts.
+version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.3.3-SNAPSHOT"
 
 gradlePlugin {
     website.set("https://github.com/yschimke/compose-ai-tools")
@@ -22,9 +26,9 @@ gradlePlugin {
     }
 }
 
-// Publish to GitHub Packages by default.
-// To switch to Gradle Plugin Portal later: apply the `com.gradle.plugin-publish`
-// plugin and remove the publishing block below — it wraps this config automatically.
+// Publish to both GitHub Packages (legacy / CI convenience) and Maven Central
+// via the new Central Portal. Snapshots (version ending in `-SNAPSHOT`) route
+// automatically to `https://central.sonatype.com/repository/maven-snapshots/`.
 publishing {
     repositories {
         maven {
@@ -38,6 +42,54 @@ publishing {
                 username = providers.environmentVariable("GITHUB_ACTOR").orNull
                 password = providers.environmentVariable("GITHUB_TOKEN").orNull
             }
+        }
+    }
+}
+
+mavenPublishing {
+    // Central Portal (https://central.sonatype.com) is the only target in
+    // vanniktech ≥ 0.34. `automaticRelease = true` promotes to the central
+    // repo without a manual "release" click in the Portal UI. Snapshots route
+    // to https://central.sonatype.com/repository/maven-snapshots/ automatically.
+    publishToMavenCentral(automaticRelease = true)
+    // Vanniktech auto-detects `java-gradle-plugin` and publishes the plugin +
+    // marker artifacts with sources/javadoc jars. (If we ever apply the
+    // `com.gradle.plugin-publish` plugin for Plugin Portal, swap in
+    // `configure(GradlePublishPlugin())`.)
+    // Only require signing for non-snapshot builds — snapshots are unsigned on
+    // the Central snapshots repo, which is convenient for local/dev publishes.
+    if (!version.toString().endsWith("SNAPSHOT")) {
+        signAllPublications()
+    }
+
+    coordinates("ee.schimke.composeai", "compose-preview-plugin", version.toString())
+
+    pom {
+        name.set("Compose Preview Gradle Plugin")
+        description.set(
+            "Gradle plugin to discover and render Jetpack Compose / Compose Multiplatform " +
+                "@Preview functions to PNG outside Android Studio.",
+        )
+        url.set("https://github.com/yschimke/compose-ai-tools")
+        inceptionYear.set("2025")
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                distribution.set("repo")
+            }
+        }
+        developers {
+            developer {
+                id.set("yschimke")
+                name.set("Yuri Schimke")
+                url.set("https://github.com/yschimke")
+            }
+        }
+        scm {
+            url.set("https://github.com/yschimke/compose-ai-tools")
+            connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+            developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
         }
     }
 }
