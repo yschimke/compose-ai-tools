@@ -180,17 +180,12 @@ Requires Java 21 on `PATH` (or `JAVA_HOME`).
 
 ## Install the VS Code extension
 
-<!-- x-release-please-start-version -->
-Download `compose-preview-0.3.5.vsix` from the
-[v0.3.5 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.4)
-and install it:
+Install [Compose Preview](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
+from the VS Code Marketplace, or from the command line:
 
 ```sh
-code --install-extension compose-preview-0.3.5.vsix
+code --install-extension yuri-schimke.compose-preview
 ```
-<!-- x-release-please-end -->
-
-Or in VS Code: **Extensions → ⋯ → Install from VSIX…** and pick the file.
 
 The extension uses the Gradle plugin to render previews, so apply
 `ee.schimke.composeai.preview` version `0.3.5` <!-- x-release-please-version --> in your project as shown above.
