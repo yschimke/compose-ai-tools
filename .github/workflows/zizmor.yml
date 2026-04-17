@@ -1,0 +1,29 @@
+name: zizmor
+
+# Static analysis for GitHub Actions workflows. Catches common-but-dangerous
+# patterns: expression injection via PR titles / branch names, over-permissive
+# `pull_request_target` usage, unpinned third-party actions, missing or
+# excessive `permissions:` blocks, self-hosted-runner misconfiguration, etc.
+#
+# Findings stream into the Security tab via SARIF upload (code scanning),
+# so they show up on PRs as annotated comments and on the dashboard.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required so the action can upload SARIF to code scanning.
+  security-events: write
+  # Required by zizmor to fetch metadata about referenced actions.
+  actions: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
