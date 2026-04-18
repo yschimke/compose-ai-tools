@@ -624,7 +624,3 @@ data class DoctorSummary(
     val skipped: Int,
 )
 
-private fun List<String>.flagValue(flag: String): String? {
-    val idx = indexOf(flag)
-    return if (idx >= 0 && idx + 1 < size) this[idx + 1] else null
-}

@@ -773,8 +773,3 @@ private fun sha256(bytes: ByteArray): String {
     val md = MessageDigest.getInstance("SHA-256")
     return md.digest(bytes).joinToString("") { "%02x".format(it) }
 }
-
-private fun List<String>.flagValue(flag: String): String? {
-    val idx = indexOf(flag)
-    return if (idx >= 0 && idx + 1 < size) this[idx + 1] else null
-}
