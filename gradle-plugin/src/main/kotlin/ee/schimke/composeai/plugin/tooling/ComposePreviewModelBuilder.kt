@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin.tooling
 
 import ee.schimke.composeai.plugin.PluginVersion
+import ee.schimke.composeai.plugin.PreviewExtension
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.tooling.provider.model.ToolingModelBuilder
@@ -41,20 +42,14 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     }
 
     /**
-     * Reads the plugin's variant extension without hard-depending on the
-     * extension class. Falls back to `"debug"` if absent or unreadable —
-     * 99% of consumers never touch this setting.
+     * Reads the `composePreview { variant = … }` setting, falling back to
+     * `"debug"` if the extension isn't present (plugin not applied on this
+     * project). The `Property` itself carries a `"debug"` convention, so
+     * `.getOrElse` is belt-and-braces for the unconfigured case.
      */
     private fun resolveVariant(project: Project): String {
-        val ext = project.extensions.findByName("composePreview") ?: return "debug"
-        return try {
-            val getter = ext.javaClass.getMethod("getVariant")
-            val prop = getter.invoke(ext)
-            val get = prop.javaClass.getMethod("get")
-            (get.invoke(prop) as? String) ?: "debug"
-        } catch (_: Throwable) {
-            "debug"
-        }
+        val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return "debug"
+        return ext.variant.getOrElse("debug")
     }
 
     /**
