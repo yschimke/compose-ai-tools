@@ -30,6 +30,15 @@ data class PreviewParams(
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
     val kind: PreviewKind = PreviewKind.COMPOSE,
+    /**
+     * Virtual-time offset to advance `mainClock` by before capture, sourced from
+     * Roborazzi's `@RoboComposePreviewOptions(manualClockOptions = [...])`. `null`
+     * means "use the renderer's default" (a small fixed step). A preview with
+     * `manualClockOptions = [ManualClockOptions(500L), ManualClockOptions(1000L)]`
+     * expands at discovery time into two entries, each carrying one of these
+     * values — one render per variant.
+     */
+    val advanceTimeMillis: Long? = null,
 )
 
 @Serializable

@@ -44,6 +44,7 @@ ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.59.0" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.59.0" }
 roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version = "1.59.0" }
+roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version = "1.59.0" }
 junit = { module = "junit:junit", version.ref = "junit" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 

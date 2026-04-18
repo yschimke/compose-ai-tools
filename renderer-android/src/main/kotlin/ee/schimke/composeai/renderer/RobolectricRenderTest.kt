@@ -197,13 +197,18 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                     }
                 }
                 // Advance the clock by a fixed virtual-time offset, then
-                // capture. Expressing the budget in milliseconds (rather than
-                // a frame count) matches Roborazzi's `@RoboComposePreviewOptions`
-                // / `ManualClockOptions.advanceTimeMillis` convention, so a
-                // future per-preview override can drop in without changing the
-                // primitive. Infinite animations park at exactly this virtual
-                // time across runs — repeated captures are byte-identical.
-                rule.mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)
+                // capture. With `mainClock.autoAdvance = false` this is the
+                // only clock motion Compose sees, so infinite animations park
+                // at exactly this virtual time across runs — repeated captures
+                // are byte-identical.
+                //
+                // If the preview carries `@RoboComposePreviewOptions`, the
+                // per-entry `advanceTimeMillis` overrides the default;
+                // `DiscoverPreviewsTask` has already fanned each timing out
+                // into its own manifest entry, so this value is one specific
+                // timing per render.
+                val advanceMs = params.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
+                rule.mainClock.advanceTimeBy(advanceMs)
                 rule.onRoot().captureRoboImage(
                     file = outputFile,
                     roborazziOptions = roborazziOptions,
