@@ -114,6 +114,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         }
         applyLayout();
 
+        // Seed a placeholder so the view isn't blank during the ~1s boot
+        // window before the extension posts its first message. Any real
+        // message (Building…, empty-state notice, cards) will replace it.
+        message.textContent = 'Loading Compose previews…';
+        message.style.display = 'block';
+        message.dataset.owner = 'fallback';
+
         layoutMode.addEventListener('change', () => {
             state.layout = layoutMode.value;
             vscode.setState(state);
@@ -162,13 +169,49 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 if (show) visibleCount++;
             });
 
-            message.textContent = visibleCount === 0 && allPreviews.length > 0
-                ? 'No previews match the current filters'
-                : '';
-            message.style.display = visibleCount === 0 && allPreviews.length > 0 ? 'block' : 'none';
+            // Only own the message when we have a filter-specific thing to
+            // say. When there are no previews at all, the extension owns the
+            // message (e.g. "No @Preview functions in this file") — clearing
+            // it here was how the view went blank after a refresh.
+            if (allPreviews.length > 0 && visibleCount === 0) {
+                setMessage('No previews match the current filters', 'filter');
+            } else if (message.dataset.owner === 'filter') {
+                // We set this earlier; clear it now that it no longer applies.
+                setMessage('', 'filter');
+            }
 
             // Re-apply layout so focus mode updates correctly after filter change
             applyLayout();
+        }
+
+        // Central setter so applyFilters and incoming messages don't fight
+        // over who owns the current text. The owner tag is used only to let
+        // applyFilters clear its own message without touching extension-set
+        // text (empty-file notice, build errors, etc.).
+        function setMessage(text, owner) {
+            message.textContent = text;
+            message.style.display = text ? 'block' : 'none';
+            if (text) {
+                message.dataset.owner = owner || 'extension';
+            } else {
+                delete message.dataset.owner;
+            }
+            ensureNotBlank();
+        }
+
+        // Safety net: if the grid ends up empty *and* no message is showing,
+        // surface a placeholder so the user doesn't stare at a void. This
+        // shouldn't normally trigger — the extension sends an explicit
+        // message for every empty state — but a silent blank view was the
+        // original complaint, so this catches any future regressions.
+        function ensureNotBlank() {
+            const hasCards = grid.querySelector('.preview-card') !== null;
+            const hasMessage = message.style.display !== 'none' && message.textContent;
+            if (!hasCards && !hasMessage) {
+                message.textContent = 'Preparing previews…';
+                message.style.display = 'block';
+                message.dataset.owner = 'fallback';
+            }
         }
 
         function getVisibleCards() {
@@ -776,12 +819,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
          */
         function renderPreviews(previews) {
             if (previews.length === 0) {
+                // Defensive fallback — the extension now always sends an
+                // explicit showMessage for empty states, so this branch
+                // shouldn't normally fire. Kept so the view never ends up
+                // with an empty grid + empty message if a bug slips through.
                 grid.innerHTML = '';
-                message.textContent = 'No @Preview functions found';
-                message.style.display = 'block';
+                setMessage('No @Preview functions found', 'empty');
                 return;
             }
-            message.style.display = 'none';
+            // Only clear a message we own (filter/empty/fallback) — leave
+            // extension-set messages like "Building…" alone; the extension
+            // will drive its own lifecycle.
+            if (message.dataset.owner && message.dataset.owner !== 'extension') {
+                setMessage('', message.dataset.owner);
+            }
 
             const newIds = new Set(previews.map(p => p.id));
             const existingCards = new Map();
@@ -1007,8 +1058,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'clearAll':
                     allPreviews = [];
                     grid.innerHTML = '';
-                    message.textContent = '';
-                    message.style.display = 'none';
+                    // Don't clear the message here — if it came with a
+                    // follow-up showMessage (the usual pattern) it'll be
+                    // replaced; if not, ensureNotBlank will backstop a
+                    // placeholder so the view never ends up empty+silent.
+                    ensureNotBlank();
                     break;
 
                 case 'updateImage':
@@ -1050,8 +1104,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                             }
                         }
                     } else {
-                        message.textContent = 'Building...';
-                        message.style.display = 'block';
+                        setMessage('Building…', 'extension');
                     }
                     break;
 
@@ -1089,8 +1142,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 }
 
                 case 'showMessage':
-                    message.textContent = msg.text;
-                    message.style.display = msg.text ? 'block' : 'none';
+                    setMessage(msg.text, 'extension');
                     break;
 
                 case 'setHistory':
