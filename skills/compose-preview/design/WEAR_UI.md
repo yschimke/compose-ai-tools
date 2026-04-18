@@ -92,7 +92,26 @@ The preferred list component in M3 Expressive is **`TransformingLazyColumn`** (w
 - **`AppScaffold` Consistency**: Because `AppScaffold` is often defined at the root of the app, individual screens inherit the system UI.
 - **Preview Recommendation**: When creating `@Preview` functions for individual screens, wrap the content in an **`AppScaffold`** (or a custom theme wrapper that includes it) to ensure the time text is visible and correctly positioned in the generated preview image.
 
-### 6. Stable previews (avoid noisy diffs)
+### 6. Round-face clipping in rendered PNGs
+
+Any preview whose `device` resolves as round — `id:wearos_small_round`,
+`id:wearos_large_round`, custom `spec:…isRound=true` or `spec:…shape=Round`
+— is auto-clipped to a transparent inscribed circle before the PNG is
+written. Corners outside the circle are alpha-zero, so the preview matches
+what a real round watch face shows.
+
+Implications when designing previews:
+
+- Don't waste effort styling the corners of a round preview — they'll be
+  clipped away.
+- Place primary content within the inscribed circle. The corners of the
+  preview canvas are *not* a usable design area.
+- Stitched `@ScrollingPreview(mode = LONG)` round captures use a capsule
+  mask (top half-circle + rectangle + bottom half-circle), not per-slice
+  circles, so vertical content in the middle remains visible.
+- Square Wear devices (`id:wearos_square`) are rendered without the clip.
+
+### 7. Stable previews (avoid noisy diffs)
 
 Wear previews fan out over many devices, font scales, and (for scrolling
 content) slice indices. A single source of nondeterminism multiplies into
@@ -140,7 +159,7 @@ hundreds of pixel-different PNGs. Pin these things:
   only. That's intended behaviour, not a regression; the top-state
   `@Preview` of the same composable will not include it.
 
-### 7. Accessibility on Wear
+### 8. Accessibility on Wear
 
 Round faces hide content behind the bezel curve, so a11y findings differ
 from a phone's. Specifically watch for:
