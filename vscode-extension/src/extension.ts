@@ -150,9 +150,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
-            if (editor?.document.languageId === 'kotlin') {
-                refresh(false, editor.document.uri.fsPath);
-            }
+            if (editor?.document.languageId !== 'kotlin') { return; }
+            const filePath = editor.document.uri.fsPath;
+            // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
+            // event with the same Kotlin file. Re-running refresh there just
+            // cancels any in-flight render, flashes spinners, and burns a
+            // Gradle invocation — all for a no-op.
+            if (filePath === currentScopeFile) { return; }
+            refresh(false, filePath);
         }),
     );
 
@@ -174,12 +179,19 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // External file system changes (git, refactor tools)
+    // External file system changes (git, refactor tools). Gated by
+    // isSourceFile so Gradle-generated files under `<module>/build/**` don't
+    // feed every render back into the refresh queue — that loop is what made
+    // the panel look "jumpy" with spinners reappearing over cards after each
+    // build completed.
+    const onWatcherEvent = (uri: vscode.Uri) => {
+        if (isSourceFile(uri.fsPath)) { enqueueSaveRefresh(uri.fsPath); }
+    };
     for (const glob of ['**/*.kt', '**/res/**/*.xml']) {
         const watcher = vscode.workspace.createFileSystemWatcher(glob);
-        watcher.onDidChange(uri => enqueueSaveRefresh(uri.fsPath));
-        watcher.onDidCreate(uri => enqueueSaveRefresh(uri.fsPath));
-        watcher.onDidDelete(uri => enqueueSaveRefresh(uri.fsPath));
+        watcher.onDidChange(onWatcherEvent);
+        watcher.onDidCreate(onWatcherEvent);
+        watcher.onDidDelete(onWatcherEvent);
         context.subscriptions.push(watcher);
     }
 
