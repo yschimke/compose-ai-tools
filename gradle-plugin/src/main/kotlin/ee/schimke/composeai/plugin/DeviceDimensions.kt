@@ -23,8 +23,7 @@ object DeviceDimensions {
     // (Phone.kt / Tablet.kt / Wear.kt / GenericDevices.kt / Desktop.kt / Television.kt /
     // Automotive.kt / XR.kt under android/.../device/types/), with dp = px / (densityDpi / 160)
     // and density = densityDpi / 160. This is the same data the takahirom/roborazzi
-    // compose-preview-scanner-support pipeline uses, surfaced via our Roborazzi adoption
-    // exploration — see docs/explorations/roborazzi-compose-preview-scanner-support-findings.md.
+    // compose-preview-scanner-support pipeline uses.
     private val KNOWN_DEVICES = mapOf(
         // --- Pixel phones ---
         "id:pixel" to DeviceSpec(411, 731, 2.625f),
