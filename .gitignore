@@ -36,3 +36,7 @@ local.properties
 node_modules/
 vscode-extension/out/
 *.vsix
+
+# Python (for .github/actions/lib/ scripts and their tests)
+__pycache__/
+*.pyc

@@ -40,10 +40,24 @@ def sha256(path: Path) -> str:
 def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     """Parse ``compose-preview show --json`` output into a keyed dict.
 
-    The CLI emits a JSON array of PreviewResult objects.  We key them as
-    ``<module>/<id>`` for stable cross-run comparison.
+    The CLI emits a versioned envelope ``{schema, previews, counts}`` (schema
+    ``compose-preview-show/v1``).  Pre-envelope CLIs (≤0.4.0) emitted a bare
+    JSON array of PreviewResult objects — accepted as a fallback so this
+    action keeps working against older CLI tarballs in CI matrices.
+
+    Entries are keyed as ``<module>/<id>`` for stable cross-run comparison.
     """
-    entries = json.loads(cli_json_path.read_text())
+    raw = json.loads(cli_json_path.read_text())
+    if isinstance(raw, dict) and "previews" in raw:
+        entries = raw["previews"]
+    elif isinstance(raw, list):
+        entries = raw
+    else:
+        raise SystemExit(
+            f"Unexpected CLI JSON shape in {cli_json_path}: "
+            f"expected {{schema, previews, ...}} or a list, got {type(raw).__name__}"
+        )
+
     result: dict[str, dict] = {}
     for entry in entries:
         key = f"{entry['module']}/{entry['id']}"
