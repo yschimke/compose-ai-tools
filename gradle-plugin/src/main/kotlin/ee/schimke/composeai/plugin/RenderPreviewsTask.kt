@@ -71,17 +71,21 @@ abstract class RenderPreviewsTask : DefaultTask() {
         val mainClass = "ee.schimke.composeai.renderer.DesktopRendererMainKt"
 
         for (preview in manifest.previews) {
-            val dims = DeviceDimensions.resolve(
-                preview.params.device,
-                preview.params.widthDp,
-                preview.params.heightDp,
+            val spec = DeviceDimensions.resolveForRender(
+                device = preview.params.device,
+                widthDp = preview.params.widthDp,
+                heightDp = preview.params.heightDp,
+                showSystemUi = preview.params.showSystemUi,
             )
-            // Per-device density (= densityDpi / 160), so output bitmaps match what
-            // Android Studio renders for the same `@Preview`. Source: the same data
-            // sergio-sastre/ComposablePreviewScanner / takahirom/roborazzi consume.
-            val density = preview.params.density ?: dims.density
-            val widthPx = (dims.widthDp * density).toInt().coerceAtLeast(1)
-            val heightPx = (dims.heightDp * density).toInt().coerceAtLeast(1)
+            // Per-device density (= densityDpi / 160), so output bitmaps match
+            // what Android Studio renders for the same `@Preview`. Source: the
+            // same data sergio-sastre/ComposablePreviewScanner /
+            // takahirom/roborazzi consume. Discovery pins `params.density` when
+            // a device/showSystemUi frame applies; the wrap-content path leaves
+            // it null and we fall back to `spec.density` (= DEFAULT_DENSITY).
+            val density = preview.params.density ?: spec.density
+            val widthPx = (spec.widthDp * density).toInt().coerceAtLeast(1)
+            val heightPx = (spec.heightDp * density).toInt().coerceAtLeast(1)
             val outputFile = outDir.resolve("${preview.id}.png")
 
             execOperations.javaexec {
@@ -98,6 +102,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
                     outputFile.absolutePath,
                     // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
                     preview.params.wrapperClassName.orEmpty(),
+                    // 10th/11th — AS-parity wrap flags. When set, the renderer
+                    // wraps the composable, measures it, and crops the PNG to
+                    // the intrinsic bounds on that axis.
+                    spec.wrapWidth.toString(),
+                    spec.wrapHeight.toString(),
                 )
             }
         }
@@ -107,17 +116,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
         val workQueue = workerExecutor.noIsolation()
 
         for (preview in manifest.previews) {
-            val dims = DeviceDimensions.resolve(
-                preview.params.device,
-                preview.params.widthDp,
-                preview.params.heightDp,
+            val spec = DeviceDimensions.resolveForRender(
+                device = preview.params.device,
+                widthDp = preview.params.widthDp,
+                heightDp = preview.params.heightDp,
+                showSystemUi = preview.params.showSystemUi,
             )
             workQueue.submit(PreviewRenderWorkAction::class.java) {
                 className.set(preview.className)
                 functionName.set(preview.functionName)
-                widthDp.set(dims.widthDp)
-                heightDp.set(dims.heightDp)
-                density.set(preview.params.density ?: dims.density)
+                widthDp.set(spec.widthDp)
+                heightDp.set(spec.heightDp)
+                density.set(preview.params.density ?: spec.density)
                 fontScale.set(preview.params.fontScale)
                 showBackground.set(preview.params.showBackground)
                 backgroundColor.set(preview.params.backgroundColor)

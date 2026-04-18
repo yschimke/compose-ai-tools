@@ -411,19 +411,39 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val device = (pv.getValue("device") as? String)?.ifBlank { null }
         val rawWidth = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
         val rawHeight = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 }
-        // Resolve dimensions up-front so downstream consumers (renderers, VSCode
-        // extension, CLI) see the effective widthDp/heightDp instead of having to
-        // each re-implement DeviceDimensions. RenderPreviewsTask still calls resolve()
-        // — passing already-resolved values is a no-op path.
-        val dims = DeviceDimensions.resolve(device, rawWidth, rawHeight)
+        val showSystemUi = (pv.getValue("showSystemUi") as? Boolean) ?: false
+        // AS-parity sizing: when the user picked a device or asked for the
+        // system UI frame, resolve up-front so downstream consumers (renderers,
+        // VS Code extension, CLI) see the effective widthDp/heightDp and the
+        // device's density. When no frame was requested, keep the raw user
+        // values — nulls on either axis signal "wrap to intrinsic" to the
+        // renderers, matching how Android Studio's preview pane sizes
+        // component previews.
+        val effectiveWidth: Int?
+        val effectiveHeight: Int?
+        val effectiveDensity: Float?
+        if (device != null || showSystemUi) {
+            val dims = DeviceDimensions.resolve(device, rawWidth, rawHeight)
+            effectiveWidth = dims.widthDp
+            effectiveHeight = dims.heightDp
+            effectiveDensity = dims.density
+        } else {
+            effectiveWidth = rawWidth
+            effectiveHeight = rawHeight
+            // `null` → renderer falls back to its built-in default (AS's
+            // xxhdpi-ish `DEFAULT_DENSITY`). Avoid pinning the density here so
+            // a wrap-content preview behaves the same as AS's default-phone
+            // preview without baking a specific dpi into `previews.json`.
+            effectiveDensity = null
+        }
         return PreviewParams(
             name = (pv.getValue("name") as? String)?.ifBlank { null },
             device = device,
-            widthDp = dims.widthDp,
-            heightDp = dims.heightDp,
-            density = dims.density,
+            widthDp = effectiveWidth,
+            heightDp = effectiveHeight,
+            density = effectiveDensity,
             fontScale = (pv.getValue("fontScale") as? Float)?.takeIf { it > 0 } ?: 1.0f,
-            showSystemUi = (pv.getValue("showSystemUi") as? Boolean) ?: false,
+            showSystemUi = showSystemUi,
             showBackground = (pv.getValue("showBackground") as? Boolean) ?: false,
             backgroundColor = (pv.getValue("backgroundColor") as? Long) ?: 0L,
             uiMode = (pv.getValue("uiMode") as? Int)?.takeIf { it > 0 } ?: 0,

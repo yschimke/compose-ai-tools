@@ -12,23 +12,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import org.jetbrains.skia.EncodedImageFormat
+import java.io.ByteArrayInputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 
 /**
  * Standalone entry point for rendering Compose Desktop previews to PNG.
  *
- * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile [wrapperClassName]
+ * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile [wrapperClassName] [wrapWidth] [wrapHeight]
  *
  * The optional 9th argument is the FQN of a `PreviewWrapperProvider` (Compose 1.11+);
  * pass an empty string or omit to skip wrapping.
+ *
+ * Args 10 and 11 are AS-parity wrap flags. When an axis wraps, widthPx/heightPx
+ * are treated as a sandbox dimension — the renderer wraps the composable,
+ * measures its intrinsic size, and crops the final PNG to that size on the
+ * wrapped axis. Defaults to `false` when omitted so older callers keep the
+ * full-frame behaviour.
  */
 fun main(args: Array<String>) {
     if (args.size < 8) {
-        System.err.println("Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName]")
+        System.err.println("Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight]")
         exitProcess(1)
     }
 
@@ -53,11 +64,14 @@ fun main(args: Array<String>) {
     }
     val outputFile = File(args[7])
     val wrapperClassName = args.getOrNull(8)?.takeIf { it.isNotBlank() }
+    val wrapWidth = args.getOrNull(9)?.toBoolean() ?: false
+    val wrapHeight = args.getOrNull(10)?.toBoolean() ?: false
 
     try {
         renderPreview(
             className, functionName, widthPx, heightPx, density,
             showBackground, backgroundColor, outputFile, wrapperClassName,
+            wrapWidth, wrapHeight,
         )
     } catch (e: Exception) {
         System.err.println("Render failed for $className.$functionName: ${e.message}")
@@ -76,6 +90,8 @@ private fun renderPreview(
     backgroundColor: Long,
     outputFile: File,
     wrapperClassName: String?,
+    wrapWidth: Boolean,
+    wrapHeight: Boolean,
 ) {
     val clazz = Class.forName(className)
     val composableMethod = clazz.getDeclaredComposableMethod(functionName)
@@ -86,6 +102,10 @@ private fun renderPreview(
         density = Density(density),
     )
 
+    // Measured content size in pixels, captured from the wrapping Box via
+    // onGloballyPositioned. Only read when at least one axis wraps.
+    var measured: IntSize? = null
+
     scene.setContent {
         CompositionLocalProvider(LocalInspectionMode provides true) {
             val bgColor = when {
@@ -94,8 +114,52 @@ private fun renderPreview(
                 else -> Color.Transparent
             }
             val body: @Composable () -> Unit = {
-                Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-                    InvokeComposable(composableMethod, null)
+                if (wrapWidth || wrapHeight) {
+                    // AS-parity wrap: measure the composable with unbounded
+                    // constraints on wrapped axes (keep the sandbox constraint
+                    // on fixed axes), capture the child's pixel size, then
+                    // size the outer Box to exactly that. The .layout modifier
+                    // lets us both observe and bound the child's size in a
+                    // single measurement pass — more reliable under
+                    // ImageComposeScene than onGloballyPositioned, which is
+                    // tied to a post-layout effect pass the scene doesn't
+                    // always flush.
+                    // Bounded sandbox constraints (not Infinity) — matches
+                    // Android Studio's preview pane. `fillMaxWidth` / LazyColumn
+                    // / etc. require bounded constraints; they'd throw from
+                    // `InlineClassHelper` under an Infinity max. Small
+                    // composables (`Modifier.size(100.dp)`) still measure at
+                    // their intrinsic size and get cropped to that below;
+                    // `fillMax*` composables measure at the sandbox size and
+                    // no crop happens on that axis.
+                    Box(
+                        modifier = Modifier
+                            .layout { measurable, constraints ->
+                                // Relax the min constraint on wrapped axes so
+                                // small composables can shrink below the
+                                // sandbox; keep the max bounded (the parent's
+                                // maxWidth/maxHeight) so `fillMax*` / LazyColumn
+                                // still have a finite viewport.
+                                val wrappedConstraints = Constraints(
+                                    minWidth = if (wrapWidth) 0 else constraints.minWidth,
+                                    maxWidth = constraints.maxWidth,
+                                    minHeight = if (wrapHeight) 0 else constraints.minHeight,
+                                    maxHeight = constraints.maxHeight,
+                                )
+                                val placeable = measurable.measure(wrappedConstraints)
+                                measured = IntSize(placeable.width, placeable.height)
+                                layout(placeable.width, placeable.height) {
+                                    placeable.place(0, 0)
+                                }
+                            }
+                            .background(bgColor),
+                    ) {
+                        InvokeComposable(composableMethod, null)
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+                        InvokeComposable(composableMethod, null)
+                    }
                 }
             }
             // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively
@@ -117,7 +181,30 @@ private fun renderPreview(
         ?: throw IllegalStateException("Failed to encode image to PNG")
 
     outputFile.parentFile?.mkdirs()
-    outputFile.writeBytes(pngData.bytes)
+
+    // Crop to the measured content bounds on wrapped axes. `measured` is
+    // populated during the Modifier.layout measure pass in the wrap branch
+    // above — if it somehow wasn't set (shouldn't happen, but defensive),
+    // fall back to the sandbox dimensions and write the uncropped PNG.
+    if ((wrapWidth || wrapHeight) && measured != null) {
+        val m = measured!!
+        val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, widthPx)
+        val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, heightPx)
+        val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
+        if (decoded != null && (cropW < decoded.width || cropH < decoded.height)) {
+            val sub = decoded.getSubimage(
+                0,
+                0,
+                cropW.coerceAtMost(decoded.width),
+                cropH.coerceAtMost(decoded.height),
+            )
+            ImageIO.write(sub, "PNG", outputFile)
+        } else {
+            outputFile.writeBytes(pngData.bytes)
+        }
+    } else {
+        outputFile.writeBytes(pngData.bytes)
+    }
 
     scene.close()
 }

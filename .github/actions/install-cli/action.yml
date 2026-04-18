@@ -1,23 +1,32 @@
 name: 'Install compose-preview CLI'
 description: >
-  Download the latest tagged compose-preview release tarball and put its
+  Build the compose-preview CLI from the checked-out source and put its
   `bin/` on $GITHUB_PATH. Shared by the preview-baselines and
-  preview-comment composite actions — identical logic previously lived in
-  both.
+  preview-comment composite actions. Building from source (rather than
+  downloading the latest release tarball) keeps the CLI in lockstep with
+  the plugin / renderer schema on the current commit — PRs that land a
+  schema change (e.g. the captures refactor in #72) won't break the CI
+  render step with a version-skew error against a stale released CLI.
 
 runs:
   using: 'composite'
   steps:
-    - name: Install CLI
+    - name: Build and stage CLI
       shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
+      # `installDist` drops the CLI under `cli/build/install/compose-preview`
+      # in the workspace; we stage it at a hardcoded path under /opt so the
+      # $GITHUB_PATH write below is a fixed literal. Writing an
+      # expansion-backed value to $GITHUB_PATH trips zizmor's `github-env`
+      # rule because any attacker-influence over the expansion becomes
+      # attacker-influence over every subsequent step's $PATH. The stage
+      # step is trusted because its inputs are the repo checkout + our own
+      # Gradle build.
       run: |
         set -euo pipefail
-        VERSION=$(gh release view --repo yschimke/compose-ai-tools --json tagName -q .tagName | sed 's/^v//')
-        echo "Downloading compose-preview ${VERSION}..."
-        gh release download "v${VERSION}" --repo yschimke/compose-ai-tools \
-          --pattern "compose-preview-${VERSION}.tar.gz" --dir /tmp
-        mkdir -p /opt/compose-preview
-        tar -xzf "/tmp/compose-preview-${VERSION}.tar.gz" -C /opt/compose-preview --strip-components=1
-        echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"
+        ./gradlew :cli:installDist --no-daemon
+        sudo mkdir -p /opt/compose-preview
+        sudo cp -a cli/build/install/compose-preview/. /opt/compose-preview/
+
+    - name: Add CLI to PATH
+      shell: bash
+      run: echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"

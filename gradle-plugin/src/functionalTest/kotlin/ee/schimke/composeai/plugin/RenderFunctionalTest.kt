@@ -126,9 +126,15 @@ class RenderFunctionalTest {
         assertThat(pngFile).isNotNull()
 
         val img: BufferedImage = ImageIO.read(pngFile!!)
-        // Default dimensions: 400x800 dp at DEFAULT_DENSITY (2.625x, matching the
-        // xxhdpi-class default Android Studio uses for `@Preview` without a device)
-        // = 1050x2100 px.
+        // Synthetic functional-test projects don't have `:renderer-desktop` on
+        // their classpath, so the plugin falls back to the stub renderer
+        // (PreviewRenderWorkAction) — which writes a blank PNG of the
+        // task-computed sandbox size without running a real composition.
+        // Under AS-parity sizing, a bare `@Preview` gets the wrap-content
+        // sandbox (400×800 dp) at DEFAULT_DENSITY (2.625x) = 1050×2100 px.
+        // The real wrap-to-intrinsic crop is exercised end-to-end through the
+        // sample-cmp / sample-android render tasks, which pull in the actual
+        // renderer modules.
         assertThat(img.width).isEqualTo(1050)
         assertThat(img.height).isEqualTo(2100)
     }
