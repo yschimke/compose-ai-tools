@@ -43,6 +43,28 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     val shards: Property<Int> = objects.property(Int::class.java).convention(1)
 
     /**
+     * When `true`, Robolectric instantiates the consumer's manifest-declared
+     * `Application` class (e.g. `MyApp : Application()`) before rendering each
+     * preview. Default: `false` — the renderer installs a plain
+     * `android.app.Application` via a generated package-level
+     * `robolectric.properties`, so consumer-side init (DI containers,
+     * `BridgingManager.setConfig`, Firebase bootstrap, WorkManager scheduling,
+     * …) does NOT run during preview rendering.
+     *
+     * Stub by default because Application-level init routinely fails in
+     * Robolectric — it depends on platform features the sandbox doesn't
+     * emulate (Play Services, Firebase, Wear `FEATURE_WATCH`). Previews
+     * should be self-contained composables anyway, not coupled to
+     * app-lifecycle state.
+     *
+     * Flip to `true` only if your previews genuinely depend on your
+     * custom Application being constructed (rare) — and expect to supply
+     * a Robolectric-safe subclass guarded against unsupported APIs.
+     */
+    val useConsumerApplication: Property<Boolean> =
+        objects.property(Boolean::class.java).convention(false)
+
+    /**
      * ATF (Accessibility Test Framework) checks, run against each rendered
      * preview. Off by default — turning it on surfaces findings in the CLI,
      * VSCode diagnostics, and `accessibility.json`, but does NOT break the

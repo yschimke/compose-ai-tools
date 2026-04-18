@@ -83,6 +83,16 @@ object PreviewManifestLoader {
  * The content itself is produced by a [PreviewRenderStrategy] keyed off
  * [RenderPreviewParams.kind] — @Composable previews use the reflective Compose
  * strategy, tile previews route through [TilePreviewComposable].
+ *
+ * `@Config.application` is deliberately unset here. The plugin writes a
+ * package-level `ee/schimke/composeai/renderer/robolectric.properties` onto the
+ * test classpath that Robolectric merges into the effective config. By default
+ * that file pins `application=android.app.Application`, so the consumer's
+ * custom `Application.onCreate()` does NOT run for preview rendering —
+ * sidesteps platform-specific init (BridgingManager on non-Wear sandboxes,
+ * Firebase, Play Services, WorkManager) that routinely fails inside
+ * Robolectric. Consumers can set `composePreview.useConsumerApplication = true`
+ * to restore the manifest-declared Application.
  */
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
