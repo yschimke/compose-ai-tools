@@ -1,5 +1,7 @@
 package ee.schimke.composeai.plugin.tooling
 
+import java.time.YearMonth
+
 /**
  * Plugin-side compat-check rules. Single source of truth used by both
  * [ComposePreviewModelBuilder] (Tooling API path, consumed by the CLI) and
@@ -160,9 +162,21 @@ internal object CompatRules {
             message = "no Compose BOM declared",
             detail = "Without a BOM, compose-ui / compose-runtime / compose-foundation can end up on non-lockstep versions. Most consumer failure reports we see start here.",
             remediationSummary = "Declare a Compose BOM to align all compose-* artifact versions.",
-            remediationCommands = listOf("implementation(platform(\"androidx.compose:compose-bom:2024.09.00\"))"),
+            remediationCommands = listOf("implementation(platform(\"androidx.compose:compose-bom:${suggestedComposeBom()}\"))"),
             docsUrl = null,
         )
+    }
+
+    /**
+     * Suggest the previous calendar month's BOM (`YYYY.MM.00`). Compose BOM
+     * publishes monthly with the `.00` as the initial release, so "last
+     * month's BOM" is both a real version and a safe, conservative choice —
+     * it always exists, and we're never recommending a literal that will
+     * age out the moment this file is committed.
+     */
+    internal fun suggestedComposeBom(today: YearMonth = YearMonth.now()): String {
+        val ym = today.minusMonths(1)
+        return "%04d.%02d.00".format(ym.year, ym.monthValue)
     }
 
     private fun parseVersions(raw: Map<String, String>): Map<String, Semver> {
