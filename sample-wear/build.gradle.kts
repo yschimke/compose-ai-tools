@@ -67,8 +67,12 @@ dependencies {
 // Same dependency wiring as sample-android's pixel tests; targets the AGP
 // unit-test tasks by name so we don't include the plugin's own `renderPreviews`
 // Test task (which would create a circular dep).
-afterEvaluate {
-    listOf("testDebugUnitTest", "testReleaseUnitTest").forEach { name ->
-        tasks.findByName(name)?.dependsOn("renderAllPreviews")
-    }
+//
+// `tasks.matching { ... }.configureEach { ... }` is the Isolated-Projects-
+// safe lazy pattern — the predicate fires as each task is registered, so we
+// don't need the discouraged `afterEvaluate` block to wait for AGP to wire
+// the unit-test tasks.
+val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
+tasks.matching { it.name in pixelTestUnitTestTasks }.configureEach {
+    dependsOn("renderAllPreviews")
 }
