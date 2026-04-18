@@ -67,24 +67,38 @@ internal object AndroidPreviewSupport {
             dependsOn("compile${capVariant}Kotlin")
         }
 
-        // Always inject `ui-test-manifest` into the consumer's `testImplementation`
-        // so its `ComponentActivity` <activity> entry is merged into the
-        // consumer's unit-test AndroidManifest. The renderer-android AAR pulls
-        // ui-test-manifest in transitively, but our plugin bypasses the normal
-        // AGP dep graph (renderer classpath lives in our own resolvable config,
-        // not `testImplementation`), so the manifest merger never sees it
-        // otherwise. This is a hard requirement for any ComposeTestRule-based
-        // path (e.g. the ATF accessibility checks) and a safety net for future
-        // tests that need a host activity.
+        // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
+        // `testImplementation`:
+        //
+        //  * `ui-test-manifest` contributes the `<activity android:name=
+        //    "androidx.activity.ComponentActivity">` entry that has to land in
+        //    the consumer's merged unit-test AndroidManifest before
+        //    `createAndroidComposeRule<ComponentActivity>()` can launch its
+        //    ActivityScenario. Our plugin bypasses the normal AGP dep graph
+        //    (renderer classpath lives in our own resolvable config, not
+        //    `testImplementation`), so the manifest merger never sees it
+        //    otherwise.
+        //  * `ui-test-junit4` is where `createAndroidComposeRule` /
+        //    `ComposeTestRule` / `mainClock` live. The renderer test references
+        //    these unconditionally from its default `renderDefault` path (we
+        //    use `mainClock.autoAdvance = false` + explicit frame pumping to
+        //    make infinite animations terminate deterministically — see
+        //    RobolectricRenderTest.renderDefault), so the consumer's test
+        //    classpath needs these classes too, not just the resource/manifest
+        //    half of the story.
         //
         // No version: relies on the consumer's Compose BOM (or direct Compose
-        // dep) to resolve ui-test-manifest. Projects using
+        // dep) to resolve these artifacts. Projects using
         // `implementation(platform(libs.compose.bom))` pick up the aligned
         // version automatically; projects without a BOM need to add one (a
         // reasonable ask — the plugin is for Compose apps).
         project.dependencies.add(
             "testImplementation",
             "androidx.compose.ui:ui-test-manifest",
+        )
+        project.dependencies.add(
+            "testImplementation",
+            "androidx.compose.ui:ui-test-junit4",
         )
 
         val artifactType = Attribute.of("artifactType", String::class.java)
