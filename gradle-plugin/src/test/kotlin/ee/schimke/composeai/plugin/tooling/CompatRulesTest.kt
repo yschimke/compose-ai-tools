@@ -94,6 +94,38 @@ class CompatRulesTest {
         }
     }
 
+    @Test fun `old activity fires old-dep warning`() {
+        val main = mainWithBom() + ("androidx.activity:activity" to "1.8.0")
+        val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.10.6")
+        val findings = CompatRules.evaluate(main, test)
+        val f = findings.single { it.id == "old-dep-androidx.activity:activity" }
+        assertEquals("warning", f.severity)
+        assertTrue("1.8.0" in f.message)
+        assertTrue(f.remediationCommands.any { "androidx.activity:activity" in it })
+    }
+
+    @Test fun `current activity is quiet`() {
+        val main = mainWithBom() + ("androidx.activity:activity" to "1.13.0")
+        val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.10.6")
+        val findings = CompatRules.evaluate(main, test)
+        assertNull(findings.firstOrNull { it.id.startsWith("old-dep-androidx.activity") })
+    }
+
+    @Test fun `absent library emits no old-dep finding`() {
+        // lifecycle-runtime isn't on the classpath at all — silently skipped.
+        val findings = CompatRules.evaluate(mainWithBom(), mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"))
+        assertNull(findings.firstOrNull { it.id.startsWith("old-dep-androidx.lifecycle") })
+    }
+
+    @Test fun `test-classpath higher than main is taken as resolved`() {
+        // Main has old activity, test classpath has newer — we take the max.
+        val main = mainWithBom() + ("androidx.activity:activity" to "1.8.0")
+        val test = main + ("androidx.activity:activity" to "1.13.0") +
+            ("androidx.compose.ui:ui-test-manifest" to "1.10.6")
+        val findings = CompatRules.evaluate(main, test)
+        assertNull(findings.firstOrNull { it.id.startsWith("old-dep-androidx.activity") })
+    }
+
     @Test fun `semver parses and compares`() {
         assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
         assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))
