@@ -274,11 +274,29 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 @Suppress("UNCHECKED_CAST")
                 val scrollCaptureProvidable =
                     LocalScrollCaptureInProgress as ProvidableCompositionLocal<Boolean>
+                // Wear-only: flatten `TransformingLazyColumn` item scaling for
+                // `@ScrollingPreview(..., reduceMotion = true)` captures.
+                // Without this, items mid-transform at a viewport edge get
+                // captured at non-1.0 scale, then the stitcher paints that
+                // same item again (at its next-slice scale) one viewport
+                // down — producing the ghost/duplicate rows at slice seams
+                // the user sees on long Wear previews. `LocalReduceMotion`
+                // is looked up reflectively so this file stays free of a
+                // Wear Compose compile dep; on non-Wear modules the lookup
+                // returns null and the flag is a no-op.
+                val reduceMotion =
+                    preview.captures.any { it.scroll?.reduceMotion == true }
+                val reduceMotionLocal =
+                    if (reduceMotion) WearReduceMotionLocal.get() else null
+                val providedValues = buildList {
+                    add(LocalInspectionMode provides !a11yEnabled)
+                    add(scrollCaptureProvidable provides scrollCaptureInProgress)
+                    if (reduceMotionLocal != null) {
+                        add(reduceMotionLocal provides true)
+                    }
+                }.toTypedArray()
                 rule.setContent {
-                    CompositionLocalProvider(
-                        LocalInspectionMode provides !a11yEnabled,
-                        scrollCaptureProvidable provides scrollCaptureInProgress,
-                    ) {
+                    CompositionLocalProvider(values = providedValues) {
                         if (wrapWidth || wrapHeight) {
                             // AS-parity wrap-to-content: measure the strategy's
                             // composable with unbounded constraints on wrapped

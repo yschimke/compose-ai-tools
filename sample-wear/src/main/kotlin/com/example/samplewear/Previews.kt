@@ -290,7 +290,7 @@ fun LongActivityListScreen() {
 }
 
 @WearPreviewLargeRound
-@ScrollingPreview(mode = ScrollMode.LONG, reduceMotion = true)
+@ScrollingPreview(mode = ScrollMode.LONG)
 @Composable
 fun ActivityListLongPreview() {
     MaterialTheme {
