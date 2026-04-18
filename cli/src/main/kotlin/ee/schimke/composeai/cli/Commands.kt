@@ -165,20 +165,15 @@ abstract class Command(protected val args: List<String>) {
 
     /**
      * Reads each module's accessibility report IF the manifest points at one
-     * (i.e. the feature is enabled in Gradle). Returns a map keyed by
-     * `"$module/$previewId"` so `buildResults` can look up findings without a
-     * second filesystem probe.
+     * (i.e. the feature is enabled in Gradle), and returns a lookup from
+     * `"<module>/<previewId>"` to (findings, annotatedPathAbsolute). The
+     * annotated path is resolved against the report file's parent so the
+     * value we emit is an absolute filesystem path agents can open directly.
      *
      * Following the manifest pointer — rather than hard-coding
      * `accessibility.json` — means disabling checks in Gradle cleanly makes
      * findings disappear from CLI output; we never report stale reports from
      * a prior opt-in run.
-     */
-    /**
-     * Loads each module's accessibility report and returns a lookup from
-     * `"<module>/<previewId>"` to (findings, annotatedPathAbsolute). The
-     * annotated path is resolved against the report file's parent so the
-     * value we emit is an absolute filesystem path agents can open directly.
      */
     protected fun readAllA11yReports(
         manifests: List<Pair<String, PreviewManifest>>,

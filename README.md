@@ -67,20 +67,24 @@ Launch a subprocess with the module's full classpath plus the renderer-desktop m
 
 ### Rendering (Android)
 
-Launch a subprocess inside a Robolectric sandbox with native graphics.
+Launch a Gradle `Test` task inside a Robolectric sandbox with native graphics
+(`graphicsMode=NATIVE`, `pixelCopyRenderMode=hardware`).
 
 ```
-1. Bootstrap a ComponentActivity through Robolectric's activity lifecycle.
-   Configure the shadow display to match the target dimensions.
+1. Bootstrap a ComponentActivity through `createAndroidComposeRule`.
+   Apply the @Preview qualifiers (size, density, locale, uiMode, round,
+   orientation) via `RuntimeEnvironment.setQualifiers` and `setFontScale`.
 
-2. Set the activity content to the composable (same as Desktop:
-   background fill + reflected composable invocation + inspection mode).
+2. Set the activity content to a background fill + reflected composable
+   invocation, with `LocalInspectionMode = true`.
 
-3. Advance the main looper frame-by-frame (16ms per frame, up to 20 frames).
-   After each frame, sample ~64 pixels and compute a checksum.
-   Stop when the checksum is stable for 2 consecutive frames.
+3. Pause Compose's main clock (`autoAdvance = false`) and step it by a
+   fixed amount so infinite animations terminate deterministically instead
+   of hanging the idling resource.
 
-4. Draw the activity's root view to a bitmap, compress as PNG, write to file.
+4. Capture the root view via `captureRoboImage`, which routes ShadowPixelCopy
+   through HardwareRenderer + ImageReader to replay Compose's RenderNodes,
+   compress as PNG, write to file.
 ```
 
 ### Caching
@@ -163,12 +167,12 @@ The snapshot version is the next patch ahead of the latest release
 
 <!-- x-release-please-start-version -->
 Download `compose-preview-0.4.0.tar.gz` (or `.zip`) from the
-[v0.4.0 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.3.4)
+[v0.4.0 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.4.0)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.4.0/compose-preview-0.3.4.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.4.0/compose-preview-0.4.0.tar.gz
 tar -xzf compose-preview.tar.gz
 export PATH="$PWD/compose-preview-0.4.0/bin:$PATH"
 
@@ -216,7 +220,7 @@ composePreview {
 | `gradle-plugin/` | Gradle plugin — discovery, rendering task orchestration |
 | `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
 | `renderer-android/` | Android renderer — Robolectric harness |
-| `cli/` | CLI with GraalVM native-image support |
+| `cli/` | CLI — Tooling-API driver over `discoverPreviews` / `renderAllPreviews` |
 | `sample-android/` | Android sample with colored box `@Preview` composables |
 | `sample-cmp/` | CMP Desktop sample with colored box `@Preview` composables |
 
