@@ -20,11 +20,6 @@ renders them to PNG, and the extension loads those PNGs into a webview.
 
 ## Prerequisites
 
-- The
-  [`ee.schimke.composeai.preview`](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
-  Gradle plugin applied in your module. See the
-  [project README](https://github.com/yschimke/compose-ai-tools#setup) for
-  apply instructions.
 - Java 21 on `PATH` or `JAVA_HOME`.
 - Gradle 9.4.1+ (the bundled wrapper in your project is fine).
 - The
@@ -34,6 +29,26 @@ renders them to PNG, and the extension loads those PNGs into a webview.
   `implementation(compose.components.uiToolingPreview)` — the bundled
   `@Preview` annotation has `SOURCE` retention and is otherwise invisible to
   the discovery step.
+
+## Apply the Gradle plugin
+
+Add
+[`ee.schimke.composeai.preview`](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
+to the module whose previews you want to render:
+
+<!-- x-release-please-start-version -->
+```kotlin
+// <module>/build.gradle.kts
+plugins {
+    id("ee.schimke.composeai.preview") version "0.4.0"
+}
+```
+<!-- x-release-please-end -->
+
+The plugin is on Maven Central, so no extra repository setup is needed when
+`mavenCentral()` is already in your `pluginManagement.repositories`. See the
+[project README](https://github.com/yschimke/compose-ai-tools#setup) for
+snapshot builds.
 
 ## Usage
 
