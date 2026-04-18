@@ -3,7 +3,6 @@ package ee.schimke.composeai.renderer
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
@@ -12,7 +11,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalScrollCaptureInProgress
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -274,16 +272,16 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 // scroll-to-end position — the indicator there is what a real
                 // app would show, so we leave it visible.
                 //
-                // The public local is typed `CompositionLocal<Boolean>`
-                // (read-only); the providable form is `internal` but at
-                // runtime they're the same singleton, so the unchecked cast
-                // is sound. Requires compose-ui ≥ 1.7 (when
-                // `LocalScrollCaptureInProgress` shipped).
+                // `LocalScrollCaptureInProgress` shipped in compose-ui 1.7.
+                // Looked up reflectively so the renderer compiles against an
+                // older Compose floor and consumers on pre-1.7 Compose get a
+                // null lookup (scroll-capture becomes a no-op — the natural
+                // transient UI stays visible at stitched seams). See
+                // [ScrollCaptureInProgressLocal].
                 val scrollCaptureInProgress =
                     preview.captures.any { it.scroll?.mode == ScrollMode.LONG }
-                @Suppress("UNCHECKED_CAST")
                 val scrollCaptureProvidable =
-                    LocalScrollCaptureInProgress as ProvidableCompositionLocal<Boolean>
+                    if (scrollCaptureInProgress) ScrollCaptureInProgressLocal.get() else null
                 // Wear-only: flatten `TransformingLazyColumn` item scaling for
                 // `@ScrollingPreview(..., reduceMotion = true)` captures.
                 // Without this, items mid-transform at a viewport edge get
@@ -300,7 +298,9 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                     if (reduceMotion) WearReduceMotionLocal.get() else null
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
-                    add(scrollCaptureProvidable provides scrollCaptureInProgress)
+                    if (scrollCaptureProvidable != null) {
+                        add(scrollCaptureProvidable provides scrollCaptureInProgress)
+                    }
                     if (reduceMotionLocal != null) {
                         add(reduceMotionLocal provides true)
                     }
