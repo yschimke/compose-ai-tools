@@ -73,9 +73,12 @@ object DeviceDimensions {
         // --- Wear OS ---
         // WearDevices constants from androidx.wear.tooling.preview.devices —
         // used by @androidx.wear.tiles.tooling.preview.Preview. All wear devices
-        // run at 320dpi (xhdpi → 2.0x) per upstream.
+        // run at 320dpi (xhdpi → 2.0x) per upstream. The xl_round entry isn't in
+        // sergio-sastre/ComposablePreviewScanner's table yet but ships in AOSP's
+        // sdklib/devices/wear.xml as a 480x480 px / xhdpi device.
         "id:wearos_small_round" to DeviceSpec(192, 192, 2.0f),
         "id:wearos_large_round" to DeviceSpec(227, 227, 2.0f),
+        "id:wearos_xl_round" to DeviceSpec(240, 240, 2.0f),
         "id:wearos_square" to DeviceSpec(180, 180, 2.0f),
         "id:wearos_rect" to DeviceSpec(201, 238, 2.0f),
         // wearos_rectangular is the older Studio identifier for the same device as

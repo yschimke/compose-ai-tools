@@ -202,5 +202,18 @@ class DeviceDimensionsTest {
         // All wear devices upstream are 320dpi → 2.0x.
         assertThat(DeviceDimensions.resolve("id:wearos_large_round").density).isEqualTo(2.0f)
         assertThat(DeviceDimensions.resolve("id:wearos_square").density).isEqualTo(2.0f)
+        assertThat(DeviceDimensions.resolve("id:wearos_xl_round").density).isEqualTo(2.0f)
+    }
+
+    @Test
+    fun `wearos_xl_round resolves`() {
+        // 480x480 px @ xhdpi → 240x240 dp. Source: AOSP sdklib/devices/wear.xml.
+        // Larger than wearos_large_round (227dp) — sits at the top of the
+        // 192–240 dp wear range Material 2.5 calls out.
+        val spec = DeviceDimensions.resolve("id:wearos_xl_round")
+        assertThat(spec.widthDp).isEqualTo(240)
+        assertThat(spec.heightDp).isEqualTo(240)
+        assertThat(spec.widthDp)
+            .isGreaterThan(DeviceDimensions.resolve("id:wearos_large_round").widthDp)
     }
 }
