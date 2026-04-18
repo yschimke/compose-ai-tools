@@ -43,6 +43,23 @@ android {
     }
 }
 
+// `ScrollPreviewPixelTest` reads PNGs under `build/compose-previews/renders/`
+// produced by `renderAllPreviews`. Wire the AGP unit-test tasks to depend on
+// it so `./gradlew :sample-android:check` renders the PNGs first then
+// pixel-asserts against them. Targeting the `test{Debug,Release}UnitTest`
+// tasks by name — `tasks.withType<Test>()` would also grab the plugin's own
+// `renderPreviews` Test task and create a circular dependency.
+afterEvaluate {
+    listOf("testDebugUnitTest", "testReleaseUnitTest").forEach { name ->
+        tasks.findByName(name)?.dependsOn("renderAllPreviews")
+    }
+}
+
+dependencies {
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -54,5 +71,8 @@ dependencies {
     // metadata read by `DiscoverPreviewsTask` — the annotation itself has no
     // runtime behaviour in production builds.
     implementation(libs.roborazzi.annotations)
+    // Our `@ScrollingPreview` lives here — same role as above, read by FQN
+    // at discovery time; no runtime behaviour.
+    implementation(project(":preview-annotations"))
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -230,6 +230,25 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 // timing per render.
                 val advanceMs = params.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
                 rule.mainClock.advanceTimeBy(advanceMs)
+
+                // @ScrollingPreview: drive the first scrollable on the annotated
+                // axis to the end of its content before the snapshot. Both ScrollMode
+                // values capture the end-state for now — true long-scroll stitching
+                // lands in a follow-up; the manifest field stays stable across the
+                // transition.
+                params.scroll?.let { spec ->
+                    val result = driveScrollToEnd(
+                        rule = rule,
+                        axis = spec.axis,
+                        maxScrollPx = spec.maxScrollPx,
+                    )
+                    if (result is ScrollDriveResult.NoScrollable) {
+                        System.err.println(
+                            "@ScrollingPreview on '${preview.id}' but no scrollable composable found on axis ${spec.axis} — capturing initial frame.",
+                        )
+                    }
+                }
+
                 val onRoot = rule.onRoot()
                 onRoot.captureRoboImage(
                     file = outputFile,

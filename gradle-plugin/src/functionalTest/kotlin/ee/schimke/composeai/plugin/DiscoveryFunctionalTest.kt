@@ -459,6 +459,124 @@ class DiscoveryFunctionalTest {
     }
 
     @Test
+    fun `discoverPreviews picks up @ScrollingPreview`() {
+        val projectDir = createCmpTestProject()
+
+        // Stub out @ScrollingPreview at its canonical FQN inside the synthetic
+        // project — mirrors the @PreviewWrapper test above so the functional
+        // test doesn't need the preview-annotations artifact on its classpath.
+        val scrollingFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+        scrollingFqnDir.mkdirs()
+        File(scrollingFqnDir, "ScrollingPreview.kt").writeText(
+            """
+            package ee.schimke.composeai.preview
+
+            enum class ScrollMode { END, LONG }
+            enum class ScrollAxis { VERTICAL, HORIZONTAL }
+
+            @Retention(AnnotationRetention.BINARY)
+            @Target(AnnotationTarget.FUNCTION)
+            annotation class ScrollingPreview(
+                val mode: ScrollMode,
+                val maxScrollPx: Int = 0,
+                val reduceMotion: Boolean = true,
+                val axis: ScrollAxis = ScrollAxis.VERTICAL,
+            )
+            """.trimIndent()
+        )
+
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.ui.unit.dp
+            import ee.schimke.composeai.preview.ScrollAxis
+            import ee.schimke.composeai.preview.ScrollMode
+            import ee.schimke.composeai.preview.ScrollingPreview
+
+            // Multi-preview meta-annotation to prove the scroll spec propagates to
+            // every expansion, same pattern as the PreviewWrapper test.
+            @Preview(name = "Light", backgroundColor = 0xFFFFFFFF, showBackground = true)
+            @Preview(name = "Dark", backgroundColor = 0xFF000000, showBackground = true)
+            annotation class LightAndDark
+
+            @LightAndDark
+            @ScrollingPreview(mode = ScrollMode.END)
+            @Composable
+            fun EndScrollPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+
+            @Preview
+            @ScrollingPreview(
+                mode = ScrollMode.LONG,
+                maxScrollPx = 4000,
+                reduceMotion = false,
+                axis = ScrollAxis.HORIZONTAL,
+            )
+            @Composable
+            fun LongScrollPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+            }
+
+            @Preview
+            @Composable
+            fun PlainPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Green))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+
+        val endPreviews = manifest.previews.filter { it.functionName == "EndScrollPreview" }
+        assertThat(endPreviews).hasSize(2)
+        // @ScrollingPreview propagates identically to every @LightAndDark expansion,
+        // using its declared-in-source defaults (reduceMotion=true, axis=VERTICAL).
+        for (p in endPreviews) {
+            assertThat(p.params.scroll).isEqualTo(
+                ScrollSpec(
+                    mode = ScrollMode.END,
+                    maxScrollPx = 0,
+                    reduceMotion = true,
+                    axis = ScrollAxis.VERTICAL,
+                )
+            )
+        }
+
+        val longPreview = manifest.previews.single { it.functionName == "LongScrollPreview" }
+        assertThat(longPreview.params.scroll).isEqualTo(
+            ScrollSpec(
+                mode = ScrollMode.LONG,
+                maxScrollPx = 4000,
+                reduceMotion = false,
+                axis = ScrollAxis.HORIZONTAL,
+            )
+        )
+
+        val plain = manifest.previews.single { it.functionName == "PlainPreview" }
+        assertThat(plain.params.scroll).isNull()
+    }
+
+    @Test
     fun `discoverPreviews re-runs when source changes`() {
         val projectDir = createCmpTestProject()
 

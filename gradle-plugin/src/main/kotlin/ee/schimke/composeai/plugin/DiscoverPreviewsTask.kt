@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import io.github.classgraph.AnnotationClassRef
+import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
@@ -69,6 +70,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
         // simply never surface the annotation and discovery is a no-op.
         private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
+        // Our own opt-in for scrolling-screenshot capture. Matched by FQN so projects
+        // that don't depend on `ee.schimke.composeai:preview-annotations` are unaffected.
+        private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
 
         internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
 
@@ -161,9 +165,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         scanResult: ScanResult,
         previews: MutableList<PreviewInfo>,
     ) {
-        // @PreviewWrapper is non-repeatable and applies to every @Preview on the
-        // function (including expansions from multi-preview meta-annotations).
+        // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
+        // to every @Preview on the function (including expansions from
+        // multi-preview meta-annotations).
         val wrapperFqn = extractWrapperFqn(annotations)
+        val scrollSpec = extractScrollSpec(annotations)
         // @RoboComposePreviewOptions, similarly, applies to the function as a
         // whole — each timing fans out into its own manifest entry, orthogonal
         // to any multi-preview expansion.
@@ -172,7 +178,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                addPreviewsForTimings(classInfo, method, ann, wrapperFqn, timings, previews)
+                addPreviewsForTimings(classInfo, method, ann, wrapperFqn, scrollSpec, timings, previews)
             }
             return
         }
@@ -180,7 +186,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                addPreviewsForTimings(classInfo, method, resolvedAnn, wrapperFqn, timings, previews)
+                addPreviewsForTimings(classInfo, method, resolvedAnn, wrapperFqn, scrollSpec, timings, previews)
             }
         }
     }
@@ -190,6 +196,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         method: MethodInfo,
         ann: AnnotationInfo,
         wrapperFqn: String?,
+        scrollSpec: ScrollSpec?,
         timings: List<Long>,
         previews: MutableList<PreviewInfo>,
     ) {
@@ -199,10 +206,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // the annotation as a no-op on tiles.
         val applicable = timings.takeIf { ann.name != TILE_PREVIEW_FQN }.orEmpty()
         if (applicable.isEmpty()) {
-            previews.add(makePreview(classInfo, method, ann, wrapperFqn, advanceTimeMillis = null))
+            previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, advanceTimeMillis = null))
         } else {
             for (ms in applicable) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn, advanceTimeMillis = ms))
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, advanceTimeMillis = ms))
             }
         }
     }
@@ -238,6 +245,27 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             is String -> value
             else -> null
         }
+    }
+
+    private fun extractScrollSpec(annotations: List<AnnotationInfo>): ScrollSpec? {
+        val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return null
+        val pv = ann.parameterValues
+        // Enum constants come through as AnnotationEnumValue; compare by .valueName so
+        // we never force-load the annotation's classes.
+        val mode = (pv.getValue("mode") as? AnnotationEnumValue)?.valueName
+            ?.let { runCatching { ScrollMode.valueOf(it) }.getOrNull() }
+            ?: return null
+        val axis = (pv.getValue("axis") as? AnnotationEnumValue)?.valueName
+            ?.let { runCatching { ScrollAxis.valueOf(it) }.getOrNull() }
+            ?: ScrollAxis.VERTICAL
+        val maxScrollPx = (pv.getValue("maxScrollPx") as? Int)?.coerceAtLeast(0) ?: 0
+        val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
+        return ScrollSpec(
+            mode = mode,
+            maxScrollPx = maxScrollPx,
+            reduceMotion = reduceMotion,
+            axis = axis,
+        )
     }
 
     private fun isDirectPreview(ann: AnnotationInfo): Boolean =
@@ -295,10 +323,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         method: MethodInfo,
         ann: AnnotationInfo,
         wrapperClassName: String?,
+        scrollSpec: ScrollSpec?,
         advanceTimeMillis: Long?,
     ): PreviewInfo {
+        // Tile previews can't scroll — same reasoning as the timings fan-out above.
+        // Null out the scroll spec at the manifest level so renderers don't branch on it.
+        val applicableScroll = scrollSpec.takeIf { ann.name != TILE_PREVIEW_FQN }
         val params = extractPreviewParams(ann, wrapperClassName)
-            .copy(advanceTimeMillis = advanceTimeMillis)
+            .copy(
+                advanceTimeMillis = advanceTimeMillis,
+                scroll = applicableScroll,
+            )
         val fqn = "${classInfo.name}.${method.name}"
         val baseSuffix = buildVariantSuffix(params)
         // Match Roborazzi's own compose-preview-scanner-support filename
@@ -350,7 +385,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     private fun sanitizeForPath(s: String): String =
         s.replace(Regex("""[/\\:*?"<>|]"""), "_")
 
-    private fun extractPreviewParams(ann: AnnotationInfo, wrapperClassName: String?): PreviewParams {
+    private fun extractPreviewParams(
+        ann: AnnotationInfo,
+        wrapperClassName: String?,
+    ): PreviewParams {
         val pv = ann.parameterValues
         val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE
         val device = (pv.getValue("device") as? String)?.ifBlank { null }
@@ -378,6 +416,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             // the wrapper's `Wrap(content)` would never wrap the tile View.
             wrapperClassName = if (kind == PreviewKind.TILE) null else wrapperClassName,
             kind = kind,
+            // @ScrollingPreview is applied by `makePreview` via `.copy(scroll = …)` so
+            // the timings fan-out and scroll spec live side-by-side in one place.
         )
     }
 }
