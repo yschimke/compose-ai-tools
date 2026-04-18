@@ -11,10 +11,22 @@ description: >
 runs:
   using: 'composite'
   steps:
-    - name: Build CLI
+    - name: Build and stage CLI
       shell: bash
-      run: ./gradlew :cli:installDist --no-daemon
+      # `installDist` drops the CLI under `cli/build/install/compose-preview`
+      # in the workspace; we stage it at a hardcoded path under /opt so the
+      # $GITHUB_PATH write below is a fixed literal. Writing an
+      # expansion-backed value to $GITHUB_PATH trips zizmor's `github-env`
+      # rule because any attacker-influence over the expansion becomes
+      # attacker-influence over every subsequent step's $PATH. The stage
+      # step is trusted because its inputs are the repo checkout + our own
+      # Gradle build.
+      run: |
+        set -euo pipefail
+        ./gradlew :cli:installDist --no-daemon
+        sudo mkdir -p /opt/compose-preview
+        sudo cp -a cli/build/install/compose-preview/. /opt/compose-preview/
 
     - name: Add CLI to PATH
       shell: bash
-      run: echo "${GITHUB_WORKSPACE}/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
+      run: echo "/opt/compose-preview/bin" >> "$GITHUB_PATH"
