@@ -67,6 +67,28 @@ internal object AndroidPreviewSupport {
             dependsOn("compile${capVariant}Kotlin")
         }
 
+        // When a11y is on, the renderer switches from `captureRoboImage { @Composable }`
+        // to `createAndroidComposeRule<ComponentActivity>()`, which needs
+        // ui-test-manifest to contribute the ComponentActivity <activity> entry
+        // to the consumer's merged unit-test AndroidManifest. Renderer-android
+        // pulls ui-test-manifest in transitively, but our plugin bypasses the
+        // normal AGP dep graph (renderer classpath lives in our own resolvable
+        // config, not `testImplementation`), so the manifest merger never sees
+        // it. Explicitly adding ui-test-manifest to `testImplementation` here
+        // closes that gap. Only fires when the feature is enabled, so opt-out
+        // consumers pay nothing.
+        if (resolveA11yEnabled(project, extension)) {
+            // No version: relies on the consumer's Compose BOM (or direct
+            // Compose dep) to resolve ui-test-manifest. Projects using
+            // `implementation(platform(libs.compose.bom))` pick up the
+            // aligned version automatically; projects without a BOM need to
+            // add one (a reasonable ask — the plugin is for Compose apps).
+            project.dependencies.add(
+                "testImplementation",
+                "androidx.compose.ui:ui-test-manifest",
+            )
+        }
+
         val artifactType = Attribute.of("artifactType", String::class.java)
         val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
 
@@ -197,6 +219,13 @@ internal object AndroidPreviewSupport {
         val rendersDirectory = previewOutputDir.map { it.dir("renders") }
         val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
+        // Per-preview ATF findings land here. `verifyAccessibility` rolls them
+        // up into a single `accessibility.json` next to `previews.json`. Kept
+        // separate from renders/ so caching treats the two output trees
+        // independently.
+        val accessibilityPerPreviewDir = previewOutputDir.map { it.dir("accessibility-per-preview") }
+        val accessibilityReportFile = previewOutputDir.map { it.file("accessibility.json") }
+
         val shardCount = resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
         val shardsEnabled = shardCount > 1
 
@@ -295,6 +324,27 @@ internal object AndroidPreviewSupport {
             systemProperty("composeai.render.manifest", manifestFile.get())
             systemProperty("composeai.render.outputDir", rendersDir.get())
 
+            // ATF — renderer checks `composeai.a11y.enabled` and, when true,
+            // writes per-preview JSON into `composeai.a11y.outputDir`.
+            // Always passed as strings so the property is present/absent
+            // predictably across runs (simpler than conditional systemProperty
+            // lines, and keeps configuration-cache happy).
+            val a11yOn = resolveA11yEnabled(project, extension)
+            systemProperty("composeai.a11y.enabled", a11yOn.toString())
+            systemProperty("composeai.a11y.outputDir", accessibilityPerPreviewDir.get().asFile.absolutePath)
+            // Diagnostic output — agents/users debugging "why no findings"
+            // get useful breadcrumbs without parsing Robolectric's stdout.
+            // `providers.gradleProperty` is Isolated-Projects-safe (unlike
+            // `project.findProperty`), so this can be set with
+            // `-Pcomposeai.a11y.debug=true` on the command line.
+            systemProperty(
+                "composeai.a11y.debug",
+                project.providers.gradleProperty("composeai.a11y.debug").orElse("false").get(),
+            )
+            if (a11yOn) {
+                outputs.dir(accessibilityPerPreviewDir).withPropertyName("a11yPerPreviewDir")
+            }
+
             // The PNG files are written to `rendersDirectory` via the
             // `composeai.render.outputDir` system property, not through any
             // Gradle-managed output. Declare the directory as an additional
@@ -318,7 +368,44 @@ internal object AndroidPreviewSupport {
             }
         }
 
-        ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+        // `verifyAccessibility` — only registered when the feature is on.
+        // Reading `extension.accessibilityChecks.enabled.get()` here is safe:
+        // `onVariants` fires after the plugin block has evaluated.
+        val verifyA11yTask = if (resolveA11yEnabled(project, extension)) {
+            project.tasks.register("verifyAccessibility", VerifyAccessibilityTask::class.java) {
+                group = "compose preview"
+                description = "Aggregate ATF findings from renderPreviews and fail per configured thresholds"
+                perPreviewDir.set(accessibilityPerPreviewDir)
+                reportFile.set(accessibilityReportFile)
+                moduleName.set(project.name)
+                failOnErrors.set(extension.accessibilityChecks.failOnErrors)
+                failOnWarnings.set(extension.accessibilityChecks.failOnWarnings)
+                dependsOn(renderTask)
+            }
+        } else null
+
+        ComposePreviewTasks.registerRenderAllPreviews(
+            project, extension, renderTask, previewOutputDir, verifyA11yTask,
+        )
+    }
+
+    /**
+     * Resolves the effective `accessibilityChecks.enabled` value. The
+     * `-PcomposePreview.accessibilityChecks.enabled=<true|false>` Gradle
+     * property WINS over the extension block — so the VSCode extension (or a
+     * one-off CLI invocation) can flip the feature on for a single run
+     * without touching `build.gradle.kts`. When the property is absent, the
+     * extension's value is honoured.
+     *
+     * Using `providers.gradleProperty` rather than `project.findProperty`
+     * keeps this safe under Gradle's Isolated Projects mode.
+     */
+    private fun resolveA11yEnabled(project: org.gradle.api.Project, extension: PreviewExtension): Boolean {
+        val override = project.providers
+            .gradleProperty("composePreview.accessibilityChecks.enabled")
+            .orNull
+            ?.toBooleanStrictOrNull()
+        return override ?: extension.accessibilityChecks.enabled.get()
     }
 
     private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {

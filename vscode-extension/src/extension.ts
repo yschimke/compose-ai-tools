@@ -7,6 +7,7 @@ import { PreviewRegistry } from './previewRegistry';
 import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
 import { PreviewCodeLensProvider } from './previewCodeLensProvider';
+import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
@@ -95,6 +96,27 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand('composePreview.openModuleBuildFile',
             (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath)),
+        vscode.commands.registerCommand('composePreview.toggleAccessibilityChecks', async () => {
+            // Session-wide toggle — mutates the workspace setting so the
+            // gradleService's `-P` override picks up the new value on the
+            // next task run. We follow up with a refresh so the webview +
+            // diagnostics update immediately; otherwise the new state
+            // would only be visible after the user's next edit.
+            const config = vscode.workspace.getConfiguration('composePreview');
+            const current = config.get<boolean>('accessibilityChecks.enabled') ?? false;
+            await config.update(
+                'accessibilityChecks.enabled',
+                !current,
+                vscode.ConfigurationTarget.Workspace,
+            );
+            vscode.window.showInformationMessage(
+                `Compose Preview: accessibility checks ${!current ? 'ON' : 'OFF'} for this workspace`,
+            );
+            // Force a fresh render — the render task's inputs changed
+            // (different -P arg), so we need to re-resolve findings.
+            gradleService?.invalidateCache();
+            await refresh(true, currentScopeFile ?? undefined);
+        }),
         vscode.commands.registerCommand('composePreview.focusPreview',
             async (functionName: string, filePath?: string) => {
                 if (!panel) { return; }
@@ -115,12 +137,14 @@ export async function activate(context: vscode.ExtensionContext) {
     const gutterDecorations = new PreviewGutterDecorations(context.extensionUri, registry, detectLog);
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
     const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
+    const a11yDiagnostics = new PreviewA11yDiagnostics(registry, detectLog);
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
         vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
         codeLensProvider,
         gutterDecorations,
+        a11yDiagnostics,
         { dispose: () => registry.dispose() },
     );
 

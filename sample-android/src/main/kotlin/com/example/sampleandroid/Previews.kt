@@ -115,3 +115,18 @@ fun PhoneGreetingPreview() {
         }
     }
 }
+
+/**
+ * Deliberately-broken preview — a small Button with no content description
+ * AND a tiny size. Exercises the accessibility pipeline end-to-end: a real
+ * Material Button is important-for-accessibility, so ATF should flag the
+ * TouchTargetSize / SpeakableText rules on it.
+ */
+@Preview(name = "Bad Button", showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+fun BadButtonPreview() {
+    androidx.compose.material3.Button(
+        onClick = { /* no-op */ },
+        modifier = Modifier.size(width = 20.dp, height = 20.dp),
+    ) {}
+}

@@ -4,6 +4,17 @@ plugins {
     id("ee.schimke.composeai.preview")
 }
 
+composePreview {
+    accessibilityChecks {
+        // Sample includes deliberately-broken previews (BadButton,
+        // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
+        // VSCode surfacing of a11y findings. Flip to `true` to exercise the
+        // opt-in path; defaults off to keep the sample's render build
+        // byte-identical to the non-a11y baseline.
+        enabled = false
+    }
+}
+
 android {
     namespace = "com.example.sampleandroid"
     compileSdk = 36

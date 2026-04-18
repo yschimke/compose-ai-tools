@@ -36,6 +36,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     @get:Input
     abstract val variantName: Property<String>
 
+    /**
+     * When `true`, [outputFile] is written with a populated
+     * [PreviewManifest.accessibilityReport] pointer so downstream tools can
+     * locate the sidecar report. The file itself is produced later by the
+     * render task / verify task.
+     */
+    @get:Input
+    abstract val accessibilityChecksEnabled: Property<Boolean>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -100,6 +109,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             module = moduleName.get(),
             variant = variantName.get(),
             previews = deduped,
+            accessibilityReport = "accessibility.json".takeIf { accessibilityChecksEnabled.get() },
         )
 
         val outFile = outputFile.get().asFile

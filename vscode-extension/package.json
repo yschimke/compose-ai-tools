@@ -76,6 +76,11 @@
                 "command": "composePreview.openModuleBuildFile",
                 "title": "Open Module build.gradle.kts",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.toggleAccessibilityChecks",
+                "title": "Toggle Accessibility Checks",
+                "category": "Compose Preview"
             }
         ],
         "configuration": {
@@ -85,6 +90,11 @@
                     "type": "string",
                     "default": "debug",
                     "description": "Build variant to use for preview rendering"
+                },
+                "composePreview.accessibilityChecks.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Run ATF accessibility checks on every rendered preview. When on, the extension passes `-PcomposePreview.accessibilityChecks.enabled=true` to each Gradle task; findings surface as diagnostics in the Problems panel and on the `@Preview` line. Overrides the `accessibilityChecks { enabled = ... }` block in build.gradle.kts for this session only."
                 }
             }
         }

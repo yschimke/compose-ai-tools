@@ -47,4 +47,12 @@ data class PreviewManifest(
     val module: String,
     val variant: String,
     val previews: List<PreviewInfo>,
+    /**
+     * Relative path (from this manifest's parent directory) to a sidecar
+     * accessibility report JSON, when `composePreview.accessibilityChecks.enabled`
+     * is `true`. `null` signals the feature is off — downstream tools should
+     * treat the absence of this pointer as "no a11y data" rather than probing
+     * for the file on disk.
+     */
+    val accessibilityReport: String? = null,
 )

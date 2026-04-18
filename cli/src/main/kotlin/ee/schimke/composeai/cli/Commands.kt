@@ -39,6 +39,33 @@ data class PreviewManifest(
     val module: String,
     val variant: String,
     val previews: List<PreviewInfo>,
+    /**
+     * Relative path (from this manifest file's parent directory) to the
+     * sidecar ATF accessibility report, when `composePreview.accessibilityChecks`
+     * is enabled on this module. `null` means the feature is off.
+     */
+    val accessibilityReport: String? = null,
+)
+
+@Serializable
+data class AccessibilityFinding(
+    val level: String,
+    val type: String,
+    val message: String,
+    val viewDescription: String? = null,
+    val boundsInScreen: String? = null,
+)
+
+@Serializable
+data class AccessibilityEntry(
+    val previewId: String,
+    val findings: List<AccessibilityFinding>,
+)
+
+@Serializable
+data class AccessibilityReport(
+    val module: String,
+    val entries: List<AccessibilityEntry>,
 )
 
 /** CLI output DTO — enriches manifest entries with runtime data agents need. */
@@ -53,6 +80,11 @@ data class PreviewResult(
     val pngPath: String? = null,
     val sha256: String? = null,
     val changed: Boolean? = null,
+    /**
+     * ATF findings for this preview, or `null` when accessibility checks were
+     * disabled for this module. Empty list means checks ran and found nothing.
+     */
+    val a11yFindings: List<AccessibilityFinding>? = null,
 )
 
 @Serializable
@@ -119,6 +151,38 @@ abstract class Command(protected val args: List<String>) {
     }
 
     /**
+     * Reads each module's accessibility report IF the manifest points at one
+     * (i.e. the feature is enabled in Gradle). Returns a map keyed by
+     * `"$module/$previewId"` so `buildResults` can look up findings without a
+     * second filesystem probe.
+     *
+     * Following the manifest pointer — rather than hard-coding
+     * `accessibility.json` — means disabling checks in Gradle cleanly makes
+     * findings disappear from CLI output; we never report stale reports from
+     * a prior opt-in run.
+     */
+    protected fun readAllA11yReports(
+        manifests: List<Pair<String, PreviewManifest>>,
+    ): Map<String, List<AccessibilityFinding>> {
+        val out = mutableMapOf<String, List<AccessibilityFinding>>()
+        for ((module, manifest) in manifests) {
+            val pointer = manifest.accessibilityReport ?: continue
+            val reportFile = projectDir.resolve("$module/build/compose-previews/$pointer")
+            if (!reportFile.exists()) continue
+            val report = try {
+                json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
+            } catch (e: Exception) {
+                if (verbose) System.err.println("Warning: unreadable a11y report ${reportFile.path}: ${e.message}")
+                continue
+            }
+            for (entry in report.entries) {
+                out["$module/${entry.previewId}"] = entry.findings
+            }
+        }
+        return out
+    }
+
+    /**
      * Reads PNGs for every manifest entry, hashes them, compares against the
      * per-module sidecar state file to emit `changed`, and persists the new
      * hashes. Sidecar lives under `build/compose-previews/` so it gets wiped on
@@ -126,6 +190,10 @@ abstract class Command(protected val args: List<String>) {
      */
     protected fun buildResults(manifests: List<Pair<String, PreviewManifest>>): List<PreviewResult> {
         val results = mutableListOf<PreviewResult>()
+        val a11yByKey = readAllA11yReports(manifests)
+        // Track which modules had a11y enabled so we can distinguish "no
+        // findings" (empty list) from "feature off" (null) in `PreviewResult`.
+        val modulesWithA11y = manifests.filter { it.second.accessibilityReport != null }.map { it.first }.toSet()
 
         for ((module, manifest) in manifests) {
             val prior = readState(module).shas
@@ -143,6 +211,10 @@ abstract class Command(protected val args: List<String>) {
                     priorSha == null -> true
                     else -> priorSha != sha
                 }
+                val a11y = when {
+                    module in modulesWithA11y -> a11yByKey["$module/${p.id}"] ?: emptyList()
+                    else -> null
+                }
                 results += PreviewResult(
                     id = p.id,
                     module = module,
@@ -153,6 +225,7 @@ abstract class Command(protected val args: List<String>) {
                     pngPath = pngFile?.absolutePath,
                     sha256 = sha,
                     changed = changed,
+                    a11yFindings = a11y,
                 )
             }
 
@@ -340,6 +413,80 @@ class RenderCommand(args: List<String>) : Command(args) {
                     exitProcess(2)
                 }
             }
+        }
+    }
+}
+
+/**
+ * `compose-preview a11y` — runs `renderAllPreviews` (which pulls in
+ * `verifyAccessibility` when enabled) and prints the findings grouped by
+ * preview. Exits non-zero if the Gradle build failed (i.e. the configured
+ * `failOnErrors`/`failOnWarnings` threshold tripped) or if `--fail-on`
+ * overrides the threshold at the CLI level.
+ */
+class A11yCommand(args: List<String>) : Command(args) {
+    private val jsonOutput = "--json" in args
+    // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
+    private val failOn: String? = args.flagValue("--fail-on")
+
+    override fun run() {
+        withGradle { gradle ->
+            val modules = resolveModules(gradle)
+            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
+            val buildOk = runGradle(gradle, *tasks)
+
+            val manifests = readAllManifests(modules)
+            val enabledModules = manifests.filter { it.second.accessibilityReport != null }
+            if (enabledModules.isEmpty()) {
+                if (jsonOutput) println("[]") else {
+                    println(
+                        "No module has accessibility checks enabled. Add\n" +
+                            "  composePreview { accessibilityChecks { enabled = true } }\n" +
+                            "to the module's build.gradle.kts."
+                    )
+                }
+                exitProcess(if (buildOk) 0 else 2)
+            }
+
+            val all = buildResults(manifests)
+            val filtered = all.filter { matchesRequest(it) && it.a11yFindings != null }
+
+            if (jsonOutput) {
+                println(json.encodeToString(ListSerializer(PreviewResult.serializer()), filtered))
+            } else {
+                val flat = filtered.flatMap { r ->
+                    (r.a11yFindings ?: emptyList()).map { f -> r to f }
+                }
+                if (flat.isEmpty()) {
+                    println("No accessibility findings.")
+                } else {
+                    println("${flat.size} accessibility finding(s):")
+                    for ((r, f) in flat) {
+                        println("  [${f.level}] ${r.id} · ${f.type}")
+                        println("      ${f.message}")
+                        f.viewDescription?.let { println("      element: $it") }
+                    }
+                }
+            }
+
+            val errorCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
+            val warnCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
+            val cliFailed = when (failOn) {
+                "errors" -> errorCount > 0
+                "warnings" -> errorCount > 0 || warnCount > 0
+                "none", null -> false
+                else -> {
+                    System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
+                    exitProcess(1)
+                }
+            }
+            exitProcess(
+                when {
+                    cliFailed -> 2
+                    !buildOk -> 2
+                    else -> 0
+                }
+            )
         }
     }
 }

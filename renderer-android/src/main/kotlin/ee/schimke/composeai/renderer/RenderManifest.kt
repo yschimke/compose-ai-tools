@@ -12,6 +12,44 @@ data class RenderManifest(
     val module: String,
     val variant: String,
     val previews: List<RenderPreviewEntry>,
+    /**
+     * Relative path (from this manifest's parent directory) to a sidecar
+     * [AccessibilityReport] JSON file, when accessibility checks are enabled.
+     * `null` means the feature is off for this module — tools should treat the
+     * absence of this pointer as "no a11y data" rather than probing for the
+     * file on disk.
+     */
+    val accessibilityReport: String? = null,
+)
+
+/**
+ * ATF findings per preview. Written by [RobolectricRenderTestBase] when
+ * accessibility checks are enabled, read by the plugin's post-render verify
+ * task and by downstream tools (CLI, VSCode).
+ */
+@Serializable
+data class AccessibilityReport(
+    val module: String,
+    val entries: List<AccessibilityEntry>,
+)
+
+@Serializable
+data class AccessibilityEntry(
+    val previewId: String,
+    val findings: List<AccessibilityFinding>,
+)
+
+@Serializable
+data class AccessibilityFinding(
+    /** `ERROR`, `WARNING`, `INFO`, or `NOT_RUN` — upper-cased ATF `AccessibilityCheckResultType`. */
+    val level: String,
+    /** Short rule identifier — ATF check class simple name (e.g. `TouchTargetSizeCheck`). */
+    val type: String,
+    val message: String,
+    /** Human-readable description of the offending element, if ATF could resolve one. */
+    val viewDescription: String? = null,
+    /** `left,top,right,bottom` in the preview's pixel space — agents can highlight on the PNG. */
+    val boundsInScreen: String? = null,
 )
 
 @Serializable

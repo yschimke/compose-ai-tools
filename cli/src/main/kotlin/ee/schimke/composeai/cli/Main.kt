@@ -12,8 +12,9 @@ fun main(args: Array<String>) {
     // Flags that take values: --module, --variant, --filter, --id, --output, --timeout, --plugin-version
     val valuedFlags = setOf(
         "--module", "--variant", "--filter", "--id", "--output", "--timeout", "--plugin-version",
+        "--fail-on",
     )
-    val commands = setOf("show", "list", "render", "doctor", "help")
+    val commands = setOf("show", "list", "render", "a11y", "doctor", "help")
 
     var commandIndex = -1
     var i = 0
@@ -48,6 +49,7 @@ fun main(args: Array<String>) {
         "show" -> ShowCommand(allArgs).run()
         "list" -> ListCommand(allArgs).run()
         "render" -> RenderCommand(allArgs).run()
+        "a11y" -> A11yCommand(allArgs).run()
         "doctor" -> DoctorCommand(allArgs).run()
         "help" -> printUsage()
         else -> {
@@ -69,6 +71,7 @@ private fun printUsage() {
           show    Discover and render previews; print id, path, sha256, changed flag
           list    List discovered previews
           render  Render previews; with --output copies a single match to disk
+          a11y    Render previews and print ATF accessibility findings
           doctor  Verify Java 21 + GitHub Packages credentials before editing Gradle files
           help    Show this help message
 
@@ -82,6 +85,7 @@ private fun printUsage() {
           --progress           Print per-task milestone/heartbeat lines to stderr
           --verbose, -v        Show full Gradle build output (implies --progress)
           --timeout <seconds>  Gradle build timeout (default: 300)
+          --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
 
         OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
         default in a TTY and auto-disables when stdout is piped or redirected.
