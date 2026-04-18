@@ -129,16 +129,19 @@ hundreds of pixel-different PNGs. Pin these things:
   AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) { … }
   ```
 
-- **Suppress the scroll indicator during scroll captures via
+- **Suppress the scroll indicator during stitched captures via
   `LocalScrollCaptureInProgress`.** `ScreenScaffold` draws a transient scroll
   indicator that fades in/out as the list scrolls; on stitched
   `@ScrollingPreview(mode = LONG)` captures it lands at arbitrary opacities
   per slice and dominates the diff. The renderer mirrors Compose's
   long-screenshot signal — it provides
-  `androidx.compose.ui.platform.LocalScrollCaptureInProgress = true` for any
-  preview with a scroll capture, `false` everywhere else (including the
-  running app). Read it inside the `scrollIndicator` slot so production
-  behaviour is unchanged but capture frames stay clean:
+  `androidx.compose.ui.platform.LocalScrollCaptureInProgress = true` only
+  for `LONG`-mode previews, `false` everywhere else (including
+  `@ScrollingPreview(mode = END)`, regular `@Preview`, and the running app).
+  END mode is a single frame at the scroll-to-end position, so showing the
+  indicator there matches what a real app renders. Read the local inside
+  the `scrollIndicator` slot so production behaviour is unchanged but
+  stitched captures stay clean:
 
   ```kotlin
   ScreenScaffold(
@@ -153,9 +156,9 @@ hundreds of pixel-different PNGs. Pin these things:
   ```
 
   Requires compose-ui ≥ 1.7 on the consumer's classpath (when
-  `LocalScrollCaptureInProgress` shipped). Same screen composable runs
+  `LocalScrollCaptureInProgress` shipped). The same screen composable runs
   unchanged in production — the local is always `false` outside the
-  renderer's `@ScrollingPreview` path.
+  renderer's `LONG`-capture path.
 
 - **Compose previews from the screen, not the app root.** When a preview
   needs different content (or a different `TimeSource`) than the production

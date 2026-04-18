@@ -253,16 +253,24 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 rule.runOnUiThread {
                     rule.activity.window.decorView.setBackgroundColor(bg)
                 }
-                // `@ScrollingPreview` previews are by definition being captured
-                // mid-scroll. Mirror Compose's system long-screenshot signal so
-                // composables can suppress transient UI (e.g. Wear's
-                // `ScreenScaffold` scroll indicator) by reading
-                // `LocalScrollCaptureInProgress.current`. The public local is
-                // typed `CompositionLocal<Boolean>` (read-only); the providable
-                // form is `internal`, but at runtime they're the same singleton,
-                // so the unchecked cast is sound. Requires compose-ui ≥ 1.7
-                // (when `LocalScrollCaptureInProgress` shipped).
-                val scrollCaptureInProgress = preview.captures.any { it.scroll != null }
+                // Mirror Compose's system long-screenshot signal so composables
+                // can suppress transient UI (e.g. Wear's `ScreenScaffold` scroll
+                // indicator) by reading `LocalScrollCaptureInProgress.current`.
+                //
+                // Only set for `@ScrollingPreview(mode = LONG)`: stitched
+                // captures composite many frames into one tall PNG, and a
+                // fading indicator at arbitrary opacity per slice dominates
+                // the diff. END mode is a single frame at the natural
+                // scroll-to-end position — the indicator there is what a real
+                // app would show, so we leave it visible.
+                //
+                // The public local is typed `CompositionLocal<Boolean>`
+                // (read-only); the providable form is `internal` but at
+                // runtime they're the same singleton, so the unchecked cast
+                // is sound. Requires compose-ui ≥ 1.7 (when
+                // `LocalScrollCaptureInProgress` shipped).
+                val scrollCaptureInProgress =
+                    preview.captures.any { it.scroll?.mode == ScrollMode.LONG }
                 @Suppress("UNCHECKED_CAST")
                 val scrollCaptureProvidable =
                     LocalScrollCaptureInProgress as ProvidableCompositionLocal<Boolean>
