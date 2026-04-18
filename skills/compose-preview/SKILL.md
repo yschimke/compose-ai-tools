@@ -13,8 +13,8 @@ Desktop (via `ImageComposeScene` + Skia).
 
 - A Gradle plugin (`ee.schimke.composeai.preview`) that discovers `@Preview`
   annotations from compiled classes and registers rendering tasks.
-- A `compose-preview` CLI (GraalVM native-image) that drives the Gradle build via the
-  Tooling API and surfaces rendered PNG paths.
+- A `compose-preview` CLI that drives the Gradle build via the Tooling API
+  and surfaces rendered PNG paths.
 - A VS Code extension with a preview panel, CodeLens and hover actions on
   `@Preview` functions, and commands for rendering all or a single file.
 
@@ -42,7 +42,8 @@ Commands:
   show     Discover + render previews; print id, path, sha256, changed flag
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
-  doctor   Verify Java 21 and plugin-repo connectivity (run before Setup)
+  a11y     Render previews and print ATF accessibility findings
+  doctor   Verify Java 21 + project compatibility (run before Setup)
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
