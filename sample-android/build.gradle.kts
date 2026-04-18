@@ -49,10 +49,15 @@ android {
 // pixel-asserts against them. Targeting the `test{Debug,Release}UnitTest`
 // tasks by name — `tasks.withType<Test>()` would also grab the plugin's own
 // `renderPreviews` Test task and create a circular dependency.
-afterEvaluate {
-    listOf("testDebugUnitTest", "testReleaseUnitTest").forEach { name ->
-        tasks.findByName(name)?.dependsOn("renderAllPreviews")
-    }
+//
+// `tasks.matching { ... }.configureEach { ... }` is the Isolated-Projects-
+// safe lazy pattern: the matching predicate is evaluated as each task is
+// registered, and the configureEach action only fires for matches. This
+// replaces the discouraged `afterEvaluate { tasks.findByName(...) }` block,
+// which forced eager configuration and isn't IP-friendly.
+val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
+tasks.matching { it.name in pixelTestUnitTestTasks }.configureEach {
+    dependsOn("renderAllPreviews")
 }
 
 dependencies {
