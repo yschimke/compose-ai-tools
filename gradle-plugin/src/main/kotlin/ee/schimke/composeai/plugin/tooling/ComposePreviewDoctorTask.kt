@@ -14,6 +14,7 @@ import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
+import java.io.File
 
 /**
  * Writes [CompatRules] findings for the current module to a sidecar JSON.
@@ -77,7 +78,36 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         val out = outputFile.get().asFile
         out.parentFile.mkdirs()
         out.writeText(JSON.encodeToString(report))
-        logger.lifecycle("Wrote compose-preview doctor report for ${modulePath.get()}: ${findings.size} finding(s) → ${out.path}")
+        printSummary(report, out)
+    }
+
+    /**
+     * Mirror the CLI's `emitText` shape at module scope: header, one marker
+     * line per finding, optional remediation. The JSON file is authoritative
+     * for tooling; this is purely for the human watching the Gradle output.
+     */
+    private fun printSummary(report: DoctorModuleReport, out: File) {
+        logger.lifecycle("compose-preview doctor — ${report.module} (variant: ${report.variant})")
+        if (report.findings.isEmpty()) {
+            logger.lifecycle("  ✓ no compatibility issues found")
+        } else {
+            for (f in report.findings) {
+                val marker = when (f.severity) {
+                    "error" -> "✗"
+                    "warning" -> "!"
+                    "info" -> "∙"
+                    else -> "?"
+                }
+                logger.lifecycle("  $marker [${f.severity}] ${f.message}")
+                f.remediationSummary?.let { logger.lifecycle("      → $it") }
+                for (cmd in f.remediationCommands) logger.lifecycle("        \$ $cmd")
+                f.docsUrl?.let { logger.lifecycle("        docs: $it") }
+            }
+            val errors = report.findings.count { it.severity == "error" }
+            val warnings = report.findings.count { it.severity == "warning" }
+            logger.lifecycle("  ${report.findings.size} finding(s): $errors error(s), $warnings warning(s)")
+        }
+        logger.lifecycle("  report: ${out.path}")
     }
 
     private fun collectModuleVersions(root: ResolvedComponentResult?): Map<String, String> {
