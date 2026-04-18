@@ -12,10 +12,10 @@ class DoctorReportSerializationTest {
             overall = "warning",
             checks = listOf(
                 DoctorCheck(
-                    id = "env.java-21",
+                    id = "env.java-17",
                     category = "env",
                     status = "ok",
-                    message = "Java 21 on PATH",
+                    message = "Java 17 on PATH",
                 ),
                 DoctorCheck(
                     id = "deps.app.ui-test-manifest-missing",

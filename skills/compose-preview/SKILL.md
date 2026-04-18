@@ -43,7 +43,7 @@ Commands:
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
   a11y     Render previews and print ATF accessibility findings
-  doctor   Verify Java 21 + project compatibility (run before Setup)
+  doctor   Verify Java 17 + project compatibility (run before Setup)
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
@@ -124,7 +124,7 @@ The install script is idempotent, pulls the latest release into
 script prints the exact command to add it (`fish_add_path …` or a `PATH=`
 line for bash/zsh).
 
-`compose-preview doctor` verifies Java 21 is on `PATH` (the only hard
+`compose-preview doctor` verifies Java 17 is on `PATH` (the only hard
 prereq for the plugin now that Maven Central resolution needs no auth).
 
 ### 1. Register the plugin repository (only if mavenCentral is missing)
@@ -421,7 +421,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@main
 ```
@@ -446,7 +446,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@main
   cleanup:

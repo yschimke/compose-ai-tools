@@ -180,7 +180,7 @@ compose-preview --help
 ```
 <!-- x-release-please-end -->
 
-Requires Java 21 on `PATH` (or `JAVA_HOME`).
+Requires Java 17 on `PATH` (or `JAVA_HOME`).
 
 ## Install the VS Code extension
 
@@ -227,7 +227,7 @@ composePreview {
 ## Requirements
 
 - Gradle 9.4.1+
-- Java 21
+- Java 17
 - AGP 9.1.0 (Android projects)
 - Kotlin 2.2.21
 - Compose Multiplatform 1.10.3 (Desktop projects)

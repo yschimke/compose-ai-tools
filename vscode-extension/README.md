@@ -20,7 +20,7 @@ renders them to PNG, and the extension loads those PNGs into a webview.
 
 ## Prerequisites
 
-- Java 21 on `PATH` or `JAVA_HOME`.
+- Java 17 on `PATH` or `JAVA_HOME`.
 - Gradle 9.4.1+ (the bundled wrapper in your project is fine).
 - The
   [Gradle for Java](https://marketplace.visualstudio.com/items?itemName=vscjava.vscode-gradle)

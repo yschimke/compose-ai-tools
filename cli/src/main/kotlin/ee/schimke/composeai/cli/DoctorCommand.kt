@@ -17,7 +17,7 @@ import kotlin.system.exitProcess
  * Two layers of checks:
  *
  * **Environment** (always runs, safe outside a Gradle project):
- *   - Java 21+ on PATH
+ *   - Java 17+ on PATH
  *   - GitHub Packages credentials set and valid (`composeAiTools.githubUser` /
  *     `...Token` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` /
  *     `GITHUB_TOKEN` env vars)
@@ -94,10 +94,10 @@ class DoctorCommand(args: List<String>) {
     private fun checkJava() {
         val version = System.getProperty("java.specification.version")
         val major = version?.substringBefore('.')?.toIntOrNull()
-        if (major != null && major >= 21) {
+        if (major != null && major >= 17) {
             addCheck(
                 DoctorCheck(
-                    id = "env.java-21",
+                    id = "env.java-17",
                     category = "env",
                     status = "ok",
                     message = "Java $version on PATH",
@@ -106,13 +106,13 @@ class DoctorCommand(args: List<String>) {
         } else {
             addCheck(
                 DoctorCheck(
-                    id = "env.java-21",
+                    id = "env.java-17",
                     category = "env",
                     status = "error",
-                    message = "Java 21+ required, got ${version ?: "unknown"}",
+                    message = "Java 17+ required, got ${version ?: "unknown"}",
                     remediation = DoctorRemediation(
-                        summary = "Install a JDK 21 and put it on PATH, or set JAVA_HOME.",
-                        commands = listOf("sdk install java 21.0.3-tem"),
+                        summary = "Install a JDK 17 and put it on PATH, or set JAVA_HOME.",
+                        commands = listOf("sdk install java 17.0.11-tem"),
                     ),
                 ),
             )

@@ -15,7 +15,7 @@ version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: run {
 }
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
+    toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
 }
 
 // Annotation-only artifact — deliberately no runtime deps so adding it to a
