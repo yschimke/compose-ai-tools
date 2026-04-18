@@ -207,6 +207,153 @@ Functions can declare multiple `@Preview` variants via meta-annotations (e.g.
 variant appears as its own entry in `previews.json` with a unique id, so all
 CLI commands address them individually — no variant index needed.
 
+## Animations and the paused frame clock (Android only)
+
+The default Android renderer pauses the Compose `mainClock`, advances by
+`CAPTURE_ADVANCE_MS`, then captures. That's what makes infinite animations
+(`CircularProgressIndicator`, `rememberInfiniteTransition`, hand-rolled
+`withFrameNanos` loops) terminate deterministically instead of hanging
+Compose's idling resource — agents do **not** need to write `awaitIdle` or
+`mainClock.advanceTimeBy` calls themselves.
+
+To capture a single composable at multiple points along an animation
+timeline, stack `@RoboComposePreviewOptions` from Roborazzi. Each
+`ManualClockOptions(advanceTimeMillis = …)` entry fans out into its own
+capture, with the suffix `_TIME_<ms>ms` appended to the preview id:
+
+```kotlin
+import com.github.takahirom.roborazzi.annotations.ManualClockOptions
+import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
+
+@Preview(name = "Spinner", showBackground = true)
+@RoboComposePreviewOptions(
+    manualClockOptions = [
+        ManualClockOptions(advanceTimeMillis = 0L),
+        ManualClockOptions(advanceTimeMillis = 500L),
+        ManualClockOptions(advanceTimeMillis = 1500L),
+    ],
+)
+@Composable
+fun SpinnerPreview() { /* … */ }
+```
+
+Add `implementation(libs.roborazzi.annotations)` (or
+`com.github.takahirom.roborazzi:roborazzi-annotations`) to expose the
+annotation; the metadata is source-retained but read by ClassGraph at
+discovery time.
+
+Each capture lands in `previews.json` and the CLI's `captures[]` array with
+`advanceTimeMillis` set, alongside per-capture `pngPath`, `sha256`, and
+`changed`. Reviewers can diff frames side-by-side without rebuilding.
+
+Caveat: a11y mode (`composePreview.accessibilityChecks.enabled = true`)
+disables the paused-clock path because ATF needs live semantics; infinite
+animations tick through during capture. Don't combine ATF with timeline
+fan-outs unless you're prepared for noisy diffs.
+
+CMP Desktop calls `scene.render()` twice so `LaunchedEffect`s settle before
+encode — there's no per-preview clock control there yet; pick a static frame
+in your composable if you need determinism.
+
+## Scrolling captures
+
+For previews that exercise scrollable content (`LazyColumn`,
+`TransformingLazyColumn`, `LazyRow`, …), add `@ScrollingPreview` from
+`ee.schimke.composeai:preview-annotations`:
+
+```kotlin
+import ee.schimke.composeai.preview.ScrollMode
+import ee.schimke.composeai.preview.ScrollingPreview
+
+@Preview(name = "End", showBackground = true)
+@ScrollingPreview(mode = ScrollMode.END)
+@Composable
+fun MyListEndPreview() { MyList() }
+
+@WearPreviewLargeRound
+@ScrollingPreview(mode = ScrollMode.LONG, reduceMotion = true)
+@Composable
+fun MyListLongPreview() { MyList() }
+```
+
+- `ScrollMode.END` drives the scroller to its content end and captures one
+  frame. Pair with a static `@Preview` of the same composable to diff the
+  top and bottom states.
+- `ScrollMode.LONG` stitches multiple slices into a single tall PNG covering
+  the whole scrollable extent. On round Wear faces the output is clipped to a
+  capsule shape — top half-circle, rectangular middle, bottom half-circle —
+  so the watch edge is preserved at the first and last slices.
+- `maxScrollPx` caps how far the renderer scrolls (use it on infinite or
+  pathologically long scrollers; `0` means unbounded).
+- `reduceMotion = true` (default) wraps the body in
+  `LocalReduceMotion provides ReduceMotion(true)` — important for Wear
+  `TransformingLazyColumn`, where item transforms otherwise vary slice-to-slice
+  and produce noisy diffs.
+- Only `ScrollAxis.VERTICAL` is rendered today.
+
+Each scroll capture is a separate entry in the CLI's `captures[]` with
+`scroll` set (`{mode: "END"}` or `{mode: "LONG", index, total, heightPx, …}`).
+
+`@ScrollingPreview` is Android-only at present; CMP Desktop ignores the
+annotation.
+
+## Accessibility (a11y)
+
+Two complementary checks. Always do both before shipping a UI change:
+
+### 1. Visual review (every change)
+
+Read the rendered PNG. The renderer captures the actual composition, so
+contrast, hit-target size, truncation, RTL mirroring, font-scale overflow,
+night-mode colors, and Wear edge clipping are all inspectable directly.
+`compose-preview show --json` surfaces `changed: true` per capture so you
+only re-read what moved.
+
+For broad coverage, run the preview through font-scale and night-mode
+multi-preview meta-annotations (e.g. `@PreviewFontScale`,
+`@PreviewLightDark`, `@WearPreviewFontScales`) — each variant lands as its
+own entry with a unique id.
+
+### 2. ATF (Accessibility Test Framework) checks
+
+Opt in per-module:
+
+```kotlin
+composePreview {
+    accessibilityChecks {
+        enabled = true              // run ATF, surface findings
+        failOnErrors = true         // optional: gate the build on ERROR-level findings
+        failOnWarnings = false      // optional: gate on WARNING-level findings
+        annotateScreenshots = true  // default; numbered badges + legend per preview
+    }
+}
+```
+
+When enabled, the Android renderer switches to its `renderWithA11y` path:
+`LocalInspectionMode = false` so Compose populates real semantics, and after
+capture ATF walks the `ViewRootForTest` view via `AccessibilityChecker`.
+Findings (touch-target size, contrast, missing content descriptions, etc.)
+land in `accessibility.json` and an annotated PNG with numbered badges +
+legend.
+
+CLI:
+
+```sh
+compose-preview a11y                       # human-readable per-preview findings
+compose-preview a11y --json --changed-only # for agent re-render loops
+compose-preview a11y --fail-on errors      # exit non-zero on ERROR-level
+```
+
+JSON results include `a11yFindings[]` (level/type/message/viewDescription)
+and `a11yAnnotatedPath` (the badge-overlay PNG). When you see findings,
+read the annotated PNG to locate them — the numbers in the legend match the
+badges on the screenshot.
+
+Trade-off worth knowing: a11y mode disables the paused frame clock (ATF
+needs live semantics), so infinite animations tick through during capture.
+Toggle a11y off for animation-heavy previews if the diff churn becomes
+distracting.
+
 ## Wear design guidance
 
 When creating or iterating on Wear OS designs, refer to the
