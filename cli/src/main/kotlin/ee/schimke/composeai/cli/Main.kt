@@ -80,7 +80,9 @@ private fun printUsage() {
           --variant <variant>  Build variant (default: debug)
           --filter <pattern>   Case-insensitive substring match on preview id
           --id <exact>         Exact match on preview id
-          --json               Emit JSON (show, list)
+          --json               Emit JSON (show, list, a11y)
+          --brief              JSON only: drop functionName/className/sourceFile/params
+          --changed-only       JSON only (show, a11y): drop previews with no changed capture
           --output <path>      Copy matched preview PNG to this path (render)
           --progress           Print per-task milestone/heartbeat lines to stderr
           --verbose, -v        Show full Gradle build output (implies --progress)
@@ -90,9 +92,15 @@ private fun printUsage() {
         OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
         default in a TTY and auto-disables when stdout is piped or redirected.
 
-        JSON output includes sha256 of each rendered PNG and a `changed` flag
-        computed against the previous invocation (state under
-        <module>/build/compose-previews/.cli-state.json; wiped on `clean`).
+        JSON output is wrapped in {schema, previews, counts?} (schema:
+        compose-preview-show/v1). Each preview includes a `captures[]` array
+        with per-capture pngPath/sha256/changed/advanceTimeMillis/scroll.
+        For back-compat the top-level pngPath/sha256/changed mirror the first
+        capture. State persisted per module under
+        <module>/build/compose-previews/.cli-state.json (wiped on `clean`).
+
+        Exit codes: 0 success, 1 build/CLI error, 2 render failure or a11y
+        threshold tripped, 3 no previews found / matched.
         """.trimIndent()
     )
 }
