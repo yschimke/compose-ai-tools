@@ -84,8 +84,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
     @Test
     fun renderPreview() {
         val outputDir = File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
-        val outputFile = File(outputDir, "${preview.id}.png")
-        outputFile.parentFile?.mkdirs()
+        outputDir.mkdirs()
 
         val params = preview.params
         val widthDp = params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
@@ -112,7 +111,17 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
             recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
         )
 
-        renderDefault(params, widthDp, heightDp, outputFile, roborazziOptions, composeOptions)
+        renderDefault(params, widthDp, heightDp, outputDir, roborazziOptions, composeOptions)
+    }
+
+    /**
+     * Resolve one capture's output file by stripping the module-relative
+     * `renders/` prefix the manifest carries and re-rooting under the
+     * configured output dir.
+     */
+    private fun outputFileFor(capture: RenderPreviewCapture, outputDir: File): File {
+        val leafName = capture.renderOutput.substringAfterLast('/').ifEmpty { "${preview.id}.png" }
+        return File(outputDir, leafName)
     }
 
     /**
@@ -150,7 +159,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         params: RenderPreviewParams,
         widthDp: Int,
         heightDp: Int,
-        outputFile: File,
+        outputDir: File,
         roborazziOptions: RoborazziOptions,
         composeOptions: RoborazziComposeOptions,
     ) {
@@ -218,68 +227,87 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                         strategyFor(params.kind).Render(preview, widthDp, heightDp)
                     }
                 }
-                // Advance the clock by a fixed virtual-time offset, then
-                // capture. With `mainClock.autoAdvance = false` this is the
-                // only clock motion Compose sees, so infinite animations park
-                // at exactly this virtual time across runs — repeated captures
-                // are byte-identical.
-                //
-                // If the preview carries `@RoboComposePreviewOptions`, the
-                // per-entry `advanceTimeMillis` overrides the default;
-                // `DiscoverPreviewsTask` has already fanned each timing out
-                // into its own manifest entry, so this value is one specific
-                // timing per render.
-                val advanceMs = params.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
-                rule.mainClock.advanceTimeBy(advanceMs)
+                // With `mainClock.autoAdvance = false` the clock stays at 0
+                // until we step it, so capturing each frame at its intended
+                // virtual time is a matter of advancing the delta.
+                // `DiscoverPreviewsTask` guarantees `captures` is ordered by
+                // ascending `advanceTimeMillis`, so we accumulate forward-only.
+                var currentTime = 0L
+                val onRoot = rule.onRoot()
+                preview.captures.forEachIndexed { idx, capture ->
+                    val target = capture.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
+                    require(target >= currentTime) {
+                        "Preview ${preview.id}: capture advanceTimeMillis must be ascending " +
+                            "(got $target after clock was at $currentTime)"
+                    }
+                    val delta = target - currentTime
+                    if (delta > 0) {
+                        rule.mainClock.advanceTimeBy(delta)
+                        currentTime = target
+                    }
 
-                // @ScrollingPreview: drive the first scrollable on the annotated
-                // axis to the end of its content before the snapshot. Both ScrollMode
-                // values capture the end-state for now — true long-scroll stitching
-                // lands in a follow-up; the manifest field stays stable across the
-                // transition.
-                params.scroll?.let { spec ->
-                    val result = driveScrollToEnd(
-                        rule = rule,
-                        axis = spec.axis,
-                        maxScrollPx = spec.maxScrollPx,
+                    // @ScrollingPreview: drive the first scrollable on the
+                    // requested axis to the end of its content before the
+                    // snapshot. Both ScrollMode values capture the end-state
+                    // for now — true long-scroll stitching lands in a
+                    // follow-up; the manifest field stays stable across that
+                    // transition.
+                    capture.scroll?.let { scroll ->
+                        val result = driveScrollToEnd(
+                            rule = rule,
+                            axis = scroll.axis,
+                            maxScrollPx = scroll.maxScrollPx,
+                        )
+                        if (result is ScrollDriveResult.NoScrollable) {
+                            System.err.println(
+                                "@ScrollingPreview on '${preview.id}' but no scrollable " +
+                                    "composable found on axis ${scroll.axis} — capturing initial frame.",
+                            )
+                        }
+                    }
+
+                    val outputFile = outputFileFor(capture, outputDir)
+                    outputFile.parentFile?.mkdirs()
+                    onRoot.captureRoboImage(
+                        file = outputFile,
+                        roborazziOptions = roborazziOptions,
                     )
-                    if (result is ScrollDriveResult.NoScrollable) {
-                        System.err.println(
-                            "@ScrollingPreview on '${preview.id}' but no scrollable composable found on axis ${spec.axis} — capturing initial frame.",
+
+                    if (a11yEnabled && idx == a11yCaptureIndex()) {
+                        // `fetchSemanticsNode().root as ViewRootForTest` is the
+                        // exact view roborazzi-accessibility-check's
+                        // `checkRoboAccessibility` walks — it's the only view
+                        // under Robolectric where the compose a11y delegate
+                        // produces populated AccessibilityNodeInfo. DecorView
+                        // here returns all NOT_RUN.
+                        val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
+                        val findings = AccessibilityChecker.check(preview.id, view)
+                        val a11yDir = File(
+                            System.getProperty("composeai.a11y.outputDir")
+                                ?: "build/compose-previews/accessibility-per-preview",
+                        )
+                        AccessibilityChecker.writePerPreviewReport(
+                            outputDir = a11yDir,
+                            previewId = preview.id,
+                            findings = findings,
+                            screenshot = outputFile.takeIf { annotate },
                         )
                     }
-                }
-
-                val onRoot = rule.onRoot()
-                onRoot.captureRoboImage(
-                    file = outputFile,
-                    roborazziOptions = roborazziOptions,
-                )
-
-                if (a11yEnabled) {
-                    // `fetchSemanticsNode().root as ViewRootForTest` is the
-                    // exact view roborazzi-accessibility-check's
-                    // `checkRoboAccessibility` walks — it's the only view
-                    // under Robolectric where the compose a11y delegate
-                    // produces populated AccessibilityNodeInfo. DecorView
-                    // here returns all NOT_RUN.
-                    val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
-                    val findings = AccessibilityChecker.check(preview.id, view)
-                    val a11yDir = File(
-                        System.getProperty("composeai.a11y.outputDir")
-                            ?: "build/compose-previews/accessibility-per-preview",
-                    )
-                    AccessibilityChecker.writePerPreviewReport(
-                        outputDir = a11yDir,
-                        previewId = preview.id,
-                        findings = findings,
-                        screenshot = outputFile.takeIf { annotate },
-                    )
                 }
             }
         }
         rule.apply(statement, description).evaluate()
     }
+
+    /**
+     * ATF runs on a single frame per preview — for animated previews, prefer
+     * the SECOND frame (index 1) when available: frame 0 is often the t=0
+     * pre-settle state (fade-ins still transparent, AnimatedVisibility not on
+     * screen yet) which isn't a representative moment for accessibility.
+     * Static / single-capture previews fall through to index 0.
+     */
+    private fun a11yCaptureIndex(): Int =
+        if (preview.captures.size > 1) 1 else 0
 
     /**
      * Match how Roborazzi's `RoborazziComposeSizeOption` / `LocaleOption` /

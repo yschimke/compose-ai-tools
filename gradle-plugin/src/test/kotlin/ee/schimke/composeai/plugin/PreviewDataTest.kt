@@ -25,7 +25,11 @@ class PreviewDataTest {
                         showBackground = true,
                         backgroundColor = 0xFFFF0000,
                     ),
-                    renderOutput = "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
+                    captures = listOf(
+                        Capture(
+                            renderOutput = "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
+                        ),
+                    ),
                 ),
             ),
         )

@@ -12,6 +12,7 @@ import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
+import { captureLabel } from './captureLabels';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -435,6 +436,11 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (manifest) {
                 for (const p of manifest.previews) {
                     p.hasHistory = gradleService.listHistory(mod, p.id).length > 0;
+                    // Pre-compute carousel labels once so the webview doesn't
+                    // have to know how to render dimension summaries.
+                    for (const capture of p.captures) {
+                        capture.label = captureLabel(capture);
+                    }
                     allPreviews.push(p);
                     previewModuleMap.set(p.id, mod);
                     perModule.push(p);
@@ -461,32 +467,51 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         });
         hasPreviewsLoaded = true;
 
-        // Load images asynchronously
+        // Load images asynchronously. Animated previews have multiple captures
+        // in `preview.captures`; one updateImage message per capture. The
+        // registry (used for CodeLens / hover) keeps only the representative
+        // (first) capture's PNG.
         for (const preview of visiblePreviews) {
             if (abort.signal.aborted) { return; }
-            if (!preview.renderOutput) { continue; }
+            const captures = preview.captures;
+            if (captures.length === 0) { continue; }
 
             const mod = previewModuleMap.get(preview.id);
             if (!mod) { continue; }
-            const imageData = await gradleService.readPreviewImage(mod, preview.renderOutput);
-            if (abort.signal.aborted) { return; }
 
-            if (imageData) {
-                registry.setImage(preview.id, imageData);
-                panel.postMessage({ command: 'updateImage', previewId: preview.id, imageData });
-            } else if (forceRender) {
-                // Render task completed but produced no PNG for this preview —
-                // a per-preview failure that didn't fail the whole task (e.g.
-                // one parameterized Robolectric test threw). Surface it on the
-                // card; the root-cause log is in Output ▸ Compose Preview.
-                panel.postMessage({
-                    command: 'setImageError',
-                    previewId: preview.id,
-                    message: 'Render failed — see Output ▸ Compose Preview',
-                });
+            for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
+                if (abort.signal.aborted) { return; }
+                const capture = captures[captureIndex];
+                if (!capture.renderOutput) { continue; }
+                const imageData = await gradleService.readPreviewImage(mod, capture.renderOutput);
+                if (abort.signal.aborted) { return; }
+
+                if (imageData) {
+                    if (captureIndex === 0) {
+                        registry.setImage(preview.id, imageData);
+                    }
+                    panel.postMessage({
+                        command: 'updateImage',
+                        previewId: preview.id,
+                        captureIndex,
+                        imageData,
+                    });
+                } else if (forceRender) {
+                    // Render task completed but produced no PNG for this
+                    // capture — a per-capture failure that didn't fail the
+                    // whole task. Surface it on the card; root-cause log is
+                    // in Output ▸ Compose Preview.
+                    panel.postMessage({
+                        command: 'setImageError',
+                        previewId: preview.id,
+                        captureIndex,
+                        message: 'Render failed — see Output ▸ Compose Preview',
+                    });
+                }
+                // else: discover-only pass, PNG not produced yet. Leave the
+                // skeleton in place; the next save-triggered render will
+                // populate it.
             }
-            // else: discover-only pass, PNG not produced yet. Leave the skeleton
-            // in place; the next save-triggered render will populate it.
         }
 
         panel.postMessage({ command: 'showMessage', text: '' });

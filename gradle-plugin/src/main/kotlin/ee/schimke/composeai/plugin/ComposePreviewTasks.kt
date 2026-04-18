@@ -198,9 +198,19 @@ internal object ComposePreviewTasks {
                 val manifest = previewManifestJson
                     .decodeFromString(PreviewManifest.serializer(), manifestOnDisk.readText())
                 if (manifest.previews.isEmpty()) return@doLast
-                val rd = rendersDir.get().asFile
+                // Each preview can produce multiple captures (`@RoboComposePreviewOptions`
+                // time fan-out, future scroll / dimension fan-outs). Verify each
+                // capture's renderOutput lands on disk — report back one missing
+                // entry per preview with at least one missing capture.
+                val outDir = previewOutputDir.get().asFile
                 val missing = manifest.previews
-                    .mapNotNull { p -> p.id.takeIf { !rd.resolve("$it.png").exists() } }
+                    .filter { p ->
+                        p.captures.any { c ->
+                            val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
+                            !outDir.resolve(rel).exists()
+                        }
+                    }
+                    .map { it.id }
                 if (missing.isNotEmpty()) {
                     val preview = missing.take(3).joinToString(", ")
                     val andMore = if (missing.size > 3) " (+${missing.size - 3} more)" else ""

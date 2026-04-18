@@ -407,6 +407,46 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* -- Animated card carousel ------------------------------------------ */
+
+/* Icon in the title row telegraphs "this preview has multiple captures"; the
+   carousel strip below the image is the interactive surface. */
+.animation-icon {
+    margin-left: 4px;
+    opacity: 0.75;
+    font-size: 12px;
+    vertical-align: middle;
+    color: var(--text-secondary);
+}
+
+.frame-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-top: 1px solid var(--card-border);
+    background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+}
+
+.frame-controls:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.frame-indicator {
+    font-size: calc(var(--vscode-font-size) - 1px);
+    color: var(--text-secondary);
+    min-width: 120px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.frame-controls button[disabled] {
+    opacity: 0.35;
+    cursor: default;
+}
+
 /* -- Card title row + history button --------------------------------- */
 
 .card-title-row {

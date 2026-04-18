@@ -20,7 +20,13 @@
                 "locale": null,
                 "group": "colors"
             },
-            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png"
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png"
+                }
+            ]
         },
         {
             "id": "com.example.PreviewsKt.BlueBoxPreview_Blue Box",
@@ -40,7 +46,13 @@
                 "locale": null,
                 "group": "colors"
             },
-            "renderOutput": "renders/com.example.PreviewsKt.BlueBoxPreview_Blue Box.png"
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "renderOutput": "renders/com.example.PreviewsKt.BlueBoxPreview_Blue Box.png"
+                }
+            ]
         },
         {
             "id": "com.example.MainKt.GreetingPreview",
@@ -60,7 +72,13 @@
                 "locale": null,
                 "group": null
             },
-            "renderOutput": "renders/com.example.MainKt.GreetingPreview.png"
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "renderOutput": "renders/com.example.MainKt.GreetingPreview.png"
+                }
+            ]
         },
         {
             "id": "com.example.PreviewsKt.RedBoxPreview_Dark Mode",
@@ -80,7 +98,13 @@
                 "locale": null,
                 "group": "colors"
             },
-            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Dark Mode.png"
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Dark Mode.png"
+                }
+            ]
         }
     ]
 }

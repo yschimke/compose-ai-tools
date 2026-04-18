@@ -238,15 +238,43 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             return id.replace(/[^a-zA-Z0-9_-]/g, '_');
         }
 
+        // Per-preview carousel runtime state — imageData / errorMessage per
+        // capture. Populated from updateImage / setImageError messages so
+        // prev/next navigation can swap the visible <img> without a fresh
+        // extension round-trip.
+        // Map<previewId, [{ label, imageData, errorMessage }]>
+        const cardCaptures = new Map();
+
+        // Preview is shown with a carousel when it has >1 capture or a single
+        // capture with a non-null dimension (e.g. an explicit 500ms snapshot).
+        function isAnimatedPreview(p) {
+            const caps = p.captures;
+            if (caps.length > 1) return true;
+            if (caps.length === 1) {
+                const c = caps[0];
+                return c.advanceTimeMillis != null || c.scroll != null;
+            }
+            return false;
+        }
+
         function createCard(p) {
+            const animated = isAnimatedPreview(p);
+            const captures = p.captures;
+
             const card = document.createElement('div');
-            card.className = 'preview-card';
+            card.className = 'preview-card' + (animated ? ' animated-card' : '');
             card.id = 'preview-' + sanitizeId(p.id);
             card.setAttribute('role', 'listitem');
             card.dataset.function = p.functionName;
             card.dataset.group = p.params.group || '';
             card.dataset.previewId = p.id;
             card.dataset.className = p.className;
+            card.dataset.currentIndex = '0';
+            cardCaptures.set(p.id, captures.map(c => ({
+                label: c.label || '',
+                imageData: null,
+                errorMessage: null,
+            })));
 
             const header = document.createElement('div');
             header.className = 'card-header';
@@ -266,6 +294,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 });
             });
             titleRow.appendChild(title);
+
+            if (animated) {
+                // Inline marker so the title row telegraphs "this one has
+                // multiple captures"; the carousel strip under the image is
+                // the interactive surface.
+                const icon = document.createElement('i');
+                icon.className = 'codicon codicon-play-circle animation-icon';
+                icon.title = captures.length + ' captures';
+                icon.setAttribute('aria-label', 'Animated preview (' + captures.length + ' captures)');
+                titleRow.appendChild(icon);
+            }
 
             // History button only appears when the Gradle plugin has been
             // configured with historyEnabled = true and at least one
@@ -314,6 +353,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 card.appendChild(badge);
             }
 
+            if (animated) {
+                card.appendChild(buildFrameControls(card));
+            }
+
             // Lazy-built history drawer — only populated when the user clicks
             // the history button and the extension returns entries.
             const drawer = document.createElement('div');
@@ -321,6 +364,108 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             drawer.hidden = true;
             card.appendChild(drawer);
             return card;
+        }
+
+        function buildFrameControls(card) {
+            const bar = document.createElement('div');
+            bar.className = 'frame-controls';
+
+            const prev = document.createElement('button');
+            prev.className = 'icon-button frame-prev';
+            prev.setAttribute('aria-label', 'Previous capture');
+            prev.title = 'Previous capture';
+            prev.innerHTML = '<i class="codicon codicon-chevron-left" aria-hidden="true"></i>';
+            prev.addEventListener('click', () => stepFrame(card, -1));
+
+            const indicator = document.createElement('span');
+            indicator.className = 'frame-indicator';
+            indicator.setAttribute('aria-live', 'polite');
+
+            const next = document.createElement('button');
+            next.className = 'icon-button frame-next';
+            next.setAttribute('aria-label', 'Next capture');
+            next.title = 'Next capture';
+            next.innerHTML = '<i class="codicon codicon-chevron-right" aria-hidden="true"></i>';
+            next.addEventListener('click', () => stepFrame(card, 1));
+
+            bar.appendChild(prev);
+            bar.appendChild(indicator);
+            bar.appendChild(next);
+
+            // Arrow keys when the carousel has focus.
+            bar.tabIndex = 0;
+            bar.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft') { stepFrame(card, -1); e.preventDefault(); }
+                else if (e.key === 'ArrowRight') { stepFrame(card, 1); e.preventDefault(); }
+            });
+
+            // Seed indicator text so it's not blank before any image arrives.
+            requestAnimationFrame(() => updateFrameIndicator(card));
+            return bar;
+        }
+
+        function stepFrame(card, delta) {
+            const caps = cardCaptures.get(card.dataset.previewId);
+            if (!caps) return;
+            const cur = parseInt(card.dataset.currentIndex || '0', 10);
+            const next = Math.max(0, Math.min(caps.length - 1, cur + delta));
+            if (next === cur) return;
+            card.dataset.currentIndex = String(next);
+            showFrame(card, next);
+        }
+
+        function showFrame(card, index) {
+            const caps = cardCaptures.get(card.dataset.previewId);
+            if (!caps) return;
+            const capture = caps[index];
+            if (!capture) return;
+            const container = card.querySelector('.image-container');
+            if (!container) return;
+
+            if (capture.imageData) {
+                const skeleton = container.querySelector('.skeleton');
+                const errorMsg = container.querySelector('.error-message');
+                if (skeleton) skeleton.remove();
+                if (errorMsg) errorMsg.remove();
+                card.classList.remove('has-error');
+                let img = container.querySelector('img');
+                if (!img) {
+                    img = document.createElement('img');
+                    img.alt = card.dataset.function + ' preview';
+                    container.appendChild(img);
+                }
+                img.src = 'data:image/png;base64,' + capture.imageData;
+                img.className = 'fade-in';
+            } else if (capture.errorMessage) {
+                container.innerHTML = '<div class="error-message" role="alert">' + escapeHtml(capture.errorMessage) + '</div>';
+                card.classList.add('has-error');
+            } else {
+                // No data for this capture yet — render will fill it in later.
+                const existing = container.querySelector('img');
+                if (existing) existing.remove();
+                if (!container.querySelector('.skeleton')) {
+                    const s = document.createElement('div');
+                    s.className = 'skeleton';
+                    s.setAttribute('aria-label', 'Loading capture');
+                    container.appendChild(s);
+                }
+            }
+            updateFrameIndicator(card);
+        }
+
+        function updateFrameIndicator(card) {
+            const indicator = card.querySelector('.frame-indicator');
+            const prevBtn = card.querySelector('.frame-prev');
+            const nextBtn = card.querySelector('.frame-next');
+            if (!indicator) return;
+            const caps = cardCaptures.get(card.dataset.previewId);
+            if (!caps) return;
+            const idx = parseInt(card.dataset.currentIndex || '0', 10);
+            const capture = caps[idx];
+            const label = capture && capture.label ? capture.label : '\u2014';
+            indicator.textContent = (idx + 1) + ' / ' + caps.length + ' \u00B7 ' + label;
+            if (prevBtn) prevBtn.disabled = idx === 0;
+            if (nextBtn) nextBtn.disabled = idx === caps.length - 1;
         }
 
         /**
@@ -446,6 +591,28 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
                 title.title = buildTooltip(p);
             }
+            // Refresh capture labels in place. If the capture count changed
+            // (e.g. user edited @RoboComposePreviewOptions) we preserve
+            // already-received imageData for renderOutputs that carry over.
+            const newCaps = p.captures.map(c => ({
+                renderOutput: c.renderOutput,
+                label: c.label || '',
+            }));
+            const prior = cardCaptures.get(p.id) || [];
+            // Match by index rather than renderOutput since filenames may
+            // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
+            // annotation). Mismatched positions just reset to null-image.
+            const mergedCaps = newCaps.map((nc, i) => ({
+                label: nc.label,
+                imageData: prior[i]?.imageData ?? null,
+                errorMessage: prior[i]?.errorMessage ?? null,
+            }));
+            cardCaptures.set(p.id, mergedCaps);
+            const curIdx = parseInt(card.dataset.currentIndex || '0', 10);
+            if (curIdx >= mergedCaps.length) {
+                card.dataset.currentIndex = String(Math.max(0, mergedCaps.length - 1));
+            }
+            if (isAnimatedPreview(p)) updateFrameIndicator(card);
             const variantLabel = buildVariantLabel(p);
             let badge = card.querySelector('.variant-badge');
             if (variantLabel) {
@@ -622,9 +789,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 existingCards.set(card.dataset.previewId, card);
             });
 
-            // Remove cards that no longer exist
+            // Remove cards that no longer exist — drop their cached capture
+            // data so stale entries don't pile up if a preview is renamed.
             for (const [id, card] of existingCards) {
-                if (!newIds.has(id)) card.remove();
+                if (!newIds.has(id)) {
+                    cardCaptures.delete(id);
+                    card.remove();
+                }
             }
 
             // Refresh per-preview findings cache so updateImage can attach
@@ -733,9 +904,27 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             card.querySelectorAll(sel).forEach(el => el.classList.add('a11y-active'));
         }
 
-        function updateImage(previewId, imageData) {
+        function updateImage(previewId, captureIndex, imageData) {
             const card = document.getElementById('preview-' + sanitizeId(previewId));
             if (!card) return;
+
+            // Cache so carousel navigation can restore this capture without
+            // a fresh extension round-trip.
+            const caps = cardCaptures.get(previewId);
+            if (caps && caps[captureIndex]) {
+                caps[captureIndex].imageData = imageData;
+                caps[captureIndex].errorMessage = null;
+            }
+
+            // Only paint the <img> if the currently-displayed capture is the
+            // one that just arrived. Otherwise the cached bytes wait for
+            // prev/next.
+            const cur = parseInt(card.dataset.currentIndex || '0', 10);
+            if (cur !== captureIndex) {
+                if (caps) updateFrameIndicator(card);
+                return;
+            }
+
             const container = card.querySelector('.image-container');
             // Tear down every prior state before showing the new image.
             // Leftover .error-message divs here are what caused the
@@ -766,6 +955,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             }
             img.src = newSrc;
             img.className = 'fade-in';
+
+            if (caps) updateFrameIndicator(card);
 
             // Re-build the a11y overlay once the image natural dimensions
             // are known. Data-URL srcs may resolve synchronously; in that
@@ -821,7 +1012,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
 
                 case 'updateImage':
-                    updateImage(msg.previewId, msg.imageData);
+                    updateImage(msg.previewId, msg.captureIndex || 0, msg.imageData);
                     break;
 
                 case 'setModules':
@@ -868,6 +1059,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'setImageError': {
                     const errCard = document.getElementById('preview-' + sanitizeId(msg.previewId));
                     if (errCard) {
+                        // Stash per-capture error so carousel navigation
+                        // restores the message when the user returns to
+                        // that specific capture. setError is preview-wide
+                        // (captureIndex defaulted to 0) — applies to the
+                        // representative image container only.
+                        const captureIndex = msg.command === 'setImageError' ? (msg.captureIndex || 0) : 0;
+                        const caps = cardCaptures.get(msg.previewId);
+                        if (caps && caps[captureIndex]) {
+                            caps[captureIndex].errorMessage = msg.message;
+                            caps[captureIndex].imageData = null;
+                        }
+                        const cur = parseInt(errCard.dataset.currentIndex || '0', 10);
+                        if (caps && cur !== captureIndex) break;
+
                         errCard.classList.add('has-error');
                         const container = errCard.querySelector('.image-container');
                         // Keep existing image visible under the error for setImageError

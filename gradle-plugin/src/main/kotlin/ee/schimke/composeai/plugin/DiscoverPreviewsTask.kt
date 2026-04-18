@@ -135,7 +135,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
         logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}':")
         for (preview in deduped) {
-            logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview.params)}")
+            logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
         }
     }
 
@@ -143,7 +143,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // so sibling expansions (e.g. @WearPreviewFontScales × 6) aren't visually
     // identical. Format mirrors the VSCode tooltip: `name` / `device` /
     // `WxHdp` / `font Nx` / `uiMode=N` / `locale` / `group`.
-    private fun describeVariant(p: PreviewParams): String {
+    private fun describeVariant(preview: PreviewInfo): String {
+        val p = preview.params
         val parts = mutableListOf<String>()
         p.name?.let(parts::add)
         p.device?.let(parts::add)
@@ -154,7 +155,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         if (p.uiMode != 0) parts.add("uiMode=${p.uiMode}")
         p.locale?.let(parts::add)
         p.group?.let { parts.add("group=$it") }
-        p.advanceTimeMillis?.let { parts.add("t=${it}ms") }
+        // Summarise capture-level dimensions (time, scroll) on one line so
+        // the log remains a single bullet per preview even for fan-outs.
+        val timings = preview.captures.mapNotNull { it.advanceTimeMillis }
+        if (timings.isNotEmpty()) {
+            parts.add("${preview.captures.size} captures @ ${timings.joinToString(",") { "${it}ms" }}")
+        }
+        preview.captures.firstNotNullOfOrNull { it.scroll }?.let { s ->
+            parts.add("scroll=${s.mode.name.lowercase()}")
+        }
         return if (parts.isEmpty()) "" else "  [" + parts.joinToString(" · ") + "]"
     }
 
@@ -178,7 +187,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                addPreviewsForTimings(classInfo, method, ann, wrapperFqn, scrollSpec, timings, previews)
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, timings))
             }
             return
         }
@@ -186,31 +195,47 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                addPreviewsForTimings(classInfo, method, resolvedAnn, wrapperFqn, scrollSpec, timings, previews)
+                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpec, timings))
             }
         }
     }
 
-    private fun addPreviewsForTimings(
-        classInfo: ClassInfo,
-        method: MethodInfo,
+    // Tile previews don't go through `mainClock` and can't scroll (the
+    // renderer inflates a View via `TileRenderer` and has no Compose
+    // animation clock / scrollable), so both dimensional annotations are
+    // no-ops for tiles.
+    private fun buildCaptures(
         ann: AnnotationInfo,
-        wrapperFqn: String?,
-        scrollSpec: ScrollSpec?,
+        previewId: String,
+        scroll: ScrollCapture?,
         timings: List<Long>,
-        previews: MutableList<PreviewInfo>,
-    ) {
-        // Tile previews don't go through `mainClock` — the renderer inflates a
-        // View via `TileRenderer` and has no Compose animation clock to advance.
-        // Applying a clock-time fan-out would produce N identical PNGs. Treat
-        // the annotation as a no-op on tiles.
-        val applicable = timings.takeIf { ann.name != TILE_PREVIEW_FQN }.orEmpty()
-        if (applicable.isEmpty()) {
-            previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, advanceTimeMillis = null))
-        } else {
-            for (ms in applicable) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, advanceTimeMillis = ms))
-            }
+    ): List<Capture> {
+        val isTile = ann.name == TILE_PREVIEW_FQN
+        val effectiveTimings = if (isTile) emptyList() else timings
+        val effectiveScroll = scroll.takeUnless { isTile }
+
+        if (effectiveTimings.isEmpty()) {
+            // Single capture — either a static preview (all dims null) or a
+            // scrolled-only preview (scroll set, time null).
+            return listOf(
+                Capture(
+                    advanceTimeMillis = null,
+                    scroll = effectiveScroll,
+                    renderOutput = "renders/${previewId}.png",
+                ),
+            )
+        }
+        // Time-dimensional fan-out. Filename suffix matches Roborazzi's
+        // compose-preview-scanner-support convention (`_TIME_<ms>ms`) so
+        // PNGs coexist on disk under a single preview id. Scroll applies
+        // to every time-frame when both annotations are present (today we
+        // only fan out along time, not scroll).
+        return effectiveTimings.map { ms ->
+            Capture(
+                advanceTimeMillis = ms,
+                scroll = effectiveScroll,
+                renderOutput = "renders/${previewId}_TIME_${ms}ms.png",
+            )
         }
     }
 
@@ -247,7 +272,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         }
     }
 
-    private fun extractScrollSpec(annotations: List<AnnotationInfo>): ScrollSpec? {
+    private fun extractScrollSpec(annotations: List<AnnotationInfo>): ScrollCapture? {
         val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return null
         val pv = ann.parameterValues
         // Enum constants come through as AnnotationEnumValue; compare by .valueName so
@@ -260,11 +285,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             ?: ScrollAxis.VERTICAL
         val maxScrollPx = (pv.getValue("maxScrollPx") as? Int)?.coerceAtLeast(0) ?: 0
         val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
-        return ScrollSpec(
+        // Result fields (atEnd, reachedPx) default to "not reported" — the
+        // renderer would fill them in post-capture; discovery knows only the
+        // intent.
+        return ScrollCapture(
             mode = mode,
+            axis = axis,
             maxScrollPx = maxScrollPx,
             reduceMotion = reduceMotion,
-            axis = axis,
         )
     }
 
@@ -323,31 +351,20 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         method: MethodInfo,
         ann: AnnotationInfo,
         wrapperClassName: String?,
-        scrollSpec: ScrollSpec?,
-        advanceTimeMillis: Long?,
+        scroll: ScrollCapture?,
+        timings: List<Long>,
     ): PreviewInfo {
-        // Tile previews can't scroll — same reasoning as the timings fan-out above.
-        // Null out the scroll spec at the manifest level so renderers don't branch on it.
-        val applicableScroll = scrollSpec.takeIf { ann.name != TILE_PREVIEW_FQN }
         val params = extractPreviewParams(ann, wrapperClassName)
-            .copy(
-                advanceTimeMillis = advanceTimeMillis,
-                scroll = applicableScroll,
-            )
         val fqn = "${classInfo.name}.${method.name}"
-        val baseSuffix = buildVariantSuffix(params)
-        // Match Roborazzi's own compose-preview-scanner-support filename
-        // convention (`_TIME_<ms>ms`) so tooling that sits on top of either
-        // pipeline groups variants the same way.
-        val timeSuffix = advanceTimeMillis?.let { "_TIME_${it}ms" }.orEmpty()
-        val id = fqn + baseSuffix + timeSuffix
+        val suffix = buildVariantSuffix(params)
+        val id = fqn + suffix
         return PreviewInfo(
             id = id,
             functionName = method.name,
             className = classInfo.name,
             sourceFile = packageQualifiedSourcePath(classInfo),
             params = params,
-            renderOutput = "renders/${id}.png",
+            captures = buildCaptures(ann, id, scroll, timings),
         )
     }
 

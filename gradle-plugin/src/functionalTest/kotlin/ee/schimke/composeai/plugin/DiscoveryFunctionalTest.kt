@@ -449,15 +449,16 @@ class DiscoveryFunctionalTest {
         // DeviceDimensions used the Pixel 6 Pro height here.)
         assertThat(phone.params.heightDp).isEqualTo(914)
         assertThat(phone.id).endsWith("_pixel_6")
-        assertThat(phone.renderOutput).endsWith("_pixel_6.png")
+        assertThat(phone.captures.single().renderOutput).endsWith("_pixel_6.png")
 
         val tablet = manifest.previews.single { it.params.device == "id:pixel_tablet" }
         assertThat(tablet.params.widthDp).isEqualTo(1280)
         assertThat(tablet.params.heightDp).isEqualTo(800)
         assertThat(tablet.id).endsWith("_pixel_tablet")
 
-        // The two variants must not collide on renderOutput.
-        assertThat(manifest.previews.map { it.renderOutput }.toSet()).hasSize(2)
+        // The two variants must not collide on their captures' renderOutput.
+        val renderOutputs = manifest.previews.flatMap { it.captures.map { c -> c.renderOutput } }
+        assertThat(renderOutputs.toSet()).hasSize(renderOutputs.size)
     }
 
     @Test
@@ -553,29 +554,32 @@ class DiscoveryFunctionalTest {
         assertThat(endPreviews).hasSize(2)
         // @ScrollingPreview propagates identically to every @LightAndDark expansion,
         // using its declared-in-source defaults (reduceMotion=true, axis=VERTICAL).
+        // Scroll state lives on each capture now (Capture.scroll) — single-capture
+        // previews carry it on the first element.
         for (p in endPreviews) {
-            assertThat(p.params.scroll).isEqualTo(
-                ScrollSpec(
+            assertThat(p.captures).hasSize(1)
+            assertThat(p.captures.first().scroll).isEqualTo(
+                ScrollCapture(
                     mode = ScrollMode.END,
+                    axis = ScrollAxis.VERTICAL,
                     maxScrollPx = 0,
                     reduceMotion = true,
-                    axis = ScrollAxis.VERTICAL,
                 )
             )
         }
 
         val longPreview = manifest.previews.single { it.functionName == "LongScrollPreview" }
-        assertThat(longPreview.params.scroll).isEqualTo(
-            ScrollSpec(
+        assertThat(longPreview.captures.single().scroll).isEqualTo(
+            ScrollCapture(
                 mode = ScrollMode.LONG,
+                axis = ScrollAxis.HORIZONTAL,
                 maxScrollPx = 4000,
                 reduceMotion = false,
-                axis = ScrollAxis.HORIZONTAL,
             )
         )
 
         val plain = manifest.previews.single { it.functionName == "PlainPreview" }
-        assertThat(plain.params.scroll).isNull()
+        assertThat(plain.captures.single().scroll).isNull()
     }
 
     @Test
