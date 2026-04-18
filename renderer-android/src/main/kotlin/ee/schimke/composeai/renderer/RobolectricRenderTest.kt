@@ -1,8 +1,13 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -87,8 +92,16 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         outputDir.mkdirs()
 
         val params = preview.params
-        val widthDp = params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
-        val heightDp = params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
+        // AS-parity sizing: an axis wraps to intrinsic content when the user
+        // didn't specify it (and didn't pick a device/showSystemUi frame —
+        // discovery has already pre-resolved those cases). We use a generous
+        // sandbox dp for wrapped axes so the Robolectric window / Configuration
+        // has a finite, coherent size; the captured PNG is cropped back down
+        // to the measured content bounds after capture.
+        val wrapWidth = params.widthDp == null || params.widthDp <= 0
+        val wrapHeight = params.heightDp == null || params.heightDp <= 0
+        val widthDp = params.widthDp?.takeIf { it > 0 } ?: SANDBOX_WIDTH_DP
+        val heightDp = params.heightDp?.takeIf { it > 0 } ?: SANDBOX_HEIGHT_DP
         // Round crop fires when the preview is on a round device AND it's the
         // kind of surface that fills the watch — either a @Composable the user
         // asked for system UI on, or a tile (tiles always fill the watchface,
@@ -111,7 +124,16 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
             recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
         )
 
-        renderDefault(params, widthDp, heightDp, outputDir, roborazziOptions, composeOptions)
+        renderDefault(
+            params = params,
+            widthDp = widthDp,
+            heightDp = heightDp,
+            wrapWidth = wrapWidth,
+            wrapHeight = wrapHeight,
+            outputDir = outputDir,
+            roborazziOptions = roborazziOptions,
+            composeOptions = composeOptions,
+        )
     }
 
     /**
@@ -159,6 +181,8 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         params: RenderPreviewParams,
         widthDp: Int,
         heightDp: Int,
+        wrapWidth: Boolean,
+        wrapHeight: Boolean,
         outputDir: File,
         roborazziOptions: RoborazziOptions,
         composeOptions: RoborazziComposeOptions,
@@ -203,6 +227,10 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
             this::class.java,
             "renderDefault_${preview.id}",
         )
+        // Captures the content's intrinsic pixel size when either axis wraps.
+        // Read after `captureRoboImage` to crop the PNG down to the composable's
+        // actual bounds.
+        var measured: IntSize? = null
         val statement = object : org.junit.runners.model.Statement() {
             override fun evaluate() {
                 rule.mainClock.autoAdvance = false
@@ -224,7 +252,50 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 }
                 rule.setContent {
                     CompositionLocalProvider(LocalInspectionMode provides !a11yEnabled) {
-                        strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                        if (wrapWidth || wrapHeight) {
+                            // AS-parity wrap-to-content: measure the strategy's
+                            // composable with unbounded constraints on wrapped
+                            // axes, capture the child's pixel size, then size
+                            // the outer Box to match. Doing this in a single
+                            // layout pass (rather than via onGloballyPositioned)
+                            // keeps the measurement deterministic even when
+                            // Compose's post-layout scheduling is short-circuited
+                            // by Robolectric. The wrapping Box re-introduces the
+                            // layout-node bytecode the compat workaround in the
+                            // comment below avoids — acceptable because
+                            // wrap-content is only emitted when the user didn't
+                            // name a device / widthDp / heightDp, and the
+                            // old-Compose-BOM consumers who need that workaround
+                            // use device-pinned (e.g. wearos_*) previews.
+                            // Measure with *bounded* sandbox constraints (not
+                            // Infinity): that's what Android Studio's preview
+                            // pane does, and it's the only shape that
+                            // `Modifier.fillMax*` / `LazyColumn` accept without
+                            // throwing from `InlineClassHelper`. Relax the min
+                            // constraint on wrapped axes so small composables
+                            // can shrink below the sandbox; a `fillMaxWidth`
+                            // composable still measures at the sandbox width
+                            // and no width-crop happens on that axis.
+                            Box(
+                                modifier = Modifier.layout { measurable, constraints ->
+                                    val wrappedConstraints = Constraints(
+                                        minWidth = if (wrapWidth) 0 else constraints.minWidth,
+                                        maxWidth = constraints.maxWidth,
+                                        minHeight = if (wrapHeight) 0 else constraints.minHeight,
+                                        maxHeight = constraints.maxHeight,
+                                    )
+                                    val placeable = measurable.measure(wrappedConstraints)
+                                    measured = IntSize(placeable.width, placeable.height)
+                                    layout(placeable.width, placeable.height) {
+                                        placeable.place(0, 0)
+                                    }
+                                },
+                            ) {
+                                strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                            }
+                        } else {
+                            strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                        }
                     }
                 }
                 // With `mainClock.autoAdvance = false` the clock stays at 0
@@ -272,6 +343,21 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                         file = outputFile,
                         roborazziOptions = roborazziOptions,
                     )
+
+                    // AS-parity: crop the PNG down to the composable's
+                    // intrinsic size on wrapped axes. `measured` is populated
+                    // during the wrap Box's Modifier.layout measure pass on the
+                    // first composition and doesn't change between captures
+                    // (the wrapped axes stay the same), so it's safe to apply
+                    // per-capture here.
+                    if ((wrapWidth || wrapHeight) && measured != null) {
+                        cropPngTopLeft(
+                            file = outputFile,
+                            wrapWidth = wrapWidth,
+                            wrapHeight = wrapHeight,
+                            measured = measured!!,
+                        )
+                    }
 
                     if (a11yEnabled && idx == a11yCaptureIndex()) {
                         // `fetchSemanticsNode().root as ViewRootForTest` is the
@@ -366,8 +452,15 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
     }
 
     companion object {
-        private const val DEFAULT_WIDTH = 400
-        private const val DEFAULT_HEIGHT = 800
+        /**
+         * Sandbox dp used for wrapped axes. Matches the historical phone-shaped
+         * 400×800 dp default that stood in for "no device" before AS-parity
+         * sizing — `fillMax*` composables get a reasonable viewport instead of
+         * a giant square. Mirrors `DeviceDimensions.SANDBOX_WIDTH/HEIGHT_DP`
+         * on the plugin side.
+         */
+        private const val SANDBOX_WIDTH_DP = 400
+        private const val SANDBOX_HEIGHT_DP = 800
 
         /**
          * Virtual time to advance before capture in the paused-`mainClock`
@@ -384,6 +477,31 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
          */
         private const val CAPTURE_ADVANCE_MS = 32L
     }
+}
+
+/**
+ * Crops [file] in-place to the top-left region defined by [measured] on the
+ * wrapped axes. The non-wrapped axis keeps its original pixel extent — we
+ * never expand beyond the captured PNG, so a wrapped-axis crop that somehow
+ * exceeds the sandbox is clamped.
+ *
+ * Uses `javax.imageio` rather than Android's `Bitmap` so the path doesn't need
+ * a Robolectric shadow: this runs on the JVM side after `captureRoboImage`
+ * has already written a standard PNG.
+ */
+private fun cropPngTopLeft(
+    file: File,
+    wrapWidth: Boolean,
+    wrapHeight: Boolean,
+    measured: IntSize,
+) {
+    if (!file.exists()) return
+    val original = javax.imageio.ImageIO.read(file) ?: return
+    val cropW = (if (wrapWidth) measured.width else original.width).coerceIn(1, original.width)
+    val cropH = (if (wrapHeight) measured.height else original.height).coerceIn(1, original.height)
+    if (cropW == original.width && cropH == original.height) return
+    val cropped = original.getSubimage(0, 0, cropW, cropH)
+    javax.imageio.ImageIO.write(cropped, "PNG", file)
 }
 
 /**

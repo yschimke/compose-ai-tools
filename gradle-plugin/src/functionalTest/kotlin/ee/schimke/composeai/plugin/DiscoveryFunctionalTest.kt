@@ -124,6 +124,17 @@ class DiscoveryFunctionalTest {
 
         val names = manifest.previews.map { it.functionName }
         assertThat(names).containsExactly("RedBoxPreview", "BlueBoxPreview")
+
+        // AS-parity: bare `@Preview` with no device / showSystemUi /
+        // widthDp / heightDp must serialize null on both axes so renderers
+        // wrap to the composable's intrinsic size instead of defaulting
+        // to a 400×800 phone frame.
+        manifest.previews.forEach {
+            assertThat(it.params.widthDp).isNull()
+            assertThat(it.params.heightDp).isNull()
+            assertThat(it.params.device).isNull()
+            assertThat(it.params.showSystemUi).isFalse()
+        }
     }
 
     @Test

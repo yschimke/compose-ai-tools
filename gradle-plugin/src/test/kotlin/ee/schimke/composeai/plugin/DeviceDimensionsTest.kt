@@ -216,4 +216,79 @@ class DeviceDimensionsTest {
         assertThat(spec.widthDp)
             .isGreaterThan(DeviceDimensions.resolve("id:wearos_large_round").widthDp)
     }
+
+    // -- resolveForRender (AS-parity sizing) --
+
+    @Test
+    fun `resolveForRender wraps both axes when no hints are given`() {
+        val spec = DeviceDimensions.resolveForRender(
+            device = null,
+            widthDp = null,
+            heightDp = null,
+            showSystemUi = false,
+        )
+        assertThat(spec.wrapWidth).isTrue()
+        assertThat(spec.wrapHeight).isTrue()
+        // Wrap-axes get the phone-shaped 400×800 dp sandbox so fillMaxSize
+        // composables render into a reasonable viewport before the PNG crop.
+        assertThat(spec.widthDp).isEqualTo(DeviceDimensions.SANDBOX_WIDTH_DP)
+        assertThat(spec.heightDp).isEqualTo(DeviceDimensions.SANDBOX_HEIGHT_DP)
+    }
+
+    @Test
+    fun `resolveForRender keeps device frame when device is set`() {
+        val spec = DeviceDimensions.resolveForRender(
+            device = "id:pixel_6",
+            widthDp = null,
+            heightDp = null,
+            showSystemUi = false,
+        )
+        assertThat(spec.wrapWidth).isFalse()
+        assertThat(spec.wrapHeight).isFalse()
+        // Pixel 6 = 411×914 dp after the upstream per-device density refresh.
+        assertThat(spec.widthDp).isEqualTo(411)
+        assertThat(spec.heightDp).isEqualTo(914)
+    }
+
+    @Test
+    fun `resolveForRender keeps full frame when showSystemUi is true`() {
+        val spec = DeviceDimensions.resolveForRender(
+            device = null,
+            widthDp = null,
+            heightDp = null,
+            showSystemUi = true,
+        )
+        assertThat(spec.wrapWidth).isFalse()
+        assertThat(spec.wrapHeight).isFalse()
+        assertThat(spec.widthDp).isEqualTo(400)
+        assertThat(spec.heightDp).isEqualTo(800)
+    }
+
+    @Test
+    fun `resolveForRender wraps only the axis the user left unset`() {
+        val spec = DeviceDimensions.resolveForRender(
+            device = null,
+            widthDp = 240,
+            heightDp = null,
+            showSystemUi = false,
+        )
+        assertThat(spec.wrapWidth).isFalse()
+        assertThat(spec.wrapHeight).isTrue()
+        assertThat(spec.widthDp).isEqualTo(240)
+        assertThat(spec.heightDp).isEqualTo(DeviceDimensions.SANDBOX_HEIGHT_DP)
+    }
+
+    @Test
+    fun `resolveForRender explicit dims override device frame`() {
+        val spec = DeviceDimensions.resolveForRender(
+            device = "id:pixel_6",
+            widthDp = 200,
+            heightDp = 300,
+            showSystemUi = false,
+        )
+        assertThat(spec.wrapWidth).isFalse()
+        assertThat(spec.wrapHeight).isFalse()
+        assertThat(spec.widthDp).isEqualTo(200)
+        assertThat(spec.heightDp).isEqualTo(300)
+    }
 }

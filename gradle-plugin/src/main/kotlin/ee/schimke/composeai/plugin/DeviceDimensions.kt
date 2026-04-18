@@ -19,6 +19,35 @@ object DeviceDimensions {
      */
     const val DEFAULT_DENSITY: Float = 2.625f
 
+    /**
+     * Per-axis sizing decision for a single preview, mirroring Android Studio's
+     * Compose preview pane: an axis is *fixed* when the user named a dp value or
+     * chose a device/`showSystemUi`, otherwise it *wraps* to the composable's
+     * intrinsic size. Wrapped axes still need a sandbox dimension so Robolectric
+     * Configuration qualifiers and the desktop `ImageComposeScene` have a finite
+     * canvas to render into — the renderer crops the PNG back down to the
+     * measured content bounds afterwards.
+     */
+    data class SizeSpec(
+        val widthDp: Int,
+        val heightDp: Int,
+        val wrapWidth: Boolean,
+        val wrapHeight: Boolean,
+        val density: Float = DEFAULT_DENSITY,
+    )
+
+    /**
+     * Sandbox dp used for wrapped axes — matches the historical default
+     * (400×800 dp) that stood in for "no device" before AS-parity sizing, so
+     * `fillMax*` composables measure into a phone-shaped viewport rather than
+     * a giant square. Wrapped small composables then crop well below this.
+     */
+    const val SANDBOX_WIDTH_DP = 400
+    const val SANDBOX_HEIGHT_DP = 800
+
+    /** Back-compat alias for callers/tests that want a single constant. */
+    const val SANDBOX_DP = SANDBOX_WIDTH_DP
+
     // Source-of-truth for the dp values and densities below: sergio-sastre/ComposablePreviewScanner
     // (Phone.kt / Tablet.kt / Wear.kt / GenericDevices.kt / Desktop.kt / Television.kt /
     // Automotive.kt / XR.kt under android/.../device/types/), with dp = px / (densityDpi / 160)
@@ -147,5 +176,42 @@ object DeviceDimensions {
         }
 
         return DEFAULT
+    }
+
+    /**
+     * AS-parity sizing: axes are fixed iff the user specified them (or chose
+     * a device frame / `showSystemUi`); otherwise the axis wraps to the
+     * composable's intrinsic size. The `widthDp` / `heightDp` fields of the
+     * returned [SizeSpec] are the *sandbox* dimensions the renderer should
+     * use — for wrapped axes that's [SANDBOX_DP]; for fixed axes it's the
+     * effective dp the frame was resolved to.
+     */
+    fun resolveForRender(
+        device: String?,
+        widthDp: Int?,
+        heightDp: Int?,
+        showSystemUi: Boolean,
+    ): SizeSpec {
+        val w = widthDp?.takeIf { it > 0 }
+        val h = heightDp?.takeIf { it > 0 }
+        // Device / showSystemUi → full device frame on both axes. Explicit
+        // widthDp/heightDp still override the resolved device spec (matches
+        // the existing `resolve()` precedence and AS).
+        if (device != null || showSystemUi) {
+            val spec = resolve(device, w, h)
+            return SizeSpec(
+                widthDp = spec.widthDp,
+                heightDp = spec.heightDp,
+                wrapWidth = false,
+                wrapHeight = false,
+                density = spec.density,
+            )
+        }
+        return SizeSpec(
+            widthDp = w ?: SANDBOX_WIDTH_DP,
+            heightDp = h ?: SANDBOX_HEIGHT_DP,
+            wrapWidth = w == null,
+            wrapHeight = h == null,
+        )
     }
 }
