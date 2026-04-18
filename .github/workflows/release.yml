@@ -56,6 +56,8 @@ jobs:
   # `renderer-android` is published alongside the plugin so external consumers
   # that apply the plugin via GitHub Packages also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
+  # `preview-annotations` ships the `@ScrollingPreview` marker that Compose
+  # apps add to their compileOnly classpath, so it must publish in lockstep.
   publish-gradle-plugin:
     needs: [build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
@@ -82,7 +84,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin and renderer-android to GitHub Packages
+      - name: Publish plugin, renderer-android and preview-annotations to GitHub Packages
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,15 +92,17 @@ jobs:
         run: |
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
-            :renderer-android:publishAllPublicationsToGitHubPackagesRepository
-      - name: Publish plugin and renderer-android to Maven Central
+            :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
+            :preview-annotations:publishAllPublicationsToGitHubPackagesRepository
+      - name: Publish plugin, renderer-android and preview-annotations to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
-            :renderer-android:publishAndReleaseToMavenCentral
+            :renderer-android:publishAndReleaseToMavenCentral \
+            :preview-annotations:publishAndReleaseToMavenCentral
 
   build-cli:
     runs-on: ubuntu-latest

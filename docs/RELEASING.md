@@ -33,7 +33,7 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 
 ### What the `release.yml` workflow does
 
-1. Publishes the **Gradle plugin** (`ee.schimke.composeai:compose-preview-plugin`) and the **Android renderer AAR** (`ee.schimke.composeai:renderer-android`) to **Maven Central** via the Central Portal, and mirrors them to GitHub Packages.
+1. Publishes the **Gradle plugin** (`ee.schimke.composeai:compose-preview-plugin`), the **Android renderer AAR** (`ee.schimke.composeai:renderer-android`), and the **preview annotations** (`ee.schimke.composeai:preview-annotations`) to **Maven Central** via the Central Portal, and mirrors them to GitHub Packages.
 2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
 3. Packages the **VS Code extension** as a `.vsix` file.
 4. Uploads all three artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
