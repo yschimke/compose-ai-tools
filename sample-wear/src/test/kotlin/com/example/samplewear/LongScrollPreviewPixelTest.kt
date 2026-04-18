@@ -78,4 +78,58 @@ class LongScrollPreviewPixelTest {
         assertThat(distance(top, mid)).isGreaterThan(0.5)
         assertThat(distance(mid, bot)).isGreaterThan(0.5)
     }
+
+    /**
+     * Regression for `@ScrollingPreview(reduceMotion = true)`: without Wear's
+     * `LocalReduceMotion` being honoured, `TransformingLazyColumn` items at
+     * viewport edges are captured mid-scale (≈0.55–0.70 of full width) and
+     * reappear in the next slice as narrower ghost cards — the stitcher has
+     * no way to collapse them. Every `TitleCard` in `LongActivityListScreen`
+     * uses `fillMaxWidth()`, so in a correctly-rendered stitched PNG the
+     * distinguishing "scaled but not tiny" width band should be sparsely
+     * populated by antialiasing / EdgeButton curvature, not by whole cards.
+     *
+     * Measured on the fixed render: 4.2% of content rows fall in the
+     * [0.40, 0.70) band. With reduceMotion disabled the same band jumps to
+     * 19.5%. Gate at 10% — ~2.5× headroom above the passing value, ~2×
+     * below the failing value.
+     */
+    @Test
+    fun `LONG preview has no scaled-card ghost rows at slice seams`() {
+        val img = ImageIO.read(longPng)
+        val w = img.width
+        val h = img.height
+
+        var contentRows = 0
+        var scaledCardRows = 0
+        for (y in 0 until h) {
+            var left = -1
+            var right = -1
+            for (x in 0 until w) {
+                val argb = img.getRGB(x, y)
+                val alpha = (argb ushr 24) and 0xff
+                if (alpha == 0) continue // pill-clip transparent margins
+                val r = (argb shr 16) and 0xff
+                val g = (argb shr 8) and 0xff
+                val b = argb and 0xff
+                // Card surfaces / text / EdgeButton all read > 60 summed;
+                // pure-black background reads 0.
+                if (r + g + b > 60) {
+                    if (left < 0) left = x
+                    right = x
+                }
+            }
+            if (left < 0) continue
+            contentRows++
+            val extent = (right - left + 1).toDouble() / w
+            // [0.40, 0.70) isolates "mid-scale TLC items" — narrower than a
+            // full-width card, wider than the EdgeButton's narrow band or
+            // a card's rounded-corner top/bottom rows.
+            if (extent >= 0.40 && extent < 0.70) scaledCardRows++
+        }
+
+        assertThat(contentRows).isGreaterThan(0)
+        val scaledRatio = scaledCardRows.toDouble() / contentRows
+        assertThat(scaledRatio).isLessThan(0.10)
+    }
 }
