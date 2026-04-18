@@ -33,15 +33,33 @@ enum class ScrollAxis {
 }
 
 /**
- * Captured settings from `@ScrollingPreview`. `null` on [PreviewParams.scroll]
- * means the preview opted out of scrolling capture (the default).
+ * Scroll state of a capture. Combines the intent sourced from
+ * `@ScrollingPreview` ([mode], [axis], [maxScrollPx], [reduceMotion]) with the
+ * outcome recorded by the renderer ([atEnd], [reachedPx]). `null` on
+ * [Capture.scroll] means the capture didn't drive any scrollable.
+ *
+ * Result fields default to "not populated" so the plugin-side initial build
+ * can emit this type before the renderer has run; the renderer overwrites
+ * them post-capture (today it doesn't, pending a manifest-rewrite step —
+ * they're here so the JSON shape is stable in advance).
  */
 @Serializable
-data class ScrollSpec(
+data class ScrollCapture(
+    // Intent
     val mode: ScrollMode,
+    val axis: ScrollAxis = ScrollAxis.VERTICAL,
     val maxScrollPx: Int = 0,
     val reduceMotion: Boolean = true,
-    val axis: ScrollAxis = ScrollAxis.VERTICAL,
+    // Outcome
+    /**
+     * `true` when the scrollable reported it was already at the end of its
+     * content before the renderer stopped. Distinct from `reachedPx ==
+     * maxScrollPx`, which signals the user-set cap was hit without
+     * necessarily exhausting the content.
+     */
+    val atEnd: Boolean = false,
+    /** Pixels actually scrolled. `null` when not yet reported. */
+    val reachedPx: Int? = null,
 )
 
 @Serializable
@@ -71,17 +89,28 @@ data class PreviewParams(
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
     val kind: PreviewKind = PreviewKind.COMPOSE,
-    /**
-     * Virtual-time offset to advance `mainClock` by before capture, sourced from
-     * Roborazzi's `@RoboComposePreviewOptions(manualClockOptions = [...])`. `null`
-     * means "use the renderer's default" (a small fixed step). A preview with
-     * `manualClockOptions = [ManualClockOptions(500L), ManualClockOptions(1000L)]`
-     * expands at discovery time into two entries, each carrying one of these
-     * values — one render per variant.
-     */
+)
+
+/**
+ * One rendered snapshot of a preview at a specific point in some dimensional
+ * space. The non-null fields on a [Capture] *are* its dimensions: a static
+ * preview has a single capture with everything null; a
+ * `@RoboComposePreviewOptions`-annotated preview produces N captures differing
+ * only in [advanceTimeMillis]; a `@ScrollingPreview` produces a capture with
+ * [scroll] set; a preview annotated with both produces the cross-product.
+ *
+ * The JSON carries each dimension as a typed field rather than a generic
+ * `dimensions: map` so agent consumers of `previews.json` can read specific
+ * knobs without traversing an untyped structure.
+ */
+@Serializable
+data class Capture(
+    /** `null` → no explicit `mainClock.advanceTimeBy` before capture (renderer applies its default step). */
     val advanceTimeMillis: Long? = null,
-    /** Scrolling-capture settings from `@ScrollingPreview`, if any. */
-    val scroll: ScrollSpec? = null,
+    /** `null` → no scroll drive. */
+    val scroll: ScrollCapture? = null,
+    /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
+    val renderOutput: String = "",
 )
 
 @Serializable
@@ -91,7 +120,12 @@ data class PreviewInfo(
     val className: String,
     val sourceFile: String? = null,
     val params: PreviewParams = PreviewParams(),
-    val renderOutput: String? = null,
+    /**
+     * All snapshots this preview produces. Always at least one element:
+     * a static preview has a single capture with null dimensions; an
+     * animated / scrolled preview can have many.
+     */
+    val captures: List<Capture> = listOf(Capture()),
 )
 
 @Serializable

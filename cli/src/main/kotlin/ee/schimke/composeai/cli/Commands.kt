@@ -25,13 +25,19 @@ data class PreviewParams(
 )
 
 @Serializable
+data class Capture(
+    val advanceTimeMillis: Long? = null,
+    val renderOutput: String = "",
+)
+
+@Serializable
 data class PreviewInfo(
     val id: String,
     val functionName: String,
     val className: String,
     val sourceFile: String? = null,
     val params: PreviewParams = PreviewParams(),
-    val renderOutput: String? = null,
+    val captures: List<Capture> = listOf(Capture()),
 )
 
 @Serializable
@@ -218,7 +224,11 @@ abstract class Command(protected val args: List<String>) {
             val updated = mutableMapOf<String, String>()
 
             for (p in manifest.previews) {
-                val pngFile = p.renderOutput
+                // Hash the first capture's PNG as the preview's
+                // representative. Per-capture change tracking is a future
+                // follow-up; today CLI surfaces one row per preview.
+                val pngFile = p.captures.firstOrNull()?.renderOutput
+                    ?.takeIf { it.isNotEmpty() }
                     ?.let { projectDir.resolve("$module/build/compose-previews/$it").canonicalFile }
                     ?.takeIf { it.exists() }
                 val sha = pngFile?.let { sha256(it.readBytes()) }

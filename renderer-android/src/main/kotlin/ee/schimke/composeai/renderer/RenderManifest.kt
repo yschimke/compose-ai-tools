@@ -23,13 +23,15 @@ enum class ScrollAxis {
     HORIZONTAL,
 }
 
-/** Renderer-side mirror of the plugin's `ScrollSpec`. */
+/** Renderer-side mirror of the plugin's `ScrollCapture`. */
 @Serializable
-data class ScrollSpec(
+data class ScrollCapture(
     val mode: ScrollMode,
+    val axis: ScrollAxis = ScrollAxis.VERTICAL,
     val maxScrollPx: Int = 0,
     val reduceMotion: Boolean = true,
-    val axis: ScrollAxis = ScrollAxis.VERTICAL,
+    val atEnd: Boolean = false,
+    val reachedPx: Int? = null,
 )
 
 @Serializable
@@ -92,7 +94,20 @@ data class RenderPreviewEntry(
     val className: String,
     val sourceFile: String? = null,
     val params: RenderPreviewParams = RenderPreviewParams(),
-    val renderOutput: String? = null,
+    /**
+     * Rendered snapshots produced by this preview. See the plugin-side
+     * `Capture` docs — each entry carries the dimensional values
+     * (`advanceTimeMillis`, `scroll`) that distinguish it from its siblings
+     * and the PNG path it lands at. Always at least one element.
+     */
+    val captures: List<RenderPreviewCapture> = listOf(RenderPreviewCapture()),
+)
+
+@Serializable
+data class RenderPreviewCapture(
+    val advanceTimeMillis: Long? = null,
+    val scroll: ScrollCapture? = null,
+    val renderOutput: String = "",
 )
 
 @Serializable
@@ -118,13 +133,4 @@ data class RenderPreviewParams(
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
     val kind: PreviewKind = PreviewKind.COMPOSE,
-    /**
-     * Virtual-time offset to advance `mainClock` by before capture, sourced from
-     * Roborazzi's `@RoboComposePreviewOptions(manualClockOptions = [...])`. `null`
-     * means use the renderer's default. One entry per `ManualClockOptions` value
-     * is emitted at discovery time.
-     */
-    val advanceTimeMillis: Long? = null,
-    /** Scrolling-capture settings from `@ScrollingPreview`, if any. */
-    val scroll: ScrollSpec? = null,
 )

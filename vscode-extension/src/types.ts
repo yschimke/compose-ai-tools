@@ -12,13 +12,49 @@ export interface PreviewParams {
     group: string | null;
 }
 
+/**
+ * Scroll state of a capture. Intent fields (mode, axis, maxScrollPx,
+ * reduceMotion) come from `@ScrollingPreview`; outcome fields (atEnd,
+ * reachedPx) are populated by the renderer post-capture.
+ */
+export interface ScrollCapture {
+    mode: 'END' | 'LONG' | string;
+    axis: 'VERTICAL' | 'HORIZONTAL' | string;
+    maxScrollPx: number;
+    reduceMotion: boolean;
+    /** Scrollable reached the end of its content before the renderer stopped.
+     *  Distinct from `reachedPx === maxScrollPx`, which means the cap fired. */
+    atEnd: boolean;
+    /** Pixels actually scrolled. null when not reported. */
+    reachedPx: number | null;
+}
+
+/**
+ * One rendered snapshot of a preview. Non-null dimensional fields
+ * (advanceTimeMillis, scroll) are the coordinates that distinguish this
+ * capture from its siblings. A static preview has a single capture with
+ * everything null.
+ */
+export interface Capture {
+    advanceTimeMillis: number | null;
+    scroll: ScrollCapture | null;
+    renderOutput: string;
+    /** Human-readable summary of this capture's non-null dimensions —
+     *  e.g. `'500ms'`, `'scrolled end'`, `'500ms · scrolled end'`, or `''`
+     *  for a plain static preview. Populated extension-side (see
+     *  [captureLabels.captureLabel]) before sending to the webview so the
+     *  carousel markup stays free of dimension logic. */
+    label?: string;
+}
+
 export interface PreviewInfo {
     id: string;
     functionName: string;
     className: string;
     sourceFile: string | null;
     params: PreviewParams;
-    renderOutput: string | null;
+    /** Rendered snapshots — always at least one. Length > 1 ⇔ carousel. */
+    captures: Capture[];
     /** Populated by the extension (not the Gradle manifest) — `true` iff
      *  the preview has at least one archived snapshot on disk. The webview
      *  uses this to decide whether to show the history button at all. */
@@ -98,8 +134,10 @@ export interface HistoryEntry {
 /** Messages from extension to webview */
 export type ExtensionToWebview =
     | { command: 'setPreviews'; previews: PreviewInfo[]; moduleDir: string }
-    | { command: 'updateImage'; previewId: string; imageData: string }
-    | { command: 'setImageError'; previewId: string; message: string }
+    /** `captureIndex` addresses which capture within an animated preview the
+     *  image belongs to. Static previews have a single capture at index 0. */
+    | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
+    | { command: 'setImageError'; previewId: string; captureIndex: number; message: string }
     | { command: 'setLoading'; previewId?: string }
     | { command: 'markAllLoading' }
     | { command: 'setError'; previewId: string; message: string }
