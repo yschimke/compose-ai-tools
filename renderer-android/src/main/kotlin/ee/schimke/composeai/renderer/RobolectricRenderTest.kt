@@ -168,6 +168,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 (params.showSystemUi || params.kind == PreviewKind.TILE),
             locale = params.locale,
             uiMode = params.uiMode,
+            density = params.density,
         )
         // fontScale isn't a Robolectric resource qualifier — it's a
         // Configuration field. `RuntimeEnvironment.setFontScale(Float)` is the
@@ -300,6 +301,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         isRound: Boolean,
         locale: String?,
         uiMode: Int,
+        density: Float?,
     ) {
         val qualifiers = buildList {
             if (!locale.isNullOrBlank()) add(locale)
@@ -314,6 +316,14 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                     android.content.res.Configuration.UI_MODE_NIGHT_YES -> add("night")
                     android.content.res.Configuration.UI_MODE_NIGHT_NO -> add("notnight")
                 }
+            }
+            // `<n>dpi` — same shape sergio-sastre/ComposablePreviewScanner's
+            // RobolectricDeviceQualifierBuilder emits, so output dimensions
+            // match what Studio (and a Roborazzi/scanner-support setup) renders
+            // for the same `@Preview`. Without this Robolectric defaults to
+            // `mdpi` (1.0x) and bitmaps come out smaller than Studio's preview.
+            if (density != null && density > 0f) {
+                add("${(density * 160).toInt()}dpi")
             }
         }
         if (qualifiers.isNotEmpty()) {

@@ -445,7 +445,9 @@ class DiscoveryFunctionalTest {
 
         val phone = manifest.previews.single { it.params.device == "id:pixel_6" }
         assertThat(phone.params.widthDp).isEqualTo(411)
-        assertThat(phone.params.heightDp).isEqualTo(891)
+        // Pixel 6 = 1080x2400 px @ 420dpi → 411x914 dp. (Earlier revisions of
+        // DeviceDimensions used the Pixel 6 Pro height here.)
+        assertThat(phone.params.heightDp).isEqualTo(914)
         assertThat(phone.id).endsWith("_pixel_6")
         assertThat(phone.renderOutput).endsWith("_pixel_6.png")
 

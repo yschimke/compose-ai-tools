@@ -126,9 +126,11 @@ class RenderFunctionalTest {
         assertThat(pngFile).isNotNull()
 
         val img: BufferedImage = ImageIO.read(pngFile!!)
-        // Default dimensions: 400x800 at 2x density = 800x1600
-        assertThat(img.width).isEqualTo(800)
-        assertThat(img.height).isEqualTo(1600)
+        // Default dimensions: 400x800 dp at DEFAULT_DENSITY (2.625x, matching the
+        // xxhdpi-class default Android Studio uses for `@Preview` without a device)
+        // = 1050x2100 px.
+        assertThat(img.width).isEqualTo(1050)
+        assertThat(img.height).isEqualTo(2100)
     }
 
     @Test
