@@ -13,6 +13,10 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 [release-please](https://github.com/googleapis/release-please) watches `main` for conventional-commit history and keeps a release PR up to date. Merging the PR is the only manual step.
 
 1. **Land conventional-commit PRs to `main`.** `fix:`, `feat:`, and `feat!:` / `BREAKING CHANGE` trigger a release. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump, add a `Release-As: 0.3.4` footer to any commit, or run the `Release PR` workflow via `workflow_dispatch`.
+
+   > **PR titles are the commit headlines.** Squash-merge uses the PR title as the commit headline, which is what release-please parses. The [PR Title](../.github/workflows/pr-title.yml) workflow enforces conventional-commit format on every PR so mis-titled PRs can't silently skip a release (as PR #94 did before the 0.6.0 cut). If you _do_ ever end up with a non-conforming commit on `main`, push an empty conventional-commit marker with `git commit --allow-empty -m "feat(...)…"` and release-please will re-scan.
+
+   Requires repo setting **Settings → General → Pull Requests → "Default to pull request title for squash merges"**. The repo-level API field is `squash_merge_commit_title=PR_TITLE` (not the default `COMMIT_OR_PR_TITLE`, which reuses the first commit's headline on single-commit PRs — that's the gap that let #94 through).
 2. **Review the release PR.** Titled `chore(main): release X.Y.Z`. Check the proposed `CHANGELOG.md`, the version bumps in `README.md`, `docs/*.md`, `DoctorCommand.kt`, and `.release-please-manifest.json`. Amend commit messages on `main` if the bump isn't right — the PR updates itself.
 3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + GitHub Release, then invokes `release.yml` to build and upload the artifacts.
 
