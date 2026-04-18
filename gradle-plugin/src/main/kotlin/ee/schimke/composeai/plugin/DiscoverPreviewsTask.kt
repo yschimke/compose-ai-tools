@@ -430,11 +430,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         } else {
             effectiveWidth = rawWidth
             effectiveHeight = rawHeight
-            // `null` → renderer falls back to its built-in default (AS's
-            // xxhdpi-ish `DEFAULT_DENSITY`). Avoid pinning the density here so
-            // a wrap-content preview behaves the same as AS's default-phone
-            // preview without baking a specific dpi into `previews.json`.
-            effectiveDensity = null
+            // Pin Android Studio's default preview density (xxhdpi-ish, 420dpi
+            // → 2.625x). Without this the Robolectric renderer defaults to
+            // mdpi (1.0x), which is fine at the PNG level but fuzzy in the VS
+            // Code tile grid: tiles have a `max-width: 180px`, so a 100-dp
+            // composable that produced a 100-px PNG under mdpi gets upscaled
+            // and looks blurry next to device-based previews rendered at
+            // their native densities. Pinning here keeps wrap-content
+            // previews at the same pixel density as both the Desktop
+            // renderer and Studio's own preview pane.
+            effectiveDensity = DeviceDimensions.DEFAULT_DENSITY
         }
         return PreviewParams(
             name = (pv.getValue("name") as? String)?.ifBlank { null },
