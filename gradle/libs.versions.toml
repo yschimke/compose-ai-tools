@@ -4,6 +4,15 @@ agp = "9.1.0"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
 compose-bom = "2026.03.01"
+# renderer-android compiles its public API surface against this OLDER BOM so
+# the emitted bytecode only references Compose 1.9.x method signatures.
+# AndroidX honours binary-backward-compatibility within a major version, so
+# consumer apps on any Compose 1.9+ runtime (including the current 1.10.x /
+# 1.11.x BOMs) can invoke it without NoSuchMethodError. When bumping this,
+# check `./gradlew :renderer-android:compileKotlin` against the new floor.
+# 2025.11.01 pins compose-ui AND compose-runtime to 1.9.5 — latest 1.9.x
+# release line. See https://developer.android.com/develop/ui/compose/bom/bom-mapping
+compose-bom-compat = "2025.11.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
 wear-compose = "1.6.0"
@@ -20,6 +29,7 @@ maven-publish = "0.36.0"
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-bom-compat = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-compat" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }

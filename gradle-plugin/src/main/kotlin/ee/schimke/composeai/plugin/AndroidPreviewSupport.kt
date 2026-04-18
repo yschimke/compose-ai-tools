@@ -19,6 +19,22 @@ import org.gradle.api.tasks.testing.Test
  * `pluginManager.withPlugin("com.android.application" / "com.android.library")`.
  */
 internal object AndroidPreviewSupport {
+    /**
+     * Modules within `androidx.wear.tiles` whose presence in a consumer's
+     * declared deps signals "this project writes Tile previews." When any
+     * match, [configure] injects `wear.tiles:tiles-renderer` into the
+     * consumer's variant `implementation` so AGP generates R classes for
+     * protolayout-renderer — the class TilePreviewRenderer reflectively
+     * needs at render time. See the `afterEvaluate` block in
+     * [registerAndroidTasks] for the full rationale.
+     */
+    private val tilesSignalNames = setOf(
+        "tiles",
+        "tiles-renderer",
+        "tiles-tooling-preview",
+        "tiles-tooling",
+    )
+
     fun configure(project: Project, extension: PreviewExtension) {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
@@ -128,6 +144,54 @@ internal object AndroidPreviewSupport {
             "androidx.compose.ui:ui-test-junit4",
         )
 
+        // Conditionally inject `androidx.wear.tiles:tiles-renderer` into the
+        // consumer's variant `implementation` when the consumer signals they
+        // want Tile previews. Detection is deferred to `afterEvaluate` so the
+        // consumer's declared deps are complete.
+        //
+        // Why we inject at all: TilePreviewRenderer.renderTileInto calls
+        // `TileRenderer(...)`, whose constructor builds `ProtoLayoutThemeImpl`
+        // which holds a Java reference to
+        // `androidx.wear.protolayout.renderer.R$style.ProtoLayoutBaseTheme`.
+        // That R class is only compiled into the consumer's merged R.jar when
+        // `wear.tiles:tiles-renderer` is on the MAIN compile classpath —
+        // `testImplementation` and `compileOnly` don't participate in AGP's R
+        // class generation. Consumer apps shouldn't have to restate a purely
+        // preview-rendering dep in their main `implementation`.
+        //
+        // Why the signal is "tiles-tooling-preview / tiles-renderer / tiles":
+        // these are the modules a consumer actually declares when they write
+        // `@Preview`-annotated tile functions. Horologist projects go through
+        // `horologist-tiles` so we include that too.
+        //
+        // No version — the consumer's wear.tiles atomic group constrains
+        // `tiles-renderer` to their wear.tiles version. When the detection
+        // misfires in a non-tiles project (shouldn't happen under the
+        // heuristic above), Gradle fails with a clear "no version for
+        // tiles-renderer" error.
+        project.afterEvaluate {
+            val hasTilesSignal = sequenceOf(
+                "implementation",
+                "${variantName}Implementation",
+                "debugImplementation",
+                "releaseImplementation",
+                "testImplementation",
+                "${variantName}UnitTestImplementation",
+            )
+                .mapNotNull(project.configurations::findByName)
+                .flatMap { it.allDependencies.asSequence() }
+                .any { dep ->
+                    (dep.group == "androidx.wear.tiles" && dep.name in tilesSignalNames) ||
+                        (dep.group == "com.google.android.horologist" && dep.name == "horologist-tiles")
+                }
+            if (hasTilesSignal) {
+                project.dependencies.add(
+                    "${variantName}Implementation",
+                    "androidx.wear.tiles:tiles-renderer",
+                )
+            }
+        }
+
         val artifactType = Attribute.of("artifactType", String::class.java)
         val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
 
@@ -229,6 +293,22 @@ internal object AndroidPreviewSupport {
             "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
         )
 
+        // Generates `ee/schimke/composeai/renderer/robolectric.properties`
+        // onto the render classpath so Robolectric overrides the consumer's
+        // `Application` with a stub by default — see
+        // [GenerateRobolectricPropertiesTask] for rationale and the opt-out.
+        val robolectricPropertiesDir = project.layout.buildDirectory
+            .dir("generated/composeai/robolectric/$variantName")
+        val generateRobolectricPropertiesTask = project.tasks.register(
+            "generateRobolectricProperties",
+            GenerateRobolectricPropertiesTask::class.java,
+        ) {
+            group = "compose preview"
+            description = "Generate package-level robolectric.properties for renderPreviews"
+            useConsumerApplication.set(extension.useConsumerApplication)
+            outputDir.set(robolectricPropertiesDir)
+        }
+
         // Renderer classpath FIRST — renderer depends on kotlinx-serialization
         // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
         // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
@@ -236,6 +316,12 @@ internal object AndroidPreviewSupport {
         // classload time. Putting the renderer's dependencies first ensures the
         // test code gets the versions it was compiled against.
         val resolvedClasspath = project.files().apply {
+            // Robolectric properties dir BEFORE consumer test resources so our
+            // Application override wins when classloader.getResource walks the
+            // classpath. Consumers with their own `robolectric.properties` at
+            // the same package path are unusual — they'd need it specifically
+            // for this renderer's test class.
+            from(generateRobolectricPropertiesTask.flatMap { it.outputDir })
             from(rendererConfig.incoming.artifactView {
                 attributes.attribute(artifactType, "jar")
             }.files)
@@ -411,6 +497,7 @@ internal object AndroidPreviewSupport {
             outputs.dir(rendersDirectory).withPropertyName("rendersDir")
 
             dependsOn(discoverTask)
+            dependsOn(generateRobolectricPropertiesTask)
             if (useLocalRenderer) {
                 dependsOn(":renderer-android:compile${capVariant}Kotlin")
             }

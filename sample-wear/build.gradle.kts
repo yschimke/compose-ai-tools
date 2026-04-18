@@ -48,9 +48,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
-    // rendered via TilePreviewRenderer in renderer-android.
+    // rendered via TilePreviewRenderer in renderer-android. `wear.tiles.renderer`
+    // is deliberately NOT declared here — the plugin injects it when the
+    // consumer's variant runtime classpath already includes `androidx.wear.tiles:tiles`,
+    // so consumer apps don't need to restate this preview-only dependency.
     implementation(libs.wear.tiles)
-    implementation(libs.wear.tiles.renderer)
     implementation(libs.wear.tiles.tooling.preview)
     implementation(libs.wear.protolayout)
     implementation(libs.wear.protolayout.expression)

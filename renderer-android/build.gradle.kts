@@ -66,7 +66,23 @@ dependencies {
     // need actual runtime classes. The plugin separately injects ui-test-manifest
     // into the consumer's `testImplementation` in AndroidPreviewSupport so its
     // `ComponentActivity` entry lands in the consumer's merged test manifest.
-    compileOnly(platform(libs.compose.bom))
+    //
+    // We compile against the OLDER `compose-bom-compat` rather than the
+    // top-level `compose-bom`. Rationale: AndroidX honours binary-backward-
+    // compatibility within a major version, so bytecode emitted against a
+    // 1.9.x API surface runs unchanged on consumer apps at 1.10.x / 1.11.x
+    // (where we've confirmed all referenced methods still exist). The
+    // reverse — compiling against 1.10.x — emits calls like
+    // `Updater.init-impl(Composer, Object, Function2)` that didn't exist
+    // before 1.10.2, so consumers pinned to older Compose BOMs fail with
+    // NoSuchMethodError at render time. Our own unit tests use the same
+    // compat BOM (not the latest) so accidentally reaching for a 1.10-only
+    // API fails at our compile step, not at a downstream consumer's.
+    //
+    // `LocalScrollCaptureInProgress` (compose-ui ≥ 1.7) is looked up
+    // reflectively via [ScrollCaptureInProgressLocal] — a null return
+    // degrades scroll-capture to a no-op for consumers on even older Compose.
+    compileOnly(platform(libs.compose.bom.compat))
     compileOnly(libs.compose.ui)
     compileOnly(libs.compose.foundation)
     compileOnly(libs.compose.material3)
@@ -76,7 +92,7 @@ dependencies {
     compileOnly("androidx.compose.ui:ui-test-junit4")
     compileOnly("androidx.compose.ui:ui-test-manifest")
 
-    testImplementation(platform(libs.compose.bom))
+    testImplementation(platform(libs.compose.bom.compat))
     testImplementation(libs.compose.ui)
     testImplementation(libs.compose.foundation)
     testImplementation(libs.compose.material3)
