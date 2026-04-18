@@ -50,5 +50,9 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.foundation)
     implementation(libs.activity.compose)
+    // Roborazzi's per-preview clock control annotation. Source-retained
+    // metadata read by `DiscoverPreviewsTask` — the annotation itself has no
+    // runtime behaviour in production builds.
+    implementation(libs.roborazzi.annotations)
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -78,4 +78,11 @@ data class RenderPreviewParams(
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
     val kind: PreviewKind = PreviewKind.COMPOSE,
+    /**
+     * Virtual-time offset to advance `mainClock` by before capture, sourced from
+     * Roborazzi's `@RoboComposePreviewOptions(manualClockOptions = [...])`. `null`
+     * means use the renderer's default. One entry per `ManualClockOptions` value
+     * is emitted at discovery time.
+     */
+    val advanceTimeMillis: Long? = null,
 )

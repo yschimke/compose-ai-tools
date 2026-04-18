@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.annotations.ManualClockOptions
+import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
@@ -70,6 +72,32 @@ fun GreetingPreview() {
 @Preview(name = "Loading Spinner", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Composable
 fun LoadingPreview() {
+    MaterialTheme {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Text("Loading...")
+        }
+    }
+}
+
+/**
+ * Demonstrates `@RoboComposePreviewOptions`: the same preview captured at three
+ * distinct points along the infinite animation timeline. Each entry in
+ * `manualClockOptions` fans out into its own manifest entry / PNG, suffixed
+ * `_TIME_<ms>ms`. Useful for reviewing how a spinner looks at frame 0 vs
+ * mid-rotation vs a settled-ish point — the kind of thing you'd want a
+ * reviewer to see in a diff.
+ */
+@Preview(name = "Spinner Timeline", showBackground = true, backgroundColor = 0xFFFFFFFF)
+@RoboComposePreviewOptions(
+    manualClockOptions = [
+        ManualClockOptions(advanceTimeMillis = 0L),
+        ManualClockOptions(advanceTimeMillis = 500L),
+        ManualClockOptions(advanceTimeMillis = 1500L),
+    ],
+)
+@Composable
+fun SpinnerTimelinePreview() {
     MaterialTheme {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()

@@ -71,6 +71,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
 
         internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
+
+        // Roborazzi's per-preview clock control. Opt-in: presence of the
+        // annotation on a @Preview method fans out one extra manifest entry
+        // per `ManualClockOptions.advanceTimeMillis` value, with filename
+        // suffix `_TIME_<ms>ms`. Absent → single entry with null timing
+        // (renderer falls back to its default CAPTURE_ADVANCE_MS).
+        //
+        // Shipped by `io.github.takahirom.roborazzi:roborazzi-annotations`.
+        // We never load the class — ClassGraph reads the annotation and its
+        // nested `ManualClockOptions` entries by descriptor, so the plugin
+        // itself doesn't need a compile-time dep.
+        private const val ROBO_COMPOSE_PREVIEW_OPTIONS_FQN =
+            "com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions"
     }
 
     @TaskAction
@@ -137,6 +150,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         if (p.uiMode != 0) parts.add("uiMode=${p.uiMode}")
         p.locale?.let(parts::add)
         p.group?.let { parts.add("group=$it") }
+        p.advanceTimeMillis?.let { parts.add("t=${it}ms") }
         return if (parts.isEmpty()) "" else "  [" + parts.joinToString(" · ") + "]"
     }
 
@@ -150,11 +164,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // @PreviewWrapper is non-repeatable and applies to every @Preview on the
         // function (including expansions from multi-preview meta-annotations).
         val wrapperFqn = extractWrapperFqn(annotations)
+        // @RoboComposePreviewOptions, similarly, applies to the function as a
+        // whole — each timing fans out into its own manifest entry, orthogonal
+        // to any multi-preview expansion.
+        val timings = extractRoboTimings(annotations)
 
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn))
+                addPreviewsForTimings(classInfo, method, ann, wrapperFqn, timings, previews)
             }
             return
         }
@@ -162,9 +180,53 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn))
+                addPreviewsForTimings(classInfo, method, resolvedAnn, wrapperFqn, timings, previews)
             }
         }
+    }
+
+    private fun addPreviewsForTimings(
+        classInfo: ClassInfo,
+        method: MethodInfo,
+        ann: AnnotationInfo,
+        wrapperFqn: String?,
+        timings: List<Long>,
+        previews: MutableList<PreviewInfo>,
+    ) {
+        // Tile previews don't go through `mainClock` — the renderer inflates a
+        // View via `TileRenderer` and has no Compose animation clock to advance.
+        // Applying a clock-time fan-out would produce N identical PNGs. Treat
+        // the annotation as a no-op on tiles.
+        val applicable = timings.takeIf { ann.name != TILE_PREVIEW_FQN }.orEmpty()
+        if (applicable.isEmpty()) {
+            previews.add(makePreview(classInfo, method, ann, wrapperFqn, advanceTimeMillis = null))
+        } else {
+            for (ms in applicable) {
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, advanceTimeMillis = ms))
+            }
+        }
+    }
+
+    // Reads `@RoboComposePreviewOptions(manualClockOptions = [...])` on the
+    // preview function and returns the `advanceTimeMillis` of each entry.
+    // Empty list if the annotation is absent OR present with no entries — the
+    // latter is equivalent to "default" per Roborazzi's own scanner-support
+    // behaviour. ClassGraph surfaces `manualClockOptions` as an
+    // Object[] of `AnnotationInfo` because the field type is `Array<ManualClockOptions>`.
+    private fun extractRoboTimings(annotations: List<AnnotationInfo>): List<Long> {
+        val ann = annotations.firstOrNull { it.name == ROBO_COMPOSE_PREVIEW_OPTIONS_FQN } ?: return emptyList()
+        val raw = ann.parameterValues.getValue("manualClockOptions") ?: return emptyList()
+        val items = when (raw) {
+            is Array<*> -> raw.filterIsInstance<AnnotationInfo>()
+            is AnnotationInfo -> listOf(raw)
+            else -> {
+                // Some ClassGraph versions hand back a typed primitive array or
+                // Kotlin wrapper — fall back to reflective iteration.
+                val len = runCatching { java.lang.reflect.Array.getLength(raw) }.getOrNull() ?: 0
+                (0 until len).mapNotNull { java.lang.reflect.Array.get(raw, it) as? AnnotationInfo }
+            }
+        }
+        return items.mapNotNull { it.parameterValues.getValue("advanceTimeMillis") as? Long }
     }
 
     private fun extractWrapperFqn(annotations: List<AnnotationInfo>): String? {
@@ -233,17 +295,24 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         method: MethodInfo,
         ann: AnnotationInfo,
         wrapperClassName: String?,
+        advanceTimeMillis: Long?,
     ): PreviewInfo {
         val params = extractPreviewParams(ann, wrapperClassName)
+            .copy(advanceTimeMillis = advanceTimeMillis)
         val fqn = "${classInfo.name}.${method.name}"
-        val suffix = buildVariantSuffix(params)
+        val baseSuffix = buildVariantSuffix(params)
+        // Match Roborazzi's own compose-preview-scanner-support filename
+        // convention (`_TIME_<ms>ms`) so tooling that sits on top of either
+        // pipeline groups variants the same way.
+        val timeSuffix = advanceTimeMillis?.let { "_TIME_${it}ms" }.orEmpty()
+        val id = fqn + baseSuffix + timeSuffix
         return PreviewInfo(
-            id = fqn + suffix,
+            id = id,
             functionName = method.name,
             className = classInfo.name,
             sourceFile = packageQualifiedSourcePath(classInfo),
             params = params,
-            renderOutput = "renders/${fqn}${suffix}.png",
+            renderOutput = "renders/${id}.png",
         )
     }
 
