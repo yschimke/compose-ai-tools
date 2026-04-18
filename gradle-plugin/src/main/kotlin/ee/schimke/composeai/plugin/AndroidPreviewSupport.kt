@@ -359,15 +359,6 @@ internal object AndroidPreviewSupport {
             // unless the expected baseline exists). Force "record" so every run
             // writes fresh PNGs.
             systemProperty("roborazzi.test.record", "true")
-            // `ui-test-manifest` declares ComponentActivity with the framework
-            // default theme, which on compileSdk >= 35 still includes an
-            // ActionBar. Roborazzi 1.59+ detects this and applies a runtime
-            // hide-ActionBar workaround per render (layout invalidation plus a
-            // noisy warning on every preview). We capture via `onRoot()` — the
-            // compose tree, not the decor view — so the ActionBar never ends
-            // up in output PNGs regardless of whether it's hidden. Opt out of
-            // the workaround entirely.
-            systemProperty("roborazzi.compose.actionbar.overlap.fix", "false")
 
             systemProperty("composeai.render.manifest", manifestFile.get())
             systemProperty("composeai.render.outputDir", rendersDir.get())
