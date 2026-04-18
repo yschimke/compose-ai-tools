@@ -13,7 +13,7 @@ group = "ee.schimke.composeai"
 // at the outer repo root (this project is loaded as an included build, so
 // its own rootDir is `gradle-plugin/` — walk up one level).
 version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: run {
-    val manifest = rootDir.resolve("../.release-please-manifest.json").readText()
+    val manifest = rootDir.parentFile.resolve(".release-please-manifest.json").readText()
     val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
     val (major, minor, patch) = current.split(".").map { it.toInt() }
     "$major.$minor.${patch + 1}-SNAPSHOT"

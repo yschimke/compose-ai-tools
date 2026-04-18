@@ -5,9 +5,12 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
@@ -26,6 +29,10 @@ import org.gradle.work.DisableCachingByDefault
  *
  * Cheap to run: resolves the two configurations' `resolutionResult` (no
  * artifact downloads), applies rules, writes a small JSON file.
+ *
+ * Configuration-cache safe: the runtime classpath `ResolutionResult`s are
+ * wired in as `Provider<ResolvedComponentResult>` at registration time so
+ * the action never reaches back to `task.project`.
  */
 @DisableCachingByDefault(because = "Doctor findings depend on the live configuration resolution, not on a declared input set — caching across a version bump would silently stale-surface fixed issues.")
 abstract class ComposePreviewDoctorTask : DefaultTask() {
@@ -36,14 +43,20 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
     @get:Input
     abstract val modulePath: Property<String>
 
+    @get:Internal
+    abstract val mainRuntimeRoot: Property<ResolvedComponentResult>
+
+    @get:Internal
+    abstract val testRuntimeRoot: Property<ResolvedComponentResult>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
     @TaskAction
     fun run() {
         val variantName = variant.get()
-        val main = resolveConfiguration("${variantName}RuntimeClasspath")
-        val test = resolveConfiguration("${variantName}UnitTestRuntimeClasspath")
+        val main = collectModuleVersions(mainRuntimeRoot.orNull)
+        val test = collectModuleVersions(testRuntimeRoot.orNull)
         val findings = CompatRules.evaluate(main, test)
         val report = DoctorModuleReport(
             schema = SCHEMA,
@@ -67,22 +80,25 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         logger.lifecycle("Wrote compose-preview doctor report for ${modulePath.get()}: ${findings.size} finding(s) → ${out.path}")
     }
 
-    private fun resolveConfiguration(name: String): Map<String, String> {
-        val config = project.configurations.findByName(name) ?: return emptyMap()
-        if (!config.isCanBeResolved) return emptyMap()
-        return try {
-            val out = LinkedHashMap<String, String>()
-            for (dep in config.incoming.resolutionResult.allDependencies) {
-                val resolved = dep as? org.gradle.api.artifacts.result.ResolvedDependencyResult ?: continue
-                val id = resolved.selected.id
-                if (id is ModuleComponentIdentifier) {
-                    out.putIfAbsent("${id.group}:${id.module}", id.version)
-                }
+    private fun collectModuleVersions(root: ResolvedComponentResult?): Map<String, String> {
+        if (root == null) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        val seen = HashSet<ResolvedComponentResult>()
+        val stack = ArrayDeque<ResolvedComponentResult>()
+        stack.addLast(root)
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (!seen.add(node)) continue
+            val id = node.id
+            if (id is ModuleComponentIdentifier) {
+                out.putIfAbsent("${id.group}:${id.module}", id.version)
             }
-            out
-        } catch (_: Throwable) {
-            emptyMap()
+            for (dep in node.dependencies) {
+                val resolved = dep as? ResolvedDependencyResult ?: continue
+                stack.addLast(resolved.selected)
+            }
         }
+        return out
     }
 
     companion object {

@@ -74,12 +74,24 @@ internal object AndroidPreviewSupport {
         // — specifically the VS Code extension — do. Same JSON schema as
         // `compose-preview doctor --json`'s per-module shape, so both
         // surfaces converge on one contract.
+        // Resolve the runtime classpaths' root components at configuration
+        // time so the task action stays config-cache safe (no `task.project`
+        // access at execution). `findByName` may return null on variants that
+        // don't have a paired unit-test classpath; the task tolerates an
+        // unset Property as "no deps to inspect".
+        val mainRuntimeRoot = project.configurations.findByName("${variantName}RuntimeClasspath")
+            ?.incoming?.resolutionResult?.rootComponent
+        val testRuntimeRoot = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
+            ?.incoming?.resolutionResult?.rootComponent
+
         project.tasks.register("composePreviewDoctor", ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java) {
             group = "compose preview"
             description = "Write compose-preview doctor findings to build/compose-previews/doctor.json"
             this.variant.set(variantName)
             this.modulePath.set(project.path)
             this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
+            mainRuntimeRoot?.let { this.mainRuntimeRoot.set(it) }
+            testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
         }
 
         // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
