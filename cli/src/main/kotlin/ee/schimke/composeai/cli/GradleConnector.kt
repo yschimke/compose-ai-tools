@@ -181,6 +181,47 @@ class GradleConnection(
     }
 
     /**
+     * Fetch a Tooling API model registered by the applied plugin. Returns
+     * `null` if the model isn't registered (plugin not applied, or version
+     * predates the model) or if the Gradle connection fails — callers fold
+     * both into "skip project-scope checks" rather than erroring.
+     *
+     * The plugin-side model FQN and the [modelClass] passed here must match;
+     * see `ComposePreviewModel.kt` on both sides for the contract.
+     */
+    fun <R> runBuildAction(action: org.gradle.tooling.BuildAction<R>, timeoutSeconds: Long = 60): R? {
+        val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
+        val timer = java.util.Timer(true).apply {
+            schedule(object : java.util.TimerTask() {
+                override fun run() { tokenSource.cancel() }
+            }, timeoutSeconds * 1000)
+        }
+        return try {
+            connection.action(action)
+                .withCancellationToken(tokenSource.token())
+                .apply {
+                    if (verbose) {
+                        setStandardOutput(System.err)
+                        setStandardError(System.err)
+                    } else {
+                        setStandardOutput(NullOutputStream)
+                        setStandardError(NullOutputStream)
+                    }
+                }
+                .run()
+        } catch (e: org.gradle.tooling.GradleConnectionException) {
+            if (verbose) System.err.println("Gradle connection failed: ${e.message}")
+            null
+        } catch (e: org.gradle.tooling.BuildException) {
+            if (verbose) System.err.println("Build action failed: ${e.message}")
+            null
+        } finally {
+            timer.cancel()
+            tokenSource.cancel()
+        }
+    }
+
+    /**
      * Find all subprojects that have a `discoverPreviews` task — these have the
      * compose-ai-tools plugin applied.
      */
