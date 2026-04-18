@@ -12,6 +12,7 @@ import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -317,40 +318,55 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                         currentTime = target
                     }
 
-                    // @ScrollingPreview: drive the first scrollable on the
-                    // requested axis to the end of its content before the
-                    // snapshot. Both ScrollMode values capture the end-state
-                    // for now — true long-scroll stitching lands in a
-                    // follow-up; the manifest field stays stable across that
-                    // transition.
-                    capture.scroll?.let { scroll ->
-                        val result = driveScrollToEnd(
-                            rule = rule,
-                            axis = scroll.axis,
-                            maxScrollPx = scroll.maxScrollPx,
-                        )
-                        if (result is ScrollDriveResult.NoScrollable) {
-                            System.err.println(
-                                "@ScrollingPreview on '${preview.id}' but no scrollable " +
-                                    "composable found on axis ${scroll.axis} — capturing initial frame.",
-                            )
-                        }
-                    }
-
+                    // @ScrollingPreview(END): drive the first scrollable on the
+                    // requested axis to the end of its content before a single
+                    // capture.
+                    // @ScrollingPreview(LONG): stitched capture — one slice per
+                    // viewport-height of scroll, then Java2D-stitched into one
+                    // tall PNG with an optional Wear pill clip. See
+                    // [handleLongCapture].
                     val outputFile = outputFileFor(capture, outputDir)
                     outputFile.parentFile?.mkdirs()
-                    onRoot.captureRoboImage(
-                        file = outputFile,
-                        roborazziOptions = roborazziOptions,
-                    )
+
+                    val scroll = capture.scroll
+                    val longHandled = scroll != null &&
+                        scroll.mode == ScrollMode.LONG &&
+                        scroll.axis == ScrollAxis.VERTICAL &&
+                        handleLongCapture(
+                            rule = rule,
+                            scroll = scroll,
+                            previewId = preview.id,
+                            heightDp = heightDp,
+                            isRound = isRoundDevice(params.device) &&
+                                (params.showSystemUi || params.kind == PreviewKind.TILE),
+                            outputFile = outputFile,
+                        )
+
+                    if (!longHandled) {
+                        if (scroll != null) {
+                            val result = driveScrollToEnd(
+                                rule = rule,
+                                axis = scroll.axis,
+                                maxScrollPx = scroll.maxScrollPx,
+                            )
+                            if (result is ScrollDriveResult.NoScrollable) {
+                                System.err.println(
+                                    "@ScrollingPreview on '${preview.id}' but no scrollable " +
+                                        "composable found on axis ${scroll.axis} — capturing initial frame.",
+                                )
+                            }
+                        }
+                        onRoot.captureRoboImage(
+                            file = outputFile,
+                            roborazziOptions = roborazziOptions,
+                        )
+                    }
 
                     // AS-parity: crop the PNG down to the composable's
-                    // intrinsic size on wrapped axes. `measured` is populated
-                    // during the wrap Box's Modifier.layout measure pass on the
-                    // first composition and doesn't change between captures
-                    // (the wrapped axes stay the same), so it's safe to apply
-                    // per-capture here.
-                    if ((wrapWidth || wrapHeight) && measured != null) {
+                    // intrinsic size on wrapped axes. Skipped for stitched
+                    // LONG output — that PNG's dimensions are the stitched
+                    // scroll extent, not the composable's intrinsic box.
+                    if (!longHandled && (wrapWidth || wrapHeight) && measured != null) {
                         cropPngTopLeft(
                             file = outputFile,
                             wrapWidth = wrapWidth,
@@ -502,6 +518,73 @@ private fun cropPngTopLeft(
     if (cropW == original.width && cropH == original.height) return
     val cropped = original.getSubimage(0, 0, cropW, cropH)
     javax.imageio.ImageIO.write(cropped, "PNG", file)
+}
+
+/**
+ * Handles `@ScrollingPreview(mode = LONG)` captures. Drives the first
+ * scrollable on [ScrollCapture.axis] by one viewport-height per step via
+ * [driveScrollByViewport], captures each slice to a temp PNG with per-slice
+ * round crop DISABLED, and Java2D-stitches them via [stitchSlices].
+ *
+ * For round Wear devices ([isRound] = true), the stitched output gets a
+ * `capsule` clip — half-circle at the very top, rectangular middle,
+ * half-circle at the very bottom ([applyWearPillClip]) — so the captured
+ * scroll preserves the round screen edge at the first and last frames.
+ *
+ * Returns `true` when [outputFile] was written; `false` to let the caller
+ * fall through to END-style single capture (e.g. when no scrollable matched).
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+private fun handleLongCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    scroll: ScrollCapture,
+    previewId: String,
+    heightDp: Int,
+    isRound: Boolean,
+    outputFile: File,
+): Boolean {
+    val density = rule.activity.resources.displayMetrics.density
+    val viewportLayoutPx = (heightDp * density).toInt().coerceAtLeast(1)
+    val slicesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_slices")
+    slicesDir.deleteRecursively()
+    slicesDir.mkdirs()
+
+    // For stitched capture on round devices, suppress per-slice round crop —
+    // otherwise every slice has a circle cut out of it and the stitched output
+    // has scalloped scallops down the middle. We apply a capsule clip after
+    // stitching instead.
+    val sliceRoborazziOptions = RoborazziOptions(
+        recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = false),
+    )
+
+    val slices = mutableListOf<SliceCapture>()
+    try {
+        val result = driveScrollByViewport(
+            rule = rule,
+            axis = scroll.axis,
+            stepPx = viewportLayoutPx.toFloat(),
+            maxScrollPx = scroll.maxScrollPx,
+        ) { scrolledPx ->
+            val sliceFile = File(slicesDir, "slice_${slices.size}.png")
+            rule.onRoot().captureRoboImage(file = sliceFile, roborazziOptions = sliceRoborazziOptions)
+            slices += SliceCapture(scrolledPx, sliceFile)
+        }
+        if (result is ScrollDriveResult.NoScrollable) {
+            System.err.println(
+                "@ScrollingPreview(LONG) on '$previewId': no scrollable composable — falling through.",
+            )
+            return false
+        }
+        if (slices.isEmpty()) return false
+        stitchSlices(slices, viewportLayoutPx, outputFile) ?: return false
+        if (isRound) applyWearPillClip(outputFile)
+        System.err.println(
+            "@ScrollingPreview(LONG) on '$previewId': stitched ${slices.size} slices.",
+        )
+        return true
+    } finally {
+        slicesDir.deleteRecursively()
+    }
 }
 
 /**

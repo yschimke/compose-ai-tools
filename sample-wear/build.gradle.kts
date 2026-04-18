@@ -56,4 +56,19 @@ dependencies {
     implementation(libs.wear.protolayout.expression)
     implementation(libs.wear.protolayout.material3)
     implementation(libs.wear.tooling.preview)
+    // `@ScrollingPreview` — read by FQN at discovery time; no runtime cost.
+    implementation(project(":preview-annotations"))
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+}
+
+// `LongScrollPreviewPixelTest` reads PNGs produced by `renderAllPreviews`.
+// Same dependency wiring as sample-android's pixel tests; targets the AGP
+// unit-test tasks by name so we don't include the plugin's own `renderPreviews`
+// Test task (which would create a circular dep).
+afterEvaluate {
+    listOf("testDebugUnitTest", "testReleaseUnitTest").forEach { name ->
+        tasks.findByName(name)?.dependsOn("renderAllPreviews")
+    }
 }

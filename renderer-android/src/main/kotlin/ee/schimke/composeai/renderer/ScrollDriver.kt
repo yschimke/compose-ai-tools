@@ -73,6 +73,70 @@ internal fun driveScrollToEnd(
     return ScrollDriveResult.IterationCapReached(scrolledPx)
 }
 
+/**
+ * Drives a scrollable by exactly [stepPx] per iteration and invokes
+ * [onSlice] with the cumulative scrolled pixel count once at offset 0
+ * (before the first scroll) and again after each successful step. Used
+ * by the `LONG` scroll-capture path to take one screenshot per viewport-
+ * height of content, which the caller then stitches into one tall PNG.
+ *
+ * Differs from [driveScrollToEnd] in that each step is a fixed size, not
+ * "all remaining" — the caller wants a slice per viewport, not a single
+ * jump to the bottom.
+ */
+@Suppress("LongParameterList")
+internal fun driveScrollByViewport(
+    rule: AndroidComposeTestRule<*, *>,
+    axis: ScrollAxis,
+    stepPx: Float,
+    maxScrollPx: Int,
+    maxIterations: Int = DEFAULT_MAX_ITERATIONS,
+    advanceMsPerStep: Long = DEFAULT_ADVANCE_MS_PER_STEP,
+    onSlice: (scrolledPx: Float) -> Unit,
+): ScrollDriveResult {
+    require(stepPx > 0f) { "stepPx must be positive, got $stepPx" }
+
+    val axisKey = when (axis) {
+        ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
+        ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
+    }
+    val scrollables = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
+    if (scrollables.isEmpty()) return ScrollDriveResult.NoScrollable
+
+    val interaction = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))[0]
+    val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
+
+    // First slice captures the initial (unscrolled) frame.
+    onSlice(0f)
+
+    var scrolledPx = 0f
+    repeat(maxIterations) {
+        val node = interaction.fetchSemanticsNode()
+        val range: ScrollAxisRange = node.config.getOrNull(axisKey)
+            ?: return ScrollDriveResult.Completed(scrolledPx)
+        val scrollByAction = node.config.getOrNull(SemanticsActions.ScrollBy)?.action
+            ?: return ScrollDriveResult.Completed(scrolledPx)
+
+        val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
+        if (remaining <= SETTLED_EPSILON_PX) return ScrollDriveResult.Completed(scrolledPx)
+
+        val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+        if (headroom <= SETTLED_EPSILON_PX) return ScrollDriveResult.CapReached(scrolledPx)
+
+        val step = minOf(stepPx, remaining, headroom)
+        val (dx, dy) = when (axis) {
+            ScrollAxis.VERTICAL -> 0f to step
+            ScrollAxis.HORIZONTAL -> step to 0f
+        }
+        scrollByAction.invoke(dx, dy)
+        scrolledPx += step
+        rule.mainClock.advanceTimeBy(advanceMsPerStep)
+
+        onSlice(scrolledPx)
+    }
+    return ScrollDriveResult.IterationCapReached(scrolledPx)
+}
+
 internal sealed interface ScrollDriveResult {
     /** No scrollable composable found on the requested axis. */
     data object NoScrollable : ScrollDriveResult
