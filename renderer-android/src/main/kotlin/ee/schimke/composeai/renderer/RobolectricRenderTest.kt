@@ -613,10 +613,14 @@ private fun handleLongCapture(
 
     val slices = mutableListOf<SliceCapture>()
     try {
+        // Drive at 80% of the viewport so each consecutive slice pair has a
+        // ~20% physical overlap for the content-aware stitcher to lock onto.
+        // The stitcher uses scrolledPx only as a hint — the actual vertical
+        // placement is decided by pixel matching.
         val result = driveScrollByViewport(
             rule = rule,
             axis = scroll.axis,
-            stepPx = viewportLayoutPx.toFloat(),
+            stepPx = viewportLayoutPx * 0.8f,
             maxScrollPx = scroll.maxScrollPx,
         ) { scrolledPx ->
             val sliceFile = File(slicesDir, "slice_${slices.size}.png")
