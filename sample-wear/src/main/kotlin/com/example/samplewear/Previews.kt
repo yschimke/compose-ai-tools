@@ -36,6 +36,8 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
 import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
+import ee.schimke.composeai.preview.ScrollMode
+import ee.schimke.composeai.preview.ScrollingPreview
 
 private object FixedTimeSource : TimeSource {
     @Composable
@@ -179,4 +181,94 @@ fun BadWearButtonPreview() {
             modifier = Modifier.size(20.dp),
         ) {}
     }
+}
+
+/**
+ * Long-scroll fixture: same `ScreenScaffold` + `TransformingLazyColumn` +
+ * `EdgeButton` layout as [WearApp], but with 15 items so the content
+ * overflows the viewport. `@ScrollingPreview(mode = LONG)` drives the
+ * renderer's stitched-capture path; the output is one tall PNG clipped to a
+ * capsule shape — top half-circle, rectangular middle, bottom half-circle —
+ * so the round watch edge is preserved at the first and last frames.
+ * `ScreenScaffold` reveals the `EdgeButton` only when the list is scroll-
+ * pinned to the bottom, so "Start workout" appears once, at the final slice.
+ */
+@Composable
+private fun LongActivityListContent() {
+    val longItems = List(15) { i ->
+        when (i % 6) {
+            0 -> Item("Morning run ${i + 1}", "5.2 km · 28 min")
+            1 -> Item("Heart rate ${i + 1}", "${70 + i} bpm")
+            2 -> Item("Sleep day ${i + 1}", "7h ${(i * 3) % 60}m")
+            3 -> Item("Steps day ${i + 1}", "${6000 + i * 120}")
+            4 -> Item("Calories day ${i + 1}", "${400 + i * 5} kcal")
+            else -> Item("Timer ${i + 1}", "${10 + i}:${(i * 7) % 60} remaining")
+        }
+    }
+    MaterialTheme {
+        AppScaffold(
+            timeText = { TimeText(timeSource = FixedTimeSource) },
+        ) {
+            val listState = rememberTransformingLazyColumnState()
+            val transformationSpec = rememberTransformationSpec()
+            ScreenScaffold(
+                scrollState = listState,
+                edgeButton = {
+                    EdgeButton(
+                        onClick = {},
+                        buttonSize = EdgeButtonSize.Large,
+                    ) {
+                        BasicText(
+                            text = "Start workout",
+                            maxLines = 1,
+                            autoSize = TextAutoSize.StepBased(),
+                            style = TextStyle(
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                textAlign = TextAlign.Center,
+                            ),
+                        )
+                    }
+                },
+            ) { contentPadding ->
+                TransformingLazyColumn(
+                    state = listState,
+                    contentPadding = contentPadding,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item {
+                        ListHeader(
+                            modifier = Modifier
+                                .minimumVerticalContentPadding(
+                                    top = ListHeaderDefaults.minimumTopListContentPadding,
+                                    bottom = 0.dp,
+                                )
+                                .transformedHeight(this, transformationSpec),
+                            transformation = SurfaceTransformation(transformationSpec),
+                        ) {
+                            Text("Activity")
+                        }
+                    }
+                    items(longItems) { item ->
+                        TitleCard(
+                            onClick = {},
+                            title = { Text(item.title) },
+                            subtitle = { Text(item.subtitle) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
+                                .transformedHeight(this, transformationSpec),
+                            transformation = SurfaceTransformation(transformationSpec),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@WearPreviewLargeRound
+@ScrollingPreview(mode = ScrollMode.LONG, reduceMotion = true)
+@Composable
+fun ActivityListLongPreview() {
+    LongActivityListContent()
 }
