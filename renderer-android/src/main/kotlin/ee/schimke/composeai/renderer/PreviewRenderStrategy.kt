@@ -1,13 +1,8 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 
 /**
@@ -32,24 +27,24 @@ internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
     STRATEGIES[kind] ?: error("No render strategy registered for PreviewKind.$kind")
 
 /**
- * Default strategy: reflect the `@Composable` and invoke it inside a Box that
- * paints the preview's configured background. Honours `@PreviewWrapper` by
- * looking up the provider's `Wrap(content)` method.
+ * Default strategy: reflect the `@Composable` and invoke it through the
+ * Composer. Honours `@PreviewWrapper` by looking up the provider's
+ * `Wrap(content)` method.
+ *
+ * No `Box(Modifier.fillMaxSize().background(bgColor)) { ... }` wrapper —
+ * [RobolectricRenderTestBase.renderDefault] paints the background on the
+ * activity window before `setContent`, so we don't need to emit layout-node
+ * bytecode (`ComposeUiNode.setCompositeKeyHash` etc.) here. That's what
+ * keeps the renderer runnable against older compose-ui BOMs (see the
+ * commentary in `renderDefault` for the full compat story).
  */
 private object ComposePreviewStrategy : PreviewRenderStrategy {
     @Composable
     override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int) {
         val clazz = Class.forName(preview.className)
         val composableMethod = clazz.getDeclaredComposableMethod(preview.functionName)
-        val bgColor = when {
-            preview.params.backgroundColor != 0L -> Color(preview.params.backgroundColor.toInt())
-            preview.params.showBackground -> Color.White
-            else -> Color.Transparent
-        }
         val body: @Composable () -> Unit = {
-            Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-                composableMethod.invoke(currentComposer, null)
-            }
+            composableMethod.invoke(currentComposer, null)
         }
         val wrapperFqn = preview.params.wrapperClassName
         if (wrapperFqn != null) {

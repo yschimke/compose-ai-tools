@@ -37,6 +37,14 @@ data class AccessibilityReport(
 data class AccessibilityEntry(
     val previewId: String,
     val findings: List<AccessibilityFinding>,
+    /**
+     * Relative path (from the aggregated `accessibility.json`) to an
+     * annotated screenshot showing each finding as a numbered badge + legend.
+     * `null` when there were no findings, or when overlay generation was
+     * skipped. Consumers should treat a missing file the same as a missing
+     * pointer — fall back to the clean render.
+     */
+    val annotatedPath: String? = null,
 )
 
 @Serializable

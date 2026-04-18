@@ -41,6 +41,7 @@ class DoctorCommand(args: List<String>) {
         checkJava()
         val creds = checkCredentials()
         if (creds != null) probeMaven(creds)
+        checkComposeVersion()
 
         println()
         when {
@@ -139,6 +140,98 @@ class DoctorCommand(args: List<String>) {
         }
     }
 
+    /**
+     * Flags Compose versions that are known-too-old for the renderer to run
+     * against. Renderer-android is compiled with compose-compiler 2.2.21,
+     * which emits calls to `ComposeUiNode.setCompositeKeyHash` and friends
+     * — first shipped in compose-ui 1.9 (compose-bom 2025.01.00). Older
+     * consumers hit `NoSuchMethodError` the moment `renderPreviews` starts.
+     * This check walks `gradle/libs.versions.toml` + every `build.gradle*`
+     * for a compose-bom or compose-ui version declaration and compares
+     * against that floor.
+     *
+     * No Gradle call — we just grep the sources. That keeps doctor a
+     * pre-flight check (runnable before the user even applies the plugin),
+     * matching the other checks' shape.
+     */
+    private fun checkComposeVersion() {
+        val workspace = File(".").canonicalFile
+        val versions = findComposeVersionDeclarations(workspace)
+        if (versions.isEmpty()) {
+            // No declarations found → nothing to check. Don't warn: it's
+            // entirely possible doctor is being run outside a Gradle project,
+            // or versions are declared somewhere we didn't look.
+            return
+        }
+
+        val tooOld = versions.filter { (_, v) -> v.isOlderThan(MIN_BOM_YEAR, MIN_BOM_MONTH) }
+        if (tooOld.isEmpty()) {
+            val summary = versions.joinToString(", ") { (_, v) -> v.raw }
+            ok("compose-bom version(s) look recent enough ($summary)")
+            return
+        }
+        for ((source, v) in tooOld) {
+            warn("compose-bom ${v.raw} declared in ${source.relativeTo(workspace).path} — renderer needs ≥$MIN_BOM_YEAR.${MIN_BOM_MONTH.toString().padStart(2, '0')}.00")
+        }
+        hint("Older BOMs lack `ComposeUiNode.setCompositeKeyHash`; `renderPreviews` will fail with NoSuchMethodError.")
+        hint("Bump the bom:  compose-bom = \"$MIN_BOM_YEAR.${MIN_BOM_MONTH.toString().padStart(2, '0')}.00\"  (or newer)")
+    }
+
+    /**
+     * Returns `(fileWhereFound, parsedVersion)` for every
+     * `androidx.compose:compose-bom` version literal we find. Sources
+     * checked (in order): `gradle/libs.versions.toml`, `build.gradle`
+     * / `build.gradle.kts` under the workspace. Early-exits at depth 4
+     * to avoid wandering through `build/` etc.
+     */
+    private fun findComposeVersionDeclarations(root: File): List<Pair<File, ComposeVersion>> {
+        val out = mutableListOf<Pair<File, ComposeVersion>>()
+        val tomlRegex = Regex("""compose-bom\s*=\s*"([^"]+)"""")
+        // Matches `platform("androidx.compose:compose-bom:YYYY.MM.XX")` inline.
+        val bomInlineRegex = Regex("""["']androidx\.compose:compose-bom:([0-9][0-9A-Za-z.\-]+)["']""")
+
+        fun scanTextFile(file: File) {
+            val text = try { file.readText() } catch (_: Exception) { return }
+            tomlRegex.findAll(text).forEach { m ->
+                ComposeVersion.parse(m.groupValues[1])?.let { out += file to it }
+            }
+            bomInlineRegex.findAll(text).forEach { m ->
+                ComposeVersion.parse(m.groupValues[1])?.let { out += file to it }
+            }
+        }
+
+        fun walk(dir: File, depth: Int) {
+            if (depth > 4 || dir.name.startsWith(".") || dir.name in SKIP_DIRS) return
+            val children = dir.listFiles() ?: return
+            for (f in children) {
+                when {
+                    f.isDirectory -> walk(f, depth + 1)
+                    f.name == "libs.versions.toml" -> scanTextFile(f)
+                    f.name == "build.gradle.kts" || f.name == "build.gradle" -> scanTextFile(f)
+                }
+            }
+        }
+        walk(root, 0)
+        return out
+    }
+
+    /**
+     * Compose BOM version in `YYYY.MM.NN` form. Enough precision for
+     * "is this older than 2025.01"; we never need to differentiate patches.
+     */
+    private data class ComposeVersion(val year: Int, val month: Int, val raw: String) {
+        fun isOlderThan(minYear: Int, minMonth: Int): Boolean =
+            year < minYear || (year == minYear && month < minMonth)
+
+        companion object {
+            private val pattern = Regex("""^(\d{4})\.(\d{2})\.\d+""")
+            fun parse(s: String): ComposeVersion? {
+                val m = pattern.find(s) ?: return null
+                return ComposeVersion(m.groupValues[1].toInt(), m.groupValues[2].toInt(), s)
+            }
+        }
+    }
+
     // --- Helpers ------------------------------------------------------------
 
     private fun head(url: String, creds: Credentials): Pair<Int, Map<String, String>> {
@@ -206,6 +299,16 @@ class DoctorCommand(args: List<String>) {
         private const val REPO = "yschimke/compose-ai-tools"
         private const val MAVEN_BASE = "https://maven.pkg.github.com/$REPO"
         private const val DEFAULT_PLUGIN_VERSION = "0.4.0" // x-release-please-version
+
+        /**
+         * Minimum supported Compose BOM — 2025.01.00 → compose-ui 1.9.0.
+         * That's the first BOM where `ComposeUiNode.setCompositeKeyHash`
+         * (emitted by compose-compiler 2.2.21) exists on the runtime side.
+         */
+        private const val MIN_BOM_YEAR = 2025
+        private const val MIN_BOM_MONTH = 1
+
+        private val SKIP_DIRS = setOf("build", "node_modules", "out", "dist", ".gradle")
     }
 }
 

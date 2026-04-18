@@ -30,6 +30,8 @@ export interface PreviewInfo {
      * checks ran and found nothing.
      */
     a11yFindings?: AccessibilityFinding[] | null;
+    /** Absolute path to the annotated screenshot (clean PNG + overlay legend), when findings exist. */
+    a11yAnnotatedPath?: string | null;
 }
 
 export interface PreviewManifest {
@@ -50,7 +52,11 @@ export interface AccessibilityFinding {
 
 export interface AccessibilityReport {
     module: string;
-    entries: { previewId: string; findings: AccessibilityFinding[] }[];
+    entries: {
+        previewId: string;
+        findings: AccessibilityFinding[];
+        annotatedPath?: string | null;
+    }[];
 }
 
 /**
