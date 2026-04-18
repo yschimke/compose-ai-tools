@@ -81,3 +81,17 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Build CLI
         run: ./gradlew :cli:build
+
+  # Pure-stdlib unittest for the script that drives `preview-baselines` and
+  # `preview-comment` actions. Lives here because the script is JSON-shape-
+  # coupled to the CLI — running it on every PR catches contract breaks
+  # (e.g. PR #76 bare-list → envelope) before they hit a real PR.
+  actions-tests:
+    name: Actions Script Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Run compare-previews tests
+        run: python3 .github/actions/lib/test_compare_previews.py -v
