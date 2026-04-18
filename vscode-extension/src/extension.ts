@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GradleService, GradleApi } from './gradleService';
+import { findPluginAppliedAncestor } from './pluginDetection';
 import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
 import { PreviewGutterDecorations } from './previewGutterDecorations';
@@ -578,6 +579,15 @@ function emptyStateMessage(activeFile: string | undefined): string {
             + 'Add id("ee.schimke.composeai.preview") to a module\'s build.gradle.kts to enable previews.';
     }
     if (fileHasPreviewAnnotation(activeFile)) {
+        // File is inside a preview-enabled module, but outside this Gradle
+        // project — typical for a file in a git worktree opened from the main
+        // checkout's workspace. Nothing the user needs to "fix" in the build
+        // script; steer them toward opening the right root instead.
+        if (findPluginAppliedAncestor(activeFile)) {
+            return 'This file is in a preview-enabled module, but outside this VS Code '
+                + 'workspace root (e.g. a git worktree). Open that project root in VS Code '
+                + 'to see its previews.';
+        }
         const topDir = topLevelDirOf(activeFile) ?? '(this module)';
         return `'${topDir}' doesn't apply ee.schimke.composeai.preview. `
             + `Modules with previews in this workspace: ${previewModules.join(', ')}.`;
@@ -601,6 +611,11 @@ function maybeShowSetupPrompt(activeFile: string): void {
     const missingAnywhere = previewModules.length === 0;
     const missingForThisModule = !missingAnywhere && fileHasPreviewAnnotation(activeFile);
     if (!missingAnywhere && !missingForThisModule) { return; }
+    // The file is already inside a plugin-applied module somewhere up its own
+    // path — it just isn't part of *this* Gradle project (e.g. a git worktree
+    // nested under the workspace root). No build-script fix is needed; skip
+    // the nudge rather than point at a module they'd have to invent.
+    if (findPluginAppliedAncestor(activeFile)) { return; }
 
     warnedMissingPluginThisSession = true;
     const message = missingAnywhere
