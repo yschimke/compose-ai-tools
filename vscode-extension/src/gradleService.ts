@@ -2,13 +2,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { AccessibilityFinding, AccessibilityReport, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
+import { APPLIES_PLUGIN_RE } from './pluginDetection';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
 const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
-// Matches the plugin being *applied* (`id("ee.schimke.composeai.preview")` or
-// `id "ee.schimke.composeai.preview"`), not the plugin's own declaration in
-// gradle-plugin/build.gradle.kts (`id = "ee.schimke.composeai.preview"`).
-const APPLIES_PLUGIN_RE = /\bid\s*[(\s]\s*["']ee\.schimke\.composeai\.preview["']/;
 
 const TASK_TIMEOUT_MS = 5 * 60 * 1000;
 const MANIFEST_CACHE_TTL_MS = 30_000;
