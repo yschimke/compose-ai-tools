@@ -79,4 +79,13 @@ abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectF
 
     /** Fail the build if any WARNING-level ATF finding is reported. Default: `false` (same rationale as [failOnErrors]). */
     val failOnWarnings: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
+    /**
+     * Generate an annotated screenshot per preview showing each finding as a
+     * numbered badge + legend panel. Costs ~10ms/preview when there are
+     * findings, zero when there aren't. Default: `true` — if you asked for
+     * checks, you probably want to see what they found. Set to `false` for
+     * CI jobs that only care about the JSON / fail-on-errors gate.
+     */
+    val annotateScreenshots: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 }
