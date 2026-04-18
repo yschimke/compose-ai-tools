@@ -92,6 +92,93 @@ The preferred list component in M3 Expressive is **`TransformingLazyColumn`** (w
 - **`AppScaffold` Consistency**: Because `AppScaffold` is often defined at the root of the app, individual screens inherit the system UI.
 - **Preview Recommendation**: When creating `@Preview` functions for individual screens, wrap the content in an **`AppScaffold`** (or a custom theme wrapper that includes it) to ensure the time text is visible and correctly positioned in the generated preview image.
 
+### 6. Round-face clipping in rendered PNGs
+
+Any preview whose `device` resolves as round — `id:wearos_small_round`,
+`id:wearos_large_round`, custom `spec:…isRound=true` or `spec:…shape=Round`
+— is auto-clipped to a transparent inscribed circle before the PNG is
+written. Corners outside the circle are alpha-zero, so the preview matches
+what a real round watch face shows.
+
+Implications when designing previews:
+
+- Don't waste effort styling the corners of a round preview — they'll be
+  clipped away.
+- Place primary content within the inscribed circle. The corners of the
+  preview canvas are *not* a usable design area.
+- Stitched `@ScrollingPreview(mode = LONG)` round captures use a capsule
+  mask (top half-circle + rectangle + bottom half-circle), not per-slice
+  circles, so vertical content in the middle remains visible.
+- Square Wear devices (`id:wearos_square`) are rendered without the clip.
+
+### 7. Stable previews (avoid noisy diffs)
+
+Wear previews fan out over many devices, font scales, and (for scrolling
+content) slice indices. A single source of nondeterminism multiplies into
+hundreds of pixel-different PNGs. Pin these things:
+
+- **Pin the clock for `TimeText`.** The default `TimeSource` returns the
+  wall clock, which changes every minute. Provide a fixed source in
+  previews:
+
+  ```kotlin
+  private object FixedTimeSource : TimeSource {
+      @Composable override fun currentTime(): String = "10:10"
+  }
+
+  AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) { … }
+  ```
+
+- **Suppress the position/scroll indicator in scrolling previews.**
+  `ScreenScaffold` draws a transient scroll indicator that fades in/out as
+  the list scrolls; in stitched / scroll-to-end captures it lands at
+  arbitrary opacities and dominates the diff. Pass an empty composable to
+  `ScreenScaffold`'s scroll-indicator slot when the preview's purpose is
+  visual layout, not the indicator itself:
+
+  ```kotlin
+  ScreenScaffold(
+      scrollState = listState,
+      scrollIndicator = {},   // disable in @Preview / @ScrollingPreview
+      edgeButton = { … },
+  ) { contentPadding -> … }
+  ```
+
+  Keep it on for previews that are *specifically* about indicator state.
+
+- **Reduce motion for `TransformingLazyColumn` scroll captures.**
+  `@ScrollingPreview(mode = LONG, reduceMotion = true)` (default) wraps the
+  body in `LocalReduceMotion provides ReduceMotion(true)` so item
+  shape-morphing and scaling don't vary slice-to-slice. Without it, each
+  stitched slice picks up a different transform state and the resulting
+  tall PNG looks ragged.
+
+- **`EdgeButton` revealed only at end-of-list.** `ScreenScaffold` reveals
+  the `EdgeButton` only when the list is pinned to its bottom — so for a
+  `@ScrollingPreview(mode = LONG)` the button shows up in the final slice
+  only. That's intended behaviour, not a regression; the top-state
+  `@Preview` of the same composable will not include it.
+
+### 8. Accessibility on Wear
+
+Round faces hide content behind the bezel curve, so a11y findings differ
+from a phone's. Specifically watch for:
+
+- **Tap-target size** — `androidx.wear.compose.material3.Button` defaults
+  meet the spec, but custom `Box`/`IconButton` content can fall below the
+  48dp ATF threshold. Enable `composePreview { accessibilityChecks {
+  enabled = true } }` and run `compose-preview a11y` to surface these.
+- **Content descriptions** — Wear UI relies more heavily on icons; an
+  unlabelled `Button { Icon(...) }` triggers ATF errors.
+- **Edge-clipped touch targets** — round-face renders crop content at the
+  capsule mask; an apparently-large element may have a much smaller
+  effective hit region after clipping. Read both the regular PNG and the
+  `a11yAnnotatedPath` overlay to spot this.
+
+The annotated overlay for round Wear devices uses a stacked legend layout
+(screenshot on top, legend below) so the badges remain readable on small
+displays.
+
 ---
 
 ## Tiers of Expression
