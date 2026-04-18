@@ -271,7 +271,7 @@ import ee.schimke.composeai.preview.ScrollingPreview
 fun MyListEndPreview() { MyList() }
 
 @WearPreviewLargeRound
-@ScrollingPreview(mode = ScrollMode.LONG, reduceMotion = true)
+@ScrollingPreview(mode = ScrollMode.LONG)
 @Composable
 fun MyListLongPreview() { MyList() }
 ```
