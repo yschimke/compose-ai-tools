@@ -101,6 +101,13 @@ data class RenderPreviewParams(
     val device: String? = null,
     val widthDp: Int? = null,
     val heightDp: Int? = null,
+    /**
+     * Compose density factor (= densityDpi / 160) sourced from the `@Preview`
+     * device. The Android renderer maps this to a Robolectric `<n>dpi`
+     * qualifier; the desktop renderer hands it to `Density(...)`. `null` means
+     * "use the renderer's default" (matches the historical 2.0x behaviour).
+     */
+    val density: Float? = null,
     val fontScale: Float = 1.0f,
     val showSystemUi: Boolean = false,
     val showBackground: Boolean = false,
