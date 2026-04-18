@@ -67,6 +67,21 @@ internal object AndroidPreviewSupport {
             dependsOn("compile${capVariant}Kotlin")
         }
 
+        // Writes the plugin-side compat findings (CompatRules) to
+        // `build/compose-previews/doctor.json`. The CLI doesn't need this
+        // file (it reads the same data via the ComposePreviewModel Tooling
+        // API), but tools that invoke Gradle tasks rather than BuildActions
+        // — specifically the VS Code extension — do. Same JSON schema as
+        // `compose-preview doctor --json`'s per-module shape, so both
+        // surfaces converge on one contract.
+        project.tasks.register("composePreviewDoctor", ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java) {
+            group = "compose preview"
+            description = "Write compose-preview doctor findings to build/compose-previews/doctor.json"
+            this.variant.set(variantName)
+            this.modulePath.set(project.path)
+            this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
+        }
+
         // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
         // `testImplementation`:
         //

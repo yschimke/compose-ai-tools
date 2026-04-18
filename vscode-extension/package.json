@@ -81,6 +81,11 @@
                 "command": "composePreview.toggleAccessibilityChecks",
                 "title": "Toggle Accessibility Checks",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.runDoctor",
+                "title": "Run Doctor (refresh compatibility diagnostics)",
+                "category": "Compose Preview"
             }
         ],
         "configuration": {

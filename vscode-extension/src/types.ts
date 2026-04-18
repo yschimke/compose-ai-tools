@@ -60,6 +60,30 @@ export interface AccessibilityReport {
 }
 
 /**
+ * Output of `:<module>:composePreviewDoctor`. Matches the serialization in
+ * `gradle-plugin/.../ComposePreviewDoctorTask.kt` and the per-module shape
+ * inside `compose-preview doctor --json`'s `DoctorReport.checks`. Schema
+ * version pinned in [DoctorModuleReport.schema] so extension can detect
+ * incompatible plugin versions without dispatching on field shape.
+ */
+export interface DoctorModuleReport {
+    schema: string;
+    module: string;
+    variant: string;
+    findings: DoctorFinding[];
+}
+
+export interface DoctorFinding {
+    id: string;
+    severity: 'error' | 'warning' | 'info' | string;
+    message: string;
+    detail?: string | null;
+    remediationSummary?: string | null;
+    remediationCommands?: string[];
+    docsUrl?: string | null;
+}
+
+/**
  * One historical snapshot for a preview. The Gradle plugin writes files
  * named `yyyyMMdd-HHmmss[-N].png`; [timestamp] is the filename minus `.png`,
  * kept as a display-friendly label. [iso] is a parsed ISO-8601 form for sort

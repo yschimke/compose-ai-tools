@@ -8,6 +8,7 @@ import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
 import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
+import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { PreviewInfo } from './types';
 
@@ -138,6 +139,11 @@ export async function activate(context: vscode.ExtensionContext) {
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
     const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
     const a11yDiagnostics = new PreviewA11yDiagnostics(registry, detectLog);
+    const doctorDiagnostics = new PreviewDoctorDiagnostics(
+        gradleService,
+        workspaceRoot,
+        (msg) => outputChannel.appendLine(`[doctor] ${msg}`),
+    );
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
@@ -145,8 +151,31 @@ export async function activate(context: vscode.ExtensionContext) {
         codeLensProvider,
         gutterDecorations,
         a11yDiagnostics,
+        doctorDiagnostics,
         { dispose: () => registry.dispose() },
     );
+
+    // Refresh doctor diagnostics on first load, on-demand from the command,
+    // and whenever we discover new modules. Each refresh kicks the
+    // `composePreviewDoctor` task per module — cheap (no render), but we
+    // don't want to spam on every keystroke, hence the explicit trigger
+    // points rather than a document-change hook.
+    const refreshDoctor = async () => {
+        // gradleService is non-null inside this activation scope (initialised
+        // a few lines up), but the module-scope nullable declaration forces
+        // a local alias for the type-checker.
+        if (!gradleService) { return; }
+        await doctorDiagnostics.refresh(gradleService.findPreviewModules());
+    };
+    context.subscriptions.push(
+        vscode.commands.registerCommand('composePreview.runDoctor', () => {
+            void vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Window, title: 'Running compose-preview doctor…' },
+                refreshDoctor,
+            );
+        }),
+    );
+    void refreshDoctor();
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
