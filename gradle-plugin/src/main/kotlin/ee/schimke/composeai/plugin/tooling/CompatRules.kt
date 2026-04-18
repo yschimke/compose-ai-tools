@@ -31,6 +31,25 @@ internal object CompatRules {
     private val CORE_1_16 = Semver(1, 16, 0)
 
     /**
+     * Generic "you're well behind head" minimums for libraries whose
+     * version commonly shapes renderer behaviour. Threshold policy:
+     * roughly the second-to-last known stable at time of writing —
+     * recent enough to flag genuinely stale stacks, lenient enough that
+     * a consumer one release behind head doesn't get nagged. Bump when
+     * the paired upstream line ships a new stable minor.
+     *
+     * The specific compat rules above (navigationevent, core-vs-compose)
+     * still fire on their own when they apply — this list is the
+     * catch-all for "nothing's actively broken, but you're old".
+     */
+    private val OLD_DEP_MINIMUMS: List<Pair<String, Semver>> = listOf(
+        "androidx.compose.ui:ui" to Semver(1, 9, 0),
+        "androidx.activity:activity" to Semver(1, 10, 0),
+        "androidx.core:core" to Semver(1, 15, 0),
+        "androidx.lifecycle:lifecycle-runtime" to Semver(2, 8, 0),
+    )
+
+    /**
      * Runs every rule against the given dep snapshot and returns findings
      * ordered by severity. Pure — safe to call from tests and from the
      * serialisation path.
@@ -43,6 +62,7 @@ internal object CompatRules {
         checkNavigationEvent(mainV, testV, main)?.let(findings::add)
         checkComposeUiVsCore(mainV, testV, main)?.let(findings::add)
         checkComposeBom(main)?.let(findings::add)
+        findings += checkOldDeps(mainV, testV, main, test)
         return findings
     }
 
@@ -100,6 +120,36 @@ internal object CompatRules {
             remediationCommands = emptyList(),
             docsUrl = DOCS_COMPOSE_UI_VS_CORE,
         )
+    }
+
+    /**
+     * Emits one warning per [OLD_DEP_MINIMUMS] entry whose highest resolved
+     * version (main or test classpath) is below the minimum. Libraries
+     * absent from both classpaths are silently skipped — the consumer
+     * isn't using them, so there's nothing to warn about.
+     */
+    private fun checkOldDeps(
+        main: Map<String, Semver>,
+        test: Map<String, Semver>,
+        rawMain: Map<String, String>,
+        rawTest: Map<String, String>,
+    ): List<ModuleFindingData> {
+        val out = mutableListOf<ModuleFindingData>()
+        for ((artifact, minVersion) in OLD_DEP_MINIMUMS) {
+            val resolved = listOfNotNull(main[artifact], test[artifact]).maxOrNull() ?: continue
+            if (resolved >= minVersion) continue
+            val rawVersion = rawMain[artifact] ?: rawTest[artifact] ?: resolved.toString()
+            out += ModuleFindingData(
+                id = "old-dep-$artifact",
+                severity = "warning",
+                message = "$artifact is on $rawVersion; recommended >= $minVersion",
+                detail = "Resolved $artifact:$rawVersion is several releases behind. Renderer compat issues tend to cluster around older Compose / Activity / Core / Lifecycle versions; upgrading clears a class of bugs before they hit.",
+                remediationSummary = "Upgrade $artifact to at least $minVersion.",
+                remediationCommands = listOf("implementation(\"$artifact:$minVersion\")"),
+                docsUrl = null,
+            )
+        }
+        return out
     }
 
     private fun checkComposeBom(rawMain: Map<String, String>): ModuleFindingData? {
