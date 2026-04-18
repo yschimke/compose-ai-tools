@@ -50,6 +50,17 @@ data class PreviewParams(
     val device: String? = null,
     val widthDp: Int? = null,
     val heightDp: Int? = null,
+    /**
+     * Compose density factor (= densityDpi / 160), resolved from the `@Preview`
+     * device or `spec:...,dpi=...` at discovery time. `null` means the renderer
+     * should fall back to its built-in default.
+     *
+     * Renderers map this to a Robolectric `<n>dpi` qualifier so output bitmap
+     * dimensions match what Android Studio renders for the same `@Preview` —
+     * the `xxhdpi`-class phones it pictures by default come out at ~2.625x, not
+     * the 2.0x `xhdpi` Robolectric otherwise picks.
+     */
+    val density: Float? = null,
     val fontScale: Float = 1.0f,
     val showSystemUi: Boolean = false,
     val showBackground: Boolean = false,

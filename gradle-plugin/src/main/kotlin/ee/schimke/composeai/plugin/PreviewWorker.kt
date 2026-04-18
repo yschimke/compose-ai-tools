@@ -13,6 +13,12 @@ interface PreviewRenderParams : WorkParameters {
     val functionName: Property<String>
     val widthDp: Property<Int>
     val heightDp: Property<Int>
+    /**
+     * Compose density factor (= densityDpi / 160). Sized via DeviceDimensions
+     * from the `@Preview` device, so stub PNGs scale the same way the real
+     * Android renderer would (and Android Studio does).
+     */
+    val density: Property<Float>
     val fontScale: Property<Float>
     val showBackground: Property<Boolean>
     val backgroundColor: Property<Long>
@@ -23,9 +29,9 @@ interface PreviewRenderParams : WorkParameters {
 abstract class PreviewRenderWorkAction : WorkAction<PreviewRenderParams> {
     override fun execute() {
         val p = parameters
-        val density = 2
-        val width = (p.widthDp.get() * density).coerceAtLeast(1)
-        val height = (p.heightDp.get() * density).coerceAtLeast(1)
+        val density = p.density.getOrElse(DeviceDimensions.DEFAULT_DENSITY)
+        val width = (p.widthDp.get() * density).toInt().coerceAtLeast(1)
+        val height = (p.heightDp.get() * density).toInt().coerceAtLeast(1)
         val outFile = p.outputFile.get().asFile
         outFile.parentFile?.mkdirs()
 

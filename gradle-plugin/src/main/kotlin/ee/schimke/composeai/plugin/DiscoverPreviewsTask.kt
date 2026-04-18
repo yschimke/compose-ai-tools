@@ -404,6 +404,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             device = device,
             widthDp = dims.widthDp,
             heightDp = dims.heightDp,
+            density = dims.density,
             fontScale = (pv.getValue("fontScale") as? Float)?.takeIf { it > 0 } ?: 1.0f,
             showSystemUi = (pv.getValue("showSystemUi") as? Boolean) ?: false,
             showBackground = (pv.getValue("showBackground") as? Boolean) ?: false,

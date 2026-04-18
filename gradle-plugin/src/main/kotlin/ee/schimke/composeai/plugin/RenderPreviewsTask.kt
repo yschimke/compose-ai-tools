@@ -76,7 +76,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
                 preview.params.widthDp,
                 preview.params.heightDp,
             )
-            val density = 2.0f
+            // Per-device density (= densityDpi / 160), so output bitmaps match what
+            // Android Studio renders for the same `@Preview`. Source: the same data
+            // sergio-sastre/ComposablePreviewScanner / takahirom/roborazzi consume.
+            val density = preview.params.density ?: dims.density
             val widthPx = (dims.widthDp * density).toInt().coerceAtLeast(1)
             val heightPx = (dims.heightDp * density).toInt().coerceAtLeast(1)
             val outputFile = outDir.resolve("${preview.id}.png")
@@ -114,6 +117,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
                 functionName.set(preview.functionName)
                 widthDp.set(dims.widthDp)
                 heightDp.set(dims.heightDp)
+                density.set(preview.params.density ?: dims.density)
                 fontScale.set(preview.params.fontScale)
                 showBackground.set(preview.params.showBackground)
                 backgroundColor.set(preview.params.backgroundColor)
