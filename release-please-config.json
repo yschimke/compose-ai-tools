@@ -8,6 +8,7 @@
       "include-component-in-tag": false,
       "extra-files": [
         "README.md",
+        "vscode-extension/README.md",
         "skills/compose-preview/SKILL.md",
         "docs/RELEASING.md",
         {
