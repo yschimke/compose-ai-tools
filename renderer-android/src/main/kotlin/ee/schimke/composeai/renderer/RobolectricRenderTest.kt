@@ -116,7 +116,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
     }
 
     /**
-     * Default render path — paused `mainClock`, pump [FRAME_BUDGET] frames, capture.
+     * Default render path — paused `mainClock`, pump by [CAPTURE_ADVANCE_MS], capture.
      *
      * Replaces the earlier `captureRoboImage { @Composable }` flow. The
      * composable overload drives the composition to idle before capturing,
@@ -125,7 +125,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
      * was the root cause of the 12-minute / OOM runs that PR #14 papered
      * over. With `mainClock.autoAdvance = false` we never wait for idle —
      * each `advanceTimeByFrame()` deterministically dispatches one frame
-     * cycle, and after [FRAME_BUDGET] frames we just capture whatever the
+     * cycle, and after by [CAPTURE_ADVANCE_MS] we just capture whatever the
      * composition has drawn.
      *
      * `ui-test-manifest` (injected into the consumer's `testImplementation`
@@ -196,14 +196,14 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                         }
                     }
                 }
-                // Pump a fixed number of frames. With mainClock paused, each
-                // advanceTimeByFrame() deterministically dispatches one frame
-                // (layout, draw, animations advance by frameInterval).
-                // Infinite animations park at t = FRAME_BUDGET * frameInterval
-                // regardless of wall clock — repeated captures are byte-identical.
-                repeat(FRAME_BUDGET) {
-                    rule.mainClock.advanceTimeByFrame()
-                }
+                // Advance the clock by a fixed virtual-time offset, then
+                // capture. Expressing the budget in milliseconds (rather than
+                // a frame count) matches Roborazzi's `@RoboComposePreviewOptions`
+                // / `ManualClockOptions.advanceTimeMillis` convention, so a
+                // future per-preview override can drop in without changing the
+                // primitive. Infinite animations park at exactly this virtual
+                // time across runs — repeated captures are byte-identical.
+                rule.mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)
                 rule.onRoot().captureRoboImage(
                     file = outputFile,
                     roborazziOptions = roborazziOptions,
@@ -342,14 +342,19 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         private const val DEFAULT_HEIGHT = 800
 
         /**
-         * Frames to drive before capture in the paused-`mainClock` path.
-         * Small on purpose: with [ui-test-manifest]'s ComposeTestRule we own
-         * the clock, so "settled" is `autoAdvance = false` + however many
-         * frames we explicitly pump. 2 is enough for static previews (initial
-         * composition + one settle pass for `LaunchedEffect`s); for infinite
-         * animations it defines the deterministic snapshot point.
+         * Virtual time to advance before capture in the paused-`mainClock`
+         * path, in milliseconds. Small on purpose: "settled" is
+         * `autoAdvance = false` + however far we step. 32ms (≈ 2 Choreographer
+         * frames) is enough for static previews (initial composition + one
+         * settle pass for `LaunchedEffect`s); for infinite animations it
+         * defines the deterministic snapshot point.
+         *
+         * Expressed in ms rather than frame count to line up with Roborazzi's
+         * `@RoboComposePreviewOptions` / `ManualClockOptions.advanceTimeMillis`
+         * convention — per-preview overrides would plug straight into
+         * `mainClock.advanceTimeBy(...)` with no translation.
          */
-        private const val FRAME_BUDGET = 2
+        private const val CAPTURE_ADVANCE_MS = 32L
     }
 }
 
