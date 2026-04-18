@@ -129,22 +129,58 @@ hundreds of pixel-different PNGs. Pin these things:
   AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) { … }
   ```
 
-- **Suppress the position/scroll indicator in scrolling previews.**
-  `ScreenScaffold` draws a transient scroll indicator that fades in/out as
-  the list scrolls; in stitched / scroll-to-end captures it lands at
-  arbitrary opacities and dominates the diff. Pass an empty composable to
-  `ScreenScaffold`'s scroll-indicator slot when the preview's purpose is
-  visual layout, not the indicator itself:
+- **Suppress the scroll indicator during scroll captures via
+  `LocalScrollCaptureInProgress`.** `ScreenScaffold` draws a transient scroll
+  indicator that fades in/out as the list scrolls; on stitched
+  `@ScrollingPreview(mode = LONG)` captures it lands at arbitrary opacities
+  per slice and dominates the diff. The renderer mirrors Compose's
+  long-screenshot signal — it provides
+  `androidx.compose.ui.platform.LocalScrollCaptureInProgress = true` for any
+  preview with a scroll capture, `false` everywhere else (including the
+  running app). Read it inside the `scrollIndicator` slot so production
+  behaviour is unchanged but capture frames stay clean:
 
   ```kotlin
   ScreenScaffold(
       scrollState = listState,
-      scrollIndicator = {},   // disable in @Preview / @ScrollingPreview
+      scrollIndicator = {
+          if (!LocalScrollCaptureInProgress.current) {
+              ScrollIndicator(listState)
+          }
+      },
       edgeButton = { … },
   ) { contentPadding -> … }
   ```
 
-  Keep it on for previews that are *specifically* about indicator state.
+  Requires compose-ui ≥ 1.7 on the consumer's classpath (when
+  `LocalScrollCaptureInProgress` shipped). Same screen composable runs
+  unchanged in production — the local is always `false` outside the
+  renderer's `@ScrollingPreview` path.
+
+- **Compose previews from the screen, not the app root.** When a preview
+  needs different content (or a different `TimeSource`) than the production
+  root, don't call `WearApp()` from the preview — that locks you into the
+  production `AppScaffold`. Instead, wrap the screen-level composable in
+  the preview itself, so the preview owns the scaffolds and can swap in a
+  `FixedTimeSource`:
+
+  ```kotlin
+  @WearPreviewLargeRound
+  @ScrollingPreview(mode = ScrollMode.LONG)
+  @Composable
+  fun MyScreenLongPreview() {
+      MaterialTheme {
+          AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) {
+              MyScreen()  // the screen owns its ScreenScaffold
+          }
+      }
+  }
+  ```
+
+  Production `WearApp` does the same wrapping with the real `TimeSource`.
+  Splitting screen-from-scaffold this way also lets the `LocalScroll-
+  CaptureInProgress` read above stay where it belongs (inside the screen's
+  `ScreenScaffold`).
 
 - **Reduce motion for `TransformingLazyColumn` scroll captures.**
   `@ScrollingPreview(mode = LONG, reduceMotion = true)` (default) wraps the
