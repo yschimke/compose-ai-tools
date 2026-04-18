@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { AccessibilityFinding, AccessibilityReport, HistoryEntry, PreviewManifest } from './types';
+import { AccessibilityFinding, AccessibilityReport, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
 const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
@@ -79,6 +79,41 @@ export class GradleService {
             this.manifestCache.set(module, { manifest, timestamp: Date.now() });
         }
         return manifest;
+    }
+
+    /**
+     * Runs `:<module>:composePreviewDoctor` and returns the parsed sidecar
+     * report. Same JSON schema as `compose-preview doctor --json`'s per-
+     * module shape — see `ComposePreviewDoctorTask.kt` in `gradle-plugin`.
+     *
+     * Returns `null` when the task is missing (plugin not applied or
+     * version predates the feature), the build fails, or the JSON file
+     * wasn't produced. Callers should treat null as "skip doctor
+     * diagnostics for this module", not as an empty finding set.
+     */
+    async runDoctor(module: string): Promise<DoctorModuleReport | null> {
+        try {
+            await this.runTask(`:${module}:composePreviewDoctor`);
+        } catch (e) {
+            this.logger.appendLine(`[doctor] :${module}:composePreviewDoctor failed: ${(e as Error).message}`);
+            return null;
+        }
+        const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'doctor.json');
+        if (!fs.existsSync(reportPath)) {
+            this.logger.appendLine(`[doctor] ${reportPath} not produced`);
+            return null;
+        }
+        try {
+            const parsed = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as DoctorModuleReport;
+            if (!parsed.schema?.startsWith('compose-preview-doctor/')) {
+                this.logger.appendLine(`[doctor] unexpected schema in ${reportPath}: ${parsed.schema}`);
+                return null;
+            }
+            return parsed;
+        } catch (e) {
+            this.logger.appendLine(`[doctor] parse failed for ${reportPath}: ${(e as Error).message}`);
+            return null;
+        }
     }
 
     invalidateCache(module?: string): void {

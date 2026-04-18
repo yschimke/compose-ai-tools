@@ -1,11 +1,32 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.plugin.tooling.ComposePreviewModelBuilder
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
+import javax.inject.Inject
 
-class ComposePreviewPlugin : Plugin<Project> {
+abstract class ComposePreviewPlugin @Inject constructor(
+    // Gradle injects build-scoped services into plugin constructors. This is
+    // the documented way to get at `ToolingModelBuilderRegistry`; accessing
+    // `project.services` directly is internal API and not stable.
+    private val toolingRegistry: ToolingModelBuilderRegistry,
+) : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+
+        // ToolingModelBuilderRegistry is a build-scoped service — registering
+        // from any applying project makes the model available on every
+        // Tooling-API connection for the build. `register` accepts multiple
+        // builders for the same model (Gradle iterates on `canBuild`), so
+        // registering once per applying subproject is safe even if
+        // `buildAll` only ever gets called on the first one that matches.
+        // Cross-project state (`rootProject.extras`) would trip Isolated
+        // Projects, so we just let every applying project register.
+        //
+        // Consumed by the CLI / VS Code extension via
+        // `connection.model(ComposePreviewModel::class.java)`.
+        toolingRegistry.register(ComposePreviewModelBuilder())
 
         // `pluginManager.withPlugin` replaces the old `project.afterEvaluate { ... }`
         // block. `afterEvaluate` is discouraged under Gradle's Isolated Projects mode
