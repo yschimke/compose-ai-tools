@@ -36,22 +36,12 @@ The VS Code extension surfaces the same findings in the Problems panel (via
      consumer's declared deps — the renderer AAR transitively carrying the
      activity entry isn't enough.
 
-## Tile-rendering gaps (follow-ups)
+## Tile-rendering defaults
 
-Unrelated to the compat story but worth tracking here so they don't go
-missing:
-
-- **Tile previews should default to a black background.** Today
-  `TilePreviewRenderer` hosts the inflated tile in a `FrameLayout` with no
-  background; `showBackground`/`backgroundColor` from `@Preview` are both
-  false on `@wear.tiles.tooling.preview.Preview`. Fix in
-  `TilePreviewRenderer.TilePreviewComposable`: paint `Color.Black` on the
-  hosting Box when `params.kind == PreviewKind.TILE`, or when `device`
-  starts with `id:wearos_*`.
-- **Round crop for tile previews.** `RoundScreenOption` is added when
-  `isRoundDevice(params.device) && params.showSystemUi`. Tile previews
-  always have `showSystemUi = false`, so the qualifier never fires. Change
-  to `isRoundDevice(device) && (showSystemUi || kind == PreviewKind.TILE)`.
-
-Both land entirely in `renderer-android` and don't touch the plugin / AAR
-resolution path, so they're low-risk follow-ups.
+Tile previews render on an opaque black background and pick up the round
+device crop automatically — both happen unconditionally for
+`params.kind == PreviewKind.TILE` in `TilePreviewRenderer` and
+`RobolectricRenderTest` respectively. Consumers that want something other
+than black can paint inside the tile itself; the hosting FrameLayout's
+background is intentionally not exposed as a knob since it mirrors the
+watchface substrate, not the tile's own surface.

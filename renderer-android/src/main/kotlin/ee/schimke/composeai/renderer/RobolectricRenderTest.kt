@@ -90,7 +90,13 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         val params = preview.params
         val widthDp = params.widthDp?.takeIf { it > 0 } ?: DEFAULT_WIDTH
         val heightDp = params.heightDp?.takeIf { it > 0 } ?: DEFAULT_HEIGHT
-        val isRound = isRoundDevice(params.device) && params.showSystemUi
+        // Round crop fires when the preview is on a round device AND it's the
+        // kind of surface that fills the watch — either a @Composable the user
+        // asked for system UI on, or a tile (tiles always fill the watchface,
+        // so `showSystemUi` is never set for them). Without the tile branch,
+        // tile previews render as rectangles even on wearos_*_round devices.
+        val isRound = isRoundDevice(params.device) &&
+            (params.showSystemUi || params.kind == PreviewKind.TILE)
 
         val composeOptions = RoborazziComposeOptions.Builder().apply {
             size(widthDp, heightDp)
@@ -158,7 +164,8 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         applyPreviewQualifiers(
             widthDp = widthDp,
             heightDp = heightDp,
-            isRound = isRoundDevice(params.device) && params.showSystemUi,
+            isRound = isRoundDevice(params.device) &&
+                (params.showSystemUi || params.kind == PreviewKind.TILE),
             locale = params.locale,
             uiMode = params.uiMode,
         )

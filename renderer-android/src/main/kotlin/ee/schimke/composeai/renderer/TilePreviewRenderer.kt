@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import android.content.Context
+import android.graphics.Color
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -48,6 +49,14 @@ internal fun TilePreviewComposable(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
+                // Tiles expect to render onto a dark watchface substrate. Without
+                // an explicit background the inflated ProtoLayout sits on a
+                // transparent parent which flattens to white in the captured
+                // PNG — text that's white-on-expected-black disappears. Paint
+                // opaque black here to match the runtime appearance; consumers
+                // that want a non-black frame can still layer on top inside the
+                // tile itself.
+                setBackgroundColor(Color.BLACK)
             }
             renderTileInto(context, preview, widthDp, heightDp, parent)
             parent
