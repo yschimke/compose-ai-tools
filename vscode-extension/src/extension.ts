@@ -50,6 +50,11 @@ let refreshInFlight = false;
 const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
 /** Captured in activate() so notification helpers can reach workspaceState. */
 let extensionContext: vscode.ExtensionContext | null = null;
+/** Module-scoped logger wired up in activate() so refresh() can trace state
+ *  transitions into the "Compose Preview" output channel. Populate-then-blank
+ *  bugs are hard to diagnose from logs unless we explicitly announce each
+ *  message we send to the webview. */
+let logLine: (msg: string) => void = () => { /* noop pre-activate */ };
 /** Guard against firing the "plugin not applied" notification more than once
  *  per session — users shouldn't see it on every refresh tick. */
 let warnedMissingPluginThisSession = false;
@@ -69,6 +74,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const outputChannel = vscode.window.createOutputChannel('Compose Preview');
     context.subscriptions.push(outputChannel);
+    logLine = (msg: string) => outputChannel.appendLine(`[refresh] ${msg}`);
 
     // vscjava.vscode-gradle is declared as an extensionDependency, so it's
     // guaranteed to be installed. Activate it and get its API.
@@ -376,11 +382,12 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
     // empty state rather than falling through to an ambiguous multi-file view.
     // Picks, in priority: caller > active editor > any visible Kotlin editor >
     // last-scoped file. See resolveScopeFile for the full chain.
-    const { file: activeFile } = resolveScopeFile(forFilePath);
+    const { file: activeFile, source: scopeSource } = resolveScopeFile(forFilePath);
     const module = activeFile && isPreviewSourceFile(activeFile)
         ? gradleService.resolveModule(activeFile)
         : null;
     if (!activeFile || !module) {
+        logLine(`no module — activeFile=${activeFile ?? '<none>'} (${scopeSource})`);
         panel.postMessage({ command: 'clearAll' });
         panel.postMessage({ command: 'showMessage', text: emptyStateMessage(activeFile) });
         lastLoadedModules = [];
@@ -391,6 +398,7 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         }
         return;
     }
+    logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
 
     currentScopeFile = activeFile;
     const modules = [module];
@@ -452,7 +460,12 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         if (abort.signal.aborted) { return; }
 
         if (allPreviews.length === 0) {
-            panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found' });
+            // Module has no previews at all. Wipe any stale cards so the
+            // message isn't overlaid on old content from a prior scope.
+            panel.postMessage({ command: 'clearAll' });
+            panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found in this module' });
+            hasPreviewsLoaded = false;
+            logLine('done — module has no previews');
             return;
         }
 
@@ -460,12 +473,29 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         // functions, the panel shows an empty state — never the whole module.
         const visiblePreviews = allPreviews.filter(p => p.sourceFile === filterFile);
 
+        if (visiblePreviews.length === 0) {
+            // The module has previews but this file doesn't. An empty
+            // setPreviews would get silently wiped by applyFilters in the
+            // webview — send an explicit, persistent message instead and
+            // clear the grid so the user sees *why* it's blank.
+            panel.postMessage({ command: 'clearAll' });
+            const otherFiles = allPreviews.length;
+            panel.postMessage({
+                command: 'showMessage',
+                text: `No @Preview functions in this file (${otherFiles} in other files in this module).`,
+            });
+            hasPreviewsLoaded = false;
+            logLine(`done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`);
+            return;
+        }
+
         panel.postMessage({
             command: 'setPreviews',
             previews: visiblePreviews,
             moduleDir: modules.join(','),
         });
         hasPreviewsLoaded = true;
+        logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
 
         // Load images asynchronously. Animated previews have multiple captures
         // in `preview.captures`; one updateImage message per capture. The
@@ -514,10 +544,17 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             }
         }
 
-        panel.postMessage({ command: 'showMessage', text: '' });
+        // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
+        // renderPreviews() already hides the "Building…" message when cards
+        // populate, so this used to be a no-op for the happy path — but it
+        // *did* clobber legitimate messages (e.g. "No previews match the
+        // current filters" set by applyFilters, or the empty-file notice
+        // above), which is what produced the "populate then go blank with
+        // nothing in the logs" symptom.
     } catch (err: unknown) {
         if (abort.signal.aborted) { return; }
         const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
+        logLine(`FAILED: ${message}`);
         panel.postMessage({
             command: 'showMessage',
             text: message,
