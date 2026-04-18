@@ -1,6 +1,8 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
@@ -113,6 +115,36 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         }
     }
 
+    /**
+     * Default render path — paused `mainClock`, pump [FRAME_BUDGET] frames, capture.
+     *
+     * Replaces the earlier `captureRoboImage { @Composable }` flow. The
+     * composable overload drives the composition to idle before capturing,
+     * which hangs on infinite animations (`CircularProgressIndicator()`,
+     * `rememberInfiniteTransition`, hand-rolled `withFrameNanos` loops) and
+     * was the root cause of the 12-minute / OOM runs that PR #14 papered
+     * over. With `mainClock.autoAdvance = false` we never wait for idle —
+     * each `advanceTimeByFrame()` deterministically dispatches one frame
+     * cycle, and after [FRAME_BUDGET] frames we just capture whatever the
+     * composition has drawn.
+     *
+     * `ui-test-manifest` (injected into the consumer's `testImplementation`
+     * by the plugin) supplies the `ComponentActivity` entry
+     * `createAndroidComposeRule` needs; we still register the component
+     * explicitly with `ShadowPackageManager` to satisfy Robolectric 4.13+'s
+     * intent-resolution check (robolectric/robolectric#4736).
+     *
+     * Options (size, locale, uiMode, round, fontScale, background,
+     * inspectionMode) are applied by hand here rather than through
+     * [RoborazziComposeOptions], because the option chain wants an
+     * [ActivityScenario] it owns and that's awkward to share with a
+     * [ComposeTestRule]. size/locale/uiMode/round go through Robolectric
+     * resource qualifiers; fontScale goes through
+     * `RuntimeEnvironment.setFontScale` (matching Roborazzi's own
+     * `RoborazziComposeFontScaleOption`) since fontScale is a Configuration
+     * field, not a qualifier; background/inspection go through composition
+     * locals.
+     */
     @OptIn(ExperimentalRoborazziApi::class)
     private fun renderDefault(
         params: RenderPreviewParams,
@@ -122,15 +154,110 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         roborazziOptions: RoborazziOptions,
         composeOptions: RoborazziComposeOptions,
     ) {
-        captureRoboImage(
-            file = outputFile,
-            roborazziOptions = roborazziOptions,
-            roborazziComposeOptions = composeOptions,
-        ) {
-            CompositionLocalProvider(LocalInspectionMode provides true) {
-                strategyFor(params.kind).Render(preview, widthDp, heightDp)
+        val appContext: android.app.Application =
+            androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        org.robolectric.Shadows.shadowOf(appContext.packageManager)
+            .addActivityIfNotPresent(
+                android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name),
+            )
+
+        applyPreviewQualifiers(
+            widthDp = widthDp,
+            heightDp = heightDp,
+            isRound = isRoundDevice(params.device) && params.showSystemUi,
+            locale = params.locale,
+            uiMode = params.uiMode,
+        )
+        // fontScale isn't a Robolectric resource qualifier — it's a
+        // Configuration field. `RuntimeEnvironment.setFontScale(Float)` is the
+        // Robolectric API that updates Configuration before the activity
+        // launches; Roborazzi's own `RoborazziComposeFontScaleOption` uses the
+        // same entrypoint. Applied unconditionally (default 1f) so it resets
+        // between previews sharing the same Robolectric sandbox.
+        org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
+
+        val rule = createAndroidComposeRule<ComponentActivity>()
+        val description = org.junit.runner.Description.createTestDescription(
+            this::class.java,
+            "renderDefault_${preview.id}",
+        )
+        val statement = object : org.junit.runners.model.Statement() {
+            override fun evaluate() {
+                rule.mainClock.autoAdvance = false
+                rule.setContent {
+                    CompositionLocalProvider(LocalInspectionMode provides true) {
+                        val bg = resolveBackgroundColor(params)
+                        androidx.compose.foundation.layout.Box(
+                            modifier = androidx.compose.ui.Modifier
+                                .fillMaxSize()
+                                .background(bg),
+                        ) {
+                            strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                        }
+                    }
+                }
+                // Pump a fixed number of frames. With mainClock paused, each
+                // advanceTimeByFrame() deterministically dispatches one frame
+                // (layout, draw, animations advance by frameInterval).
+                // Infinite animations park at t = FRAME_BUDGET * frameInterval
+                // regardless of wall clock — repeated captures are byte-identical.
+                repeat(FRAME_BUDGET) {
+                    rule.mainClock.advanceTimeByFrame()
+                }
+                rule.onRoot().captureRoboImage(
+                    file = outputFile,
+                    roborazziOptions = roborazziOptions,
+                )
             }
         }
+        rule.apply(statement, description).evaluate()
+    }
+
+    /**
+     * Match how Roborazzi's `RoborazziComposeSizeOption` / `LocaleOption` /
+     * `UiModeOption` express themselves as Robolectric qualifiers — applied
+     * before the ComposeTestRule's ActivityScenario launches so the
+     * Configuration the activity picks up has our intended dimensions / locale
+     * / night bits.
+     *
+     * Order matters: Robolectric's parser (and Android's underlying grammar —
+     * https://developer.android.com/guide/topics/resources/providing-resources#QualifierRules)
+     * is strict about the sequence. Locale comes before width/height, which
+     * come before orientation, which comes before night-mode, which comes
+     * before density. Out-of-order qualifiers produce
+     * `IllegalArgumentException: failed to parse qualifiers` at runtime.
+     */
+    private fun applyPreviewQualifiers(
+        widthDp: Int,
+        heightDp: Int,
+        isRound: Boolean,
+        locale: String?,
+        uiMode: Int,
+    ) {
+        val qualifiers = buildList {
+            if (!locale.isNullOrBlank()) add(locale)
+            if (widthDp > 0) add("w${widthDp}dp")
+            if (heightDp > 0) add("h${heightDp}dp")
+            if (isRound) add("round")
+            if (widthDp > 0 && heightDp > 0) {
+                add(if (widthDp > heightDp) "land" else "port")
+            }
+            if (uiMode != 0) {
+                when (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) {
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES -> add("night")
+                    android.content.res.Configuration.UI_MODE_NIGHT_NO -> add("notnight")
+                }
+            }
+        }
+        if (qualifiers.isNotEmpty()) {
+            org.robolectric.RuntimeEnvironment.setQualifiers("+${qualifiers.joinToString("-")}")
+        }
+    }
+
+    private fun resolveBackgroundColor(params: RenderPreviewParams): androidx.compose.ui.graphics.Color = when {
+        params.backgroundColor != 0L -> androidx.compose.ui.graphics.Color(params.backgroundColor.toInt())
+        params.showBackground -> androidx.compose.ui.graphics.Color.White
+        else -> androidx.compose.ui.graphics.Color.Transparent
     }
 
     /**
@@ -213,6 +340,16 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
     companion object {
         private const val DEFAULT_WIDTH = 400
         private const val DEFAULT_HEIGHT = 800
+
+        /**
+         * Frames to drive before capture in the paused-`mainClock` path.
+         * Small on purpose: with [ui-test-manifest]'s ComposeTestRule we own
+         * the clock, so "settled" is `autoAdvance = false` + however many
+         * frames we explicitly pump. 2 is enough for static previews (initial
+         * composition + one settle pass for `LaunchedEffect`s); for infinite
+         * animations it defines the deterministic snapshot point.
+         */
+        private const val FRAME_BUDGET = 2
     }
 }
 
