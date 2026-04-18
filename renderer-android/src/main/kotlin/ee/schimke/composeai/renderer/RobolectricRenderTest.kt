@@ -1,9 +1,8 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -190,16 +189,25 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
         val statement = object : org.junit.runners.model.Statement() {
             override fun evaluate() {
                 rule.mainClock.autoAdvance = false
+                // Paint the preview background on the host activity's window
+                // rather than wrapping our setContent body in
+                // `Box(Modifier.fillMaxSize().background(bg)) { … }`. The
+                // compose-compiler emits `ComposeUiNode.setCompositeKeyHash`
+                // calls for every layout node in the renderer bytecode; those
+                // methods only exist on compose-ui 1.8+. Consumers pinned to
+                // older Compose BOMs (e.g. WearTilesKotlin's 1.6.x) hit
+                // `NoSuchMethodError` at render time. Painting the background
+                // natively sidesteps the wrapper composable entirely — the
+                // preview's own @Composable body still runs through its own
+                // compose-compiler (the consumer's), so the consumer's
+                // emitted bytecode naturally targets their runtime.
+                val bg = resolveBackgroundColor(params).toArgb()
+                rule.runOnUiThread {
+                    rule.activity.window.decorView.setBackgroundColor(bg)
+                }
                 rule.setContent {
                     CompositionLocalProvider(LocalInspectionMode provides !a11yEnabled) {
-                        val bg = resolveBackgroundColor(params)
-                        androidx.compose.foundation.layout.Box(
-                            modifier = androidx.compose.ui.Modifier
-                                .fillMaxSize()
-                                .background(bg),
-                        ) {
-                            strategyFor(params.kind).Render(preview, widthDp, heightDp)
-                        }
+                        strategyFor(params.kind).Render(preview, widthDp, heightDp)
                     }
                 }
                 // Advance the clock by a fixed virtual-time offset, then
