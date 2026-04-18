@@ -67,27 +67,25 @@ internal object AndroidPreviewSupport {
             dependsOn("compile${capVariant}Kotlin")
         }
 
-        // When a11y is on, the renderer switches from `captureRoboImage { @Composable }`
-        // to `createAndroidComposeRule<ComponentActivity>()`, which needs
-        // ui-test-manifest to contribute the ComponentActivity <activity> entry
-        // to the consumer's merged unit-test AndroidManifest. Renderer-android
-        // pulls ui-test-manifest in transitively, but our plugin bypasses the
-        // normal AGP dep graph (renderer classpath lives in our own resolvable
-        // config, not `testImplementation`), so the manifest merger never sees
-        // it. Explicitly adding ui-test-manifest to `testImplementation` here
-        // closes that gap. Only fires when the feature is enabled, so opt-out
-        // consumers pay nothing.
-        if (resolveA11yEnabled(project, extension)) {
-            // No version: relies on the consumer's Compose BOM (or direct
-            // Compose dep) to resolve ui-test-manifest. Projects using
-            // `implementation(platform(libs.compose.bom))` pick up the
-            // aligned version automatically; projects without a BOM need to
-            // add one (a reasonable ask — the plugin is for Compose apps).
-            project.dependencies.add(
-                "testImplementation",
-                "androidx.compose.ui:ui-test-manifest",
-            )
-        }
+        // Always inject `ui-test-manifest` into the consumer's `testImplementation`
+        // so its `ComponentActivity` <activity> entry is merged into the
+        // consumer's unit-test AndroidManifest. The renderer-android AAR pulls
+        // ui-test-manifest in transitively, but our plugin bypasses the normal
+        // AGP dep graph (renderer classpath lives in our own resolvable config,
+        // not `testImplementation`), so the manifest merger never sees it
+        // otherwise. This is a hard requirement for any ComposeTestRule-based
+        // path (e.g. the ATF accessibility checks) and a safety net for future
+        // tests that need a host activity.
+        //
+        // No version: relies on the consumer's Compose BOM (or direct Compose
+        // dep) to resolve ui-test-manifest. Projects using
+        // `implementation(platform(libs.compose.bom))` pick up the aligned
+        // version automatically; projects without a BOM need to add one (a
+        // reasonable ask — the plugin is for Compose apps).
+        project.dependencies.add(
+            "testImplementation",
+            "androidx.compose.ui:ui-test-manifest",
+        )
 
         val artifactType = Attribute.of("artifactType", String::class.java)
         val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
@@ -113,11 +111,23 @@ internal object AndroidPreviewSupport {
         // resolvable configuration in *this* project. Attributes are copied
         // from the sample's unit-test runtime classpath so Gradle picks the
         // right Android variant without us declaring them by hand.
+        //
+        // `extendsFrom(testConfig)` is load-bearing: it tells Gradle to resolve
+        // renderer deps in the SAME graph as the consumer's test-runtime deps,
+        // so version conflicts pick a single coherent max version instead of
+        // two separate graphs that clash at class-load time. Without it, the
+        // renderer's transitive `androidx.core:1.8.0` and consumer's
+        // `androidx.core:1.16.0` both end up on the test classpath in different
+        // JARs — whichever is listed first wins for each class, and the loaded
+        // activity/lifecycle/compose-ui versions don't all agree. Symptoms:
+        //   - `NoSuchFieldError: androidx.lifecycle.ReportFragment.Companion`
+        //   - `NoSuchFieldError: … tag_compat_insets_dispatch`
         val rendererConfig = project.configurations.maybeCreate("composePreviewAndroidRenderer$capVariant").apply {
             isCanBeResolved = true
             isCanBeConsumed = false
             if (testConfig != null) {
                 copyAttributes(attributes, testConfig.attributes)
+                extendsFrom(testConfig)
             }
         }
 

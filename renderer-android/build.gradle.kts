@@ -47,13 +47,45 @@ dependencies {
     implementation(libs.robolectric)
     implementation(libs.junit)
     implementation(libs.kotlinx.serialization.json)
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.foundation)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.runtime)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.activity.compose)
+
+    // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
+    // they must match what the CONSUMER module declares, because AGP's
+    // `process<Variant>Resources` builds the unit-test merged resource APK
+    // (`apk-for-local-test.ap_`) from the consumer's dependency graph — NOT
+    // from our custom `composePreviewAndroidRenderer` configuration. If these
+    // are `implementation`, Gradle drags our newer activity-compose 1.13 onto
+    // the test JVM classpath — which transitively brings `androidx.navigationevent`
+    // — while the consumer's merged resource APK stays on their older
+    // activity. The test JVM then loads the 1.13 Activity bootstrap and crashes
+    // on `NoClassDefFoundError: androidx/navigationevent/R$id` because the
+    // navigationevent resources were never merged. Same class of failure for
+    // `androidx.core.R.tag_compat_insets_dispatch` (compose-ui 1.10 →
+    // androidx.core 1.16 resources missing on older consumers).
+    //
+    // `testImplementation` mirrors `compileOnly` for our own unit tests, which
+    // need actual runtime classes. The plugin separately injects ui-test-manifest
+    // into the consumer's `testImplementation` in AndroidPreviewSupport so its
+    // `ComponentActivity` entry lands in the consumer's merged test manifest.
+    compileOnly(platform(libs.compose.bom))
+    compileOnly(libs.compose.ui)
+    compileOnly(libs.compose.foundation)
+    compileOnly(libs.compose.material3)
+    compileOnly(libs.compose.runtime)
+    compileOnly(libs.compose.ui.tooling.preview)
+    compileOnly(libs.activity.compose)
+    compileOnly("androidx.compose.ui:ui-test-junit4")
+    compileOnly("androidx.compose.ui:ui-test-manifest")
+
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui)
+    testImplementation(libs.compose.foundation)
+    testImplementation(libs.compose.material3)
+    testImplementation(libs.compose.runtime)
+    testImplementation(libs.compose.ui.tooling.preview)
+    testImplementation(libs.activity.compose)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.compose.ui:ui-test-manifest")
+
     implementation(libs.roborazzi)
     implementation(libs.roborazzi.compose)
     // ATF accessibility checks. Exercised only when consumers opt in via
@@ -69,14 +101,6 @@ dependencies {
     // hierarchy richly enough for ATF to surface findings. The composable-
     // form `captureRoboImage { @Composable }` closes its ActivityScenario
     // eagerly, which detaches the view before ATF gets to run.
-    //
-    // Requires `ui-test-junit4` (ComposeTestRule) and `ui-test-manifest`
-    // (ComponentActivity <activity> entry merged into the consumer's test
-    // manifest). Declared as `implementation` — AGP's manifest merger picks
-    // up ui-test-manifest automatically when it's on the unit-test runtime
-    // classpath, without leaking into production.
-    implementation("androidx.compose.ui:ui-test-junit4")
-    implementation("androidx.compose.ui:ui-test-manifest")
     implementation(libs.roborazzi.accessibility.check)
 
     // Tiles rendering is reflection-driven at runtime (the consumer module

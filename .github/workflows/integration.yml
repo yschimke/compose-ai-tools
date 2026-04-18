@@ -115,6 +115,22 @@ jobs:
             workdir: WearTilesKotlin
             module: app
             extra_gradle_args: ""
+            # Render in addition to discover — WearTilesKotlin uses an older
+            # Compose BOM than our renderer, which previously exposed a latent
+            # transitive-dep issue (activity-compose 1.13 → navigationevent
+            # resources not merged into the consumer's `apk-for-local-test.ap_`,
+            # crashing Robolectric at Activity bootstrap with
+            # `NoClassDefFoundError: androidx/navigationevent/R$id`). Discovery
+            # never exercises that path; only renderPreviews does. Keep this
+            # entry rendering so the regression doesn't come back silently.
+            render: true
+            # Tiles-specific: fail the job unless at least one rendered preview
+            # is of `kind: TILE`. Catches the case where discovery + rendering
+            # both succeed but the tile path (`TilePreviewComposable` →
+            # `TileRenderer.inflateAsync`) silently regressed to zero coverage
+            # — e.g. if `@androidx.wear.tiles.tooling.preview.Preview` stopped
+            # being recognized during discovery.
+            require_tile_render: true
           # Confetti: dropped for now. :androidApp has @Preview functions but
           # discovery returned 0 (same bug we see in PeopleInSpace — track as a
           # follow-up). Render also fails on a :common:car KMP variant
@@ -281,6 +297,38 @@ jobs:
           fi
           echo "Rendered ${#pngs[@]} PNG file(s):"
           printf '  %s\n' "${pngs[@]}"
+
+      - name: Verify at least one TILE preview was rendered
+        if: matrix.render && matrix.require_tile_render
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          # Walk every module's previews.json, count entries with `kind: TILE`
+          # that also have a corresponding PNG on disk. Tiles-only matrix
+          # entries (like WearTilesKotlin) must produce at least one such
+          # preview, otherwise a silent regression in the tile discovery or
+          # TileRenderer.inflateAsync path would pass unnoticed.
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          total_tiles = 0
+          for manifest in Path('.').rglob('build/compose-previews/previews.json'):
+              if 'external/build' in str(manifest):
+                  continue
+              data = json.loads(manifest.read_text())
+              renders_dir = manifest.parent / 'renders'
+              for p in data.get('previews', []):
+                  if p.get('params', {}).get('kind') != 'TILE':
+                      continue
+                  png = renders_dir / Path(p.get('renderOutput', '')).name
+                  if png.exists():
+                      total_tiles += 1
+                      print(f"  tile rendered: {png}")
+          print(f"Total TILE previews rendered: {total_tiles}")
+          if total_tiles == 0:
+              print("::error::require_tile_render=true but zero TILE-kind previews were rendered end-to-end.", file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - name: Upload previews.json
         if: always()
