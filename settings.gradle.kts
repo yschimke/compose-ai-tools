@@ -19,6 +19,7 @@ rootProject.name = "compose-ai-tools"
 
 includeBuild("gradle-plugin")
 include(":cli")
+include(":preview-annotations")
 include(":sample-android")
 include(":sample-wear")
 include(":sample-cmp")

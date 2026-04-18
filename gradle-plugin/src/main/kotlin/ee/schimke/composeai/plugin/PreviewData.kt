@@ -14,6 +14,36 @@ enum class PreviewKind {
     TILE,
 }
 
+/**
+ * Mirrors `ee.schimke.composeai.preview.ScrollMode` from the `preview-annotations`
+ * artifact. Duplicated here so the Gradle plugin can serialize the value into
+ * `previews.json` without pulling the annotation artifact onto the plugin's
+ * compile classpath — same split we use for [PreviewKind] across plugin /
+ * renderer modules.
+ */
+enum class ScrollMode {
+    END,
+    LONG,
+}
+
+/** Mirrors `ee.schimke.composeai.preview.ScrollAxis`. */
+enum class ScrollAxis {
+    VERTICAL,
+    HORIZONTAL,
+}
+
+/**
+ * Captured settings from `@ScrollingPreview`. `null` on [PreviewParams.scroll]
+ * means the preview opted out of scrolling capture (the default).
+ */
+@Serializable
+data class ScrollSpec(
+    val mode: ScrollMode,
+    val maxScrollPx: Int = 0,
+    val reduceMotion: Boolean = true,
+    val axis: ScrollAxis = ScrollAxis.VERTICAL,
+)
+
 @Serializable
 data class PreviewParams(
     val name: String? = null,
@@ -39,6 +69,8 @@ data class PreviewParams(
      * values — one render per variant.
      */
     val advanceTimeMillis: Long? = null,
+    /** Scrolling-capture settings from `@ScrollingPreview`, if any. */
+    val scroll: ScrollSpec? = null,
 )
 
 @Serializable

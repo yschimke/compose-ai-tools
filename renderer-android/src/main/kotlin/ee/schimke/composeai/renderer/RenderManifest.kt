@@ -7,6 +7,31 @@ enum class PreviewKind {
     TILE,
 }
 
+/**
+ * Mirrors `ee.schimke.composeai.preview.ScrollMode` from the `preview-annotations`
+ * artifact. Duplicated on the renderer side (same split as [PreviewKind]) so the
+ * renderer can read `previews.json` without depending on the annotation artifact.
+ */
+enum class ScrollMode {
+    END,
+    LONG,
+}
+
+/** Mirrors `ee.schimke.composeai.preview.ScrollAxis`. */
+enum class ScrollAxis {
+    VERTICAL,
+    HORIZONTAL,
+}
+
+/** Renderer-side mirror of the plugin's `ScrollSpec`. */
+@Serializable
+data class ScrollSpec(
+    val mode: ScrollMode,
+    val maxScrollPx: Int = 0,
+    val reduceMotion: Boolean = true,
+    val axis: ScrollAxis = ScrollAxis.VERTICAL,
+)
+
 @Serializable
 data class RenderManifest(
     val module: String,
@@ -93,4 +118,6 @@ data class RenderPreviewParams(
      * is emitted at discovery time.
      */
     val advanceTimeMillis: Long? = null,
+    /** Scrolling-capture settings from `@ScrollingPreview`, if any. */
+    val scroll: ScrollSpec? = null,
 )
