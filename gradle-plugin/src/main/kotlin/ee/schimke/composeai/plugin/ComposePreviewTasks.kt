@@ -69,7 +69,7 @@ internal object ComposePreviewTasks {
                 description = "Render all previews to PNG"
                 dependsOn(discoverTask)
             }
-            registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+            registerRenderAllPreviews(project, extension, renderTask, previewOutputDir, verifyAccessibilityTask = null)
         } else {
             registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask, extension)
         }
@@ -100,6 +100,15 @@ internal object ComposePreviewTasks {
             }
             moduleName.set(project.name)
             variantName.set(extension.variant)
+            // Gradle property override: `-PcomposePreview.accessibilityChecks.enabled=true`
+            // wins over the extension. Lets VSCode / CLI flip the feature on
+            // for a run without editing build.gradle.kts. Isolated-Projects-
+            // safe because `providers.gradleProperty` is.
+            accessibilityChecksEnabled.set(
+                project.providers.gradleProperty("composePreview.accessibilityChecks.enabled")
+                    .map { it.toBooleanStrictOrNull() ?: false }
+                    .orElse(extension.accessibilityChecks.enabled),
+            )
             outputFile.set(previewOutputDir.map { it.file("previews.json") })
             group = "compose preview"
             description = "Discover @Preview annotations in compiled classes"
@@ -127,7 +136,7 @@ internal object ComposePreviewTasks {
             description = "Render all previews to PNG (stub)"
             dependsOn(discoverTask)
         }
-        registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+        registerRenderAllPreviews(project, extension, renderTask, previewOutputDir, verifyAccessibilityTask = null)
     }
 
     /**
@@ -148,6 +157,7 @@ internal object ComposePreviewTasks {
         extension: PreviewExtension,
         renderTask: TaskProvider<*>,
         previewOutputDir: Provider<Directory>,
+        verifyAccessibilityTask: TaskProvider<*>?,
     ) {
         // Default history dir: <project>/.compose-preview-history — outside `build/`
         // so snapshots survive `./gradlew clean`. Users can override via extension.
@@ -177,6 +187,11 @@ internal object ComposePreviewTasks {
         project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
             group = "compose preview"
             dependsOn(extension.historyEnabled.map { enabled -> if (enabled) historizeTask else renderTask })
+            // `verifyAccessibility` runs AFTER rendering so PNGs always exist
+            // even when the check fails. `finalizedBy` (instead of `dependsOn`)
+            // lets the build still produce artefacts for CLI/VSCode to
+            // inspect when the a11y threshold trips the build.
+            verifyAccessibilityTask?.let { finalizedBy(it) }
             doLast {
                 val manifestOnDisk = manifestFile.get().asFile
                 if (!manifestOnDisk.exists()) return@doLast

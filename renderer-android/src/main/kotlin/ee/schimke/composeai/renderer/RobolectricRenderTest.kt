@@ -1,9 +1,13 @@
 package ee.schimke.composeai.renderer
 
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziComposeOptions
 import com.github.takahirom.roborazzi.RoborazziComposeSetupOption
@@ -101,6 +105,23 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
             recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
         )
 
+        val a11yEnabled = System.getProperty("composeai.a11y.enabled") == "true"
+        if (a11yEnabled) {
+            renderWithA11y(params, widthDp, heightDp, outputFile, roborazziOptions, composeOptions)
+        } else {
+            renderDefault(params, widthDp, heightDp, outputFile, roborazziOptions, composeOptions)
+        }
+    }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    private fun renderDefault(
+        params: RenderPreviewParams,
+        widthDp: Int,
+        heightDp: Int,
+        outputFile: File,
+        roborazziOptions: RoborazziOptions,
+        composeOptions: RoborazziComposeOptions,
+    ) {
         captureRoboImage(
             file = outputFile,
             roborazziOptions = roborazziOptions,
@@ -110,6 +131,83 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 strategyFor(params.kind).Render(preview, widthDp, heightDp)
             }
         }
+    }
+
+    /**
+     * A11y-enabled render path.
+     *
+     * Uses `createAndroidComposeRule<ComponentActivity>()` + `onRoot()
+     * .captureRoboImage(...)` for the screenshot and runs ATF against the
+     * [ViewRootForTest]-backed view fetched through the same
+     * [androidx.compose.ui.test.SemanticsNodeInteraction]. That's the combo
+     * roborazzi-accessibility-check uses internally (see
+     * `checkRoboAccessibility` in RoborazziATFAccessibilityChecker.kt); the
+     * composable form of `captureRoboImage` bails out too early for ATF
+     * because it eagerly closes the ActivityScenario, and running ATF on the
+     * Activity's DecorView under Robolectric yields all NOT_RUN — whereas
+     * `ViewRootForTest.view` is exactly what ATF was written to walk.
+     *
+     * Inspection mode is intentionally OFF here — `LocalInspectionMode=true`
+     * suppresses compose's accessibility semantics population, leaving ATF
+     * with nothing to evaluate. Opting into a11y therefore trades off a bit
+     * of inspection-mode determinism (infinite animations tick instead of
+     * parking on frame 0) for real findings.
+     *
+     * The rule is created and applied manually so the default (a11y-off)
+     * path keeps its lightweight `captureRoboImage { @Composable }` flow
+     * and doesn't have to pay the `createAndroidComposeRule` setup cost.
+     */
+    @OptIn(ExperimentalRoborazziApi::class)
+    private fun renderWithA11y(
+        params: RenderPreviewParams,
+        widthDp: Int,
+        heightDp: Int,
+        outputFile: File,
+        roborazziOptions: RoborazziOptions,
+        composeOptions: RoborazziComposeOptions,
+    ) {
+        // Robolectric 4.13+ rejects `ActivityScenario.launch` when no manifest
+        // entry resolves the default MAIN/LAUNCHER intent for the activity
+        // class (robolectric/robolectric#4736). ui-test-manifest adds
+        // `<activity android:name="androidx.activity.ComponentActivity">` but
+        // without an intent filter, so we register the component explicitly
+        // with ShadowPackageManager — cheap, idempotent, and works regardless
+        // of whether the consumer's merged manifest has the right filter.
+        val appContext: android.app.Application =
+            androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        org.robolectric.Shadows.shadowOf(appContext.packageManager)
+            .addActivityIfNotPresent(
+                android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name),
+            )
+
+        val rule = createAndroidComposeRule<ComponentActivity>()
+        val description = org.junit.runner.Description.createTestDescription(
+            this::class.java,
+            "a11yRender_${preview.id}",
+        )
+        val statement = object : org.junit.runners.model.Statement() {
+            override fun evaluate() {
+                rule.setContent {
+                    CompositionLocalProvider(LocalInspectionMode provides false) {
+                        strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                    }
+                }
+                val onRoot = rule.onRoot()
+                onRoot.captureRoboImage(
+                    file = outputFile,
+                    roborazziOptions = roborazziOptions,
+                )
+
+                val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
+                val findings = AccessibilityChecker.check(preview.id, view)
+                val a11yDir = File(
+                    System.getProperty("composeai.a11y.outputDir")
+                        ?: "build/compose-previews/accessibility-per-preview",
+                )
+                AccessibilityChecker.writePerPreviewReport(a11yDir, preview.id, findings)
+            }
+        }
+        rule.apply(statement, description).evaluate()
     }
 
     companion object {

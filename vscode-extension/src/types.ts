@@ -23,12 +23,34 @@ export interface PreviewInfo {
      *  the preview has at least one archived snapshot on disk. The webview
      *  uses this to decide whether to show the history button at all. */
     hasHistory?: boolean;
+    /**
+     * Populated by the extension from the sidecar accessibility.json referenced
+     * in [PreviewManifest.accessibilityReport]. `null`/`undefined` means
+     * accessibility checks were disabled for this module; an empty array means
+     * checks ran and found nothing.
+     */
+    a11yFindings?: AccessibilityFinding[] | null;
 }
 
 export interface PreviewManifest {
     module: string;
     variant: string;
     previews: PreviewInfo[];
+    /** Relative path (from `previews.json`) to the sidecar a11y report, or null. */
+    accessibilityReport?: string | null;
+}
+
+export interface AccessibilityFinding {
+    level: 'ERROR' | 'WARNING' | 'INFO' | string;
+    type: string;
+    message: string;
+    viewDescription?: string | null;
+    boundsInScreen?: string | null;
+}
+
+export interface AccessibilityReport {
+    module: string;
+    entries: { previewId: string; findings: AccessibilityFinding[] }[];
 }
 
 /**

@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { HistoryEntry, PreviewManifest } from './types';
+import * as vscode from 'vscode';
+import { AccessibilityFinding, AccessibilityReport, HistoryEntry, PreviewManifest } from './types';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
 const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
@@ -94,11 +95,43 @@ export class GradleService {
                 this.logger.appendLine(`Malformed manifest at ${manifestPath}`);
                 return null;
             }
+            // Enrich each preview with a11y findings when the module has the
+            // sidecar report. Always follow the manifest's pointer rather than
+            // probing for the file: disabling the Gradle option must cleanly
+            // remove findings from the UI without a stale opt-in run
+            // haunting us.
+            if (manifest.accessibilityReport) {
+                const byId = this.readA11yFindingsById(module, manifest.accessibilityReport);
+                for (const p of manifest.previews) {
+                    p.a11yFindings = byId[p.id] ?? [];
+                }
+            } else {
+                for (const p of manifest.previews) {
+                    p.a11yFindings = null;
+                }
+            }
             return manifest;
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
             this.logger.appendLine(`Failed to parse ${manifestPath}: ${message}`);
             return null;
+        }
+    }
+
+    private readA11yFindingsById(module: string, relativePath: string): Record<string, AccessibilityFinding[]> {
+        const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', relativePath);
+        if (!fs.existsSync(reportPath)) { return {}; }
+        try {
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as AccessibilityReport;
+            const out: Record<string, AccessibilityFinding[]> = {};
+            for (const entry of report.entries ?? []) {
+                out[entry.previewId] = entry.findings ?? [];
+            }
+            return out;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            this.logger.appendLine(`Failed to parse ${reportPath}: ${message}`);
+            return {};
         }
     }
 
@@ -212,6 +245,20 @@ export class GradleService {
         this.cancel();
     }
 
+    /**
+     * Reads workspace settings and builds the `-P` override list passed to
+     * every Gradle invocation. Keeps the mapping in one place so settings
+     * changes take effect the next time `runTask` fires, no reload required.
+     */
+    private buildGradleArgs(): string[] {
+        const args: string[] = [];
+        const config = vscode.workspace.getConfiguration('composePreview');
+        if (config.get<boolean>('accessibilityChecks.enabled')) {
+            args.push('-PcomposePreview.accessibilityChecks.enabled=true');
+        }
+        return args;
+    }
+
     private runTask(task: string): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
@@ -231,6 +278,7 @@ export class GradleService {
         const taskPromise = this.gradleApi.runTask({
             projectFolder: this.workspaceRoot,
             taskName: task,
+            args: this.buildGradleArgs(),
             showOutputColors: false,
             cancellationKey,
             onOutput: (output) => {

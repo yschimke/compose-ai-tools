@@ -56,6 +56,28 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.roborazzi)
     implementation(libs.roborazzi.compose)
+    // ATF accessibility checks. Exercised only when consumers opt in via
+    // `composePreview { accessibilityChecks { enabled = true } }`, but always
+    // on the classpath because the renderer test references these types
+    // unconditionally.
+    //
+    // The a11y-enabled path uses `createAndroidComposeRule<ComponentActivity>()`
+    // + `onRoot().captureRoboImage(...)` + ATF against the `ViewRootForTest`
+    // backing the SemanticsNode. That's the same plumbing roborazzi-
+    // accessibility-check's `checkRoboAccessibility` extension uses — it's the
+    // only combination where Robolectric populates the accessibility
+    // hierarchy richly enough for ATF to surface findings. The composable-
+    // form `captureRoboImage { @Composable }` closes its ActivityScenario
+    // eagerly, which detaches the view before ATF gets to run.
+    //
+    // Requires `ui-test-junit4` (ComposeTestRule) and `ui-test-manifest`
+    // (ComponentActivity <activity> entry merged into the consumer's test
+    // manifest). Declared as `implementation` — AGP's manifest merger picks
+    // up ui-test-manifest automatically when it's on the unit-test runtime
+    // classpath, without leaking into production.
+    implementation("androidx.compose.ui:ui-test-junit4")
+    implementation("androidx.compose.ui:ui-test-manifest")
+    implementation(libs.roborazzi.accessibility.check)
 
     // Tiles rendering is reflection-driven at runtime (the consumer module
     // supplies the actual classes on the JUnit classpath), so we only need
