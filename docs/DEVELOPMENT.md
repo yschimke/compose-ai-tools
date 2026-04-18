@@ -14,7 +14,7 @@ There are three shipping artifacts, each with its own local install story:
 
 ## Prerequisites
 
-- Java 21 (`JAVA_HOME` set)
+- Java 17 (`JAVA_HOME` set)
 - Gradle wrapper ships with the repo — do **not** install Gradle separately
 - Node 20+ and `npm` (for the VS Code extension)
 - VS Code 1.85+ (only if working on the extension)
@@ -238,16 +238,16 @@ jlink executable …/redhat.java-*/jre/*/bin/jlink does not exist.
 ```
 
 Point both the Java language server and the Gradle integration at a
-full JDK 21 install in your **user** `settings.json`:
+full JDK 17 install in your **user** `settings.json`:
 
 ```jsonc
 {
-  "java.jdt.ls.java.home": "/usr/lib/jvm/java-21-openjdk",
-  "java.import.gradle.java.home": "/usr/lib/jvm/java-21-openjdk"
+  "java.jdt.ls.java.home": "/usr/lib/jvm/java-17-openjdk",
+  "java.import.gradle.java.home": "/usr/lib/jvm/java-17-openjdk"
 }
 ```
 
 Adjust the path for your OS (`/Library/Java/JavaVirtualMachines/…/Contents/Home`
-on macOS, `C:\\Program Files\\Java\\jdk-21` on Windows). Reload the
+on macOS, `C:\\Program Files\\Java\\jdk-17` on Windows). Reload the
 window after changing. Verify with `ls $JDK_PATH/bin/jlink` — it must
 exist.

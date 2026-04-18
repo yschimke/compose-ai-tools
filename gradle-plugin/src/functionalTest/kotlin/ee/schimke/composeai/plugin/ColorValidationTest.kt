@@ -58,7 +58,7 @@ class ColorValidationTest {
                 implementation(compose.components.uiToolingPreview)
             }
             java {
-                toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
+                toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
             }
             """.trimIndent()
         )

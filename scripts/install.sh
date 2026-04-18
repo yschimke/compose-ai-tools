@@ -16,7 +16,7 @@
 #   PREFIX=$HOME/.local scripts/install.sh
 #   REPO=yschimke/compose-ai-tools scripts/install.sh
 #
-# Requires: bash, curl, tar, sha256sum (or shasum), and Java 21 on PATH at
+# Requires: bash, curl, tar, sha256sum (or shasum), and Java 17 on PATH at
 # run time (not install time).
 
 set -euo pipefail
@@ -128,7 +128,7 @@ log "symlinked $BIN_DIR/compose-preview -> $LAUNCHER"
 # ---- Smoke test -----------------------------------------------------------
 
 if ! "$LAUNCHER" --help >/dev/null 2>&1; then
-  die "launcher failed smoke test (needs Java 21 on PATH or JAVA_HOME)"
+  die "launcher failed smoke test (needs Java 17 on PATH or JAVA_HOME)"
 fi
 
 # ---- PATH advice ----------------------------------------------------------
