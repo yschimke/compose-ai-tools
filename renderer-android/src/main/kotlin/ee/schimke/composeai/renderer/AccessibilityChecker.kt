@@ -64,10 +64,37 @@ internal object AccessibilityChecker {
      * collects all of these into a single `accessibility.json`; writing
      * per-preview avoids concurrent-writer issues when previews are sharded
      * across JVMs.
+     *
+     * When [screenshot] is non-null and [findings] is non-empty, also
+     * generates an annotated PNG next to the screenshot and records the
+     * relative path back to the aggregate JSON in [AccessibilityEntry.annotatedPath].
      */
-    fun writePerPreviewReport(outputDir: File, previewId: String, findings: List<AccessibilityFinding>) {
+    fun writePerPreviewReport(
+        outputDir: File,
+        previewId: String,
+        findings: List<AccessibilityFinding>,
+        screenshot: File? = null,
+    ) {
         outputDir.mkdirs()
-        val entry = AccessibilityEntry(previewId = previewId, findings = findings)
+        val annotated = if (screenshot != null && findings.isNotEmpty()) {
+            AccessibilityOverlay.generate(screenshot, findings)
+        } else null
+
+        // Path in the entry is stored relative to the aggregate
+        // `accessibility.json` (which lives in the plugin output root next
+        // to `previews.json`). That way downstream tools can resolve it the
+        // same way they resolve `renderOutput` — by joining with the
+        // manifest's parent directory.
+        val relative = annotated?.let { file ->
+            val root = outputDir.parentFile ?: return@let file.name
+            file.relativeTo(root).path
+        }
+
+        val entry = AccessibilityEntry(
+            previewId = previewId,
+            findings = findings,
+            annotatedPath = relative,
+        )
         outputDir.resolve("$previewId.json").writeText(
             json.encodeToString(AccessibilityEntry.serializer(), entry),
         )

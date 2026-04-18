@@ -60,6 +60,7 @@ data class AccessibilityFinding(
 data class AccessibilityEntry(
     val previewId: String,
     val findings: List<AccessibilityFinding>,
+    val annotatedPath: String? = null,
 )
 
 @Serializable
@@ -85,6 +86,12 @@ data class PreviewResult(
      * disabled for this module. Empty list means checks ran and found nothing.
      */
     val a11yFindings: List<AccessibilityFinding>? = null,
+    /**
+     * Absolute path to an annotated screenshot showing each finding as a
+     * numbered badge + legend. `null` when there were no findings or
+     * accessibility checks are disabled.
+     */
+    val a11yAnnotatedPath: String? = null,
 )
 
 @Serializable
@@ -161,10 +168,16 @@ abstract class Command(protected val args: List<String>) {
      * findings disappear from CLI output; we never report stale reports from
      * a prior opt-in run.
      */
+    /**
+     * Loads each module's accessibility report and returns a lookup from
+     * `"<module>/<previewId>"` to (findings, annotatedPathAbsolute). The
+     * annotated path is resolved against the report file's parent so the
+     * value we emit is an absolute filesystem path agents can open directly.
+     */
     protected fun readAllA11yReports(
         manifests: List<Pair<String, PreviewManifest>>,
-    ): Map<String, List<AccessibilityFinding>> {
-        val out = mutableMapOf<String, List<AccessibilityFinding>>()
+    ): Map<String, Pair<List<AccessibilityFinding>, String?>> {
+        val out = mutableMapOf<String, Pair<List<AccessibilityFinding>, String?>>()
         for ((module, manifest) in manifests) {
             val pointer = manifest.accessibilityReport ?: continue
             val reportFile = projectDir.resolve("$module/build/compose-previews/$pointer")
@@ -175,8 +188,13 @@ abstract class Command(protected val args: List<String>) {
                 if (verbose) System.err.println("Warning: unreadable a11y report ${reportFile.path}: ${e.message}")
                 continue
             }
+            val reportDir = reportFile.parentFile
             for (entry in report.entries) {
-                out["$module/${entry.previewId}"] = entry.findings
+                val annotatedAbs = entry.annotatedPath
+                    ?.let { reportDir.resolve(it).canonicalFile }
+                    ?.takeIf { it.exists() }
+                    ?.absolutePath
+                out["$module/${entry.previewId}"] = entry.findings to annotatedAbs
             }
         }
         return out
@@ -211,8 +229,12 @@ abstract class Command(protected val args: List<String>) {
                     priorSha == null -> true
                     else -> priorSha != sha
                 }
+                val a11yPair = when {
+                    module in modulesWithA11y -> a11yByKey["$module/${p.id}"]
+                    else -> null
+                }
                 val a11y = when {
-                    module in modulesWithA11y -> a11yByKey["$module/${p.id}"] ?: emptyList()
+                    module in modulesWithA11y -> a11yPair?.first ?: emptyList()
                     else -> null
                 }
                 results += PreviewResult(
@@ -226,6 +248,7 @@ abstract class Command(protected val args: List<String>) {
                     sha256 = sha,
                     changed = changed,
                     a11yFindings = a11y,
+                    a11yAnnotatedPath = a11yPair?.second,
                 )
             }
 
@@ -461,10 +484,17 @@ class A11yCommand(args: List<String>) : Command(args) {
                     println("No accessibility findings.")
                 } else {
                     println("${flat.size} accessibility finding(s):")
+                    // Track per-preview so we only print the annotated-PNG
+                    // hint once, on the first finding for that preview.
+                    var lastPreviewId: String? = null
                     for ((r, f) in flat) {
                         println("  [${f.level}] ${r.id} · ${f.type}")
                         println("      ${f.message}")
                         f.viewDescription?.let { println("      element: $it") }
+                        if (r.id != lastPreviewId) {
+                            r.a11yAnnotatedPath?.let { println("      annotated: $it") }
+                            lastPreviewId = r.id
+                        }
                     }
                 }
             }

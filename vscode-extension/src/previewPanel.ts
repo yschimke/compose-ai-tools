@@ -293,6 +293,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             imgContainer.appendChild(skeleton);
             card.appendChild(imgContainer);
 
+            // ATF legend + overlay layer — rendered in the webview (not
+            // baked into the PNG) so rows stay interactive: hovering a
+            // finding highlights its bounds on the clean image. Populated
+            // only when findings exist; the overlay layer's boxes get
+            // computed lazily once the image is loaded (see buildA11yOverlay).
+            if (p.a11yFindings && p.a11yFindings.length > 0) {
+                const overlay = document.createElement('div');
+                overlay.className = 'a11y-overlay';
+                overlay.setAttribute('aria-hidden', 'true');
+                imgContainer.appendChild(overlay);
+                card.appendChild(buildA11yLegend(p));
+            }
+
             const variantLabel = buildVariantLabel(p);
             if (variantLabel) {
                 const badge = document.createElement('div');
@@ -445,6 +458,79 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             } else if (badge) {
                 badge.remove();
             }
+
+            // Refresh the a11y legend + overlay in place when findings
+            // change (e.g. toggling a11y on turns findings from null → list,
+            // or a fresh render updates the set). Tear down the old nodes
+            // and rebuild: simpler than reconciling row-by-row for what is
+            // a rare event.
+            const existingLegend = card.querySelector('.a11y-legend');
+            const existingOverlay = card.querySelector('.a11y-overlay');
+            if (existingLegend) existingLegend.remove();
+            if (existingOverlay) existingOverlay.innerHTML = '';
+            if (p.a11yFindings && p.a11yFindings.length > 0) {
+                const container = card.querySelector('.image-container');
+                if (container && !container.querySelector('.a11y-overlay')) {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'a11y-overlay';
+                    overlay.setAttribute('aria-hidden', 'true');
+                    container.appendChild(overlay);
+                }
+                const legend = buildA11yLegend(p);
+                card.appendChild(legend);
+                // Repopulate box geometry if the image is already loaded —
+                // otherwise updateImage's load handler will pick it up on
+                // the next render cycle.
+                const img = card.querySelector('.image-container img');
+                if (img && img.complete && img.naturalWidth > 0) {
+                    buildA11yOverlay(card, p.a11yFindings, img);
+                }
+            } else if (existingOverlay) {
+                existingOverlay.remove();
+            }
+        }
+
+        /** Shared between createCard (new card) and updateCardMetadata (existing card). */
+        function buildA11yLegend(p) {
+            const legend = document.createElement('div');
+            legend.className = 'a11y-legend';
+            const header = document.createElement('div');
+            header.className = 'a11y-legend-header';
+            header.textContent = 'Accessibility (' + p.a11yFindings.length + ')';
+            legend.appendChild(header);
+            p.a11yFindings.forEach((f, idx) => {
+                const row = document.createElement('div');
+                row.className = 'a11y-row a11y-level-' + (f.level || 'info').toLowerCase();
+                row.dataset.previewId = p.id;
+                row.dataset.findingIdx = String(idx);
+
+                const badge = document.createElement('span');
+                badge.className = 'a11y-badge';
+                badge.textContent = String(idx + 1);
+                row.appendChild(badge);
+
+                const text = document.createElement('div');
+                text.className = 'a11y-text';
+                const title = document.createElement('div');
+                title.className = 'a11y-title';
+                title.textContent = f.level + ' · ' + f.type;
+                const msg = document.createElement('div');
+                msg.className = 'a11y-msg';
+                msg.textContent = f.message;
+                text.appendChild(title);
+                text.appendChild(msg);
+                if (f.viewDescription) {
+                    const elt = document.createElement('div');
+                    elt.className = 'a11y-elt';
+                    elt.textContent = f.viewDescription;
+                    text.appendChild(elt);
+                }
+                row.appendChild(text);
+                row.addEventListener('mouseenter', () => highlightA11yFinding(p.id, idx));
+                row.addEventListener('mouseleave', () => highlightA11yFinding(p.id, null));
+                legend.appendChild(row);
+            });
+            return legend;
         }
 
         // Compact single-line variant summary rendered in a persistent badge
@@ -541,6 +627,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 if (!newIds.has(id)) card.remove();
             }
 
+            // Refresh per-preview findings cache so updateImage can attach
+            // them to each new image load. Drop stale entries (preview
+            // removed) so the map doesn't grow across sessions.
+            cardA11yFindings.clear();
+            for (const p of previews) {
+                if (p.a11yFindings && p.a11yFindings.length > 0) {
+                    cardA11yFindings.set(p.id, p.a11yFindings);
+                }
+            }
+
             // Add new cards / update existing ones, preserving order
             let lastInsertedCard = null;
             for (const p of previews) {
@@ -584,6 +680,59 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
         }
 
+        /**
+         * Builds the absolutely-positioned overlay boxes on top of the
+         * rendered preview image. Runs once per image load — boundsInScreen
+         * is in the image pixel coordinates, so we translate to % of the
+         * image natural dimensions. The overlay layer scales with the image
+         * (position absolute, inset 0 inside image-container which sizes to
+         * the img), so % bounds stay correct across layout changes without
+         * a resize handler.
+         */
+        function buildA11yOverlay(card, findings, img) {
+            const overlay = card.querySelector('.a11y-overlay');
+            if (!overlay) return;
+            overlay.innerHTML = '';
+            const natW = img.naturalWidth;
+            const natH = img.naturalHeight;
+            if (!natW || !natH) return;
+            findings.forEach((f, idx) => {
+                const bounds = parseBounds(f.boundsInScreen);
+                if (!bounds) return;
+                const box = document.createElement('div');
+                box.className = 'a11y-box a11y-level-' + (f.level || 'info').toLowerCase();
+                box.dataset.findingIdx = String(idx);
+                box.style.left = (bounds.left / natW * 100) + '%';
+                box.style.top = (bounds.top / natH * 100) + '%';
+                box.style.width = ((bounds.right - bounds.left) / natW * 100) + '%';
+                box.style.height = ((bounds.bottom - bounds.top) / natH * 100) + '%';
+                const badge = document.createElement('span');
+                badge.className = 'a11y-badge';
+                badge.textContent = String(idx + 1);
+                box.appendChild(badge);
+                overlay.appendChild(box);
+            });
+        }
+
+        function parseBounds(s) {
+            if (!s) return null;
+            const parts = s.split(',').map(x => parseInt(x.trim(), 10));
+            if (parts.length !== 4 || parts.some(isNaN)) return null;
+            return { left: parts[0], top: parts[1], right: parts[2], bottom: parts[3] };
+        }
+
+        /** Adds/removes .a11y-active on matching legend row + overlay box. */
+        function highlightA11yFinding(previewId, idx) {
+            const card = document.getElementById('preview-' + sanitizeId(previewId));
+            if (!card) return;
+            card.querySelectorAll('.a11y-row.a11y-active, .a11y-box.a11y-active').forEach(el => {
+                el.classList.remove('a11y-active');
+            });
+            if (idx === null || idx === undefined) return;
+            const sel = '[data-finding-idx="' + idx + '"]';
+            card.querySelectorAll(sel).forEach(el => el.classList.add('a11y-active'));
+        }
+
         function updateImage(previewId, imageData) {
             const card = document.getElementById('preview-' + sanitizeId(previewId));
             if (!card) return;
@@ -617,7 +766,27 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             }
             img.src = newSrc;
             img.className = 'fade-in';
+
+            // Re-build the a11y overlay once the image natural dimensions
+            // are known. Data-URL srcs may resolve synchronously; in that
+            // case img.complete is true and load will not fire, so we
+            // check both. Findings are stashed at setPreviews time via the
+            // renderPreviews pipeline.
+            const findings = cardA11yFindings.get(previewId);
+            if (findings && findings.length > 0) {
+                const apply = () => buildA11yOverlay(card, findings, img);
+                if (img.complete && img.naturalWidth > 0) {
+                    apply();
+                } else {
+                    img.addEventListener('load', apply, { once: true });
+                }
+            }
         }
+
+        // previewId -> findings. Populated from setPreviews so updateImage can
+        // re-read the list on every image (re)load without re-querying the
+        // DOM for data attributes.
+        const cardA11yFindings = new Map();
 
         window.addEventListener('message', event => {
             const msg = event.data;

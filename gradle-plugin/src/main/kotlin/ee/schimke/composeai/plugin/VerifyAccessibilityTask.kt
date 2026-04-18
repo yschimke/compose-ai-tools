@@ -56,7 +56,11 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
     )
 
     @Serializable
-    private data class A11yEntry(val previewId: String, val findings: List<A11yFinding>)
+    private data class A11yEntry(
+        val previewId: String,
+        val findings: List<A11yFinding>,
+        val annotatedPath: String? = null,
+    )
 
     @Serializable
     private data class A11yReport(val module: String, val entries: List<A11yEntry>)

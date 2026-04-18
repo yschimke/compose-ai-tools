@@ -101,13 +101,16 @@ export class GradleService {
             // remove findings from the UI without a stale opt-in run
             // haunting us.
             if (manifest.accessibilityReport) {
-                const byId = this.readA11yFindingsById(module, manifest.accessibilityReport);
+                const byId = this.readA11yById(module, manifest.accessibilityReport);
                 for (const p of manifest.previews) {
-                    p.a11yFindings = byId[p.id] ?? [];
+                    const entry = byId[p.id];
+                    p.a11yFindings = entry?.findings ?? [];
+                    p.a11yAnnotatedPath = entry?.annotatedPath ?? null;
                 }
             } else {
                 for (const p of manifest.previews) {
                     p.a11yFindings = null;
+                    p.a11yAnnotatedPath = null;
                 }
             }
             return manifest;
@@ -118,14 +121,30 @@ export class GradleService {
         }
     }
 
-    private readA11yFindingsById(module: string, relativePath: string): Record<string, AccessibilityFinding[]> {
+    /**
+     * Loads the sidecar accessibility report for a module and returns a lookup
+     * by previewId. `annotatedPath` is resolved against the report directory
+     * so the caller gets an absolute path to the annotated PNG (or null when
+     * the overlay wasn't generated — e.g. the preview had no findings).
+     */
+    private readA11yById(
+        module: string,
+        relativePath: string,
+    ): Record<string, { findings: AccessibilityFinding[]; annotatedPath: string | null }> {
         const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', relativePath);
         if (!fs.existsSync(reportPath)) { return {}; }
         try {
             const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as AccessibilityReport;
-            const out: Record<string, AccessibilityFinding[]> = {};
+            const reportDir = path.dirname(reportPath);
+            const out: Record<string, { findings: AccessibilityFinding[]; annotatedPath: string | null }> = {};
             for (const entry of report.entries ?? []) {
-                out[entry.previewId] = entry.findings ?? [];
+                const resolved = entry.annotatedPath
+                    ? path.resolve(reportDir, entry.annotatedPath)
+                    : null;
+                out[entry.previewId] = {
+                    findings: entry.findings ?? [],
+                    annotatedPath: resolved && fs.existsSync(resolved) ? resolved : null,
+                };
             }
             return out;
         } catch (e: unknown) {

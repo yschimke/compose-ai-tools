@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
@@ -161,4 +162,21 @@ fun ActivityListFontScalesPreview() {
 @Composable
 fun ButtonPreview() {
     ButtonPreviewContent()
+}
+
+/**
+ * Deliberately-broken Wear preview — a tiny unlabelled clickable Box
+ * tucked into the centre of the round face. Exists so the a11y pipeline
+ * produces a Wear-sized annotated PNG; exercises the stacked legend layout
+ * (screenshot on top, legend below) used for square/round displays.
+ */
+@WearPreviewSmallRound
+@Composable
+fun BadWearButtonPreview() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Button(
+            onClick = { /* no-op */ },
+            modifier = Modifier.size(20.dp),
+        ) {}
+    }
 }

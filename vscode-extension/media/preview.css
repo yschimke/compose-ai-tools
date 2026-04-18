@@ -509,3 +509,101 @@ body {
 .history-empty code {
     font-family: var(--vscode-editor-font-family);
 }
+
+/* --- Accessibility (ATF) findings --- */
+/* Overlay layer sits on top of the rendered preview image. Its children
+ * (`.a11y-box`) position themselves with percentage coords computed from
+ * ATF's boundsInScreen and the image's natural dimensions, so they scale
+ * alongside the image without a resize handler. Layer itself is
+ * pointer-events:none so the underlying image stays interactive. */
+.a11y-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+.a11y-box {
+    position: absolute;
+    border: 2px solid var(--a11y-color, #d32f2f);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+    border-radius: 2px;
+    opacity: 0.5;
+    transition: opacity 120ms ease, box-shadow 120ms ease;
+}
+.a11y-box.a11y-active {
+    opacity: 1;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), 0 0 12px var(--a11y-color, #d32f2f);
+}
+.a11y-box .a11y-badge {
+    position: absolute;
+    top: -10px;
+    left: -10px;
+}
+
+/* Legend under the image: one row per finding, sized for scanning at a
+ * glance. Rows are hoverable — mouseenter calls highlightA11yFinding to
+ * toggle .a11y-active on the matching overlay box. */
+.a11y-legend {
+    border-top: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
+    padding: 8px 10px 10px;
+    font-size: calc(var(--vscode-font-size) - 1px);
+}
+.a11y-legend-header {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.a11y-row {
+    display: flex;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: default;
+    align-items: flex-start;
+    transition: background 100ms ease;
+}
+.a11y-row:hover,
+.a11y-row.a11y-active {
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}
+.a11y-text { flex: 1; min-width: 0; }
+.a11y-title {
+    font-weight: 600;
+    font-size: calc(var(--vscode-font-size));
+}
+.a11y-msg {
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.35;
+}
+.a11y-elt {
+    margin-top: 2px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    opacity: 0.6;
+}
+
+/* Shared badge — used in legend rows AND inside overlay boxes. Colour
+ * comes from the level modifier on the parent (.a11y-level-error etc.). */
+.a11y-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--a11y-color, #d32f2f);
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* Level → colour. Applied to both overlay boxes and legend rows. */
+.a11y-level-error { --a11y-color: #d32f2f; }
+.a11y-level-warning { --a11y-color: #f57c00; }
+.a11y-level-info { --a11y-color: #1976d2; }

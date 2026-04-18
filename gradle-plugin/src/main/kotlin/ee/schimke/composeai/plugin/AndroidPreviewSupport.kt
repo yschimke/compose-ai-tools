@@ -348,26 +348,31 @@ internal object AndroidPreviewSupport {
             systemProperty("composeai.render.manifest", manifestFile.get())
             systemProperty("composeai.render.outputDir", rendersDir.get())
 
-            // ATF — renderer checks `composeai.a11y.enabled` and, when true,
-            // writes per-preview JSON into `composeai.a11y.outputDir`.
-            // Always passed as strings so the property is present/absent
-            // predictably across runs (simpler than conditional systemProperty
-            // lines, and keeps configuration-cache happy).
-            val a11yOn = resolveA11yEnabled(project, extension)
-            systemProperty("composeai.a11y.enabled", a11yOn.toString())
-            systemProperty("composeai.a11y.outputDir", accessibilityPerPreviewDir.get().asFile.absolutePath)
-            // Diagnostic output — agents/users debugging "why no findings"
-            // get useful breadcrumbs without parsing Robolectric's stdout.
-            // `providers.gradleProperty` is Isolated-Projects-safe (unlike
-            // `project.findProperty`), so this can be set with
-            // `-Pcomposeai.a11y.debug=true` on the command line.
-            systemProperty(
-                "composeai.a11y.debug",
-                project.providers.gradleProperty("composeai.a11y.debug").orElse("false").get(),
+            // ATF flags are routed through a CommandLineArgumentProvider
+            // rather than `systemProperty(...)` so toggling the `-P` override
+            // doesn't invalidate the Gradle configuration cache. `systemProperty`
+            // evaluates its value eagerly at configuration time — the provider
+            // we'd read there becomes part of the config-cache key, so flipping
+            // `-PcomposePreview.accessibilityChecks.enabled` forces a ~5-10s
+            // reconfigure. CommandLineArgumentProvider's `@Input` providers
+            // are only evaluated at task execution, which is exactly the
+            // lazy-input semantics we want for VSCode toggles.
+            //
+            // Renderer always inspects these sysprops at runtime; when
+            // enabled=false, the a11y code paths are no-ops (see
+            // [RobolectricRenderTest.renderWithA11y] / `renderDefault`).
+            jvmArgumentProviders.add(
+                AccessibilitySystemPropsProvider(
+                    enabled = resolveA11yEnabled(project, extension),
+                    annotate = resolveA11yAnnotate(project, extension),
+                    outputDir = accessibilityPerPreviewDir.map { it.asFile.absolutePath },
+                    debug = project.providers.gradleProperty("composeai.a11y.debug").orElse("false"),
+                ),
             )
-            if (a11yOn) {
-                outputs.dir(accessibilityPerPreviewDir).withPropertyName("a11yPerPreviewDir")
-            }
+            // Per-preview dir is always an output — the feature being off just
+            // means no files get written there. Declaring it unconditionally
+            // lets the config cache key stay stable across toggles.
+            outputs.dir(accessibilityPerPreviewDir).withPropertyName("a11yPerPreviewDir")
 
             // The PNG files are written to `rendersDirectory` via the
             // `composeai.render.outputDir` system property, not through any
@@ -392,21 +397,27 @@ internal object AndroidPreviewSupport {
             }
         }
 
-        // `verifyAccessibility` — only registered when the feature is on.
-        // Reading `extension.accessibilityChecks.enabled.get()` here is safe:
-        // `onVariants` fires after the plugin block has evaluated.
-        val verifyA11yTask = if (resolveA11yEnabled(project, extension)) {
-            project.tasks.register("verifyAccessibility", VerifyAccessibilityTask::class.java) {
-                group = "compose preview"
-                description = "Aggregate ATF findings from renderPreviews and fail per configured thresholds"
-                perPreviewDir.set(accessibilityPerPreviewDir)
-                reportFile.set(accessibilityReportFile)
-                moduleName.set(project.name)
-                failOnErrors.set(extension.accessibilityChecks.failOnErrors)
-                failOnWarnings.set(extension.accessibilityChecks.failOnWarnings)
-                dependsOn(renderTask)
-            }
-        } else null
+        // `verifyAccessibility` is ALWAYS registered so toggling
+        // `-PcomposePreview.accessibilityChecks.enabled` doesn't change the
+        // task graph — config cache stays valid across VSCode / CLI toggles.
+        // An `onlyIf` gate backed by the lazy provider makes it a no-op when
+        // the feature is off: the task configures but never executes, so the
+        // JSON aggregation and failure thresholds only kick in when the user
+        // actually opted in.
+        val a11yEnabledProvider = resolveA11yEnabled(project, extension)
+        val verifyA11yTask = project.tasks.register(
+            "verifyAccessibility", VerifyAccessibilityTask::class.java,
+        ) {
+            group = "compose preview"
+            description = "Aggregate ATF findings from renderPreviews and fail per configured thresholds"
+            perPreviewDir.set(accessibilityPerPreviewDir)
+            reportFile.set(accessibilityReportFile)
+            moduleName.set(project.name)
+            failOnErrors.set(extension.accessibilityChecks.failOnErrors)
+            failOnWarnings.set(extension.accessibilityChecks.failOnWarnings)
+            dependsOn(renderTask)
+            onlyIf("composePreview.accessibilityChecks.enabled") { a11yEnabledProvider.get() }
+        }
 
         ComposePreviewTasks.registerRenderAllPreviews(
             project, extension, renderTask, previewOutputDir, verifyA11yTask,
@@ -414,23 +425,61 @@ internal object AndroidPreviewSupport {
     }
 
     /**
-     * Resolves the effective `accessibilityChecks.enabled` value. The
-     * `-PcomposePreview.accessibilityChecks.enabled=<true|false>` Gradle
-     * property WINS over the extension block — so the VSCode extension (or a
-     * one-off CLI invocation) can flip the feature on for a single run
-     * without touching `build.gradle.kts`. When the property is absent, the
-     * extension's value is honoured.
-     *
-     * Using `providers.gradleProperty` rather than `project.findProperty`
-     * keeps this safe under Gradle's Isolated Projects mode.
+     * Lazy holder for ATF-related system properties on the `renderPreviews`
+     * `Test` task. Using a CommandLineArgumentProvider — instead of
+     * `test.systemProperty(...)` — means the values are resolved at task
+     * execution time, so flipping the underlying Gradle property doesn't
+     * invalidate the configuration cache. Each `@Input` participates in the
+     * task's own up-to-date check, so toggling a11y correctly re-runs
+     * rendering.
      */
-    private fun resolveA11yEnabled(project: org.gradle.api.Project, extension: PreviewExtension): Boolean {
-        val override = project.providers
-            .gradleProperty("composePreview.accessibilityChecks.enabled")
-            .orNull
-            ?.toBooleanStrictOrNull()
-        return override ?: extension.accessibilityChecks.enabled.get()
+    internal class AccessibilitySystemPropsProvider(
+        @get:org.gradle.api.tasks.Input val enabled: org.gradle.api.provider.Provider<Boolean>,
+        @get:org.gradle.api.tasks.Input val annotate: org.gradle.api.provider.Provider<Boolean>,
+        @get:org.gradle.api.tasks.Input val outputDir: org.gradle.api.provider.Provider<String>,
+        @get:org.gradle.api.tasks.Input val debug: org.gradle.api.provider.Provider<String>,
+    ) : org.gradle.process.CommandLineArgumentProvider {
+        override fun asArguments(): Iterable<String> = listOf(
+            "-Dcomposeai.a11y.enabled=${enabled.get()}",
+            "-Dcomposeai.a11y.annotate=${annotate.get()}",
+            "-Dcomposeai.a11y.outputDir=${outputDir.get()}",
+            "-Dcomposeai.a11y.debug=${debug.get()}",
+        )
     }
+
+    /**
+     * Returns a lazy `Provider<Boolean>` for the effective
+     * `accessibilityChecks.enabled` value. The
+     * `-PcomposePreview.accessibilityChecks.enabled=<true|false>` Gradle
+     * property WINS over the extension block — so VSCode (or a one-off CLI
+     * invocation) can flip the feature on for a single run without touching
+     * `build.gradle.kts`.
+     *
+     * **Deliberately returns a Provider, not a Boolean.** Reading `.get()` at
+     * configuration time keys the configuration cache on the current property
+     * value, which means every VSCode toggle would invalidate the cache and
+     * pay a ~5-10s reconfigure cost. Consumers should pass this provider to
+     * task `onlyIf`, `CommandLineArgumentProvider` inputs, etc. — those
+     * evaluate it at task-graph-resolution time without cache invalidation.
+     */
+    internal fun resolveA11yEnabled(
+        project: org.gradle.api.Project,
+        extension: PreviewExtension,
+    ): org.gradle.api.provider.Provider<Boolean> =
+        project.providers
+            .gradleProperty("composePreview.accessibilityChecks.enabled")
+            .map { it.toBooleanStrictOrNull() ?: false }
+            .orElse(extension.accessibilityChecks.enabled)
+
+    /** Same config-cache-friendly treatment for `annotateScreenshots`. See [resolveA11yEnabled]. */
+    internal fun resolveA11yAnnotate(
+        project: org.gradle.api.Project,
+        extension: PreviewExtension,
+    ): org.gradle.api.provider.Provider<Boolean> =
+        project.providers
+            .gradleProperty("composePreview.accessibilityChecks.annotateScreenshots")
+            .map { it.toBooleanStrictOrNull() ?: true }
+            .orElse(extension.accessibilityChecks.annotateScreenshots)
 
     private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {
         source.keySet().forEach { key ->
