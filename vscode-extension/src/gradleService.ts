@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
-import { appliesPlugin, buildAliasAppliesRegex, readCatalogPluginAliases } from './pluginDetection';
+import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
@@ -330,16 +330,17 @@ export class GradleService {
      * the Compose Preview plugin. Merges two signals:
      *
      *   1. `<module>/build/compose-previews/applied.json` — authoritative
-     *      marker written by the `composePreviewApplied` Gradle task at
-     *      execution time. Ground truth once Gradle has configured.
-     *   2. `<module>/build.gradle.kts` — static scan recognising the literal
-     *      `id("ee.schimke.composeai.preview")` form *and* the version-
-     *      catalog `alias(libs.plugins.<alias>)` form (when a matching
-     *      alias exists in `gradle/libs.versions.toml`). Needed before the
-     *      first Gradle run, when no marker exists yet.
+     *      marker written by the `composePreviewApplied` Gradle task. Covers
+     *      every apply mechanism (literal `id`, version-catalog alias,
+     *      convention plugin, buildSrc) because Gradle itself wrote it.
+     *   2. `<module>/build.gradle.kts` matching literal
+     *      `id("ee.schimke.composeai.preview")`. Pre-Gradle-run fallback so
+     *      trivially-configured workspaces aren't empty on first open.
      *
      * Returning the union means running Gradle on one module doesn't cause
      * others (applied but not yet built) to disappear from the list.
+     * Projects that only apply via a catalog alias show up as empty until
+     * the bootstrap marker run completes — see [bootstrapAppliedMarkers].
      */
     findPreviewModules(): string[] {
         const found = new Set<string>();
@@ -349,14 +350,6 @@ export class GradleService {
         } catch {
             return [];
         }
-        // Lazy: only parse the catalog if we actually need the scan fallback.
-        let aliasRe: RegExp | null | undefined;
-        const resolveAliasRe = (): RegExp | null => {
-            if (aliasRe !== undefined) { return aliasRe; }
-            aliasRe = buildAliasAppliesRegex(readCatalogPluginAliases(this.workspaceRoot));
-            return aliasRe;
-        };
-
         for (const entry of entries) {
             if (!entry.isDirectory()) { continue; }
             const dir = entry.name;
@@ -367,7 +360,7 @@ export class GradleService {
             const buildFile = path.join(this.workspaceRoot, dir, 'build.gradle.kts');
             try {
                 const content = fs.readFileSync(buildFile, 'utf-8');
-                if (appliesPlugin(content, resolveAliasRe())) { found.add(dir); }
+                if (appliesPlugin(content)) { found.add(dir); }
             } catch { /* skip */ }
         }
         return [...found].sort();
