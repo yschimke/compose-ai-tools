@@ -395,8 +395,25 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                                 (params.showSystemUi || params.kind == PreviewKind.TILE),
                             outputFile = outputFile,
                         )
+                    // @ScrollingPreview(GIF): drive the scroller by small
+                    // steps and encode the sequence as an animated GIF.
+                    // Same multi-frame shape as LONG, but encodes into a
+                    // GIF container instead of stitching one tall PNG.
+                    val gifHandled = !longHandled &&
+                        scroll != null &&
+                        scroll.mode == ScrollMode.GIF &&
+                        scroll.axis == ScrollAxis.VERTICAL &&
+                        handleGifCapture(
+                            rule = rule,
+                            scroll = scroll,
+                            previewId = preview.id,
+                            heightDp = heightDp,
+                            isRound = isRoundDevice(params.device) &&
+                                (params.showSystemUi || params.kind == PreviewKind.TILE),
+                            outputFile = outputFile,
+                        )
 
-                    if (!longHandled) {
+                    if (!longHandled && !gifHandled) {
                         // TOP mode is the unscrolled initial frame — no
                         // drive, just a capture. END mode drives the first
                         // scrollable on the requested axis to its content
@@ -422,9 +439,10 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
 
                     // AS-parity: crop the PNG down to the composable's
                     // intrinsic size on wrapped axes. Skipped for stitched
-                    // LONG output — that PNG's dimensions are the stitched
-                    // scroll extent, not the composable's intrinsic box.
-                    if (!longHandled && (wrapWidth || wrapHeight) && measured != null) {
+                    // LONG output and animated GIF output — those files'
+                    // dimensions are the full scrollable extent / frame
+                    // size, not the composable's intrinsic box.
+                    if (!longHandled && !gifHandled && (wrapWidth || wrapHeight) && measured != null) {
                         cropPngTopLeft(
                             file = outputFile,
                             wrapWidth = wrapWidth,
@@ -693,6 +711,97 @@ private fun settlePostScrollAnimations(rule: AndroidComposeTestRule<*, *>) {
  * writing) with comfortable headroom for overshoot / chained animations.
  */
 private const val POST_SCROLL_SETTLE_MS = 1000L
+
+/**
+ * Handles `@ScrollingPreview(modes = [GIF])` captures. Drives the scroller
+ * by a small fraction of the viewport per step via [driveScrollByViewport],
+ * captures each step to a temp PNG, then encodes the sequence as an
+ * animated GIF at [outputFile] via [ScrollGifEncoder].
+ *
+ * Unlike LONG, every frame is a full viewport-sized image — the GIF shows
+ * the scroll as an animation rather than stitching frames into one tall
+ * still. Per-frame round crop stays ON (each GIF frame should show a
+ * proper watch-shaped viewport), so we reuse the default
+ * `RoborazziOptions` the caller wired for single-frame captures.
+ *
+ * Returns `true` when [outputFile] was written; `false` to fall through
+ * to the default single-capture path (e.g. when no scrollable matched, or
+ * when the encoder declines).
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+private fun handleGifCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    scroll: ScrollCapture,
+    previewId: String,
+    heightDp: Int,
+    isRound: Boolean,
+    outputFile: File,
+): Boolean {
+    val density = rule.activity.resources.displayMetrics.density
+    val viewportLayoutPx = (heightDp * density).toInt().coerceAtLeast(1)
+    val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_gif_frames")
+    framesDir.deleteRecursively()
+    framesDir.mkdirs()
+
+    // Per-frame crop matches END mode: each GIF frame should look like a
+    // normal single capture, circle-clipped on round devices included.
+    val frameRoborazziOptions = RoborazziOptions(
+        recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
+    )
+
+    val frameFiles = mutableListOf<File>()
+    try {
+        // 20% of viewport per step → ~5 frames per viewport of scrolled
+        // content. With 80ms default cadence that's ~0.4s of animation
+        // per viewport — smooth scroll without an explosive frame count
+        // on tall lists. Too small jitters, too large stutters.
+        val result = driveScrollByViewport(
+            rule = rule,
+            axis = scroll.axis,
+            stepPx = viewportLayoutPx * GIF_STEP_FRACTION,
+            maxScrollPx = scroll.maxScrollPx,
+        ) { _ ->
+            val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
+            rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+            frameFiles += frameFile
+        }
+        if (result is ScrollDriveResult.NoScrollable) {
+            System.err.println(
+                "@ScrollingPreview(GIF) on '$previewId': no scrollable composable — falling through.",
+            )
+            return false
+        }
+        if (frameFiles.isEmpty()) return false
+
+        // Mirror [handleLongCapture]'s post-scroll settle: re-capture the
+        // final frame after advancing the clock so animations that begin
+        // once the scroll lands (Wear `EdgeButton` reveal, spring overshoot)
+        // show their resting state at the end of the GIF rather than a
+        // caught-mid-reveal transient. Previous frames stay as captured —
+        // they represent the scroll-in-progress state, which is what a
+        // user would see while scrolling.
+        settlePostScrollAnimations(rule)
+        val lastFrameFile = frameFiles.last()
+        lastFrameFile.delete()
+        rule.onRoot().captureRoboImage(file = lastFrameFile, roborazziOptions = frameRoborazziOptions)
+
+        val frames = frameFiles.map {
+            javax.imageio.ImageIO.read(it) ?: error("Failed to read GIF frame PNG: $it")
+        }
+        val delay = if (scroll.frameIntervalMs > 0) scroll.frameIntervalMs
+                    else ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS
+        val written = ScrollGifEncoder.encode(frames, outputFile, delay) ?: return false
+        System.err.println(
+            "@ScrollingPreview(GIF) on '$previewId': encoded ${frames.size} frames → ${written.name}.",
+        )
+        return true
+    } finally {
+        framesDir.deleteRecursively()
+    }
+}
+
+// 20% of viewport per step balances smoothness against frame count.
+private const val GIF_STEP_FRACTION = 0.2f
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes

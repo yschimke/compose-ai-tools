@@ -16,15 +16,19 @@ import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
 /**
- * Demo fixture for `@ScrollingPreview`. 40 stacked bands going red (top)
- * → blue (bottom), each taller than the preview viewport so the top-of-list
- * capture is dominantly red and the scrolled-to-end capture is dominantly
- * blue. Pixel assertions in `:gradle-plugin:functionalTest` / manual eyes
- * both key off this gradient.
+ * Demo fixture for `@ScrollingPreview`. Stacked bands going red (top)
+ * → blue (bottom), each taller than the preview viewport so the
+ * top-of-list capture is dominantly red and the scrolled-to-end capture
+ * is dominantly blue. Pixel assertions in `:gradle-plugin:functionalTest`
+ * / manual eyes both key off this gradient.
+ *
+ * [count] defaults to 40 for the full-viewport TOP/END fixture; callers
+ * driving a smaller viewport (e.g. the GIF preview below) can pass a
+ * smaller value so the scroll extent fits inside the renderer's default
+ * iteration budget.
  */
 @Composable
-fun RedToBlueList() {
-    val count = 40
+fun RedToBlueList(count: Int = 40) {
     LazyColumn(modifier = Modifier.fillMaxWidth()) {
         items((0 until count).toList()) { index ->
             val t = index.toFloat() / (count - 1).toFloat()
@@ -50,4 +54,27 @@ fun RedToBlueList() {
 @Composable
 fun RedToBlueScrollPreview() {
     RedToBlueList()
+}
+
+/**
+ * Animated-GIF capture of the same scroll. Produces a single `.gif`
+ * showing the scroll from top (mostly red) to end (mostly blue). The
+ * pixel test in [ScrollPreviewPixelTest] decodes the GIF and asserts
+ * that frame 0 is red-dominant while the last frame is blue-dominant —
+ * proving both that we scroll, and that frames round-trip through the
+ * GIF encoder/decoder intact.
+ *
+ * Sized down via `widthDp`/`heightDp`: the default sandbox (400×800dp,
+ * ≈1050×2100px at 2.625×) produces a ~600KB demo GIF, which is more
+ * than this fixture needs. A 160×320dp viewport still shows 5 bands
+ * per frame — plenty to prove the scroll moves through the gradient —
+ * at ~1/6 the pixel budget. List length drops to 16 so the total scroll
+ * extent fits inside [driveScrollByViewport]'s default iteration budget;
+ * the animation therefore terminates at a fully blue-dominant last frame.
+ */
+@Preview(name = "ScrollGif", showBackground = true, widthDp = 160, heightDp = 320)
+@ScrollingPreview(modes = [ScrollMode.GIF])
+@Composable
+fun RedToBlueScrollGifPreview() {
+    RedToBlueList(count = 16)
 }

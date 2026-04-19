@@ -28,8 +28,15 @@ export class PreviewHoverProvider implements vscode.HoverProvider {
             md.appendMarkdown(`**${det.functionName}** — Compose Preview\n\n`);
 
             if (entry?.imageBase64) {
+                // Derive MIME from the primary capture's renderOutput so
+                // GIF-mode previews hover as animated GIFs instead of a
+                // static first frame interpreted as PNG.
+                const primary = entry.preview.captures?.[0]?.renderOutput ?? '';
+                const mime = typeof primary === 'string' && primary.toLowerCase().endsWith('.gif')
+                    ? 'image/gif'
+                    : 'image/png';
                 md.appendMarkdown(
-                    `<img src="data:image/png;base64,${entry.imageBase64}" `
+                    `<img src="data:${mime};base64,${entry.imageBase64}" `
                     + `width="${HOVER_IMG_MAX}" height="${HOVER_IMG_MAX}" />`,
                 );
             } else {

@@ -485,7 +485,7 @@ class DiscoveryFunctionalTest {
             """
             package ee.schimke.composeai.preview
 
-            enum class ScrollMode { TOP, END, LONG }
+            enum class ScrollMode { TOP, END, LONG, GIF }
             enum class ScrollAxis { VERTICAL, HORIZONTAL }
 
             @Retention(AnnotationRetention.BINARY)
@@ -495,6 +495,7 @@ class DiscoveryFunctionalTest {
                 val maxScrollPx: Int = 0,
                 val reduceMotion: Boolean = true,
                 val axis: ScrollAxis = ScrollAxis.VERTICAL,
+                val frameIntervalMs: Int = 80,
             )
             """.trimIndent()
         )
@@ -551,6 +552,23 @@ class DiscoveryFunctionalTest {
                 Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
             }
 
+            // GIF-mode capture: single-mode annotation lands at .gif, not .png.
+            @Preview(name = "Gif")
+            @ScrollingPreview(modes = [ScrollMode.GIF], frameIntervalMs = 120)
+            @Composable
+            fun GifScrollPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Cyan))
+            }
+
+            // Multi-mode with GIF sibling: each capture keeps its own
+            // extension — .png for END, .gif for GIF.
+            @Preview(name = "EndAndGif")
+            @ScrollingPreview(modes = [ScrollMode.END, ScrollMode.GIF])
+            @Composable
+            fun EndAndGifScrollPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Yellow))
+            }
+
             @Preview
             @Composable
             fun PlainPreview() {
@@ -577,6 +595,11 @@ class DiscoveryFunctionalTest {
         // using its declared-in-source defaults (reduceMotion=true, axis=VERTICAL).
         // Scroll state lives on each capture now (Capture.scroll) — single-capture
         // previews carry it on the first element.
+        // `frameIntervalMs` on the annotation applies to every capture in
+        // the manifest even though it's only meaningful for GIF mode —
+        // discovery reads the field unconditionally for a uniform shape.
+        // Test stub declares 80 as the default (matches the real
+        // annotation's DEFAULT_GIF_FRAME_INTERVAL_MS).
         for (p in endPreviews) {
             assertThat(p.captures).hasSize(1)
             assertThat(p.captures.first().scroll).isEqualTo(
@@ -585,6 +608,7 @@ class DiscoveryFunctionalTest {
                     axis = ScrollAxis.VERTICAL,
                     maxScrollPx = 0,
                     reduceMotion = true,
+                    frameIntervalMs = 80,
                 )
             )
         }
@@ -596,6 +620,7 @@ class DiscoveryFunctionalTest {
                 axis = ScrollAxis.HORIZONTAL,
                 maxScrollPx = 4000,
                 reduceMotion = false,
+                frameIntervalMs = 80,
             )
         )
 
@@ -604,7 +629,7 @@ class DiscoveryFunctionalTest {
 
         // Multi-mode: one preview yields two captures, one per mode, with
         // distinct `_SCROLL_<mode>` filenames. Modes sort by enum ordinal
-        // (TOP, END, LONG) so the renderer captures the initial frame
+        // (TOP, END, LONG, GIF) so the renderer captures the initial frame
         // before driving the scroller.
         val topAndEnd = manifest.previews.single { it.functionName == "TopAndEndScrollPreview" }
         assertThat(topAndEnd.captures).hasSize(2)
@@ -613,6 +638,35 @@ class DiscoveryFunctionalTest {
         assertThat(topAndEnd.captures.map { it.renderOutput }).containsExactly(
             "renders/${topAndEnd.id}_SCROLL_top.png",
             "renders/${topAndEnd.id}_SCROLL_end.png",
+        ).inOrder()
+
+        // Single-mode GIF: keeps the plain `renders/<id>.gif` name (no
+        // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
+        // manifest so the renderer can honour it.
+        val gifOnly = manifest.previews.single { it.functionName == "GifScrollPreview" }
+        assertThat(gifOnly.captures).hasSize(1)
+        assertThat(gifOnly.captures.single().scroll).isEqualTo(
+            ScrollCapture(
+                mode = ScrollMode.GIF,
+                axis = ScrollAxis.VERTICAL,
+                maxScrollPx = 0,
+                reduceMotion = true,
+                frameIntervalMs = 120,
+            )
+        )
+        assertThat(gifOnly.captures.single().renderOutput)
+            .isEqualTo("renders/${gifOnly.id}.gif")
+
+        // Multi-mode with GIF sibling: each capture gets its mode's
+        // extension (PNG for END, GIF for GIF) — the extension branches
+        // per-capture rather than per-preview.
+        val endAndGif = manifest.previews.single { it.functionName == "EndAndGifScrollPreview" }
+        assertThat(endAndGif.captures).hasSize(2)
+        assertThat(endAndGif.captures.map { it.scroll?.mode })
+            .containsExactly(ScrollMode.END, ScrollMode.GIF).inOrder()
+        assertThat(endAndGif.captures.map { it.renderOutput }).containsExactly(
+            "renders/${endAndGif.id}_SCROLL_end.png",
+            "renders/${endAndGif.id}_SCROLL_gif.gif",
         ).inOrder()
     }
 

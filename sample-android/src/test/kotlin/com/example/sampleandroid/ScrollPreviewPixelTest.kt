@@ -1,6 +1,7 @@
 package com.example.sampleandroid
 
 import com.google.common.truth.Truth.assertThat
+import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Test
@@ -66,5 +67,69 @@ class ScrollPreviewPixelTest {
         assertThat(avg.dominant()).isEqualTo('B')
         assertThat(avg.b).isGreaterThan(150.0)
         assertThat(avg.r).isLessThan(120.0)
+    }
+
+    /**
+     * End-to-end check of the [ScrollMode.GIF] pipeline: driver captures
+     * each frame, encoder lays them into a NETSCAPE-looping GIF, and a
+     * standard `ImageIO` reader on the other side can decode the frames
+     * back out.
+     *
+     * Keyed off the single-mode `GIF` annotation on [RedToBlueScrollGifPreview],
+     * so the output file is `...RedToBlueScrollGifPreview_ScrollGif.gif`
+     * without the `_SCROLL_gif` suffix multi-mode would add.
+     */
+    @Test
+    fun `GIF capture animates red to blue`() {
+        val gifName = "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif"
+        val file = File(rendersDir, gifName)
+        assertThat(file.exists()).isTrue()
+
+        val frames = readGifFrames(file)
+        // Need at least two frames for an animation, and the driver should
+        // typically produce many more (several per viewport).
+        assertThat(frames.size).isAtLeast(2)
+
+        val first = avgOfImage(frames.first())
+        val last = avgOfImage(frames.last())
+        // Frame 0 is the unscrolled top → red-dominant.
+        assertThat(first.dominant()).isEqualTo('R')
+        // Final frame is at (or near) the end → blue-dominant. Wider
+        // tolerances than the PNG END test because GIF quantisation shifts
+        // per-channel averages by a few points.
+        assertThat(last.dominant()).isEqualTo('B')
+        assertThat(last.b).isGreaterThan(130.0)
+        assertThat(last.r).isLessThan(140.0)
+    }
+
+    private fun avgOfImage(img: BufferedImage): Avg {
+        var rs = 0L
+        var gs = 0L
+        var bs = 0L
+        val w = img.width
+        val h = img.height
+        for (y in 0 until h) for (x in 0 until w) {
+            val argb = img.getRGB(x, y)
+            rs += (argb shr 16) and 0xff
+            gs += (argb shr 8) and 0xff
+            bs += argb and 0xff
+        }
+        val n = (w * h).toDouble()
+        return Avg(rs / n, gs / n, bs / n)
+    }
+
+    /**
+     * Reads every frame of an animated GIF into a list of [BufferedImage].
+     * Uses the standard `javax.imageio` GIF reader plugin — same plugin
+     * [ScrollGifEncoder] writes against, so this doubles as a round-trip
+     * check on the encoder's metadata tree.
+     */
+    private fun readGifFrames(file: File): List<BufferedImage> {
+        val reader = ImageIO.getImageReadersByFormatName("gif").next()
+        javax.imageio.stream.FileImageInputStream(file).use { input ->
+            reader.input = input
+            val count = reader.getNumImages(true)
+            return List(count) { reader.read(it) }
+        }
     }
 }

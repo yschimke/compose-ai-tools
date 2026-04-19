@@ -37,6 +37,7 @@ function scrollLabel(scroll: NonNullable<Capture['scroll']>): string {
     if (scroll.reachedPx != null) return `scrolled ${scroll.reachedPx}px`;
     if (scroll.mode === 'END') return 'scroll end';
     if (scroll.mode === 'LONG') return 'scroll long';
+    if (scroll.mode === 'GIF') return 'scroll gif';
     return `scroll ${scroll.mode.toLowerCase()}`;
 }
 
