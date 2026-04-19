@@ -119,7 +119,15 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     const gradleApi = (await gradleExt.activate()) as GradleApi;
 
-    gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel);
+    gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel, () => {
+        // Read config lazily on each run so user toggles take effect without a reload.
+        const args: string[] = [];
+        const config = vscode.workspace.getConfiguration('composePreview');
+        if (config.get<boolean>('accessibilityChecks.enabled')) {
+            args.push('-PcomposePreview.accessibilityChecks.enabled=true');
+        }
+        return args;
+    });
 
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
     context.subscriptions.push(
