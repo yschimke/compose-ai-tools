@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as vscode from 'vscode';
 import { AccessibilityFinding, AccessibilityReport, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
 import { APPLIES_PLUGIN_RE } from './pluginDetection';
 
@@ -45,14 +44,21 @@ export class GradleService {
     private workspaceRoot: string;
     private logger: Logger;
     private gradleApi: GradleApi;
+    private argsProvider: () => string[];
     private manifestCache = new Map<string, { manifest: PreviewManifest; timestamp: number }>();
     private taskCounter = 0;
     private activeKeys = new Set<string>();
 
-    constructor(workspaceRoot: string, gradleApi: GradleApi, logger?: Logger) {
+    constructor(
+        workspaceRoot: string,
+        gradleApi: GradleApi,
+        logger?: Logger,
+        argsProvider?: () => string[],
+    ) {
         this.workspaceRoot = workspaceRoot;
         this.gradleApi = gradleApi;
         this.logger = logger ?? nullLogger;
+        this.argsProvider = argsProvider ?? (() => []);
     }
 
     async discoverPreviews(module: string): Promise<PreviewManifest | null> {
@@ -296,20 +302,6 @@ export class GradleService {
         this.cancel();
     }
 
-    /**
-     * Reads workspace settings and builds the `-P` override list passed to
-     * every Gradle invocation. Keeps the mapping in one place so settings
-     * changes take effect the next time `runTask` fires, no reload required.
-     */
-    private buildGradleArgs(): string[] {
-        const args: string[] = [];
-        const config = vscode.workspace.getConfiguration('composePreview');
-        if (config.get<boolean>('accessibilityChecks.enabled')) {
-            args.push('-PcomposePreview.accessibilityChecks.enabled=true');
-        }
-        return args;
-    }
-
     private runTask(task: string): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
@@ -329,7 +321,7 @@ export class GradleService {
         const taskPromise = this.gradleApi.runTask({
             projectFolder: this.workspaceRoot,
             taskName: task,
-            args: this.buildGradleArgs(),
+            args: this.argsProvider(),
             showOutputColors: false,
             cancellationKey,
             onOutput: (output) => {
