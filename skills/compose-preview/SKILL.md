@@ -240,7 +240,7 @@ In `<module>/build.gradle.kts`:
 <!-- x-release-please-start-version -->
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.7.0"
+    id("ee.schimke.composeai.preview") version "0.7.1"
 }
 
 composePreview {
