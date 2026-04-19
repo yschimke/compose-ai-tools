@@ -36,7 +36,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         val variant = resolveVariant(project)
         val main = resolveConfiguration(project, "${variant}RuntimeClasspath")
         val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
-        val findings: List<ModuleFinding> = CompatRules.evaluate(main, test)
+        val gradleVersion = org.gradle.util.GradleVersion.current().version
+        val findings: List<ModuleFinding> = CompatRules.evaluate(main, test, gradleVersion)
         val info: ModuleInfo = ModuleInfoData(variant, main, test, findings)
         return ComposePreviewModelData(PluginVersion.value, mapOf(project.path to info))
     }
