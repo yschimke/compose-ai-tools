@@ -25,6 +25,7 @@ enum class ScrollMode {
     TOP,
     END,
     LONG,
+    GIF,
 }
 
 /** Mirrors `ee.schimke.composeai.preview.ScrollAxis`. */
@@ -51,6 +52,12 @@ data class ScrollCapture(
     val axis: ScrollAxis = ScrollAxis.VERTICAL,
     val maxScrollPx: Int = 0,
     val reduceMotion: Boolean = true,
+    /**
+     * Per-frame delay for [ScrollMode.GIF] output, in milliseconds. Ignored
+     * by other modes. `0` means "use the renderer's built-in default"
+     * (matches the annotation default).
+     */
+    val frameIntervalMs: Int = 0,
     // Outcome
     /**
      * `true` when the scrollable reported it was already at the end of its

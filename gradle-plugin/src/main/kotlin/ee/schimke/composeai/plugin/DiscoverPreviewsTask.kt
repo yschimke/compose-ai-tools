@@ -231,10 +231,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
         return scrollRows.flatMap { (scroll, scrollSuffix) ->
             timeRows.map { (ms, timeSuffix) ->
+                // GIF captures land on `.gif`; everything else is `.png`.
+                // Branching the extension per-capture (rather than per-preview)
+                // keeps multi-mode annotations like `modes = [TOP, GIF]`
+                // producing one PNG + one GIF from the same function.
+                val ext = if (scroll?.mode == ScrollMode.GIF) "gif" else "png"
                 Capture(
                     advanceTimeMillis = ms,
                     scroll = scroll,
-                    renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.png",
+                    renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.${ext}",
                 )
             }
         }
@@ -288,10 +293,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             ?: ScrollAxis.VERTICAL
         val maxScrollPx = (pv.getValue("maxScrollPx") as? Int)?.coerceAtLeast(0) ?: 0
         val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
+        // `frameIntervalMs` only meaningful for GIF mode; we still read it
+        // unconditionally and carry it into every ScrollCapture so the
+        // manifest shape stays uniform. `0` (or negative, coerced) signals
+        // "use the renderer's default" — matching the annotation-side
+        // DEFAULT_GIF_FRAME_INTERVAL_MS without duplicating the literal here.
+        val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.coerceAtLeast(0) ?: 0
         // Result fields (atEnd, reachedPx) default to "not reported" — the
         // renderer would fill them in post-capture; discovery knows only the
         // intent. De-dup to guard against `modes = [END, END]` producing
-        // colliding PNG paths. Sort by enum ordinal (TOP→END→LONG) so the
+        // colliding paths. Sort by enum ordinal (TOP→END→LONG→GIF) so the
         // renderer captures the initial frame before driving the scroller —
         // otherwise `modes = [END, TOP]` would produce a "TOP" PNG at the
         // scrolled-end position.
@@ -301,6 +312,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 axis = axis,
                 maxScrollPx = maxScrollPx,
                 reduceMotion = reduceMotion,
+                frameIntervalMs = frameIntervalMs,
             )
         }
     }

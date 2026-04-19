@@ -281,6 +281,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             return id.replace(/[^a-zA-Z0-9_-]/g, '_');
         }
 
+        // Data-URL MIME for a preview image, derived from its renderOutput
+        // extension. @ScrollingPreview(GIF) captures land at .gif; all
+        // other captures are PNG. Browsers sniff magic bytes and would
+        // actually render a GIF served as image/png — but declaring the
+        // right type matters for the webview's img fallback/accessibility
+        // paths and avoids a console warning when saving the preview.
+        function mimeFor(renderOutput) {
+            return typeof renderOutput === 'string' &&
+                renderOutput.toLowerCase().endsWith('.gif')
+                ? 'image/gif'
+                : 'image/png';
+        }
+
         // Per-preview carousel runtime state — imageData / errorMessage per
         // capture. Populated from updateImage / setImageError messages so
         // prev/next navigation can swap the visible <img> without a fresh
@@ -315,6 +328,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             card.dataset.currentIndex = '0';
             cardCaptures.set(p.id, captures.map(c => ({
                 label: c.label || '',
+                renderOutput: c.renderOutput || '',
                 imageData: null,
                 errorMessage: null,
             })));
@@ -477,7 +491,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     img.alt = card.dataset.function + ' preview';
                     container.appendChild(img);
                 }
-                img.src = 'data:image/png;base64,' + capture.imageData;
+                img.src = 'data:' + mimeFor(capture.renderOutput) + ';base64,' + capture.imageData;
                 img.className = 'fade-in';
             } else if (capture.errorMessage) {
                 container.innerHTML = '<div class="error-message" role="alert">' + escapeHtml(capture.errorMessage) + '</div>';
@@ -647,6 +661,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // annotation). Mismatched positions just reset to null-image.
             const mergedCaps = newCaps.map((nc, i) => ({
                 label: nc.label,
+                renderOutput: nc.renderOutput || '',
                 imageData: prior[i]?.imageData ?? null,
                 errorMessage: prior[i]?.errorMessage ?? null,
             }));
@@ -989,7 +1004,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (errorMsg) errorMsg.remove();
             card.classList.remove('has-error');
 
-            const newSrc = 'data:image/png;base64,' + imageData;
+            const ro = caps && caps[captureIndex] ? caps[captureIndex].renderOutput : '';
+            const newSrc = 'data:' + mimeFor(ro) + ';base64,' + imageData;
 
             // If the user is viewing a history snapshot, don't clobber it —
             // stash the new latest so closing the drawer reveals the update.
