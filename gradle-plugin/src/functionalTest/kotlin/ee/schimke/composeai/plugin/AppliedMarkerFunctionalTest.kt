@@ -52,6 +52,15 @@ class AppliedMarkerFunctionalTest {
             """.trimIndent(),
         )
 
+        // Configuration cache + Isolated Projects on by default — every
+        // assertion in this file is implicitly an IP/CC-safety assertion.
+        File(projectDir, "gradle.properties").writeText(
+            """
+            org.gradle.configuration-cache=true
+            org.gradle.unsafe.isolated-projects=true
+            """.trimIndent(),
+        )
+
         return projectDir
     }
 
@@ -94,5 +103,32 @@ class AppliedMarkerFunctionalTest {
             .build()
 
         assertThat(result.task(":composePreviewApplied")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+    }
+
+    @Test
+    fun `configuration cache is reused across runs`() {
+        val projectDir = createBareProject()
+
+        // First run stores the CC entry. `--info` surfaces the
+        // "Configuration cache entry stored" / "reused" messages we want to
+        // assert on — Gradle itself doesn't fail the build on an IP/CC
+        // violation at this level, so we verify by output inspection.
+        val first = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("composePreviewApplied", "--info")
+            .withPluginClasspath()
+            .build()
+        assertThat(first.output).contains("Configuration cache entry stored")
+
+        val second = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("composePreviewApplied", "--info")
+            .withPluginClasspath()
+            .build()
+        // "reused" is the string Gradle prints when the cache hit is clean.
+        // Anything that violated CC invariants during config would have
+        // caused "discarded" or an outright failure — both of which we'd
+        // catch here.
+        assertThat(second.output).contains("Reusing configuration cache")
     }
 }
