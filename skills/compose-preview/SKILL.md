@@ -70,6 +70,97 @@ invocation. State is persisted per-module under
 `<module>/build/compose-previews/.cli-state.json` and gets wiped by
 `./gradlew clean`.
 
+## Permissions for agent workflows
+
+Agents using this skill run the same handful of commands on every iteration
+(render, read PNGs, occasionally stage copies). Most agent harnesses
+(Claude Code, Cursor, Cline, Aider, Copilot, etc.) support some form of
+pre-approval — allowlist entries, trusted-command lists, or auto-accept
+rules. The exact syntax differs, so the lists below are patterns rather
+than a specific config file. Translate them into your harness's format and
+keep anything that publishes or mutates shared state on the prompt path.
+
+**Safe to pre-approve** (read/render, only writes under gitignored `build/`):
+
+- `compose-preview` — all subcommands write under `build/compose-previews/`.
+- `./gradlew` / `gradle` — already trusted in most JVM projects.
+- Reading `**/build/**` — rendered PNGs and staged copies live here.
+- `mkdir -p`, `cp`, `rm -f` — for staging copies (see below).
+- `git worktree add|remove|list`, `git ls-remote`, `git fetch`, `git show` —
+  used by the PR-review workflow to render a base branch without touching
+  the working copy.
+- `gh pr view`, `gh pr diff`, and `GET` on `gh api repos/…/comments`.
+
+**Require explicit consent** (publish or mutate shared state — keep on the
+prompt path):
+
+- `gh gist create` — public by default; even `--secret` URLs are shareable.
+- `gh pr comment`, `gh pr review`, `POST`/`PATCH`/`DELETE` via `gh api`.
+- `git push`, `git commit`, `git branch -D`, `git reset --hard`.
+- Uploads to external hosts (image hosts, paste services).
+
+If the user approves a gist or PR comment once, don't persist it as a
+general allowlist entry — the next PR may not want it.
+
+### Staging PNGs outside the render output
+
+`compose-preview` writes each PNG under
+`<module>/build/compose-previews/renders/<id>.png`. Reading those paths
+directly works for a single iteration, but agents often want to hold
+captures steady across a diff — before/after pairs, the subset a PR
+touches, or images copied next to a worktree that's about to be removed.
+
+Stage those copies **somewhere under `build/`**. Every Android/KMP project
+`.gitignore`s that path, so nothing leaks into commits, and the location is
+consistent across checkouts. The exact layout (`build/preview-staging/`,
+`build/agent/<ts>/`, a module-local `build/…`, etc.) is up to the agent —
+pick what fits the task.
+
+Don't stage outside `build/`. Checked-in paths like `docs/` or `screenshots/`
+risk committing generated binaries.
+
+## Designing composables for previewability
+
+`@Preview` only calls composables with zero arguments (or all-default). That
+rules out anything taking a `ViewModel`, repository, or DI-injected service.
+The standard fix is **state hoisting** — split each screen into two layers:
+
+```kotlin
+// Stateful wrapper: wires runtime dependencies. Not previewable.
+@Composable
+fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsState()
+    HomeScreen(state = state, onRefresh = viewModel::refresh)
+}
+
+// Stateless UI: pure function of state + callbacks. Previewable with
+// hand-rolled fixtures — no mocks, no test dispatchers, no DI.
+@Composable
+fun HomeScreen(state: HomeState, onRefresh: () -> Unit) { /* … */ }
+
+@Preview @Composable fun HomeScreen_loaded() =
+    HomeScreen(HomeState.Loaded(items = sampleItems), onRefresh = {})
+
+@Preview @Composable fun HomeScreen_empty() =
+    HomeScreen(HomeState.Empty, onRefresh = {})
+
+@Preview @Composable fun HomeScreen_error() =
+    HomeScreen(HomeState.Error("Network unavailable"), onRefresh = {})
+```
+
+Every visual state is a fixture — the state is data, constructed inline.
+This is also the foundation for testing UI without standing up business
+logic: the same stateless composable that a preview renders is the one a
+screenshot test or Compose UI test exercises.
+
+**Agent guidance:** if you're asked to iterate on a composable that accepts
+a ViewModel, repository, or injected dependency, **first propose extracting
+a stateless inner composable and preview that instead.** Rendering the
+stateful wrapper either fails outright or produces a misleading
+empty/loading frame that doesn't exercise the UI. The one-time extraction
+cost unlocks the fast `compose-preview` iteration loop for every future
+change on that screen.
+
 ## Workflow: iterate on a design
 
 1. **List** previews: `compose-preview list` (optionally `--filter <name>` or
@@ -130,35 +221,12 @@ prereq for the plugin now that Maven Central resolution needs no auth).
 ### 1. Register the plugin repository (only if mavenCentral is missing)
 
 Most Android/KMP projects already include `mavenCentral()` in
-`pluginManagement.repositories`. If yours doesn't, add it.
-
-**Kotlin DSL — `settings.gradle.kts`:**
-
-```kotlin
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-```
-
-**Groovy DSL — `settings.gradle`:**
-
-```groovy
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-```
+`pluginManagement.repositories` in `settings.gradle.kts`. If yours doesn't,
+add it alongside `gradlePluginPortal()` and `google()`.
 
 ### 2. Apply the plugin
 
-**Kotlin DSL — `<module>/build.gradle.kts`:**
+In `<module>/build.gradle.kts`:
 
 <!-- x-release-please-start-version -->
 ```kotlin
@@ -174,21 +242,7 @@ composePreview {
 ```
 <!-- x-release-please-end -->
 
-**Groovy DSL — `<module>/build.gradle`:**
-
-<!-- x-release-please-start-version -->
-```groovy
-plugins {
-    id 'ee.schimke.composeai.preview' version '0.7.0'
-}
-
-composePreview {
-    variant = 'debug'
-    sdkVersion = 35
-    enabled = true
-}
-```
-<!-- x-release-please-end -->
+(Groovy DSL works identically — translate property assignments to `=`.)
 
 CMP Desktop projects additionally need
 `implementation(compose.components.uiToolingPreview)` — the bundled `@Preview`
@@ -209,17 +263,15 @@ CLI commands address them individually — no variant index needed.
 
 ## Animations and the paused frame clock (Android only)
 
-The default Android renderer pauses the Compose `mainClock`, advances by
-`CAPTURE_ADVANCE_MS`, then captures. That's what makes infinite animations
-(`CircularProgressIndicator`, `rememberInfiniteTransition`, hand-rolled
-`withFrameNanos` loops) terminate deterministically instead of hanging
-Compose's idling resource — agents do **not** need to write `awaitIdle` or
-`mainClock.advanceTimeBy` calls themselves.
+The Android renderer pauses the Compose `mainClock` and advances by a fixed
+step before capture, so infinite animations
+(`CircularProgressIndicator`, `rememberInfiniteTransition`, `withFrameNanos`
+loops) terminate deterministically instead of hanging the idling resource.
+You don't need to call `awaitIdle` or `mainClock.advanceTimeBy` yourself.
 
-To capture a single composable at multiple points along an animation
-timeline, stack `@RoboComposePreviewOptions` from Roborazzi. Each
-`ManualClockOptions(advanceTimeMillis = …)` entry fans out into its own
-capture, with the suffix `_TIME_<ms>ms` appended to the preview id:
+To capture one composable at multiple timeline points, stack
+`@RoboComposePreviewOptions` from Roborazzi — each `ManualClockOptions`
+entry becomes its own capture with a `_TIME_<ms>ms` id suffix:
 
 ```kotlin
 import com.github.takahirom.roborazzi.annotations.ManualClockOptions
@@ -237,23 +289,13 @@ import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 fun SpinnerPreview() { /* … */ }
 ```
 
-Add `implementation(libs.roborazzi.annotations)` (or
-`com.github.takahirom.roborazzi:roborazzi-annotations`) to expose the
-annotation; the metadata is source-retained but read by ClassGraph at
-discovery time.
+Requires `implementation(libs.roborazzi.annotations)` (or
+`com.github.takahirom.roborazzi:roborazzi-annotations`). Each capture
+appears in the CLI's `captures[]` with `advanceTimeMillis` set.
 
-Each capture lands in `previews.json` and the CLI's `captures[]` array with
-`advanceTimeMillis` set, alongside per-capture `pngPath`, `sha256`, and
-`changed`. Reviewers can diff frames side-by-side without rebuilding.
-
-Caveat: a11y mode (`composePreview.accessibilityChecks.enabled = true`)
-disables the paused-clock path because ATF needs live semantics; infinite
-animations tick through during capture. Don't combine ATF with timeline
-fan-outs unless you're prepared for noisy diffs.
-
-CMP Desktop calls `scene.render()` twice so `LaunchedEffect`s settle before
-encode — there's no per-preview clock control there yet; pick a static frame
-in your composable if you need determinism.
+Caveats: a11y mode disables the paused clock (ATF needs live semantics), so
+don't combine it with timeline fan-outs. CMP Desktop has no per-preview
+clock control — pick a static frame if you need determinism.
 
 ## Scrolling captures
 
@@ -283,39 +325,24 @@ fun MyListTopAndEndPreview() { MyList() }
 fun MyListLongPreview() { MyList() }
 ```
 
-- `ScrollMode.TOP` captures the initial (unscrolled) frame. Equivalent to a
-  plain `@Preview`, but lets a single function emit a top-state capture
-  alongside END/LONG — no sibling preview needed.
-- `ScrollMode.END` drives the scroller to its content end and captures one
-  frame.
-- `ScrollMode.LONG` stitches multiple slices into a single tall PNG covering
-  the whole scrollable extent. On round Wear faces the output is clipped to a
-  capsule shape — top half-circle, rectangular middle, bottom half-circle —
-  so the watch edge is preserved at the first and last slices.
-- `maxScrollPx` caps how far the renderer scrolls (use it on infinite or
-  pathologically long scrollers; `0` means unbounded). Applies to END/LONG;
-  ignored for TOP.
-- `reduceMotion = true` (default) wraps the body in
-  `LocalReduceMotion provides ReduceMotion(true)` — important for Wear
-  `TransformingLazyColumn`, where item transforms otherwise vary slice-to-slice
-  and produce noisy diffs.
-- Only `ScrollAxis.VERTICAL` is rendered today.
+Modes:
 
-### Filenames
+- `TOP` — initial unscrolled frame. Useful alongside END/LONG in a single
+  function so a sibling preview isn't needed.
+- `END` — scrolls to content end, captures one frame.
+- `LONG` — stitches slices into one tall PNG covering the full scrollable
+  extent. On round Wear faces the output is clipped to a capsule shape
+  (half-circle top, rectangular middle, half-circle bottom).
 
-Single-mode annotations keep the plain `renders/<id>.png` path (so migrating
-from the pre-0.7 `mode = ScrollMode.END` shape to `modes = [ScrollMode.END]`
-lands on the same output). Multi-mode annotations disambiguate siblings with
-a `_SCROLL_<mode>` suffix — e.g. `renders/<id>_SCROLL_top.png` and
-`renders/<id>_SCROLL_end.png`. Captures are emitted in enum order
-(TOP, END, LONG) regardless of how they appear in the `modes` array, so the
-renderer captures the unscrolled frame before driving the scroller.
+Knobs: `maxScrollPx` caps scroll distance on END/LONG (`0` = unbounded);
+`reduceMotion = true` (default) disables Wear `TransformingLazyColumn`
+transforms that would otherwise vary slice-to-slice. Only vertical scrolling
+is supported. `@ScrollingPreview` is Android-only.
 
-Each scroll capture is a separate entry in the CLI's `captures[]` with
-`scroll` set (`{mode: "TOP"}`, `{mode: "END"}`, or `{mode: "LONG"}`).
-
-`@ScrollingPreview` is Android-only at present; CMP Desktop ignores the
-annotation.
+Filenames: single-mode → plain `renders/<id>.png`; multi-mode →
+`renders/<id>_SCROLL_<mode>.png`, emitted in enum order (TOP, END, LONG).
+Each capture is a separate entry in the CLI's `captures[]` with `scroll`
+set.
 
 ## Accessibility (a11y)
 
@@ -349,30 +376,21 @@ composePreview {
 }
 ```
 
-When enabled, the Android renderer switches to its `renderWithA11y` path:
-`LocalInspectionMode = false` so Compose populates real semantics, and after
-capture ATF walks the `ViewRootForTest` view via `AccessibilityChecker`.
-Findings (touch-target size, contrast, missing content descriptions, etc.)
-land in `accessibility.json` and an annotated PNG with numbered badges +
-legend.
-
-CLI:
+When enabled, Compose populates real semantics (inspection mode off) and
+ATF walks the captured view. Findings (touch-target size, contrast, missing
+`contentDescription`, etc.) land in `accessibility.json` and an annotated
+PNG with numbered badges.
 
 ```sh
-compose-preview a11y                       # human-readable per-preview findings
-compose-preview a11y --json --changed-only # for agent re-render loops
-compose-preview a11y --fail-on errors      # exit non-zero on ERROR-level
+compose-preview a11y                       # human-readable findings
+compose-preview a11y --json --changed-only # for re-render loops
+compose-preview a11y --fail-on errors      # non-zero on ERROR-level
 ```
 
-JSON results include `a11yFindings[]` (level/type/message/viewDescription)
-and `a11yAnnotatedPath` (the badge-overlay PNG). When you see findings,
-read the annotated PNG to locate them — the numbers in the legend match the
-badges on the screenshot.
-
-Trade-off worth knowing: a11y mode disables the paused frame clock (ATF
-needs live semantics), so infinite animations tick through during capture.
-Toggle a11y off for animation-heavy previews if the diff churn becomes
-distracting.
+JSON entries include `a11yFindings[]` (level/type/message/viewDescription)
+and `a11yAnnotatedPath`. Read the annotated PNG to map numbered badges back
+to findings. Trade-off: a11y mode disables the paused clock, so infinite
+animations tick during capture — toggle it off for animation-heavy previews.
 
 ## Wear design guidance
 
@@ -385,299 +403,16 @@ When creating or iterating on Wear OS designs, refer to the
 - Proper **System UI** integration (e.g., `TimeText`, `AppScaffold`).
 - **Responsive layout** strategies across screen sizes.
 
-## CI preview baselines (`preview_main` branch)
+## CI and PR workflows
 
-Projects that use the Gradle plugin can set up CI workflows to maintain a
-`preview_main` branch with rendered PNGs and a `baselines.json` file (preview
-ID → SHA-256). This serves two purposes:
-
-1. **Browsable gallery** — the branch has a `README.md` with inline images,
-   viewable directly on GitHub.
-2. **PR diff comments** — a companion workflow renders previews on each PR,
-   compares against the baselines, and posts a before/after comment.
-
-### Checking if baselines are available
-
-```bash
-git ls-remote --exit-code origin preview_main
-```
-
-### Fetching current main previews
-
-```bash
-# Get the baselines manifest
-git fetch origin preview_main
-git show origin/preview_main:baselines.json
-
-# Get a specific rendered PNG
-git show origin/preview_main:renders/<module>/<preview-id>.png > preview.png
-```
-
-Or via raw URL:
-```
-https://raw.githubusercontent.com/<owner>/<repo>/preview_main/renders/<module>/<preview-id>.png
-```
-
-### Adding preview CI to your project
-
-The actions are published as composite GitHub Actions. Add two workflow files
-to your project:
-
-**`.github/workflows/preview-baselines.yml`** — updates `preview_main` on push
-to main:
-
-```yaml
-name: Preview Baselines
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: write
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@main
-```
-
-**`.github/workflows/preview-comment.yml`** — posts before/after comments on
-PRs and cleans up on close:
-
-```yaml
-name: Preview Comment
-on:
-  pull_request:
-    types: [opened, synchronize, closed]
-permissions:
-  contents: write
-  pull-requests: write
-jobs:
-  compare:
-    if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@main
-  cleanup:
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-cleanup@main
-```
-
-The actions download the `compose-preview` CLI from the latest release,
-auto-discover all modules that apply the plugin, and handle the baselines
-branch and PR comment lifecycle. Gradle build caching via `setup-gradle`
-keeps subsequent renders fast.
-
-## Authoring an Agent PR (body structure)
-
-A reviewer opening an agent-authored PR should see **the goal** before they
-see **what the agent did**. Structure the PR body in two sections, in this
-order:
-
-### 1. Goal — the user's prompt, lightly reworded
-
-Paste the prompt that kicked off the work, cleaned up but **not rewritten**:
-
-- Fix typos, expand pronouns that only make sense in chat ("it", "this"),
-  resolve references to earlier turns ("like we discussed" → the actual
-  constraint), strip conversational filler ("please", "can you").
-- Keep the user's voice, scope, and emphasis. Don't add justifications,
-  don't soften "must" into "should", don't invent acceptance criteria the
-  user didn't state.
-- One short paragraph, or a bulleted list if the user's prompt already had
-  bullets. Not a re-specification.
-
-This section anchors the review: every change the agent made should trace
-back to something here. If the diff does something this section doesn't ask
-for, that's a scope-creep flag for the reviewer.
-
-### 2. Summary — what the agent actually did
-
-Separate subsection (`## Summary` or `## What changed`) covering, in order:
-
-- **Changes made** — one bullet per distinct change, file-path-anchored.
-- **Things tried and abandoned** — approaches the agent rejected and why,
-  so the reviewer doesn't suggest them again.
-- **Known gaps** — anything from the goal the agent didn't do (and why:
-  out of scope, blocked, unclear). Explicit gaps beat silent omissions.
-- **Verification** — how the agent checked the change. For UI work, list
-  the `@Preview` ids that were re-rendered and read, not just "tested
-  locally".
-
-Keep each bullet under ~2 lines. Reviewers skim; a 40-line wall-of-summary
-defeats the point.
-
-If a CI preview comment will be posted, don't duplicate the before/after in
-the body — link to the comment instead. The body stays intent-focused; the
-sticky comment carries the visuals.
-
-## Reviewing a PR (agent workflow)
-
-When asked to review a PR — especially one opened by another agent — your job
-is to make the UI change legible to a *human* reviewer, not to re-do the
-agent's work. Most repos will **not** have any preview-diff CI set up, so
-assume you're rendering locally and that the human who invoked you is the
-primary audience.
-
-### 1. Render base and head locally
-
-Use a worktree for the base so the agent's working copy stays on the PR head:
-
-```bash
-BASE=$(gh pr view <N> --json baseRefName -q .baseRefName)
-git worktree add ../_pr_base "origin/$BASE"
-
-(cd ../_pr_base && compose-preview show --json) > base.json
-compose-preview show --json > head.json
-
-git worktree remove ../_pr_base
-```
-
-Diff by preview `id` + `sha256`. Bucket into **changed**, **new**, and
-**removed**. Read the PNGs for each entry in `changed` and `new` directly
-from the paths in the JSON — this is what the human invoking you will read
-too.
-
-### 2. Default: show the human the diffs inline, post a text comment
-
-Without pre-existing image hosting, the simplest flow is:
-
-1. **Read** the before/after PNGs yourself — you now have the visual context.
-2. **Summarise** the deltas in plain text for the human running the review
-   (per-preview: what changed, what to look for).
-3. **Post a text-only review comment** to the PR. Include preview ids,
-   `sha256` (first 8 chars), and the local path so the human — or a later
-   agent — can reproduce:
-
-   ```
-   ## Preview diff (rendered locally, not hosted)
-
-   **3 changed, 1 new, 0 removed** · base `origin/main@abc1234`
-
-   ### Changed
-   - `home:HomeScreen_dark` — bg #1a1a → #0d0d0d, divider gained 1dp radius
-     · sha `a1b2c3d4` → `e5f6a7b8`
-   - `home:HomeScreen_fontscale_1.3` — CTA wraps to 2 lines at 1.3×
-     · sha `11223344` → `99aabbcc` — **likely regression, flag**
-
-   ### New
-   - `home:HomeScreen_empty` — ➕ no baseline; verify this is intentional
-     · sha `deadbeef`
-
-   _Images not uploaded. Run `compose-preview show --filter HomeScreen --json`
-   locally to reproduce._
-   ```
-
-   This is far better than silence and doesn't require any infrastructure.
-
-### 3. Uploading images — only with explicit consent
-
-If the human asks for images in the comment, pick **one** and confirm the
-destination before acting:
-
-- **Gist** (`gh gist create <png> --public`) — quick, one image per file,
-  public by default. Ask before posting anything public.
-- **Dedicated branch in the repo** (`preview_pr/<N>`) — clean raw URLs but
-  creates a branch the user may not want; get confirmation.
-- **Issue/PR attachment upload** — not reliably available via `gh`; skip.
-
-Never use inline base64 or data URIs — GitHub strips them. Never push images
-to a public branch, gist, or external host without the user explicitly
-saying yes in the chat.
-
-### 4. Write the comment for a human, not a log file
-
-Whether or not there are images, the review comment is what the reviewer
-will actually read. Optimise for scanning:
-
-- **Lead with a one-line count**: `N changed · N new · N removed ·
-  N unchanged` (per module if >1 module is touched). Reviewers decide
-  whether to expand based on this line.
-- **Only show deltas.** Unchanged previews go behind a collapsed `<details>`
-  or get omitted entirely. Never post a wall of identical thumbnails.
-- **Separate new/removed from changed.** New previews have no baseline and
-  are easy to miss in a before/after layout — give them their own section
-  with a ➕ marker. Same for removed (🗑️).
-- **Side-by-side tables for changed** (when images are hosted): two-column
-  markdown table, Before | After, identical widths, preview id as the row
-  heading linked to the `@Preview` source line
-  (`<repo>/blob/<sha>/<path>#L<line>`).
-- **Group by module** and collapse with `<details><summary>` when there are
-  more than ~5 previews in a bucket. First group expanded, rest collapsed.
-- **Flag a11y regressions separately.** Diff `a11yFindings[]` against the
-  base; a finding new on this PR is worth a 🔴 callout even if the PNG diff
-  is cosmetic. Link the annotated PNG (or include its local path if no
-  hosting).
-- **Caption with `sha256` (first 8 chars) and byte size** under each image.
-  Lets the reviewer confirm what they're looking at matches the manifest.
-- **Respect the 65 536-char comment limit.** If the body would overflow,
-  split into summary + per-module detail comments.
-- **Don't editorialise the UI.** Describe *what* changed ("button radius
-  4 → 12 dp, new ripple on press"), not whether it looks good — let the
-  human make the aesthetic call.
-
-### 5. Things worth flagging in the review text
-
-Agent-authored PRs have predictable failure modes that the preview diff
-surfaces:
-
-- **New preview with no baseline → is it a real new surface, or did a rename
-  strand an old id?** Check `removed` for a plausible predecessor.
-- **Preview unchanged but source changed** → the composable may be guarded
-  behind a param default the preview doesn't exercise. Ask for a preview
-  variant that hits the new path.
-- **A11y findings grew** → often a regression from hard-coded colours,
-  missing `contentDescription`, or touch targets shrunk to match a redesign.
-- **Scroll/animation flakes** in `captures[]` — if `changed: true` toggles
-  run-to-run without code changes, the preview is non-deterministic; flag
-  it rather than rubber-stamp the diff.
-
-### 6. Optional: integrate with `preview-comment` CI (rare)
-
-A small number of repos wire up the `preview-comment` GitHub Action (see the
-CI section above). When it's installed, it posts a sticky comment keyed by
-`<!-- preview-diff -->` with before/after images hosted from a
-`preview_pr/<N>` branch.
-
-Only do this if you've already confirmed it exists:
-
-```bash
-gh pr view <N> --json comments \
-  --jq '.comments[] | select(.body | startswith("<!-- preview-diff -->")) | .body'
-```
-
-If it's there, **read it first** and cite it in your review rather than
-rendering again. If you do post your own comment alongside it, reuse the
-`<!-- preview-diff -->` marker (or a distinct one like
-`<!-- preview-diff-local -->`) so repeat reviews update one comment instead
-of stacking:
-
-```bash
-MARKER="<!-- preview-diff-local -->"
-ID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-  --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
-if [ -n "$ID" ]; then
-  gh api "repos/$REPO/issues/comments/$ID" -X PATCH -f body="$BODY"
-else
-  gh pr comment "$PR" --body "$BODY"
-fi
-```
-
-Assume this path is **not** available unless you've just checked.
+- **[design/CI_PREVIEWS.md](design/CI_PREVIEWS.md)** — setting up the
+  `preview_main` baselines branch and the PR comment GitHub Actions. Read
+  this if you're adding preview CI to a repo or need to fetch baselines
+  from an existing one.
+- **[design/AGENT_PR.md](design/AGENT_PR.md)** — structuring the body of an
+  agent-authored PR, and the full workflow for reviewing one locally
+  (render base + head, diff, post a human-readable comment). Read this
+  when opening or reviewing a PR that touches UI.
 
 ## Tips
 
