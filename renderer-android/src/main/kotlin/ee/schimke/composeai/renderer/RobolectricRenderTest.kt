@@ -638,6 +638,25 @@ private fun handleLongCapture(
             return false
         }
         if (slices.isEmpty()) return false
+
+        // Settle post-scroll animations (Wear `EdgeButton` reveal, spring
+        // snaps, AnimatedVisibility fade-ins that only start once the list
+        // has landed) before composing the final stitched frame. The
+        // per-step 250ms advance inside `driveScrollByViewport` is tuned
+        // for scroll settling, not for animations that START when the
+        // scroll reaches its end — without this step the last slice
+        // captures the EdgeButton mid-reveal and the stitched PNG shows a
+        // thin pill at the bottom instead of the fully-expanded button.
+        //
+        // Tick one frame at a time so any withFrameNanos-driven animation
+        // gets each cycle it's waiting on. Bounded (POST_SCROLL_SETTLE_MS
+        // / 16ms frames) so infinite animations can't run away — they keep
+        // the paused-clock semantics of the rest of the render path.
+        settlePostScrollAnimations(rule)
+        val lastSlice = slices.last()
+        lastSlice.file.delete()
+        rule.onRoot().captureRoboImage(file = lastSlice.file, roborazziOptions = sliceRoborazziOptions)
+
         stitchSlices(slices, viewportLayoutPx, outputFile) ?: return false
         if (isRound) applyWearPillClip(outputFile)
         System.err.println(
@@ -648,6 +667,32 @@ private fun handleLongCapture(
         slicesDir.deleteRecursively()
     }
 }
+
+/**
+ * Advance the paused `mainClock` one frame at a time up to
+ * [POST_SCROLL_SETTLE_MS], letting animations that begin once the scroll
+ * lands (e.g. Wear `ScreenScaffold`'s `EdgeButton` reveal) run to their
+ * resting state before the final slice is captured.
+ *
+ * Bounded so infinite animations (`rememberInfiniteTransition`, etc.)
+ * don't turn the settle step into an open-ended render. 1000ms is ~4×
+ * Wear Material3's 250ms EdgeButton reveal spec — enough headroom for
+ * chained animations or a spring overshoot, still cheap per preview.
+ */
+private fun settlePostScrollAnimations(rule: AndroidComposeTestRule<*, *>) {
+    val frameMs = 16L
+    val frames = POST_SCROLL_SETTLE_MS / frameMs
+    repeat(frames.toInt()) {
+        rule.mainClock.advanceTimeByFrame()
+    }
+}
+
+/**
+ * Total virtual-time budget for [settlePostScrollAnimations]. Sized for
+ * Wear Material3's `EdgeButton` expand spec (~250ms at the time of
+ * writing) with comfortable headroom for overshoot / chained animations.
+ */
+private const val POST_SCROLL_SETTLE_MS = 1000L
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
