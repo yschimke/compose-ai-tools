@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.plugin.tooling.ComposePreviewAppliedTask
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModelBuilder
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -27,6 +28,24 @@ abstract class ComposePreviewPlugin @Inject constructor(
         // Consumed by the CLI / VS Code extension via
         // `connection.model(ComposePreviewModel::class.java)`.
         toolingRegistry.register(ComposePreviewModelBuilder())
+
+        // Sidecar-JSON applied-marker task. The VS Code extension goes through
+        // `vscjava.vscode-gradle`, which only exposes `runTask` — it can't reach
+        // the Tooling-API model above. Running `gradle composePreviewApplied`
+        // (no module prefix) fans out to every applying project and writes a
+        // tiny JSON at `<module>/build/compose-previews/applied.json`; the
+        // extension scans for those markers to discover applied modules
+        // authoritatively. Independent of `discoverPreviews` so it runs even
+        // in modules that never compile previews (e.g. library modules whose
+        // only preview usage is compile-time annotations).
+        project.tasks.register("composePreviewApplied", ComposePreviewAppliedTask::class.java) {
+            pluginVersion.set(PluginVersion.value)
+            modulePath.set(project.path)
+            moduleName.set(project.name)
+            outputFile.set(project.layout.buildDirectory.file("compose-previews/applied.json"))
+            group = "compose preview"
+            description = "Write a marker JSON advertising that this module applies the Compose Preview plugin."
+        }
 
         // `pluginManager.withPlugin` replaces the old `project.afterEvaluate { ... }`
         // block. `afterEvaluate` is discouraged under Gradle's Isolated Projects mode

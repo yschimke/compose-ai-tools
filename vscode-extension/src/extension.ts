@@ -223,7 +223,16 @@ export async function activate(context: vscode.ExtensionContext) {
             );
         }),
     );
+    // Refresh applied-markers in the background, then replay the doctor refresh
+    // so it picks up any modules that only become visible via the authoritative
+    // `applied.json` path (e.g. a module whose build.gradle.kts uses a
+    // non-standard catalog accessor our scan doesn't recognise). First-activation
+    // doctor run still fires immediately off the scan result — we don't want to
+    // gate startup diagnostics on a Gradle configuration.
     void refreshDoctor();
+    void gradleService.bootstrapAppliedMarkers().then(() => {
+        void refreshDoctor();
+    });
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {

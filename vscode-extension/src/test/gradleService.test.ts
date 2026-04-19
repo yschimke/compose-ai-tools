@@ -147,6 +147,71 @@ describe('GradleService', () => {
             const service = new GradleService(dir, api);
             assert.deepStrictEqual(service.findPreviewModules(), ['app']);
         }));
+
+        it('finds modules that apply via version-catalog alias', withTempDir((dir, api) => {
+            fs.mkdirSync(path.join(dir, 'gradle'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'gradle', 'libs.versions.toml'), `
+                [plugins]
+                composeai-preview = { id = "ee.schimke.composeai.preview", version = "0.7.1" }
+            `);
+            fs.mkdirSync(path.join(dir, 'wearApp'));
+            fs.writeFileSync(path.join(dir, 'wearApp', 'build.gradle.kts'),
+                'plugins { alias(libs.plugins.composeai.preview) }');
+
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(service.findPreviewModules(), ['wearApp']);
+        }));
+
+        it('excludes root-level `apply false` alias declarations', withTempDir((dir, api) => {
+            fs.mkdirSync(path.join(dir, 'gradle'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'gradle', 'libs.versions.toml'), `
+                [plugins]
+                composeai-preview = { id = "ee.schimke.composeai.preview", version = "0.7.1" }
+            `);
+            fs.mkdirSync(path.join(dir, 'lib'));
+            fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
+                'plugins { alias(libs.plugins.composeai.preview) apply false }');
+
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(service.findPreviewModules(), []);
+        }));
+
+        it('finds modules via applied.json markers even when build script does not mention the plugin',
+            withTempDir((dir, api) => {
+                // E.g. the module applies the plugin from a convention plugin
+                // in `buildSrc/` — neither the literal-id nor alias regex
+                // catches it, but the Gradle-written marker does.
+                fs.mkdirSync(path.join(dir, 'mod'));
+                fs.writeFileSync(path.join(dir, 'mod', 'build.gradle.kts'),
+                    'plugins { id("my-convention-plugin") }');
+                const markerDir = path.join(dir, 'mod', 'build', 'compose-previews');
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(path.join(markerDir, 'applied.json'),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":mod","moduleName":"mod","pluginVersion":"0.7.2"}');
+
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), ['mod']);
+            }));
+
+        it('unions marker-detected and scan-detected modules', withTempDir((dir, api) => {
+            fs.mkdirSync(path.join(dir, 'app'));
+            fs.writeFileSync(path.join(dir, 'app', 'build.gradle.kts'),
+                'id("ee.schimke.composeai.preview")');
+
+            // A second module with only the marker (e.g. discovered earlier
+            // and since rewritten to a convention plugin that the regex
+            // doesn't recognise).
+            fs.mkdirSync(path.join(dir, 'lib'));
+            fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
+                'plugins { id("some-convention") }');
+            const markerDir = path.join(dir, 'lib', 'build', 'compose-previews');
+            fs.mkdirSync(markerDir, { recursive: true });
+            fs.writeFileSync(path.join(markerDir, 'applied.json'),
+                '{"schema":"compose-preview-applied/v1","modulePath":":lib","moduleName":"lib","pluginVersion":"0.7.2"}');
+
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(service.findPreviewModules(), ['app', 'lib']);
+        }));
     });
 
     describe('resolveModule', () => {
