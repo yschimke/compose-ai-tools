@@ -671,6 +671,82 @@ class DiscoveryFunctionalTest {
     }
 
     @Test
+    fun `discoverPreviews records @PreviewParameter provider FQN`() {
+        val projectDir = createCmpTestProject()
+
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.ui.tooling.preview.PreviewParameter
+            import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+            import androidx.compose.ui.unit.dp
+
+            class ColorProvider : PreviewParameterProvider<Long> {
+                override val values: Sequence<Long>
+                    get() = sequenceOf(0xFFFF0000L, 0xFF00FF00L, 0xFF0000FFL)
+            }
+
+            @Preview(name = "Swatch")
+            @Composable
+            fun SwatchPreview(
+                @PreviewParameter(ColorProvider::class) color: Long,
+            ) {
+                Box(modifier = Modifier.size(50.dp).background(Color(color.toInt())))
+            }
+
+            // Limit arg: annotation takes only the first entry.
+            @Preview(name = "Limited")
+            @Composable
+            fun LimitedPreview(
+                @PreviewParameter(ColorProvider::class, limit = 1) color: Long,
+            ) {
+                Box(modifier = Modifier.size(50.dp).background(Color(color.toInt())))
+            }
+
+            // No provider — must not surface a previewParameterProviderClassName.
+            @Preview
+            @Composable
+            fun PlainPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Gray))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+
+        val swatch = manifest.previews.single { it.functionName == "SwatchPreview" }
+        assertThat(swatch.params.previewParameterProviderClassName).isEqualTo("test.ColorProvider")
+        assertThat(swatch.params.previewParameterLimit).isEqualTo(Int.MAX_VALUE)
+
+        val limited = manifest.previews.single { it.functionName == "LimitedPreview" }
+        assertThat(limited.params.previewParameterProviderClassName).isEqualTo("test.ColorProvider")
+        assertThat(limited.params.previewParameterLimit).isEqualTo(1)
+
+        val plain = manifest.previews.single { it.functionName == "PlainPreview" }
+        assertThat(plain.params.previewParameterProviderClassName).isNull()
+        assertThat(plain.params.previewParameterLimit).isEqualTo(Int.MAX_VALUE)
+    }
+
+    @Test
     fun `discoverPreviews re-runs when source changes`() {
         val projectDir = createCmpTestProject()
 

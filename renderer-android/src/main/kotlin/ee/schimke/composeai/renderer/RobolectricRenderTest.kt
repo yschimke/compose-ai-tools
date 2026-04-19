@@ -58,10 +58,93 @@ object PreviewManifestLoader {
         if (!file.exists()) return emptyList()
 
         val manifest = json.decodeFromString<RenderManifest>(file.readText())
-        return manifest.previews
+        // Expand `@PreviewParameter` providers into one row per value BEFORE
+        // sharding, so one preview's values never span multiple shards — each
+        // (preview, value) row carries an already-suffixed id / renderOutput
+        // ready for the test runner. Values are kept alongside the entry
+        // (Array<Any>[entry, args]) instead of being serialised back into the
+        // manifest: provider values can be arbitrary runtime objects, often
+        // not JSON-representable.
+        val expanded = manifest.previews.flatMap { expandParameterProvider(it) }
+        return expanded
             .withIndex()
             .filter { (i, _) -> i % shardCount == shardIndex }
-            .map { (_, p) -> arrayOf<Any>(p) }
+            .map { (_, row) -> arrayOf<Any>(row.entry, row.previewArgs) }
+    }
+
+    internal data class PreviewRow(val entry: RenderPreviewEntry, val previewArgs: List<Any?>)
+
+    internal fun expandParameterProvider(entry: RenderPreviewEntry): List<PreviewRow> {
+        val providerFqn = entry.params.previewParameterProviderClassName
+            ?: return listOf(PreviewRow(entry, emptyList()))
+        val limit = entry.params.previewParameterLimit.coerceAtLeast(0)
+        if (limit == 0) return emptyList()
+        val values = loadProviderValues(providerFqn, limit)
+        if (values.isEmpty()) {
+            System.err.println(
+                "@PreviewParameter(provider = $providerFqn) on '${entry.id}' produced no values — skipping.",
+            )
+            return emptyList()
+        }
+        return values.mapIndexed { idx, value ->
+            val paramSuffix = "_PARAM_$idx"
+            val newCaptures = entry.captures.map { c ->
+                c.copy(renderOutput = insertBeforeExtension(c.renderOutput, paramSuffix))
+            }
+            val newId = entry.id + paramSuffix
+            PreviewRow(entry.copy(id = newId, captures = newCaptures), listOf(value))
+        }
+    }
+
+    /**
+     * Inserts [suffix] before the extension of a `renders/<id>.<ext>` path.
+     * `renders/foo.png` + `_PARAM_0` → `renders/foo_PARAM_0.png`. Leaves
+     * paths without an extension untouched (appended at the end) so the
+     * mapping stays a pure string transformation.
+     */
+    internal fun insertBeforeExtension(path: String, suffix: String): String {
+        if (path.isEmpty()) return path
+        val dot = path.lastIndexOf('.')
+        val slash = path.lastIndexOf('/')
+        return if (dot > slash) path.substring(0, dot) + suffix + path.substring(dot)
+        else path + suffix
+    }
+
+    private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
+        val clazz = try {
+            Class.forName(providerFqn)
+        } catch (e: ClassNotFoundException) {
+            System.err.println("@PreviewParameter: provider class $providerFqn not found on test classpath — skipping.")
+            return emptyList()
+        }
+        val instance = runCatching {
+            val ctor = clazz.getDeclaredConstructor()
+            ctor.isAccessible = true
+            ctor.newInstance()
+        }.getOrElse { e ->
+            System.err.println(
+                "@PreviewParameter: couldn't instantiate $providerFqn via nullary constructor: ${e.message}",
+            )
+            return emptyList()
+        }
+        // `PreviewParameterProvider<T>` exposes `values: Sequence<T>` as a Kotlin
+        // property — its JVM signature is `getValues(): Sequence`. Look up the
+        // method by name to avoid taking a compile-time dependency on the
+        // provider interface (which lives in the consumer's Compose artifact).
+        val getValues = runCatching { clazz.getMethod("getValues") }.getOrElse {
+            System.err.println("@PreviewParameter: $providerFqn has no getValues() — not a PreviewParameterProvider?")
+            return emptyList()
+        }
+        @Suppress("UNCHECKED_CAST")
+        val sequence = getValues.invoke(instance) as? Sequence<Any?>
+            ?: return emptyList()
+        // `Sequence.take(Int).toList()` is the Kotlin stdlib contract —
+        // drives the sequence lazily up to `limit` without requiring
+        // reflective access into package-private iterator implementations
+        // (`kotlin.jvm.internal.ArrayIterator`, which `Method.invoke`
+        // rejects with IllegalAccessException from outside the stdlib
+        // module).
+        return sequence.take(limit).toList()
     }
 }
 
@@ -94,7 +177,17 @@ object PreviewManifestLoader {
  */
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry) {
+abstract class RobolectricRenderTestBase(
+    private val preview: RenderPreviewEntry,
+    /**
+     * Values supplied to the preview composable — non-empty only when the
+     * preview's `@PreviewParameter` fan-out produced a row. The test-runner
+     * row carries `(entry, args)` so values never round-trip through JSON;
+     * the loader enumerates the provider on the test JVM and passes the raw
+     * objects straight through.
+     */
+    private val previewArgs: List<Any?>,
+) {
 
     @OptIn(ExperimentalRoborazziApi::class)
     @Test
@@ -346,10 +439,10 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                                     }
                                 },
                             ) {
-                                strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                                strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
                             }
                         } else {
-                            strategyFor(params.kind).Render(preview, widthDp, heightDp)
+                            strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
                         }
                     }
                 }
@@ -837,7 +930,10 @@ internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
  * `composeAiPreview.shards > 1`.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
-class RobolectricRenderTest(preview: RenderPreviewEntry) : RobolectricRenderTestBase(preview) {
+class RobolectricRenderTest(
+    preview: RenderPreviewEntry,
+    @Suppress("UNCHECKED_CAST") previewArgs: List<Any?>,
+) : RobolectricRenderTestBase(preview, previewArgs) {
     companion object {
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")

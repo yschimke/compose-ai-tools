@@ -139,5 +139,16 @@ data class RenderPreviewParams(
     val group: String? = null,
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
+    /**
+     * FQN of a `PreviewParameterProvider` harvested from `@PreviewParameter`
+     * on one of the preview function's parameters, if any. When non-null the
+     * renderer enumerates the provider's `values` (capped by
+     * [previewParameterLimit]) and emits one file per value with a
+     * `_PARAM_<idx>` suffix. `null` means the preview has no parameter
+     * provider — the default single-capture path applies.
+     */
+    val previewParameterProviderClassName: String? = null,
+    /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` = take every value. */
+    val previewParameterLimit: Int = Int.MAX_VALUE,
     val kind: PreviewKind = PreviewKind.COMPOSE,
 )

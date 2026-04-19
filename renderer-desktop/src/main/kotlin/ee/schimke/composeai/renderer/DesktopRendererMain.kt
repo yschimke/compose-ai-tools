@@ -26,7 +26,7 @@ import kotlin.system.exitProcess
 /**
  * Standalone entry point for rendering Compose Desktop previews to PNG.
  *
- * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile [wrapperClassName] [wrapWidth] [wrapHeight]
+ * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit]
  *
  * The optional 9th argument is the FQN of a `PreviewWrapperProvider` (Compose 1.11+);
  * pass an empty string or omit to skip wrapping.
@@ -36,10 +36,18 @@ import kotlin.system.exitProcess
  * measures its intrinsic size, and crops the final PNG to that size on the
  * wrapped axis. Defaults to `false` when omitted so older callers keep the
  * full-frame behaviour.
+ *
+ * Args 12 and 13 are the `@PreviewParameter` provider FQN + limit. When
+ * arg 12 is non-empty the renderer instantiates the provider, iterates its
+ * `values.take(limit)`, and writes one file per value using `outputFile` as
+ * a template (`_PARAM_<idx>` inserted before the extension). Looping inside
+ * a single JVM — instead of spawning one subprocess per value — avoids N×
+ * Compose cold-start cost; the same `ImageComposeScene` is reused across
+ * values.
  */
 fun main(args: Array<String>) {
     if (args.size < 8) {
-        System.err.println("Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight]")
+        System.err.println("Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit]")
         exitProcess(1)
     }
 
@@ -66,18 +74,87 @@ fun main(args: Array<String>) {
     val wrapperClassName = args.getOrNull(8)?.takeIf { it.isNotBlank() }
     val wrapWidth = args.getOrNull(9)?.toBoolean() ?: false
     val wrapHeight = args.getOrNull(10)?.toBoolean() ?: false
+    val previewParameterProviderFqn = args.getOrNull(11)?.takeIf { it.isNotBlank() }
+    val previewParameterLimit = args.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: Int.MAX_VALUE
 
     try {
-        renderPreview(
-            className, functionName, widthPx, heightPx, density,
-            showBackground, backgroundColor, outputFile, wrapperClassName,
-            wrapWidth, wrapHeight,
-        )
+        val values: List<Any?> = if (previewParameterProviderFqn != null && previewParameterLimit > 0) {
+            loadProviderValues(previewParameterProviderFqn, previewParameterLimit).also { vs ->
+                if (vs.isEmpty()) {
+                    System.err.println(
+                        "@PreviewParameter(provider = $previewParameterProviderFqn) on $functionName produced no values — skipping.",
+                    )
+                }
+            }
+        } else {
+            listOf(NO_PARAM)
+        }
+
+        for ((idx, value) in values.withIndex()) {
+            val targetFile = if (value === NO_PARAM) outputFile
+            else File(insertBeforeExtension(outputFile.path, "_PARAM_$idx"))
+            val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
+            renderPreview(
+                className, functionName, widthPx, heightPx, density,
+                showBackground, backgroundColor, targetFile, wrapperClassName,
+                wrapWidth, wrapHeight, previewArgs,
+            )
+        }
     } catch (e: Exception) {
         System.err.println("Render failed for $className.$functionName: ${e.message}")
         e.printStackTrace()
         exitProcess(2)
     }
+}
+
+// Sentinel: distinguishes "no @PreviewParameter fan-out" from "provider yielded null".
+// A null value from the provider is a legitimate case we want to render; NO_PARAM
+// short-circuits the file-path suffix logic instead.
+private val NO_PARAM = Any()
+
+private fun insertBeforeExtension(path: String, suffix: String): String {
+    if (path.isEmpty()) return path
+    val dot = path.lastIndexOf('.')
+    val slash = path.lastIndexOf(File.separatorChar).coerceAtLeast(path.lastIndexOf('/'))
+    return if (dot > slash) path.substring(0, dot) + suffix + path.substring(dot)
+    else path + suffix
+}
+
+/**
+ * Loads and enumerates a `PreviewParameterProvider` reflectively — same
+ * strategy the Android renderer uses in `PreviewManifestLoader.loadProviderValues`.
+ * Keeping this renderer-local avoids a shared module dependency and the
+ * lookup stays limited to the method shapes the interface guarantees
+ * (`getValues(): Sequence`).
+ */
+private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
+    val clazz = try {
+        Class.forName(providerFqn)
+    } catch (e: ClassNotFoundException) {
+        System.err.println("@PreviewParameter: provider class $providerFqn not found — skipping.")
+        return emptyList()
+    }
+    val instance = runCatching {
+        val ctor = clazz.getDeclaredConstructor()
+        ctor.isAccessible = true
+        ctor.newInstance()
+    }.getOrElse { e ->
+        System.err.println("@PreviewParameter: couldn't instantiate $providerFqn via nullary ctor: ${e.message}")
+        return emptyList()
+    }
+    val getValues = runCatching { clazz.getMethod("getValues") }.getOrElse {
+        System.err.println("@PreviewParameter: $providerFqn has no getValues() — not a PreviewParameterProvider?")
+        return emptyList()
+    }
+    @Suppress("UNCHECKED_CAST")
+    val sequence = getValues.invoke(instance) as? Sequence<Any?> ?: return emptyList()
+    // `Sequence.take(Int)` is lazy and `.toList()` drives it — bounds the
+    // enumeration for infinite providers without requiring an explicit
+    // counter. Calling through the typed Kotlin API avoids reflective
+    // access into `kotlin.jvm.internal.ArrayIterator`, whose visibility is
+    // package-private and throws `IllegalAccessException` from outside the
+    // stdlib's own module.
+    return sequence.take(limit).toList()
 }
 
 private fun renderPreview(
@@ -92,9 +169,14 @@ private fun renderPreview(
     wrapperClassName: String?,
     wrapWidth: Boolean,
     wrapHeight: Boolean,
+    previewArgs: List<Any?>,
 ) {
     val clazz = Class.forName(className)
-    val composableMethod = clazz.getDeclaredComposableMethod(functionName)
+    val composableMethod = if (previewArgs.isEmpty()) {
+        clazz.getDeclaredComposableMethod(functionName)
+    } else {
+        findComposableMethodWithArgs(clazz, functionName, previewArgs)
+    }
 
     val scene = ImageComposeScene(
         width = widthPx,
@@ -154,11 +236,11 @@ private fun renderPreview(
                             }
                             .background(bgColor),
                     ) {
-                        InvokeComposable(composableMethod, null)
+                        InvokeComposable(composableMethod, null, previewArgs)
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-                        InvokeComposable(composableMethod, null)
+                        InvokeComposable(composableMethod, null, previewArgs)
                     }
                 }
             }
@@ -213,8 +295,46 @@ private fun renderPreview(
 private fun InvokeComposable(
     composableMethod: ComposableMethod,
     instance: Any?,
+    previewArgs: List<Any?>,
 ) {
-    composableMethod.invoke(currentComposer, instance)
+    composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
+}
+
+/**
+ * Desktop mirror of the Android renderer's lookup for `@PreviewParameter`
+ * functions — see [ee.schimke.composeai.renderer.findComposableMethodWithArgs]
+ * for the full commentary. Kept local (not shared via a common module) so the
+ * two renderer artefacts stay independently buildable.
+ */
+private fun findComposableMethodWithArgs(
+    clazz: Class<*>,
+    name: String,
+    previewArgs: List<Any?>,
+): ComposableMethod {
+    val argCount = previewArgs.size
+    val candidate = clazz.declaredMethods.firstOrNull { m ->
+        m.name == name && m.parameterCount >= argCount + 2 && argsMatch(m, previewArgs)
+    } ?: throw NoSuchMethodException(
+        "Couldn't find composable method $name on ${clazz.name} taking $argCount parameter(s); " +
+            "check that the @PreviewParameter provider's value type matches the preview's parameter type.",
+    )
+    val declaredTypes = candidate.parameterTypes.take(argCount).toTypedArray()
+    return clazz.getDeclaredComposableMethod(name, *declaredTypes)
+}
+
+private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>): Boolean {
+    for ((i, arg) in previewArgs.withIndex()) {
+        val expected = method.parameterTypes[i]
+        if (arg == null) {
+            if (expected.isPrimitive) return false
+            continue
+        }
+        val actual = arg.javaClass
+        if (expected.isAssignableFrom(actual)) continue
+        if (expected.kotlin.javaObjectType.isAssignableFrom(actual)) continue
+        return false
+    }
+    return true
 }
 
 /**

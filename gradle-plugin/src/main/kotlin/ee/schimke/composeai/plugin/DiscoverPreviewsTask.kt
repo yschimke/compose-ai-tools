@@ -73,6 +73,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // Our own opt-in for scrolling-screenshot capture. Matched by FQN so projects
         // that don't depend on `ee.schimke.composeai:preview-annotations` are unaffected.
         private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
+        // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
+        // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
+        // `expect`/`actual` collapses onto the same `androidx...` class name on
+        // every target we care about.
+        private const val PREVIEW_PARAMETER_FQN = "androidx.compose.ui.tooling.preview.PreviewParameter"
 
         internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
 
@@ -185,11 +190,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // whole — each timing fans out into its own manifest entry, orthogonal
         // to any multi-preview expansion.
         val timings = extractRoboTimings(annotations)
+        // @PreviewParameter lives on a method PARAMETER, not the method itself,
+        // so it's sourced from `parameterInfo` rather than the method
+        // annotation list. Extracted once per function and applied to every
+        // multi-preview expansion — the provider is the same no matter which
+        // @Preview drove the fan-out.
+        val previewParameter = extractPreviewParameter(method)
 
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpecs, timings))
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpecs, timings, previewParameter))
             }
             return
         }
@@ -197,9 +208,39 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpecs, timings))
+                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpecs, timings, previewParameter))
             }
         }
+    }
+
+    /**
+     * Scans [method]'s parameters for `@PreviewParameter`. Returns the provider
+     * FQN + `limit` of the FIRST parameter that carries the annotation; `null`
+     * when none do. Supporting a single parameter mirrors the current upstream
+     * (Studio/Layoutlib) semantic — multi-param preview functions require
+     * explicit wiring in tooling code, which our renderer doesn't expose.
+     *
+     * ClassGraph surfaces parameter annotations on `MethodParameterInfo.annotationInfo`.
+     * The `value` field on `@PreviewParameter` carries the provider KClass, which
+     * comes back as an [AnnotationClassRef] — we pull its FQN without triggering
+     * classloading (matches how [extractWrapperFqn] handles `@PreviewWrapper`).
+     */
+    private fun extractPreviewParameter(method: MethodInfo): Pair<String, Int>? {
+        val params = method.parameterInfo ?: return null
+        for (param in params) {
+            val anns = param.annotationInfo ?: continue
+            val ann = anns.firstOrNull { it.name == PREVIEW_PARAMETER_FQN } ?: continue
+            val provider = when (val value = ann.parameterValues.getValue("provider")) {
+                is AnnotationClassRef -> value.name
+                is String -> value
+                else -> null
+            } ?: continue
+            val limit = (ann.parameterValues.getValue("limit") as? Int)
+                ?.coerceAtLeast(0)
+                ?: Int.MAX_VALUE
+            return provider to limit
+        }
+        return null
     }
 
     // Tile previews don't go through `mainClock` and can't scroll (the
@@ -392,8 +433,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         wrapperClassName: String?,
         scrolls: List<ScrollCapture>,
         timings: List<Long>,
+        previewParameter: Pair<String, Int>?,
     ): PreviewInfo {
-        val params = extractPreviewParams(ann, wrapperClassName)
+        val params = extractPreviewParams(ann, wrapperClassName, previewParameter)
         val fqn = "${classInfo.name}.${method.name}"
         val suffix = buildVariantSuffix(params)
         val id = fqn + suffix
@@ -444,6 +486,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     private fun extractPreviewParams(
         ann: AnnotationInfo,
         wrapperClassName: String?,
+        previewParameter: Pair<String, Int>?,
     ): PreviewParams {
         val pv = ann.parameterValues
         val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE
@@ -497,6 +540,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             // so even if the annotation happened to be present on the function,
             // the wrapper's `Wrap(content)` would never wrap the tile View.
             wrapperClassName = if (kind == PreviewKind.TILE) null else wrapperClassName,
+            // @PreviewParameter targets composables too. Tile preview functions
+            // return `TilePreviewData`; the renderer reflects them directly and
+            // has no code path for injecting a provider value.
+            previewParameterProviderClassName =
+                if (kind == PreviewKind.TILE) null else previewParameter?.first,
+            previewParameterLimit = previewParameter?.second ?: Int.MAX_VALUE,
             kind = kind,
             // @ScrollingPreview is applied by `makePreview` via `.copy(scroll = …)` so
             // the timings fan-out and scroll spec live side-by-side in one place.
