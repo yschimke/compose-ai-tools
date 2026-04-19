@@ -30,6 +30,15 @@ data class PreviewParams(
     val locale: String? = null,
     val group: String? = null,
     val wrapperClassName: String? = null,
+    /**
+     * FQN of the `PreviewParameterProvider` harvested from `@PreviewParameter`
+     * on one of the preview function's parameters, if any. Discovery records
+     * this but does NOT expand captures — the renderer fans out on disk as
+     * `<id>_PARAM_<idx>.<ext>` and the CLI globs those files in [buildResults].
+     */
+    val previewParameterProviderClassName: String? = null,
+    /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` = take every value. */
+    val previewParameterLimit: Int = Int.MAX_VALUE,
     /** "COMPOSE" or "TILE". Free-form string so unknown future kinds round-trip. */
     val kind: String = "COMPOSE",
 )
@@ -369,7 +378,19 @@ abstract class Command(protected val args: List<String>) {
             val updated = mutableMapOf<String, String>()
 
             for (p in manifest.previews) {
-                val captureResults = p.captures.mapIndexed { index, capture ->
+                // `@PreviewParameter`-driven previews render at
+                // `<renderOutput_base>_PARAM_<idx>.<ext>`, one file per
+                // provider value. The manifest carries a single template
+                // capture; here we glob the actual fan-out and synthesize a
+                // `CaptureResult` per file on disk — keeps the manifest shape
+                // a pure discovery artifact while the CLI reports one entry
+                // per rendered PNG.
+                val captures = if (p.params.previewParameterProviderClassName != null) {
+                    p.captures.flatMap { capture -> expandParamCaptures(module, capture) }
+                } else {
+                    p.captures
+                }
+                val captureResults = captures.mapIndexed { index, capture ->
                     val pngFile = capture.renderOutput
                         .takeIf { it.isNotEmpty() }
                         ?.let { projectDir.resolve("$module/build/compose-previews/$it").canonicalFile }
@@ -424,6 +445,48 @@ abstract class Command(protected val args: List<String>) {
     /** True if the preview has at least one capture with `changed = true`. */
     protected fun PreviewResult.anyChanged(): Boolean =
         captures.any { it.changed == true } || changed == true
+
+    /**
+     * Globs the on-disk `_PARAM_<idx>.<ext>` fan-out for a parameterized
+     * preview capture. The manifest carries one template capture (e.g.
+     * `renders/foo.png`); the renderer writes `renders/foo_PARAM_0.png`,
+     * `renders/foo_PARAM_1.png`, … one per provider value. Returns synthetic
+     * `Capture` rows pointing at each file, or an empty list when nothing
+     * matched — the plugin's `renderAllPreviews` verification already fails
+     * loudly when a parameterized preview rendered no files at all, so we
+     * don't duplicate the error surface here.
+     */
+    private fun expandParamCaptures(module: String, template: Capture): List<Capture> {
+        val rel = template.renderOutput.ifEmpty { return listOf(template) }
+        val file = projectDir.resolve("$module/build/compose-previews/$rel").canonicalFile
+        val dir = file.parentFile ?: return listOf(template)
+        val prefix = file.nameWithoutExtension + "_PARAM_"
+        val ext = ".${file.extension}"
+        val matches = (dir.listFiles() ?: emptyArray())
+            .filter { it.name.startsWith(prefix) && it.name.endsWith(ext) }
+            .sortedBy {
+                // Sort by the numeric index between `_PARAM_` and the
+                // extension so PARAM_10 sorts after PARAM_2 (not before,
+                // which lexicographic ordering would produce). Unparseable
+                // suffixes fall through to Int.MAX_VALUE so they land at
+                // the end deterministically.
+                it.name.removePrefix(prefix).removeSuffix(ext).toIntOrNull() ?: Int.MAX_VALUE
+            }
+        if (matches.isEmpty()) return emptyList()
+        // Preserve the template's time/scroll coordinates — a parameterized
+        // preview is orthogonal to those dimensions. Each fan-out file
+        // points back at the same conceptual capture, just at a different
+        // provider value.
+        val templateDir = rel.substringBeforeLast('/', "")
+        val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
+        return matches.map { f ->
+            Capture(
+                advanceTimeMillis = template.advanceTimeMillis,
+                scroll = template.scroll,
+                renderOutput = dirPrefix + f.name,
+            )
+        }
+    }
 
     /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
     protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> =

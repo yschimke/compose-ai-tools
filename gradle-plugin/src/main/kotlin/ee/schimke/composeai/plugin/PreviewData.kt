@@ -96,6 +96,26 @@ data class PreviewParams(
     val group: String? = null,
     /** FQN of the `PreviewWrapperProvider` from `@PreviewWrapper`, if any. */
     val wrapperClassName: String? = null,
+    /**
+     * FQN of a `PreviewParameterProvider` from `@PreviewParameter` on one of the
+     * preview function's parameters, if any. Discovery only records the spec —
+     * the renderer instantiates the provider, enumerates its `values` (capped
+     * by [previewParameterLimit]), and fans out one rendered file per value
+     * with a `_PARAM_<idx>` suffix inserted before the extension.
+     *
+     * We intentionally do not expand at discovery time: the plugin's own
+     * classpath doesn't have the consumer's Compose dependencies, so loading
+     * the provider would require rebuilding the consumer's classloader from
+     * scratch. Leaving fan-out to the renderer keeps discovery classpath-cheap.
+     */
+    val previewParameterProviderClassName: String? = null,
+    /**
+     * Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` is the annotation
+     * default — the renderer takes every value the provider yields. Applied
+     * via `values.take(limit)` so providers backed by infinite sequences stay
+     * bounded.
+     */
+    val previewParameterLimit: Int = Int.MAX_VALUE,
     val kind: PreviewKind = PreviewKind.COMPOSE,
 )
 

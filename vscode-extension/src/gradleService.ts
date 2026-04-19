@@ -1,11 +1,54 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { AccessibilityFinding, AccessibilityReport, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
+import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
 import { APPLIES_PLUGIN_RE } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
 const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
+
+/**
+ * Expands a parameterized preview's single template capture into N captures
+ * pointing at the actual `_PARAM_<idx>` files on disk. Returns the original
+ * list unchanged when no matching files exist (rare — the plugin's
+ * `renderAllPreviews` check would have already failed loudly), or when the
+ * template has no `renderOutput` to key off.
+ *
+ * Sorted by the numeric suffix (`PARAM_0`, `PARAM_1`, …, `PARAM_10`) so
+ * `PARAM_10` doesn't sort before `PARAM_2` — lexicographic ordering on the
+ * raw filename would produce that order.
+ */
+function expandParamCaptures(rendersDir: string, templates: Capture[]): Capture[] {
+    if (!fs.existsSync(rendersDir)) { return templates; }
+    const expanded: Capture[] = [];
+    for (const template of templates) {
+        if (!template.renderOutput) { expanded.push(template); continue; }
+        const base = path.basename(template.renderOutput);
+        const dot = base.lastIndexOf('.');
+        const stem = dot > 0 ? base.slice(0, dot) : base;
+        const ext = dot > 0 ? base.slice(dot) : '';
+        const prefix = stem + '_PARAM_';
+        const templateDir = path.dirname(template.renderOutput);
+        const dirPrefix = templateDir && templateDir !== '.' ? `${templateDir}/` : '';
+        const matches = fs.readdirSync(rendersDir)
+            .filter(name => name.startsWith(prefix) && name.endsWith(ext))
+            .map(name => {
+                const idxStr = name.slice(prefix.length, name.length - ext.length);
+                const idx = parseInt(idxStr, 10);
+                return { name, idx: Number.isNaN(idx) ? Number.MAX_SAFE_INTEGER : idx };
+            })
+            .sort((a, b) => a.idx - b.idx);
+        if (matches.length === 0) { continue; }
+        for (const match of matches) {
+            expanded.push({
+                advanceTimeMillis: template.advanceTimeMillis,
+                scroll: template.scroll,
+                renderOutput: dirPrefix + match.name,
+            });
+        }
+    }
+    return expanded;
+}
 
 const TASK_TIMEOUT_MS = 5 * 60 * 1000;
 const MANIFEST_CACHE_TTL_MS = 30_000;
@@ -133,6 +176,19 @@ export class GradleService {
             if (!manifest.previews || !Array.isArray(manifest.previews)) {
                 this.logger.appendLine(`Malformed manifest at ${manifestPath}`);
                 return null;
+            }
+            // `@PreviewParameter` previews ship a single template capture on
+            // the manifest (`renders/<id>.<ext>`). The renderer fans out to
+            // `renders/<id>_PARAM_<idx>.<ext>` on disk — one file per
+            // provider value. Substitute the template with the actual files
+            // before any downstream consumer (carousel, hover, image loader)
+            // sees the preview, so the UI walks N files instead of trying to
+            // read the template path (which never exists).
+            const rendersDir = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'renders');
+            for (const p of manifest.previews) {
+                if (p.params?.previewParameterProviderClassName) {
+                    p.captures = expandParamCaptures(rendersDir, p.captures);
+                }
             }
             // Enrich each preview with a11y findings when the module has the
             // sidecar report. Always follow the manifest's pointer rather than

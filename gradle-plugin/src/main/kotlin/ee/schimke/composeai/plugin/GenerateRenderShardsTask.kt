@@ -51,7 +51,10 @@ abstract class GenerateRenderShardsTask : DefaultTask() {
                 | */
                 |@RunWith(ParameterizedRobolectricTestRunner.class)
                 |public class $className extends RobolectricRenderTestBase {
-                |    public $className(RenderPreviewEntry preview) { super(preview); }
+                |    @SuppressWarnings({"unchecked", "rawtypes"})
+                |    public $className(RenderPreviewEntry preview, List previewArgs) {
+                |        super(preview, (List<Object>) previewArgs);
+                |    }
                 |
                 |    @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
                 |    public static List<Object[]> previews() {
