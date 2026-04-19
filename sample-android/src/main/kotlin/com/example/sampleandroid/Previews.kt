@@ -6,6 +6,7 @@ import androidx.compose.ui.text.googlefonts.Font as GoogleFontFont
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.github.takahirom.roborazzi.annotations.ManualClockOptions
 import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 
@@ -161,17 +163,31 @@ fun BadButtonPreview() {
 }
 
 /**
- * Smoke test for the downloadable-fonts path under Robolectric. Uses the
- * same `Font(GoogleFont(name), provider)` shape a consumer writes in
- * production — no `src/debug` fork, no preloaded resource fonts. The shadow
- * in `renderer-android` intercepts `FontsContractCompat.requestFont` and
- * swaps in a TTF downloaded on first render from
- * `fonts.googleapis.com/css2`, cached under `.compose-preview-history/fonts/`.
+ * Showcase for the downloadable-fonts path under Robolectric. Uses the same
+ * `Font(GoogleFont(name), provider)` shape a consumer writes in production —
+ * no `src/debug` fork, no preloaded resource fonts. The shadow in
+ * `renderer-android` intercepts `FontsContractCompat.requestFont` and swaps
+ * in a TTF downloaded on first render from `fonts.googleapis.com/css2`,
+ * cached under `.compose-preview-history/fonts/`.
  *
- * Roboto Mono is a distinctively-shaped typeface vs the platform Roboto
- * fallback: every glyph is the same width, zeros have a slash, capital O is
- * a circle. If the shadow regresses to the default resolver the PNG will
- * render in Roboto and the visual diff will be obvious.
+ * Compares four visually distinct families at multiple weights:
+ *  - **Roboto** — static family with pre-rendered weights 100/400/700/900.
+ *    All four render at their declared weight (Thin, Regular, Bold, Black).
+ *  - **Roboto Flex** — purely variable (no static sub-fonts on CSS2 for
+ *    non-default weights). The shadow falls back to a `wght@100..1000`
+ *    range query to fetch the variable TTF, then applies the requested
+ *    weight via `Typeface.Builder.setFontVariationSettings`. All four rows
+ *    currently render at ~400 in the Robolectric native-graphics rasterizer
+ *    — the variation axis doesn't propagate through Skia's font renderer
+ *    under test. Landing upstream with
+ *    android-review.googlesource.com/c/platform/frameworks/support/+/3945083
+ *    should make this work without any renderer-side changes.
+ *  - **Google Sans Flex** — variable family, but CSS2 returns pre-interpolated
+ *    static TTFs for single-weight queries; each declared weight caches to a
+ *    distinct file and renders at the correct weight.
+ *  - **Lobster Two** — static display script (400/700). Radically different
+ *    silhouette from the sans-serifs — proves the shadow works regardless
+ *    of family shape.
  */
 private val googleFontProvider = androidx.compose.ui.text.googlefonts.GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
@@ -183,35 +199,66 @@ private val googleFontProvider = androidx.compose.ui.text.googlefonts.GoogleFont
     certificates = R.array.com_google_android_gms_fonts_certs,
 )
 
-private val robotoMonoFamily = androidx.compose.ui.text.font.FontFamily(
-    GoogleFontFont(
-        androidx.compose.ui.text.googlefonts.GoogleFont("Roboto Mono"),
-        googleFontProvider,
-        weight = androidx.compose.ui.text.font.FontWeight.Normal,
-    ),
-    GoogleFontFont(
-        androidx.compose.ui.text.googlefonts.GoogleFont("Roboto Mono"),
-        googleFontProvider,
-        weight = androidx.compose.ui.text.font.FontWeight.Bold,
-    ),
-)
+private fun googleFontFamily(
+    name: String,
+    weights: List<Int>,
+): androidx.compose.ui.text.font.FontFamily =
+    androidx.compose.ui.text.font.FontFamily(
+        weights.map { w ->
+            GoogleFontFont(
+                androidx.compose.ui.text.googlefonts.GoogleFont(name),
+                googleFontProvider,
+                weight = androidx.compose.ui.text.font.FontWeight(w),
+            )
+        },
+    )
 
-@Preview(name = "Google Font", showBackground = true, backgroundColor = 0xFFFFFFFF)
+// Four families at their characteristic weights. Roboto Flex's 100 and 900
+// exercise the variable wght axis; Roboto's own 100 (Thin) is a distinct
+// static sub-font. Lobster Two only ships 400 + 700 on Google Fonts.
+private val robotoFamily = googleFontFamily("Roboto", listOf(100, 400, 700, 900))
+private val robotoFlexFamily = googleFontFamily("Roboto Flex", listOf(100, 400, 700, 900))
+private val googleSansFlexFamily = googleFontFamily("Google Sans Flex", listOf(400, 700, 900))
+private val lobsterTwoFamily = googleFontFamily("Lobster Two", listOf(400, 700))
+
+@Preview(name = "Google Fonts Showcase", showBackground = true, backgroundColor = 0xFFFFFFFF, widthDp = 520)
 @Composable
-fun GoogleFontPreview() {
+fun GoogleFontsShowcasePreview() {
     MaterialTheme {
         Column(modifier = Modifier.padding(16.dp)) {
+            FontRow("Roboto", robotoFamily, listOf(100, 400, 700, 900))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("Roboto Flex", robotoFlexFamily, listOf(100, 400, 700, 900))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("Google Sans Flex", googleSansFlexFamily, listOf(400, 700, 900))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("Lobster Two", lobsterTwoFamily, listOf(400, 700))
+        }
+    }
+}
+
+@Composable
+private fun FontRow(
+    label: String,
+    family: androidx.compose.ui.text.font.FontFamily,
+    weights: List<Int>,
+) {
+    Column {
+        // Label in the platform font so the family name itself can never
+        // deceive — if the sample below renders as Roboto too, something
+        // regressed.
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = Color(0xFF666666),
+        )
+        weights.forEach { w ->
             Text(
-                text = "Roboto Mono 400",
-                fontFamily = robotoMonoFamily,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+                text = "The quick brown fox ($w)",
+                fontFamily = family,
+                fontWeight = androidx.compose.ui.text.font.FontWeight(w),
+                fontSize = 18.sp,
             )
-            Text(
-                text = "Roboto Mono 700",
-                fontFamily = robotoMonoFamily,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            )
-            Text(text = "System fallback (Roboto)")
         }
     }
 }
