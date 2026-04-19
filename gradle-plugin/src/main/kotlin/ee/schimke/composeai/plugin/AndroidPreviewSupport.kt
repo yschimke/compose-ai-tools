@@ -100,11 +100,17 @@ internal object AndroidPreviewSupport {
         val testRuntimeRoot = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
             ?.incoming?.resolutionResult?.rootComponent
 
+        // Capture the running Gradle version at configuration time so the
+        // task action stays config-cache safe (GradleVersion.current() is a
+        // static call but keeping the read out of `@TaskAction` avoids
+        // surprises if Gradle ever namespaces it differently).
+        val currentGradleVersion = org.gradle.util.GradleVersion.current().version
         project.tasks.register("composePreviewDoctor", ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java) {
             group = "compose preview"
             description = "Write compose-preview doctor findings to build/compose-previews/doctor.json"
             this.variant.set(variantName)
             this.modulePath.set(project.path)
+            this.gradleVersion.set(currentGradleVersion)
             this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
             mainRuntimeRoot?.let { this.mainRuntimeRoot.set(it) }
             testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }

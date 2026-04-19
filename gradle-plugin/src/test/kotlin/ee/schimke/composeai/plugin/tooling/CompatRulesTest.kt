@@ -126,6 +126,47 @@ class CompatRulesTest {
         assertNull(findings.firstOrNull { it.id.startsWith("old-dep-androidx.activity") })
     }
 
+    @Test fun `old gradle fires error`() {
+        val findings = CompatRules.evaluate(
+            mainWithBom(),
+            mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+            gradleVersion = "9.2.1",
+        )
+        val f = findings.single { it.id == "gradle-too-old" }
+        assertEquals("error", f.severity)
+        assertTrue("9.2.1" in f.message)
+        assertTrue(f.remediationCommands.any { "gradle-version" in it })
+    }
+
+    @Test fun `minimum gradle is quiet`() {
+        val findings = CompatRules.evaluate(
+            mainWithBom(),
+            mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+            gradleVersion = CompatRules.GRADLE_MIN.toString(),
+        )
+        assertNull(findings.firstOrNull { it.id == "gradle-too-old" })
+    }
+
+    @Test fun `newer gradle is quiet`() {
+        val findings = CompatRules.evaluate(
+            mainWithBom(),
+            mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+            gradleVersion = "9.9.0",
+        )
+        assertNull(findings.firstOrNull { it.id == "gradle-too-old" })
+    }
+
+    @Test fun `absent gradle version emits no finding`() {
+        // Back-compat: callers that don't plumb the running Gradle version
+        // still get the dependency checks without a bogus "unknown version"
+        // finding.
+        val findings = CompatRules.evaluate(
+            mainWithBom(),
+            mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+        )
+        assertNull(findings.firstOrNull { it.id == "gradle-too-old" })
+    }
+
     @Test fun `semver parses and compares`() {
         assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
         assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))

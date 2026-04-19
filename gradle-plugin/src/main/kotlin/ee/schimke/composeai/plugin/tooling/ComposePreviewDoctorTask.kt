@@ -44,6 +44,16 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
     @get:Input
     abstract val modulePath: Property<String>
 
+    /**
+     * Gradle runtime version, e.g. `"9.4.1"`. Wired at task-registration
+     * time from `GradleVersion.current().version` so [CompatRules] can
+     * flag consumers on older wrappers than the plugin supports. Kept as
+     * a plain [Property<String>] rather than a non-serialisable Gradle
+     * object so the configuration-cache image round-trips cleanly.
+     */
+    @get:Input
+    abstract val gradleVersion: Property<String>
+
     @get:Internal
     abstract val mainRuntimeRoot: Property<ResolvedComponentResult>
 
@@ -58,7 +68,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         val variantName = variant.get()
         val main = collectModuleVersions(mainRuntimeRoot.orNull)
         val test = collectModuleVersions(testRuntimeRoot.orNull)
-        val findings = CompatRules.evaluate(main, test)
+        val findings = CompatRules.evaluate(main, test, gradleVersion.orNull)
         val report = DoctorModuleReport(
             schema = SCHEMA,
             module = modulePath.get(),

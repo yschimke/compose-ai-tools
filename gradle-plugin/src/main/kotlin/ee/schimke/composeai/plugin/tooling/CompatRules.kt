@@ -16,6 +16,26 @@ import java.time.YearMonth
 internal object CompatRules {
 
     /**
+     * Effective minimum Gradle version for consumers applying the plugin.
+     *
+     * The binding constraint is **AGP's own floor**, not any API we use:
+     * AGP 9.1.x requires Gradle 9.3.1+ (per the AGP release notes), and
+     * AGP itself rejects older Gradle at its own version check — long
+     * before our `apply()` runs. The plugin's own code only reaches
+     * Gradle APIs that have been stable since the 8.x line, so there's
+     * no floor we set independently of AGP.
+     *
+     * Keep this in lockstep with AGP's documented minimum when bumping
+     * `libs.versions.toml`:
+     *   AGP 9.0.x → Gradle 9.1.0
+     *   AGP 9.1.x → Gradle 9.3.1
+     *
+     * The repo wrapper (currently 9.4.1) is the dev/test toolchain — not
+     * a floor we impose on consumers. Don't conflate the two.
+     */
+    internal val GRADLE_MIN = Semver(9, 3, 1)
+
+    /**
      * activity 1.11+ transitively brought `androidx.navigationevent:1.0.0`.
      * Consumers whose main variant has older activity end up with the
      * `ComponentActivity` classes expecting `R.id.view_tree_…` resources
@@ -56,16 +76,55 @@ internal object CompatRules {
      * ordered by severity. Pure — safe to call from tests and from the
      * serialisation path.
      */
-    fun evaluate(main: Map<String, String>, test: Map<String, String>): List<ModuleFindingData> {
+    fun evaluate(
+        main: Map<String, String>,
+        test: Map<String, String>,
+        gradleVersion: String? = null,
+    ): List<ModuleFindingData> {
         val findings = mutableListOf<ModuleFindingData>()
         val mainV = parseVersions(main)
         val testV = parseVersions(test)
+        checkGradleVersion(gradleVersion)?.let(findings::add)
         checkUiTestManifest(testV)?.let(findings::add)
         checkNavigationEvent(mainV, testV, main)?.let(findings::add)
         checkComposeUiVsCore(mainV, testV, main)?.let(findings::add)
         checkComposeBom(main)?.let(findings::add)
         findings += checkOldDeps(mainV, testV, main, test)
         return findings
+    }
+
+    /**
+     * Flags Gradle versions below [GRADLE_MIN]. Parameter is the raw version
+     * string from `GradleVersion.current().version` (e.g. `"9.3.1"`,
+     * `"9.4.1"`, `"9.5.0-rc-1"`). `null` means the caller didn't plumb the
+     * version through — keeps the pre-existing call sites and tests working
+     * without forcing every path to know about Gradle's runtime.
+     *
+     * On paper this is unreachable in an AGP build — AGP's own compat check
+     * fails the build before `apply()` runs. In practice the rule is still
+     * worth keeping for two reasons: CMP Desktop builds don't have AGP
+     * guarding the gate, and a clear "gradle-too-old" finding beats the
+     * Tooling API's opaque `Could not execute build using connection to
+     * Gradle distribution …` wrapper when something does slip through.
+     */
+    private fun checkGradleVersion(gradleVersion: String?): ModuleFindingData? {
+        val raw = gradleVersion ?: return null
+        val parsed = Semver.parseOrNull(raw) ?: return null
+        if (parsed >= GRADLE_MIN) return null
+        return ModuleFindingData(
+            id = "gradle-too-old",
+            severity = "error",
+            message = "Gradle $raw is below AGP 9.1.x's minimum ($GRADLE_MIN)",
+            detail = "AGP 9.1.x requires Gradle >= $GRADLE_MIN. The plugin itself only uses APIs " +
+                "stable since Gradle 8.x, so the floor comes from AGP — on an Android build AGP's " +
+                "own compat check fails before this rule even fires. The finding is still emitted " +
+                "for CMP Desktop projects (no AGP gate) and to give a clear remediation when the " +
+                "Tooling API wraps the real cause in a generic `Could not execute build using " +
+                "connection to Gradle distribution …` message.",
+            remediationSummary = "Upgrade the project's Gradle wrapper to >= $GRADLE_MIN.",
+            remediationCommands = listOf("./gradlew wrapper --gradle-version $GRADLE_MIN"),
+            docsUrl = null,
+        )
     }
 
     private fun checkUiTestManifest(test: Map<String, Semver>): ModuleFindingData? {
