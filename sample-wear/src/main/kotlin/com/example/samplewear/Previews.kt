@@ -210,7 +210,7 @@ fun BadWearButtonPreview() {
  * `TransformingLazyColumn` + `EdgeButton` layout as [ActivityListScreen],
  * but with 15 items so the content overflows the viewport. The
  * `scrollIndicator` slot reads [LocalScrollCaptureInProgress] so the
- * `@ScrollingPreview(mode = LONG)` capture doesn't pick up a fading
+ * `@ScrollingPreview(modes = [LONG])` capture doesn't pick up a fading
  * indicator at random opacities. The screen does NOT compose its own
  * `MaterialTheme` / `AppScaffold` — its caller (the preview, or production)
  * does, which keeps the preview free to swap in a [FixedTimeSource].
@@ -290,7 +290,7 @@ fun LongActivityListScreen() {
 }
 
 @WearPreviewLargeRound
-@ScrollingPreview(mode = ScrollMode.LONG)
+@ScrollingPreview(modes = [ScrollMode.LONG])
 @Composable
 fun ActivityListLongPreview() {
     MaterialTheme {

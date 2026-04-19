@@ -13,6 +13,7 @@ enum class PreviewKind {
  * renderer can read `previews.json` without depending on the annotation artifact.
  */
 enum class ScrollMode {
+    TOP,
     END,
     LONG,
 }

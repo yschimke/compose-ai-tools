@@ -266,33 +266,53 @@ import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
 @Preview(name = "End", showBackground = true)
-@ScrollingPreview(mode = ScrollMode.END)
+@ScrollingPreview(modes = [ScrollMode.END])
 @Composable
 fun MyListEndPreview() { MyList() }
 
+// One function → two captures. Produces `..._SCROLL_top.png` (initial
+// frame) and `..._SCROLL_end.png` (scrolled to content end).
+@Preview(name = "Scroll", showBackground = true)
+@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
+@Composable
+fun MyListTopAndEndPreview() { MyList() }
+
 @WearPreviewLargeRound
-@ScrollingPreview(mode = ScrollMode.LONG)
+@ScrollingPreview(modes = [ScrollMode.LONG])
 @Composable
 fun MyListLongPreview() { MyList() }
 ```
 
+- `ScrollMode.TOP` captures the initial (unscrolled) frame. Equivalent to a
+  plain `@Preview`, but lets a single function emit a top-state capture
+  alongside END/LONG — no sibling preview needed.
 - `ScrollMode.END` drives the scroller to its content end and captures one
-  frame. Pair with a static `@Preview` of the same composable to diff the
-  top and bottom states.
+  frame.
 - `ScrollMode.LONG` stitches multiple slices into a single tall PNG covering
   the whole scrollable extent. On round Wear faces the output is clipped to a
   capsule shape — top half-circle, rectangular middle, bottom half-circle —
   so the watch edge is preserved at the first and last slices.
 - `maxScrollPx` caps how far the renderer scrolls (use it on infinite or
-  pathologically long scrollers; `0` means unbounded).
+  pathologically long scrollers; `0` means unbounded). Applies to END/LONG;
+  ignored for TOP.
 - `reduceMotion = true` (default) wraps the body in
   `LocalReduceMotion provides ReduceMotion(true)` — important for Wear
   `TransformingLazyColumn`, where item transforms otherwise vary slice-to-slice
   and produce noisy diffs.
 - Only `ScrollAxis.VERTICAL` is rendered today.
 
+### Filenames
+
+Single-mode annotations keep the plain `renders/<id>.png` path (so migrating
+from the pre-0.7 `mode = ScrollMode.END` shape to `modes = [ScrollMode.END]`
+lands on the same output). Multi-mode annotations disambiguate siblings with
+a `_SCROLL_<mode>` suffix — e.g. `renders/<id>_SCROLL_top.png` and
+`renders/<id>_SCROLL_end.png`. Captures are emitted in enum order
+(TOP, END, LONG) regardless of how they appear in the `modes` array, so the
+renderer captures the unscrolled frame before driving the scroller.
+
 Each scroll capture is a separate entry in the CLI's `captures[]` with
-`scroll` set (`{mode: "END"}` or `{mode: "LONG", index, total, heightPx, …}`).
+`scroll` set (`{mode: "TOP"}`, `{mode: "END"}`, or `{mode: "LONG"}`).
 
 `@ScrollingPreview` is Android-only at present; CMP Desktop ignores the
 annotation.

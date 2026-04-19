@@ -161,8 +161,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         if (timings.isNotEmpty()) {
             parts.add("${preview.captures.size} captures @ ${timings.joinToString(",") { "${it}ms" }}")
         }
-        preview.captures.firstNotNullOfOrNull { it.scroll }?.let { s ->
-            parts.add("scroll=${s.mode.name.lowercase()}")
+        val scrollModes = preview.captures.mapNotNull { it.scroll?.mode }.distinct()
+        if (scrollModes.isNotEmpty()) {
+            parts.add("scroll=" + scrollModes.joinToString(",") { it.name.lowercase() })
         }
         return if (parts.isEmpty()) "" else "  [" + parts.joinToString(" · ") + "]"
     }
@@ -176,9 +177,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     ) {
         // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
         // to every @Preview on the function (including expansions from
-        // multi-preview meta-annotations).
+        // multi-preview meta-annotations). `@ScrollingPreview.modes` fans out
+        // one capture per entry — see [buildCaptures].
         val wrapperFqn = extractWrapperFqn(annotations)
-        val scrollSpec = extractScrollSpec(annotations)
+        val scrollSpecs = extractScrollSpecs(annotations)
         // @RoboComposePreviewOptions, similarly, applies to the function as a
         // whole — each timing fans out into its own manifest entry, orthogonal
         // to any multi-preview expansion.
@@ -187,7 +189,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpec, timings))
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpecs, timings))
             }
             return
         }
@@ -195,7 +197,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpec, timings))
+                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpecs, timings))
             }
         }
     }
@@ -207,35 +209,34 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     private fun buildCaptures(
         ann: AnnotationInfo,
         previewId: String,
-        scroll: ScrollCapture?,
+        scrolls: List<ScrollCapture>,
         timings: List<Long>,
     ): List<Capture> {
         val isTile = ann.name == TILE_PREVIEW_FQN
         val effectiveTimings = if (isTile) emptyList() else timings
-        val effectiveScroll = scroll.takeUnless { isTile }
+        val effectiveScrolls = if (isTile) emptyList() else scrolls
 
-        if (effectiveTimings.isEmpty()) {
-            // Single capture — either a static preview (all dims null) or a
-            // scrolled-only preview (scroll set, time null).
-            return listOf(
-                Capture(
-                    advanceTimeMillis = null,
-                    scroll = effectiveScroll,
-                    renderOutput = "renders/${previewId}.png",
-                ),
-            )
+        // Single-mode scroll keeps the plain filename so migrations from the
+        // old single-valued `mode = …` annotation land on identical paths.
+        // Multi-mode adds `_SCROLL_<mode>` to disambiguate siblings, same
+        // pattern as `_TIME_<ms>ms` for the time dimension.
+        val scrollRows: List<Pair<ScrollCapture?, String>> = when {
+            effectiveScrolls.isEmpty() -> listOf(null to "")
+            effectiveScrolls.size == 1 -> listOf(effectiveScrolls[0] to "")
+            else -> effectiveScrolls.map { it to "_SCROLL_${it.mode.name.lowercase()}" }
         }
-        // Time-dimensional fan-out. Filename suffix matches Roborazzi's
-        // compose-preview-scanner-support convention (`_TIME_<ms>ms`) so
-        // PNGs coexist on disk under a single preview id. Scroll applies
-        // to every time-frame when both annotations are present (today we
-        // only fan out along time, not scroll).
-        return effectiveTimings.map { ms ->
-            Capture(
-                advanceTimeMillis = ms,
-                scroll = effectiveScroll,
-                renderOutput = "renders/${previewId}_TIME_${ms}ms.png",
-            )
+        val timeRows: List<Pair<Long?, String>> =
+            if (effectiveTimings.isEmpty()) listOf(null to "")
+            else effectiveTimings.map { ms -> ms to "_TIME_${ms}ms" }
+
+        return scrollRows.flatMap { (scroll, scrollSuffix) ->
+            timeRows.map { (ms, timeSuffix) ->
+                Capture(
+                    advanceTimeMillis = ms,
+                    scroll = scroll,
+                    renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.png",
+                )
+            }
         }
     }
 
@@ -272,14 +273,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         }
     }
 
-    private fun extractScrollSpec(annotations: List<AnnotationInfo>): ScrollCapture? {
-        val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return null
+    private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {
+        val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return emptyList()
         val pv = ann.parameterValues
-        // Enum constants come through as AnnotationEnumValue; compare by .valueName so
-        // we never force-load the annotation's classes.
-        val mode = (pv.getValue("mode") as? AnnotationEnumValue)?.valueName
-            ?.let { runCatching { ScrollMode.valueOf(it) }.getOrNull() }
-            ?: return null
+        // ClassGraph surfaces the `modes: Array<ScrollMode>` field as an
+        // Object[] of AnnotationEnumValue; same shape as `manualClockOptions`
+        // above. Enum constants are compared by `.valueName` so we never
+        // force-load the annotation's classes.
+        val rawModes = pv.getValue("modes")
+        val modes = readEnumArray(rawModes) { ScrollMode.valueOf(it) }
+        if (modes.isEmpty()) return emptyList()
         val axis = (pv.getValue("axis") as? AnnotationEnumValue)?.valueName
             ?.let { runCatching { ScrollAxis.valueOf(it) }.getOrNull() }
             ?: ScrollAxis.VERTICAL
@@ -287,13 +290,37 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
         // Result fields (atEnd, reachedPx) default to "not reported" — the
         // renderer would fill them in post-capture; discovery knows only the
-        // intent.
-        return ScrollCapture(
-            mode = mode,
-            axis = axis,
-            maxScrollPx = maxScrollPx,
-            reduceMotion = reduceMotion,
-        )
+        // intent. De-dup to guard against `modes = [END, END]` producing
+        // colliding PNG paths. Sort by enum ordinal (TOP→END→LONG) so the
+        // renderer captures the initial frame before driving the scroller —
+        // otherwise `modes = [END, TOP]` would produce a "TOP" PNG at the
+        // scrolled-end position.
+        return modes.distinct().sortedBy { it.ordinal }.map { mode ->
+            ScrollCapture(
+                mode = mode,
+                axis = axis,
+                maxScrollPx = maxScrollPx,
+                reduceMotion = reduceMotion,
+            )
+        }
+    }
+
+    // Reads an annotation's Array<EnumT> parameter and maps each entry by
+    // `.valueName` through [parse]. ClassGraph can hand this back as a plain
+    // array, a single AnnotationEnumValue (single-entry arrays), or a typed
+    // array we need to walk reflectively — same cases as
+    // [extractRoboTimings].
+    private fun <T> readEnumArray(raw: Any?, parse: (String) -> T): List<T> {
+        if (raw == null) return emptyList()
+        val items = when (raw) {
+            is Array<*> -> raw.filterIsInstance<AnnotationEnumValue>()
+            is AnnotationEnumValue -> listOf(raw)
+            else -> {
+                val len = runCatching { java.lang.reflect.Array.getLength(raw) }.getOrNull() ?: 0
+                (0 until len).mapNotNull { java.lang.reflect.Array.get(raw, it) as? AnnotationEnumValue }
+            }
+        }
+        return items.mapNotNull { runCatching { parse(it.valueName) }.getOrNull() }
     }
 
     private fun isDirectPreview(ann: AnnotationInfo): Boolean =
@@ -351,7 +378,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         method: MethodInfo,
         ann: AnnotationInfo,
         wrapperClassName: String?,
-        scroll: ScrollCapture?,
+        scrolls: List<ScrollCapture>,
         timings: List<Long>,
     ): PreviewInfo {
         val params = extractPreviewParams(ann, wrapperClassName)
@@ -364,7 +391,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             className = classInfo.name,
             sourceFile = packageQualifiedSourcePath(classInfo),
             params = params,
-            captures = buildCaptures(ann, id, scroll, timings),
+            captures = buildCaptures(ann, id, scrolls, timings),
         )
     }
 
