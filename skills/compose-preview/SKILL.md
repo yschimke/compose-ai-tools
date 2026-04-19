@@ -9,6 +9,15 @@ Render `@Preview` composables to PNG images without launching Android Studio.
 Works on both Android (Jetpack Compose via Robolectric) and Compose Multiplatform
 Desktop (via `ImageComposeScene` + Skia).
 
+## Source
+
+This skill is maintained at
+[github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
+under `skills/compose-preview/`. To check for updates, compare the installed
+copy against the `main` branch there (e.g. `git ls-remote
+https://github.com/yschimke/compose-ai-tools HEAD` for the latest commit, or
+fetch `skills/compose-preview/SKILL.md` from `main` and diff).
+
 ## What this skill provides
 
 - A Gradle plugin (`ee.schimke.composeai.preview`) that discovers `@Preview`
