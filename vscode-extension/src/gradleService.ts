@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
-import { APPLIES_PLUGIN_RE } from './pluginDetection';
+import { appliesPlugin, buildAliasAppliesRegex, readCatalogPluginAliases } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
@@ -325,25 +325,75 @@ export class GradleService {
         }
     }
 
+    /**
+     * Returns the names of direct-child subdirectories whose module applies
+     * the Compose Preview plugin. Merges two signals:
+     *
+     *   1. `<module>/build/compose-previews/applied.json` — authoritative
+     *      marker written by the `composePreviewApplied` Gradle task at
+     *      execution time. Ground truth once Gradle has configured.
+     *   2. `<module>/build.gradle.kts` — static scan recognising the literal
+     *      `id("ee.schimke.composeai.preview")` form *and* the version-
+     *      catalog `alias(libs.plugins.<alias>)` form (when a matching
+     *      alias exists in `gradle/libs.versions.toml`). Needed before the
+     *      first Gradle run, when no marker exists yet.
+     *
+     * Returning the union means running Gradle on one module doesn't cause
+     * others (applied but not yet built) to disappear from the list.
+     */
     findPreviewModules(): string[] {
-        const modules: string[] = [];
+        const found = new Set<string>();
         let entries: fs.Dirent[];
         try {
             entries = fs.readdirSync(this.workspaceRoot, { withFileTypes: true });
         } catch {
-            return modules;
+            return [];
         }
+        // Lazy: only parse the catalog if we actually need the scan fallback.
+        let aliasRe: RegExp | null | undefined;
+        const resolveAliasRe = (): RegExp | null => {
+            if (aliasRe !== undefined) { return aliasRe; }
+            aliasRe = buildAliasAppliesRegex(readCatalogPluginAliases(this.workspaceRoot));
+            return aliasRe;
+        };
+
         for (const entry of entries) {
             if (!entry.isDirectory()) { continue; }
-            const buildFile = path.join(this.workspaceRoot, entry.name, 'build.gradle.kts');
+            const dir = entry.name;
+            const marker = path.join(
+                this.workspaceRoot, dir, 'build', 'compose-previews', 'applied.json',
+            );
+            if (fs.existsSync(marker)) { found.add(dir); continue; }
+            const buildFile = path.join(this.workspaceRoot, dir, 'build.gradle.kts');
             try {
                 const content = fs.readFileSync(buildFile, 'utf-8');
-                if (APPLIES_PLUGIN_RE.test(content)) {
-                    modules.push(entry.name);
-                }
+                if (appliesPlugin(content, resolveAliasRe())) { found.add(dir); }
             } catch { /* skip */ }
         }
-        return modules;
+        return [...found].sort();
+    }
+
+    /**
+     * Writes (or refreshes) `applied.json` markers across every applying
+     * module by running `composePreviewApplied` without a project filter —
+     * Gradle fans out to every project where the plugin registered the task.
+     *
+     * Cheap: the task writes ~100 bytes per module and is cacheable. Intended
+     * to be called once on extension activation so subsequent
+     * [findPreviewModules] calls can rely on the authoritative marker path
+     * instead of the build-script scan.
+     *
+     * Swallows failures — the scan fallback still produces a sensible list,
+     * and we don't want a misconfigured workspace to fail activation.
+     */
+    async bootstrapAppliedMarkers(): Promise<void> {
+        try {
+            await this.runTask('composePreviewApplied');
+        } catch (e) {
+            this.logger.appendLine(
+                `[applied] composePreviewApplied bootstrap failed: ${(e as Error).message}`,
+            );
+        }
     }
 
     resolveModule(filePath: string): string | null {
