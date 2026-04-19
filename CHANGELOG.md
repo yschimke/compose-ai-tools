@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/yschimke/compose-ai-tools/compare/v0.6.2...v1.0.0) (2026-04-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **annotations:** multi-mode @ScrollingPreview ([#104](https://github.com/yschimke/compose-ai-tools/issues/104))
+
+### Features
+
+* **annotations:** multi-mode @ScrollingPreview ([#104](https://github.com/yschimke/compose-ai-tools/issues/104)) ([11bcd2a](https://github.com/yschimke/compose-ai-tools/commit/11bcd2a26f2a0f429e44bfaa17dbcfb24a5542a5))
+
 ## [0.6.2](https://github.com/yschimke/compose-ai-tools/compare/v0.6.1...v0.6.2) (2026-04-19)
 
 
