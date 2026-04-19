@@ -39,7 +39,7 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 
 1. Publishes the **Gradle plugin** (`ee.schimke.composeai:compose-preview-plugin`), the **Android renderer AAR** (`ee.schimke.composeai:renderer-android`), and the **preview annotations** (`ee.schimke.composeai:preview-annotations`) to **Maven Central** via the Central Portal, and mirrors them to GitHub Packages.
 2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
-3. Packages the **VS Code extension** as a `.vsix` file.
+3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
 4. Uploads all three artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Required secrets on the repository:
@@ -50,8 +50,12 @@ Required secrets on the repository:
 | `SIGNING_KEY` | ASCII-armored GPG private key (Maven Central requires signed artifacts) |
 | `SIGNING_KEY_ID` | Short (8-hex) key ID |
 | `SIGNING_KEY_PASSWORD` | Passphrase for the GPG key |
+| `VSCE_PAT` | Azure DevOps PAT for the `yuri-schimke` VS Code Marketplace publisher (scope: Marketplace → Manage, all accessible orgs) |
+| `OVSX_PAT` | Open VSX PAT for the `yuri-schimke` namespace (https://open-vsx.org/user-settings/tokens) |
 
 `GITHUB_TOKEN` is provided automatically and is used for the GH Packages mirror.
+
+Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 
 ## Snapshots
 
@@ -159,7 +163,6 @@ consumers:
 | Artifact | Current | Public registry | Migration |
 |----------|---------|-----------------|-----------|
 | Gradle plugin | **Maven Central** (+ GH Packages mirror) | Gradle Plugin Portal | Apply `com.gradle.plugin-publish` plugin; add `publishPlugins` task to the workflow with `GRADLE_PUBLISH_KEY`/`GRADLE_PUBLISH_SECRET` secrets |
-| VS Code extension | **VS Code Marketplace** (+ Release .vsix fallback) | Open VSX | Add an `ovsx publish` step with an `OVSX_PAT` secret |
 | CLI | Release .zip/.tar | Homebrew tap | Add a `dispatches` step that updates a separate `homebrew-tap` repo |
 
 Existing GitHub Release artifacts remain as a fallback and don't need to go away.
