@@ -659,26 +659,31 @@ private fun handleLongCapture(
 
         // Settle post-scroll animations (Wear `EdgeButton` reveal, spring
         // snaps, AnimatedVisibility fade-ins that only start once the list
-        // has landed) before composing the final stitched frame. The
-        // per-step 250ms advance inside `driveScrollByViewport` is tuned
-        // for scroll settling, not for animations that START when the
-        // scroll reaches its end — without this step the last slice
-        // captures the EdgeButton mid-reveal and the stitched PNG shows a
-        // thin pill at the bottom instead of the fully-expanded button.
+        // has landed) before capturing the final frame. The per-step 250ms
+        // advance inside `driveScrollByViewport` is tuned for scroll
+        // settling, not for animations that START when the scroll reaches
+        // its end.
         //
         // Tick one frame at a time so any withFrameNanos-driven animation
         // gets each cycle it's waiting on. Bounded (POST_SCROLL_SETTLE_MS
         // / 16ms frames) so infinite animations can't run away — they keep
         // the paused-clock semantics of the rest of the render path.
         settlePostScrollAnimations(rule)
-        val lastSlice = slices.last()
-        lastSlice.file.delete()
-        rule.onRoot().captureRoboImage(file = lastSlice.file, roborazziOptions = sliceRoborazziOptions)
 
-        stitchSlices(slices, viewportLayoutPx, outputFile) ?: return false
+        // Capture the settled end-state viewport as a stand-alone frame
+        // (not overwriting the last in-scroll slice). `stitchSlicesWithFinalFrame`
+        // then composes the during-scroll history above this full settled
+        // viewport and cuts the seam cleanly using the same weighted-SAD
+        // row matcher, so the complete revealed tail (EdgeButton, bottom
+        // bar, FAB — whatever animates in at scroll-end) is always
+        // present. Generic over layout: not Wear-specific.
+        val finalFrameFile = File(slicesDir, "final_frame.png")
+        rule.onRoot().captureRoboImage(file = finalFrameFile, roborazziOptions = sliceRoborazziOptions)
+
+        stitchSlicesWithFinalFrame(slices, finalFrameFile, viewportLayoutPx, outputFile) ?: return false
         if (isRound) applyWearPillClip(outputFile)
         System.err.println(
-            "@ScrollingPreview(LONG) on '$previewId': stitched ${slices.size} slices.",
+            "@ScrollingPreview(LONG) on '$previewId': stitched ${slices.size} slices + settled final frame.",
         )
         return true
     } finally {

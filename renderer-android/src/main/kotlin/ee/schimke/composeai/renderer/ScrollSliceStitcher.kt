@@ -64,14 +64,179 @@ internal fun stitchSlices(
 ): File? {
     if (slices.isEmpty()) return null
 
+    val stitched = buildStitchedImage(slices, viewportLayoutPx) ?: return null
+    outputFile.parentFile?.mkdirs()
+    ImageIO.write(stitched, "PNG", outputFile)
+    return outputFile
+}
+
+/**
+ * Variant of [stitchSlices] for captures whose last viewport contains
+ * animations that settle *after* the scroll ends (Wear `EdgeButton` reveal,
+ * Material 3 FAB appear, AnimatedVisibility fade-ins triggered by the
+ * list reaching its bottom).
+ *
+ * Motivation: the final entry of [slices] is captured while those
+ * animations are still mid-flight. In the regular [stitchSlices] path only
+ * the bottom `d` rows of that slice are painted at the seam (where `d` is
+ * the measured overlap shift ≈ one scroll step), so any animated element
+ * taller than `d` is clipped at the top — classic symptom on Wear is two
+ * half-drawn EdgeButton pills (mid-reveal from slice N-2 above a clipped
+ * settled one).
+ *
+ * Strategy: stitch every slice as usual (including the mid-animation last
+ * slice), then diff the last slice against [finalFrameFile] to find the
+ * topmost row that actually changed between mid-reveal and settled.
+ * Overwrite only that band (the animating tail) with the settled rows.
+ * Rows above the diff band are left as the pair-wise stitch produced them
+ * — that preserves all list-item positions from the during-scroll slices
+ * and keeps the seam confined to content the user will read as one unit
+ * (the EdgeButton / FAB / snackbar region).
+ *
+ * Layout shift avoidance: on Wear, `ScreenScaffold` enlarges the edge-
+ * button slot once it fully reveals, which pushes list items UP relative
+ * to the mid-reveal frame. A whole-viewport overwrite therefore draws the
+ * settled list on top of the mid-scroll list at a slightly different y,
+ * producing a ghost of each card's text. Diff-band overwrite confines the
+ * replacement to rows where the two frames genuinely differ, so items in
+ * the untouched upper region stay at their original slice positions.
+ *
+ * Falls back to writing [finalFrameFile] directly when [slices] has one
+ * entry (no scroll history).
+ */
+internal fun stitchSlicesWithFinalFrame(
+    slices: List<SliceCapture>,
+    finalFrameFile: File,
+    viewportLayoutPx: Int,
+    outputFile: File,
+): File? {
+    if (slices.isEmpty()) return null
+
+    val finalImage = ImageIO.read(finalFrameFile)
+        ?: error("Failed to read final frame PNG: $finalFrameFile")
+
+    // Single slice: no scroll history. The settled final frame IS the
+    // preview.
+    if (slices.size == 1) {
+        outputFile.parentFile?.mkdirs()
+        ImageIO.write(finalImage, "PNG", outputFile)
+        return outputFile
+    }
+
+    val lastSliceFile = slices.last().file
+    val lastSliceImage = ImageIO.read(lastSliceFile)
+        ?: error("Failed to read last slice PNG: $lastSliceFile")
+
+    val topImage = buildStitchedImage(slices, viewportLayoutPx) ?: return null
+    val width = topImage.width
+    val topH = topImage.height
+    val finalH = finalImage.height
+    require(finalImage.width == width) {
+        "final frame width (${finalImage.width}) differs from slice width ($width)"
+    }
+    require(lastSliceImage.width == width && lastSliceImage.height == finalH) {
+        "last slice size (${lastSliceImage.width}x${lastSliceImage.height}) " +
+            "must match final frame (${width}x$finalH)"
+    }
+
+    val diffStart = findFirstDifferingRow(lastSliceImage, finalImage)
+    if (diffStart < 0) {
+        // No animating tail — settled frame equals mid-reveal slice. The
+        // normal stitch is already correct.
+        outputFile.parentFile?.mkdirs()
+        ImageIO.write(topImage, "PNG", outputFile)
+        return outputFile
+    }
+
+    val bandHeight = finalH - diffStart
+    val overwriteY = (topH - bandHeight).coerceAtLeast(0)
+
+    val composed = BufferedImage(width, topH, BufferedImage.TYPE_INT_ARGB)
+    val g = composed.createGraphics()
+    try {
+        g.drawImage(topImage, 0, 0, null)
+        // Draw only the animating band. Source rect is the diff region of
+        // the final frame; destination rect is the last bandHeight rows of
+        // the composed image. The row just above overwriteY in topImage
+        // came from the same last slice (painted at a shift ≥ bandHeight),
+        // so slice[diffStart-1] ≈ final[diffStart-1] and the top edge of
+        // the band blends naturally.
+        g.drawImage(
+            finalImage,
+            0, overwriteY, width, topH,
+            0, diffStart, width, finalH,
+            null,
+        )
+    } finally {
+        g.dispose()
+    }
+
+    outputFile.parentFile?.mkdirs()
+    ImageIO.write(composed, "PNG", outputFile)
+    return outputFile
+}
+
+/**
+ * Finds the topmost row where two same-sized images differ beyond an
+ * anti-aliasing / rendering-noise tolerance, or `-1` if they match
+ * throughout. Used to locate the start of the settle-animation band
+ * between the last mid-reveal slice and the final settled frame.
+ *
+ * The per-row threshold `FINAL_FRAME_DIFF_ROW_THRESHOLD` is tolerant of a
+ * few stray anti-aliasing differences along card edges while still
+ * triggering on wholesale content shifts (EdgeButton expanding, snackbar
+ * appearing, list items sliding up by a pixel).
+ */
+private fun findFirstDifferingRow(a: BufferedImage, b: BufferedImage): Int {
+    val w = a.width
+    val h = a.height
+    val rgbA = IntArray(w)
+    val rgbB = IntArray(w)
+    for (y in 0 until h) {
+        a.getRGB(0, y, w, 1, rgbA, 0, w)
+        b.getRGB(0, y, w, 1, rgbB, 0, w)
+        var rowDiff = 0L
+        for (x in 0 until w) {
+            val pa = rgbA[x]
+            val pb = rgbB[x]
+            if (pa == pb) continue
+            val lumA = (((pa ushr 16) and 0xFF) * 299 +
+                ((pa ushr 8) and 0xFF) * 587 +
+                (pa and 0xFF) * 114) / 1000
+            val lumB = (((pb ushr 16) and 0xFF) * 299 +
+                ((pb ushr 8) and 0xFF) * 587 +
+                (pb and 0xFF) * 114) / 1000
+            val d = lumA - lumB
+            rowDiff += if (d < 0) -d.toLong() else d.toLong()
+        }
+        // Threshold scaled by width so it represents "average brightness
+        // delta per pixel in this row". ~2 LSBs per pixel is above the
+        // noise floor of Robolectric capture + AA fringing.
+        if (rowDiff > FINAL_FRAME_DIFF_ROW_THRESHOLD * w) {
+            return y
+        }
+    }
+    return -1
+}
+
+private const val FINAL_FRAME_DIFF_ROW_THRESHOLD = 2L
+
+/**
+ * Core of [stitchSlices] without the PNG write — also used by
+ * [stitchSlicesWithFinalFrame] to build the "top" image in memory.
+ */
+private fun buildStitchedImage(
+    slices: List<SliceCapture>,
+    viewportLayoutPx: Int,
+): BufferedImage? {
+    if (slices.isEmpty()) return null
+
     val firstImage = ImageIO.read(slices[0].file)
         ?: error("Failed to read first slice PNG: ${slices[0].file}")
     val width = firstImage.width
     val sliceH = firstImage.height
     val pxPerLayoutPx = sliceH.toDouble() / viewportLayoutPx.toDouble()
 
-    // Load every slice up-front — we need each pixel set twice (alignment +
-    // blit) and the slice count is one per viewport (handful per preview).
     val images = List(slices.size) { i ->
         val img = if (i == 0) {
             firstImage
@@ -87,13 +252,10 @@ internal fun stitchSlices(
     val luminance = images.map { readLuminanceRows(it) }
     val weights = luminance.map { rowStddevs(it) }
 
-    // Measured pixel shift for each transition i-1 -> i.
     val shifts = IntArray(slices.size - 1)
     for (i in 1 until slices.size) {
         val reportedDelta = slices[i].scrolledLayoutPx - slices[i - 1].scrolledLayoutPx
         if (reportedDelta <= 0f) {
-            // Framework reported no motion — treat as a duplicate capture
-            // and skip it; keeps parity with the old behaviour.
             shifts[i - 1] = 0
             continue
         }
@@ -117,9 +279,6 @@ internal fun stitchSlices(
         for (i in 1 until images.size) {
             val d = shifts[i - 1]
             if (d <= 0) continue
-            // Copy the bottom `d` rows of the next slice directly beneath the
-            // previously written content — the top `sliceH - d` rows already
-            // overlap with what was drawn for the previous slice.
             g.drawImage(
                 images[i],
                 0, yPrev, width, yPrev + d,
@@ -131,10 +290,7 @@ internal fun stitchSlices(
     } finally {
         g.dispose()
     }
-
-    outputFile.parentFile?.mkdirs()
-    ImageIO.write(stitched, "PNG", outputFile)
-    return outputFile
+    return stitched
 }
 
 /**
@@ -162,9 +318,6 @@ private fun findOverlapShift(
     val maxShift = sliceH - 1
     if (maxShift < 1) return 0
 
-    // Generous window around the hint — the framework can under- or over-
-    // report motion by a wide margin (e.g. TransformingLazyColumn), and
-    // search cost scales with sliceH × w, which is cheap.
     val lo: Int
     val hi: Int
     if (hintPx > 0) {
@@ -177,9 +330,6 @@ private fun findOverlapShift(
 
     var bestWeightedD = -1
     var bestWeightedScore = Double.POSITIVE_INFINITY
-    // Fallback: plain (unweighted) SAD per row, in case every candidate
-    // overlap region is uniformly blank (all per-row stddevs = 0) so the
-    // weighted score is undefined for every d.
     var bestPlainD = hintPx.coerceIn(lo, hi)
     var bestPlainScore = Double.POSITIVE_INFINITY
 
