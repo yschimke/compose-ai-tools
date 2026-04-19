@@ -75,7 +75,7 @@ class ShadowFontsContractCompat {
                 )
                 return
             }
-            val typeface = runCatching { buildTypeface(file, key.weight.weight, key.italic) }
+            val typeface = runCatching { buildTypefaceFromFile(file, key.weight.weight, key.italic) }
                 .getOrNull()
             if (typeface == null) {
                 callback.onTypefaceRequestFailed(
@@ -85,36 +85,39 @@ class ShadowFontsContractCompat {
             }
             callback.onTypefaceRetrieved(typeface)
         }
-
-        /**
-         * Build a Typeface from [file], applying `wght` (and `ital`) axis
-         * settings so variable TTFs render at the requested weight. For
-         * static TTFs the variation tags are simply ignored.
-         *
-         * `Typeface.Builder.setFontVariationSettings` is API 26+ (minSdk = 24
-         * for the renderer AAR, but the Test task always runs on SDK 35 —
-         * `@Config(sdk = [35])` in `RobolectricRenderTestBase`). Fall through
-         * to the plain `createFromFile` on pre-O just in case a consumer
-         * overrides the SDK level.
-         */
-        private fun buildTypeface(file: File, weight: Int, italic: Boolean): Typeface? {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                return Typeface.createFromFile(file)
-            }
-            val settings = buildString {
-                append("'wght' ")
-                append(weight)
-                if (italic) append(", 'ital' 1")
-            }
-            return Typeface.Builder(file)
-                .setFontVariationSettings(settings)
-                // `setWeight` / `setItalic` set the Typeface's declared weight
-                // metadata so Compose's post-resolve synthesis layer
-                // (`AndroidFontResolveInterceptor`) doesn't think our
-                // already-interpolated variable TTF still needs fake-bolding.
-                .setWeight(weight)
-                .setItalic(italic)
-                .build() ?: Typeface.createFromFile(file)
-        }
     }
+}
+
+/**
+ * Build a Typeface from [file], applying `wght` (and `ital`) axis settings so
+ * variable TTFs render at the requested weight. For static TTFs the variation
+ * tags are simply ignored.
+ *
+ * `Typeface.Builder.setFontVariationSettings` is API 26+ (minSdk = 24 for the
+ * renderer AAR, but the Test task always runs on SDK 35 — `@Config(sdk = [35])`
+ * in `RobolectricRenderTestBase`). Fall through to the plain `createFromFile`
+ * on pre-O just in case a consumer overrides the SDK level.
+ *
+ * Shared between [ShadowFontsContractCompat] (the `Font(GoogleFont(...))` path)
+ * and [PixelSystemFontAliases] (the `Font(DeviceFontFamilyName("roboto-flex"))`
+ * seeding path) — both resolve a cached TTF and need identical axis handling.
+ */
+internal fun buildTypefaceFromFile(file: File, weight: Int, italic: Boolean): Typeface? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        return Typeface.createFromFile(file)
+    }
+    val settings = buildString {
+        append("'wght' ")
+        append(weight)
+        if (italic) append(", 'ital' 1")
+    }
+    return Typeface.Builder(file)
+        .setFontVariationSettings(settings)
+        // `setWeight` / `setItalic` set the Typeface's declared weight
+        // metadata so Compose's post-resolve synthesis layer
+        // (`AndroidFontResolveInterceptor`) doesn't think our
+        // already-interpolated variable TTF still needs fake-bolding.
+        .setWeight(weight)
+        .setItalic(italic)
+        .build() ?: Typeface.createFromFile(file)
 }
