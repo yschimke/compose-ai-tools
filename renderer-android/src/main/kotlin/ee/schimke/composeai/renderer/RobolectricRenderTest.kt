@@ -205,6 +205,17 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name),
             )
 
+        // Seed `Typeface.sSystemFontMap` with the Pixel-system-family aliases
+        // that map onto public Google Fonts. Makes
+        // `Font(DeviceFontFamilyName("roboto-flex"), weight = …)` — the
+        // production shape consumers use when targeting Pixel's bundled
+        // variable fonts — resolve to a cached downloadable TTF instead of
+        // silently falling back to Roboto. Idempotent + process-level cached,
+        // so the first preview pays the download cost once per session and
+        // every subsequent preview hits the warm map. See
+        // [PixelSystemFontAliases].
+        PixelSystemFontAliases.seedSystemFontMap()
+
         applyPreviewQualifiers(
             widthDp = widthDp,
             heightDp = heightDp,

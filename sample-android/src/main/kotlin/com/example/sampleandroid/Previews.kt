@@ -237,6 +237,75 @@ fun GoogleFontsShowcasePreview() {
     }
 }
 
+/**
+ * Showcase for the `DeviceFontFamilyName` → Google Fonts transparent swap.
+ *
+ * `Font(DeviceFontFamilyName("roboto-flex"), weight = FontWeight(100))` is the
+ * shape consumer code uses when targeting Pixel's bundled variable fonts —
+ * on-device it resolves to `/system/fonts/RobotoFlex-Variable.ttf`. Under
+ * Robolectric the sandboxed `/system/fonts` doesn't ship those families, so
+ * without intervention every row would render as plain Roboto.
+ *
+ * `PixelSystemFontAliases` in `renderer-android` seeds `Typeface.sSystemFontMap`
+ * with the Google Fonts equivalents (`roboto-flex` → `Roboto Flex`,
+ * `google-sans-flex` → `Google Sans Flex`, etc.) before the first preview
+ * renders, so these calls resolve to cached downloadable TTFs.
+ *
+ * Same caveat as [GoogleFontsShowcasePreview] for variable families: the wght
+ * axis doesn't fully propagate through Robolectric's native-graphics rasterizer
+ * yet (tracked upstream), so Roboto Flex's four rows currently render
+ * close-to-identical weight. The static families (Noto Serif italic/non-italic,
+ * Dancing Script) exercise the seeding path cleanly.
+ */
+private fun deviceFontFamily(
+    familyName: String,
+    weights: List<Int>,
+    italic: Boolean = false,
+): androidx.compose.ui.text.font.FontFamily =
+    androidx.compose.ui.text.font.FontFamily(
+        weights.map { w ->
+            androidx.compose.ui.text.font.Font(
+                familyName = androidx.compose.ui.text.font.DeviceFontFamilyName(familyName),
+                weight = androidx.compose.ui.text.font.FontWeight(w),
+                style = if (italic) {
+                    androidx.compose.ui.text.font.FontStyle.Italic
+                } else {
+                    androidx.compose.ui.text.font.FontStyle.Normal
+                },
+            )
+        },
+    )
+
+private val deviceRobotoFlexFamily = deviceFontFamily("roboto-flex", listOf(100, 400, 700, 900))
+private val deviceGoogleSansFlexFamily = deviceFontFamily("google-sans-flex", listOf(400, 700))
+private val deviceNotoSerifFamily = deviceFontFamily("noto-serif", listOf(400, 700))
+private val deviceNotoSerifItalicFamily =
+    deviceFontFamily("noto-serif", listOf(400), italic = true)
+private val deviceDancingScriptFamily = deviceFontFamily("dancing-script", listOf(400, 700))
+
+@Preview(
+    name = "Device Font Family Showcase",
+    showBackground = true,
+    backgroundColor = 0xFFFFFFFF,
+    widthDp = 520,
+)
+@Composable
+fun DeviceFontFamilyShowcasePreview() {
+    MaterialTheme {
+        Column(modifier = Modifier.padding(16.dp)) {
+            FontRow("roboto-flex", deviceRobotoFlexFamily, listOf(100, 400, 700, 900))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("google-sans-flex", deviceGoogleSansFlexFamily, listOf(400, 700))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("noto-serif", deviceNotoSerifFamily, listOf(400, 700))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("noto-serif (italic)", deviceNotoSerifItalicFamily, listOf(400))
+            Spacer(modifier = Modifier.size(12.dp))
+            FontRow("dancing-script", deviceDancingScriptFamily, listOf(400, 700))
+        }
+    }
+}
+
 @Composable
 private fun FontRow(
     label: String,
