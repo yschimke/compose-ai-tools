@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/yschimke/compose-ai-tools/compare/v0.7.0...v0.7.0) (2026-04-19)
+
+
+### Bug Fixes
+
+* **ci:** publish to Open VSX even when Marketplace publish fails ([156e2ed](https://github.com/yschimke/compose-ai-tools/commit/156e2ed402054ec78245308db5cc48cd0c38af2e))
+* **plugin:** co-exist with com.android.compose.screenshot ([#111](https://github.com/yschimke/compose-ai-tools/issues/111)) ([16af238](https://github.com/yschimke/compose-ai-tools/commit/16af238d7e3fb945b0288c8bc41f0be7ead80fef))
+
 ## [0.7.0](https://github.com/yschimke/compose-ai-tools/compare/v0.6.2...v0.7.0) (2026-04-19)
 
 
