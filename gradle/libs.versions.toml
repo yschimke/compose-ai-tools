@@ -24,6 +24,13 @@ kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
 truth = "1.4.4"
 maven-publish = "0.36.0"
+# Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
+# by `:sample-android-screenshot-test`, which exercises our co-existence
+# path: our renderer discovers previews in the `screenshotTest` source set
+# that Google's plugin creates, and renders them via Robolectric without
+# driving Google's own `validate*ScreenshotTest` tasks. Still alpha —
+# re-check compatibility when bumping AGP.
+android-compose-screenshot = "0.0.1-alpha14"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -68,3 +75,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
+android-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "android-compose-screenshot" }
