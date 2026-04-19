@@ -22,6 +22,7 @@ enum class PreviewKind {
  * renderer modules.
  */
 enum class ScrollMode {
+    TOP,
     END,
     LONG,
 }

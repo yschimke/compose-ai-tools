@@ -6,8 +6,9 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification that `@ScrollingPreview(mode = END)` drives the
- * LazyColumn to the bottom before capturing. Reads the PNGs produced by
+ * End-to-end verification that `@ScrollingPreview(modes = [TOP, END])`
+ * produces two distinct captures from one preview function: an unscrolled
+ * top frame and a scrolled-to-end frame. Reads the PNGs produced by
  * `:sample-android:renderAllPreviews` and asserts colour dominance matches
  * the expected top (red) / bottom (blue) of [RedToBlueList].
  *
@@ -18,6 +19,7 @@ import org.junit.Test
 class ScrollPreviewPixelTest {
 
     private val rendersDir = File("build/compose-previews/renders")
+    private val baseName = "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll"
 
     private data class Avg(val r: Double, val g: Double, val b: Double) {
         fun dominant(): Char = when {
@@ -45,8 +47,8 @@ class ScrollPreviewPixelTest {
     }
 
     @Test
-    fun `Top preview (no ScrollingPreview) is red-dominant`() {
-        val file = File(rendersDir, "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueTopPreview_Top.png")
+    fun `TOP capture is red-dominant`() {
+        val file = File(rendersDir, "${baseName}_SCROLL_top.png")
         assertThat(file.exists()).isTrue()
         val avg = averageColor(file)
         assertThat(avg.dominant()).isEqualTo('R')
@@ -55,8 +57,8 @@ class ScrollPreviewPixelTest {
     }
 
     @Test
-    fun `End preview (ScrollingPreview END) is blue-dominant`() {
-        val file = File(rendersDir, "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueEndPreview_End.png")
+    fun `END capture is blue-dominant`() {
+        val file = File(rendersDir, "${baseName}_SCROLL_end.png")
         assertThat(file.exists()).isTrue()
         val avg = averageColor(file)
         // If scroll-to-end silently fails, the image is red-dominant — this

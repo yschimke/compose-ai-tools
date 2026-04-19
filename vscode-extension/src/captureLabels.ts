@@ -30,7 +30,9 @@ function scrollLabel(scroll: NonNullable<Capture['scroll']>): string {
     // Prefer the outcome when the renderer has reported it; fall back to
     // the declared intent. `atEnd` wins over `reachedPx` so "scrolled end"
     // stays stable even when the renderer reports e.g. `reachedPx: 1200`
-    // with content actually exhausted at that offset.
+    // with content actually exhausted at that offset. TOP has no outcome
+    // — the renderer doesn't drive any scrollable for it.
+    if (scroll.mode === 'TOP') return 'scroll top';
     if (scroll.atEnd) return 'scrolled end';
     if (scroll.reachedPx != null) return `scrolled ${scroll.reachedPx}px`;
     if (scroll.mode === 'END') return 'scroll end';

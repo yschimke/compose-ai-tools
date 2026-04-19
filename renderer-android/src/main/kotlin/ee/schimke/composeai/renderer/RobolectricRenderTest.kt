@@ -265,7 +265,7 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                 // can suppress transient UI (e.g. Wear's `ScreenScaffold` scroll
                 // indicator) by reading `LocalScrollCaptureInProgress.current`.
                 //
-                // Only set for `@ScrollingPreview(mode = LONG)`: stitched
+                // Only set for `@ScrollingPreview(modes = [LONG])`: stitched
                 // captures composite many frames into one tall PNG, and a
                 // fading indicator at arbitrary opacity per slice dominates
                 // the diff. END mode is a single frame at the natural
@@ -397,7 +397,11 @@ abstract class RobolectricRenderTestBase(private val preview: RenderPreviewEntry
                         )
 
                     if (!longHandled) {
-                        if (scroll != null) {
+                        // TOP mode is the unscrolled initial frame — no
+                        // drive, just a capture. END mode drives the first
+                        // scrollable on the requested axis to its content
+                        // end before capturing.
+                        if (scroll != null && scroll.mode == ScrollMode.END) {
                             val result = driveScrollToEnd(
                                 rule = rule,
                                 axis = scroll.axis,
@@ -575,7 +579,7 @@ private fun cropPngTopLeft(
 }
 
 /**
- * Handles `@ScrollingPreview(mode = LONG)` captures. Drives the first
+ * Handles `@ScrollingPreview(modes = [LONG])` captures. Drives the first
  * scrollable on [ScrollCapture.axis] by one viewport-height per step via
  * [driveScrollByViewport], captures each slice to a temp PNG with per-slice
  * round crop DISABLED, and Java2D-stitches them via [stitchSlices].

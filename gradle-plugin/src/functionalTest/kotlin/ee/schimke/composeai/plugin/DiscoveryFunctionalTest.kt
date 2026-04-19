@@ -485,13 +485,13 @@ class DiscoveryFunctionalTest {
             """
             package ee.schimke.composeai.preview
 
-            enum class ScrollMode { END, LONG }
+            enum class ScrollMode { TOP, END, LONG }
             enum class ScrollAxis { VERTICAL, HORIZONTAL }
 
             @Retention(AnnotationRetention.BINARY)
             @Target(AnnotationTarget.FUNCTION)
             annotation class ScrollingPreview(
-                val mode: ScrollMode,
+                val modes: Array<ScrollMode> = [ScrollMode.END],
                 val maxScrollPx: Int = 0,
                 val reduceMotion: Boolean = true,
                 val axis: ScrollAxis = ScrollAxis.VERTICAL,
@@ -523,7 +523,7 @@ class DiscoveryFunctionalTest {
             annotation class LightAndDark
 
             @LightAndDark
-            @ScrollingPreview(mode = ScrollMode.END)
+            @ScrollingPreview(modes = [ScrollMode.END])
             @Composable
             fun EndScrollPreview() {
                 Box(modifier = Modifier.size(50.dp).background(Color.Red))
@@ -531,7 +531,7 @@ class DiscoveryFunctionalTest {
 
             @Preview
             @ScrollingPreview(
-                mode = ScrollMode.LONG,
+                modes = [ScrollMode.LONG],
                 maxScrollPx = 4000,
                 reduceMotion = false,
                 axis = ScrollAxis.HORIZONTAL,
@@ -539,6 +539,16 @@ class DiscoveryFunctionalTest {
             @Composable
             fun LongScrollPreview() {
                 Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+            }
+
+            // Multi-mode fan-out: one preview function emits both an
+            // unscrolled initial capture and a scroll-to-end capture,
+            // disambiguated on disk by a _SCROLL_<mode> suffix.
+            @Preview(name = "Scroll")
+            @ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
+            @Composable
+            fun TopAndEndScrollPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
             }
 
             @Preview
@@ -591,6 +601,19 @@ class DiscoveryFunctionalTest {
 
         val plain = manifest.previews.single { it.functionName == "PlainPreview" }
         assertThat(plain.captures.single().scroll).isNull()
+
+        // Multi-mode: one preview yields two captures, one per mode, with
+        // distinct `_SCROLL_<mode>` filenames. Modes sort by enum ordinal
+        // (TOP, END, LONG) so the renderer captures the initial frame
+        // before driving the scroller.
+        val topAndEnd = manifest.previews.single { it.functionName == "TopAndEndScrollPreview" }
+        assertThat(topAndEnd.captures).hasSize(2)
+        assertThat(topAndEnd.captures.map { it.scroll?.mode })
+            .containsExactly(ScrollMode.TOP, ScrollMode.END).inOrder()
+        assertThat(topAndEnd.captures.map { it.renderOutput }).containsExactly(
+            "renders/${topAndEnd.id}_SCROLL_top.png",
+            "renders/${topAndEnd.id}_SCROLL_end.png",
+        ).inOrder()
     }
 
     @Test

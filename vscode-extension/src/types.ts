@@ -18,7 +18,7 @@ export interface PreviewParams {
  * reachedPx) are populated by the renderer post-capture.
  */
 export interface ScrollCapture {
-    mode: 'END' | 'LONG' | string;
+    mode: 'TOP' | 'END' | 'LONG' | string;
     axis: 'VERTICAL' | 'HORIZONTAL' | string;
     maxScrollPx: number;
     reduceMotion: boolean;

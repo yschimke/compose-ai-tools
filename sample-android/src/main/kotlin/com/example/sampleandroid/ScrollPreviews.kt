@@ -38,21 +38,16 @@ fun RedToBlueList() {
     }
 }
 
-/** Baseline — captures the initial (unscrolled) frame. Mostly red. */
-@Preview(name = "Top", showBackground = true)
-@Composable
-fun RedToBlueTopPreview() {
-    RedToBlueList()
-}
-
 /**
- * Same fixture with `@ScrollingPreview(mode = END)` — the renderer drives the
- * LazyColumn to the end of its content before the capture, so this frame is
- * mostly blue.
+ * Multi-mode scroll capture from a single preview function. Produces two
+ * PNGs — `..._SCROLL_top.png` (initial unscrolled frame, mostly red) and
+ * `..._SCROLL_end.png` (after driving the LazyColumn to its content end,
+ * mostly blue). Pixel assertions in [ScrollPreviewPixelTest] key off this
+ * gradient to prove both captures land on disk distinctly.
  */
-@Preview(name = "End", showBackground = true)
-@ScrollingPreview(mode = ScrollMode.END)
+@Preview(name = "Scroll", showBackground = true)
+@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
 @Composable
-fun RedToBlueEndPreview() {
+fun RedToBlueScrollPreview() {
     RedToBlueList()
 }

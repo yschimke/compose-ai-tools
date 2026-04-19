@@ -6,7 +6,7 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end regression for `@ScrollingPreview(mode = LONG)` — drives the
+ * End-to-end regression for `@ScrollingPreview(modes = [LONG])` — drives the
  * renderer to produce a stitched tall PNG of the `ActivityListLongPreview`
  * (`TransformingLazyColumn` + `EdgeButton`) and asserts:
  *  - Output height > viewport height (proves multi-slice stitching ran,

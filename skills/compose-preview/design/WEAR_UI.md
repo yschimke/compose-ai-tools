@@ -106,7 +106,7 @@ Implications when designing previews:
   clipped away.
 - Place primary content within the inscribed circle. The corners of the
   preview canvas are *not* a usable design area.
-- Stitched `@ScrollingPreview(mode = LONG)` round captures use a capsule
+- Stitched `@ScrollingPreview(modes = [LONG])` round captures use a capsule
   mask (top half-circle + rectangle + bottom half-circle), not per-slice
   circles, so vertical content in the middle remains visible.
 - Square Wear devices (`id:wearos_square`) are rendered without the clip.
@@ -132,12 +132,12 @@ hundreds of pixel-different PNGs. Pin these things:
 - **Suppress the scroll indicator during stitched captures via
   `LocalScrollCaptureInProgress`.** `ScreenScaffold` draws a transient scroll
   indicator that fades in/out as the list scrolls; on stitched
-  `@ScrollingPreview(mode = LONG)` captures it lands at arbitrary opacities
+  `@ScrollingPreview(modes = [LONG])` captures it lands at arbitrary opacities
   per slice and dominates the diff. The renderer mirrors Compose's
   long-screenshot signal — it provides
   `androidx.compose.ui.platform.LocalScrollCaptureInProgress = true` only
   for `LONG`-mode previews, `false` everywhere else (including
-  `@ScrollingPreview(mode = END)`, regular `@Preview`, and the running app).
+  `@ScrollingPreview(modes = [END])`, regular `@Preview`, and the running app).
   END mode is a single frame at the scroll-to-end position, so showing the
   indicator there matches what a real app renders. Read the local inside
   the `scrollIndicator` slot so production behaviour is unchanged but
@@ -169,7 +169,7 @@ hundreds of pixel-different PNGs. Pin these things:
 
   ```kotlin
   @WearPreviewLargeRound
-  @ScrollingPreview(mode = ScrollMode.LONG)
+  @ScrollingPreview(modes = [ScrollMode.LONG])
   @Composable
   fun MyScreenLongPreview() {
       MaterialTheme {
@@ -186,7 +186,7 @@ hundreds of pixel-different PNGs. Pin these things:
   `ScreenScaffold`).
 
 - **Reduce motion for `TransformingLazyColumn` scroll captures.**
-  `@ScrollingPreview(mode = LONG, reduceMotion = true)` (default) wraps the
+  `@ScrollingPreview(modes = [LONG], reduceMotion = true)` (default) wraps the
   body in `LocalReduceMotion provides ReduceMotion(true)` so item
   shape-morphing and scaling don't vary slice-to-slice. Without it, each
   stitched slice picks up a different transform state and the resulting
@@ -194,7 +194,7 @@ hundreds of pixel-different PNGs. Pin these things:
 
 - **`EdgeButton` revealed only at end-of-list.** `ScreenScaffold` reveals
   the `EdgeButton` only when the list is pinned to its bottom — so for a
-  `@ScrollingPreview(mode = LONG)` the button shows up in the final slice
+  `@ScrollingPreview(modes = [LONG])` the button shows up in the final slice
   only. That's intended behaviour, not a regression; the top-state
   `@Preview` of the same composable will not include it.
 

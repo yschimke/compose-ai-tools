@@ -9,19 +9,29 @@ package ee.schimke.composeai.preview
  * annotation in their own code depend on
  * `ee.schimke.composeai:preview-annotations`.
  *
- * The annotation only records *intent* in `previews.json` — renderer support
- * for [ScrollMode.END] and [ScrollMode.LONG] lands in subsequent changes.
+ * Each entry in [modes] fans out into its own capture (and its own PNG on
+ * disk). Shared knobs — [axis], [maxScrollPx], [reduceMotion] — apply to
+ * every capture produced by a single annotation instance. A single-mode
+ * annotation (e.g. `modes = [ScrollMode.END]`) keeps the plain
+ * `renders/<id>.png` filename; multi-mode annotations disambiguate siblings
+ * with a `_SCROLL_<mode>` suffix (`renders/<id>_SCROLL_top.png`,
+ * `renders/<id>_SCROLL_end.png`, …).
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)
 @MustBeDocumented
 annotation class ScrollingPreview(
-    /** Capture strategy for the scrollable content. */
-    val mode: ScrollMode,
+    /**
+     * Capture strategies for the scrollable content. Each mode produces one
+     * PNG. Defaults to `[END]` so migrating from the pre-0.7 single-mode
+     * shape (`mode = ScrollMode.END`) is a one-line edit.
+     */
+    val modes: Array<ScrollMode> = [ScrollMode.END],
     /**
      * Upper bound on how far we'll scroll, in pixels. `0` means unbounded —
      * drive to the content's natural end. Use a positive value on infinite
-     * or very tall scrollers to cap capture size.
+     * or very tall scrollers to cap capture size. Applies to [ScrollMode.END]
+     * and [ScrollMode.LONG]; ignored for [ScrollMode.TOP].
      */
     val maxScrollPx: Int = 0,
     /**
@@ -36,6 +46,13 @@ annotation class ScrollingPreview(
 )
 
 enum class ScrollMode {
+    /**
+     * Capture the initial (unscrolled) frame. Equivalent to a plain
+     * `@Preview` but lets you emit a top-state capture alongside END/LONG
+     * from one function.
+     */
+    TOP,
+
     /** Scroll to the end of the content, then capture a single frame. */
     END,
 
