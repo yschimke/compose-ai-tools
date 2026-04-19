@@ -1,0 +1,387 @@
+{
+  "sample-android-screenshot-test/com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square": {
+    "captureLabel": "",
+    "functionName": "MainSquarePreview",
+    "renderBasename": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square.png",
+    "sha256": "a90781a82be57f76cde772aeef416dd0b7ac8c87d5ebb451df437b8347cb7c28",
+    "sourceFile": "com/example/sampleandroidscreenshot/MainPreviews.kt"
+  },
+  "sample-android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceGreen_instance-green": {
+    "captureLabel": "",
+    "functionName": "InstanceGreen",
+    "renderBasename": "com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceGreen_instance-green.png",
+    "sha256": "41bd24524039e08c8efb5a076235c4b46b92734fee03512eed458b74c0f84cc3",
+    "sourceFile": "com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
+  },
+  "sample-android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceRed_instance-red": {
+    "captureLabel": "",
+    "functionName": "InstanceRed",
+    "renderBasename": "com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceRed_instance-red.png",
+    "sha256": "9c217ba0f15ffbc42b90caa6abcd58d3d233e648a3b9f77854a6f16e08a4e4ff",
+    "sourceFile": "com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
+  },
+  "sample-android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviewsKt.ScreenshotTopLevelPreview_screenshotTest-toplevel": {
+    "captureLabel": "",
+    "functionName": "ScreenshotTopLevelPreview",
+    "renderBasename": "com.example.sampleandroidscreenshot.ScreenshotPreviewsKt.ScreenshotTopLevelPreview_screenshotTest-toplevel.png",
+    "sha256": "fe32f0419a83a7c61710013774bc6be5e169b790e0120abcb640f0f20370bab4",
+    "sourceFile": "com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
+    "captureLabel": "",
+    "functionName": "BodyTextPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text_PARAM_0.png",
+    "sha256": "aa732476db829fc11a50895b26a98098f8e5d2ac10f265e3ffb84d24a8c95706",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text#1": {
+    "captureLabel": "",
+    "functionName": "BodyTextPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text_PARAM_1.png",
+    "sha256": "46ac1d22e97bd00886dc9c20bc6b370965a7073687f08779b6faa330fb4cdd59",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text#2": {
+    "captureLabel": "",
+    "functionName": "BodyTextPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text_PARAM_2.png",
+    "sha256": "bb1b51285b5dff0049adef9a2a583cd7efd232c240da6d1694a14381f637db95",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card": {
+    "captureLabel": "",
+    "functionName": "UserCardPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card_PARAM_0.png",
+    "sha256": "561a7e3aef32a2fc1bb0c28f644afef242733caa6590cf3374617ab2ce197e98",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card#1": {
+    "captureLabel": "",
+    "functionName": "UserCardPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card_PARAM_1.png",
+    "sha256": "2945dbd54402d9a6fb09502c1acda4a0e572535d5ac84641249fc3308b3f3aae",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card#2": {
+    "captureLabel": "",
+    "functionName": "UserCardPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card_PARAM_2.png",
+    "sha256": "347affa66d9359361eff284c6dd14e793e94eaad2a2f0287db392841065f50fc",
+    "sourceFile": "com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button": {
+    "captureLabel": "",
+    "functionName": "BadButtonPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button.png",
+    "sha256": "05f68b9eb704a5a68241d288649531fbe3beb36df129162f045aebabd1575dab",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.BlueBoxPreview_Blue Box": {
+    "captureLabel": "",
+    "functionName": "BlueBoxPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.BlueBoxPreview_Blue Box.png",
+    "sha256": "268b1dc19704cb18580111651097df7f48f4bc6e31528307d782aeea1b380573",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default": {
+    "captureLabel": "",
+    "functionName": "ConfigProbePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default.png",
+    "sha256": "43f4e5d5ea0a86c5079bf4009aba27c90f098aa7b3177d05b7565b2b2a1d1568",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.ConfigProbePreview_German": {
+    "captureLabel": "",
+    "functionName": "ConfigProbePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_German.png",
+    "sha256": "43778834280fcbe3ad86a938ca285af1508858cc67df1eae356192a3801fbe58",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Night": {
+    "captureLabel": "",
+    "functionName": "ConfigProbePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Night.png",
+    "sha256": "8d8cfbca024caa31ac70ba6f51a34a5b7d3acf29a05364148a195ec43a6263f7",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase": {
+    "captureLabel": "",
+    "functionName": "DeviceFontFamilyShowcasePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase.png",
+    "sha256": "ae1affb120a43143bd9dff8b5f48c0c23eefb3ea1690f684048000405e1464ee",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase": {
+    "captureLabel": "",
+    "functionName": "GoogleFontsShowcasePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase.png",
+    "sha256": "bb62994f74c36f2c991caabfad0e30e22d09b77243179d56552efb3d4b7141e8",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.GreenBoxPreview_Green Box": {
+    "captureLabel": "",
+    "functionName": "GreenBoxPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.GreenBoxPreview_Green Box.png",
+    "sha256": "eae7da117a8020aff4ed36c8161126e439c3ce31988fdcda4904116efaf29b0e",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.GreetingPreview_Default": {
+    "captureLabel": "",
+    "functionName": "GreetingPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.GreetingPreview_Default.png",
+    "sha256": "45a72a2e36a021c43e931a4907c1380daf9f9ee819474cce6aa38f0346e2a399",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.LoadingPreview_Loading Spinner": {
+    "captureLabel": "",
+    "functionName": "LoadingPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.LoadingPreview_Loading Spinner.png",
+    "sha256": "1b1ef610a80d1875b17e5e18d3bde390f17779f244d3a88fe967fb79b9020f30",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "PhoneGreetingPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone.png",
+    "sha256": "adedee722a7c22d0499be2eef7a43d92391073e4b040d13d07985b2669e18bc4",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box": {
+    "captureLabel": "",
+    "functionName": "RedBoxPreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box.png",
+    "sha256": "8e0f667d9d47f52b20d24e53dbf492bff8a4380481d3c7e67e9b35fa7da5a772",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline": {
+    "captureLabel": "0ms",
+    "functionName": "SpinnerTimelinePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline_TIME_0ms.png",
+    "sha256": "1621d845e741692363b4186f75c5a88918f1edd3c6c5880a3e777444574b77b4",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline#1": {
+    "captureLabel": "500ms",
+    "functionName": "SpinnerTimelinePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline_TIME_500ms.png",
+    "sha256": "28beae1409398defd2a4b14c6b3b2bb6eea2884031a05497ccaa9627bef89844",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline#2": {
+    "captureLabel": "1500ms",
+    "functionName": "SpinnerTimelinePreview",
+    "renderBasename": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline_TIME_1500ms.png",
+    "sha256": "f9c3376703cc046ab7db01a412e4167c1f8bcd89569f0ab4a238d48e126cd7ee",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif": {
+    "captureLabel": "scroll gif",
+    "functionName": "RedToBlueScrollGifPreview",
+    "renderBasename": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif",
+    "sha256": "133c9cfb26708a42a045df255a08cf5818f66cfe95cd6bd9b5977b613d5a5229",
+    "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll": {
+    "captureLabel": "scroll top",
+    "functionName": "RedToBlueScrollPreview",
+    "renderBasename": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_top.png",
+    "sha256": "f874d7255aef505256f415e2a302e52d49ad57c5351b0fd20141f659f9dd43d2",
+    "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll#1": {
+    "captureLabel": "scroll end",
+    "functionName": "RedToBlueScrollPreview",
+    "renderBasename": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_end.png",
+    "sha256": "a7ede269b8b34462117176a1c8da3d603d792df660e81cc0cb59c258ff5aa9ba",
+    "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif": {
+    "captureLabel": "scroll gif",
+    "functionName": "SettingsListScrollGifPreview",
+    "renderBasename": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.gif",
+    "sha256": "25591d9ba5ccf18ae11aa3e524932e60f5fe755e9b9dcafb850589bb079339aa",
+    "sourceFile": "com/example/sampleandroid/SettingsListScrollGifPreview.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
+    "captureLabel": "",
+    "functionName": "SwatchPreview",
+    "renderBasename": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch_PARAM_0.png",
+    "sha256": "24843caa6be8533c93790ad6c2f47b6d8a8c3d3f5807d3a82a799ce6f53f5bd8",
+    "sourceFile": "com/example/samplecmp/PreviewParameterPreviews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#1": {
+    "captureLabel": "",
+    "functionName": "SwatchPreview",
+    "renderBasename": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch_PARAM_1.png",
+    "sha256": "6aabb7d243aced1137d035e6eba349471c1e71bf52f97e54c234d928b11a5a0b",
+    "sourceFile": "com/example/samplecmp/PreviewParameterPreviews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#2": {
+    "captureLabel": "",
+    "functionName": "SwatchPreview",
+    "renderBasename": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch_PARAM_2.png",
+    "sha256": "7fc93bf69ba6a899eba4ea1b1a44c5fbbdab2034775f6a655f6504bd0b4fbbb7",
+    "sourceFile": "com/example/samplecmp/PreviewParameterPreviews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#3": {
+    "captureLabel": "",
+    "functionName": "SwatchPreview",
+    "renderBasename": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch_PARAM_3.png",
+    "sha256": "cbfe793cfb799bc0480994501f835eb2cc91174d73c1b30c2e9a00ca9d0dd103",
+    "sourceFile": "com/example/samplecmp/PreviewParameterPreviews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewsKt.AppPreview": {
+    "captureLabel": "",
+    "functionName": "AppPreview",
+    "renderBasename": "com.example.samplecmp.PreviewsKt.AppPreview.png",
+    "sha256": "ed14de8ef839bfc9c3447a9ca28f8ce09c4e0c4e4ab2273cc64170c91c1090b5",
+    "sourceFile": "com/example/samplecmp/Previews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box": {
+    "captureLabel": "",
+    "functionName": "BlueBoxPreview",
+    "renderBasename": "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box.png",
+    "sha256": "cabbf50d505f3705551f0790ceffc7ef182f10cc88951c47b148f8adf49251a2",
+    "sourceFile": "com/example/samplecmp/Previews.kt"
+  },
+  "sample-cmp/com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box": {
+    "captureLabel": "",
+    "functionName": "RedBoxPreview",
+    "renderBasename": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box.png",
+    "sha256": "81d9a143e67f54f9c191b33ba16f2db863e2a02008e024ec853949ef384b2bc5",
+    "sourceFile": "com/example/samplecmp/Previews.kt"
+  },
+  "sample-remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonEnabledPreview",
+    "renderBasename": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview.png",
+    "sha256": "1007ee7476233d46cd385285d2e897e0703c32769dfc3ed4788fc41d9caee116",
+    "sourceFile": "com/example/sampleremotecompose/Previews.kt"
+  },
+  "sample-remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithBorderPreview",
+    "renderBasename": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview.png",
+    "sha256": "bc45dd767f86ebdbb99a20d329eb6a8b87e0345553d408adbd0a3a6069d9a750",
+    "sourceFile": "com/example/sampleremotecompose/Previews.kt"
+  },
+  "sample-remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithShapePreview",
+    "renderBasename": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview.png",
+    "sha256": "0025a6f7b1c944ba6e90d3c4174df0bacecd1e96333f1224af4f622efb517853",
+    "sourceFile": "com/example/sampleremotecompose/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large.png",
+    "sha256": "ec3c5a7a98d7911bb19b132619095eb76d551b986966bb8a3d7ed56e3c5d5d20",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Larger": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Larger.png",
+    "sha256": "dd11b1f9f75752e9d91ac88e2c97769df9b60f03db72d38fdcfb405f66060f66",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Largest": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Largest.png",
+    "sha256": "e2f1baf3bf39dcf9c791ab2ac9d99821884db05a190a2bcbff5ab466dfb17c87",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Medium": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Medium.png",
+    "sha256": "e188ccb262202b425a0f1a0eb1a80d091a10ae37ea484245849ef8bf6074acfd",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Normal": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Normal.png",
+    "sha256": "57280b0568c8d1be08d9744896ffd702352c96e3380ab168eeccb8f4c10f1249",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Small": {
+    "captureLabel": "",
+    "functionName": "ActivityListFontScalesPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Small.png",
+    "sha256": "1335823aa89b965689fdd7c9d88dc2c39c23633cd18df8e98711681ccabfb8a7",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round": {
+    "captureLabel": "scroll long",
+    "functionName": "ActivityListLongPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.png",
+    "sha256": "4bda316aa4b8d159ff188261cf79091c59943505cda7aa2e4718d06ed346dd0e",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "ActivityListPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round.png",
+    "sha256": "5f9e73b11f71a8d76888048dd99ca061f6ecada4c065605fab3fbe42305c6c16",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round": {
+    "captureLabel": "",
+    "functionName": "ActivityListPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round.png",
+    "sha256": "57280b0568c8d1be08d9744896ffd702352c96e3380ab168eeccb8f4c10f1249",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round": {
+    "captureLabel": "",
+    "functionName": "BadWearButtonPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round.png",
+    "sha256": "525d9959bc1c2a9a06bab496140df91b3ea63c4e727e913d509b6d2a7d297660",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "ButtonPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round.png",
+    "sha256": "73571b234ada7c6db66317dd174a51c81b0c3025d79c4a2e35d0954fb0acb7ad",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Small Round": {
+    "captureLabel": "",
+    "functionName": "ButtonPreview",
+    "renderBasename": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Small Round.png",
+    "sha256": "2e229d026ba9f65435e6938af97ea64d9e268b5c408269a3d34bb439a84a5a10",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
+    "captureLabel": "",
+    "functionName": "HelloTilePreview",
+    "renderBasename": "com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round.png",
+    "sha256": "4ce8b8a44b0562846a58bab7c91ef0e50acf68806607befaeb52d2a7a850b18a",
+    "sourceFile": "com/example/samplewear/TilePreviews.kt"
+  },
+  "sample-wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Small Round": {
+    "captureLabel": "",
+    "functionName": "HelloTilePreview",
+    "renderBasename": "com.example.samplewear.TilePreviewsKt.HelloTilePreview_Small Round.png",
+    "sha256": "2ed98813bb8bd197b324012ad3a361f4e8c025e3a16798b47e46808379f435c4",
+    "sourceFile": "com/example/samplewear/TilePreviews.kt"
+  },
+  "sample-wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Large Round": {
+    "captureLabel": "",
+    "functionName": "StepsTilePreview",
+    "renderBasename": "com.example.samplewear.TilePreviewsKt.StepsTilePreview_Large Round.png",
+    "sha256": "3d1993766d9f1463952675600e16c82f6bb3b609c6386d002c7dc30fc0e4304a",
+    "sourceFile": "com/example/samplewear/TilePreviews.kt"
+  },
+  "sample-wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Small Round": {
+    "captureLabel": "",
+    "functionName": "StepsTilePreview",
+    "renderBasename": "com.example.samplewear.TilePreviewsKt.StepsTilePreview_Small Round.png",
+    "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
+    "sourceFile": "com/example/samplewear/TilePreviews.kt"
+  }
+}
