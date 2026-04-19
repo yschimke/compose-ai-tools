@@ -2,6 +2,7 @@ package com.example.sampleandroid
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.ui.text.googlefonts.Font as GoogleFontFont
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -157,4 +158,60 @@ fun BadButtonPreview() {
         onClick = { /* no-op */ },
         modifier = Modifier.size(width = 20.dp, height = 20.dp),
     ) {}
+}
+
+/**
+ * Smoke test for the downloadable-fonts path under Robolectric. Uses the
+ * same `Font(GoogleFont(name), provider)` shape a consumer writes in
+ * production — no `src/debug` fork, no preloaded resource fonts. The shadow
+ * in `renderer-android` intercepts `FontsContractCompat.requestFont` and
+ * swaps in a TTF downloaded on first render from
+ * `fonts.googleapis.com/css2`, cached under `.compose-preview-history/fonts/`.
+ *
+ * Roboto Mono is a distinctively-shaped typeface vs the platform Roboto
+ * fallback: every glyph is the same width, zeros have a slash, capital O is
+ * a circle. If the shadow regresses to the default resolver the PNG will
+ * render in Roboto and the visual diff will be obvious.
+ */
+private val googleFontProvider = androidx.compose.ui.text.googlefonts.GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    // Required at runtime on-device, but never consulted under Robolectric —
+    // the shadow short-circuits before PackageManager signature verification.
+    // A local empty int-array is enough to exercise the preview path without
+    // pulling in `play-services-base` for a sample.
+    certificates = R.array.com_google_android_gms_fonts_certs,
+)
+
+private val robotoMonoFamily = androidx.compose.ui.text.font.FontFamily(
+    GoogleFontFont(
+        androidx.compose.ui.text.googlefonts.GoogleFont("Roboto Mono"),
+        googleFontProvider,
+        weight = androidx.compose.ui.text.font.FontWeight.Normal,
+    ),
+    GoogleFontFont(
+        androidx.compose.ui.text.googlefonts.GoogleFont("Roboto Mono"),
+        googleFontProvider,
+        weight = androidx.compose.ui.text.font.FontWeight.Bold,
+    ),
+)
+
+@Preview(name = "Google Font", showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+fun GoogleFontPreview() {
+    MaterialTheme {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Roboto Mono 400",
+                fontFamily = robotoMonoFamily,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+            )
+            Text(
+                text = "Roboto Mono 700",
+                fontFamily = robotoMonoFamily,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+            Text(text = "System fallback (Roboto)")
+        }
+    }
 }

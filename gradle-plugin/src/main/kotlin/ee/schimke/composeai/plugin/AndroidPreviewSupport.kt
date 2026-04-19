@@ -525,6 +525,23 @@ internal object AndroidPreviewSupport {
             systemProperty("composeai.render.manifest", manifestFile.get())
             systemProperty("composeai.render.outputDir", rendersDir.get())
 
+            // GoogleFont interceptor cache — defaults to
+            // `<project>/.compose-preview-history/fonts/`, same root the
+            // history task uses, so committed TTFs sit beside committed PNGs.
+            // The renderer class no-ops when this property is absent, so the
+            // feature is fully additive for existing consumers.
+            val fontsCacheDir = extension.historyDir
+                .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
+                .map { it.dir("fonts").asFile.absolutePath }
+            systemProperty("composeai.fonts.cacheDir", fontsCacheDir.get())
+            // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
+            // on a CI profile) skips network on cache miss so the render
+            // shows the fallback font rather than silently fetching from
+            // `fonts.googleapis.com`.
+            val fontsOffline = project.providers.gradleProperty("composePreview.fontsOffline")
+                .orElse("false")
+            systemProperty("composeai.fonts.offline", fontsOffline.get())
+
             // ATF flags are routed through a CommandLineArgumentProvider
             // rather than `systemProperty(...)` so toggling the `-P` override
             // doesn't invalidate the Gradle configuration cache. `systemProperty`

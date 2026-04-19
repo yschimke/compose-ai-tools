@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Certificates array referenced by GoogleFont.Provider for GMS Fonts.
+        On-device production use requires this to be the real GMS signing
+        certificates (normally pulled in via `play-services-base`); under
+        Robolectric the ShadowFontsContractCompat short-circuits before
+        signature verification, so a local empty array is sufficient to
+        exercise the preview-rendering path without the Play Services
+        dependency.
+    -->
+    <array name="com_google_android_gms_fonts_certs" />
+</resources>
