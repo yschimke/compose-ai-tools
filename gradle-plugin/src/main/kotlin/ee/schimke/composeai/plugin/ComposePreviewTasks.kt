@@ -207,7 +207,23 @@ internal object ComposePreviewTasks {
                     .filter { p ->
                         p.captures.any { c ->
                             val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
-                            !outDir.resolve(rel).exists()
+                            // `@PreviewParameter` previews fan out at render
+                            // time: manifest carries a `<id>.png` template,
+                            // but the actual files live at
+                            // `<id>_PARAM_<idx>.png` (one per provider value).
+                            // Check that at least ONE matching fan-out file
+                            // exists instead of demanding the template itself.
+                            if (p.params.previewParameterProviderClassName != null) {
+                                val file = outDir.resolve(rel)
+                                val dir = file.parentFile ?: outDir
+                                val prefix = file.nameWithoutExtension + "_PARAM_"
+                                val ext = ".${file.extension}"
+                                !(dir.listFiles()?.any { f ->
+                                    f.name.startsWith(prefix) && f.name.endsWith(ext)
+                                } ?: false)
+                            } else {
+                                !outDir.resolve(rel).exists()
+                            }
                         }
                     }
                     .map { it.id }

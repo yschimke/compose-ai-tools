@@ -107,6 +107,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
                     // the intrinsic bounds on that axis.
                     spec.wrapWidth.toString(),
                     spec.wrapHeight.toString(),
+                    // 12th/13th — @PreviewParameter spec. Empty string signals
+                    // "no provider"; otherwise the renderer enumerates the
+                    // provider's values.take(limit) in-process and writes one
+                    // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
+                    // the count (consumer's classpath isn't loaded here), so
+                    // fan-out is delegated to the renderer process that already
+                    // has everything on its classpath.
+                    preview.params.previewParameterProviderClassName.orEmpty(),
+                    preview.params.previewParameterLimit.toString(),
                 )
             }
         }

@@ -15,7 +15,7 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
  */
 internal interface PreviewRenderStrategy {
     @Composable
-    fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int)
+    fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>)
 }
 
 private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> = mapOf(
@@ -40,9 +40,18 @@ internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
  */
 private object ComposePreviewStrategy : PreviewRenderStrategy {
     @Composable
-    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int) {
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
         val clazz = Class.forName(preview.className)
-        val composableMethod = clazz.getDeclaredComposableMethod(preview.functionName)
+        // For previews with a `@PreviewParameter` argument, look up the
+        // overload whose Composable-visible parameters match the supplied
+        // values. The pipeline only injects one value today (Studio-parity:
+        // multi-@PreviewParameter functions aren't supported), but passing
+        // the full list keeps the lookup shape honest with the invocation.
+        val composableMethod = if (previewArgs.isEmpty()) {
+            clazz.getDeclaredComposableMethod(preview.functionName)
+        } else {
+            findComposableMethodWithArgs(clazz, preview.functionName, previewArgs)
+        }
         // Top-level `@Preview` functions compile into static methods on the
         // file's synthetic `FooKt` class, so `receiver = null` works. Google's
         // `com.android.compose.screenshot` tool (and Paparazzi-style tests)
@@ -56,7 +65,7 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
         // constructor, else fall back to null for static methods.
         val receiver = resolvePreviewReceiver(clazz)
         val body: @Composable () -> Unit = {
-            composableMethod.invoke(currentComposer, receiver)
+            composableMethod.invoke(currentComposer, receiver, *previewArgs.toTypedArray())
         }
         val wrapperFqn = preview.params.wrapperClassName
         if (wrapperFqn != null) {
@@ -66,6 +75,60 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
             body()
         }
     }
+}
+
+/**
+ * Resolves the `ComposableMethod` for a preview function that declares
+ * `@PreviewParameter` arguments, where parameter types aren't known
+ * statically. Walks `declaredMethods`, picks the overload whose leading
+ * JVM parameter types line up with `previewArgs` (receiver types match the
+ * runtime class of each value, plus the usual trailing Composer + changed
+ * int-bits), then hands that shape to
+ * `Class<*>.getDeclaredComposableMethod(name, vararg parameterTypes)` —
+ * the only officially supported way to produce a `ComposableMethod`.
+ *
+ * Null entries in [previewArgs] are matched against the declared parameter's
+ * box type (Kotlin nullable types already compile to boxed reference types).
+ * Primitive-typed non-null values are auto-boxed in [previewArgs], so we
+ * check both box and primitive forms.
+ */
+internal fun findComposableMethodWithArgs(
+    clazz: Class<*>,
+    name: String,
+    previewArgs: List<Any?>,
+): androidx.compose.runtime.reflect.ComposableMethod {
+    val argCount = previewArgs.size
+    // Compose compiler emits `(…args, Composer, changed[, defaultBits…])`
+    // at the JVM level, so a method with N composable-visible params has at
+    // least N + 2 JVM params. The default-bits tail is emitted when the
+    // preview function declares default arguments we didn't supply.
+    val candidate = clazz.declaredMethods.firstOrNull { m ->
+        m.name == name && m.parameterCount >= argCount + 2 && argsMatch(m, previewArgs)
+    } ?: throw NoSuchMethodException(
+        "Couldn't find composable method $name on ${clazz.name} taking ${previewArgs.size} parameter(s); " +
+            "check that the @PreviewParameter provider's value type matches the preview's parameter type.",
+    )
+    val declaredTypes = candidate.parameterTypes.take(argCount).toTypedArray()
+    return clazz.getDeclaredComposableMethod(name, *declaredTypes)
+}
+
+private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>): Boolean {
+    for ((i, arg) in previewArgs.withIndex()) {
+        val expected = method.parameterTypes[i]
+        if (arg == null) {
+            // A null argument can satisfy any reference parameter; a primitive
+            // JVM parameter can't accept null, so it's an immediate mismatch.
+            if (expected.isPrimitive) return false
+            continue
+        }
+        val actual = arg.javaClass
+        if (expected.isAssignableFrom(actual)) continue
+        // Auto-boxing: `int` vs `Integer`, etc. `expected.kotlin.javaObjectType`
+        // is the box class for primitives; for reference types it's itself.
+        if (expected.kotlin.javaObjectType.isAssignableFrom(actual)) continue
+        return false
+    }
+    return true
 }
 
 /**
@@ -104,7 +167,10 @@ internal fun resolvePreviewReceiver(clazz: Class<*>): Any? {
  */
 private object TilePreviewStrategy : PreviewRenderStrategy {
     @Composable
-    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int) {
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
+        // `@PreviewParameter` doesn't apply to tile previews — discovery
+        // drops the provider FQN for `PreviewKind.TILE`, so this list is
+        // always empty here.
         TilePreviewComposable(preview, widthDp, heightDp)
     }
 }
