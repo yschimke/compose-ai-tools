@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GradleService, GradleApi } from './gradleService';
+import { JdkImageError } from './jdkImageErrorDetector';
 import { findPluginAppliedAncestor } from './pluginDetection';
 import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
@@ -58,6 +59,9 @@ let logLine: (msg: string) => void = () => { /* noop pre-activate */ };
 /** Guard against firing the "plugin not applied" notification more than once
  *  per session — users shouldn't see it on every refresh tick. */
 let warnedMissingPluginThisSession = false;
+/** Same idea for the jlink-missing notification: save-driven refreshes would
+ *  otherwise re-surface it on every build after the user dismissed it. */
+let warnedJdkImageThisSession = false;
 // Decide whether a file "probably wants previews" with the plugin off. Kept
 // deliberately loose: the file just needs to contain the substring "Preview"
 // (covers `@Preview`, `@PreviewLightDark`, preview-tooling imports, and
@@ -65,6 +69,34 @@ let warnedMissingPluginThisSession = false;
 // False positives are cheap — an extra informational message. False
 // negatives (silence when the user wanted a nudge) are the worse outcome.
 const SETUP_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme';
+const JDK_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints';
+
+/**
+ * Show the remediation notification for a detected JdkImageError. The offered
+ * "Open JDK setting" action reveals `java.import.gradle.java.home` — the
+ * setting that `vscjava.vscode-gradle` actually reads when launching Gradle.
+ * De-duped per session so save-driven rebuilds don't re-open it.
+ */
+function showJdkImageRemediation(err: JdkImageError): void {
+    if (warnedJdkImageThisSession) { return; }
+    warnedJdkImageThisSession = true;
+    const reason = err.finding.reason ? ` (${err.finding.reason})` : '';
+    const message = `Compose Preview: Gradle is using a JRE without jlink${reason}. `
+        + 'Point it at a full JDK to build Android modules. '
+        + `Path: ${err.finding.jlinkPath}`;
+    const OPEN_SETTING = 'Open JDK setting';
+    const DOCS = 'Learn more';
+    void vscode.window.showErrorMessage(message, OPEN_SETTING, DOCS).then(action => {
+        if (action === OPEN_SETTING) {
+            void vscode.commands.executeCommand(
+                'workbench.action.openSettings',
+                'java.import.gradle.java.home',
+            );
+        } else if (action === DOCS) {
+            void vscode.env.openExternal(vscode.Uri.parse(JDK_DOCS_URL));
+        }
+    });
+}
 
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -553,6 +585,15 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
         // nothing in the logs" symptom.
     } catch (err: unknown) {
         if (abort.signal.aborted) { return; }
+        if (err instanceof JdkImageError) {
+            logLine(`FAILED (jlink missing): ${err.finding.jlinkPath}`);
+            panel.postMessage({
+                command: 'showMessage',
+                text: 'Gradle is running on a JRE without jlink. Configure a full JDK to render previews.',
+            });
+            showJdkImageRemediation(err);
+            return;
+        }
         const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
         logLine(`FAILED: ${message}`);
         panel.postMessage({

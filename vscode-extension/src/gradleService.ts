@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { AccessibilityFinding, AccessibilityReport, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
 import { APPLIES_PLUGIN_RE } from './pluginDetection';
+import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 
 const HISTORY_DIRNAME = '.compose-preview-history';
 const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
@@ -315,6 +316,8 @@ export class GradleService {
         this.activeKeys.add(cancellationKey);
         this.logger.appendLine(`> ${task}`);
 
+        const detector = new JdkImageErrorDetector();
+
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
                 this.gradleApi.cancelRunTask({
@@ -334,13 +337,20 @@ export class GradleService {
             cancellationKey,
             onOutput: (output) => {
                 try {
-                    this.logger.append(new TextDecoder().decode(output.getOutputBytes()));
+                    const decoded = new TextDecoder().decode(output.getOutputBytes());
+                    this.logger.append(decoded);
+                    detector.consume(decoded);
                 } catch { /* ignore */ }
             },
         }).then(
             () => { this.logger.appendLine(`> ${task} completed`); },
             (err) => {
                 this.logger.appendLine(`> ${task} FAILED: ${err?.message ?? err}`);
+                detector.end();
+                const finding = detector.getFinding();
+                if (finding) {
+                    throw new JdkImageError(finding, task);
+                }
                 throw new Error(`Gradle task ${task} failed. See Output > Compose Preview.`);
             },
         ).finally(() => {
