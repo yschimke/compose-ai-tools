@@ -132,4 +132,65 @@ class LongScrollPreviewPixelTest {
         val scaledRatio = scaledCardRows.toDouble() / contentRows
         assertThat(scaledRatio).isLessThan(0.10)
     }
+
+    /**
+     * Regression for the EdgeButton reveal animation at the bottom of a
+     * scroll-to-end stitch: without a post-scroll settle pass, the final
+     * slice captures `ScreenScaffold`'s `EdgeButton` mid-reveal, and the
+     * stitched PNG shows a narrow pill at the very bottom instead of the
+     * fully-expanded "Start workout" button. Once the renderer advances
+     * the paused `mainClock` enough for the expand spec to complete
+     * (`settlePostScrollAnimations` in `handleLongCapture`), the bottom
+     * band contains a near-full-width run of primary-coloured pixels.
+     *
+     * Measured on the fixed render: widest primary-colour run spans
+     * ~85 % of the viewport width. With the settle disabled the same
+     * run collapses to ~30 %. Gate at 0.60 — ~1.4× headroom above the
+     * passing value, ~2× above the failing value.
+     */
+    @Test
+    fun `LONG preview final frame shows fully-expanded EdgeButton`() {
+        val img = ImageIO.read(longPng)
+        val w = img.width
+        val h = img.height
+
+        // EdgeButton Large is ~46 dp tall ≈ 92 px at 2x density. Scan the
+        // bottom 120 px so the whole button (plus the round-face pill
+        // curvature below it) is in range regardless of exact Material3
+        // sizing changes. For each row find the widest continuous run of
+        // bright pixels; the expanded button sits as one wide horizontal
+        // stripe, a mid-reveal button as a short centred pill.
+        val scanFromY = (h - 120).coerceAtLeast(0)
+        var maxRunWidth = 0
+        for (y in scanFromY until h) {
+            var bestRun = 0
+            var currentRun = 0
+            for (x in 0 until w) {
+                val argb = img.getRGB(x, y)
+                val alpha = (argb ushr 24) and 0xff
+                if (alpha == 0) {
+                    // Pill-clip curvature: gap in the run.
+                    currentRun = 0
+                    continue
+                }
+                val r = (argb shr 16) and 0xff
+                val g = (argb shr 8) and 0xff
+                val b = argb and 0xff
+                // Button container is Material3 primary (bright, saturated);
+                // scaffold background is pure black. Sum > 120 isolates the
+                // coloured button from the 0-summed background and from any
+                // dark card surfaces that might stray into the band.
+                if (r + g + b > 120) {
+                    currentRun++
+                    if (currentRun > bestRun) bestRun = currentRun
+                } else {
+                    currentRun = 0
+                }
+            }
+            if (bestRun > maxRunWidth) maxRunWidth = bestRun
+        }
+
+        val extent = maxRunWidth.toDouble() / w
+        assertThat(extent).isGreaterThan(0.60)
+    }
 }
