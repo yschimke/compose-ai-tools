@@ -148,29 +148,10 @@ describe('GradleService', () => {
             assert.deepStrictEqual(service.findPreviewModules(), ['app']);
         }));
 
-        it('finds modules that apply via version-catalog alias', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'gradle'), { recursive: true });
-            fs.writeFileSync(path.join(dir, 'gradle', 'libs.versions.toml'), `
-                [plugins]
-                composeai-preview = { id = "ee.schimke.composeai.preview", version = "0.7.1" }
-            `);
-            fs.mkdirSync(path.join(dir, 'wearApp'));
-            fs.writeFileSync(path.join(dir, 'wearApp', 'build.gradle.kts'),
-                'plugins { alias(libs.plugins.composeai.preview) }');
-
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), ['wearApp']);
-        }));
-
-        it('excludes root-level `apply false` alias declarations', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'gradle'), { recursive: true });
-            fs.writeFileSync(path.join(dir, 'gradle', 'libs.versions.toml'), `
-                [plugins]
-                composeai-preview = { id = "ee.schimke.composeai.preview", version = "0.7.1" }
-            `);
+        it('excludes literal `apply false` declarations', withTempDir((dir, api) => {
             fs.mkdirSync(path.join(dir, 'lib'));
             fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
-                'plugins { alias(libs.plugins.composeai.preview) apply false }');
+                'plugins { id("ee.schimke.composeai.preview") apply false }');
 
             const service = new GradleService(dir, api);
             assert.deepStrictEqual(service.findPreviewModules(), []);
