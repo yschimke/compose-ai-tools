@@ -194,6 +194,9 @@ jobs:
           fi
           printf '%s\n' "$output"
       - name: Publish to Open VSX
+        # Run even if the Marketplace step failed — the two registries are
+        # independent, so a PAT/outage on one shouldn't block the other.
+        if: ${{ !cancelled() }}
         env:
           # ovsx reads OVSX_PAT from env.
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
