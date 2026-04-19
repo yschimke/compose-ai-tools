@@ -101,6 +101,12 @@ dependencies {
     testImplementation(libs.activity.compose)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("androidx.compose.ui:ui-test-manifest")
+    // GoogleFont detector's unit test constructs a real
+    // `Font(GoogleFont("Roboto"), provider)` so the reflective FQCN check
+    // runs against an actual `GoogleFontImpl` instance. Test-only — the
+    // main source deliberately stays off this artifact so consumers without
+    // downloadable fonts don't get it transitively from our AAR.
+    testImplementation("androidx.compose.ui:ui-text-google-fonts")
 
     implementation(libs.roborazzi)
     implementation(libs.roborazzi.compose)
