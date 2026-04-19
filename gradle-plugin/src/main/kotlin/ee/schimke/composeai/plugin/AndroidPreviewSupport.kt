@@ -68,19 +68,65 @@ internal object AndroidPreviewSupport {
     ) {
         val capVariant = variantName.cap()
         val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
+        val artifactType = Attribute.of("artifactType", String::class.java)
+
+        // `com.android.compose.screenshot` (Google's alpha Layoutlib-based
+        // screenshot testing plugin) adds its own `screenshotTest` source set
+        // alongside `main` / `test` / `androidTest`. We don't drive its
+        // validate/update tasks — we keep using our Robolectric renderer — but
+        // we DO want to discover and render any `@Preview` functions consumers
+        // put under `src/screenshotTest/`, so modules that already adopted the
+        // Google plugin (e.g. Confetti's `:androidApp`) surface those previews
+        // in the CLI / VS Code grid without duplicating them in `main`.
+        //
+        // Detection is by plugin id rather than the
+        // `android.experimental.enableScreenshotTest` gradle property, because
+        // the property is a global flag while the plugin is applied per-module
+        // — and only the latter actually causes AGP to register
+        // `compile${Cap}ScreenshotTestKotlin` and the
+        // `${variant}ScreenshotTestRuntimeClasspath` configuration we need.
+        val screenshotTestEnabled = project.pluginManager.hasPlugin("com.android.compose.screenshot")
 
         val sourceClassDirs = project.files(
             project.layout.buildDirectory.dir("tmp/kotlin-classes/$variantName"),
             project.layout.buildDirectory.dir("intermediates/javac/$variantName/classes"),
             project.layout.buildDirectory.dir("intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"),
         )
+        if (screenshotTestEnabled) {
+            sourceClassDirs.from(
+                project.layout.buildDirectory.dir(
+                    "intermediates/built_in_kotlinc/${variantName}ScreenshotTest/compile${capVariant}ScreenshotTestKotlin/classes"
+                ),
+                project.layout.buildDirectory.dir(
+                    "intermediates/javac/${variantName}ScreenshotTest/classes"
+                ),
+            )
+        }
 
         val dependencyConfigName = "${variantName}RuntimeClasspath"
+        val screenshotTestRuntimeConfig = if (screenshotTestEnabled) {
+            project.configurations.findByName("${variantName}ScreenshotTestRuntimeClasspath")
+        } else null
 
         val discoverTask = ComposePreviewTasks.registerDiscoverTask(
             project, sourceClassDirs, dependencyConfigName, previewOutputDir, extension,
         ) {
             dependsOn("compile${capVariant}Kotlin")
+            if (screenshotTestEnabled) {
+                dependsOn("compile${capVariant}ScreenshotTestKotlin")
+                screenshotTestRuntimeConfig?.let { stConfig ->
+                    dependencyJars.from(
+                        stConfig.incoming.artifactView {
+                            attributes.attribute(artifactType, "jar")
+                        }.files,
+                    )
+                    dependencyJars.from(
+                        stConfig.incoming.artifactView {
+                            attributes.attribute(artifactType, "android-classes")
+                        }.files,
+                    )
+                }
+            }
         }
 
         // Writes the plugin-side compat findings (CompatRules) to
@@ -192,7 +238,6 @@ internal object AndroidPreviewSupport {
             }
         }
 
-        val artifactType = Attribute.of("artifactType", String::class.java)
         val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
 
         // The default path for external consumers: resolve
@@ -331,6 +376,19 @@ internal object AndroidPreviewSupport {
                     attributes.attribute(artifactType, "jar")
                 }.files)
                 from(testConfig.incoming.artifactView {
+                    attributes.attribute(artifactType, "android-classes")
+                }.files)
+            }
+            // screenshotTest source set has its own runtime config — any
+            // `screenshotTestImplementation(...)` dep the consumer declared is
+            // only visible here, not via `testConfig`. Include it so previews
+            // under `src/screenshotTest/` can reference those classes at
+            // render time. No-op when the screenshot plugin isn't applied.
+            screenshotTestRuntimeConfig?.let { stConfig ->
+                from(stConfig.incoming.artifactView {
+                    attributes.attribute(artifactType, "jar")
+                }.files)
+                from(stConfig.incoming.artifactView {
                     attributes.attribute(artifactType, "android-classes")
                 }.files)
             }
@@ -500,6 +558,9 @@ internal object AndroidPreviewSupport {
             dependsOn(generateRobolectricPropertiesTask)
             if (useLocalRenderer) {
                 dependsOn(":renderer-android:compile${capVariant}Kotlin")
+            }
+            if (screenshotTestEnabled) {
+                dependsOn("compile${capVariant}ScreenshotTestKotlin")
             }
             dependsOn("process${capVariant}Resources")
             val configTaskName = "generate${capVariant}UnitTestConfig"
