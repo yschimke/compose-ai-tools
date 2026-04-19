@@ -412,6 +412,27 @@ When creating or iterating on Wear OS designs, refer to the
 - Proper **System UI** integration (e.g., `TimeText`, `AppScaffold`).
 - **Responsive layout** strategies across screen sizes.
 
+## Wear Tiles
+
+Tiles are a separate Wear surface — protolayout, not Compose. Preview
+functions return `TilePreviewData` instead of emitting composables, and the
+renderer invokes them via `TileRenderer` rather than `ComposeTestRule`. See
+**[design/WEAR_TILES.md](./design/WEAR_TILES.md)** for the authoring
+primitives (`materialScope`, `primaryLayout`, `titleCard`, `textEdgeButton`),
+the dependency wiring, and the `TilePreviewData` / `TilePreviewHelper`
+pattern for building a single-timeline-entry tile from a preview function.
+
+## Remote Compose
+
+For previews against Remote Compose — a Compose dialect with its own applier
+and `@RemoteComposable` target marker that captures the tree into a
+replayable `RemoteDocument` — see the
+**[Remote Compose guide](./design/REMOTE_COMPOSE.md)**. Covers the two
+preview shapes (`RemotePreview { … }` inside a `@Preview` composable vs.
+`@PreviewWrapper(RemotePreviewWrapper::class)`), the creation/tooling
+artifact split, and how Wear's `remote-material3` builds on
+`remote-creation-compose` for Material 3 components inside a remote tree.
+
 ## CI and PR workflows
 
 - **[design/CI_PREVIEWS.md](design/CI_PREVIEWS.md)** — setting up the
