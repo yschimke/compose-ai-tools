@@ -104,7 +104,7 @@ No authentication, no PAT — just apply it.
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.7.0"
+    id("ee.schimke.composeai.preview") version "0.7.1"
 }
 ```
 <!-- x-release-please-end -->
@@ -166,15 +166,15 @@ The snapshot version is the next patch ahead of the latest release
 ## Install the CLI
 
 <!-- x-release-please-start-version -->
-Download `compose-preview-0.7.0.tar.gz` (or `.zip`) from the
-[v0.7.0 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.4.0)
+Download `compose-preview-0.7.1.tar.gz` (or `.zip`) from the
+[v0.7.1 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.4.0)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.7.0/compose-preview-0.4.0.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.7.1/compose-preview-0.4.0.tar.gz
 tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.7.0/bin:$PATH"
+export PATH="$PWD/compose-preview-0.7.1/bin:$PATH"
 
 compose-preview --help
 ```
@@ -192,7 +192,7 @@ code --install-extension yuri-schimke.compose-preview
 ```
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.7.0` <!-- x-release-please-version --> in your project as shown above.
+`ee.schimke.composeai.preview` version `0.7.1` <!-- x-release-please-version --> in your project as shown above.
 
 ## Usage
 
