@@ -135,18 +135,29 @@ internal class GoogleFontCache(
 /**
  * Fetches a TTF for [key] into [destination]. Returns `true` on success.
  *
+ * Two-stage lookup:
+ *  1. Try `wght@<exact>` — works for static families (Roboto, Lobster Two)
+ *     and for the default weight of variable families.
+ *  2. If that returns no TTF URL (purely-variable fonts like Roboto Flex
+ *     reject single-weight requests at non-default weights), retry with
+ *     `wght@<min>..<max>` covering the full 1–1000 range. For variable
+ *     fonts the response is a single `@font-face` pointing at the variable
+ *     TTF; for static fonts it's multiple blocks and we pick the closest
+ *     to the requested weight.
+ *
  * The CSS2 endpoint serves WOFF2 by default (Android doesn't parse WOFF2
- * natively), so we send an IE-like User-Agent — one of the few UAs for which
- * the API still returns TrueType. Same mechanism `google-webfonts-helper`
- * and similar offline caches rely on; not a hack in the
- * undocumented-behaviour sense, just "ask for a format the server already
- * knows how to produce."
+ * natively), so we send an Android-2.3 User-Agent — one of the few UAs for
+ * which the API still returns TrueType. Same mechanism
+ * `google-webfonts-helper` and similar offline caches rely on.
  */
 internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File): Boolean {
-    val cssUrl = buildCssUrl(key)
-    val css = httpGet(cssUrl, userAgent = TTF_USER_AGENT) ?: return false
-    val ttfUrl = extractFirstTruetypeUrl(css) ?: return false
-    val bytes = httpGetBytes(ttfUrl, userAgent = TTF_USER_AGENT) ?: return false
+    val exactUrl = httpGet(buildCssUrl(key), TTF_USER_AGENT)
+        ?.let { extractFirstTruetypeUrl(it) }
+    val url = exactUrl ?: run {
+        val rangeCss = httpGet(buildRangeCssUrl(key), TTF_USER_AGENT) ?: return false
+        pickClosestTruetypeUrl(rangeCss, key.weight.weight) ?: return false
+    }
+    val bytes = httpGetBytes(url, userAgent = TTF_USER_AGENT) ?: return false
     if (bytes.isEmpty()) return false
     destination.parentFile?.mkdirs()
     destination.writeBytes(bytes)
@@ -163,18 +174,32 @@ internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File): Boo
 private const val TTF_USER_AGENT =
     "Mozilla/5.0 (Linux; U; Android 2.3.3; en-us) AppleWebKit/533.1 (KHTML, like Gecko)"
 
-internal fun buildCssUrl(key: GoogleFontKey): String {
+internal fun buildCssUrl(key: GoogleFontKey): String =
+    buildCssUrlForAxis(key, if (key.italic) "ital,wght@1,${key.weight.weight}" else "wght@${key.weight.weight}")
+
+/**
+ * Range-query variant. Returns a CSS response with either one `@font-face`
+ * (variable font) or many (static families with multiple pre-rendered
+ * weights). Used as a fallback when [buildCssUrl] produced no TTF URL —
+ * purely variable families like Roboto Flex reject single-weight queries
+ * at non-default weights.
+ *
+ * `100..1000` is the conventional Google Fonts wght axis range and works
+ * for Roboto Flex (wght 100..1000), Google Sans Flex (wght 100..1000), and
+ * other variable families. Ranges outside a family's declared axis bounds
+ * (e.g. `1..1000` on Roboto Flex) return a 400 "Font family not found"
+ * HTML page, which our TTF regex correctly treats as a miss.
+ */
+internal fun buildRangeCssUrl(key: GoogleFontKey): String =
+    buildCssUrlForAxis(key, if (key.italic) "ital,wght@1,100..1000" else "wght@100..1000")
+
+private fun buildCssUrlForAxis(key: GoogleFontKey, axis: String): String {
     // `URLEncoder.encode(s, Charset)` is API 33+. The renderer runs inside
     // Robolectric on JDK 17 where both overloads exist, but the library's
     // `minSdk = 24` trips `lint`. The legacy `encode(s, charsetName)`
     // overload is unchanged and the round-trip is identical.
     @Suppress("DEPRECATION")
     val family = URLEncoder.encode(key.name, "UTF-8").replace("+", "%20")
-    val axis = if (key.italic) {
-        "ital,wght@1,${key.weight.weight}"
-    } else {
-        "wght@${key.weight.weight}"
-    }
     return "https://fonts.googleapis.com/css2?family=$family:$axis&display=swap"
 }
 
@@ -182,6 +207,28 @@ internal fun extractFirstTruetypeUrl(css: String): String? {
     // Matches `url(...) format('truetype')` inside an `@font-face` block.
     val regex = Regex("""url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""")
     return regex.find(css)?.groupValues?.get(1)
+}
+
+/**
+ * Parse a CSS response with one-or-many `@font-face` blocks and pick the
+ * TTF URL whose declared `font-weight` is closest to [requestedWeight].
+ *
+ * - Variable-font responses have a single block with `font-weight: 400` but
+ *   the TTF itself supports the full axis range — just return that URL.
+ * - Static-family range responses carry one block per discrete weight
+ *   (100, 200, …, 900); pick the nearest and the consumer's text renders
+ *   in the closest existing static sub-font.
+ */
+internal fun pickClosestTruetypeUrl(css: String, requestedWeight: Int): String? {
+    val blockRegex = Regex(
+        """font-weight:\s*(\d+)[\s\S]*?url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""",
+    )
+    val matches = blockRegex.findAll(css).toList()
+    if (matches.isEmpty()) return extractFirstTruetypeUrl(css)
+    if (matches.size == 1) return matches[0].groupValues[2]
+    return matches
+        .minByOrNull { kotlin.math.abs(it.groupValues[1].toInt() - requestedWeight) }
+        ?.groupValues?.get(2)
 }
 
 private fun httpGet(url: String, userAgent: String): String? = runCatching {
