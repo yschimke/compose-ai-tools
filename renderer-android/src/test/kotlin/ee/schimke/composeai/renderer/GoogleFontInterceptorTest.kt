@@ -90,6 +90,55 @@ class GoogleFontInterceptorTest {
     }
 
     @Test
+    fun `buildRangeCssUrl spans the conventional 100-1000 variable-axis range`() {
+        val url = buildRangeCssUrl(GoogleFontKey("Roboto Flex", FontWeight(100), italic = false))
+        assertEquals(
+            "https://fonts.googleapis.com/css2?family=Roboto%20Flex:wght@100..1000&display=swap",
+            url,
+        )
+    }
+
+    @Test
+    fun `pickClosestTruetypeUrl returns the single URL for a variable-font response`() {
+        // Range query on a purely-variable family like Roboto Flex returns
+        // one @font-face block whose font-weight says "400" but whose TTF is
+        // the axis-range-covering variable font.
+        val css = """
+            @font-face {
+              font-family: 'Roboto Flex';
+              font-weight: 400;
+              src: url(https://fonts.gstatic.com/flex.ttf) format('truetype');
+            }
+        """.trimIndent()
+        assertEquals(
+            "https://fonts.gstatic.com/flex.ttf",
+            pickClosestTruetypeUrl(css, requestedWeight = 100),
+        )
+    }
+
+    @Test
+    fun `pickClosestTruetypeUrl picks the nearest declared weight from a static family`() {
+        val css = """
+            @font-face { font-family: 'X'; font-weight: 300;
+              src: url(https://fonts.gstatic.com/x-300.ttf) format('truetype'); }
+            @font-face { font-family: 'X'; font-weight: 500;
+              src: url(https://fonts.gstatic.com/x-500.ttf) format('truetype'); }
+            @font-face { font-family: 'X'; font-weight: 700;
+              src: url(https://fonts.gstatic.com/x-700.ttf) format('truetype'); }
+        """.trimIndent()
+        // 550 is strictly closer to 500 than 300 or 700.
+        assertEquals(
+            "https://fonts.gstatic.com/x-500.ttf",
+            pickClosestTruetypeUrl(css, requestedWeight = 550),
+        )
+        // 900 pulls to 700, the heaviest declared static sub-font.
+        assertEquals(
+            "https://fonts.gstatic.com/x-700.ttf",
+            pickClosestTruetypeUrl(css, requestedWeight = 900),
+        )
+    }
+
+    @Test
     fun `parseFontRequestQuery reads the Compose GoogleFont wire format`() {
         val query = "name=Roboto%20Mono&weight=500&width=100.0&italic=0.0&besteffort=true"
         val key = parseFontRequestQuery(query)
