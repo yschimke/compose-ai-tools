@@ -37,6 +37,43 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _capture_label(capture: dict) -> str:
+    """Human-readable summary of a capture's non-null dimensions.
+
+    Mirrors the TS `captureLabels.captureLabel` in the VS Code extension so
+    the two surfaces agree on wording. Static captures (no dimensions)
+    return ``""``; time fan-outs read ``"500ms"``; scroll captures read
+    ``"scroll top"`` / ``"scroll end"`` / ``"scroll long"``; the
+    cross-product reads ``"500ms \u00B7 scroll end"``.
+    """
+    parts: list[str] = []
+    ms = capture.get("advanceTimeMillis")
+    if ms is not None:
+        parts.append(f"{ms}ms")
+    scroll = capture.get("scroll")
+    if isinstance(scroll, dict):
+        mode = str(scroll.get("mode") or "").lower()
+        if mode:
+            parts.append(f"scroll {mode}")
+    return " \u00B7 ".join(parts)
+
+
+def _render_basename(png_path: str, preview_id: str) -> str:
+    """File basename the diff bot should use when copying/linking a capture.
+
+    Prefer the basename the renderer actually wrote (it encodes dimension
+    suffixes like ``_SCROLL_end`` / ``_TIME_500ms`` so two captures of the
+    same preview never collide). Fall back to ``<previewId>.png`` when the
+    CLI didn't surface a real path — that matches the legacy behaviour for
+    missing / unrendered rows.
+    """
+    if png_path:
+        name = Path(png_path).name
+        if name:
+            return name
+    return f"{preview_id}.png"
+
+
 def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     """Parse ``compose-preview show --json`` output into a keyed dict.
 
@@ -45,7 +82,15 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     JSON array of PreviewResult objects — accepted as a fallback so this
     action keeps working against older CLI tarballs in CI matrices.
 
-    Entries are keyed as ``<module>/<id>`` for stable cross-run comparison.
+    Previews with multiple captures (``@RoboComposePreviewOptions`` time
+    fan-out, ``@ScrollingPreview(modes = […])`` scroll fan-out) expand into
+    one row per capture. The first capture keeps the bare ``<module>/<id>``
+    key so existing baselines continue matching single-capture previews;
+    subsequent captures are keyed ``<module>/<id>#<n>`` — same convention as
+    the CLI's own per-capture state file.
+
+    Rows carry the render PNG basename (``_SCROLL_end.png`` etc.) and a
+    ``captureLabel`` for downstream markdown / filename handling.
     """
     raw = json.loads(cli_json_path.read_text())
     if isinstance(raw, dict) and "previews" in raw:
@@ -60,15 +105,47 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
 
     result: dict[str, dict] = {}
     for entry in entries:
-        key = f"{entry['module']}/{entry['id']}"
-        result[key] = {
-            "sha256": entry.get("sha256") or "",
-            "functionName": entry["functionName"],
-            "sourceFile": entry.get("sourceFile", ""),
-            "module": entry["module"],
-            "previewId": entry["id"],
-            "pngPath": entry.get("pngPath") or "",
-        }
+        module = entry["module"]
+        preview_id = entry["id"]
+        fn = entry["functionName"]
+        source = entry.get("sourceFile", "")
+
+        # Legacy / unrendered shape: no per-capture list, fall back to the
+        # top-level sha/png. Produces one row as before.
+        captures = entry.get("captures") or []
+        if not captures:
+            result[f"{module}/{preview_id}"] = {
+                "sha256": entry.get("sha256") or "",
+                "functionName": fn,
+                "sourceFile": source,
+                "module": module,
+                "previewId": preview_id,
+                "pngPath": entry.get("pngPath") or "",
+                "captureIndex": 0,
+                "captureLabel": "",
+                "renderBasename": _render_basename(entry.get("pngPath") or "", preview_id),
+            }
+            continue
+
+        for idx, capture in enumerate(captures):
+            # Index 0 keeps the bare key so pre-fan-out baselines on `main`
+            # keep matching single-capture previews. Additional captures
+            # (#1, #2, …) appear as "new" entries on the first run after
+            # a preview grows a fan-out, which is correct — those PNGs
+            # didn't exist in the baseline.
+            key = f"{module}/{preview_id}" if idx == 0 else f"{module}/{preview_id}#{idx}"
+            png = capture.get("pngPath") or ""
+            result[key] = {
+                "sha256": capture.get("sha256") or "",
+                "functionName": fn,
+                "sourceFile": source,
+                "module": module,
+                "previewId": preview_id,
+                "pngPath": png,
+                "captureIndex": idx,
+                "captureLabel": _capture_label(capture),
+                "renderBasename": _render_basename(png, preview_id),
+            }
     return result
 
 
@@ -88,11 +165,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 1
 
     # --- baselines.json ---
+    # Persist the renderBasename alongside the sha so the compare run can
+    # reconstruct raw-GitHub URLs for removed captures without needing the
+    # CLI output for them.
     baselines = {
         key: {
             "sha256": info["sha256"],
             "functionName": info["functionName"],
             "sourceFile": info["sourceFile"],
+            "renderBasename": info["renderBasename"],
+            "captureLabel": info["captureLabel"],
         }
         for key, info in previews.items()
         if info["sha256"]  # skip entries without a rendered PNG
@@ -101,7 +183,10 @@ def cmd_generate(args: argparse.Namespace) -> int:
     (out_dir / "baselines.json").write_text(
         json.dumps(baselines, indent=2, sort_keys=True) + "\n")
 
-    # --- copy PNGs into renders/<module>/<id>.png ---
+    # --- copy PNGs into renders/<module>/<renderBasename> ---
+    # Using the renderer's on-disk basename (e.g. `Foo_SCROLL_end.png`)
+    # rather than `<previewId>.png` so captures in a multi-mode /
+    # time-fan-out preview don't collide on the baseline branch.
     renders_out = out_dir / "renders"
     if renders_out.exists():
         shutil.rmtree(renders_out)
@@ -111,7 +196,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         png = Path(info["pngPath"])
         if not png.exists():
             continue
-        dest = renders_out / info["module"] / f"{info['previewId']}.png"
+        dest = renders_out / info["module"] / info["renderBasename"]
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(png, dest)
 
@@ -134,8 +219,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
         lines.append("| Preview | Image |")
         lines.append("|---------|-------|")
         for _, info in entries:
-            fn = info["functionName"]
-            img_path = f"renders/{info['module']}/{info['previewId']}.png"
+            label_suffix = f" · {info['captureLabel']}" if info["captureLabel"] else ""
+            fn = f"{info['functionName']}{label_suffix}"
+            img_path = f"renders/{info['module']}/{info['renderBasename']}"
             raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
             lines.append(
                 f"| `{fn}` | <img src=\"{raw_url}\" width=\"150\" /> |"
@@ -160,10 +246,24 @@ def _variant_label(preview_id: str) -> str:
     return parts[1] if len(parts) == 2 else ""
 
 
-def _render_url(repo: str, branch: str, module: str, preview_id: str) -> str:
+def _entry_label(info: dict) -> str:
+    """Display label for one row inside a function group.
+
+    Combines the variant suffix from the preview id (Light/Dark, device
+    name, etc.) with the capture label (``scroll end``, ``500ms``, …).
+    Either half may be empty; the label is used in link text / table
+    headings, so empty strings are filtered out.
+    """
+    variant = _variant_label(info["previewId"])
+    capture = info.get("captureLabel") or ""
+    parts = [p for p in (variant, capture) if p]
+    return " · ".join(parts) or info["previewId"]
+
+
+def _render_url(repo: str, branch: str, module: str, basename: str) -> str:
     return (
         f"https://raw.githubusercontent.com/{repo}/{branch}"
-        f"/renders/{module}/{preview_id}.png"
+        f"/renders/{module}/{basename}"
     )
 
 
@@ -209,7 +309,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return 0
 
     if changed:
-        # Group changed variants by (module, functionName).
+        # Group changed variants by (module, functionName) — a function
+        # fans out into (preview variants × captures), so one group can
+        # contain many rows even for a single source function.
         groups: dict[tuple[str, str], list[tuple[str, dict, dict]]] = {}
         for key, cur, bl in changed:
             gk = (cur["module"], cur["functionName"])
@@ -220,9 +322,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups.items()):
             hero_key, hero_cur, hero_bl = entries[0]
-            hero_pid = hero_key.split("/", 1)[1]
-            before = _render_url(repo, base_branch, module, hero_pid)
-            after = _render_url(repo, head_branch, module, hero_pid)
+            before = _render_url(repo, base_branch, module, hero_cur["renderBasename"])
+            after = _render_url(repo, head_branch, module, hero_cur["renderBasename"])
 
             lines.append(f"**`{fn}`** ({module})")
             lines.append("")
@@ -236,10 +337,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
             # Link remaining variants
             if len(entries) > 1:
                 variant_links = []
-                for okey, ocur, obl in entries[1:]:
-                    opid = okey.split("/", 1)[1]
-                    label = _variant_label(opid) or opid
-                    link = _render_url(repo, head_branch, module, opid)
+                for _okey, ocur, _obl in entries[1:]:
+                    label = _entry_label(ocur)
+                    link = _render_url(repo, head_branch, module, ocur["renderBasename"])
                     variant_links.append(f"[{label}]({link})")
                 lines.append("")
                 lines.append(f"Other variants: {', '.join(variant_links)}")
@@ -257,8 +357,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups_new.items()):
             hero_key, hero_info = entries[0]
-            hero_pid = hero_key.split("/", 1)[1]
-            after = _render_url(repo, head_branch, module, hero_pid)
+            after = _render_url(repo, head_branch, module, hero_info["renderBasename"])
 
             lines.append(
                 f"**`{fn}`** ({module}) "
@@ -267,10 +366,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
             if len(entries) > 1:
                 variant_links = []
-                for okey, oinfo in entries[1:]:
-                    opid = okey.split("/", 1)[1]
-                    label = _variant_label(opid) or opid
-                    link = _render_url(repo, head_branch, module, opid)
+                for _okey, oinfo in entries[1:]:
+                    label = _entry_label(oinfo)
+                    link = _render_url(repo, head_branch, module, oinfo["renderBasename"])
                     variant_links.append(f"[{label}]({link})")
                 lines.append(f"Variants: {', '.join(variant_links)}")
             lines.append("")
@@ -321,7 +419,9 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
         is_new = key not in baselines
         is_changed = not is_new and info["sha256"] != baselines[key]["sha256"]
         if is_new or is_changed:
-            dest = out_dir / "renders" / info["module"] / f"{info['previewId']}.png"
+            # Use the renderer's on-disk basename so multi-capture previews
+            # don't collide — matches the generate path.
+            dest = out_dir / "renders" / info["module"] / info["renderBasename"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(png, dest)
             copied += 1
