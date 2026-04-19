@@ -19,6 +19,20 @@ wear-compose = "1.6.0"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
+# Remote Compose — alpha artifacts, used only by `:sample-remotecompose` to
+# demonstrate `RemotePreview` + `@PreviewWrapper(RemotePreviewWrapper::class)`.
+# Version pins, chosen for AGP 9.1.0 / compileSdk 36 compatibility:
+#  * compose-remote alpha07 requires minCompileSdk=35 / AGP 8.6.0 (alpha08
+#    bumps both to 37 / 9.1).
+#  * wear-compose-remote alpha01 requires minCompileSdk=35 / AGP 8.6.0
+#    (alpha02 bumps to 37 / 9.1).
+#  * ui-tooling-preview 1.11.0-rc01 is the first released artifact that
+#    contains `PreviewWrapper` / `PreviewWrapperProvider` — 1.10.x (the
+#    current BOM) doesn't have them. Declared explicitly because the
+#    sample doesn't depend on compose-bom.
+compose-remote = "1.0.0-alpha07"
+wear-compose-remote = "1.0.0-alpha01"
+compose-ui-tooling-preview-wrapper = "1.11.0-rc01"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
@@ -51,6 +65,11 @@ wear-tiles-renderer = { module = "androidx.wear.tiles:tiles-renderer", version.r
 wear-tiles-tooling = { module = "androidx.wear.tiles:tiles-tooling", version.ref = "wear-tiles" }
 wear-tiles-tooling-preview = { module = "androidx.wear.tiles:tiles-tooling-preview", version.ref = "wear-tiles" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
+compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tooling-preview", version.ref = "compose-remote" }
+compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
+compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }
+wear-compose-remote-material3 = { module = "androidx.wear.compose.remote:remote-material3", version.ref = "wear-compose-remote" }
+compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-ui-tooling-preview-wrapper" }
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
 wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }
