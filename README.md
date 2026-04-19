@@ -223,6 +223,7 @@ composePreview {
 | `cli/` | CLI — Tooling-API driver over `discoverPreviews` / `renderAllPreviews` |
 | `sample-android/` | Android sample with colored box `@Preview` composables |
 | `sample-cmp/` | CMP Desktop sample with colored box `@Preview` composables |
+| `sample-remotecompose/` | Remote Compose sample — wrapper-inside-Composable vs. `@PreviewWrapper(RemotePreviewWrapper::class)` against `wear-compose-remote-material3` |
 
 ## Requirements
 
