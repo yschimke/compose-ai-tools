@@ -6,7 +6,6 @@
     ".": {
       "package-name": "compose-ai-tools",
       "include-component-in-tag": false,
-      "release-as": "0.7.0",
       "extra-files": [
         "README.md",
         "vscode-extension/README.md",
