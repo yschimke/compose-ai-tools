@@ -3,19 +3,27 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { GradleService, GradleApi } from '../gradleService';
+import { JdkImageError } from '../jdkImageErrorDetector';
 
 /** Stub GradleApi that records invocations and allows test control. */
 class StubGradleApi implements GradleApi {
     public runCalls: Array<{ taskName: string; cancellationKey?: string }> = [];
     public cancelCalls: Array<{ taskName: string; cancellationKey?: string }> = [];
     public nextRunResult: 'success' | Error = 'success';
+    /** Bytes to feed through onOutput before resolving/rejecting. */
+    public nextRunOutput: string = '';
 
     async runTask(opts: {
         projectFolder: string;
         taskName: string;
         cancellationKey?: string;
+        onOutput?: (output: { getOutputBytes(): Uint8Array; getOutputType(): number }) => void;
     }): Promise<void> {
         this.runCalls.push({ taskName: opts.taskName, cancellationKey: opts.cancellationKey });
+        if (this.nextRunOutput && opts.onOutput) {
+            const bytes = new TextEncoder().encode(this.nextRunOutput);
+            opts.onOutput({ getOutputBytes: () => bytes, getOutputType: () => 0 });
+        }
         if (this.nextRunResult !== 'success') {
             throw this.nextRunResult;
         }
@@ -223,6 +231,24 @@ describe('GradleService', () => {
                 /Gradle task .* failed/,
             );
         }));
+
+        it('throws JdkImageError when the failure output contains the jlink signature',
+            withTempDir(async (dir, api) => {
+                api.nextRunOutput =
+                    '> jlink executable /home/u/.antigravity/extensions/redhat.java-1.54.0-linux-x64'
+                    + '/jre/21.0.10-linux-x86_64/bin/jlink does not exist.\n';
+                api.nextRunResult = new Error('build failed');
+
+                const service = new GradleService(dir, api);
+                await assert.rejects(
+                    service.discoverPreviews('mod'),
+                    (err: unknown) => {
+                        assert.ok(err instanceof JdkImageError, 'expected JdkImageError');
+                        assert.match((err as JdkImageError).finding.jlinkPath, /\/bin\/jlink$/);
+                        return true;
+                    },
+                );
+            }));
     });
 
     describe('listHistory', () => {
