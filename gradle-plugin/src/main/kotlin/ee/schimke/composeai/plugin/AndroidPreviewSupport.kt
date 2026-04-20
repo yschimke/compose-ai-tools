@@ -472,10 +472,27 @@ internal object AndroidPreviewSupport {
             } else {
                 rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
             }
+            // Append AGP's own `test${Cap}UnitTest` classpath at the END so we
+            // pick up files that only exist there: specifically, the unit-test
+            // merged R.jar for library modules (`com.android.library` variants
+            // publish their AAR-transitive R classes — e.g.
+            // `androidx.customview.poolingcontainer.R$id`, pulled in by
+            // `ViewCompositionStrategy` — via
+            // `compile_and_runtime_r_class_jar/${variant}UnitTest/process${Cap}UnitTestResources/R.jar`,
+            // which is added to `debugUnitTestRuntimeClasspath` as a raw file
+            // dep without the `artifactType=jar` attribute, so our
+            // attribute-filtered `artifactView` above silently drops it).
+            // Ordering is load-bearing — putting it last means our renderer's
+            // pinned versions still win classload lookups in the earlier
+            // classpath entries. No-op on applications, since
+            // `process${Cap}Resources` puts the merged R.jar on the main
+            // runtime classpath where our existing `artifactView` already
+            // picks it up. See issue #136.
+            val agpTestClasspath = agpTestTask?.classpath ?: project.files()
             classpath = if (compileShardsTask != null) {
-                resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory }) + (agpTestTask?.testClassesDirs ?: project.files())
+                resolvedClasspath + project.files(compileShardsTask.map { it.destinationDirectory }) + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
             } else {
-                resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files())
+                resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
             }
             if (shardsEnabled) {
                 include("**/RobolectricRenderTest_Shard*.class")
@@ -585,10 +602,21 @@ internal object AndroidPreviewSupport {
             if (screenshotTestEnabled) {
                 dependsOn("compile${capVariant}ScreenshotTestKotlin")
             }
-            dependsOn("process${capVariant}Resources")
-            val configTaskName = "generate${capVariant}UnitTestConfig"
-            if (project.tasks.findByName(configTaskName) != null) {
-                dependsOn(configTaskName)
+            // `process${Cap}Resources` only exists on `com.android.application`
+            // variants — AGP 9.x libraries expose the resource pipeline through
+            // `merge${Cap}Resources` / `generate${Cap}RFile` / the unit-test-
+            // specific `process${Cap}UnitTestResources`. The unit-test resource
+            // APK we actually consume is already routed via
+            // `generate${Cap}UnitTestConfig` below, so the `processResources`
+            // dep is just belt-and-suspenders; skip it when absent so library
+            // modules configure cleanly. See issue #136.
+            listOf(
+                "process${capVariant}Resources",
+                "generate${capVariant}UnitTestConfig",
+            ).forEach { taskName ->
+                if (project.tasks.findByName(taskName) != null) {
+                    dependsOn(taskName)
+                }
             }
             if (compileShardsTask != null) {
                 dependsOn(compileShardsTask)
