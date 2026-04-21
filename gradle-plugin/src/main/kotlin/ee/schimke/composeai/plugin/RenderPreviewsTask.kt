@@ -86,7 +86,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
             val density = preview.params.density ?: spec.density
             val widthPx = (spec.widthDp * density).toInt().coerceAtLeast(1)
             val heightPx = (spec.heightDp * density).toInt().coerceAtLeast(1)
-            val outputFile = outDir.resolve("${preview.id}.png")
+            // The discovery task writes a normalized `renderOutput` (package
+            // prefix stripped, unsafe chars sanitized) into each capture;
+            // honour it rather than rebuilding the path from `preview.id`
+            // so the file actually lands where the manifest claims it will.
+            val relRender = preview.captures.firstOrNull()
+                ?.renderOutput
+                ?.substringAfter("renders/", missingDelimiterValue = "")
+                ?.takeIf { it.isNotEmpty() }
+                ?: "${preview.id}.png"
+            val outputFile = outDir.resolve(relRender)
 
             execOperations.javaexec {
                 classpath = renderClasspath
@@ -131,6 +140,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
                 heightDp = preview.params.heightDp,
                 showSystemUi = preview.params.showSystemUi,
             )
+            val relRender = preview.captures.firstOrNull()
+                ?.renderOutput
+                ?.substringAfter("renders/", missingDelimiterValue = "")
+                ?.takeIf { it.isNotEmpty() }
+                ?: "${preview.id}.png"
             workQueue.submit(PreviewRenderWorkAction::class.java) {
                 className.set(preview.className)
                 functionName.set(preview.functionName)
@@ -140,7 +154,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
                 fontScale.set(preview.params.fontScale)
                 showBackground.set(preview.params.showBackground)
                 backgroundColor.set(preview.params.backgroundColor)
-                outputFile.set(outDir.resolve("${preview.id}.png"))
+                outputFile.set(outDir.resolve(relRender))
                 backend.set(renderBackend.get())
             }
         }

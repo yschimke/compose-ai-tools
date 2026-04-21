@@ -127,10 +127,20 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // dedup by id alone. Two identical preview variants on the same function collapse.
         val deduped = previews.distinctBy { it.id }
 
+        // Rewrite each capture's renderOutput to a normalized, shell-safe
+        // filename: drop the package prefix shared by every preview in the
+        // module so `renders/ee.schimke.ha.previews.CardPreviewsKt.Foo.png`
+        // lands at `renders/CardPreviewsKt.Foo.png`; sanitize spaces, parens,
+        // and other awkward shell characters inherited from `@Preview(name =
+        // "tile light (light)")`. Keeps `PreviewInfo.id` untouched — consumers
+        // that key by id (history folders, CLI state, test names) are
+        // unaffected.
+        val normalized = normalizeRenderOutputs(deduped)
+
         val manifest = PreviewManifest(
             module = moduleName.get(),
             variant = variantName.get(),
-            previews = deduped,
+            previews = normalized,
             accessibilityReport = "accessibility.json".takeIf { accessibilityChecksEnabled.get() },
         )
 
@@ -138,11 +148,83 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         outFile.parentFile.mkdirs()
         outFile.writeText(json.encodeToString(manifest))
 
-        logger.lifecycle("Discovered ${deduped.size} preview(s) in module '${moduleName.get()}':")
-        for (preview in deduped) {
+        logger.lifecycle("Discovered ${normalized.size} preview(s) in module '${moduleName.get()}':")
+        for (preview in normalized) {
             logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
         }
     }
+
+    /**
+     * Computes the common dotted prefix shared by every preview id (up to and
+     * including the last matched `.`) and strips it from each capture's
+     * `renderOutput` filename. Also runs every stem through [sanitizeFileStem]
+     * so spaces and shell-unfriendly characters inherited from `@Preview(name
+     * = "tile light (light)")` don't end up in the PNG filename.
+     *
+     * `preview.id` itself is deliberately left untouched — it's the stable
+     * identity consumers key by (history folders, CLI state, JUnit test
+     * names). The renderOutput is purely the on-disk filename, and that's
+     * what benefits from a shorter, quoted-free form.
+     *
+     * No-op on a single-preview module (empty prefix) or when sanitization
+     * would collapse two distinct ids to the same stem — in that case we
+     * keep the un-stripped, un-sanitized id for everyone so the pretty
+     * rename never introduces a filename collision.
+     */
+    private fun normalizeRenderOutputs(previews: List<PreviewInfo>): List<PreviewInfo> {
+        if (previews.isEmpty()) return previews
+        val commonPrefix = commonDottedPrefix(previews.map { it.id })
+        val stems = previews.map { sanitizeFileStem(it.id.removePrefix(commonPrefix)) }
+        val safe = stems.toSet().size == previews.size &&
+            stems.none { it.isEmpty() }
+        return previews.mapIndexed { i, preview ->
+            val newStem = if (safe) stems[i] else preview.id
+            val rewritten = preview.captures.map { c ->
+                c.copy(renderOutput = rewriteRenderStem(c.renderOutput, preview.id, newStem))
+            }
+            preview.copy(captures = rewritten)
+        }
+    }
+
+    /** `renders/<oldStem><tail>.<ext>` → `renders/<newStem><tail>.<ext>`. */
+    private fun rewriteRenderStem(renderOutput: String, oldStem: String, newStem: String): String {
+        if (renderOutput.isEmpty() || oldStem == newStem) return renderOutput
+        val dir = renderOutput.substringBeforeLast('/', missingDelimiterValue = "")
+        val leaf = renderOutput.substringAfterLast('/')
+        if (!leaf.startsWith(oldStem)) return renderOutput
+        val rewritten = newStem + leaf.removePrefix(oldStem)
+        return if (dir.isEmpty()) rewritten else "$dir/$rewritten"
+    }
+
+    private fun commonDottedPrefix(ids: List<String>): String {
+        if (ids.size < 2) return ""
+        var prefix = ids.first()
+        for (id in ids.drop(1)) {
+            var i = 0
+            val limit = minOf(prefix.length, id.length)
+            while (i < limit && prefix[i] == id[i]) i++
+            prefix = prefix.substring(0, i)
+            if (prefix.isEmpty()) return ""
+        }
+        val lastDot = prefix.lastIndexOf('.')
+        return if (lastDot < 0) "" else prefix.substring(0, lastDot + 1)
+    }
+
+    /**
+     * Sanitizes a filename stem to an ASCII-safe whitelist
+     * (`[A-Za-z0-9._-]`). Every other character collapses to `_`, runs of
+     * `_` collapse to a single `_`, and leading/trailing `_`, `.`, `-` are
+     * trimmed. A whitelist is deliberate: we can't enumerate every awkward
+     * character a preview name might contain (Unicode dashes, NBSP, RTL
+     * marks, emoji), and any one of them can break a downstream tool that
+     * expects a POSIX-plain filename. `.` is preserved so FQN-shaped stems
+     * (`CardPreviewsKt.Tile_Light_States`) survive intact when the package
+     * prefix strip can't flatten them further.
+     */
+    private fun sanitizeFileStem(s: String): String =
+        s.replace(Regex("""[^A-Za-z0-9._-]"""), "_")
+            .replace(Regex("""_+"""), "_")
+            .trim('_', '.', '-')
 
     // Renders the distinguishing bits of a preview variant for the discovery log
     // so sibling expansions (e.g. @WearPreviewFontScales × 6) aren't visually

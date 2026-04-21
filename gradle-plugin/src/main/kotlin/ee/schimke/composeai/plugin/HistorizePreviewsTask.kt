@@ -56,7 +56,16 @@ abstract class HistorizePreviewsTask : DefaultTask() {
 
         var archived = 0
         for (preview in manifest.previews) {
-            val currentRender = rendersRoot.resolve("${preview.id}.png")
+            // Use the capture's renderOutput (module-relative, e.g.
+            // `renders/Foo.png`) rather than inferring from `preview.id`.
+            // Since discovery normalizes stems (strips package prefix,
+            // sanitizes shell-unsafe characters), the on-disk filename no
+            // longer matches `${id}.png`.
+            val relRender = preview.captures.firstOrNull()?.renderOutput
+                ?.substringAfter("renders/", missingDelimiterValue = "")
+                ?.takeIf { it.isNotEmpty() }
+                ?: continue
+            val currentRender = rendersRoot.resolve(relRender)
             if (!currentRender.exists()) continue
 
             val previewFolder = historyRoot.resolve(sanitize(preview.id)).apply { mkdirs() }

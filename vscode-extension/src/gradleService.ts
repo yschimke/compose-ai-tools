@@ -9,16 +9,23 @@ const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
 
 /**
  * Expands a parameterized preview's single template capture into N captures
- * pointing at the actual `_PARAM_<idx>` files on disk. Returns the original
- * list unchanged when no matching files exist (rare — the plugin's
- * `renderAllPreviews` check would have already failed loudly), or when the
- * template has no `renderOutput` to key off.
+ * pointing at the actual `<stem>_<suffix>.<ext>` files on disk. The suffix
+ * is either a human-readable label derived from the provider value (`_on`,
+ * `_off`), or a numeric `_PARAM_<idx>` when no label could be derived.
+ * Returns the original list unchanged when no matching files exist (rare —
+ * the plugin's `renderAllPreviews` check would have already failed loudly),
+ * or when the template has no `renderOutput` to key off.
  *
- * Sorted by the numeric suffix (`PARAM_0`, `PARAM_1`, …, `PARAM_10`) so
- * `PARAM_10` doesn't sort before `PARAM_2` — lexicographic ordering on the
- * raw filename would produce that order.
+ * Numeric `_PARAM_<idx>` entries sort before label-based entries and among
+ * themselves by index (so `PARAM_10` lands after `PARAM_2`, not before).
+ * Labels sort alphabetically — provider order isn't recoverable from the
+ * filename alone, but alphabetical is stable and readable.
  */
-function expandParamCaptures(rendersDir: string, templates: Capture[]): Capture[] {
+function expandParamCaptures(
+    rendersDir: string,
+    templates: Capture[],
+    siblingRenderOutputs: Set<string>,
+): Capture[] {
     if (!fs.existsSync(rendersDir)) { return templates; }
     const expanded: Capture[] = [];
     for (const template of templates) {
@@ -27,17 +34,24 @@ function expandParamCaptures(rendersDir: string, templates: Capture[]): Capture[
         const dot = base.lastIndexOf('.');
         const stem = dot > 0 ? base.slice(0, dot) : base;
         const ext = dot > 0 ? base.slice(dot) : '';
-        const prefix = stem + '_PARAM_';
+        const prefix = stem + '_';
         const templateDir = path.dirname(template.renderOutput);
         const dirPrefix = templateDir && templateDir !== '.' ? `${templateDir}/` : '';
         const matches = fs.readdirSync(rendersDir)
-            .filter(name => name.startsWith(prefix) && name.endsWith(ext))
+            .filter(name => name.startsWith(prefix) && name.endsWith(ext)
+                && !siblingRenderOutputs.has(dirPrefix + name))
             .map(name => {
-                const idxStr = name.slice(prefix.length, name.length - ext.length);
-                const idx = parseInt(idxStr, 10);
-                return { name, idx: Number.isNaN(idx) ? Number.MAX_SAFE_INTEGER : idx };
+                const suffix = name.slice(prefix.length, name.length - ext.length);
+                const paramIdxStr = suffix.startsWith('PARAM_') ? suffix.slice('PARAM_'.length) : null;
+                const paramIdx = paramIdxStr !== null ? parseInt(paramIdxStr, 10) : NaN;
+                return { name, suffix, paramIdx: Number.isNaN(paramIdx) ? null : paramIdx };
             })
-            .sort((a, b) => a.idx - b.idx);
+            .sort((a, b) => {
+                if (a.paramIdx !== null && b.paramIdx !== null) { return a.paramIdx - b.paramIdx; }
+                if (a.paramIdx !== null) { return -1; }
+                if (b.paramIdx !== null) { return 1; }
+                return a.suffix.localeCompare(b.suffix);
+            });
         if (matches.length === 0) { continue; }
         for (const match of matches) {
             expanded.push({
@@ -185,9 +199,17 @@ export class GradleService {
             // sees the preview, so the UI walks N files instead of trying to
             // read the template path (which never exists).
             const rendersDir = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'renders');
+            const siblingRenderOutputs = new Set<string>();
+            for (const p of manifest.previews) {
+                if (!p.params?.previewParameterProviderClassName) {
+                    for (const c of p.captures) {
+                        if (c.renderOutput) { siblingRenderOutputs.add(c.renderOutput); }
+                    }
+                }
+            }
             for (const p of manifest.previews) {
                 if (p.params?.previewParameterProviderClassName) {
-                    p.captures = expandParamCaptures(rendersDir, p.captures);
+                    p.captures = expandParamCaptures(rendersDir, p.captures, siblingRenderOutputs);
                 }
             }
             // Enrich each preview with a11y findings when the module has the

@@ -13,9 +13,11 @@ export interface PreviewParams {
     /**
      * FQN of the `PreviewParameterProvider` harvested from `@PreviewParameter`,
      * when the discovery pass saw one on this preview's function signature.
-     * Extension uses this to know to glob for `<id>_PARAM_<idx>.<ext>` files
-     * (one per provider value) rather than expecting the manifest's single
-     * template capture to exist on disk verbatim.
+     * Extension uses this to know to glob for `<stem>_<suffix>.<ext>` files
+     * (one per provider value — `<suffix>` is a human-readable label derived
+     * from the value, or `PARAM_<idx>` when no label can be derived) rather
+     * than expecting the manifest's single template capture to exist on disk
+     * verbatim.
      */
     previewParameterProviderClassName?: string | null;
     previewParameterLimit?: number | null;

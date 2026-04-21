@@ -90,9 +90,24 @@ fun main(args: Array<String>) {
             listOf(NO_PARAM)
         }
 
+        val suffixes: List<String> = if (values.size == 1 && values[0] === NO_PARAM) {
+            listOf("")
+        } else {
+            PreviewParameterLabels.suffixesFor(values)
+        }
+        val targetFiles = values.mapIndexed { idx, value ->
+            if (value === NO_PARAM) outputFile
+            else File(insertBeforeExtension(outputFile.path, suffixes[idx]))
+        }
+        // Renderer is authoritative about the fan-out — delete any
+        // `<stem>_*<ext>` files from prior runs that aren't in this run's
+        // expected output. Guards against provider renames and the
+        // `_PARAM_<idx>` → `_<label>` migration leaving stale PNGs behind.
+        if (values.any { it !== NO_PARAM }) {
+            deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet())
+        }
         for ((idx, value) in values.withIndex()) {
-            val targetFile = if (value === NO_PARAM) outputFile
-            else File(insertBeforeExtension(outputFile.path, "_PARAM_$idx"))
+            val targetFile = targetFiles[idx]
             val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
             renderPreview(
                 className, functionName, widthPx, heightPx, density,
@@ -111,6 +126,21 @@ fun main(args: Array<String>) {
 // A null value from the provider is a legitimate case we want to render; NO_PARAM
 // short-circuits the file-path suffix logic instead.
 private val NO_PARAM = Any()
+
+private fun deleteStaleFanoutFiles(template: File, expectedNames: Set<String>) {
+    val dir = template.parentFile ?: return
+    if (!dir.isDirectory) return
+    val stem = template.nameWithoutExtension
+    val ext = ".${template.extension}"
+    val prefix = stem + "_"
+    dir.listFiles()
+        ?.filter { it.name.startsWith(prefix) && it.name.endsWith(ext) && it.name !in expectedNames }
+        ?.forEach { f ->
+            if (!f.delete()) {
+                System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")
+            }
+        }
+}
 
 private fun insertBeforeExtension(path: String, suffix: String): String {
     if (path.isEmpty()) return path

@@ -198,28 +198,60 @@ internal object ComposePreviewTasks {
                 val manifest = previewManifestJson
                     .decodeFromString(PreviewManifest.serializer(), manifestOnDisk.readText())
                 if (manifest.previews.isEmpty()) return@doLast
+
+                // `build/compose-previews/renders/` is a derived artefact —
+                // the renderer rewrites it every run, and downstream tools
+                // (VS Code, CLI, history) compare the CURRENT manifest
+                // against on-disk state. Files left over from deleted or
+                // renamed previews confuse that comparison, so we delete
+                // anything that isn't referenced by a current manifest
+                // entry.
+                //
+                // Parameterized (`@PreviewParameter`) previews are special:
+                // the Gradle side only knows the stem (e.g.
+                // `Foo_PARAM_template.png`), not which fan-out filenames
+                // the provider will produce. The renderer itself cleans up
+                // its own stale fan-out before writing (see
+                // `deleteStaleFanoutFiles` in the renderer modules), so
+                // here we keep every `<stem>_*<ext>` match rather than
+                // second-guessing the provider values.
+                cleanStaleRenders(previewOutputDir.get().asFile.resolve("renders"), manifest, logger)
                 // Each preview can produce multiple captures (`@RoboComposePreviewOptions`
                 // time fan-out, future scroll / dimension fan-outs). Verify each
                 // capture's renderOutput lands on disk — report back one missing
                 // entry per preview with at least one missing capture.
                 val outDir = previewOutputDir.get().asFile
+                // Files owned by non-parameterized siblings — exclude them
+                // from the `<stem>_*` glob so a `Foo_header.png` that
+                // belongs to a different preview never gets treated as
+                // part of `Foo`'s fan-out.
+                val siblingNames = manifest.previews
+                    .filter { it.params.previewParameterProviderClassName == null }
+                    .flatMap { it.captures.map { c -> c.renderOutput } }
+                    .filter { it.isNotEmpty() }
+                    .map { java.io.File(outDir, it).name }
+                    .toSet()
                 val missing = manifest.previews
                     .filter { p ->
                         p.captures.any { c ->
                             val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
                             // `@PreviewParameter` previews fan out at render
-                            // time: manifest carries a `<id>.png` template,
+                            // time: manifest carries a `<stem>.png` template,
                             // but the actual files live at
-                            // `<id>_PARAM_<idx>.png` (one per provider value).
-                            // Check that at least ONE matching fan-out file
-                            // exists instead of demanding the template itself.
+                            // `<stem>_<label>.png` (one per provider value,
+                            // or `_PARAM_<idx>` when the label can't be
+                            // derived). Check that at least ONE matching
+                            // fan-out file exists instead of demanding the
+                            // template itself.
                             if (p.params.previewParameterProviderClassName != null) {
                                 val file = outDir.resolve(rel)
                                 val dir = file.parentFile ?: outDir
-                                val prefix = file.nameWithoutExtension + "_PARAM_"
+                                val prefix = file.nameWithoutExtension + "_"
                                 val ext = ".${file.extension}"
                                 !(dir.listFiles()?.any { f ->
-                                    f.name.startsWith(prefix) && f.name.endsWith(ext)
+                                    f.name.startsWith(prefix) &&
+                                        f.name.endsWith(ext) &&
+                                        f.name !in siblingNames
                                 } ?: false)
                             } else {
                                 !outDir.resolve(rel).exists()
@@ -240,6 +272,79 @@ internal object ComposePreviewTasks {
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Deletes files inside [rendersDir] that aren't referenced by [manifest].
+     *
+     * Keeps three kinds of files:
+     * 1. Exact `renderOutput` matches from non-parameterized previews.
+     * 2. `<stem>_*.<ext>` fan-out files where `<stem>` belongs to a
+     *    `@PreviewParameter` preview — the renderer itself cleans up its
+     *    own stale fan-outs (it knows the exact filenames), so the Gradle
+     *    side deliberately stays conservative and doesn't delete files it
+     *    can't be sure are stale.
+     * 3. Non-PNG/GIF files that aren't in the plugin's output domain.
+     *
+     * Anything else (PNGs or GIFs that were produced for a now-removed
+     * preview) gets removed so downstream tools compare the manifest
+     * against a clean directory.
+     */
+    private fun cleanStaleRenders(
+        rendersDir: java.io.File,
+        manifest: PreviewManifest,
+        logger: org.gradle.api.logging.Logger,
+    ) {
+        if (!rendersDir.isDirectory) return
+
+        val expectedRelPaths = manifest.previews
+            .filter { it.params.previewParameterProviderClassName == null }
+            .flatMap { it.captures.mapNotNull { c -> c.renderOutput.stripRendersPrefix() } }
+            .toSet()
+
+        // `<stem>_` / `.<ext>` pairs we MUST leave alone — each one is the
+        // template filename of a `@PreviewParameter` preview. Any file in
+        // [rendersDir] whose leaf name starts with one of these prefixes
+        // and ends with the matching extension is treated as a fan-out
+        // sibling and preserved.
+        val paramStems = manifest.previews
+            .filter { it.params.previewParameterProviderClassName != null }
+            .flatMap { it.captures }
+            .mapNotNull { c ->
+                val rel = c.renderOutput.stripRendersPrefix() ?: return@mapNotNull null
+                val leaf = rel.substringAfterLast('/')
+                val dot = leaf.lastIndexOf('.')
+                if (dot <= 0) null
+                else FanoutKey(
+                    relDir = rel.substringBeforeLast('/', missingDelimiterValue = ""),
+                    prefix = leaf.substring(0, dot) + "_",
+                    ext = leaf.substring(dot),
+                )
+            }
+            .toSet()
+
+        rendersDir.walkBottomUp()
+            .filter { it.isFile && (it.extension == "png" || it.extension == "gif") }
+            .forEach { f ->
+                val rel = f.relativeTo(rendersDir).invariantSeparatorsPath
+                if (rel in expectedRelPaths) return@forEach
+                if (paramStems.any { it.matches(rel, f.name) }) return@forEach
+                if (!f.delete()) {
+                    logger.warn("compose-preview: couldn't delete stale render $f")
+                }
+            }
+    }
+
+    private fun String.stripRendersPrefix(): String? {
+        if (isEmpty()) return null
+        return substringAfter("renders/", missingDelimiterValue = this).takeIf { it.isNotEmpty() }
+    }
+
+    private data class FanoutKey(val relDir: String, val prefix: String, val ext: String) {
+        fun matches(rel: String, leaf: String): Boolean {
+            val dir = rel.substringBeforeLast('/', missingDelimiterValue = "")
+            return dir == relDir && leaf.startsWith(prefix) && leaf.endsWith(ext)
         }
     }
 }
