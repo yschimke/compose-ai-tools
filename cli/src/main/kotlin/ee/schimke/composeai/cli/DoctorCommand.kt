@@ -564,7 +564,7 @@ class DoctorCommand(args: List<String>) {
     companion object {
         private const val REPO = "yschimke/compose-ai-tools"
         private const val MAVEN_BASE = "https://maven.pkg.github.com/$REPO"
-        private const val DEFAULT_PLUGIN_VERSION = "0.7.4" // x-release-please-version
+        private const val DEFAULT_PLUGIN_VERSION = "0.7.5" // x-release-please-version
 
         /**
          * Minimum supported Compose BOM — 2025.01.00 → compose-ui 1.9.0.
