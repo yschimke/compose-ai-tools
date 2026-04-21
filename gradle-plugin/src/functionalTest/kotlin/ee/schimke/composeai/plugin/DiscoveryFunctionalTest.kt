@@ -635,9 +635,13 @@ class DiscoveryFunctionalTest {
         assertThat(topAndEnd.captures).hasSize(2)
         assertThat(topAndEnd.captures.map { it.scroll?.mode })
             .containsExactly(ScrollMode.TOP, ScrollMode.END).inOrder()
+        // renderOutput strips the common `test.` package prefix from every
+        // preview id — the full FQN is retained on `preview.id` itself (and
+        // also stays addressable in `renderOutput`'s basename), but the
+        // on-disk filename drops the shared prefix.
         assertThat(topAndEnd.captures.map { it.renderOutput }).containsExactly(
-            "renders/${topAndEnd.id}_SCROLL_top.png",
-            "renders/${topAndEnd.id}_SCROLL_end.png",
+            "renders/TopAndEndScrollPreview_Scroll_SCROLL_top.png",
+            "renders/TopAndEndScrollPreview_Scroll_SCROLL_end.png",
         ).inOrder()
 
         // Single-mode GIF: keeps the plain `renders/<id>.gif` name (no
@@ -655,7 +659,7 @@ class DiscoveryFunctionalTest {
             )
         )
         assertThat(gifOnly.captures.single().renderOutput)
-            .isEqualTo("renders/${gifOnly.id}.gif")
+            .isEqualTo("renders/GifScrollPreview_Gif.gif")
 
         // Multi-mode with GIF sibling: each capture gets its mode's
         // extension (PNG for END, GIF for GIF) — the extension branches
@@ -665,8 +669,8 @@ class DiscoveryFunctionalTest {
         assertThat(endAndGif.captures.map { it.scroll?.mode })
             .containsExactly(ScrollMode.END, ScrollMode.GIF).inOrder()
         assertThat(endAndGif.captures.map { it.renderOutput }).containsExactly(
-            "renders/${endAndGif.id}_SCROLL_end.png",
-            "renders/${endAndGif.id}_SCROLL_gif.gif",
+            "renders/EndAndGifScrollPreview_EndAndGif_SCROLL_end.png",
+            "renders/EndAndGifScrollPreview_EndAndGif_SCROLL_gif.gif",
         ).inOrder()
     }
 
@@ -744,6 +748,64 @@ class DiscoveryFunctionalTest {
         val plain = manifest.previews.single { it.functionName == "PlainPreview" }
         assertThat(plain.params.previewParameterProviderClassName).isNull()
         assertThat(plain.params.previewParameterLimit).isEqualTo(Int.MAX_VALUE)
+    }
+
+    @Test
+    fun `renderOutput strips common package prefix and sanitises spaces and parens`() {
+        val projectDir = createCmpTestProject()
+
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.ui.unit.dp
+
+            @Preview(name = "tile light (light)")
+            @Composable
+            fun TileLightStates() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+
+            @Preview(name = "plain")
+            @Composable
+            fun TileDarkStates() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+            }
+            """.trimIndent()
+        )
+
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+
+        val light = manifest.previews.single { it.functionName == "TileLightStates" }
+        // `id` stays as the full FQN — consumers key by it. Top-level
+        // Kotlin functions land on the synthetic `<File>Kt` class, so
+        // the id is `test.PreviewsKt.TileLightStates_tile light (light)`.
+        assertThat(light.id).isEqualTo("test.PreviewsKt.TileLightStates_tile light (light)")
+        // `renderOutput` drops the shared `test.PreviewsKt.` dotted
+        // prefix and sanitises the awkward `tile light (light)` variant
+        // suffix down to shell-safe `tile_light_light`.
+        assertThat(light.captures.single().renderOutput)
+            .isEqualTo("renders/TileLightStates_tile_light_light.png")
+
+        val dark = manifest.previews.single { it.functionName == "TileDarkStates" }
+        assertThat(dark.captures.single().renderOutput)
+            .isEqualTo("renders/TileDarkStates_plain.png")
     }
 
     @Test

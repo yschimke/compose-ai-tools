@@ -20,8 +20,10 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Demo data for the CMP Desktop `@PreviewParameter` sample. Each value has a
- * distinct label + colour, so the fan-out (`<id>_PARAM_0.png`,
- * `<id>_PARAM_1.png`, …) lands on visually different PNGs.
+ * distinct label + colour, so the fan-out lands on visually different PNGs —
+ * and since [SwatchData] exposes a [label] property, the renderer derives
+ * filename suffixes from it (`<id>_Crimson.png`, `<id>_Teal.png`, …) instead
+ * of opaque `_PARAM_<idx>` indices.
  */
 data class SwatchData(val label: String, val color: Long)
 
@@ -38,7 +40,9 @@ class SwatchProvider : PreviewParameterProvider<SwatchData> {
  * Desktop (CMP) `@PreviewParameter` smoke test. The JVM renderer consumes
  * the provider FQN + limit passed on the command line, loops over
  * `values.take(limit)` inside a single process, and emits one PNG per
- * value with `_PARAM_<idx>` inserted before the extension.
+ * value — keyed by the value's derived label (from a `name`/`label`/`id`
+ * property or a `Pair`'s `first`) and falling back to `_PARAM_<idx>` when
+ * no label can be derived.
  */
 @Preview(name = "Color Swatch", backgroundColor = 0xFFFFFFFF, showBackground = true)
 @Composable

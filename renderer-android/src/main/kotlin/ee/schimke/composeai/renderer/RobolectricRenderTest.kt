@@ -86,14 +86,59 @@ object PreviewManifestLoader {
             )
             return emptyList()
         }
-        return values.mapIndexed { idx, value ->
-            val paramSuffix = "_PARAM_$idx"
+        val suffixes = PreviewParameterLabels.suffixesFor(values)
+        val rows = values.mapIndexed { idx, value ->
+            val paramSuffix = suffixes[idx]
             val newCaptures = entry.captures.map { c ->
                 c.copy(renderOutput = insertBeforeExtension(c.renderOutput, paramSuffix))
             }
             val newId = entry.id + paramSuffix
             PreviewRow(entry.copy(id = newId, captures = newCaptures), listOf(value))
         }
+        // The renderer is authoritative about which fan-out files will exist
+        // for this preview — delete any `<stem>_*<ext>` files from prior runs
+        // that aren't in this run's expected output. Guards against provider
+        // renames ("loading" → "busy") and the `_PARAM_<idx>` → `_<label>`
+        // migration leaving a mix of old-shape and new-shape PNGs on disk.
+        // Runs at shard-load time so it fires once per parameterized preview,
+        // before any test body writes to the directory.
+        deleteStaleFanoutFiles(entry.captures, rows)
+        return rows
+    }
+
+    private fun deleteStaleFanoutFiles(
+        templateCaptures: List<RenderPreviewCapture>,
+        expanded: List<PreviewRow>,
+    ) {
+        val outDirPath = System.getProperty("composeai.render.outputDir") ?: return
+        val outDir = File(outDirPath)
+        if (!outDir.isDirectory) return
+        val expectedNames = expanded.flatMap { it.entry.captures }
+            .mapNotNull { fanoutLeaf(it.renderOutput) }
+            .toSet()
+        for (template in templateCaptures) {
+            val templateFile = File(outDir, template.renderOutput.substringAfter("renders/"))
+            val dir = templateFile.parentFile ?: continue
+            val stem = templateFile.nameWithoutExtension
+            val ext = ".${templateFile.extension}"
+            val prefix = stem + "_"
+            dir.listFiles()
+                ?.filter { f ->
+                    f.name.startsWith(prefix) &&
+                        f.name.endsWith(ext) &&
+                        f.name !in expectedNames
+                }
+                ?.forEach { f ->
+                    if (!f.delete()) {
+                        System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")
+                    }
+                }
+        }
+    }
+
+    private fun fanoutLeaf(renderOutput: String): String? {
+        if (renderOutput.isEmpty()) return null
+        return renderOutput.substringAfterLast('/').ifEmpty { renderOutput }
     }
 
     /**

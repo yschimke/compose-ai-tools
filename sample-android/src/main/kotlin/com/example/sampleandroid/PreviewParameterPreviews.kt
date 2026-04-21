@@ -29,8 +29,10 @@ data class UserCardData(
  * Minimal `@PreviewParameter` demo: one preview function, one provider, N
  * rendered PNGs. The plugin's discovery pass records the provider FQN on
  * `PreviewParams`; the Robolectric renderer instantiates the provider at
- * test-load time, enumerates `values`, and emits one file per value with a
- * `_PARAM_<idx>` suffix before the extension.
+ * test-load time, enumerates `values`, and emits one file per value. The
+ * filename suffix is derived from the value's `name` property
+ * (`..._Ada_Lovelace.png`, `..._Grace_Hopper.png`, …); the renderer falls
+ * back to `_PARAM_<idx>` only when no label can be recovered.
  *
  * Kept intentionally simple (no `@PreviewWrapper`, no device, no fan-out
  * dimensions other than the provider) so the output diff reviewing the
