@@ -377,16 +377,26 @@ abstract class Command(protected val args: List<String>) {
             val prior = readState(module).shas
             val updated = mutableMapOf<String, String>()
 
+            // Files owned by non-parameterized siblings — exclude them from
+            // the `<stem>_*` glob so a `Foo_header.png` that belongs to a
+            // different preview never gets attributed to `Foo`'s fan-out.
+            val siblingRenderOutputs = manifest.previews
+                .filter { it.params.previewParameterProviderClassName == null }
+                .flatMap { it.captures.map { c -> c.renderOutput } }
+                .filter { it.isNotEmpty() }
+                .toSet()
+
             for (p in manifest.previews) {
                 // `@PreviewParameter`-driven previews render at
-                // `<renderOutput_base>_PARAM_<idx>.<ext>`, one file per
-                // provider value. The manifest carries a single template
-                // capture; here we glob the actual fan-out and synthesize a
-                // `CaptureResult` per file on disk — keeps the manifest shape
-                // a pure discovery artifact while the CLI reports one entry
-                // per rendered PNG.
+                // `<stem>_<suffix>.<ext>`, one file per provider value. The
+                // manifest carries a single template capture; here we glob
+                // the actual fan-out and synthesize a `CaptureResult` per
+                // file on disk — keeps the manifest shape a pure discovery
+                // artifact while the CLI reports one entry per rendered PNG.
                 val captures = if (p.params.previewParameterProviderClassName != null) {
-                    p.captures.flatMap { capture -> expandParamCaptures(module, capture) }
+                    p.captures.flatMap { capture ->
+                        expandParamCaptures(module, capture, siblingRenderOutputs)
+                    }
                 } else {
                     p.captures
                 }
@@ -447,38 +457,40 @@ abstract class Command(protected val args: List<String>) {
         captures.any { it.changed == true } || changed == true
 
     /**
-     * Globs the on-disk `_PARAM_<idx>.<ext>` fan-out for a parameterized
+     * Globs the on-disk `<stem>_<suffix>.<ext>` fan-out for a parameterized
      * preview capture. The manifest carries one template capture (e.g.
-     * `renders/foo.png`); the renderer writes `renders/foo_PARAM_0.png`,
-     * `renders/foo_PARAM_1.png`, … one per provider value. Returns synthetic
-     * `Capture` rows pointing at each file, or an empty list when nothing
-     * matched — the plugin's `renderAllPreviews` verification already fails
-     * loudly when a parameterized preview rendered no files at all, so we
-     * don't duplicate the error surface here.
+     * `renders/foo.png`); the renderer writes one file per provider value,
+     * keying each by a derived label (`renders/foo_on.png`) or by numeric
+     * index (`renders/foo_PARAM_0.png`) when the label can't be derived.
+     * Returns synthetic `Capture` rows pointing at each file, or an empty
+     * list when nothing matched — the plugin's `renderAllPreviews`
+     * verification already fails loudly when a parameterized preview
+     * rendered no files at all, so we don't duplicate the error surface here.
      */
-    private fun expandParamCaptures(module: String, template: Capture): List<Capture> {
+    private fun expandParamCaptures(
+        module: String,
+        template: Capture,
+        siblingRenderOutputs: Set<String>,
+    ): List<Capture> {
         val rel = template.renderOutput.ifEmpty { return listOf(template) }
         val file = projectDir.resolve("$module/build/compose-previews/$rel").canonicalFile
         val dir = file.parentFile ?: return listOf(template)
-        val prefix = file.nameWithoutExtension + "_PARAM_"
+        val prefix = file.nameWithoutExtension + "_"
         val ext = ".${file.extension}"
+        val templateDir = rel.substringBeforeLast('/', "")
+        val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
         val matches = (dir.listFiles() ?: emptyArray())
-            .filter { it.name.startsWith(prefix) && it.name.endsWith(ext) }
-            .sortedBy {
-                // Sort by the numeric index between `_PARAM_` and the
-                // extension so PARAM_10 sorts after PARAM_2 (not before,
-                // which lexicographic ordering would produce). Unparseable
-                // suffixes fall through to Int.MAX_VALUE so they land at
-                // the end deterministically.
-                it.name.removePrefix(prefix).removeSuffix(ext).toIntOrNull() ?: Int.MAX_VALUE
+            .filter { f ->
+                f.name.startsWith(prefix) &&
+                    f.name.endsWith(ext) &&
+                    (dirPrefix + f.name) !in siblingRenderOutputs
             }
+            .sortedWith(paramFanoutOrder(prefix, ext))
         if (matches.isEmpty()) return emptyList()
         // Preserve the template's time/scroll coordinates — a parameterized
         // preview is orthogonal to those dimensions. Each fan-out file
         // points back at the same conceptual capture, just at a different
         // provider value.
-        val templateDir = rel.substringBeforeLast('/', "")
-        val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
         return matches.map { f ->
             Capture(
                 advanceTimeMillis = template.advanceTimeMillis,
@@ -487,6 +499,28 @@ abstract class Command(protected val args: List<String>) {
             )
         }
     }
+
+    /**
+     * Stable ordering for a fan-out's on-disk files. Numeric `_PARAM_<idx>`
+     * entries come first, sorted by index (so `PARAM_10` lands after
+     * `PARAM_2` rather than before it as lexicographic ordering would
+     * produce). Label-based entries sort alphabetically by their suffix —
+     * provider order isn't recoverable from the filename alone, but
+     * alphabetical is stable and readable.
+     */
+    private fun paramFanoutOrder(prefix: String, ext: String): Comparator<java.io.File> =
+        Comparator { a, b ->
+            val sa = a.name.removePrefix(prefix).removeSuffix(ext)
+            val sb = b.name.removePrefix(prefix).removeSuffix(ext)
+            val ia = sa.removePrefix("PARAM_").toIntOrNull()?.takeIf { sa.startsWith("PARAM_") }
+            val ib = sb.removePrefix("PARAM_").toIntOrNull()?.takeIf { sb.startsWith("PARAM_") }
+            when {
+                ia != null && ib != null -> ia.compareTo(ib)
+                ia != null -> -1
+                ib != null -> 1
+                else -> sa.compareTo(sb)
+            }
+        }
 
     /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
     protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> =

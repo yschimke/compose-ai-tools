@@ -141,7 +141,10 @@ class ColorValidationTest {
         assertThat(redPreview).isNotNull()
         assertThat(redPreview!!.params.backgroundColor).isEqualTo(0xFFFF0000)
 
-        val pngFile = File(projectDir, "build/compose-previews/renders/${redPreview.id}.png")
+        val pngFile = File(
+            projectDir,
+            "build/compose-previews/${redPreview.captures.first().renderOutput}",
+        )
         assertThat(pngFile.exists()).isTrue()
 
         val img: BufferedImage = ImageIO.read(pngFile)
@@ -167,7 +170,10 @@ class ColorValidationTest {
         val bluePreview = manifest.previews.find { it.params.name == "Blue" }
         assertThat(bluePreview).isNotNull()
 
-        val pngFile = File(projectDir, "build/compose-previews/renders/${bluePreview!!.id}.png")
+        val pngFile = File(
+            projectDir,
+            "build/compose-previews/${bluePreview!!.captures.first().renderOutput}",
+        )
         assertThat(pngFile.exists()).isTrue()
 
         val img: BufferedImage = ImageIO.read(pngFile)
@@ -192,7 +198,10 @@ class ColorValidationTest {
         val greenPreview = manifest.previews.find { it.params.name == "Green" }
         assertThat(greenPreview).isNotNull()
 
-        val pngFile = File(projectDir, "build/compose-previews/renders/${greenPreview!!.id}.png")
+        val pngFile = File(
+            projectDir,
+            "build/compose-previews/${greenPreview!!.captures.first().renderOutput}",
+        )
         assertThat(pngFile.exists()).isTrue()
 
         val img: BufferedImage = ImageIO.read(pngFile)
