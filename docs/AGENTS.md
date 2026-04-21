@@ -66,9 +66,7 @@ Four-stage pipeline, spread across the modules:
 
 4. **History (optional)** — [HistorizePreviewsTask.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/HistorizePreviewsTask.kt) archives changed PNGs into `.compose-preview-history/` (outside `build/`, survives `clean`). Enabled via `composePreview.historyEnabled`.
 
-**`build/compose-previews/renders/` is ephemeral.** Every `renderAllPreviews` run deletes PNG/GIF files that aren't referenced by the current manifest (see `cleanStaleRenders` in [ComposePreviewTasks.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt)), and the Android/Desktop renderers themselves delete stale `@PreviewParameter` fan-out siblings before writing a new fan-out. If you need to preserve a specific render for comparison or debugging, copy it out of `renders/` or enable `composePreview.historyEnabled` before running — don't rely on files persisting across runs.
-
-**Filenames are normalized.** `renderOutput` paths in the manifest use `[A-Za-z0-9._-]` only — any preview name or `@PreviewParameter` value label that would otherwise contain spaces, parens, or shell-hostile characters gets those characters replaced with `_`. The common package prefix across all previews in a module is stripped too, so `ee.schimke.ha.previews.CardPreviewsKt.Tile_Light_States_tile light (light).png` renders to `CardPreviewsKt.Tile_Light_States_tile_light_light.png`. The `id` field keeps the full FQN — only the on-disk filename is shortened.
+`renders/` is ephemeral: rewritten every run, stale files deleted. Filenames are normalized — see [docs/RENDER_FILENAMES.md](RENDER_FILENAMES.md).
 
 The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code extension ([vscode-extension/](vscode-extension/src/)) are thin drivers over the Gradle tasks — they shell out via the Tooling API (`GradleConnector.kt`, `gradleService.ts`) and read the resulting `previews.json` / PNG files. The CLI also ships a `compose-preview` binary with `installDist` for use as an agent/MCP backend.
 
