@@ -253,9 +253,8 @@ class CompareMarkdownTest(unittest.TestCase):
                 cli_json=str(cli_path),
                 baselines=str(bl_path),
                 repo="owner/repo",
-                pr="42",
-                base_branch="preview_main",
-                head_branch="preview_pr/42",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
             ))
         return buf.getvalue()
 
@@ -286,6 +285,17 @@ class CompareMarkdownTest(unittest.TestCase):
         self.assertIn("### Removed", out)
         # Marker comment so subsequent runs can edit-in-place.
         self.assertIn("<!-- preview-diff -->", out)
+
+    def test_urls_pin_to_sha_refs_not_branch_names(self):
+        # The whole point of using refs over branch names: the comment
+        # survives preview_main/preview_pr advancing after merge. Assert
+        # the SHAs we pass in actually land in the generated img src URLs.
+        out = self._run(
+            {"previews": [_entry(id="Changed", function="F", sha="new", png="/c.png")]},
+            {"app/Changed": {"sha256": "old", "functionName": "F"}},
+        )
+        self.assertIn("raw.githubusercontent.com/owner/repo/deadbeef/", out)
+        self.assertIn("raw.githubusercontent.com/owner/repo/cafef00d/", out)
 
 
 class MultiCaptureLoadTest(unittest.TestCase):
@@ -506,9 +516,8 @@ class MultiCaptureCompareTest(unittest.TestCase):
                 cli_json=str(cli_path),
                 baselines=str(bl_path),
                 repo="owner/repo",
-                pr="42",
-                base_branch="preview_main",
-                head_branch="preview_pr/42",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
             ))
         return buf.getvalue()
 

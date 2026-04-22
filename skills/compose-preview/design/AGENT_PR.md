@@ -112,8 +112,9 @@ destination before acting:
 
 - **Gist** (`gh gist create <png> --public`) — quick, one image per file,
   public by default. Ask before posting anything public.
-- **Dedicated branch in the repo** (`preview_pr/<N>`) — clean raw URLs but
-  creates a branch the user may not want; get confirmation.
+- **Dedicated branch in the repo** (the CI integration appends to a
+  shared `preview_pr` branch, pinning URLs to commit SHAs) — clean raw
+  URLs but creates a branch the user may not want; get confirmation.
 - **Issue/PR attachment upload** — not reliably available via `gh`; skip.
 
 Never use inline base64 or data URIs — GitHub strips them. Never push images
@@ -172,7 +173,8 @@ surfaces:
 A small number of repos wire up the `preview-comment` GitHub Action (see
 [CI_PREVIEWS.md](CI_PREVIEWS.md)). When it's installed, it posts a sticky
 comment keyed by `<!-- preview-diff -->` with before/after images hosted
-from a `preview_pr/<N>` branch.
+on a shared `preview_pr` branch, pinned to commit SHAs so they survive
+merge.
 
 Only do this if you've already confirmed it exists:
 

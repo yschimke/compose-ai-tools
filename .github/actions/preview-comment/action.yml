@@ -1,8 +1,9 @@
 name: 'Compose Preview Comment'
 description: >
   Render previews on a PR, compare against the baselines on preview_main,
-  and post a before/after comment. Changed PNGs are pushed to a per-PR
-  branch so images are URL-accessible in the comment.
+  and post a before/after comment. Changed PNGs are appended as a new
+  commit on the shared preview_pr branch; the PR comment pins Before/After
+  URLs to commit SHAs so the images keep resolving after merge.
 
 inputs:
   timeout:
@@ -11,6 +12,9 @@ inputs:
   base-branch:
     description: 'Branch name for baselines'
     default: 'preview_main'
+  head-branch:
+    description: 'Shared branch that accumulates per-PR render commits'
+    default: 'preview_pr'
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted)'
     default: ''
@@ -40,6 +44,28 @@ runs:
           echo "No $BASE_BRANCH branch yet — treating all previews as new."
         fi
 
+    - name: Resolve Before ref
+      shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        # Pin Before URLs to the current preview_main tip SHA. Because the
+        # preview-baselines action now appends to history rather than
+        # force-pushing fresh orphans, this SHA stays reachable forever.
+        BASE_SHA=$(git ls-remote \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+          "refs/heads/${BASE_BRANCH}" | awk '{print $1}')
+        if [ -z "$BASE_SHA" ]; then
+          # First-ever run (no preview_main yet). Fall back to the branch
+          # name; Before images will 404 until the first baseline push lands,
+          # after which new PR comments resolve to a SHA.
+          BASE_SHA="$BASE_BRANCH"
+        fi
+        echo "$BASE_SHA" > _base_sha
+
     - name: Copy changed PNGs
       shell: bash
       env:
@@ -57,49 +83,91 @@ runs:
         # the template from the `run:` body entirely. (zizmor: template-injection)
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
         REPO: ${{ github.repository }}
         GITHUB_TOKEN_INLINE: ${{ github.token }}
       run: |
         set -euo pipefail
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
-        BRANCH="preview_pr/${PR_NUMBER}"
 
         if [ ! -d _pr_renders/renders ] || \
            [ -z "$(ls -A _pr_renders/renders 2>/dev/null)" ]; then
           echo "No changed renders to push."
+          # Empty head SHA signals the compare step to fall back to the
+          # branch name — no new/changed sections will reference it anyway.
+          : > _head_sha
           exit 0
         fi
 
         cd _pr_renders
-        git init
-        git checkout -b "$BRANCH"
+        git init -q
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git commit -m "Preview renders for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
-
         git remote add origin \
           "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-        git push --force origin "$BRANCH"
+
+        # Hash our tree once — each retry reuses it (only the parent changes).
+        git add -A
+        TREE=$(git write-tree)
+
+        MSG="Preview renders for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+
+        # Retry loop handles the push race when two PRs finish concurrently.
+        # Per-PR concurrency group in the workflow serialises a single PR's
+        # pushes, but different PRs push to the same shared branch and
+        # second-to-push hits "non-fast-forward". Re-fetch tip, re-parent,
+        # re-push; a minute of jittered retries beats serialising all PRs.
+        attempt=1
+        while :; do
+          PARENT=""
+          if git fetch --depth=1 --quiet origin "$HEAD_BRANCH" 2>/dev/null; then
+            PARENT=$(git rev-parse FETCH_HEAD)
+          fi
+
+          if [ -n "$PARENT" ]; then
+            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+          else
+            # First push ever for this shared branch — orphan commit.
+            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+          fi
+
+          if git push --quiet origin "${COMMIT}:refs/heads/${HEAD_BRANCH}" 2>&1; then
+            echo "$COMMIT" > "$GITHUB_WORKSPACE/_head_sha"
+            exit 0
+          fi
+
+          if [ "$attempt" -ge 5 ]; then
+            echo "Push to ${HEAD_BRANCH} failed after ${attempt} attempts." >&2
+            exit 1
+          fi
+          delay=$((attempt * 2 + RANDOM % 3))
+          echo "Push to ${HEAD_BRANCH} lost the race; retry ${attempt}/5 in ${delay}s…" >&2
+          attempt=$((attempt + 1))
+          sleep "$delay"
+        done
 
     - name: Generate comment
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
-        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
-        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
         set -euo pipefail
-        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        BASE_REF=$(cat _base_sha)
+        HEAD_REF=$(cat _head_sha 2>/dev/null || true)
+        # If nothing was pushed (no changed renders), fall back to the
+        # branch name for the After ref — unused in practice because the
+        # comment body won't contain any changed/new image tags.
+        if [ -z "$HEAD_REF" ]; then
+          HEAD_REF="$HEAD_BRANCH"
+        fi
 
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
           --repo "$REPO" \
-          --pr "$PR_NUMBER" \
-          --base-branch "$BASE_BRANCH" \
-          --head-branch "preview_pr/${PR_NUMBER}" \
+          --base-ref "$BASE_REF" \
+          --head-ref "$HEAD_REF" \
           > _comment_body.md
 
     - name: Post or update PR comment
