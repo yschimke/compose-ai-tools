@@ -60,19 +60,18 @@ jobs:
 ```
 
 **`.github/workflows/preview-comment.yml`** — posts before/after comments on
-PRs and cleans up on close:
+PRs:
 
 ```yaml
 name: Preview Comment
 on:
   pull_request:
-    types: [opened, synchronize, closed]
+    types: [opened, synchronize]
 permissions:
   contents: write
   pull-requests: write
 jobs:
   compare:
-    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,15 +81,18 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@main
-  cleanup:
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-cleanup@main
 ```
 
 The actions download the `compose-preview` CLI from the latest release,
 auto-discover all modules that apply the plugin, and handle the baselines
 branch and PR comment lifecycle. Gradle build caching via `setup-gradle`
 keeps subsequent renders fast.
+
+## Branch durability
+
+The `preview-comment` action appends a commit to a shared `preview_pr`
+branch (one commit per PR push, tree = that PR's changed PNGs). The PR
+comment pins Before/After `<img>` URLs to commit SHAs on `preview_main`
+and `preview_pr`, not branch names — so images keep resolving after the
+PR merges and after later PRs advance either branch. Neither branch is
+ever force-pushed; old commits stay reachable via branch history.

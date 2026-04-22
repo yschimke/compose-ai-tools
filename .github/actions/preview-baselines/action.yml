@@ -1,9 +1,10 @@
 name: 'Compose Preview Baselines'
 description: >
   Render all @Preview functions via the compose-preview CLI and push
-  PNGs + baselines.json to a preview_main orphan branch. The branch is
-  browsable on GitHub (README with inline images) and serves as the
-  "before" state for PR diff comments.
+  PNGs + baselines.json as a new commit on the preview_main branch. The
+  branch is browsable on GitHub (README with inline images) and serves as
+  the "before" state for PR diff comments — old commit SHAs stay reachable
+  so PR comments pinned to a past baseline keep resolving forever.
 
 inputs:
   timeout:
@@ -49,13 +50,39 @@ runs:
         set -euo pipefail
         cd _baselines
 
-        git init
-        git checkout -b "$BASELINE_BRANCH"
+        git init -q
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git commit -m "Update preview baselines from ${GITHUB_SHA::8}"
-
         git remote add origin \
           "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-        git push --force origin "$BASELINE_BRANCH"
+
+        # Hash our generated tree. `git add -A` on a fresh index picks up
+        # everything under the current directory.
+        git add -A
+        TREE=$(git write-tree)
+
+        # Fetch the existing tip (if any) so the new commit lands on top of
+        # history rather than force-pushing a fresh orphan commit each run.
+        # Keeping history means a PR comment pinned to any past preview_main
+        # SHA stays resolvable: the blob is reachable via the branch chain.
+        PARENT=""
+        if git fetch --depth=1 --quiet origin "$BASELINE_BRANCH" 2>/dev/null; then
+          PARENT=$(git rev-parse FETCH_HEAD)
+          PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
+          if [ "$TREE" = "$PARENT_TREE" ]; then
+            echo "Baselines unchanged vs ${BASELINE_BRANCH}; skipping push."
+            exit 0
+          fi
+        fi
+
+        MSG="Update preview baselines from ${GITHUB_SHA::8}"
+        if [ -n "$PARENT" ]; then
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+        else
+          COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+        fi
+
+        # Fast-forward push (no --force). The baseline workflow serialises on
+        # its concurrency group so no race is expected; a non-FF rejection
+        # here means something external moved the ref and warrants an alert.
+        git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"

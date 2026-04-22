@@ -3,7 +3,7 @@ name: Preview Comment
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, closed]
+    types: [opened, synchronize]
 
 # Workflow-level: read only. Jobs that need to push renders or comment on
 # the PR widen below.
@@ -17,11 +17,10 @@ concurrency:
 jobs:
   compare:
     name: Compare previews
-    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     permissions:
-      # preview-comment composite action force-pushes a per-PR render branch
-      # and upserts a PR comment with the before/after images.
+      # preview-comment composite action appends a commit to the shared
+      # preview_pr branch and upserts a PR comment with before/after images.
       contents: write
       pull-requests: write
     steps:
@@ -30,15 +29,3 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/preview-comment
-
-  cleanup:
-    name: Clean up PR renders
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/preview-cleanup
