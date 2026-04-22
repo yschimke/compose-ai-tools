@@ -270,55 +270,15 @@ val androidXExperimental: Profile = Profile.create(
 RemotePreview(profile = androidXExperimental) { /* uses RemoteFlowRow */ }
 ```
 
-### `RemoteDp(RemoteFloat)` is `internal`
+### Converting a `RemoteFloat` to `RemoteDp`
 
-You can't build a dp value that tracks a computed `RemoteFloat`, which
-rules out `Modifier.offset(x = someProgress.toDp())` for sliding a knob
-between two positions. Workaround: two weight-driven spacers on either
-side of the fixed-size element:
-
-```kotlin
-RemoteRow {
-    RemoteBox(modifier = RemoteModifier.weight(progress).fillMaxHeight())
-    RemoteBox(modifier = RemoteModifier.size(KnobSize).clip(RemoteCircleShape)…)
-    RemoteBox(modifier = RemoteModifier.weight(1f.rf - progress).fillMaxHeight())
-}
-```
-
-But see the next item before you ship this.
-
-### `select`-derived `RemoteFloat` breaks `.clip()` + inner content
-
-Tracked upstream as b/504893436. When a `RemoteFloat` derived from
-`RemoteBoolean.select(1f.rf, 0f.rf)` (or from `animateRemoteFloat`)
-feeds into either:
-
-- `lerp(...)` inside `Modifier.background(<RemoteColor>)`, or
-- `RemoteRowScope.weight(<RemoteFloat>)`,
-
-…the surrounding `RemoteBox` drops its rounded clip and the inner
-layout fails to render. Only the computed background paints, in an
-unclipped rectangle. Literal `0f.rf` / `0.5f.rf` / `1f.rf` work fine in
-the same code.
-
-Until the fix lands, either:
-
-1. Pick the float on the host side from a Kotlin `Boolean` and pass
-   `0f.rf` or `1f.rf` — you lose in-document click flip for the
-   animated visual and have to re-encode after each host update, but
-   the render is correct.
-2. Avoid `weight`/`lerp`-with-dynamic-float visuals; use layouts
-   where all dynamic values are static `RemoteColor` via `select`,
-   which is unaffected.
-
-### `.clip(RemoteCircleShape)` on small squares
-
-A `RemoteBox.size(32.rdp).clip(RemoteCircleShape)` renders as a
-rounded rectangle with ~8px corner radius, not a full circle. Happens
-for both `RemoteCircleShape` and `RemoteRoundedCornerShape(percent = 50)`.
-Workaround options when you care: draw the disc yourself via a
-`RemoteCanvas` background, or use `remote-material3`'s
-`drawShapedBackground` helper.
+The `RemoteDp(RemoteFloat)` constructor is `internal`, but `RemoteFloat`
+has a public `asRemoteDp()` converter — use that when you need a dp
+value that tracks a computed float (e.g. to drive
+`Modifier.offset(x = progress.asRemoteDp(), y = 0.rdp)` for sliding a
+knob between positions). See
+[`RemoteDp.kt`](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/remote/remote-creation-compose/src/main/java/androidx/compose/remote/creation/compose/state/RemoteDp.kt;l=146)
+in androidx-main.
 
 ### Modifier chain order when mixing click + clip + background
 
