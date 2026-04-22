@@ -161,3 +161,219 @@ A working end-to-end example lives in [`sample-remotecompose/`](../../../sample-
 `./gradlew :sample-remotecompose:renderAllPreviews` produces PNGs for both
 shapes, so you can see that the capture-and-replay path works end-to-end in
 the plugin's renderer.
+
+## Building live-updating widgets
+
+Most Remote Compose consumers are widget-like: a Glance widget, a tile,
+or a watch surface that refreshes its state without re-encoding the
+document on every change. Two state models matter:
+
+### Host-driven state (named bindings)
+
+The host pushes a fresh value into a named binding after an HA / API /
+WebSocket update. The document identifies the binding by name and
+reacts without any re-recording.
+
+```kotlin
+// Widget-side authoring
+val isOn: RemoteBoolean = createNamedRemoteBoolean(
+    name = "light.kitchen.on",
+    initialValue = false,
+    domain = Domain.User,
+)
+val label: RemoteString = createNamedRemoteString("light.kitchen.label", "—")
+
+RemoteText(
+    text = label,
+    color = isOn.select(onColor, offColor),
+    // ...
+)
+```
+
+```kotlin
+// Host-side update (your app)
+player.write("light.kitchen.on", true)
+player.write("light.kitchen.label", "On")
+```
+
+**Gotcha.** On the authoring side, `RemoteBoolean.constantValueOrNull`
+returns `null` for named bindings — there's no compile-time constant to
+seed the initial visual from. If your layout needs to *branch* on the
+initial value (e.g. "render the knob on the right when the widget is
+authored for a seeded-true light") you have to carry that `Boolean` on
+the host side separately and pass it into the composable as a plain
+Kotlin `Boolean`, producing a literal `0f.rf` / `1f.rf` in the document.
+
+### In-document state (optimistic click)
+
+For click-flip-now-ack-later UX, the player keeps the state in-document
+and flips it on click without a host round-trip:
+
+```kotlin
+val localIsOn: MutableRemoteBoolean = rememberMutableRemoteBoolean(initial)
+val toggle: Action = ValueChange(localIsOn, localIsOn.not())
+val hostCall: Action = HostAction("light.toggle", entityId)
+
+RemoteBox(
+    modifier = RemoteModifier
+        .clip(RemoteRoundedCornerShape(11.rdp))
+        .background(localIsOn.select(onColor, offColor))
+        .clickable(toggle, hostCall), // both run on tap
+)
+```
+
+The `ValueChange` fires synchronously in the player; the `HostAction`
+is dispatched back to your app so it can call the real service. If the
+host call fails, write back to the same binding by name to roll back.
+This is the pattern in the `ClickableDemo` / `SwitchDemo` in the
+androidx-main `compose/remote/integration-tests/demos`.
+
+### Animation
+
+Wrap a `RemoteFloat` target in `animateRemoteFloat` and the player
+tweens at playback time — no per-frame wake-up on the host:
+
+```kotlin
+val target: RemoteFloat = localIsOn.select(1f.rf, 0f.rf)
+val progress: RemoteFloat = animateRemoteFloat(rf = target, duration = 0.18f)
+// drive position / alpha / color lerp from `progress`
+```
+
+## alpha08 pitfalls
+
+All of these bit us building a Lovelace-card widget library against
+`remote-creation-compose:1.0.0-alpha08`. Check whether your current
+alpha still has each before designing around it.
+
+### V2 applier: don't mix Remote and UI composables
+
+alpha08 dropped the UI-applier fallback. Use `RemotePreview` /
+`RememberRemoteDocumentInline` / `captureSingleRemoteDocumentV2` to
+open a recording scope, and keep its body pure `@RemoteComposable`.
+Mixing in a `Text(…)` from `compose.material` inside the recording
+scope produces a broken document. Between scopes (e.g. a regular
+`Column` holding multiple independent `RemotePreview` hosts) is fine —
+that's how you model "one widget per card" dashboards.
+
+### FlowLayout requires the experimental profile
+
+`RemoteFlowRow` and `RemoteFlowColumn` emit op code 240, which isn't
+in the baseline ANDROIDX profile. Build a shared profile once:
+
+```kotlin
+val androidXExperimental: Profile = Profile.create(
+    Profile.OperationsSetType.Predefined,
+    /* operations = */ null,
+    Profile.PROFILE_ANDROIDX or Profile.PROFILE_EXPERIMENTAL,
+)
+
+RemotePreview(profile = androidXExperimental) { /* uses RemoteFlowRow */ }
+```
+
+### Converting a `RemoteFloat` to `RemoteDp`
+
+The `RemoteDp(RemoteFloat)` constructor is `internal`, but `RemoteFloat`
+has a public `asRemoteDp()` converter — use that when you need a dp
+value that tracks a computed float (e.g. to drive
+`Modifier.offset(x = progress.asRemoteDp(), y = 0.rdp)` for sliding a
+knob between positions). See
+[`RemoteDp.kt`](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/remote/remote-creation-compose/src/main/java/androidx/compose/remote/creation/compose/state/RemoteDp.kt;l=146)
+in androidx-main.
+
+### Modifier chain order when mixing click + clip + background
+
+On the outer shape of a clickable pill, keep the visual modifiers
+first and `.clickable` last:
+
+```kotlin
+modifier
+    .size(36.rdp, 22.rdp)
+    .clip(RemoteRoundedCornerShape(11.rdp))
+    .background(trackColor)
+    .clickable(toggle, hostAction)   // <- last
+```
+
+Prepending `.clickable` ahead of `.clip`/`.background` in alpha08 can
+swallow the clip + child content (shape renders as a rectangle with no
+interior widgets). Probably related to how the clickable wrapper is
+emitted into the document.
+
+### `Row` with weighted children overruns `.size(...)`
+
+`RemoteRow` with any `weight(…)` child claims all available width and
+ignores a `Modifier.size(W, H)` on the row itself — the weight
+behaviour treats the row as fillMax. When you need a fixed-size
+weight-driven layout (e.g. the inside of a toggle switch), wrap in an
+outer `RemoteBox` whose `.size(...)` is the hard constraint, and have
+the inner row `.fillMaxSize()` inside it.
+
+```kotlin
+RemoteBox(modifier = RemoteModifier.size(TrackWidth, TrackHeight)
+    .clip(...).background(...)) {
+    RemoteRow(modifier = RemoteModifier.fillMaxWidth().fillMaxHeight()) {
+        // weighted children are now bounded by the Box's size
+    }
+}
+```
+
+## Architecture: one document per card
+
+For dashboard-shaped UIs (a list of independent cards that each update
+on their own), resist the urge to author one big `.rc` for the whole
+surface. Each widget instance owning its own document gives you:
+
+- independent state updates (one card's binding change doesn't invalidate
+  another's player),
+- independent hosting (install one card as a Glance widget without
+  dragging the whole dashboard into scope),
+- smaller documents (easier to stay under `remote-player` memory budgets
+  on Wear / embedded surfaces).
+
+Model this in previews too. A "dashboard" preview is a regular
+`Column` of `RemotePreview` hosts — *not* one `RemotePreview` wrapping a
+`RemoteVerticalStack`:
+
+```kotlin
+@Preview(widthDp = 381, heightDp = 411)
+@Composable
+fun Dashboard() {
+    Column(Modifier.fillMaxWidth()) {
+        PlayerSlot(heightDp = 43)  { RenderCard(tileA) }
+        PlayerSlot(heightDp = 43)  { RenderCard(tileB) }
+        PlayerSlot(heightDp = 169) { RenderCard(entities) }
+        PlayerSlot(heightDp = 149) { RenderCard(glance) }
+    }
+}
+
+@Composable
+private fun PlayerSlot(heightDp: Int, content: @Composable @RemoteComposable () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(heightDp.dp)) {
+        RemotePreview(profile = androidXExperimental, content = content)
+    }
+}
+```
+
+`RemoteDocPreview` (what `RemotePreview` delegates to) sizes the player
+from `LocalWindowInfo.current.containerSize`, so each slot must have a
+bounded size — a wrap-content parent won't work.
+
+## Pixel-parity canvas sizing
+
+When you're comparing RC renders to a reference screenshot, pin the
+preview canvas in dp such that the RC PNG has the same pixel
+dimensions as the reference PNG:
+
+```
+widthDp = round(referenceCapturePx.width / previewRenderDensity)
+```
+
+The `compose-preview` plugin renders at density **2.625**. If you
+capture HA / dashboard references via Puppeteer at
+`deviceScaleFactor = 2` (Retina), a 1000×444 px reference is 381×169 dp
+at our render density. Lock that in a top-of-file comment so future
+changes don't drift the canvas "for safety margin" and desync the
+comparison.
+
+When your converter emits content smaller than the reference card's
+natural size, do not shrink the canvas to hide the gap — the
+transparent padding is a signal to grow the widget, not the canvas.
