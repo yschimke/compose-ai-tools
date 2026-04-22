@@ -18,6 +18,19 @@ interface ModuleInfo {
     val mainRuntimeDependencies: Map<String, String>
     val testRuntimeDependencies: Map<String, String>
     val findings: List<ModuleFinding>
+    val agpVersion: String?
+    val kotlinVersion: String?
+    val renderPreviewsTask: RenderPreviewsTaskInfo?
+}
+
+interface RenderPreviewsTaskInfo {
+    val javaLauncherPinned: Boolean
+    val javaLauncherVersion: String?
+    val javaLauncherVendor: String?
+    val javaLauncherPath: String?
+    val classpathSize: Int
+    val bootstrapClasspathSize: Int
+    val jvmArgs: List<String>
 }
 
 interface ModuleFinding {

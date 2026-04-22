@@ -73,6 +73,68 @@ interface ModuleInfo {
      * both consume the same list — no per-tool drift.
      */
     val findings: List<ModuleFinding>
+
+    /**
+     * Android Gradle Plugin version applied to the module, or `null` if we
+     * couldn't read it (no AGP plugin applied, or AGP internals moved).
+     * Exposed for bug-report triage: issues like #142 depend on the AGP
+     * version the consumer is on.
+     */
+    val agpVersion: String?
+
+    /**
+     * Kotlin Gradle Plugin version applied to the module, or `null` if we
+     * couldn't read it. Same motivation as [agpVersion].
+     */
+    val kotlinVersion: String?
+
+    /**
+     * Diagnostic snapshot of the `renderPreviews` Test task — the Java
+     * launcher it will fork the test worker with, its classpath/bootstrap-
+     * classpath shape, and any JVM args copied from AGP. `null` when the
+     * task wasn't registered (plugin disabled for this module). Introduced
+     * to make bug reports like #142 self-contained: the silent "test worker
+     * falls back to system default JDK" footgun is visible directly here.
+     */
+    val renderPreviewsTask: RenderPreviewsTaskInfo?
+}
+
+/**
+ * Snapshot of the `renderPreviews` Test task's JVM configuration. Taken at
+ * Tooling-model build time, not at task execution — values reflect what
+ * Gradle would use if the task ran now.
+ */
+interface RenderPreviewsTaskInfo {
+    /**
+     * `true` when the task has an explicit toolchain launcher wired (either
+     * by the plugin itself in future, or inherited from AGP's test task).
+     * `false` when Gradle will fall back to the daemon's own JVM — or, worse
+     * on some Linux setups, to the system default `java` on PATH if the
+     * daemon was launched with a different JAVA_HOME override. See #142.
+     */
+    val javaLauncherPinned: Boolean
+
+    /** Effective Java major version the test worker will fork with. */
+    val javaLauncherVersion: String?
+
+    /** Effective JVM vendor (e.g. "Temurin", "Google Inc.") — useful for triage. */
+    val javaLauncherVendor: String?
+
+    /** Effective `java.home` the forked worker will use. */
+    val javaLauncherPath: String?
+
+    /** Number of entries on the task's `classpath`. */
+    val classpathSize: Int
+
+    /**
+     * Number of entries on the task's `bootstrapClasspath`. Non-zero on an
+     * AGP-wired unit-test task (AGP injects `mockable-android.jar`), zero on
+     * `renderPreviews` today. Exposed so doctor can call out the asymmetry.
+     */
+    val bootstrapClasspathSize: Int
+
+    /** JVM args applied to the forked worker (post-`jvmArgs(...)` copies). */
+    val jvmArgs: List<String>
 }
 
 /**

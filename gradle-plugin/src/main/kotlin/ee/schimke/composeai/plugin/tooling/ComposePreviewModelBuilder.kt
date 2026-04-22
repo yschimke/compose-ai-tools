@@ -4,6 +4,7 @@ import ee.schimke.composeai.plugin.PluginVersion
 import ee.schimke.composeai.plugin.PreviewExtension
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.tasks.testing.Test
 import org.gradle.tooling.provider.model.ToolingModelBuilder
 import java.io.Serializable
 
@@ -38,8 +39,81 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
         val gradleVersion = org.gradle.util.GradleVersion.current().version
         val findings: List<ModuleFinding> = CompatRules.evaluate(main, test, gradleVersion)
-        val info: ModuleInfo = ModuleInfoData(variant, main, test, findings)
+        val info: ModuleInfo = ModuleInfoData(
+            variant = variant,
+            mainRuntimeDependencies = main,
+            testRuntimeDependencies = test,
+            findings = findings,
+            agpVersion = resolveAgpVersion(),
+            kotlinVersion = resolveKotlinVersion(project),
+            renderPreviewsTask = resolveRenderPreviewsTask(project),
+        )
         return ComposePreviewModelData(PluginVersion.value, mapOf(project.path to info))
+    }
+
+    /**
+     * Reads AGP's embedded version constant via reflection so the plugin
+     * doesn't take a hard compile-time dependency on AGP internals. Returns
+     * `null` on any failure — doctor treats that as "unknown" rather than
+     * an error.
+     */
+    private fun resolveAgpVersion(): String? {
+        return try {
+            Class.forName("com.android.Version")
+                .getField("ANDROID_GRADLE_PLUGIN_VERSION")
+                .get(null) as? String
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Reads the Kotlin Gradle Plugin version via its documented helper
+     * (`KotlinPluginWrapperKt.getKotlinPluginVersion(Project)`). Reflective
+     * call to avoid a hard KGP compile dep on this plugin. Returns `null`
+     * if KGP isn't applied or its API moved.
+     */
+    private fun resolveKotlinVersion(project: Project): String? {
+        return try {
+            Class.forName("org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt")
+                .getMethod("getKotlinPluginVersion", Project::class.java)
+                .invoke(null, project) as? String
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Snapshots the `renderPreviews` Test task's forked-JVM configuration
+     * so doctor can flag the #142-class footgun (test worker silently
+     * forking on a different JDK than the Gradle daemon).
+     *
+     * `javaLauncher.isPresent` is always `true` at resolution time — Gradle
+     * fills in a convention value from the project toolchain or the daemon
+     * JVM. We can't observe "user never touched this" via the API, so we
+     * report the effective launcher and leave the mismatch check to the
+     * doctor side, which compares against the daemon JVM.
+     */
+    private fun resolveRenderPreviewsTask(project: Project): RenderPreviewsTaskInfo? {
+        val task = project.tasks.findByName("renderPreviews") as? Test ?: return null
+        val launcher = try {
+            task.javaLauncher.orNull
+        } catch (_: Throwable) {
+            null
+        }
+        val metadata = launcher?.metadata
+        val classpathSize = try { task.classpath.files.size } catch (_: Throwable) { -1 }
+        val bootstrapSize = try { task.bootstrapClasspath.files.size } catch (_: Throwable) { -1 }
+        val args = try { task.jvmArgs?.toList() ?: emptyList() } catch (_: Throwable) { emptyList() }
+        return RenderPreviewsTaskInfoData(
+            javaLauncherPinned = launcher != null,
+            javaLauncherVersion = metadata?.languageVersion?.asInt()?.toString(),
+            javaLauncherVendor = metadata?.vendor,
+            javaLauncherPath = metadata?.installationPath?.asFile?.absolutePath,
+            classpathSize = classpathSize,
+            bootstrapClasspathSize = bootstrapSize,
+            jvmArgs = args,
+        )
     }
 
     /**
@@ -97,4 +171,17 @@ private data class ModuleInfoData(
     override val mainRuntimeDependencies: Map<String, String>,
     override val testRuntimeDependencies: Map<String, String>,
     override val findings: List<ModuleFinding>,
+    override val agpVersion: String?,
+    override val kotlinVersion: String?,
+    override val renderPreviewsTask: RenderPreviewsTaskInfo?,
 ) : ModuleInfo, Serializable
+
+private data class RenderPreviewsTaskInfoData(
+    override val javaLauncherPinned: Boolean,
+    override val javaLauncherVersion: String?,
+    override val javaLauncherVendor: String?,
+    override val javaLauncherPath: String?,
+    override val classpathSize: Int,
+    override val bootstrapClasspathSize: Int,
+    override val jvmArgs: List<String>,
+) : RenderPreviewsTaskInfo, Serializable

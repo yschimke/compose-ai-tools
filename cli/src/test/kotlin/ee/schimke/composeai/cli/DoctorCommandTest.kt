@@ -54,4 +54,32 @@ class DoctorReportSerializationTest {
         )
         assertEquals("compose-preview-doctor/v1", report.schema)
     }
+
+    @Test fun `renderPreviews task-info serialises round-trip`() {
+        // The nested RenderPreviewsTaskInfo model sits behind the
+        // project.<module>.render-previews-jvm check — verify it
+        // serialises cleanly via the CLI's action type so the JSON
+        // output mode in `doctor --json` stays stable for agents
+        // consuming the new fields.
+        val info = SerializableModuleInfo(
+            variant = "debug",
+            mainRuntimeDependencies = emptyMap(),
+            testRuntimeDependencies = mapOf("org.robolectric:robolectric" to "4.16"),
+            findings = emptyList(),
+            agpVersion = "9.1.0",
+            kotlinVersion = "2.2.21",
+            renderPreviewsTask = SerializableRenderPreviewsTaskInfo(
+                javaLauncherPinned = false,
+                javaLauncherVersion = "25",
+                javaLauncherVendor = "Google Inc.",
+                javaLauncherPath = "/usr/lib/jvm/jdk25",
+                classpathSize = 412,
+                bootstrapClasspathSize = 0,
+                jvmArgs = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED"),
+            ),
+        )
+        assertEquals("9.1.0", info.agpVersion)
+        assertEquals("25", info.renderPreviewsTask?.javaLauncherVersion)
+        assertEquals(412, info.renderPreviewsTask?.classpathSize)
+    }
 }

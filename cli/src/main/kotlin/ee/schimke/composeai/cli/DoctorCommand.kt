@@ -45,6 +45,7 @@ import kotlin.system.exitProcess
  */
 class DoctorCommand(args: List<String>) {
     private val jsonOut = "--json" in args
+    private val reportOut = "--report" in args
     private val explain = "--explain" in args
     private val verbose = "--verbose" in args || "-v" in args
     private val projectDirArg = args.flagValue("--project")
@@ -54,7 +55,9 @@ class DoctorCommand(args: List<String>) {
 
     fun run() {
         // Environment checks always run.
+        checkOs()
         checkJava()
+        checkPathJava()
         val creds = checkCredentials()
         if (creds != null) probeMaven(creds)
         checkComposeBomVersion()
@@ -91,16 +94,44 @@ class DoctorCommand(args: List<String>) {
 
     // --- Env checks ---------------------------------------------------------
 
+    /**
+     * OS fingerprint. Cheap to collect and has saved several issue rounds —
+     * e.g. #142 was specific to a Linux kernel build not visible from
+     * `os.name` alone. We emit name/version/arch verbatim; doctor never
+     * branches on these.
+     */
+    private fun checkOs() {
+        val name = System.getProperty("os.name") ?: "unknown"
+        val version = System.getProperty("os.version") ?: ""
+        val arch = System.getProperty("os.arch") ?: ""
+        addCheck(
+            DoctorCheck(
+                id = "env.os",
+                category = "env",
+                status = "ok",
+                message = listOf(name, version, arch).filter { it.isNotBlank() }.joinToString(" "),
+            ),
+        )
+    }
+
     private fun checkJava() {
         val version = System.getProperty("java.specification.version")
         val major = version?.substringBefore('.')?.toIntOrNull()
+        // Fingerprint the CLI's own JVM so bug reports carry vendor (often
+        // differentiates the Linux-distro / Google-internal JDK that caused
+        // #142) and java.home (pinpoints SDKMAN vs system-provided installs).
+        val vendor = System.getProperty("java.vendor") ?: "unknown"
+        val runtime = System.getProperty("java.runtime.version") ?: System.getProperty("java.version") ?: "unknown"
+        val home = System.getProperty("java.home") ?: "unknown"
+        val detail = "vendor: $vendor; runtime: $runtime; java.home: $home"
         if (major != null && major >= 17) {
             addCheck(
                 DoctorCheck(
                     id = "env.java-17",
                     category = "env",
                     status = "ok",
-                    message = "Java $version on PATH",
+                    message = "CLI JVM Java $version",
+                    detail = detail,
                 ),
             )
         } else {
@@ -110,6 +141,7 @@ class DoctorCommand(args: List<String>) {
                     category = "env",
                     status = "error",
                     message = "Java 17+ required, got ${version ?: "unknown"}",
+                    detail = detail,
                     remediation = DoctorRemediation(
                         summary = "Install a JDK 17 and put it on PATH, or set JAVA_HOME.",
                         commands = listOf("sdk install java 17.0.11-tem"),
@@ -117,6 +149,48 @@ class DoctorCommand(args: List<String>) {
                 ),
             )
         }
+    }
+
+    /**
+     * Separate check for the `java` on `PATH`. Motivated by #142: the
+     * reporter's Gradle launcher was pinned to JDK 21 via `JAVA_HOME`, but
+     * their system default (`java` on PATH) was JDK 25 — and the forked
+     * `renderPreviews` test worker picked up the system default, because
+     * the Test task's `javaLauncher` wasn't pinned to the project toolchain.
+     * Separating the CLI JVM from the PATH JVM makes that delta visible in
+     * the first line of output.
+     *
+     * Skipped on Windows for now — `java -version` prints to stderr, the
+     * parsing is the same, but nobody is reporting Windows-specific bugs
+     * yet and `sh -c` isn't available there. Add when a Windows-only bug
+     * report needs it.
+     */
+    private fun checkPathJava() {
+        val sameAsCli = System.getProperty("java.home")?.let { home ->
+            // If PATH's `java` resolves to the same install as java.home,
+            // emitting a second check is noise — the cli check already
+            // covers it.
+            val probe = runCommand(listOf("sh", "-c", "command -v java"))
+            probe?.stdout?.trim()?.startsWith(home) == true
+        } ?: false
+        if (sameAsCli) return
+
+        val which = runCommand(listOf("sh", "-c", "command -v java")) ?: return
+        val path = which.stdout.trim().ifBlank { return }
+        val versionOut = runCommand(listOf(path, "-version"))?.stderrOrStdout()?.trim().orEmpty()
+        // `java -version` prints 3 lines to stderr: the version, the
+        // runtime build, and the VM build. We keep the first two, which
+        // carry vendor tagging (e.g. `+-google-release-868188172`).
+        val summary = versionOut.lines().take(2).joinToString(" | ").ifBlank { "unreachable" }
+        addCheck(
+            DoctorCheck(
+                id = "env.path-jvm",
+                category = "env",
+                status = "ok",
+                message = "`java` on PATH → $path",
+                detail = summary,
+            ),
+        )
     }
 
     private fun checkCredentials(): Credentials? {
@@ -233,9 +307,17 @@ class DoctorCommand(args: List<String>) {
 
     // --- Project checks -----------------------------------------------------
 
+    private var daemonGradleVersion: String? = null
+    private var daemonJavaHome: String? = null
+    private var daemonJavaMajor: Int? = null
+
     private fun runProjectChecks(projectDir: File) {
         val model = try {
             GradleConnection(projectDir, verbose = verbose).use { gc ->
+                // Daemon-JVM + Gradle-version snapshot. Runs first so other
+                // project-scope checks can compare against the daemon's JDK
+                // (e.g. flagging test worker mismatch in #142).
+                checkGradleDaemon(gc)
                 gc.runBuildAction(GatherComposePreviewModelAction())
             }
         } catch (e: Exception) {
@@ -282,7 +364,164 @@ class DoctorCommand(args: List<String>) {
         )
 
         for ((modulePath, info) in model.modules) {
+            checkModuleVersions(modulePath, info)
+            checkRenderPreviewsTask(modulePath, info)
             checkModuleCompat(modulePath, info)
+            checkErrorSignatures(projectDir, modulePath)
+        }
+    }
+
+    /**
+     * Emits the daemon's Gradle and JVM fingerprint as two `env` checks.
+     * We stash the JDK major and path on the class so per-module checks
+     * can compare against them (see [checkRenderPreviewsTask]).
+     *
+     * Runs inside the project block because fetching the model requires a
+     * live [GradleConnection]. It's logically an env concern though, so
+     * the check id lives under `env.*`.
+     */
+    private fun checkGradleDaemon(gc: GradleConnection) {
+        val env = gc.buildEnvironment() ?: run {
+            addCheck(
+                DoctorCheck(
+                    id = "env.gradle-daemon",
+                    category = "env",
+                    status = "warning",
+                    message = "could not fetch BuildEnvironment from Gradle daemon",
+                ),
+            )
+            return
+        }
+        daemonGradleVersion = env.gradle.gradleVersion
+        val javaHome = env.java.javaHome
+        daemonJavaHome = javaHome.absolutePath
+        // Derive JDK major from the release file — more reliable than
+        // guessing from `javaHome` path naming. Falls back to null if the
+        // file isn't there or doesn't parse (e.g. a non-standard install).
+        daemonJavaMajor = readJdkMajor(javaHome)
+        val majorStr = daemonJavaMajor?.let { "JDK $it" } ?: "unknown JDK"
+        addCheck(
+            DoctorCheck(
+                id = "env.gradle-daemon",
+                category = "env",
+                status = "ok",
+                message = "Gradle ${daemonGradleVersion} on $majorStr",
+                detail = "daemon java.home: ${daemonJavaHome}",
+            ),
+        )
+    }
+
+    /**
+     * Emits per-module version info — AGP, Kotlin, Robolectric, Compose
+     * runtime. Robolectric/Compose-runtime are read from the resolved test
+     * classpath; AGP/Kotlin are plugin-side reflective reads. All four are
+     * surfaced as an `info`-style ok-status check so `--report` has one
+     * pasteable block with everything a triager needs to see.
+     */
+    private fun checkModuleVersions(modulePath: String, info: ModuleInfo) {
+        val robolectric = info.testRuntimeDependencies["org.robolectric:robolectric"]
+        val composeRuntime = info.testRuntimeDependencies["androidx.compose.runtime:runtime"]
+        val parts = buildList {
+            add("variant=${info.variant}")
+            info.agpVersion?.let { add("agp=$it") }
+            info.kotlinVersion?.let { add("kotlin=$it") }
+            robolectric?.let { add("robolectric=$it") }
+            composeRuntime?.let { add("compose-runtime=$it") }
+        }
+        addCheck(
+            DoctorCheck(
+                id = "project.${idSafe(modulePath)}.versions",
+                category = "project",
+                status = "ok",
+                message = "$modulePath — ${parts.joinToString("  ")}",
+            ),
+        )
+    }
+
+    /**
+     * The check motivated by issue #142. If the test worker's forked JDK
+     * is a different major than the Gradle daemon's, emit a `warning` with
+     * the specific error signature the mismatch typically produces, plus a
+     * remediation pointing at the `javaLauncher` toolchain wiring.
+     *
+     * When the JDK majors match (or when we can't tell), this degrades to
+     * a pure info line — still useful in bug reports because it fingerprints
+     * the launcher vendor and path.
+     */
+    private fun checkRenderPreviewsTask(modulePath: String, info: ModuleInfo) {
+        val task = info.renderPreviewsTask ?: return
+        val launcherMajor = task.javaLauncherVersion?.toIntOrNull()
+        val launcherPath = task.javaLauncherPath ?: "(unknown)"
+        val launcherVendor = task.javaLauncherVendor ?: "unknown"
+        val mismatch = launcherMajor != null && daemonJavaMajor != null && launcherMajor != daemonJavaMajor
+        val detail = buildString {
+            append("launcher: JDK $launcherMajor ($launcherVendor) at $launcherPath")
+            append("; classpath=${task.classpathSize}, bootstrap=${task.bootstrapClasspathSize}")
+        }
+        if (mismatch) {
+            addCheck(
+                DoctorCheck(
+                    id = "project.${idSafe(modulePath)}.render-previews-jvm",
+                    category = "project",
+                    status = "warning",
+                    message = "$modulePath — renderPreviews will fork JDK $launcherMajor, Gradle daemon runs JDK $daemonJavaMajor",
+                    detail = "$detail; symptom on mismatch: `ClassNotFoundException: android.app.Application` during JUnit discovery (see issue #142)",
+                    remediation = DoctorRemediation(
+                        summary = "Pin the renderPreviews Test task to the project's Java toolchain.",
+                        commands = listOf(
+                            "kotlin { jvmToolchain(${daemonJavaMajor ?: 21}) }",
+                            "// or: tasks.named(\"renderPreviews\", Test::class) { javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(${daemonJavaMajor ?: 21})) }) }",
+                        ),
+                        docs = "https://github.com/$REPO/issues/142",
+                    ),
+                ),
+            )
+        } else {
+            addCheck(
+                DoctorCheck(
+                    id = "project.${idSafe(modulePath)}.render-previews-jvm",
+                    category = "project",
+                    status = "ok",
+                    message = "$modulePath — renderPreviews launcher JDK ${launcherMajor ?: "?"}",
+                    detail = detail,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Scans HTML reports under `build/reports/tests/renderPreviews/` for known error
+     * signatures and emits a per-module hint when it spots one. Purely
+     * pattern-based — we only match signatures we've seen in field reports,
+     * so false positives are rare and actionable. Best-effort: if there's
+     * no report on disk (first run, clean checkout) we silently skip.
+     */
+    private fun checkErrorSignatures(projectDir: File, modulePath: String) {
+        val moduleDir = File(projectDir, idSafe(modulePath)).takeIf { it.isDirectory } ?: return
+        val reportDir = File(moduleDir, "build/reports/tests/renderPreviews")
+        if (!reportDir.isDirectory) return
+        val htmls = reportDir.walkTopDown()
+            .maxDepth(4)
+            .filter { it.isFile && it.extension == "html" }
+            .toList()
+        if (htmls.isEmpty()) return
+
+        val haystack = htmls.asSequence().mapNotNull {
+            try { it.readText() } catch (_: Exception) { null }
+        }.joinToString("\n")
+
+        val hint = KNOWN_ERROR_SIGNATURES.firstOrNull { haystack.contains(it.pattern) }
+        if (hint != null) {
+            addCheck(
+                DoctorCheck(
+                    id = "project.${idSafe(modulePath)}.last-error",
+                    category = "project",
+                    status = "warning",
+                    message = "$modulePath — last renderPreviews run failed with a known signature",
+                    detail = "${hint.pattern} — ${hint.hint}",
+                    remediation = hint.remediation,
+                ),
+            )
         }
     }
 
@@ -453,9 +692,59 @@ class DoctorCommand(args: List<String>) {
     // --- Output -------------------------------------------------------------
 
     private fun emit() {
-        if (jsonOut) emitJson() else emitText()
+        when {
+            jsonOut -> emitJson()
+            reportOut -> emitReport()
+            else -> emitText()
+        }
         val errors = checks.count { it.status == "error" }
         exitProcess(if (errors > 0) 1 else 0)
+    }
+
+    /**
+     * Compact, paste-friendly fingerprint block intended for GitHub issue
+     * reports. Prints everything a triager needs upfront so the reporter
+     * doesn't have to re-run `gradlew --version`, `java -version`, etc.
+     * across multiple follow-up comments. Structure is flat key-value so
+     * grep-parsing from an agent is cheap, and the schema string anchors
+     * the v1 contract the same way [DoctorReport.schema] does.
+     *
+     * Each block (env / modules / errors) only prints when we have data —
+     * e.g. module versions are omitted when no project was detected.
+     */
+    private fun emitReport() {
+        println("compose-preview-doctor-report/v1")
+        println()
+        val env = checks.filter { it.category == "env" }
+        val project = checks.filter { it.category == "project" }
+        val deps = checks.filter { it.category == "deps" }
+
+        println("plugin: $pluginVersion")
+        for (c in env) {
+            val tail = c.detail?.let { "  ($it)" } ?: ""
+            println("${c.id}: ${c.message}$tail")
+        }
+        if (project.isNotEmpty()) {
+            println()
+            println("[project]")
+            for (c in project) {
+                println("${c.id} [${c.status}]: ${c.message}")
+                c.detail?.let { println("    $it") }
+            }
+        }
+        if (deps.isNotEmpty()) {
+            println()
+            println("[deps]")
+            for (c in deps) {
+                if (c.status == "ok") continue // compat-clean modules are noise here
+                println("${c.id} [${c.status}]: ${c.message}")
+                c.detail?.let { println("    $it") }
+            }
+        }
+
+        val summary = summary()
+        println()
+        println("summary: ok=${summary.ok} warning=${summary.warning} error=${summary.error} skipped=${summary.skipped}")
     }
 
     private fun emitText() {
@@ -559,7 +848,70 @@ class DoctorCommand(args: List<String>) {
     /** Sanitise a module path (e.g. `:sample-wear` → `sample-wear`) for use in check ids. */
     private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }
 
+    /**
+     * Exec a short-lived command and capture its stdout/stderr. Returns
+     * `null` if the executable wasn't found, the process failed to start,
+     * or it didn't finish within 5s — doctor folds all of those into "skip
+     * the check" rather than erroring on what's essentially optional
+     * fingerprinting.
+     */
+    private fun runCommand(cmd: List<String>): CommandResult? {
+        return try {
+            val process = ProcessBuilder(cmd)
+                .redirectErrorStream(false)
+                .start()
+            val stdout = process.inputStream.bufferedReader().use { it.readText() }
+            val stderr = process.errorStream.bufferedReader().use { it.readText() }
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return null
+            }
+            CommandResult(process.exitValue(), stdout, stderr)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private data class CommandResult(val exitCode: Int, val stdout: String, val stderr: String) {
+        /** `java -version` prints to stderr on most JDKs; fall back to stdout for the occasional one that doesn't. */
+        fun stderrOrStdout(): String = stderr.ifBlank { stdout }
+    }
+
+    /**
+     * Reads the JDK major version from `$javaHome/release`. Most JDK
+     * distributions ship this file with a `JAVA_VERSION=...` line — more
+     * reliable than guessing from the install path, which varies wildly
+     * (`/usr/lib/jvm/temurin-21-jdk-amd64` vs `/opt/homebrew/opt/openjdk@21`
+     * vs `~/.sdkman/candidates/java/21.0.11-tem`). Returns `null` when the
+     * file is missing or malformed.
+     */
+    private fun readJdkMajor(javaHome: File): Int? {
+        val release = File(javaHome, "release").takeIf { it.isFile } ?: return null
+        val line = try {
+            release.readLines().firstOrNull { it.startsWith("JAVA_VERSION=") }
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+        // Format: JAVA_VERSION="21.0.11"  OR  JAVA_VERSION="1.8.0_402"
+        val raw = line.substringAfter("=").trim().trim('"')
+        val major = raw.substringBefore('.').toIntOrNull() ?: return null
+        // Legacy JDK 8 reports as "1.8.x" — normalize to 8.
+        return if (major == 1) raw.split('.').getOrNull(1)?.toIntOrNull() else major
+    }
+
     private data class Credentials(val user: String, val token: String)
+
+    /**
+     * One known `renderPreviews` failure signature. Pattern is a plain
+     * substring we look for in the HTML test report; [hint] is the human
+     * explanation; [remediation] is the same action structure the rest of
+     * doctor emits, so agents get concrete commands out of this too.
+     */
+    private data class ErrorSignature(
+        val pattern: String,
+        val hint: String,
+        val remediation: DoctorRemediation?,
+    )
 
     companion object {
         private const val REPO = "yschimke/compose-ai-tools"
@@ -577,6 +929,42 @@ class DoctorCommand(args: List<String>) {
         private val SKIP_DIRS = setOf("build", "node_modules", "out", "dist", ".gradle")
 
         private val JSON = Json { prettyPrint = true; encodeDefaults = true }
+
+        /**
+         * Failure signatures the CLI recognises from `renderPreviews` HTML
+         * reports. Order matters — the first match wins. Keep the list
+         * curated: only patterns we've traced to a specific, actionable
+         * root cause belong here. Patterns that overlap benign test output
+         * produce false positives.
+         */
+        private val KNOWN_ERROR_SIGNATURES = listOf(
+            ErrorSignature(
+                pattern = "ClassNotFoundException: android.app.Application",
+                hint = "likely test-worker JVM mismatch (see issue #142)",
+                remediation = DoctorRemediation(
+                    summary = "Pin the renderPreviews Test task's javaLauncher to the project toolchain.",
+                    commands = listOf(
+                        "kotlin { jvmToolchain(21) }",
+                    ),
+                    docs = "https://github.com/$REPO/issues/142",
+                ),
+            ),
+            ErrorSignature(
+                pattern = "RuntimeException: Stub!",
+                hint = "android.jar on bootstrap classpath is shadowing Robolectric's instrumented android-all",
+                remediation = DoctorRemediation(
+                    summary = "Don't inject android.jar into bootstrapClasspath — keep it on the outer classpath only.",
+                    docs = "https://github.com/$REPO/blob/main/gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt",
+                ),
+            ),
+            ErrorSignature(
+                pattern = "NoSuchMethodError: androidx.compose.runtime.ComposeUiNode",
+                hint = "compose-bom too old — renderer-compiled calls postdate the runtime on the consumer's classpath",
+                remediation = DoctorRemediation(
+                    summary = "Bump compose-bom to at least 2025.01.00.",
+                ),
+            ),
+        )
     }
 }
 
