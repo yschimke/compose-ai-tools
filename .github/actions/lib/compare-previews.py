@@ -260,9 +260,11 @@ def _entry_label(info: dict) -> str:
     return " · ".join(parts) or info["previewId"]
 
 
-def _render_url(repo: str, branch: str, module: str, basename: str) -> str:
+def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
+    # ``ref`` is either a commit SHA (preferred: durable) or a branch name
+    # (first-run fallback when no baseline/PR commit exists yet).
     return (
-        f"https://raw.githubusercontent.com/{repo}/{branch}"
+        f"https://raw.githubusercontent.com/{repo}/{ref}"
         f"/renders/{module}/{basename}"
     )
 
@@ -271,8 +273,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     repo = args.repo
-    base_branch = args.base_branch
-    head_branch = args.head_branch
+    base_ref = args.base_ref
+    head_ref = args.head_ref
 
     current = load_cli_output(cli_json)
     baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
@@ -322,8 +324,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups.items()):
             hero_key, hero_cur, hero_bl = entries[0]
-            before = _render_url(repo, base_branch, module, hero_cur["renderBasename"])
-            after = _render_url(repo, head_branch, module, hero_cur["renderBasename"])
+            before = _render_url(repo, base_ref, module, hero_cur["renderBasename"])
+            after = _render_url(repo, head_ref, module, hero_cur["renderBasename"])
 
             lines.append(f"**`{fn}`** ({module})")
             lines.append("")
@@ -339,7 +341,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 variant_links = []
                 for _okey, ocur, _obl in entries[1:]:
                     label = _entry_label(ocur)
-                    link = _render_url(repo, head_branch, module, ocur["renderBasename"])
+                    link = _render_url(repo, head_ref, module, ocur["renderBasename"])
                     variant_links.append(f"[{label}]({link})")
                 lines.append("")
                 lines.append(f"Other variants: {', '.join(variant_links)}")
@@ -357,7 +359,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups_new.items()):
             hero_key, hero_info = entries[0]
-            after = _render_url(repo, head_branch, module, hero_info["renderBasename"])
+            after = _render_url(repo, head_ref, module, hero_info["renderBasename"])
 
             lines.append(
                 f"**`{fn}`** ({module}) "
@@ -368,7 +370,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 variant_links = []
                 for _okey, oinfo in entries[1:]:
                     label = _entry_label(oinfo)
-                    link = _render_url(repo, head_branch, module, oinfo["renderBasename"])
+                    link = _render_url(repo, head_ref, module, oinfo["renderBasename"])
                     variant_links.append(f"[{label}]({link})")
                 lines.append(f"Variants: {', '.join(variant_links)}")
             lines.append("")
@@ -451,9 +453,13 @@ def main() -> int:
     cmp.add_argument("cli_json", help="Path to compose-preview show --json output")
     cmp.add_argument("--baselines", required=True, help="Path to baselines.json")
     cmp.add_argument("--repo", required=True)
-    cmp.add_argument("--pr", required=True)
-    cmp.add_argument("--base-branch", default="preview_main")
-    cmp.add_argument("--head-branch", required=True, help="e.g. preview_pr/42")
+    # SHA-pin both sides so the PR comment's images keep resolving after
+    # `preview_main` advances and after the PR merges. Branch names are
+    # accepted as a first-run fallback when no commit exists yet.
+    cmp.add_argument("--base-ref", default="preview_main",
+                     help="preview_main commit SHA (or branch name) for Before URLs")
+    cmp.add_argument("--head-ref", required=True,
+                     help="preview_pr commit SHA (or branch name) for After URLs")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")
