@@ -433,9 +433,10 @@ internal object AndroidPreviewSupport {
         // When sharded, generate N Java subclasses of RobolectricRenderTestBase, each with
         // its own static @Parameters method that loads only that shard's slice of the manifest.
         // Gradle distributes tests across forks at the class level, so a single parameterized
-        // class can't be split — we give it N classes. Each shard subclass inherits @Config
-        // and @GraphicsMode from the base, so every JVM's sandbox key matches and each fork
-        // reuses its own cached sandbox across all previews in its slice.
+        // class can't be split — we give it N classes. Each shard subclass resolves its
+        // Robolectric config via the generated package-level `robolectric.properties`
+        // (sdk/graphicsMode/application/shadows), so every JVM's sandbox key matches and
+        // each fork reuses its own cached sandbox across all previews in its slice.
         val shardSourcesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/java")
         val shardClassesDir = project.layout.buildDirectory.dir("generated/composeai/render-shards/classes")
 
@@ -518,9 +519,26 @@ internal object AndroidPreviewSupport {
                 "--add-opens=java.base/java.nio=ALL-UNNAMED",
             )
 
-            // Belt-and-suspenders for the graphics/looper modes — the test class
-            // already pins `@GraphicsMode(NATIVE)`, but if those annotations ever
-            // regress to eager resolution we still want NATIVE/PAUSED.
+            // Inherit AGP's unit-test javaLauncher so the forked test worker
+            // runs on the same JDK as `test${capVariant}UnitTest` — which
+            // AGP has already wired to the project's Java toolchain if the
+            // consumer configured one (`java { toolchain { … } }` /
+            // `kotlin { jvmToolchain(…) }`), or to the daemon JVM otherwise.
+            //
+            // Without this, a custom `Test` task's `javaLauncher` property
+            // defaults to the first `java` on PATH, which on CI and in local
+            // shells with `JAVA_HOME` overrides is NOT necessarily the same
+            // JVM the Gradle daemon is running. That mismatch produces
+            // `ClassNotFoundException: android.app.Application` during JUnit
+            // discovery on some JVM/classloader combinations. See #142.
+            agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+
+            // Belt-and-braces for the graphics/looper modes. Config now
+            // lives in `ee/schimke/composeai/renderer/robolectric.properties`
+            // (see `RobolectricRenderTestBase` KDoc for why we can't use
+            // `@GraphicsMode` directly). These system properties are a third
+            // independent Robolectric config channel and cost nothing to
+            // keep — survive both annotation and properties paths regressing.
             systemProperty("robolectric.graphicsMode", "NATIVE")
             systemProperty("robolectric.looperMode", "PAUSED")
             // Conscrypt isn't needed for preview rendering (no TLS/HTTP paths

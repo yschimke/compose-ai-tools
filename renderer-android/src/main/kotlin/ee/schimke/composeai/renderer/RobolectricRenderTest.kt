@@ -31,8 +31,6 @@ import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
-import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
 
 /**
  * Loads the previews manifest and returns the subset assigned to `shardIndex`
@@ -210,18 +208,29 @@ object PreviewManifestLoader {
  * [RenderPreviewParams.kind] — @Composable previews use the reflective Compose
  * strategy, tile previews route through [TilePreviewComposable].
  *
- * `@Config.application` is deliberately unset here. The plugin writes a
- * package-level `ee/schimke/composeai/renderer/robolectric.properties` onto the
- * test classpath that Robolectric merges into the effective config. By default
- * that file pins `application=android.app.Application`, so the consumer's
- * custom `Application.onCreate()` does NOT run for preview rendering —
- * sidesteps platform-specific init (BridgingManager on non-Wear sandboxes,
- * Firebase, Play Services, WorkManager) that routinely fails inside
- * Robolectric. Consumers can set `composePreview.useConsumerApplication = true`
- * to restore the manifest-declared Application.
+ * Annotations that would normally live on this class (`@Config`,
+ * `@GraphicsMode`) are DELIBERATELY absent. They've moved to the generated
+ * `ee/schimke/composeai/renderer/robolectric.properties` file on the test
+ * classpath, which Robolectric merges into the effective config for every
+ * test in this package. The motivation is issue #142: JUnit's
+ * `AnnotationParser.parseClassValue` eagerly resolves `@Config.application()`
+ * default (`android.app.Application`) during test-class discovery, and on
+ * some JVMs (JDK 25 on certain Linux distros) that resolution fails with
+ * `ClassNotFoundException` because the test worker forks on a JVM where
+ * `android.jar` isn't on the bootstrap classpath. Removing `@Config` from
+ * the bytecode removes that parse path entirely.
+ *
+ * The properties file pins:
+ *   - `sdk=35` — matches the renderer's SDK assumption (was `@Config(sdk=[35])`)
+ *   - `graphicsMode=NATIVE` — HardwareRenderer path for Compose capture
+ *   - `application=android.app.Application` (default) — skips the consumer's
+ *     custom `Application.onCreate()` so preview rendering sidesteps
+ *     platform-specific init (BridgingManager on non-Wear sandboxes,
+ *     Firebase, Play Services, WorkManager) that routinely fails inside
+ *     Robolectric. Consumers can set `composePreview.useConsumerApplication = true`
+ *     to restore the manifest-declared Application.
+ *   - `shadows=…ShadowFontsContractCompat` — GoogleFont shadow is always on.
  */
-@Config(sdk = [35])
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 abstract class RobolectricRenderTestBase(
     private val preview: RenderPreviewEntry,
     /**

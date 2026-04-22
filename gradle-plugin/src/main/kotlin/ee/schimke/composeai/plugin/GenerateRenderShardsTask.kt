@@ -45,9 +45,10 @@ abstract class GenerateRenderShardsTask : DefaultTask() {
                 |
                 |/**
                 | * Auto-generated shard $i of $count. Do not edit.
-                | * Inherits @Config(sdk = 34) and @GraphicsMode(NATIVE) from
-                | * RobolectricRenderTestBase so every shard's sandbox key matches
-                | * — each fork reuses its cached sandbox across its slice of previews.
+                | * Robolectric config (sdk, graphicsMode, application, shadows) comes
+                | * from the package-level `robolectric.properties` emitted by the
+                | * plugin, so every shard's sandbox key matches and each fork reuses
+                | * its cached sandbox across its slice of previews.
                 | */
                 |@RunWith(ParameterizedRobolectricTestRunner.class)
                 |public class $className extends RobolectricRenderTestBase {
