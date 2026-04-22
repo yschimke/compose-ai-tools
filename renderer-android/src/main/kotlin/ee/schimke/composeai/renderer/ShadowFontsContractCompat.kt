@@ -94,9 +94,10 @@ class ShadowFontsContractCompat {
  * tags are simply ignored.
  *
  * `Typeface.Builder.setFontVariationSettings` is API 26+ (minSdk = 24 for the
- * renderer AAR, but the Test task always runs on SDK 35 — `@Config(sdk = [35])`
- * in `RobolectricRenderTestBase`). Fall through to the plain `createFromFile`
- * on pre-O just in case a consumer overrides the SDK level.
+ * renderer AAR, but the Test task always runs on SDK 35 — `sdk=35` in the
+ * generated `robolectric.properties`, see `GenerateRobolectricPropertiesTask`).
+ * Fall through to the plain `createFromFile` on pre-O just in case a consumer
+ * overrides the SDK level.
  *
  * Shared between [ShadowFontsContractCompat] (the `Font(GoogleFont(...))` path)
  * and [PixelSystemFontAliases] (the `Font(DeviceFontFamilyName("roboto-flex"))`

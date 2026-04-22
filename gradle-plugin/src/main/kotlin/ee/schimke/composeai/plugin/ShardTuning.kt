@@ -8,7 +8,7 @@ import kotlin.math.ceil
  * hardware, a slimmer sandbox, a new Robolectric release).
  *
  * Benchmarked on 2026-04-14 against the `sample-android` module (5 previews,
- * `@Config(sdk=[34])`, `GraphicsMode.NATIVE`). Numbers come from the per-testcase
+ * Robolectric `sdk=34`, `graphicsMode=NATIVE`). Numbers come from the per-testcase
  * times in `build/test-results/renderPreviews/` (one XML per task run):
  *  - First preview in a JVM: 4.03s (sandbox + classloader + first Compose setContent).
  *  - Previews 2–5 in the same JVM: 0.11–0.22s each (warm sandbox, cached classes).
