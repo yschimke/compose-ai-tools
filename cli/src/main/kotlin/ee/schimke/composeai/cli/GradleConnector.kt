@@ -222,6 +222,21 @@ class GradleConnection(
     }
 
     /**
+     * Fetch Gradle's `BuildEnvironment` model — exposes the daemon's Gradle
+     * version and its `javaHome`. Doctor uses both to triage bug reports
+     * where the forked test worker's JVM differs from the daemon's (#142).
+     * Returns `null` on any tooling-API failure; callers fold into "skip".
+     */
+    fun buildEnvironment(): org.gradle.tooling.model.build.BuildEnvironment? {
+        return try {
+            connection.model(org.gradle.tooling.model.build.BuildEnvironment::class.java).get()
+        } catch (e: Exception) {
+            if (verbose) System.err.println("Could not query BuildEnvironment: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Find all subprojects that have a `discoverPreviews` task — these have the
      * compose-ai-tools plugin applied.
      */

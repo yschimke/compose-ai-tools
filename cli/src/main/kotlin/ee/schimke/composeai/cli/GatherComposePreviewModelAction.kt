@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModel
 import ee.schimke.composeai.plugin.tooling.ModuleFinding
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
+import ee.schimke.composeai.plugin.tooling.RenderPreviewsTaskInfo
 import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildController
 import org.gradle.tooling.model.gradle.GradleBuild
@@ -51,10 +52,41 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
                             docsUrl = f.docsUrl,
                         )
                     },
+                    // New fields — marshalled defensively because older
+                    // plugin versions don't implement the getters. The
+                    // Tooling-API proxy throws `UnsupportedMethodException`
+                    // in that case; catching it here lets a recent CLI
+                    // still read an older plugin's model.
+                    agpVersion = readOptional { info.agpVersion },
+                    kotlinVersion = readOptional { info.kotlinVersion },
+                    renderPreviewsTask = readOptional { info.renderPreviewsTask }?.let { t ->
+                        SerializableRenderPreviewsTaskInfo(
+                            javaLauncherPinned = t.javaLauncherPinned,
+                            javaLauncherVersion = t.javaLauncherVersion,
+                            javaLauncherVendor = t.javaLauncherVendor,
+                            javaLauncherPath = t.javaLauncherPath,
+                            classpathSize = t.classpathSize,
+                            bootstrapClasspathSize = t.bootstrapClasspathSize,
+                            jvmArgs = t.jvmArgs.toList(),
+                        )
+                    },
                 )
             }
         }
         return AggregatedComposePreviewModel(pluginVersion, aggregated)
+    }
+
+    /**
+     * Read an optional getter on a Tooling-API proxy. Getters added to the
+     * model interface after the plugin version the consumer has installed
+     * throw `UnsupportedMethodException` at invocation time — we want those
+     * to surface as `null`, not propagate out as exceptions and kill the
+     * whole `compose-preview doctor` run.
+     */
+    private inline fun <T> readOptional(block: () -> T?): T? = try {
+        block()
+    } catch (_: Throwable) {
+        null
     }
 }
 
@@ -73,7 +105,20 @@ data class SerializableModuleInfo(
     override val mainRuntimeDependencies: Map<String, String>,
     override val testRuntimeDependencies: Map<String, String>,
     override val findings: List<SerializableModuleFinding>,
+    override val agpVersion: String? = null,
+    override val kotlinVersion: String? = null,
+    override val renderPreviewsTask: SerializableRenderPreviewsTaskInfo? = null,
 ) : ModuleInfo, Serializable
+
+data class SerializableRenderPreviewsTaskInfo(
+    override val javaLauncherPinned: Boolean,
+    override val javaLauncherVersion: String?,
+    override val javaLauncherVendor: String?,
+    override val javaLauncherPath: String?,
+    override val classpathSize: Int,
+    override val bootstrapClasspathSize: Int,
+    override val jvmArgs: List<String>,
+) : RenderPreviewsTaskInfo, Serializable
 
 data class SerializableModuleFinding(
     override val id: String,
