@@ -236,14 +236,36 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
-            if (editor?.document.languageId !== 'kotlin') { return; }
-            const filePath = editor.document.uri.fsPath;
-            // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
-            // event with the same Kotlin file. Re-running refresh there just
-            // cancels any in-flight render, flashes spinners, and burns a
-            // Gradle invocation — all for a no-op.
-            if (filePath === currentScopeFile) { return; }
-            refresh(false, filePath);
+            if (editor?.document.languageId === 'kotlin') {
+                const filePath = editor.document.uri.fsPath;
+                // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
+                // event with the same Kotlin file. Re-running refresh there
+                // just cancels any in-flight render, flashes spinners, and
+                // burns a Gradle invocation — all for a no-op.
+                if (filePath === currentScopeFile) { return; }
+                refresh(false, filePath);
+                return;
+            }
+            // New active isn't a Kotlin editor (webview focus, Agent plan,
+            // output pane, no active editor at all). If our sticky `.kt` is
+            // still visible in a split, keep the panel as-is; otherwise the
+            // sticky got covered/closed and we need to re-resolve (which may
+            // blank the panel) — issue #145.
+            if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+                refresh(false);
+            }
+        }),
+    );
+
+    // Fires on tab close and on editor-group layout changes. Catches the edge
+    // case where the sticky `.kt` was open in a split (not active) and the
+    // user closed that tab — onDidChangeActiveTextEditor doesn't fire because
+    // the active editor didn't change.
+    context.subscriptions.push(
+        vscode.window.onDidChangeVisibleTextEditors(() => {
+            if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+                refresh(false);
+            }
         }),
     );
 
@@ -320,10 +342,14 @@ function isPreviewSourceFile(filePath: string): boolean {
  * Resolve which file the panel should scope to, in priority order:
  *   1. Caller-provided path (explicit user action).
  *   2. The active text editor, if it's a Kotlin source file.
- *   3. The first visible Kotlin editor (covers focus-on-webview, Log,
- *      Problems pane, etc. — activeTextEditor is undefined/non-Kotlin then).
- *   4. The last file a refresh successfully scoped to, so transient focus
- *      changes don't unscope the panel.
+ *   3. The last file a refresh successfully scoped to — **only if it's still
+ *      rendered in a visible editor**. Keeps the panel stable when focus moves
+ *      to a non-editor view (Explorer, SCM, Agent plan) and the `.kt` remains
+ *      visible in a split. When the tab gets covered or closed, the sticky
+ *      fallback goes away and the panel blanks (issue #145). Matches the
+ *      pattern VS Code's own Outline / Timeline views use.
+ *   4. Any other visible Kotlin editor (fallback for when the sticky file is
+ *      gone but the user has another `.kt` open elsewhere).
  * Returns the resolved path and a short tag describing which fallback was used,
  * for logging.
  */
@@ -335,6 +361,11 @@ function resolveScopeFile(forFilePath?: string): { file?: string; source: string
         return { file: active.uri.fsPath, source: 'active' };
     }
 
+    if (currentScopeFile && isPreviewSourceFile(currentScopeFile)
+        && isFileVisibleInEditor(currentScopeFile)) {
+        return { file: currentScopeFile, source: 'sticky' };
+    }
+
     for (const editor of vscode.window.visibleTextEditors) {
         const doc = editor.document;
         if (doc.languageId === 'kotlin' && isPreviewSourceFile(doc.uri.fsPath)) {
@@ -342,11 +373,19 @@ function resolveScopeFile(forFilePath?: string): { file?: string; source: string
         }
     }
 
-    if (currentScopeFile && isPreviewSourceFile(currentScopeFile)) {
-        return { file: currentScopeFile, source: 'sticky' };
-    }
-
     return { source: 'none' };
+}
+
+/**
+ * True iff the given file is currently rendered in at least one text editor.
+ * ``visibleTextEditors`` reflects the editors the user can actually see — an
+ * open-but-covered tab (e.g. obscured by an Agent-plan webview in the same
+ * group) is *not* visible.
+ */
+function isFileVisibleInEditor(filePath: string): boolean {
+    return vscode.window.visibleTextEditors.some(
+        editor => editor.document.uri.fsPath === filePath,
+    );
 }
 
 function invalidateModuleCache(filePath: string): void {
