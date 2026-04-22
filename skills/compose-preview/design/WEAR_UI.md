@@ -75,6 +75,118 @@ The preferred list component in M3 Expressive is **`TransformingLazyColumn`** (w
     - **Auto-size Package**: `androidx.compose.foundation.text.TextAutoSize`
     - **Implementation**: Uses `TextAutoSize.StepBased()` to automatically adjust font size to fit constraints.
 
+#### TLC item recipe (all three pieces on every item)
+
+Every item in a `TransformingLazyColumn` needs three things, or the
+expressive layer silently stops working. The fix is always the same
+pair of imports and the same three lines on the item:
+
+```kotlin
+import androidx.wear.compose.material3.SurfaceTransformation
+import androidx.wear.compose.material3.lazy.rememberTransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
+
+val listState = rememberTransformingLazyColumnState()
+val transformationSpec = rememberTransformationSpec()   // 1. spec
+
+ScreenScaffold(scrollState = listState) { contentPadding ->
+    TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+        item {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec)   // 2. height
+                    .minimumVerticalContentPadding(
+                        ButtonDefaults.minimumVerticalListContentPadding
+                    ),
+                transformation = SurfaceTransformation(transformationSpec),  // 3. transform
+                onClick = { /* ... */ },
+            ) { Text("Action") }
+        }
+    }
+}
+```
+
+The `transformation` slot exists on every Material 3 surface that lives
+natively in a TLC — `Button`, `OutlinedButton`, `FilledTonalButton`,
+`ChildButton`, `SwitchButton`, `SplitSwitchButton`, `Card`, `AppCard`,
+`TitleCard`, `ListHeader`, `ListSubHeader`. Pass the same
+`SurfaceTransformation(transformationSpec)` to each, and
+`transformedHeight(this, transformationSpec)` on the modifier.
+
+The first item (typically a `ListHeader`) usually wants
+`ListHeaderDefaults.minimumTopListContentPadding` rather than the
+button/card defaults.
+
+#### Items whose composable has no `transformation` slot
+
+`Text`, `Row`, `Column`, `Box`, `Icon`, `ButtonGroup`, custom layout
+wrappers — any non-surface composable — don't accept
+`SurfaceTransformation`. Apply the transform manually via
+`graphicsLayer` and still call `transformedHeight` for the height
+calculation:
+
+```kotlin
+item {
+    Text(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                with(transformationSpec) {
+                    applyContainerTransformation(scrollProgress)
+                }
+            }
+            .transformedHeight(this, transformationSpec),
+        text = "Section description",
+    )
+}
+```
+
+This mirrors what
+[android/wear-os-samples/ComposeStarter](https://github.com/android/wear-os-samples/blob/main/ComposeStarter/app/src/main/java/com/example/android/wearable/composestarter/presentation/MainActivity.kt)
+does for its `ButtonGroup` item. `scrollProgress` inside the
+`graphicsLayer` block resolves to the `TransformingLazyColumnItemScope`
+receiver — no extra imports needed.
+
+#### Wrapper composables
+
+When a screen wraps its surfaces in a small helper (`SessionCard`
+around a `TitleCard`, a `ScreenHeader` around a `ListHeader`), thread
+the transformation through rather than re-reading it from a
+CompositionLocal:
+
+```kotlin
+@Composable
+fun SessionCard(
+    session: Session,
+    modifier: Modifier = Modifier,
+    transformation: SurfaceTransformation? = null,
+) {
+    TitleCard(
+        modifier = modifier,
+        transformation = transformation,   // forward to the M3 surface
+        onClick = { /* ... */ },
+        title = { Text(session.title) },
+    ) { /* ... */ }
+}
+```
+
+The caller in the TLC item scope passes
+`transformation = SurfaceTransformation(transformationSpec)` and still
+applies `.transformedHeight(this, transformationSpec)` on the modifier
+it passes in. Default `null` keeps the wrapper usable outside a TLC
+(e.g. in a plain `Column` preview).
+
+#### Don't: skip any of the three
+
+- Spec without `transformedHeight` → item height doesn't track the
+  morph, layout jumps at the bezel.
+- `transformedHeight` without `SurfaceTransformation` → heights update
+  but the surface stays flat; you get a plain lazy column with slightly
+  weird row heights.
+- `SurfaceTransformation` without `transformedHeight` → visual morph
+  without height compensation; items overlap.
+
 ### 3. Key Components
 - **`EdgeButton`**: A hallmark M3 pattern for round devices. It hugs the bottom edge of the screen and is the ideal place for the primary CTA.
 - **`ButtonGroup`**: For side-by-side actions (e.g., Two iconic `FilledIconButton`s).
