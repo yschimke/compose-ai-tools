@@ -151,6 +151,12 @@ internal object AndroidPreviewSupport {
         // static call but keeping the read out of `@TaskAction` avoids
         // surprises if Gradle ever namespaces it differently).
         val currentGradleVersion = org.gradle.util.GradleVersion.current().version
+        // Accumulator for inject records. The unconditional and
+        // conditional blocks below each append; the doctor task reads the
+        // list lazily via `project.provider { ... }` so it's evaluated
+        // AFTER the `afterEvaluate` block populates the tiles entry.
+        val injectedDependencies = mutableListOf<ee.schimke.composeai.plugin.tooling.InjectedDependency>()
+        val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
         project.tasks.register("composePreviewDoctor", ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java) {
             group = "compose preview"
             description = "Write compose-preview doctor findings to build/compose-previews/doctor.json"
@@ -160,6 +166,14 @@ internal object AndroidPreviewSupport {
             this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
             mainRuntimeRoot?.let { this.mainRuntimeRoot.set(it) }
             testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
+            this.injectedDependenciesJson.set(project.provider {
+                injectedDependencyJson.encodeToString(
+                    kotlinx.serialization.builtins.ListSerializer(
+                        ee.schimke.composeai.plugin.tooling.InjectedDependency.serializer()
+                    ),
+                    injectedDependencies.toList(),
+                )
+            })
         }
 
         // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
@@ -194,6 +208,22 @@ internal object AndroidPreviewSupport {
         project.dependencies.add(
             "testImplementation",
             "androidx.compose.ui:ui-test-junit4",
+        )
+        recordInjectedDependency(
+            project,
+            injectedDependencies,
+            coordinate = "androidx.compose.ui:ui-test-manifest",
+            configuration = "testImplementation",
+            outcome = "APPLIED",
+            reason = "merges ComponentActivity into the unit-test manifest for renderer",
+        )
+        recordInjectedDependency(
+            project,
+            injectedDependencies,
+            coordinate = "androidx.compose.ui:ui-test-junit4",
+            configuration = "testImplementation",
+            outcome = "APPLIED",
+            reason = "provides createAndroidComposeRule / mainClock used by renderer",
         )
 
         // Conditionally inject `androidx.wear.tiles:tiles-renderer` into the
@@ -262,25 +292,26 @@ internal object AndroidPreviewSupport {
                     if (hit) matchedConfigs += c.name
                 }
             if (matchedConfigs.isNotEmpty()) {
-                project.logger.info(
-                    "compose-ai-tools: tile-signal matched on [${matchedConfigs.joinToString(", ")}]; " +
-                        "injecting androidx.wear.tiles:tiles-renderer into ${variantName}Implementation"
-                )
                 project.dependencies.add(
                     "${variantName}Implementation",
                     "androidx.wear.tiles:tiles-renderer",
                 )
+                recordInjectedDependency(
+                    project,
+                    injectedDependencies,
+                    coordinate = "androidx.wear.tiles:tiles-renderer",
+                    configuration = "${variantName}Implementation",
+                    outcome = "MATCHED",
+                    reason = "signal matched on [${matchedConfigs.joinToString(", ")}]",
+                )
             } else {
-                // No signal found — logged at info so a consumer whose tile
-                // previews later fail with `NoClassDefFoundError` on
-                // `ProtoLayoutBaseTheme` can re-run with `--info` and see
-                // that the auto-injection silently decided not to fire.
-                // Stays silent by default for the vast majority of non-Wear
-                // consumers.
-                project.logger.info(
-                    "compose-ai-tools: no androidx.wear.tiles / horologist-tiles dep " +
-                        "found on any *Implementation/*Api/*RuntimeOnly configuration; " +
-                        "skipping tiles-renderer auto-injection"
+                recordInjectedDependency(
+                    project,
+                    injectedDependencies,
+                    coordinate = "androidx.wear.tiles:tiles-renderer",
+                    configuration = "",
+                    outcome = "SKIPPED",
+                    reason = "no androidx.wear.tiles / horologist-tiles dep on any *Implementation/*Api/*RuntimeOnly configuration",
                 )
             }
         }
@@ -803,4 +834,33 @@ internal object AndroidPreviewSupport {
 
     private fun String.cap(): String =
         replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+    /**
+     * Append an [ee.schimke.composeai.plugin.tooling.InjectedDependency] record
+     * and emit a uniform `info`-level line. Central helper so every
+     * injection site — unconditional or conditional — contributes to
+     * the doctor.json accumulator and the grep-friendly log format with
+     * the same shape:
+     *
+     *     compose-ai-tools: inject[<coord>] <OUTCOME> → <config>  (<reason>)
+     */
+    private fun recordInjectedDependency(
+        project: Project,
+        sink: MutableList<ee.schimke.composeai.plugin.tooling.InjectedDependency>,
+        coordinate: String,
+        configuration: String,
+        outcome: String,
+        reason: String,
+    ) {
+        sink += ee.schimke.composeai.plugin.tooling.InjectedDependency(
+            coordinate = coordinate,
+            configuration = configuration,
+            outcome = outcome,
+            reason = reason,
+        )
+        val target = configuration.ifEmpty { "—" }
+        project.logger.info(
+            "compose-ai-tools: inject[$coordinate] $outcome → $target  ($reason)"
+        )
+    }
 }
