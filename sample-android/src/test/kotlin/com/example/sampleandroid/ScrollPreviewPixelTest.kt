@@ -102,6 +102,40 @@ class ScrollPreviewPixelTest {
         assertThat(last.r).isLessThan(140.0)
     }
 
+    /**
+     * Regression guard for issue #154: a `@ScrollingPreview` with
+     * `modes = [END, GIF]` shares one composition across captures, so END
+     * leaves the scrollable at the bottom. Before the fix the follow-up
+     * GIF capture was a single frame indistinguishable from END
+     * (blue-dominant throughout). With the scroll reset, frame 0 should
+     * be red-dominant again.
+     */
+    @Test
+    fun `GIF capture following END resets scroll and still animates`() {
+        val base = "ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif"
+        val endPng = File(rendersDir, "${base}_SCROLL_end.png")
+        val gif = File(rendersDir, "${base}_SCROLL_gif.gif")
+        assertThat(endPng.exists()).isTrue()
+        assertThat(gif.exists()).isTrue()
+
+        // END still lands on the bottom of the gradient (sanity check the
+        // earlier capture wasn't accidentally disturbed by the reset).
+        val endAvg = averageColor(endPng)
+        assertThat(endAvg.dominant()).isEqualTo('B')
+
+        val frames = readGifFrames(gif)
+        // The driver should produce many frames per viewport scrolled;
+        // a 1-frame GIF is the pre-fix regression signature.
+        assertThat(frames.size).isAtLeast(2)
+
+        val first = avgOfImage(frames.first())
+        val last = avgOfImage(frames.last())
+        // Pre-fix: `first` was blue-dominant because the GIF started from
+        // wherever END left the scrollable.
+        assertThat(first.dominant()).isEqualTo('R')
+        assertThat(last.dominant()).isEqualTo('B')
+    }
+
     private fun avgOfImage(img: BufferedImage): Avg {
         var rs = 0L
         var gs = 0L

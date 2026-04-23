@@ -78,3 +78,20 @@ fun RedToBlueScrollPreview() {
 fun RedToBlueScrollGifPreview() {
     RedToBlueList(count = 16)
 }
+
+/**
+ * Regression fixture for #154. All captures in a multi-mode
+ * `@ScrollingPreview` share a single `setContent` composition and run in
+ * enum ordinal order (TOP → END → LONG → GIF), so when GIF follows END
+ * the scrollable is already at content end by the time GIF starts. Before
+ * the fix, the resulting `.gif` was a single frame indistinguishable
+ * from the END capture (scrolled-to-bottom, blue-dominant) — see issue.
+ * The fix scrolls back to the top before the frame walk, so frame 0
+ * should be red-dominant again while the last frame is blue.
+ */
+@Preview(name = "EndThenGif", showBackground = true, widthDp = 160, heightDp = 320)
+@ScrollingPreview(modes = [ScrollMode.END, ScrollMode.GIF])
+@Composable
+fun RedToBlueEndThenGifPreview() {
+    RedToBlueList(count = 16)
+}
