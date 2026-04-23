@@ -339,7 +339,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "0c6baea041bda3a70ef04875af80dc00e33e21e41204e9264f41a4dd1e193a4c",
+    "sha256": "4bda316aa4b8d159ff188261cf79091c59943505cda7aa2e4718d06ed346dd0e",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "sample-wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
