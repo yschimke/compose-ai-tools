@@ -63,6 +63,125 @@ the target project's dependencies are reachable from the chosen network
 level. CMP Desktop projects: yes on Trusted. Android projects: needs Custom
 with Google Maven added.
 
+## Trusted mode quickstart
+
+Recipe for getting `compose-preview` running end-to-end on the **default
+Trusted** network level — no allowlist changes, no Custom hosts, no Full
+access. Works for CMP Desktop / pure-JVM consumer projects. For Android
+consumers, follow this same recipe but switch to Custom first (next
+section).
+
+### Step 1 — Confirm the network level
+
+In the Claude Code web UI for your repo, leave the network access level
+at **Trusted** (the default). No further action needed; this covers
+Maven Central, the Gradle Plugin Portal, the Gradle distribution download,
+and GitHub release assets.
+
+### Step 2 — Environment setup script
+
+Paste this into the repo's environment setup script (Claude Code web UI →
+Environment → Setup script). It runs once when the environment is built
+and the resulting filesystem is cached into the snapshot.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1. JDK 17 — the project's Gradle toolchain pin. The pre-installed JDK 21
+#    can't satisfy it and Gradle's auto-provisioning is firewalled.
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jdk-headless
+
+# 2. Pre-download the Gradle distribution into the wrapper cache. Sidesteps
+#    the JVM-ignores-https_proxy gotcha at session start, and the bytes get
+#    baked into the env snapshot so future sessions skip the download.
+GRADLE_VER="$(grep -oP 'gradle-\K[0-9.]+(?=-bin)' gradle/wrapper/gradle-wrapper.properties)"
+GRADLE_ZIP="$HOME/.gradle/wrapper/dists/gradle-${GRADLE_VER}-bin"
+mkdir -p "$GRADLE_ZIP"
+curl -fsSL -o "/tmp/gradle-${GRADLE_VER}-bin.zip" \
+  "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip"
+# The wrapper expects a hash-named subdir; let the first `./gradlew` call
+# expand the zip itself by parking it in the cache root. Cheaper than
+# computing the hash here.
+
+# 3. Pre-warm the project's dependency cache. Tolerate failure — even a
+#    failed render still leaves Gradle's cache populated.
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew --no-daemon :cli:doctor || true
+```
+
+The `:cli:doctor` line is a stand-in for "any task that resolves the
+project's full dependency graph". Replace with `:app:renderAllPreviews` (or
+your equivalent) if you want the renderer's runtime classpath warmed too.
+
+### Step 3 — SessionStart hook for the CLI binary
+
+Drop the released CLI on `$PATH` at every session. Idempotent: only
+downloads on first run, every later session reuses the cached tarball.
+
+`.claude/hooks/install-compose-preview.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+VER=0.7.7  # bump when a new release ships
+TARGET="$HOME/.local/share/compose-preview"
+BIN="$TARGET/compose-preview-$VER/bin/compose-preview"
+if [[ ! -x "$BIN" ]]; then
+  mkdir -p "$TARGET"
+  curl -fsSL -o /tmp/compose-preview.tar.gz \
+    "https://github.com/yschimke/compose-ai-tools/releases/download/v${VER}/compose-preview-${VER}.tar.gz"
+  tar -xzf /tmp/compose-preview.tar.gz -C "$TARGET"
+fi
+echo "PATH=$(dirname "$BIN"):$PATH" >> "$CLAUDE_ENV_FILE"
+echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> "$CLAUDE_ENV_FILE"
+```
+
+`chmod +x .claude/hooks/install-compose-preview.sh`, then wire it into
+`.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": ".claude/hooks/install-compose-preview.sh" }
+      ]}
+    ]
+  }
+}
+```
+
+### Step 4 — Verify
+
+Open a fresh session and run:
+
+```bash
+compose-preview doctor
+```
+
+Expected: a `[env]` block showing JDK 17 on PATH and Gradle reachable, plus
+either a `[project]` block (if the plugin is applied to a CMP module) or a
+"no modules have the compose-preview plugin applied" remediation.
+
+Doctor will also flag "no GitHub Packages credentials found" as an error.
+**Ignore it** — the plugin is published to Maven Central (which is on the
+Trusted allowlist), so credentials aren't needed. The check predates the
+Maven Central migration and will exit non-zero either way; everything else
+in the env block is what matters.
+
+Then drive an actual render against any module with the plugin applied:
+
+```bash
+compose-preview list                      # discovery only — no PNG render
+compose-preview show --json --brief       # render + JSON paths/hashes
+```
+
+If `show` succeeds and prints PNG paths, Trusted mode is fully working
+end-to-end. If it fails complaining about `dl.google.com` or `maven.google.com`,
+your project pulls AGP/AndroidX — switch to Custom mode (next section).
+
 ## Recommended cloud setup
 
 ### 1. Pick the right network level
@@ -71,6 +190,7 @@ with Google Maven added.
 - **Custom** + Trusted defaults + `dl.google.com` + `maven.google.com` for
   any Android consumer (and for this repo's `./gradlew :cli:installDist` from
   a fresh clone, since the root build references AGP).
+
 
 The per-domain allowlist takes effect through the Claude Code web UI.
 
