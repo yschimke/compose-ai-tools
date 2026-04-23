@@ -192,7 +192,7 @@
     "captureLabel": "scroll gif",
     "functionName": "RedToBlueScrollGifPreview",
     "renderBasename": "ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif",
-    "sha256": "133c9cfb26708a42a045df255a08cf5818f66cfe95cd6bd9b5977b613d5a5229",
+    "sha256": "bf2108aec549cafc017311d299afac9ab577801ed63e0474a77a868789414fb2",
     "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
   },
   "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll": {
@@ -326,6 +326,13 @@
     "functionName": "ActivityListFontScalesPreview",
     "renderBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Small.png",
     "sha256": "1335823aa89b965689fdd7c9d88dc2c39c23633cd18df8e98711681ccabfb8a7",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "sample-wear/com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round": {
+    "captureLabel": "scroll gif",
+    "functionName": "ActivityListGifPreview",
+    "renderBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif",
+    "sha256": "be06543d0c74d6a686554c4a0814327ad036164af0da0a96aae1d18eb01537fc",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "sample-wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round": {
