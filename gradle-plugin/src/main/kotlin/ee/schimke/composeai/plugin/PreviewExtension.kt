@@ -65,6 +65,27 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
         objects.property(Boolean::class.java).convention(false)
 
     /**
+     * When `true`, `discoverPreviews` fails the build if it finds zero
+     * `@Preview`-annotated functions and emits a diagnostics block to the
+     * lifecycle log (classDirs entries with class-file counts, a sample of
+     * post-filter dependency JARs, the ClassGraph scan summary, and — if
+     * classes WERE scanned but no previews matched — the annotation FQNs
+     * observed so users can see whether a different-FQN `@Preview` is in
+     * use). Default: `false`, so existing empty modules stay silent.
+     *
+     * Intended mainly for CI (catch a silent regression where a wiring
+     * change drops every preview) and for triaging "0 previews discovered"
+     * reports — hence the double duty: the flag that fails the build also
+     * turns on the logging you need to know why it failed.
+     *
+     * Override at the command line with
+     * `-PcomposePreview.failOnEmpty=true` to flip for a single run without
+     * editing `build.gradle.kts`.
+     */
+    val failOnEmpty: Property<Boolean> =
+        objects.property(Boolean::class.java).convention(false)
+
+    /**
      * ATF (Accessibility Test Framework) checks, run against each rendered
      * preview. Off by default — turning it on surfaces findings in the CLI,
      * VSCode diagnostics, and `accessibility.json`, but does NOT break the

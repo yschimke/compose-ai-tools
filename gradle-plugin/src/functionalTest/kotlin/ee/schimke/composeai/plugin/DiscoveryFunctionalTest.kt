@@ -965,4 +965,70 @@ class DiscoveryFunctionalTest {
         assertThat(manifest.previews).hasSize(1)
         assertThat(manifest.previews[0].functionName).isEqualTo("NestedPreview")
     }
+
+    @Test
+    fun `failOnEmpty fails the build and emits diagnostics when no previews exist`() {
+        val projectDir = createCmpTestProject()
+
+        // Replace the preview source file with one that has NO @Preview annotations.
+        // Keeps Compose on the classpath so ClassGraph has real classes to report
+        // about — exactly the diagnostic "scan found classes but no @Preview" path.
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.material3.Text
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Composable
+            fun NotAPreview() {
+                Box(modifier = Modifier.size(100.dp).background(Color.Red)) {
+                    Text("Red")
+                }
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "-PcomposePreview.failOnEmpty=true", "--stacktrace")
+            .withPluginClasspath()
+            .buildAndFail()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.FAILED)
+        // The failure message names the module so CI logs make the regression obvious.
+        assertThat(result.output).contains("discovered 0 previews in module 'test-project'")
+        // Diagnostics block: classDirs listing (directory existence + class counts)
+        // and the ClassGraph summary. These are the two lines users need to see to
+        // disambiguate "wrong class dir" from "wrong @Preview FQN".
+        assertThat(result.output).contains("composePreview: failOnEmpty diagnostics")
+        assertThat(result.output).contains("classDirs (")
+        assertThat(result.output).contains("ClassGraph scan:")
+        // The sample had Compose classes but no @Preview — we should see the
+        // "no known @Preview FQN seen" branch, not the "FQNs WERE seen" branch.
+        assertThat(result.output).contains("no known @Preview FQN seen on any scanned method")
+    }
+
+    @Test
+    fun `failOnEmpty is quiet when previews exist`() {
+        val projectDir = createCmpTestProject()
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "-PcomposePreview.failOnEmpty=true", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+        // Diagnostics only emit on the empty path; a populated run must not
+        // spam the log with them.
+        assertThat(result.output).doesNotContain("failOnEmpty diagnostics")
+    }
 }

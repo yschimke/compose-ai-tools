@@ -222,15 +222,18 @@ internal object AndroidPreviewSupport {
         // heuristic above), Gradle fails with a clear "no version for
         // tiles-renderer" error.
         project.afterEvaluate {
-            val hasTilesSignal = sequenceOf(
-                "implementation",
-                "${variantName}Implementation",
-                "debugImplementation",
-                "releaseImplementation",
-                "testImplementation",
-                "${variantName}UnitTestImplementation",
-            )
-                .mapNotNull(project.configurations::findByName)
+            // Scan every configuration whose name ends in `Implementation` so
+            // the detection works for ANY buildType / flavor / variant combo
+            // (e.g. `uatImplementation`, `stagingImplementation`,
+            // `uatStagingImplementation`). The earlier hardcoded list of
+            // `debugImplementation` / `releaseImplementation` only fired on
+            // the default AGP buildTypes, missing custom flavored layouts
+            // like `uatDebug`. The group+name filter below is precise enough
+            // that casting a wider net is safe — false positives require a
+            // dep literally in the `androidx.wear.tiles` / horologist-tiles
+            // groups, which is the signal we're looking for.
+            val hasTilesSignal = project.configurations.asSequence()
+                .filter { it.name.endsWith("Implementation") }
                 .flatMap { it.allDependencies.asSequence() }
                 .any { dep ->
                     (dep.group == "androidx.wear.tiles" && dep.name in tilesSignalNames) ||

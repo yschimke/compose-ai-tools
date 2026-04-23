@@ -109,6 +109,15 @@ internal object ComposePreviewTasks {
                     .map { it.toBooleanStrictOrNull() ?: false }
                     .orElse(extension.accessibilityChecks.enabled),
             )
+            // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
+            // CI profiles and one-off triage runs can flip the gate without
+            // touching build.gradle(.kts). Same pattern as
+            // `accessibilityChecks.enabled` above.
+            failOnEmpty.set(
+                project.providers.gradleProperty("composePreview.failOnEmpty")
+                    .map { it.toBooleanStrictOrNull() ?: false }
+                    .orElse(extension.failOnEmpty),
+            )
             outputFile.set(previewOutputDir.map { it.file("previews.json") })
             group = "compose preview"
             description = "Discover @Preview annotations in compiled classes"
