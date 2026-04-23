@@ -793,6 +793,14 @@ private fun handleLongCapture(
 
     val slices = mutableListOf<SliceCapture>()
     try {
+        // Multi-mode annotations (e.g. END + LONG) run captures in enum
+        // ordinal order against the same composition, so an earlier END
+        // leaves the scrollable at content end. Reset to the top before
+        // slicing — otherwise the first slice is the end state and
+        // `driveScrollByViewport`'s first iteration bails with
+        // remaining ≈ 0, yielding a single "stitched" slice. See #154.
+        driveScrollToStart(rule, scroll.axis)
+
         // Drive at 80% of the viewport so each consecutive slice pair has a
         // ~20% physical overlap for the content-aware stitcher to lock onto.
         // The stitcher uses scrolledPx only as a hint — the actual vertical
@@ -914,6 +922,14 @@ private fun handleGifCapture(
 
     val frameFiles = mutableListOf<File>()
     try {
+        // Multi-mode annotations (`modes = [..., GIF]`) run captures in
+        // enum ordinal order against the same composition, so an earlier
+        // END / LONG leaves the scrollable at content end and the GIF
+        // would animate "from end to end" — a single frame indistinguishable
+        // from the END capture. Reset to the top before the frame walk
+        // starts. Fix for #154.
+        driveScrollToStart(rule, scroll.axis)
+
         // 10% of viewport per step → 10 frames per viewport. With the 80ms
         // default cadence that's 800ms of animation per viewport scrolled;
         // a typical Wear screen scrolls ~2–3 viewports of content, landing
