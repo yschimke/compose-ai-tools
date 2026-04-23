@@ -126,6 +126,28 @@ jobs:
             cli/build/distributions/compose-preview-*.tar.gz
           retention-days: 1
 
+  # Pack `skills/compose-preview/` (SKILL.md + design/) into a release asset
+  # so `scripts/install.sh` can drop it into ~/.claude/skills/ alongside the
+  # CLI launcher. Cheap step — just a tar of two directories.
+  build-skill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TAG_NAME }}
+          persist-credentials: false
+      - name: Pack skill bundle
+        run: |
+          ver="${TAG_NAME#v}"
+          mkdir -p dist
+          tar -czf "dist/compose-preview-skill-${ver}.tar.gz" \
+            -C skills/compose-preview .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: skill-dist
+          path: dist/compose-preview-skill-*.tar.gz
+          retention-days: 1
+
   build-vscode-extension:
     runs-on: ubuntu-latest
     steps:

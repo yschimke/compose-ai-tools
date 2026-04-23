@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 #
-# Bootstrap installer for the compose-preview CLI.
+# Bootstrap installer for the compose-preview skill bundle.
 #
-# Downloads a pinned (or latest) release tarball from GitHub, verifies the
-# sha256 against the GitHub release API (best-effort), installs into a
-# versioned directory under ~/.local/opt/compose-preview, and symlinks
-# ~/.local/bin/compose-preview to the new launcher. Idempotent: rerunning
+# Installs into ~/.claude/skills/compose-preview/ so Claude Code's skill
+# discovery finds it. Layout:
+#
+#   ~/.claude/skills/compose-preview/
+#   |-- SKILL.md                                       (from skill tarball)
+#   |-- design/...                                     (from skill tarball)
+#   |-- cli/compose-preview-<ver>/bin/compose-preview  (from CLI tarball)
+#   `-- bin/compose-preview -> ../cli/.../compose-preview
+#
+# Also symlinks ~/.local/bin/compose-preview so the CLI is on PATH without
+# the consumer having to know the skill-bundle layout. Idempotent: rerunning
 # with the same version is a no-op.
 #
 # Usage:
@@ -14,7 +21,8 @@
 #   VERSION=0.3.2 scripts/install.sh # same, via env
 #
 # Override locations:
-#   PREFIX=$HOME/.local scripts/install.sh
+#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh
+#   PREFIX=$HOME/.local scripts/install.sh    # for the ~/.local/bin symlink
 #   REPO=yschimke/compose-ai-tools scripts/install.sh
 #
 # Requires: bash, curl, tar, sha256sum (or shasum), and Java 17 on PATH at
@@ -34,11 +42,11 @@
 set -euo pipefail
 
 REPO="${REPO:-yschimke/compose-ai-tools}"
+SKILL_DIR="${SKILL_DIR:-$HOME/.claude/skills/compose-preview}"
 PREFIX="${PREFIX:-$HOME/.local}"
 VERSION="${1:-${VERSION:-}}"
 
 BIN_DIR="$PREFIX/bin"
-OPT_DIR="$PREFIX/opt/compose-preview"
 
 # Claude Code cloud sandbox auto-detection ---------------------------------
 if [[ -z "${CLAUDE_CLOUD:-}" ]]; then
@@ -101,11 +109,31 @@ if [[ -z "$VERSION" ]]; then
     || die "could not parse version from $RESOLVED"
 fi
 
-ASSET="compose-preview-${VERSION}.tar.gz"
-DEST="$OPT_DIR/$VERSION"
-LAUNCHER="$DEST/compose-preview-${VERSION}/bin/compose-preview"
+CLI_ASSET="compose-preview-${VERSION}.tar.gz"
+SKILL_ASSET="compose-preview-skill-${VERSION}.tar.gz"
+CLI_URL="https://github.com/$REPO/releases/download/v${VERSION}/${CLI_ASSET}"
+SKILL_URL="https://github.com/$REPO/releases/download/v${VERSION}/${SKILL_ASSET}"
 
-# ---- Idempotent short-circuit --------------------------------------------
+CLI_DEST="$SKILL_DIR/cli"
+LAUNCHER="$CLI_DEST/compose-preview-${VERSION}/bin/compose-preview"
+SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# ---- Skill tarball (best-effort: older releases don't ship one) ----------
+
+if curl -fL --progress-bar -o "$TMP/skill.tar.gz" "$SKILL_URL" 2>/dev/null; then
+  log "extracting skill bundle into $SKILL_DIR"
+  mkdir -p "$SKILL_DIR"
+  tar -xzf "$TMP/skill.tar.gz" -C "$SKILL_DIR"
+else
+  log "warning: $SKILL_ASSET not found on the release; skipping skill files"
+  log "         (CLI still installs; release predates skill packaging)"
+  mkdir -p "$SKILL_DIR"
+fi
+
+# ---- CLI tarball ---------------------------------------------------------
 
 maybe_write_env_file() {
   if [[ "$CLAUDE_CLOUD" == 1 && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
@@ -117,7 +145,9 @@ maybe_write_env_file() {
   fi
 }
 
-if [[ -x "$LAUNCHER" && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" ]]; then
+if [[ -x "$LAUNCHER" \
+   && "$(readlink "$SKILL_LAUNCHER" 2>/dev/null || true)" == *"compose-preview-${VERSION}"* \
+   && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" ]]; then
   log "compose-preview $VERSION already installed and linked"
   "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
   maybe_write_env_file
@@ -126,17 +156,15 @@ fi
 
 # ---- Fetch release metadata (best-effort for sha256) ---------------------
 
-ASSET_URL="https://github.com/$REPO/releases/download/v${VERSION}/${ASSET}"
-ASSET_DIGEST=""
-
+CLI_DIGEST=""
 log "fetching release metadata for v$VERSION"
 META_HEADERS=(-H "Accept: application/vnd.github+json")
 [[ -n "${GITHUB_TOKEN:-}" ]] && META_HEADERS+=(-H "Authorization: Bearer $GITHUB_TOKEN")
 
 if META="$(curl -fsSL "${META_HEADERS[@]}" \
      "https://api.github.com/repos/$REPO/releases/tags/v$VERSION" 2>/dev/null)"; then
-  ASSET_DIGEST="$(printf '%s' "$META" |
-    awk -v asset="$ASSET" '
+  CLI_DIGEST="$(printf '%s' "$META" |
+    awk -v asset="$CLI_ASSET" '
       /"name":/ { in_asset = ($0 ~ asset) }
       in_asset && /"digest":/ {
         sub(/.*"digest":[[:space:]]*"sha256:/, "")
@@ -151,27 +179,32 @@ fi
 
 # ---- Download + verify ----------------------------------------------------
 
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+log "downloading $CLI_URL"
+curl -fL --progress-bar -o "$TMP/$CLI_ASSET" "$CLI_URL" \
+  || die "download failed: $CLI_URL"
 
-log "downloading $ASSET_URL"
-curl -fL --progress-bar -o "$TMP/$ASSET" "$ASSET_URL" \
-  || die "download failed: $ASSET_URL"
-
-if [[ -n "${ASSET_DIGEST:-}" ]]; then
-  got="$(sha256_of "$TMP/$ASSET")"
-  [[ "$got" == "$ASSET_DIGEST" ]] \
-    || die "sha256 mismatch: expected $ASSET_DIGEST, got $got"
+if [[ -n "${CLI_DIGEST:-}" ]]; then
+  got="$(sha256_of "$TMP/$CLI_ASSET")"
+  [[ "$got" == "$CLI_DIGEST" ]] \
+    || die "sha256 mismatch: expected $CLI_DIGEST, got $got"
   log "verified sha256 $got"
 fi
 
 # ---- Install --------------------------------------------------------------
 
-log "installing to $DEST"
-mkdir -p "$DEST"
-tar -xzf "$TMP/$ASSET" -C "$DEST"
+log "installing CLI to $CLI_DEST"
+mkdir -p "$CLI_DEST"
+tar -xzf "$TMP/$CLI_ASSET" -C "$CLI_DEST"
 
 [[ -x "$LAUNCHER" ]] || die "launcher not found after extract: $LAUNCHER"
+
+# ---- Wire up the in-bundle launcher --------------------------------------
+
+mkdir -p "$SKILL_DIR/bin"
+ln -sf "../cli/compose-preview-${VERSION}/bin/compose-preview" "$SKILL_LAUNCHER"
+log "skill bundle launcher: $SKILL_LAUNCHER"
+
+# ---- Optional global symlink ---------------------------------------------
 
 mkdir -p "$BIN_DIR"
 ln -sf "$LAUNCHER" "$BIN_DIR/compose-preview"
@@ -206,4 +239,5 @@ EOF
 esac
 
 log "installed compose-preview $VERSION"
-log "next: run 'compose-preview doctor' in your project to verify Gradle + GitHub Packages access"
+log "skill bundle: $SKILL_DIR"
+log "next: run 'compose-preview doctor' in your project to verify Gradle access"

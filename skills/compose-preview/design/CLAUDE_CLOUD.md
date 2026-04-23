@@ -6,22 +6,28 @@ the common case; Android-consumer builds need one extra step.
 
 ## TL;DR
 
-- The released `compose-preview` CLI **runs** in the cloud sandbox out of the
-  box — one-step install is `./scripts/install.sh` from a checkout.
+- One-step install for both the skill bundle and the CLI:
+  ```
+  curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+  ```
+  Lands the skill at `~/.claude/skills/compose-preview/` (where Claude Code
+  discovers it) with the CLI extracted as a sibling under `cli/` and a
+  `bin/compose-preview` launcher inside the bundle. Also symlinks
+  `~/.local/bin/compose-preview` for direct CLI use.
 - **CMP Desktop / pure-JVM consumers**: works on the default **Trusted**
   network level. No allowlist changes needed.
 - **Android consumers** (anything pulling AGP / AndroidX / Robolectric):
   switch the session to **Custom** and add `dl.google.com` and
   `maven.google.com`, with the "include Trusted defaults" checkbox kept on.
   Don't use **Full** — it's broader than needed.
-- `scripts/install.sh` auto-detects the Claude Code cloud sandbox (via
+- `install.sh` auto-detects the Claude Code cloud sandbox (via
   `$CLAUDE_ENV_FILE` / `$CLAUDE_CODE_SESSION_ID`) and handles the two things
   the default image is missing: it apt-installs `openjdk-17-jdk-headless`
   (the Gradle toolchain pin is 17; only 21 is pre-installed) and appends
   `JAVA_HOME` + `PATH` to `$CLAUDE_ENV_FILE` so every subsequent tool
   invocation sees them.
-- Put heavy first-time dependency resolution in the **environment setup
-  script** so the populated Gradle cache is baked into the snapshot.
+- Put any project-specific Gradle pre-warm in the **environment setup
+  script** after the install line — what to render is yours to fill in.
 
 ## Cloud sandbox network levels
 
@@ -59,17 +65,39 @@ pins the JVM toolchain to 17, so 17 has to come from the setup script.
 
 ## One-step install
 
-`scripts/install.sh` handles everything the Claude Code cloud image is
-missing. Auto-detected via `$CLAUDE_ENV_FILE` / `$CLAUDE_CODE_SESSION_ID`
-(force with `CLAUDE_CLOUD=1` / `CLAUDE_CLOUD=0`). What it does when it sees
-the sandbox:
+`scripts/install.sh` (also fetchable as a remote one-liner from
+`raw.githubusercontent.com`) bootstraps both halves of the bundle in one
+shot:
+
+```
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+```
+
+Layout it produces:
+
+```
+~/.claude/skills/compose-preview/
+|-- SKILL.md                                       (from the skill tarball)
+|-- design/...                                     (from the skill tarball)
+|-- cli/compose-preview-<ver>/bin/compose-preview  (from the CLI tarball)
+`-- bin/compose-preview -> ../cli/.../compose-preview
+```
+
+`~/.claude/skills/compose-preview/` is the path Claude Code's skill
+discovery walks, so dropping the bundle here makes the skill available in
+any subsequent session — no project-level `.claude/skills/` copy needed.
+Also symlinks `~/.local/bin/compose-preview` so direct CLI use (outside
+agent invocation) still works without knowing the bundle path.
+
+Auto-detected as a Claude cloud sandbox via `$CLAUDE_ENV_FILE` /
+`$CLAUDE_CODE_SESSION_ID` (force with `CLAUDE_CLOUD=1` / `CLAUDE_CLOUD=0`).
+What it does when it sees the sandbox:
 
 - `apt-get install -y openjdk-17-jdk-headless` if Java 17 isn't already
   on disk. The pre-installed JDK 21 can't satisfy the project's toolchain
   pin, and Gradle's auto-provisioning is firewalled.
-- Downloads the released `compose-preview` tarball from `github.com`
-  release assets (skipping `api.github.com`, which rate-limits shared
-  sandbox IPs) and symlinks `~/.local/bin/compose-preview` to the launcher.
+- Downloads release tarballs from `github.com` directly, skipping
+  `api.github.com` (rate-limited on shared sandbox IPs).
 - Appends `JAVA_HOME` and `PATH` to `$CLAUDE_ENV_FILE` so subsequent tool
   invocations in the session inherit them.
 
@@ -98,19 +126,27 @@ and the resulting filesystem is cached into the snapshot.
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Installs JDK 17 + the compose-preview CLI, writes JAVA_HOME / PATH to
-# $CLAUDE_ENV_FILE. See scripts/install.sh for what it actually does.
-./scripts/install.sh
+# Installs JDK 17 + the compose-preview skill bundle (skill files + CLI
+# under ~/.claude/skills/compose-preview/). Writes JAVA_HOME / PATH to
+# $CLAUDE_ENV_FILE.
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
 
-# Pre-warm the project's dependency cache so the populated Gradle cache is
-# baked into the env snapshot. Tolerate failure — even a failed render
-# still leaves the cache populated. Swap in whichever module you render.
+# Optional: pre-warm your project's Gradle cache so the populated deps
+# get baked into the env snapshot. What to render is project-specific —
+# swap in whichever module(s) apply the plugin.
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-./gradlew --no-daemon :sample-cmp:renderAllPreviews || true
+export PATH=$HOME/.local/bin:$PATH
+compose-preview show --json --brief || true
 ```
 
-That's it. No separate SessionStart hook is needed — `install.sh` writes
-the env vars once and they persist across sessions via the env snapshot.
+The CLI auto-discovers every module that applies the plugin, so the
+pre-warm step doesn't need a hardcoded `:app` / `:sample-cmp` /
+whatever — `compose-preview show` resolves them on its own. Tolerate
+failure (`|| true`) — even a partial render still populates Gradle's
+cache.
+
+No separate SessionStart hook is needed — `install.sh` writes the env
+vars once and they persist across sessions via the env snapshot.
 
 ### Step 3 — Verify
 
@@ -159,11 +195,11 @@ Trusted defaults" on, and add:
 - `fonts.googleapis.com` + `fonts.gstatic.com` — only if you use
   `androidx.compose.ui:ui-text-google-fonts` at render time
 
-The same `./scripts/install.sh` bootstrap applies. For actual Android
+The same `curl … install.sh | bash` bootstrap applies. For actual Android
 rendering you also need an Android SDK in the env setup script:
 
 ```bash
-# After ./scripts/install.sh, still in the setup script:
+# After the install.sh curl, still in the setup script:
 sudo apt-get install -y unzip
 export ANDROID_HOME="$HOME/android-sdk"
 mkdir -p "$ANDROID_HOME/cmdline-tools"
