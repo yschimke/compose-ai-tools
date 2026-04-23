@@ -139,6 +139,14 @@ ignored in cloud sessions — see
   fetch a JDK. Always pass an already-installed JDK path via
   `-Dorg.gradle.java.installations.paths=/usr/lib/jvm/java-17-openjdk-amd64`
   or `JAVA_HOME`.
+- **Keep rendered previews under 1800px on the longest edge.** Claude's
+  cloud session enters a bad state when it's asked to view an image larger
+  than that, and recovery usually means restarting the session. Previews
+  above the threshold — long scroll captures, stitched `ScrollMode.LONG`
+  outputs, high-DPI fan-outs — should be rendered at a smaller size (shrink
+  `widthDp`/`heightDp` or the density) or down-scaled before an agent
+  reads them. `compose-preview show --brief` only returns paths, so you
+  won't trip the limit until something actually loads the PNG.
 
 ## Primary sources
 
