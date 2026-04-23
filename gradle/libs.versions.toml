@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.2.21"
+kotlin = "2.3.20"
 agp = "9.1.0"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
