@@ -169,7 +169,8 @@ Doctor will also flag "no GitHub Packages credentials found" as an error.
 **Ignore it** — the plugin is published to Maven Central (which is on the
 Trusted allowlist), so credentials aren't needed. The check predates the
 Maven Central migration and will exit non-zero either way; everything else
-in the env block is what matters.
+in the env block is what matters. Tracked in
+[issue #161](https://github.com/yschimke/compose-ai-tools/issues/161).
 
 Then drive an actual render against any module with the plugin applied:
 
