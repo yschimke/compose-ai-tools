@@ -167,11 +167,10 @@ The `[project]` block will show either per-module results (if the plugin
 is applied somewhere) or "no modules have the compose-preview plugin
 applied" if not.
 
-Doctor also flags "no GitHub Packages credentials found" as an error.
-**Ignore it** — the plugin is published to Maven Central (on the Trusted
-allowlist), so credentials aren't needed. The check predates the Maven
-Central migration; tracked in
-[issue #161](https://github.com/yschimke/compose-ai-tools/issues/161).
+The GitHub Packages credential check auto-skips when the project resolves
+the plugin from Maven Central (the common case since v0.6.0); it only
+fires if your `settings.gradle[.kts]` or any `build.gradle[.kts]` points at
+`maven.pkg.github.com`, typically for consuming snapshots.
 
 Then drive an actual render against any module with the plugin applied:
 

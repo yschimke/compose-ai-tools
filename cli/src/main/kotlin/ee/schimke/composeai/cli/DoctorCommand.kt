@@ -18,10 +18,13 @@ import kotlin.system.exitProcess
  *
  * **Environment** (always runs, safe outside a Gradle project):
  *   - Java 17+ on PATH
- *   - GitHub Packages credentials set and valid (`composeAiTools.githubUser` /
+ *   - GitHub Packages credentials (`composeAiTools.githubUser` /
  *     `...Token` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` /
- *     `GITHUB_TOKEN` env vars)
- *   - HEAD probe against `maven.pkg.github.com` verifies `read:packages`
+ *     `GITHUB_TOKEN` env vars). Only required when the consumer's
+ *     Gradle scripts actually point at `maven.pkg.github.com` —
+ *     otherwise the check reports `skipped`. See #161.
+ *   - HEAD probe against `maven.pkg.github.com` verifies `read:packages`,
+ *     same gate as above.
  *   - HEAD probes of Google-controlled hosts required by Android / downloadable-font
  *     render paths (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`,
  *     `fonts.gstatic.com`). Warnings only; set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`
@@ -62,15 +65,23 @@ class DoctorCommand(args: List<String>) {
         checkOs()
         checkJava()
         checkPathJava()
-        val creds = checkCredentials()
-        if (creds != null) probeMaven(creds)
+
+        // Resolve the project dir up-front so the GitHub Packages credential
+        // check can decide whether it's even relevant for this consumer.
+        // Since v0.6.0 the plugin is on Maven Central; GH Packages is only
+        // needed by projects that explicitly point at `maven.pkg.github.com`
+        // (typically for consuming snapshots). Issue #161.
+        val projectDir = resolveProjectDir()
+        val needsGhPackages = projectDir?.let(::projectUsesGitHubPackages) ?: false
+
+        val creds = checkCredentials(needsGhPackages)
+        if (creds != null && needsGhPackages) probeMaven(creds)
         checkComposeBomVersion()
         if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1") {
             checkNetworkReach()
         }
 
         // Project checks: only when a Gradle project is reachable.
-        val projectDir = resolveProjectDir()
         if (projectDir != null) {
             runProjectChecks(projectDir)
         } else {
@@ -200,7 +211,7 @@ class DoctorCommand(args: List<String>) {
         )
     }
 
-    private fun checkCredentials(): Credentials? {
+    private fun checkCredentials(needsGhPackages: Boolean): Credentials? {
         val propsFile = File(System.getProperty("user.home"), ".gradle/gradle.properties")
         val props = loadProperties(propsFile)
 
@@ -211,22 +222,34 @@ class DoctorCommand(args: List<String>) {
 
         when {
             user == null && token == null -> {
-                addCheck(
-                    DoctorCheck(
-                        id = "env.github-credentials",
-                        category = "env",
-                        status = "error",
-                        message = "no GitHub Packages credentials found",
-                        remediation = DoctorRemediation(
-                            summary = "Store a GitHub token with `read:packages` scope.",
-                            commands = listOf(
-                                "gh auth refresh -h github.com -s read:packages",
-                                "gh auth token",
+                if (needsGhPackages) {
+                    addCheck(
+                        DoctorCheck(
+                            id = "env.github-credentials",
+                            category = "env",
+                            status = "error",
+                            message = "no GitHub Packages credentials found (project points at maven.pkg.github.com)",
+                            remediation = DoctorRemediation(
+                                summary = "Store a GitHub token with `read:packages` scope.",
+                                commands = listOf(
+                                    "gh auth refresh -h github.com -s read:packages",
+                                    "gh auth token",
+                                ),
+                                docs = "https://github.com/$REPO#credentials",
                             ),
-                            docs = "https://github.com/$REPO#credentials",
                         ),
-                    ),
-                )
+                    )
+                } else {
+                    addCheck(
+                        DoctorCheck(
+                            id = "env.github-credentials",
+                            category = "env",
+                            status = "skipped",
+                            message = "no GitHub Packages credentials — not required for this project",
+                            detail = "The plugin resolves from Maven Central; GH Packages is only needed when a repository declares `maven.pkg.github.com` (typically for consuming snapshots).",
+                        ),
+                    )
+                }
                 return null
             }
             token == null -> {
@@ -234,7 +257,7 @@ class DoctorCommand(args: List<String>) {
                     DoctorCheck(
                         id = "env.github-credentials",
                         category = "env",
-                        status = "error",
+                        status = if (needsGhPackages) "error" else "warning",
                         message = "composeAiTools.githubToken is not set",
                     ),
                 )
@@ -647,6 +670,36 @@ class DoctorCommand(args: List<String>) {
                 ),
             )
         }
+    }
+
+    /**
+     * Does the project resolve anything from GitHub Packages? True when
+     * `settings.gradle[.kts]` or any `build.gradle[.kts]` under [root]
+     * mentions `maven.pkg.github.com`. Used to decide whether the
+     * GitHub-credentials check is relevant — the plugin has been on Maven
+     * Central since v0.6.0, so GH Packages only matters for projects
+     * that opt into it (typically for consuming snapshots). See #161.
+     */
+    private fun projectUsesGitHubPackages(root: File): Boolean {
+        val targets = setOf(
+            "settings.gradle", "settings.gradle.kts",
+            "build.gradle", "build.gradle.kts",
+        )
+        fun walk(dir: File, depth: Int): Boolean {
+            if (depth > 4 || dir.name.startsWith(".") || dir.name in SKIP_DIRS) return false
+            val children = dir.listFiles() ?: return false
+            for (f in children) {
+                if (f.isFile && f.name in targets) {
+                    val text = try { f.readText() } catch (_: Exception) { continue }
+                    if ("maven.pkg.github.com" in text) return true
+                }
+            }
+            for (f in children) {
+                if (f.isDirectory && walk(f, depth + 1)) return true
+            }
+            return false
+        }
+        return walk(root, 0)
     }
 
     /**
