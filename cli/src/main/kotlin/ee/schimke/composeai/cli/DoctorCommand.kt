@@ -22,6 +22,10 @@ import kotlin.system.exitProcess
  *     `...Token` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` /
  *     `GITHUB_TOKEN` env vars)
  *   - HEAD probe against `maven.pkg.github.com` verifies `read:packages`
+ *   - HEAD probes of Google-controlled hosts required by Android / downloadable-font
+ *     render paths (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`,
+ *     `fonts.gstatic.com`). Warnings only; set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`
+ *     to skip.
  *
  * **Project** (runs when a `settings.gradle[.kts]` is found at `--project` or cwd):
  *   - Plugin applied to at least one module
@@ -61,6 +65,9 @@ class DoctorCommand(args: List<String>) {
         val creds = checkCredentials()
         if (creds != null) probeMaven(creds)
         checkComposeBomVersion()
+        if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1") {
+            checkNetworkReach()
+        }
 
         // Project checks: only when a Gradle project is reachable.
         val projectDir = resolveProjectDir()
@@ -817,6 +824,63 @@ class DoctorCommand(args: List<String>) {
         checks += check
     }
 
+    /**
+     * Probe Google-controlled hosts that the Android render path and Compose's
+     * downloadable-fonts integration depend on at build + render time. Each
+     * host becomes one `env.network.<id>` check; an unreachable host is a
+     * warning (it only matters for specific consumers) and points at the
+     * Claude Code on-the-web Custom-allowlist docs, since this is the most
+     * common place the checks fail.
+     */
+    private fun checkNetworkReach() {
+        NETWORK_HOSTS.forEach { probe ->
+            val (code, headers) = headPlain(probe.url)
+            val id = "env.network.${probe.id}"
+            val check = if (code > 0) {
+                DoctorCheck(
+                    id = id,
+                    category = "env",
+                    status = "ok",
+                    message = "${probe.host} reachable (HTTP $code)",
+                )
+            } else {
+                DoctorCheck(
+                    id = id,
+                    category = "env",
+                    status = "warning",
+                    message = "${probe.host} unreachable",
+                    detail = "${probe.purpose}. Error: ${headers["error"] ?: "unknown"}.",
+                    remediation = DoctorRemediation(
+                        summary = "Allow ${probe.host} in your sandbox / proxy configuration. In Claude Code cloud sessions this means switching network access to Custom and adding the host (keep 'include Trusted defaults' on).",
+                        docs = "https://code.claude.com/docs/en/claude-code-on-the-web#network-access",
+                    ),
+                )
+            }
+            addCheck(check)
+        }
+    }
+
+    private fun headPlain(url: String): Pair<Int, Map<String, String>> {
+        val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+            requestMethod = "HEAD"
+            connectTimeout = 3_000
+            readTimeout = 3_000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "compose-preview-doctor")
+        }
+        return try {
+            val code = conn.responseCode
+            val headers = conn.headerFields
+                .filterKeys { it != null }
+                .mapValues { it.value.joinToString(", ") }
+            code to headers
+        } catch (e: Exception) {
+            -1 to mapOf("error" to (e.message ?: e.javaClass.simpleName))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun head(url: String, creds: Credentials): Pair<Int, Map<String, String>> {
         val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "HEAD"
@@ -933,6 +997,45 @@ class DoctorCommand(args: List<String>) {
         private const val MIN_BOM_MONTH = 1
 
         private val SKIP_DIRS = setOf("build", "node_modules", "out", "dist", ".gradle")
+
+        private data class NetworkHost(
+            val id: String,
+            val host: String,
+            val url: String,
+            val purpose: String,
+        )
+
+        /**
+         * Google-controlled hosts required by the Android/Compose render
+         * paths. None are on Claude Code's default Trusted allowlist — they
+         * only resolve in Custom mode or in environments with broader egress.
+         */
+        private val NETWORK_HOSTS = listOf(
+            NetworkHost(
+                id = "maven-google",
+                host = "maven.google.com",
+                url = "https://maven.google.com/web/index.html",
+                purpose = "Google Maven — resolves AGP and AndroidX for Android-consumer renders",
+            ),
+            NetworkHost(
+                id = "dl-google",
+                host = "dl.google.com",
+                url = "https://dl.google.com/",
+                purpose = "Android SDK cmdline-tools / platform downloads",
+            ),
+            NetworkHost(
+                id = "fonts-googleapis",
+                host = "fonts.googleapis.com",
+                url = "https://fonts.googleapis.com/",
+                purpose = "Google Fonts API — used by androidx.compose.ui:ui-text-google-fonts at render time",
+            ),
+            NetworkHost(
+                id = "fonts-gstatic",
+                host = "fonts.gstatic.com",
+                url = "https://fonts.gstatic.com/",
+                purpose = "Google Fonts static asset host — downloadable-font binaries",
+            ),
+        )
 
         private val JSON = Json { prettyPrint = true; encodeDefaults = true }
 
