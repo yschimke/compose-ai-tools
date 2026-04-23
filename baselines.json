@@ -188,6 +188,20 @@
     "sha256": "f9c3376703cc046ab7db01a412e4167c1f8bcd89569f0ab4a238d48e126cd7ee",
     "sourceFile": "com/example/sampleandroid/Previews.kt"
   },
+  "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif": {
+    "captureLabel": "scroll end",
+    "functionName": "RedToBlueEndThenGifPreview",
+    "renderBasename": "ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif_SCROLL_end.png",
+    "sha256": "5b62181e4dfbfca31fab7650f2eb9b08992f586df94c8d007f6171ee32a6af8c",
+    "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif#1": {
+    "captureLabel": "scroll gif",
+    "functionName": "RedToBlueEndThenGifPreview",
+    "renderBasename": "ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif_SCROLL_gif.gif",
+    "sha256": "bf2108aec549cafc017311d299afac9ab577801ed63e0474a77a868789414fb2",
+    "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
+  },
   "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif": {
     "captureLabel": "scroll gif",
     "functionName": "RedToBlueScrollGifPreview",
