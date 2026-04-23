@@ -271,9 +271,6 @@ abstract class Command(protected val args: List<String>) {
      */
     protected val brief: Boolean = "--brief" in args
 
-    protected lateinit var projectDir: File
-        private set
-
     abstract fun run()
 
     protected fun withGradle(block: (GradleConnection) -> Unit) {
@@ -281,12 +278,21 @@ abstract class Command(protected val args: List<String>) {
             System.err.println("Cannot find Gradle project root (no gradlew found)")
             exitProcess(1)
         }
-        projectDir = root
         GradleConnection(root, verbose, progress).use(block)
     }
 
-    protected fun resolveModules(gradle: GradleConnection): List<String> {
-        if (explicitModule != null) return listOf(explicitModule!!)
+    protected fun resolveModules(gradle: GradleConnection): List<PreviewModule> {
+        if (explicitModule != null) {
+            // Resolve via the Tooling API so --module works with nested
+            // Gradle paths (e.g. `--module auth:composables`) and reflects
+            // any custom `project.projectDir` override.
+            val one = gradle.findPreviewModule(explicitModule!!)
+            if (one == null) {
+                System.err.println("Module '$explicitModule' not found or does not apply the compose-ai-tools plugin.")
+                exitProcess(1)
+            }
+            return listOf(one)
+        }
 
         val modules = gradle.findPreviewModules()
         if (modules.isEmpty()) {
@@ -295,7 +301,7 @@ abstract class Command(protected val args: List<String>) {
             exitProcess(1)
         }
         if (verbose || modules.size > 1) {
-            System.err.println("Found preview modules: ${modules.joinToString(", ")}")
+            System.err.println("Found preview modules: ${modules.joinToString(", ") { it.gradlePath }}")
         }
         return modules
     }
@@ -304,13 +310,13 @@ abstract class Command(protected val args: List<String>) {
         return gradle.runTasks(*tasks, timeoutSeconds = timeoutSeconds)
     }
 
-    protected fun readManifest(module: String): PreviewManifest? {
-        val manifestFile = projectDir.resolve("$module/build/compose-previews/previews.json")
+    protected fun readManifest(module: PreviewModule): PreviewManifest? {
+        val manifestFile = module.projectDir.resolve("build/compose-previews/previews.json")
         if (!manifestFile.exists()) return null
         return json.decodeFromString(manifestFile.readText())
     }
 
-    protected fun readAllManifests(modules: List<String>): List<Pair<String, PreviewManifest>> {
+    protected fun readAllManifests(modules: List<PreviewModule>): List<Pair<PreviewModule, PreviewManifest>> {
         return modules.mapNotNull { module ->
             readManifest(module)?.let { module to it }
         }
@@ -329,12 +335,12 @@ abstract class Command(protected val args: List<String>) {
      * a prior opt-in run.
      */
     protected fun readAllA11yReports(
-        manifests: List<Pair<String, PreviewManifest>>,
+        manifests: List<Pair<PreviewModule, PreviewManifest>>,
     ): Map<String, Pair<List<AccessibilityFinding>, String?>> {
         val out = mutableMapOf<String, Pair<List<AccessibilityFinding>, String?>>()
         for ((module, manifest) in manifests) {
             val pointer = manifest.accessibilityReport ?: continue
-            val reportFile = projectDir.resolve("$module/build/compose-previews/$pointer")
+            val reportFile = module.projectDir.resolve("build/compose-previews/$pointer")
             if (!reportFile.exists()) continue
             val report = try {
                 json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
@@ -348,7 +354,7 @@ abstract class Command(protected val args: List<String>) {
                     ?.let { reportDir.resolve(it).canonicalFile }
                     ?.takeIf { it.exists() }
                     ?.absolutePath
-                out["$module/${entry.previewId}"] = entry.findings to annotatedAbs
+                out["${module.gradlePath}/${entry.previewId}"] = entry.findings to annotatedAbs
             }
         }
         return out
@@ -366,12 +372,13 @@ abstract class Command(protected val args: List<String>) {
      * `sha256` / `changed` on [PreviewResult] mirror the first capture
      * verbatim so existing agents keep working.
      */
-    protected fun buildResults(manifests: List<Pair<String, PreviewManifest>>): List<PreviewResult> {
+    protected fun buildResults(manifests: List<Pair<PreviewModule, PreviewManifest>>): List<PreviewResult> {
         val results = mutableListOf<PreviewResult>()
         val a11yByKey = readAllA11yReports(manifests)
         // Track which modules had a11y enabled so we can distinguish "no
         // findings" (empty list) from "feature off" (null) in `PreviewResult`.
-        val modulesWithA11y = manifests.filter { it.second.accessibilityReport != null }.map { it.first }.toSet()
+        val modulesWithA11y = manifests.filter { it.second.accessibilityReport != null }
+            .map { it.first.gradlePath }.toSet()
 
         for ((module, manifest) in manifests) {
             val prior = readState(module).shas
@@ -403,7 +410,7 @@ abstract class Command(protected val args: List<String>) {
                 val captureResults = captures.mapIndexed { index, capture ->
                     val pngFile = capture.renderOutput
                         .takeIf { it.isNotEmpty() }
-                        ?.let { projectDir.resolve("$module/build/compose-previews/$it").canonicalFile }
+                        ?.let { module.projectDir.resolve("build/compose-previews/$it").canonicalFile }
                         ?.takeIf { it.exists() }
                     val sha = pngFile?.let { sha256(it.readBytes()) }
                     val stateKey = if (index == 0) p.id else "${p.id}#$index"
@@ -424,16 +431,16 @@ abstract class Command(protected val args: List<String>) {
                 }
                 val first = captureResults.firstOrNull()
                 val a11yPair = when {
-                    module in modulesWithA11y -> a11yByKey["$module/${p.id}"]
+                    module.gradlePath in modulesWithA11y -> a11yByKey["${module.gradlePath}/${p.id}"]
                     else -> null
                 }
                 val a11y = when {
-                    module in modulesWithA11y -> a11yPair?.first ?: emptyList()
+                    module.gradlePath in modulesWithA11y -> a11yPair?.first ?: emptyList()
                     else -> null
                 }
                 results += PreviewResult(
                     id = p.id,
-                    module = module,
+                    module = module.gradlePath,
                     functionName = p.functionName,
                     className = p.className,
                     sourceFile = p.sourceFile,
@@ -468,12 +475,12 @@ abstract class Command(protected val args: List<String>) {
      * rendered no files at all, so we don't duplicate the error surface here.
      */
     private fun expandParamCaptures(
-        module: String,
+        module: PreviewModule,
         template: Capture,
         siblingRenderOutputs: Set<String>,
     ): List<Capture> {
         val rel = template.renderOutput.ifEmpty { return listOf(template) }
-        val file = projectDir.resolve("$module/build/compose-previews/$rel").canonicalFile
+        val file = module.projectDir.resolve("build/compose-previews/$rel").canonicalFile
         val dir = file.parentFile ?: return listOf(template)
         val prefix = file.nameWithoutExtension + "_"
         val ext = ".${file.extension}"
@@ -579,10 +586,10 @@ abstract class Command(protected val args: List<String>) {
         return true
     }
 
-    private fun stateFile(module: String): File =
-        projectDir.resolve("$module/build/compose-previews/.cli-state.json")
+    private fun stateFile(module: PreviewModule): File =
+        module.projectDir.resolve("build/compose-previews/.cli-state.json")
 
-    private fun readState(module: String): CliState {
+    private fun readState(module: PreviewModule): CliState {
         val f = stateFile(module)
         if (!f.exists()) return CliState()
         return try {
@@ -593,7 +600,7 @@ abstract class Command(protected val args: List<String>) {
         }
     }
 
-    private fun writeState(module: String, state: CliState) {
+    private fun writeState(module: PreviewModule, state: CliState) {
         val f = stateFile(module)
         f.parentFile?.mkdirs()
         f.writeText(json.encodeToString(CliState.serializer(), state))
@@ -615,7 +622,7 @@ class ShowCommand(args: List<String>) : Command(args) {
     override fun run() {
         withGradle { gradle ->
             val modules = resolveModules(gradle)
-            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
+            val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
 
             if (!runGradle(gradle, *tasks)) {
                 System.err.println("Render failed")
@@ -699,7 +706,7 @@ class ListCommand(args: List<String>) : Command(args) {
     override fun run() {
         withGradle { gradle ->
             val modules = resolveModules(gradle)
-            val tasks = modules.map { ":$it:discoverPreviews" }.toTypedArray()
+            val tasks = modules.map { ":${it.gradlePath}:discoverPreviews" }.toTypedArray()
 
             if (!runGradle(gradle, *tasks)) exitProcess(1)
 
@@ -732,7 +739,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     override fun run() {
         withGradle { gradle ->
             val modules = resolveModules(gradle)
-            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
+            val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
 
             if (!runGradle(gradle, *tasks)) exitProcess(2)
 
@@ -797,7 +804,7 @@ class A11yCommand(args: List<String>) : Command(args) {
     override fun run() {
         withGradle { gradle ->
             val modules = resolveModules(gradle)
-            val tasks = modules.map { ":$it:renderAllPreviews" }.toTypedArray()
+            val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
             val buildOk = runGradle(gradle, *tasks)
 
             val manifests = readAllManifests(modules)
