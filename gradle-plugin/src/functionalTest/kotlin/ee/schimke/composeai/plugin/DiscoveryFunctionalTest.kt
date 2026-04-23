@@ -848,4 +848,121 @@ class DiscoveryFunctionalTest {
         )
         assertThat(manifest.previews).hasSize(3)
     }
+
+    /**
+     * Regression for issue #157: previews were only surfaced for top-level
+     * modules. Nested Gradle paths (`:auth:composables`) use `:` as a
+     * separator, but the CLI was treating that string as a filesystem path
+     * and looking under `projectRoot/auth:composables/build/...` — which
+     * doesn't exist. The plugin itself always wrote manifests to the real
+     * subproject directory (`auth/composables/build/...`); this test locks
+     * that behaviour in so the CLI fix (`PreviewModule.projectDir` via the
+     * Tooling API) has a stable contract to read against.
+     */
+    @Test
+    fun `discoverPreviews runs in a nested subproject`() {
+        val projectDir = tempDir.root
+
+        // Root settings with a :auth:composables nested subproject.
+        File(projectDir, "settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    google()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "nested-test"
+            include(":auth:composables")
+            """.trimIndent()
+        )
+
+        // Root build.gradle.kts is empty — the plugin is only applied to the
+        // nested subproject to mirror the Horologist-style layout in #157.
+        File(projectDir, "build.gradle.kts").writeText("")
+
+        File(projectDir, "gradle.properties").writeText(
+            "org.gradle.configuration-cache=true\n"
+        )
+
+        val childDir = File(projectDir, "auth/composables")
+        childDir.mkdirs()
+        File(childDir, "build.gradle.kts").writeText(
+            """
+            @file:Suppress("DEPRECATION")
+            plugins {
+                kotlin("jvm") version "2.2.21"
+                kotlin("plugin.compose") version "2.2.21"
+                id("org.jetbrains.compose") version "1.10.3"
+                id("ee.schimke.composeai.preview")
+            }
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(compose.material3)
+                implementation(compose.uiTooling)
+                implementation(compose.components.uiToolingPreview)
+            }
+            java {
+                toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
+            }
+            """.trimIndent()
+        )
+
+        val childSrc = File(childDir, "src/main/kotlin/nested")
+        childSrc.mkdirs()
+        File(childSrc, "Previews.kt").writeText(
+            """
+            package nested
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.material3.Text
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Preview
+            @Composable
+            fun NestedPreview() {
+                Box(modifier = Modifier.size(80.dp).background(Color.Magenta)) {
+                    Text("nested")
+                }
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments(":auth:composables:discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":auth:composables:discoverPreviews")?.outcome)
+            .isEqualTo(TaskOutcome.SUCCESS)
+
+        // Manifest lives under the real subproject dir (`auth/composables/…`),
+        // not a literal `auth:composables/…` path. This is the invariant the
+        // CLI's `PreviewModule.projectDir` relies on.
+        val manifestFile = File(childDir, "build/compose-previews/previews.json")
+        assertThat(manifestFile.exists()).isTrue()
+
+        // A stray `auth:composables/` directory would mean someone resolved
+        // the Gradle path as a filesystem path — the exact #157 bug.
+        assertThat(File(projectDir, "auth:composables").exists()).isFalse()
+
+        val manifest = json.decodeFromString<PreviewManifest>(manifestFile.readText())
+        assertThat(manifest.previews).hasSize(1)
+        assertThat(manifest.previews[0].functionName).isEqualTo("NestedPreview")
+    }
 }
