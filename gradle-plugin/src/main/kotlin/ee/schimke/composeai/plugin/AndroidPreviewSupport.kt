@@ -232,23 +232,55 @@ internal object AndroidPreviewSupport {
             // that casting a wider net is safe — false positives require a
             // dep literally in the `androidx.wear.tiles` / horologist-tiles
             // groups, which is the signal we're looking for.
-            val hasTilesSignal = project.configurations.asSequence()
-                // Case-sensitive end-match misses the bare root `implementation`
-                // configuration (lowercase i) — where plain
-                // `implementation(libs.wear.tiles)` declarations land.
-                // Include it explicitly alongside the camel-cased sourceSet-
-                // scoped variants (`debugImplementation`,
-                // `uatDebugImplementation`, `testImplementation`, …).
-                .filter { it.name == "implementation" || it.name.endsWith("Implementation") }
-                .flatMap { it.allDependencies.asSequence() }
-                .any { dep ->
-                    (dep.group == "androidx.wear.tiles" && dep.name in tilesSignalNames) ||
-                        (dep.group == "com.google.android.horologist" && dep.name == "horologist-tiles")
+            // Scan every declarative dep-bucket name so the detection works
+            // regardless of which bucket (and which sourceSet / buildType /
+            // flavor / variant) the consumer used to declare their tile deps:
+            //   - `implementation` / `<sourceSet>Implementation` — the common case.
+            //   - `api` / `<sourceSet>Api` — Android library modules that
+            //     re-export tile APIs to their consumers.
+            //   - `runtimeOnly` / `<sourceSet>RuntimeOnly` — rare, but tile
+            //     deps declared runtime-only still need the R-class injection.
+            // Resolving the actual runtime classpath would be authoritative
+            // but triggers config-cache invalidation and is awkward under
+            // Isolated Projects, so we stay declarative. The group+name
+            // filter inside is precise enough (exact match on `androidx.wear.tiles` /
+            // horologist-tiles coords) that widening the config scan can't
+            // introduce false positives.
+            val matchedConfigs = mutableListOf<String>()
+            project.configurations.asSequence()
+                .filter { c ->
+                    val n = c.name
+                    n == "implementation" || n.endsWith("Implementation") ||
+                        n == "api" || n.endsWith("Api") ||
+                        n == "runtimeOnly" || n.endsWith("RuntimeOnly")
                 }
-            if (hasTilesSignal) {
+                .forEach { c ->
+                    val hit = c.allDependencies.any { dep ->
+                        (dep.group == "androidx.wear.tiles" && dep.name in tilesSignalNames) ||
+                            (dep.group == "com.google.android.horologist" && dep.name == "horologist-tiles")
+                    }
+                    if (hit) matchedConfigs += c.name
+                }
+            if (matchedConfigs.isNotEmpty()) {
+                project.logger.info(
+                    "compose-ai-tools: tile-signal matched on [${matchedConfigs.joinToString(", ")}]; " +
+                        "injecting androidx.wear.tiles:tiles-renderer into ${variantName}Implementation"
+                )
                 project.dependencies.add(
                     "${variantName}Implementation",
                     "androidx.wear.tiles:tiles-renderer",
+                )
+            } else {
+                // No signal found — logged at info so a consumer whose tile
+                // previews later fail with `NoClassDefFoundError` on
+                // `ProtoLayoutBaseTheme` can re-run with `--info` and see
+                // that the auto-injection silently decided not to fire.
+                // Stays silent by default for the vast majority of non-Wear
+                // consumers.
+                project.logger.info(
+                    "compose-ai-tools: no androidx.wear.tiles / horologist-tiles dep " +
+                        "found on any *Implementation/*Api/*RuntimeOnly configuration; " +
+                        "skipping tiles-renderer auto-injection"
                 )
             }
         }
