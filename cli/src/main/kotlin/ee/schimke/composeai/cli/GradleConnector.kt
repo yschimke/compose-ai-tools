@@ -11,6 +11,19 @@ import java.io.File
 import java.io.OutputStream
 import java.util.Collections
 
+/**
+ * Handle for a subproject that applies `ee.schimke.composeai.preview`.
+ *
+ * [gradlePath] is the colon-separated project path **without** its leading
+ * colon (e.g. `"app"`, `"auth:composables"`) — used to address Gradle tasks
+ * like `":$gradlePath:renderAllPreviews"` and to identify the module in CLI
+ * output / persisted state. [projectDir] is the actual filesystem directory
+ * of that subproject, resolved via Gradle's Tooling API. Using it instead of
+ * `projectRoot/$gradlePath` is what makes nested subprojects (`:foo:bar`) and
+ * any custom `project.projectDir` override work correctly — see issue #157.
+ */
+data class PreviewModule(val gradlePath: String, val projectDir: File)
+
 class GradleConnection(
     private val projectDir: File,
     private val verbose: Boolean,
@@ -239,17 +252,27 @@ class GradleConnection(
     /**
      * Find all subprojects that have a `discoverPreviews` task — these have the
      * compose-ai-tools plugin applied.
+     *
+     * Each entry carries both the Gradle path (used to build task specs like
+     * `:foo:bar:renderAllPreviews`) and the resolved filesystem `projectDir`.
+     * Nested subprojects (`:foo:bar`) have directory layouts like `foo/bar/`,
+     * so substituting `:` for `/` doesn't always work — and even for standard
+     * layouts a user can point `project.projectDir` anywhere. Reading it from
+     * the Tooling API's [GradleProject.projectDirectory] is the only reliable
+     * way to resolve manifests / PNGs on disk without replicating Gradle's
+     * own project-layout logic.
      */
-    fun findPreviewModules(): List<String> {
+    fun findPreviewModules(): List<PreviewModule> {
         return try {
             val model = connection.model(org.gradle.tooling.model.GradleProject::class.java).get()
-            val modules = mutableListOf<String>()
+            val modules = mutableListOf<PreviewModule>()
             fun visit(project: org.gradle.tooling.model.GradleProject) {
                 val hasPreviewTask = project.tasks.any { it.name == "discoverPreviews" }
                 if (hasPreviewTask) {
-                    // Convert ":sample-android" path to "sample-android"
                     val path = project.path.removePrefix(":")
-                    if (path.isNotEmpty()) modules.add(path)
+                    if (path.isNotEmpty()) {
+                        modules.add(PreviewModule(gradlePath = path, projectDir = project.projectDirectory))
+                    }
                 }
                 for (child in project.children) visit(child)
             }
@@ -259,6 +282,18 @@ class GradleConnection(
             if (verbose) System.err.println("Could not query project model: ${e.message}")
             emptyList()
         }
+    }
+
+    /**
+     * Resolve a single module by its Gradle path (colon-separated, with or
+     * without the leading `:`). Returns `null` when no project with that path
+     * applies the plugin — callers fall back to a user-visible error rather
+     * than silently building an empty task list against a dir that doesn't
+     * exist.
+     */
+    fun findPreviewModule(gradlePath: String): PreviewModule? {
+        val normalized = gradlePath.removePrefix(":")
+        return findPreviewModules().firstOrNull { it.gradlePath == normalized }
     }
 
     override fun close() {

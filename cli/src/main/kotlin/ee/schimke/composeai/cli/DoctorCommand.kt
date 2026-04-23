@@ -497,7 +497,13 @@ class DoctorCommand(args: List<String>) {
      * no report on disk (first run, clean checkout) we silently skip.
      */
     private fun checkErrorSignatures(projectDir: File, modulePath: String) {
-        val moduleDir = File(projectDir, idSafe(modulePath)).takeIf { it.isDirectory } ?: return
+        // Gradle path → filesystem path. `:auth:composables` → `auth/composables`
+        // for standard layouts (issue #157). Custom `project.projectDir`
+        // overrides aren't covered here — this is a best-effort triage path;
+        // when the directory doesn't exist we silently skip the signature
+        // scan rather than emit a false "no prior failure" signal.
+        val relative = idSafe(modulePath).replace(':', File.separatorChar)
+        val moduleDir = File(projectDir, relative).takeIf { it.isDirectory } ?: return
         val reportDir = File(moduleDir, "build/reports/tests/renderPreviews")
         if (!reportDir.isDirectory) return
         val htmls = reportDir.walkTopDown()
