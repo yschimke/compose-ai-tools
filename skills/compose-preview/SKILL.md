@@ -443,6 +443,9 @@ artifact split, and how Wear's `remote-material3` builds on
   agent-authored PR, and the full workflow for reviewing one locally
   (render base + head, diff, post a human-readable comment). Read this
   when opening or reviewing a PR that touches UI.
+- **[design/CLAUDE_CLOUD.md](design/CLAUDE_CLOUD.md)** — running `compose-preview` in
+  Claude Code cloud sessions: sandbox allowlist gotchas (Google Maven is blocked),
+  JDK 17 setup, and the release-tarball path that works under the default allowlist.
 
 ## Tips
 
