@@ -20,7 +20,7 @@ import org.junit.Test
 class LongScrollPreviewPixelTest {
 
     private val longPng = File(
-        "build/compose-previews/renders/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.png",
+        "build/compose-previews/renders/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
     )
 
     @Test
