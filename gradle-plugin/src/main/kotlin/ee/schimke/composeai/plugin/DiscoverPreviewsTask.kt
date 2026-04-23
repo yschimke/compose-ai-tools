@@ -46,6 +46,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     @get:Input
     abstract val accessibilityChecksEnabled: Property<Boolean>
 
+    /**
+     * When `true` and discovery produces zero previews, emit a diagnostics
+     * block to the lifecycle log (classDirs contents, post-filter dep-JAR
+     * sample, ClassGraph scan summary, observed annotation FQNs) and fail
+     * the task. Wired from the `composePreview.failOnEmpty` extension /
+     * `-PcomposePreview.failOnEmpty=true` Gradle property.
+     */
+    @get:Input
+    abstract val failOnEmpty: Property<Boolean>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -81,6 +91,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
         internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
 
+        // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
+        // so the lifecycle log stays readable on projects with huge classpaths.
+        private const val DIAG_JAR_SAMPLE = 15
+        private const val DIAG_ANNOTATION_SAMPLE = 20
+
         // Roborazzi's per-preview clock control. Opt-in: presence of the
         // annotation on a @Preview method fans out one extra manifest entry
         // per `ManualClockOptions.advanceTimeMillis` value, with filename
@@ -98,14 +113,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     @TaskAction
     fun discover() {
         val existingClassDirs = classDirs.files.filter { it.exists() && it.isDirectory }
-        val classpath = existingClassDirs + dependencyJars.files.filter { file ->
+        val filteredDependencyJars = dependencyJars.files.filter { file ->
             val name = file.name.lowercase()
             file.exists() && name.endsWith(".jar") &&
                 (name.contains("preview") || name.contains("tooling") ||
                     name.contains("compose") || name.contains("annotation"))
         }
+        val classpath = existingClassDirs + filteredDependencyJars
 
         val previews = mutableListOf<PreviewInfo>()
+        // Populated only on the diagnostics path (failOnEmpty + 0 previews)
+        // so we can tell users whether ClassGraph saw any classes at all,
+        // and which annotation FQNs it did see — which disambiguates
+        // "classpath is wrong" from "@Preview FQN doesn't match" in a
+        // single run.
+        var scanClassCount = 0
+        var scanMethodsWithAnnotations = 0
+        val annotationFqnCounts = LinkedHashMap<String, Int>()
 
         if (classpath.isNotEmpty()) {
             ClassGraph()
@@ -115,8 +139,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 .ignoreParentClassLoaders()
                 .scan().use { scanResult ->
                     for (classInfo in scanResult.allClasses) {
+                        scanClassCount++
                         for (method in classInfo.methodInfo) {
                             val annotations = method.annotationInfo ?: continue
+                            if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
+                            for (ann in annotations) {
+                                annotationFqnCounts.merge(ann.name, 1, Int::plus)
+                            }
                             discoverFromMethod(classInfo, method, annotations.toList(), scanResult, previews)
                         }
                     }
@@ -151,6 +180,80 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         logger.lifecycle("Discovered ${normalized.size} preview(s) in module '${moduleName.get()}':")
         for (preview in normalized) {
             logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
+        }
+
+        if (normalized.isEmpty() && failOnEmpty.get()) {
+            logEmptyDiagnostics(
+                existingClassDirs = existingClassDirs,
+                allClassDirs = classDirs.files.toList(),
+                filteredJars = filteredDependencyJars,
+                allJarCount = dependencyJars.files.size,
+                scanClassCount = scanClassCount,
+                scanMethodsWithAnnotations = scanMethodsWithAnnotations,
+                annotationFqnCounts = annotationFqnCounts,
+            )
+            throw org.gradle.api.GradleException(
+                "composePreview: discovered 0 previews in module '${moduleName.get()}' " +
+                    "with failOnEmpty=true. See diagnostics above.",
+            )
+        }
+    }
+
+    private fun logEmptyDiagnostics(
+        existingClassDirs: List<java.io.File>,
+        allClassDirs: List<java.io.File>,
+        filteredJars: List<java.io.File>,
+        allJarCount: Int,
+        scanClassCount: Int,
+        scanMethodsWithAnnotations: Int,
+        annotationFqnCounts: Map<String, Int>,
+    ) {
+        logger.lifecycle("composePreview: failOnEmpty diagnostics (0 previews discovered):")
+        logger.lifecycle("  classDirs (${allClassDirs.size} declared, ${existingClassDirs.size} existing):")
+        for (dir in allClassDirs) {
+            val exists = dir.exists()
+            val isDir = dir.isDirectory
+            val classCount = if (exists && isDir) {
+                dir.walkTopDown().count { it.extension == "class" }
+            } else 0
+            logger.lifecycle("    - $dir")
+            logger.lifecycle("      exists=$exists isDir=$isDir classFiles=$classCount")
+        }
+        logger.lifecycle("  dependencyJars: $allJarCount total, ${filteredJars.size} match " +
+            "(preview|tooling|compose|annotation)")
+        for (jar in filteredJars.take(DIAG_JAR_SAMPLE)) {
+            logger.lifecycle("    - ${jar.name}")
+        }
+        if (filteredJars.size > DIAG_JAR_SAMPLE) {
+            logger.lifecycle("    … and ${filteredJars.size - DIAG_JAR_SAMPLE} more")
+        }
+        logger.lifecycle("  ClassGraph scan: $scanClassCount classes, " +
+            "$scanMethodsWithAnnotations methods with any annotation")
+        val previewAnnotationsSeen = PREVIEW_FQNS.filter { annotationFqnCounts.containsKey(it) }
+        if (previewAnnotationsSeen.isNotEmpty()) {
+            // If this path triggers we have a real bug: @Preview is on the
+            // classpath, it's on some method, but discovery still emitted
+            // nothing. Make it impossible to miss in the log.
+            logger.lifecycle("  known @Preview FQNs WERE seen on scanned methods " +
+                "(discovery dropped them — please report):")
+            for (fqn in previewAnnotationsSeen) {
+                logger.lifecycle("    - $fqn (${annotationFqnCounts[fqn]})")
+            }
+        } else if (scanClassCount > 0) {
+            logger.lifecycle("  no known @Preview FQN seen on any scanned method.")
+            logger.lifecycle("    expected one of:")
+            for (fqn in PREVIEW_FQNS) logger.lifecycle("      - $fqn")
+            val topAnnotations = annotationFqnCounts.entries
+                .sortedByDescending { it.value }
+                .take(DIAG_ANNOTATION_SAMPLE)
+            if (topAnnotations.isNotEmpty()) {
+                logger.lifecycle("    top annotation FQNs actually observed:")
+                for ((fqn, count) in topAnnotations) {
+                    logger.lifecycle("      - $fqn ($count)")
+                }
+            }
+        } else {
+            logger.lifecycle("  ClassGraph scanned 0 classes — check the classDirs listing above.")
         }
     }
 

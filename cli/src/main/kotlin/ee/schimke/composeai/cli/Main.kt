@@ -9,9 +9,9 @@ fun main(args: Array<String>) {
     }
 
     // Find the command — first non-flag argument that isn't a flag's value.
-    // Flags that take values: --module, --variant, --filter, --id, --output, --timeout, --plugin-version
+    // Flags that take values: --module, --filter, --id, --output, --timeout, --plugin-version
     val valuedFlags = setOf(
-        "--module", "--variant", "--filter", "--id", "--output", "--timeout", "--plugin-version",
+        "--module", "--filter", "--id", "--output", "--timeout", "--plugin-version",
         "--fail-on",
     )
     val commands = setOf("show", "list", "render", "a11y", "doctor", "help")
@@ -77,7 +77,6 @@ private fun printUsage() {
 
         Options:
           --module <name>      Target module (default: auto-detect all)
-          --variant <variant>  Build variant (default: debug)
           --filter <pattern>   Case-insensitive substring match on preview id
           --id <exact>         Exact match on preview id
           --json               Emit JSON (show, list, a11y)

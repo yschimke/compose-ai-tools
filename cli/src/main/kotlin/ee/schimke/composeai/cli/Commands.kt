@@ -256,7 +256,6 @@ private val briefJson = Json {
 
 abstract class Command(protected val args: List<String>) {
     protected val explicitModule: String? = args.flagValue("--module")
-    protected val variant: String = args.flagValue("--variant") ?: "debug"
     protected val filter: String? = args.flagValue("--filter")
     protected val exactId: String? = args.flagValue("--id")
     protected val verbose: Boolean = "--verbose" in args || "-v" in args

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin.tooling
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
@@ -60,6 +61,17 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
     @get:Internal
     abstract val testRuntimeRoot: Property<ResolvedComponentResult>
 
+    /**
+     * JSON-encoded `List<InjectedDependency>` captured at plugin-apply time
+     * (populated inside `AndroidPreviewSupport.registerAndroidTasks`).
+     * Defaults to `"[]"` so the task produces a clean empty list when
+     * no injections are relevant. JSON-as-Input keeps the config-cache
+     * image simple — a single string round-trips without needing a
+     * registered serializer for the nested data class.
+     */
+    @get:Input
+    abstract val injectedDependenciesJson: Property<String>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -69,6 +81,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         val main = collectModuleVersions(mainRuntimeRoot.orNull)
         val test = collectModuleVersions(testRuntimeRoot.orNull)
         val findings = CompatRules.evaluate(main, test, gradleVersion.orNull)
+        val injections = decodeInjectedDependencys(injectedDependenciesJson.getOrElse("[]"))
         val report = DoctorModuleReport(
             schema = SCHEMA,
             module = modulePath.get(),
@@ -84,12 +97,17 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
                     docsUrl = f.docsUrl,
                 )
             },
+            injectedDependencies = injections,
         )
         val out = outputFile.get().asFile
         out.parentFile.mkdirs()
         out.writeText(JSON.encodeToString(report))
         printSummary(report, out)
     }
+
+    private fun decodeInjectedDependencys(raw: String): List<InjectedDependency> =
+        runCatching { JSON.decodeFromString<List<InjectedDependency>>(raw) }
+            .getOrElse { emptyList() }
 
     /**
      * Mirror the CLI's `emitText` shape at module scope: header, one marker
@@ -116,6 +134,13 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
             val errors = report.findings.count { it.severity == "error" }
             val warnings = report.findings.count { it.severity == "warning" }
             logger.lifecycle("  ${report.findings.size} finding(s): $errors error(s), $warnings warning(s)")
+        }
+        if (report.injectedDependencies.isNotEmpty()) {
+            logger.lifecycle("  injected dependencies:")
+            for (inj in report.injectedDependencies) {
+                val config = inj.configuration.ifEmpty { "—" }
+                logger.lifecycle("    ${inj.outcome} [${inj.coordinate}] → $config  (${inj.reason})")
+            }
         }
         logger.lifecycle("  report: ${out.path}")
     }
@@ -153,6 +178,7 @@ internal data class DoctorModuleReport(
     val module: String,
     val variant: String,
     val findings: List<DoctorFinding>,
+    val injectedDependencies: List<InjectedDependency> = emptyList(),
 )
 
 @Serializable
@@ -164,4 +190,28 @@ internal data class DoctorFinding(
     val remediationSummary: String? = null,
     val remediationCommands: List<String> = emptyList(),
     val docsUrl: String? = null,
+)
+
+/**
+ * Record of one injected-dependency decision made by the plugin at apply time.
+ * Populated for both unconditional injections (e.g. `ui-test-manifest`,
+ * `ui-test-junit4`) and conditional ones (e.g. the wear-tiles signal
+ * scan). Surfaced via the plugin's sidecar `doctor.json` so drivers that
+ * can't run Gradle `BuildAction`s — notably the VS Code extension — can
+ * show the same injected-dependency state the CLI / `--info` log already
+ * exposes.
+ *
+ * `outcome` takes one of:
+ *   - `APPLIED`  — unconditional injection fired.
+ *   - `MATCHED`  — conditional injection fired because the signal was found.
+ *   - `SKIPPED`  — conditional injection DID NOT fire because the signal
+ *                  was not found; `configuration` is empty in this case
+ *                  because nothing was actually added.
+ */
+@Serializable
+internal data class InjectedDependency(
+    val coordinate: String,
+    val configuration: String,
+    val outcome: String,
+    val reason: String,
 )
