@@ -97,6 +97,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
     @TaskAction
     fun discover() {
+        val androidJarEnv = System.getenv("ANDROID_JAR")
+        if (!androidJarEnv.isNullOrEmpty()) {
+            val javaVersion = System.getProperty("java.version")
+            val majorVersion = javaVersion.substringBefore('.').toIntOrNull() ?: 0
+            if (majorVersion >= 9) {
+                logger.warn(
+                    "compose-ai-tools: WARNING: ANDROID_JAR environment variable is set to '$androidJarEnv'. " +
+                    "This is known to cause '-Xbootclasspath is no longer a supported option' failures " +
+                    "on Java 9+ when running custom test tasks on some platforms (like Linux). " +
+                    "If your subsequent tasks fail with this error, try unsetting it: unset ANDROID_JAR"
+                )
+            }
+        }
         val existingClassDirs = classDirs.files.filter { it.exists() && it.isDirectory }
         val classpath = existingClassDirs + dependencyJars.files.filter { file ->
             val name = file.name.lowercase()
