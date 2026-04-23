@@ -301,3 +301,16 @@ fun ActivityListLongPreview() {
         }
     }
 }
+
+@WearPreviewLargeRound
+@ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)
+@Composable
+fun ActivityListGifPreview() {
+    MaterialTheme {
+        AppScaffold(
+            timeText = { TimeText(timeSource = FixedTimeSource) },
+        ) {
+            LongActivityListScreen()
+        }
+    }
+}

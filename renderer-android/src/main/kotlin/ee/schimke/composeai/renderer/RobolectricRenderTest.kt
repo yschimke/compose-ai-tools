@@ -914,10 +914,12 @@ private fun handleGifCapture(
 
     val frameFiles = mutableListOf<File>()
     try {
-        // 20% of viewport per step → ~5 frames per viewport of scrolled
-        // content. With 80ms default cadence that's ~0.4s of animation
-        // per viewport — smooth scroll without an explosive frame count
-        // on tall lists. Too small jitters, too large stutters.
+        // 10% of viewport per step → 10 frames per viewport. With the 80ms
+        // default cadence that's 800ms of animation per viewport scrolled;
+        // a typical Wear screen scrolls ~2–3 viewports of content, landing
+        // the resulting GIF at ~1.5–2.5s — long enough to read motion,
+        // short enough to embed in a PR body. Smaller fraction = smoother
+        // but explosive frame count on tall lists.
         val result = driveScrollByViewport(
             rule = rule,
             axis = scroll.axis,
@@ -963,8 +965,10 @@ private fun handleGifCapture(
     }
 }
 
-// 20% of viewport per step balances smoothness against frame count.
-private const val GIF_STEP_FRACTION = 0.2f
+// 10% of viewport per step → 10 frames per viewport. Tuned so a typical
+// Wear scroll (2–3 viewports of content at the default 80ms cadence) lands
+// at roughly 2 seconds of animation. Lower = smoother but more frames.
+private const val GIF_STEP_FRACTION = 0.1f
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
