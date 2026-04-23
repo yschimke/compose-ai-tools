@@ -117,23 +117,10 @@ SKILL_URL="https://github.com/$REPO/releases/download/v${VERSION}/${SKILL_ASSET}
 CLI_DEST="$SKILL_DIR/cli"
 LAUNCHER="$CLI_DEST/compose-preview-${VERSION}/bin/compose-preview"
 SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
+SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-
-# ---- Skill tarball (best-effort: older releases don't ship one) ----------
-
-if curl -fL --progress-bar -o "$TMP/skill.tar.gz" "$SKILL_URL" 2>/dev/null; then
-  log "extracting skill bundle into $SKILL_DIR"
-  mkdir -p "$SKILL_DIR"
-  tar -xzf "$TMP/skill.tar.gz" -C "$SKILL_DIR"
-else
-  log "warning: $SKILL_ASSET not found on the release; skipping skill files"
-  log "         (CLI still installs; release predates skill packaging)"
-  mkdir -p "$SKILL_DIR"
-fi
-
-# ---- CLI tarball ---------------------------------------------------------
 
 maybe_write_env_file() {
   if [[ "$CLAUDE_CLOUD" == 1 && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
@@ -145,56 +132,85 @@ maybe_write_env_file() {
   fi
 }
 
+# ---- Everything-already-installed short-circuit --------------------------
+# Skill version marker + CLI launcher + both symlinks all line up -> done.
+
 if [[ -x "$LAUNCHER" \
    && "$(readlink "$SKILL_LAUNCHER" 2>/dev/null || true)" == *"compose-preview-${VERSION}"* \
-   && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" ]]; then
+   && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" \
+   && "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
   log "compose-preview $VERSION already installed and linked"
   "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
   maybe_write_env_file
   exit 0
 fi
 
-# ---- Fetch release metadata (best-effort for sha256) ---------------------
+mkdir -p "$SKILL_DIR"
 
-CLI_DIGEST=""
-log "fetching release metadata for v$VERSION"
-META_HEADERS=(-H "Accept: application/vnd.github+json")
-[[ -n "${GITHUB_TOKEN:-}" ]] && META_HEADERS+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+# ---- Skill tarball (best-effort: older releases don't ship one) ----------
+# Skip re-download when the marker matches. Otherwise wipe the specific
+# top-level paths carried by the new tarball (so stale files from an older
+# version's skill bundle don't linger) before extracting. Anything the
+# user has added outside those paths is preserved.
 
-if META="$(curl -fsSL "${META_HEADERS[@]}" \
-     "https://api.github.com/repos/$REPO/releases/tags/v$VERSION" 2>/dev/null)"; then
-  CLI_DIGEST="$(printf '%s' "$META" |
-    awk -v asset="$CLI_ASSET" '
-      /"name":/ { in_asset = ($0 ~ asset) }
-      in_asset && /"digest":/ {
-        sub(/.*"digest":[[:space:]]*"sha256:/, "")
-        sub(/".*/, "")
-        print
-        exit
-      }
-    ')"
+if [[ "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
+  log "skill bundle $VERSION already extracted — skipping download"
+elif curl -fL --progress-bar -o "$TMP/skill.tar.gz" "$SKILL_URL" 2>/dev/null; then
+  log "refreshing skill bundle in $SKILL_DIR"
+  # Prune only the top-level entries the new tarball actually carries.
+  while IFS= read -r entry; do
+    [[ -n "$entry" && "$entry" != "." && "$entry" != ".." ]] || continue
+    rm -rf "$SKILL_DIR/$entry"
+  done < <(tar -tzf "$TMP/skill.tar.gz" | sed -e 's|^\./||' -e 's|/.*||' | awk 'NF' | sort -u)
+  tar -xzf "$TMP/skill.tar.gz" -C "$SKILL_DIR"
+  printf '%s\n' "$VERSION" > "$SKILL_VERSION_FILE"
 else
-  log "warning: api.github.com unreachable (likely rate-limited); skipping sha256 verification"
+  log "warning: $SKILL_ASSET not found on the release; skipping skill files"
+  log "         (CLI still installs; release predates skill packaging)"
 fi
 
-# ---- Download + verify ----------------------------------------------------
+# ---- CLI tarball ---------------------------------------------------------
 
-log "downloading $CLI_URL"
-curl -fL --progress-bar -o "$TMP/$CLI_ASSET" "$CLI_URL" \
-  || die "download failed: $CLI_URL"
+if [[ -x "$LAUNCHER" ]]; then
+  log "CLI $VERSION already extracted at $LAUNCHER"
+else
+  # ---- Fetch release metadata (best-effort for sha256) ----
+  CLI_DIGEST=""
+  log "fetching release metadata for v$VERSION"
+  META_HEADERS=(-H "Accept: application/vnd.github+json")
+  [[ -n "${GITHUB_TOKEN:-}" ]] && META_HEADERS+=(-H "Authorization: Bearer $GITHUB_TOKEN")
 
-if [[ -n "${CLI_DIGEST:-}" ]]; then
-  got="$(sha256_of "$TMP/$CLI_ASSET")"
-  [[ "$got" == "$CLI_DIGEST" ]] \
-    || die "sha256 mismatch: expected $CLI_DIGEST, got $got"
-  log "verified sha256 $got"
+  if META="$(curl -fsSL "${META_HEADERS[@]}" \
+       "https://api.github.com/repos/$REPO/releases/tags/v$VERSION" 2>/dev/null)"; then
+    CLI_DIGEST="$(printf '%s' "$META" |
+      awk -v asset="$CLI_ASSET" '
+        /"name":/ { in_asset = ($0 ~ asset) }
+        in_asset && /"digest":/ {
+          sub(/.*"digest":[[:space:]]*"sha256:/, "")
+          sub(/".*/, "")
+          print
+          exit
+        }
+      ')"
+  else
+    log "warning: api.github.com unreachable (likely rate-limited); skipping sha256 verification"
+  fi
+
+  log "downloading $CLI_URL"
+  curl -fL --progress-bar -o "$TMP/$CLI_ASSET" "$CLI_URL" \
+    || die "download failed: $CLI_URL"
+
+  if [[ -n "${CLI_DIGEST:-}" ]]; then
+    got="$(sha256_of "$TMP/$CLI_ASSET")"
+    [[ "$got" == "$CLI_DIGEST" ]] \
+      || die "sha256 mismatch: expected $CLI_DIGEST, got $got"
+    log "verified sha256 $got"
+  fi
+
+  log "installing CLI to $CLI_DEST"
+  mkdir -p "$CLI_DEST"
+  tar -xzf "$TMP/$CLI_ASSET" -C "$CLI_DEST"
 fi
-
-# ---- Install --------------------------------------------------------------
-
-log "installing CLI to $CLI_DEST"
-mkdir -p "$CLI_DEST"
-tar -xzf "$TMP/$CLI_ASSET" -C "$CLI_DEST"
 
 [[ -x "$LAUNCHER" ]] || die "launcher not found after extract: $LAUNCHER"
 
