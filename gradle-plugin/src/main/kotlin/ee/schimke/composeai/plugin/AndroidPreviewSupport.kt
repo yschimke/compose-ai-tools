@@ -233,7 +233,13 @@ internal object AndroidPreviewSupport {
             // dep literally in the `androidx.wear.tiles` / horologist-tiles
             // groups, which is the signal we're looking for.
             val hasTilesSignal = project.configurations.asSequence()
-                .filter { it.name.endsWith("Implementation") }
+                // Case-sensitive end-match misses the bare root `implementation`
+                // configuration (lowercase i) — where plain
+                // `implementation(libs.wear.tiles)` declarations land.
+                // Include it explicitly alongside the camel-cased sourceSet-
+                // scoped variants (`debugImplementation`,
+                // `uatDebugImplementation`, `testImplementation`, …).
+                .filter { it.name == "implementation" || it.name.endsWith("Implementation") }
                 .flatMap { it.allDependencies.asSequence() }
                 .any { dep ->
                     (dep.group == "androidx.wear.tiles" && dep.name in tilesSignalNames) ||
