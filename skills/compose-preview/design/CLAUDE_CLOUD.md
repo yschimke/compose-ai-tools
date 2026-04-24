@@ -167,10 +167,10 @@ The `[project]` block will show either per-module results (if the plugin
 is applied somewhere) or "no modules have the compose-preview plugin
 applied" if not.
 
-The GitHub Packages credential check auto-skips when the project resolves
-the plugin from Maven Central (the common case since v0.6.0); it only
-fires if your `settings.gradle[.kts]` or any `build.gradle[.kts]` points at
-`maven.pkg.github.com`, typically for consuming snapshots.
+The plugin resolves from Maven Central, so doctor no longer probes GitHub
+Packages or expects any credentials. If your project still declares
+`maven.pkg.github.com` in `settings.gradle[.kts]` (typically from an older
+README snippet), you can drop that repository.
 
 Then drive an actual render against any module with the plugin applied:
 

@@ -72,7 +72,7 @@ private fun printUsage() {
           list    List discovered previews
           render  Render previews; with --output copies a single match to disk
           a11y    Render previews and print ATF accessibility findings
-          doctor  Verify Java 17 + GitHub Packages credentials before editing Gradle files
+          doctor  Verify Java 17 + Compose/AGP environment before editing Gradle files
           help    Show this help message
 
         Options:
