@@ -113,11 +113,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     @TaskAction
     fun discover() {
         val existingClassDirs = classDirs.files.filter { it.exists() && it.isDirectory }
+        // Match on the absolute path, not just the file name: AGP 9.x +
+        // KGP 2.3 resolve AAR dependencies to `<cache>/transforms/<hash>/
+        // transformed/<library>/jars/classes.jar` where the library name
+        // lives in the parent directory, not the filename. Filtering on
+        // `file.name` alone dropped every AAR-extracted jar — see #162.
         val filteredDependencyJars = dependencyJars.files.filter { file ->
-            val name = file.name.lowercase()
-            file.exists() && name.endsWith(".jar") &&
-                (name.contains("preview") || name.contains("tooling") ||
-                    name.contains("compose") || name.contains("annotation"))
+            file.exists() && file.name.lowercase().endsWith(".jar") && run {
+                val path = file.absolutePath.lowercase()
+                path.contains("preview") || path.contains("tooling") ||
+                    path.contains("compose") || path.contains("annotation")
+            }
         }
         val classpath = existingClassDirs + filteredDependencyJars
 
@@ -130,6 +136,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         var scanClassCount = 0
         var scanMethodsWithAnnotations = 0
         val annotationFqnCounts = LinkedHashMap<String, Int>()
+        // Which known @Preview annotation FQNs are reachable as ClassInfo
+        // on the scan classpath. Empty → discovery cannot resolve multi-
+        // preview annotations (they fan out via `scanResult.getClassInfo`),
+        // which is almost always a misconfigured dep-jar classpath.
+        var reachablePreviewFqns: List<String> = emptyList()
 
         if (classpath.isNotEmpty()) {
             ClassGraph()
@@ -138,6 +149,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 .overrideClasspath(classpath.map { it.absolutePath })
                 .ignoreParentClassLoaders()
                 .scan().use { scanResult ->
+                    reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
                     for (classInfo in scanResult.allClasses) {
                         scanClassCount++
                         for (method in classInfo.methodInfo) {
@@ -182,7 +194,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             logger.lifecycle("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
         }
 
-        if (normalized.isEmpty() && failOnEmpty.get()) {
+        // Unconditional fail: the plugin scanned non-empty class dirs but
+        // none of the known @Preview annotation classes are on the scan
+        // classpath. Any multi-preview annotation (@LightDarkPreviews,
+        // @WearPreviewDevices, user wrappers) needs its class reachable via
+        // `scanResult.getClassInfo` to fan out, so this state silently
+        // hides the consumer's previews — see #162 for a real-world
+        // report. Preceded by the failOnEmpty diagnostics block so the
+        // error message points at the data that disambiguates the cause.
+        val previewAnnotationsMissing =
+            scanClassCount > 0 && reachablePreviewFqns.isEmpty()
+        if (normalized.isEmpty() && (failOnEmpty.get() || previewAnnotationsMissing)) {
             logEmptyDiagnostics(
                 existingClassDirs = existingClassDirs,
                 allClassDirs = classDirs.files.toList(),
@@ -191,10 +213,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 scanClassCount = scanClassCount,
                 scanMethodsWithAnnotations = scanMethodsWithAnnotations,
                 annotationFqnCounts = annotationFqnCounts,
+                reachablePreviewFqns = reachablePreviewFqns,
             )
+            val reason = if (previewAnnotationsMissing) {
+                "the @Preview annotation class is not on the ClassGraph classpath " +
+                    "(dependency-jar filter dropped every jar carrying it)"
+            } else {
+                "with failOnEmpty=true"
+            }
             throw org.gradle.api.GradleException(
-                "composePreview: discovered 0 previews in module '${moduleName.get()}' " +
-                    "with failOnEmpty=true. See diagnostics above.",
+                "composePreview: discovered 0 previews in module '${moduleName.get()}' — " +
+                    "$reason. See diagnostics above.",
             )
         }
     }
@@ -207,6 +236,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         scanClassCount: Int,
         scanMethodsWithAnnotations: Int,
         annotationFqnCounts: Map<String, Int>,
+        reachablePreviewFqns: List<String>,
     ) {
         logger.lifecycle("composePreview: failOnEmpty diagnostics (0 previews discovered):")
         logger.lifecycle("  classDirs (${allClassDirs.size} declared, ${existingClassDirs.size} existing):")
@@ -229,6 +259,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         }
         logger.lifecycle("  ClassGraph scan: $scanClassCount classes, " +
             "$scanMethodsWithAnnotations methods with any annotation")
+        if (scanClassCount > 0) {
+            if (reachablePreviewFqns.isEmpty()) {
+                // Most common #162-shaped failure: the consumer's preview
+                // annotations live in AAR-extracted `<library>/jars/classes.jar`
+                // files, whose `file.name` is just `classes.jar`. The
+                // dep-jar filter used to match on file name only and
+                // dropped every such jar, so no multi-preview annotation
+                // could be resolved.
+                logger.lifecycle("  known @Preview annotation classes NOT reachable on " +
+                    "ClassGraph classpath — multi-preview resolution is disabled.")
+                logger.lifecycle("    expected at least one of (by FQN):")
+                for (fqn in PREVIEW_FQNS) logger.lifecycle("      - $fqn")
+            } else {
+                logger.lifecycle("  reachable @Preview annotation classes on ClassGraph classpath:")
+                for (fqn in reachablePreviewFqns) logger.lifecycle("      - $fqn")
+            }
+        }
         val previewAnnotationsSeen = PREVIEW_FQNS.filter { annotationFqnCounts.containsKey(it) }
         if (previewAnnotationsSeen.isNotEmpty()) {
             // If this path triggers we have a real bug: @Preview is on the
