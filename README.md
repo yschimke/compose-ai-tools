@@ -48,8 +48,10 @@ If you're running this in a cloud agent sandbox, two things are required:
    apply.
 
 2. **Drop the install script into your environment setup.** It installs
-   JDK 17, the CLI, and the skill bundle (at `~/.claude/skills/compose-preview/`),
-   and appends `JAVA_HOME` / `PATH` to `$CLAUDE_ENV_FILE` so every subsequent
+   the CLI and the skill bundle (at `~/.claude/skills/compose-preview/`),
+   reuses the pre-installed JDK 21 (falling back to apt-installing JDK 17
+   only if no 17+ JDK is present), and appends `PATH` (and `JAVA_HOME`
+   when the fallback fires) to `$CLAUDE_ENV_FILE` so every subsequent
    tool invocation in the session inherits them:
 
    ```sh
@@ -217,7 +219,8 @@ compose-preview --help
 ```
 <!-- x-release-please-end -->
 
-Requires Java 17 on `PATH` (or `JAVA_HOME`).
+Requires Java 17 or newer on `PATH` (or `JAVA_HOME`). JDK 21 / 25 are
+fine — the CLI and renderer are compiled to JDK 17 bytecode.
 
 ## Install the VS Code extension
 
@@ -265,7 +268,7 @@ composePreview {
 ## Requirements
 
 - Gradle 9.4.1+
-- Java 17
+- Java 17 or newer (renderer / plugin target JDK 17 bytecode; any newer JDK runs them)
 - AGP 9.1.0 (Android projects)
 - Kotlin 2.2.21
 - Compose Multiplatform 1.10.3 (Desktop projects)

@@ -25,13 +25,16 @@
 #   PREFIX=$HOME/.local scripts/install.sh    # for the ~/.local/bin symlink
 #   REPO=yschimke/compose-ai-tools scripts/install.sh
 #
-# Requires: bash, curl, tar, sha256sum (or shasum), and Java 17 on PATH at
+# Requires: bash, curl, tar, sha256sum (or shasum), and Java 17+ on PATH at
 # run time (not install time).
 #
 # Claude Code cloud-sandbox mode (auto-detected via $CLAUDE_ENV_FILE or
 # $CLAUDE_CODE_SESSION_ID):
-#   - apt-installs openjdk-17-jdk-headless if Java 17 isn't already available
-#     (the pre-installed JDK 21 can't satisfy this project's toolchain pin).
+#   - Uses the pre-installed JDK (21 on current Claude Cloud images) when it's
+#     Java 17+ — the CLI, plugin, and renderer AARs are compiled to JDK 17
+#     bytecode and run fine on any newer JDK, so there's no need to downgrade.
+#     Falls back to apt-installing openjdk-17-jdk-headless only when no Java
+#     17+ is available (older base images).
 #   - Skips api.github.com lookups (they 403 on shared sandbox IPs due to
 #     unauthenticated rate limiting) and resolves versions via the public
 #     github.com HTML redirect instead. Sha256 verification is best-effort.
@@ -77,21 +80,39 @@ sha256_of() {
 require curl
 require tar
 
-# ---- Cloud: ensure JDK 17 is available -----------------------------------
+# ---- Cloud: ensure Java 17+ is available ---------------------------------
+#
+# Claude Cloud images currently pre-install JDK 21, which already satisfies
+# the Java-17+ requirement. The renderer JARs and plugin are compiled to JDK
+# 17 bytecode; a newer JDK runs them without issue. Consumer projects pinned
+# to a JDK-17 toolchain are handled by Gradle's own toolchain resolution (or
+# the consumer can bump their toolchain to the same major the daemon runs
+# on). Only apt-install JDK 17 when no JDK 17+ is detected.
 
 if [[ "$CLAUDE_CLOUD" == 1 ]]; then
-  JDK17_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
-  if [[ ! -x "$JDK17_HOME/bin/java" ]]; then
-    log "claude cloud: installing openjdk-17-jdk-headless"
-    SUDO=""
-    if [[ $EUID -ne 0 ]]; then
-      command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK 17"
-      SUDO="sudo"
-    fi
-    $SUDO apt-get install -y -qq openjdk-17-jdk-headless
+  detected_major=""
+  if command -v java >/dev/null 2>&1; then
+    # `java -version` prints `openjdk version "21.0.10" ...` to stderr.
+    # Legacy JDK 8 reports `1.8.x`, which parses to major=1 and gets
+    # rejected by the >= 17 check below.
+    detected_major="$(java -version 2>&1 | head -1 | awk -F'"' '{print $2}' | awk -F. '{print $1}')"
   fi
-  export JAVA_HOME="$JDK17_HOME"
-  export PATH="$JAVA_HOME/bin:$PATH"
+  if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -ge 17 ]]; then
+    log "claude cloud: using existing JDK $detected_major on PATH"
+  else
+    JDK17_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+    if [[ ! -x "$JDK17_HOME/bin/java" ]]; then
+      log "claude cloud: no JDK 17+ detected; installing openjdk-17-jdk-headless"
+      SUDO=""
+      if [[ $EUID -ne 0 ]]; then
+        command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK 17"
+        SUDO="sudo"
+      fi
+      $SUDO apt-get install -y -qq openjdk-17-jdk-headless
+    fi
+    export JAVA_HOME="$JDK17_HOME"
+    export PATH="$JAVA_HOME/bin:$PATH"
+  fi
 fi
 
 # ---- Resolve version ------------------------------------------------------
@@ -229,7 +250,7 @@ log "symlinked $BIN_DIR/compose-preview -> $LAUNCHER"
 # ---- Smoke test -----------------------------------------------------------
 
 if ! "$LAUNCHER" --help >/dev/null 2>&1; then
-  die "launcher failed smoke test (needs Java 17 on PATH or JAVA_HOME)"
+  die "launcher failed smoke test (needs Java 17+ on PATH or JAVA_HOME)"
 fi
 
 # ---- Cloud: write env vars ------------------------------------------------
