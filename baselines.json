@@ -199,14 +199,14 @@
     "captureLabel": "scroll gif",
     "functionName": "RedToBlueEndThenGifPreview",
     "renderBasename": "ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif_SCROLL_gif.gif",
-    "sha256": "bf2108aec549cafc017311d299afac9ab577801ed63e0474a77a868789414fb2",
+    "sha256": "6e72c062de123afebd16a88e171fa06ad36e2c4ad48be9f00a8380204265af8e",
     "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
   },
   "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif": {
     "captureLabel": "scroll gif",
     "functionName": "RedToBlueScrollGifPreview",
     "renderBasename": "ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif",
-    "sha256": "bf2108aec549cafc017311d299afac9ab577801ed63e0474a77a868789414fb2",
+    "sha256": "6e72c062de123afebd16a88e171fa06ad36e2c4ad48be9f00a8380204265af8e",
     "sourceFile": "com/example/sampleandroid/ScrollPreviews.kt"
   },
   "sample-android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollPreview_Scroll": {
@@ -227,7 +227,7 @@
     "captureLabel": "scroll gif",
     "functionName": "SettingsListScrollGifPreview",
     "renderBasename": "SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.gif",
-    "sha256": "25591d9ba5ccf18ae11aa3e524932e60f5fe755e9b9dcafb850589bb079339aa",
+    "sha256": "36645c2dd01447f1e25f9f4469f4335eb714e97e62657368ebfd08781d0cb705",
     "sourceFile": "com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
   "sample-cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
@@ -346,7 +346,7 @@
     "captureLabel": "scroll gif",
     "functionName": "ActivityListGifPreview",
     "renderBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif",
-    "sha256": "be06543d0c74d6a686554c4a0814327ad036164af0da0a96aae1d18eb01537fc",
+    "sha256": "de2dde1b374ea8f472ae6c22b0cf5558f85b1f91682664524c92f72c698f5d6f",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "sample-wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round": {
