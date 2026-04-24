@@ -241,7 +241,7 @@ In `<module>/build.gradle.kts`:
 <!-- x-release-please-start-version -->
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.7.10"
+    id("ee.schimke.composeai.preview") version "0.7.11"
 }
 
 composePreview {
