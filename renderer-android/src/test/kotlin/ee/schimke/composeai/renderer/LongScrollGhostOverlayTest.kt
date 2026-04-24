@@ -105,6 +105,118 @@ class LongScrollGhostOverlayTest {
     }
 
     /**
+     * Wear anchor path: when `isRound = true` and the final frame
+     * carries an edge-hugging button shape, the stitcher locates the
+     * last-list-item "anchor" above the button in the settled frame
+     * and re-glues the EdgeButton immediately after the same anchor in
+     * the top-down stitched content. Guarantees that no intermediate
+     * chrome (fading peek pills, settle-animation residue) can land
+     * between the last list item and the settled button.
+     *
+     * This test uses a position-jittered peek pill (1 px down per
+     * slice) so that pair-wise row diffs would trip the
+     * [bottomPinnedRowsTop] threshold — i.e. approach B alone would
+     * fall through and ghost the pill. The anchor path ignores the
+     * pinned-detection decision entirely and operates on the final-
+     * frame geometry, so this fixture exercises the full Wear code
+     * path instead of just the pinned-masking fast path.
+     */
+    @Test
+    fun `Wear anchor path cuts at last list item regardless of pill jitter`() {
+        val viewport = 200
+        val width = 120
+        val step = 100
+        val slices = (0..3).map { i ->
+            val file = tmp.newFile("jitter_slice_$i.png")
+            ImageIO.write(
+                buildPeekSlice(width, viewport, scrollOffset = i * step, pillYShift = i),
+                "PNG",
+                file,
+            )
+            SliceCapture((i * step).toFloat(), file)
+        }
+        val finalFile = tmp.newFile("jitter_final.png")
+        ImageIO.write(buildFinalFrame(width, viewport, scrollOffset = 3 * step), "PNG", finalFile)
+
+        val out = tmp.newFile("stitched_jitter.png")
+        stitchSlicesWithFinalFrame(
+            slices = slices,
+            finalFrameFile = finalFile,
+            viewportLayoutPx = viewport,
+            outputFile = out,
+            isRound = true,
+        ) ?: error("stitcher returned null")
+        val stitched = ImageIO.read(out)
+
+        val edgeButtonTop = firstRowWithPrimaryWideRun(stitched)
+        assertTrue(
+            "expected EdgeButton-primary band near the output bottom; none found",
+            edgeButtonTop < stitched.height,
+        )
+        // No peek-grey ghost rows anywhere above the button.
+        val ghostRows = (0 until edgeButtonTop).filter { y ->
+            rowHasNarrowCentredRun(stitched, y, rgb = PEEK_PILL_GREY_RGB, minWidth = 8, maxWidth = 60)
+        }
+        assertEquals(
+            "expected zero ghost peek-pill rows above the EdgeButton; got $ghostRows",
+            0,
+            ghostRows.size,
+        )
+        // The row immediately above the EdgeButton band must be list content
+        // matching the settled scroll position (source-y at scroll end). The
+        // anchor heuristic guarantees this by construction — a broken
+        // algorithm could produce empty rows or content from earlier scroll
+        // positions between the last item and the button.
+        val rowAboveButton = edgeButtonTop - 1
+        val expectedSourceY = (3 * step) + (viewport - FINAL_EDGE_BUTTON_HEIGHT - 1)
+        val expected = expectedListColour(expectedSourceY)
+        assertTrue(
+            "row above EdgeButton (y=$rowAboveButton) should match source-y " +
+                "$expectedSourceY; got ARGB 0x${Integer.toHexString(stitched.getRGB(width / 2, rowAboveButton))}",
+            rowMatchesColour(stitched, rowAboveButton, expected, tolerance = 1200),
+        )
+    }
+
+    /**
+     * With `isRound = true` but no edge-hugging button in the final frame,
+     * [detectWearEdgeButtonTop] returns null, the anchor path bails, and
+     * the established overlay path handles the capture. Guards against
+     * the Wear-specific branch taking over non-Wear captures that happen
+     * to be rendered on round hardware (Tile previews, widget previews).
+     */
+    @Test
+    fun `Wear anchor path falls through when the final frame has no edge button`() {
+        val viewport = 200
+        val width = 120
+        val step = 100
+        val slices = (0..3).map { i ->
+            val file = tmp.newFile("no_edge_slice_$i.png")
+            ImageIO.write(buildPeekSlice(width, viewport, scrollOffset = i * step), "PNG", file)
+            SliceCapture((i * step).toFloat(), file)
+        }
+        // Final frame without an EdgeButton — keeps the peek pill in
+        // place. `detectWearEdgeButtonTop` should return null.
+        val finalFile = tmp.newFile("no_edge_final.png")
+        ImageIO.write(buildPeekSlice(width, viewport, scrollOffset = 3 * step), "PNG", finalFile)
+
+        val out = tmp.newFile("stitched_no_edge.png")
+        val result = stitchSlicesWithFinalFrame(
+            slices = slices,
+            finalFrameFile = finalFile,
+            viewportLayoutPx = viewport,
+            outputFile = out,
+            isRound = true,
+        )
+        assertTrue("stitcher returned null", result != null)
+        // The fallback path produces a valid PNG; we don't assert pixel-
+        // perfection here because the established behaviour is tested
+        // separately. Just confirming the round-device branch doesn't
+        // destroy the output or throw.
+        val stitched = ImageIO.read(out)
+        assertTrue("output height should be > viewport", stitched.height > viewport)
+    }
+
+    /**
      * Content-continuity check: the stitched list region should read out
      * the same pseudo-random colour per source-y that the fixture
      * generates — i.e. no gaps, no duplicated bands. Exercises approach
@@ -165,16 +277,24 @@ class LongScrollGhostOverlayTest {
      * scrolling list content with a unique colour per `sourceY = y +
      * scrollOffset`. Rows `[LIST_BOTTOM..viewport)` are black scaffold-
      * reserved background, with a grey peek-pill ellipse at
-     * `[PEEK_TOP..PEEK_BOT]` centred horizontally.
+     * `[PEEK_TOP..PEEK_BOT]` centred horizontally. [pillYShift] lets a
+     * caller simulate the real-world spring-settle wobble where the
+     * peek pill moves by 1–3 px between consecutive slices — enough to
+     * defeat [bottomPinnedRowsTop]'s stable-position assumption.
      */
-    private fun buildPeekSlice(width: Int, height: Int, scrollOffset: Int): BufferedImage {
+    private fun buildPeekSlice(
+        width: Int,
+        height: Int,
+        scrollOffset: Int,
+        pillYShift: Int = 0,
+    ): BufferedImage {
         val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
         val g = img.createGraphics()
         try {
             g.color = Color.BLACK
             g.fillRect(0, 0, width, height)
             paintListBand(g, width, scrollOffset)
-            paintPeekPill(g, width)
+            paintPeekPill(g, width, pillYShift)
         } finally {
             g.dispose()
         }
@@ -229,7 +349,7 @@ class LongScrollGhostOverlayTest {
         return (r shl 16) or (g shl 8) or b
     }
 
-    private fun paintPeekPill(g: java.awt.Graphics2D, width: Int) {
+    private fun paintPeekPill(g: java.awt.Graphics2D, width: Int, yShift: Int = 0) {
         g.color = Color(
             (PEEK_PILL_GREY_RGB shr 16) and 0xFF,
             (PEEK_PILL_GREY_RGB shr 8) and 0xFF,
@@ -237,7 +357,7 @@ class LongScrollGhostOverlayTest {
         )
         val pillW = 30
         val pillH = PEEK_BOT - PEEK_TOP + 1
-        g.fillOval((width - pillW) / 2, PEEK_TOP, pillW, pillH)
+        g.fillOval((width - pillW) / 2, PEEK_TOP + yShift, pillW, pillH)
     }
 
     // ------------------------------------------------------------------
@@ -268,6 +388,21 @@ class LongScrollGhostOverlayTest {
             if (maxRun > w / 2) return y
         }
         return img.height
+    }
+
+    private fun rowMatchesColour(
+        img: BufferedImage,
+        y: Int,
+        expectedRgb: Int,
+        tolerance: Int,
+    ): Boolean {
+        if (y < 0 || y >= img.height) return false
+        val p = img.getRGB(img.width / 2, y)
+        if ((p ushr 24) and 0xFF == 0) return false
+        val dr = ((p shr 16) and 0xFF) - ((expectedRgb shr 16) and 0xFF)
+        val dg = ((p shr 8) and 0xFF) - ((expectedRgb shr 8) and 0xFF)
+        val db = (p and 0xFF) - (expectedRgb and 0xFF)
+        return dr * dr + dg * dg + db * db <= tolerance
     }
 
     private fun rowIsPredominantly(img: BufferedImage, y: Int, rgb: Int): Boolean {
