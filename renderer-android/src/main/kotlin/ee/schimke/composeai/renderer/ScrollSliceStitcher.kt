@@ -685,9 +685,21 @@ private fun anchorByEdgeButton(
     val finalH = finalImage.height
 
     val edgeButtonTop = detectWearEdgeButtonTop(finalImage) ?: return null
-    val anchorK = ANCHOR_BAND_ROWS.coerceAtMost(edgeButtonTop)
+    // Anchor against the bottom edge of the last list card, NOT the top
+    // of the EdgeButton. `ScreenScaffold` leaves a blank spacer between
+    // list content and the settled button; sampling 48 rows immediately
+    // above `edgeButtonTop` mixes real card rows with ~30 rows of
+    // empty-background, and the SAD matcher (bottom-up / first-below-
+    // threshold) then accepts positions 1–30 rows inside any peek-pill
+    // residue that's still in the stitched content — the fading-pill
+    // region looks enough like the blank band to match. Walking up from
+    // `edgeButtonTop` to the first row with real content puts the anchor
+    // on rows that can only match where the last list item genuinely
+    // sits in the stitch.
+    val anchorBottomExclusive = lastContentRowBottomUp(finalImage, edgeButtonTop) ?: return null
+    val anchorK = ANCHOR_BAND_ROWS.coerceAtMost(anchorBottomExclusive)
     if (anchorK < MIN_ANCHOR_BAND) return null
-    val anchorTop = edgeButtonTop - anchorK
+    val anchorTop = anchorBottomExclusive - anchorK
 
     val anchorLum = readLuminanceRowsOfRegion(finalImage, anchorTop, anchorK)
     val anchorVariation = rowStddevs(anchorLum).sum()
@@ -704,8 +716,15 @@ private fun anchorByEdgeButton(
 
     val matchEndY = findBestAnchorMatch(topLum, width, anchorLum) ?: return null
 
+    // Output = stitched[0..matchEndY) + finalImage[anchorBottomExclusive..h).
+    // The `[anchorBottomExclusive..edgeButtonTop)` span in the final
+    // frame is the settled blank band between last card and button —
+    // keeping it preserves the real spacing and makes the output always
+    // transition "last card → blank gap → EdgeButton", matching the
+    // settled Wear layout.
     val prefixHeight = matchEndY
-    val tailHeight = finalH - edgeButtonTop
+    val tailStart = anchorBottomExclusive
+    val tailHeight = finalH - tailStart
     val totalH = prefixHeight + tailHeight
     val out = BufferedImage(width, totalH, BufferedImage.TYPE_INT_ARGB)
     val g = out.createGraphics()
@@ -719,7 +738,7 @@ private fun anchorByEdgeButton(
         g.drawImage(
             finalImage,
             0, prefixHeight, width, prefixHeight + tailHeight,
-            0, edgeButtonTop, width, finalH,
+            0, tailStart, width, finalH,
             null,
         )
     } finally {
@@ -727,6 +746,47 @@ private fun anchorByEdgeButton(
     }
     return out
 }
+
+/**
+ * Walks [img] from `edgeButtonTop − 1` upward, returning the exclusive
+ * row index immediately below the last row with non-trivial visible
+ * content — i.e. the smallest `y` such that every row in
+ * `[y..edgeButtonTop)` is empty background. Returns `null` if the
+ * whole region above the button is empty (no list content to anchor
+ * on).
+ *
+ * Used by [anchorByEdgeButton] to place the anchor band on the actual
+ * last list card instead of on the scaffold-reserved blank spacer
+ * below it. "Content" is any opaque pixel with `r + g + b ≥
+ * [CONTENT_MIN_BRIGHTNESS_SUM]` — low enough to catch card surfaces
+ * on dark Wear themes, high enough to ignore Robolectric's AA haze.
+ */
+private fun lastContentRowBottomUp(img: BufferedImage, edgeButtonTop: Int): Int? {
+    val w = img.width
+    val rgb = IntArray(w)
+    for (y in edgeButtonTop - 1 downTo 0) {
+        img.getRGB(0, y, w, 1, rgb, 0, w)
+        for (x in 0 until w) {
+            val p = rgb[x]
+            val alpha = (p ushr 24) and 0xFF
+            if (alpha == 0) continue
+            val r = (p ushr 16) and 0xFF
+            val gg = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            if (r + gg + b >= CONTENT_MIN_BRIGHTNESS_SUM) return y + 1
+        }
+    }
+    return null
+}
+
+/**
+ * Per-pixel brightness floor for a row to count as "real content" in
+ * [lastContentRowBottomUp]. 120 lands above dark-theme card surfaces
+ * (Wear `TitleCard` on black reads ~r+g+b = 150) but below the kind
+ * of AA haze that stray compositor transparency leaves above the
+ * EdgeButton spacer.
+ */
+private const val CONTENT_MIN_BRIGHTNESS_SUM = 120
 
 /**
  * Scans [img] from its vertical midpoint down to the bottom for the

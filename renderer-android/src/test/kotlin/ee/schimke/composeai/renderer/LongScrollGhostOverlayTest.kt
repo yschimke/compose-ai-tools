@@ -162,19 +162,43 @@ class LongScrollGhostOverlayTest {
             0,
             ghostRows.size,
         )
-        // The row immediately above the EdgeButton band must be list content
-        // matching the settled scroll position (source-y at scroll end). The
-        // anchor heuristic guarantees this by construction — a broken
-        // algorithm could produce empty rows or content from earlier scroll
-        // positions between the last item and the button.
-        val rowAboveButton = edgeButtonTop - 1
-        val expectedSourceY = (3 * step) + (viewport - FINAL_EDGE_BUTTON_HEIGHT - 1)
+        // Alignment check: walk up from the EdgeButton top through the
+        // settled scaffold-reserved blank band, then assert the first row
+        // of real list content matches the expected settled-scroll source-y.
+        // The anchor path cuts at the bottom of the last list card and
+        // preserves the final frame's blank spacer between card and button,
+        // so the output reads "last card → blank gap → EdgeButton". A
+        // broken anchor would either glue the button straight onto an
+        // earlier scroll position (wrong source-y colour) or leave peek-
+        // pill residue in the gap (caught by the ghost-row assertion
+        // above).
+        val lastCardBottomInFinal = LIST_BOTTOM - 1
+        val expectedSourceY = (3 * step) + lastCardBottomInFinal
         val expected = expectedListColour(expectedSourceY)
+        val lastCardBottomInOutput = findLastCardBottomAbove(stitched, edgeButtonTop)
         assertTrue(
-            "row above EdgeButton (y=$rowAboveButton) should match source-y " +
-                "$expectedSourceY; got ARGB 0x${Integer.toHexString(stitched.getRGB(width / 2, rowAboveButton))}",
-            rowMatchesColour(stitched, rowAboveButton, expected, tolerance = 1200),
+            "expected last-card row above EdgeButton band to match source-y " +
+                "$expectedSourceY; got y=$lastCardBottomInOutput ARGB 0x" +
+                "${Integer.toHexString(stitched.getRGB(width / 2, lastCardBottomInOutput))}",
+            rowMatchesColour(stitched, lastCardBottomInOutput, expected, tolerance = 1200),
         )
+    }
+
+    /**
+     * Walks up from `edgeButtonTop − 1` looking for the first row with
+     * real list content — i.e. a non-background pixel near the image
+     * centre. Used by the Wear anchor test to skip the settled blank
+     * spacer between last card and EdgeButton in the output.
+     */
+    private fun findLastCardBottomAbove(img: BufferedImage, edgeButtonTop: Int): Int {
+        val xc = img.width / 2
+        for (y in edgeButtonTop - 1 downTo 0) {
+            val p = img.getRGB(xc, y)
+            if ((p ushr 24) and 0xFF == 0) continue
+            val sum = ((p shr 16) and 0xFF) + ((p shr 8) and 0xFF) + (p and 0xFF)
+            if (sum >= 120) return y
+        }
+        return 0
     }
 
     /**
