@@ -109,6 +109,7 @@ internal fun stitchSlicesWithFinalFrame(
     finalFrameFile: File,
     viewportLayoutPx: Int,
     outputFile: File,
+    isRound: Boolean = false,
 ): File? {
     if (slices.isEmpty()) return null
 
@@ -134,6 +135,22 @@ internal fun stitchSlicesWithFinalFrame(
     require(content.lastSliceImage.width == width && content.lastSliceImage.height == finalH) {
         "last slice size (${content.lastSliceImage.width}x${content.lastSliceImage.height}) " +
             "must match final frame (${width}x$finalH)"
+    }
+
+    // Wear-specific anchor path — cuts the stitch at the last list item
+    // and glues the settled EdgeButton band in after it, so nothing (ghost
+    // peek pills, fading chrome, settle-animation residue) can land
+    // between them. Only runs for round-device previews where the final
+    // frame actually shows an edge-hugging button shape; falls through on
+    // any mismatch so non-Wear and non-EdgeButton LONG captures keep the
+    // established overlay path.
+    if (isRound) {
+        val anchored = anchorByEdgeButton(content, finalImage)
+        if (anchored != null) {
+            outputFile.parentFile?.mkdirs()
+            ImageIO.write(anchored, "PNG", outputFile)
+            return outputFile
+        }
     }
 
     val diffStart = findFirstDifferingRow(content.lastSliceImage, finalImage)
@@ -589,6 +606,301 @@ private fun rowSad(a: IntArray, b: IntArray): Long {
         sum += if (d < 0) -d.toLong() else d.toLong()
     }
     return sum
+}
+
+/**
+ * Height of the anchor band (in slice-local pixels) used by
+ * [anchorByEdgeButton] to locate the last list item in the stitched
+ * content. 48 px covers roughly one Wear `TitleCard` including its
+ * bottom rounded-corner rows — enough signal to uniquely match, narrow
+ * enough to fit above the EdgeButton on a 454-px viewport.
+ */
+private const val ANCHOR_BAND_ROWS = 48
+
+/**
+ * Minimum anchor band height, used when `edgeButtonTop` is near the
+ * viewport top and we have to shrink the band. Below this the match
+ * becomes ambiguous (too few distinguishing rows).
+ */
+private const val MIN_ANCHOR_BAND = 16
+
+/**
+ * Minimum summed per-row stddev across the anchor band. Blank regions
+ * (uniform background, padding between cards) have near-zero stddev and
+ * match anywhere in the stitched content — bailing keeps the heuristic
+ * from cutting the output at a meaningless seam.
+ */
+private const val MIN_ANCHOR_VARIATION = 200.0
+
+/**
+ * Per-pixel SAD threshold (on 0–255 luminance) for an anchor match to
+ * count. Real list content at the right position SADs to ~0; a genuine
+ * mis-match (list item vs background vs peek pill) SADs to 20–60+.
+ */
+private const val ANCHOR_MATCH_MAX_SAD_PER_PIXEL = 8.0
+
+/**
+ * Minimum extent (as a fraction of image width) for a row to qualify as
+ * "inside" the Wear `EdgeButton` band. The button is roughly the width
+ * of the round viewport at its widest point; scan-line sampling hits
+ * 40–70 % of the width depending on where on the button the row cuts.
+ */
+private const val EDGE_BUTTON_MIN_EXTENT_FRAC = 0.30
+
+/**
+ * Minimum mean channel sum (r + g + b, 0–765) for a run of pixels to
+ * count as Wear Material3 primary. The full `EdgeButton` at primary-
+ * container lands at ~670; cards / background sit well below 300.
+ */
+private const val EDGE_BUTTON_MIN_BRIGHTNESS_SUM = 500
+
+/**
+ * Minimum blue − green bias (on 0–255 channels, averaged across the
+ * run) — Wear Material3 primary has a distinct purple cast. Gates out
+ * neutral-grey chrome that happens to be wide and bright (dialogs,
+ * white snackbars) without being an EdgeButton.
+ */
+private const val EDGE_BUTTON_MIN_PURPLE_CAST = 10.0
+
+/**
+ * Wear-specific re-stitch: when the settled final frame actually shows
+ * an edge-hugging button, find the last list item that sits immediately
+ * above that button, locate the same item in the top-down stitched
+ * content, and glue the button region on directly after it. Nothing
+ * (ghost peek pills, fading chrome, settle-animation residue) can land
+ * between them because we don't paint the rows between in the first
+ * place.
+ *
+ * Returns `null` when the heuristic can't apply cleanly — no button
+ * shape in the final frame, anchor band would be too thin, anchor band
+ * is blank / insufficiently varied, or no acceptable match is found in
+ * the stitched content. Callers fall back to the established
+ * final-frame overlay path in that case.
+ */
+private fun anchorByEdgeButton(
+    content: StitchedContent,
+    finalImage: BufferedImage,
+): BufferedImage? {
+    val width = content.image.width
+    val finalH = finalImage.height
+
+    val edgeButtonTop = detectWearEdgeButtonTop(finalImage) ?: return null
+    // Anchor against the bottom edge of the last list card, NOT the top
+    // of the EdgeButton. `ScreenScaffold` leaves a blank spacer between
+    // list content and the settled button; sampling 48 rows immediately
+    // above `edgeButtonTop` mixes real card rows with ~30 rows of
+    // empty-background, and the SAD matcher (bottom-up / first-below-
+    // threshold) then accepts positions 1–30 rows inside any peek-pill
+    // residue that's still in the stitched content — the fading-pill
+    // region looks enough like the blank band to match. Walking up from
+    // `edgeButtonTop` to the first row with real content puts the anchor
+    // on rows that can only match where the last list item genuinely
+    // sits in the stitch.
+    val anchorBottomExclusive = lastContentRowBottomUp(finalImage, edgeButtonTop) ?: return null
+    val anchorK = ANCHOR_BAND_ROWS.coerceAtMost(anchorBottomExclusive)
+    if (anchorK < MIN_ANCHOR_BAND) return null
+    val anchorTop = anchorBottomExclusive - anchorK
+
+    val anchorLum = readLuminanceRowsOfRegion(finalImage, anchorTop, anchorK)
+    val anchorVariation = rowStddevs(anchorLum).sum()
+    if (anchorVariation < MIN_ANCHOR_VARIATION) return null
+
+    // Only search the painted content region. When `buildStitchedContent`
+    // detected a pinned-bottom band, `contentYEnd < image.height`; the
+    // reserved tail is transparent and the anchor would never match
+    // there. When no pinned region was detected, contentYEnd ==
+    // image.height and the whole image is fair game.
+    val searchEnd = content.contentYEnd
+    if (searchEnd < anchorK) return null
+    val topLum = readLuminanceRowsOfRegion(content.image, 0, searchEnd)
+
+    val matchEndY = findBestAnchorMatch(topLum, width, anchorLum) ?: return null
+
+    // Output = stitched[0..matchEndY) + finalImage[anchorBottomExclusive..h).
+    // The `[anchorBottomExclusive..edgeButtonTop)` span in the final
+    // frame is the settled blank band between last card and button —
+    // keeping it preserves the real spacing and makes the output always
+    // transition "last card → blank gap → EdgeButton", matching the
+    // settled Wear layout.
+    val prefixHeight = matchEndY
+    val tailStart = anchorBottomExclusive
+    val tailHeight = finalH - tailStart
+    val totalH = prefixHeight + tailHeight
+    val out = BufferedImage(width, totalH, BufferedImage.TYPE_INT_ARGB)
+    val g = out.createGraphics()
+    try {
+        g.drawImage(
+            content.image,
+            0, 0, width, prefixHeight,
+            0, 0, width, prefixHeight,
+            null,
+        )
+        g.drawImage(
+            finalImage,
+            0, prefixHeight, width, prefixHeight + tailHeight,
+            0, tailStart, width, finalH,
+            null,
+        )
+    } finally {
+        g.dispose()
+    }
+    return out
+}
+
+/**
+ * Walks [img] from `edgeButtonTop − 1` upward, returning the exclusive
+ * row index immediately below the last row with non-trivial visible
+ * content — i.e. the smallest `y` such that every row in
+ * `[y..edgeButtonTop)` is empty background. Returns `null` if the
+ * whole region above the button is empty (no list content to anchor
+ * on).
+ *
+ * Used by [anchorByEdgeButton] to place the anchor band on the actual
+ * last list card instead of on the scaffold-reserved blank spacer
+ * below it. "Content" is any opaque pixel with `r + g + b ≥
+ * [CONTENT_MIN_BRIGHTNESS_SUM]` — low enough to catch card surfaces
+ * on dark Wear themes, high enough to ignore Robolectric's AA haze.
+ */
+private fun lastContentRowBottomUp(img: BufferedImage, edgeButtonTop: Int): Int? {
+    val w = img.width
+    val rgb = IntArray(w)
+    for (y in edgeButtonTop - 1 downTo 0) {
+        img.getRGB(0, y, w, 1, rgb, 0, w)
+        for (x in 0 until w) {
+            val p = rgb[x]
+            val alpha = (p ushr 24) and 0xFF
+            if (alpha == 0) continue
+            val r = (p ushr 16) and 0xFF
+            val gg = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            if (r + gg + b >= CONTENT_MIN_BRIGHTNESS_SUM) return y + 1
+        }
+    }
+    return null
+}
+
+/**
+ * Per-pixel brightness floor for a row to count as "real content" in
+ * [lastContentRowBottomUp]. 120 lands above dark-theme card surfaces
+ * (Wear `TitleCard` on black reads ~r+g+b = 150) but below the kind
+ * of AA haze that stray compositor transparency leaves above the
+ * EdgeButton spacer.
+ */
+private const val CONTENT_MIN_BRIGHTNESS_SUM = 120
+
+/**
+ * Scans [img] from its vertical midpoint down to the bottom for the
+ * first row that looks like the top edge of a Wear Material3
+ * `EdgeButton` — wide, bright, with a purple cast. Returns the row
+ * index (`y` in slice-local coordinates), or `null` if no such row is
+ * found. Restricted to the bottom half because `EdgeButton` hugs the
+ * bottom of the round viewport by definition.
+ */
+private fun detectWearEdgeButtonTop(img: BufferedImage): Int? {
+    val w = img.width
+    val h = img.height
+    if (w <= 0 || h <= 0) return null
+    val startY = h / 2
+    val minExtent = (w * EDGE_BUTTON_MIN_EXTENT_FRAC).toInt()
+    val rgb = IntArray(w)
+    for (y in startY until h) {
+        img.getRGB(0, y, w, 1, rgb, 0, w)
+        var first = -1
+        var last = -1
+        var sumR = 0L
+        var sumG = 0L
+        var sumB = 0L
+        var count = 0
+        for (x in 0 until w) {
+            val p = rgb[x]
+            val alpha = (p ushr 24) and 0xFF
+            if (alpha == 0) continue
+            val r = (p ushr 16) and 0xFF
+            val gg = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            val s = r + gg + b
+            if (s > EDGE_BUTTON_MIN_BRIGHTNESS_SUM) {
+                if (first < 0) first = x
+                last = x
+                sumR += r
+                sumG += gg
+                sumB += b
+                count++
+            }
+        }
+        if (first < 0 || count == 0) continue
+        val extent = last - first + 1
+        if (extent < minExtent) continue
+        val purpleCast = (sumB - sumG).toDouble() / count
+        if (purpleCast < EDGE_BUTTON_MIN_PURPLE_CAST) continue
+        return y
+    }
+    return null
+}
+
+/**
+ * Reads `[y0, y0 + h)` of [img] as a matrix of per-row luminance values.
+ * Shared shape with [readLuminanceRows] — uses Rec. 601 weighting —
+ * but avoids the full-image allocation cost when we only need a narrow
+ * band (anchor) or a prefix (painted-content region).
+ */
+private fun readLuminanceRowsOfRegion(
+    img: BufferedImage,
+    y0: Int,
+    h: Int,
+): Array<IntArray> {
+    val w = img.width
+    val rgb = IntArray(w)
+    return Array(h) { k ->
+        img.getRGB(0, y0 + k, w, 1, rgb, 0, w)
+        IntArray(w) { x ->
+            val p = rgb[x]
+            val r = (p ushr 16) and 0xFF
+            val gg = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            (r * 299 + gg * 587 + b * 114) / 1000
+        }
+    }
+}
+
+/**
+ * Scans `topLum` for the bottommost position whose `anchor.size` rows
+ * match `anchor` below the per-pixel SAD threshold
+ * [ANCHOR_MATCH_MAX_SAD_PER_PIXEL]. Returns the row *after* the matched
+ * band — i.e. anchor matched at `topLum[y − anchor.size, y)` —
+ * suitable for use as a prefix-end cut point, or `null` if no position
+ * hits the threshold.
+ *
+ * Bottommost-acceptable rather than global-min: once the EdgeButton
+ * reveals, the last list item appears near the bottom of the stitched
+ * strip. A global-min search can prefer an earlier similar-content
+ * scroll position (real Wear previews repeat card templates; synthetic
+ * jitter patterns repeat by construction) — which would glue the
+ * EdgeButton on far above the true scroll end and throw away the tail
+ * of the stitched content. Walking bottom-up and accepting the first
+ * match locks onto the most recent occurrence of the last-item
+ * signature.
+ */
+private fun findBestAnchorMatch(
+    topLum: Array<IntArray>,
+    width: Int,
+    anchor: Array<IntArray>,
+): Int? {
+    val k = anchor.size
+    val h = topLum.size
+    if (k <= 0 || h < k) return null
+
+    val perPixelCutoff = (ANCHOR_MATCH_MAX_SAD_PER_PIXEL * k * width).toLong()
+
+    for (y in h downTo k) {
+        var sad = 0L
+        for (kk in 0 until k) {
+            sad += rowSad(anchor[kk], topLum[y - k + kk])
+            if (sad > perPixelCutoff) break
+        }
+        if (sad <= perPixelCutoff) return y
+    }
+    return null
 }
 
 /**
