@@ -846,7 +846,13 @@ private fun handleLongCapture(
         val finalFrameFile = File(slicesDir, "final_frame.png")
         rule.onRoot().captureRoboImage(file = finalFrameFile, roborazziOptions = sliceRoborazziOptions)
 
-        stitchSlicesWithFinalFrame(slices, finalFrameFile, viewportLayoutPx, outputFile) ?: return false
+        stitchSlicesWithFinalFrame(
+            slices = slices,
+            finalFrameFile = finalFrameFile,
+            viewportLayoutPx = viewportLayoutPx,
+            outputFile = outputFile,
+            isRound = isRound,
+        ) ?: return false
         if (isRound) applyWearPillClip(outputFile)
         System.err.println(
             "@ScrollingPreview(LONG) on '$previewId': stitched ${slices.size} slices + settled final frame.",
