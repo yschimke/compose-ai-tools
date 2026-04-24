@@ -51,11 +51,23 @@ class DoctorCommand(args: List<String>) {
 
     private val checks = mutableListOf<DoctorCheck>()
 
+    /**
+     * Claude Code cloud sandbox detection. Same signal `scripts/install.sh`
+     * uses (see `CLAUDE_CLOUD` auto-detection). When true, network-reach
+     * remediations call out Claude Code's Custom network mode directly and
+     * `checkClaudeCloud` emits a top-line `env.claude-cloud` check so the
+     * rest of the report reads in that context.
+     */
+    private val inClaudeCloud: Boolean =
+        !System.getenv("CLAUDE_CODE_SESSION_ID").isNullOrBlank() ||
+            !System.getenv("CLAUDE_ENV_FILE").isNullOrBlank()
+
     fun run() {
         // Environment checks always run.
         checkOs()
         checkJava()
         checkPathJava()
+        checkClaudeCloud()
 
         val projectDir = resolveProjectDir()
 
@@ -190,6 +202,43 @@ class DoctorCommand(args: List<String>) {
                 status = "ok",
                 message = "`java` on PATH → $path",
                 detail = summary,
+            ),
+        )
+    }
+
+    /**
+     * Surfaces Claude Code cloud sandbox detection as an info-style check so
+     * agents and humans reading the report know the four `env.network.*`
+     * probes below are load-bearing (Google hosts aren't on the Trusted
+     * allowlist — they only resolve in Custom mode) and that
+     * `scripts/install.sh` is the intended bootstrap path. Suppressed when
+     * no Claude cloud env vars are set.
+     */
+    private fun checkClaudeCloud() {
+        if (!inClaudeCloud) return
+        val sessionId = System.getenv("CLAUDE_CODE_SESSION_ID").orEmpty()
+        val envFile = System.getenv("CLAUDE_ENV_FILE").orEmpty()
+        addCheck(
+            DoctorCheck(
+                id = "env.claude-cloud",
+                category = "env",
+                status = "ok",
+                message = "Claude Code cloud sandbox detected",
+                detail = buildString {
+                    append("session=${sessionId.ifBlank { "(unset)" }}")
+                    append("; env-file=${envFile.ifBlank { "(unset)" }}")
+                    append(". Cloud renders need network level = Custom with ")
+                    append(NETWORK_HOSTS.joinToString(", ") { it.host })
+                    append(" allowlisted (keep 'include Trusted defaults' on). ")
+                    append("`scripts/install.sh` handles the JDK 17 + bundle install.")
+                },
+                remediation = DoctorRemediation(
+                    summary = "Bootstrap the CLI + skill bundle and write JAVA_HOME/PATH to \$CLAUDE_ENV_FILE.",
+                    commands = listOf(
+                        "curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash",
+                    ),
+                    docs = "https://github.com/$REPO/blob/main/skills/compose-preview/design/CLAUDE_CLOUD.md",
+                ),
             ),
         )
     }
@@ -726,6 +775,11 @@ class DoctorCommand(args: List<String>) {
                     message = "${probe.host} reachable (HTTP $code)",
                 )
             } else {
+                val summary = if (inClaudeCloud) {
+                    "Claude Code cloud session detected — switch the session's network level from Trusted to **Custom**, keep 'include Trusted defaults' on, and add `${probe.host}` (plus the other three Google hosts probed here) to the allowlist."
+                } else {
+                    "Allow ${probe.host} in your sandbox / proxy configuration. In Claude Code cloud sessions this means switching network access to Custom and adding the host (keep 'include Trusted defaults' on)."
+                }
                 DoctorCheck(
                     id = id,
                     category = "env",
@@ -733,7 +787,7 @@ class DoctorCommand(args: List<String>) {
                     message = "${probe.host} unreachable",
                     detail = "${probe.purpose}. Error: ${headers["error"] ?: "unknown"}.",
                     remediation = DoctorRemediation(
-                        summary = "Allow ${probe.host} in your sandbox / proxy configuration. In Claude Code cloud sessions this means switching network access to Custom and adding the host (keep 'include Trusted defaults' on).",
+                        summary = summary,
                         docs = "https://code.claude.com/docs/en/claude-code-on-the-web#network-access",
                     ),
                 )
