@@ -138,6 +138,12 @@ What it does when it sees the sandbox:
   `api.github.com` (rate-limited on shared sandbox IPs).
 - Appends `JAVA_HOME` and `PATH` to `$CLAUDE_ENV_FILE` so subsequent tool
   invocations in the session inherit them.
+- Translates `$https_proxy` / `$http_proxy` into `JAVA_TOOL_OPTIONS`
+  (`-Dhttps.proxyHost` / `-Dhttp.proxyHost`) and writes that to
+  `$CLAUDE_ENV_FILE` as well. The JVM's `HttpURLConnection` ignores the
+  shell proxy env vars, so without this the Gradle wrapper's first-run
+  distribution download fails with `UnknownHostException` on
+  `services.gradle.org` (see the "known gotchas" section below).
 
 Idempotent: rerunning is a fast no-op once things are in place.
 
@@ -262,18 +268,27 @@ Both bite people setting Gradle up in the cloud sandbox for the first time.
 The cloud sandbox routes egress through a proxy and exports `https_proxy`,
 but the JVM's built-in HTTP client ignores it. The Gradle wrapper hits this
 during initial distribution download; downstream `connection.connect()`
-calls in the Tooling API can hit it too.
+calls in the Tooling API can hit it too
+([anthropics/claude-code#16222](https://github.com/anthropics/claude-code/issues/16222)).
 
-Two workarounds, pick one:
+`scripts/install.sh` handles this: when run in cloud mode, it parses the
+shell proxy URL and appends a matching
+`JAVA_TOOL_OPTIONS="-Dhttps.proxyHost=… -Dhttps.proxyPort=… -Dhttp.proxyHost=… -Dhttp.proxyPort=…"`
+line to `$CLAUDE_ENV_FILE`, which the sandbox picks up for every subsequent
+tool invocation.
+
+If you're not using `install.sh` (or you're debugging a different JVM tool
+that hits the same issue), two manual workarounds:
 
 - **Pre-download** the Gradle distribution in the setup script via `curl`
   (which honors `https_proxy`) and stash it under
   `~/.gradle/wrapper/dists/gradle-<ver>-bin/<hash>/` so the wrapper finds it
   locally.
 - **Force the JVM through the proxy** by exporting
-  `JAVA_TOOL_OPTIONS="-Dhttps.proxyHost=<host> -Dhttps.proxyPort=<port>"` in
-  the setup script. See [tschuehly/claude-code-gradle-proxy](https://github.com/tschuehly/claude-code-gradle-proxy)
-  for a worked example.
+  `JAVA_TOOL_OPTIONS="-Dhttps.proxyHost=<host> -Dhttps.proxyPort=<port>"`
+  yourself, or install
+  [tschuehly/claude-code-gradle-proxy](https://github.com/tschuehly/claude-code-gradle-proxy),
+  which does the same thing as a `PreToolUse` hook on `Bash`.
 
 ### Toolchain auto-provisioning is blocked
 
