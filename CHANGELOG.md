@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.12](https://github.com/yschimke/compose-ai-tools/compare/v0.7.11...v0.7.12) (2026-04-24)
+
+
+### Features
+
+* **renderer:** realistic scroll shape for ScrollMode.GIF ([#180](https://github.com/yschimke/compose-ai-tools/issues/180)) ([9efb72d](https://github.com/yschimke/compose-ai-tools/commit/9efb72dd2fdeb5bf98323be964fff700b8f30d4f))
+
 ## [0.7.11](https://github.com/yschimke/compose-ai-tools/compare/v0.7.10...v0.7.11) (2026-04-24)
 
 
