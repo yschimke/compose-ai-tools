@@ -134,6 +134,64 @@ class LongScrollPreviewPixelTest {
     }
 
     /**
+     * Regression guard for the intermittent "ghost peek pill" bug
+     * (investigated alongside #170). In flaky runs the stitched output
+     * contains one or more narrow muted grey/purple pills — the peek
+     * state of `EdgeButton` that `ScreenScaffold` pins to the bottom of
+     * every intermediate slice — painted into the scrolling-content
+     * region of the stitch, ABOVE the fully-revealed "Start workout"
+     * EdgeButton at the true bottom.
+     *
+     * Mechanism: each intermediate slice has the peek pill at the same
+     * `y` within the slice (it is pinned to the viewport, not scrolled
+     * with the list). The stitcher paints only the bottom `d` rows of
+     * every slice ≥ 1 at a shifted destination `y`, so if the peek pill
+     * falls inside that bottom band the pill lands in the middle of the
+     * stitched output. `stitchSlicesWithFinalFrame`'s final-frame
+     * overwrite only covers the last `finalH` rows, so ghosts painted
+     * from earlier slices are never reached.
+     *
+     * This test looks for the signature: a narrow, centred run of
+     * muted-grey pixels anywhere ABOVE the real EdgeButton band. The
+     * real EdgeButton is Wear Material3 primary (bright, saturated,
+     * spans most of the viewport width); the peek pill is a dim
+     * ~90–100 px wide oval, centred horizontally, with mean luminance
+     * well below the primary colour.
+     */
+    @Test
+    fun `LONG preview has no ghost peek-pill rows above the EdgeButton`() {
+        val img = ImageIO.read(longPng)
+        val w = img.width
+        val h = img.height
+
+        // Locate the topmost row of the real EdgeButton band. The band is
+        // the first wide (> 40 % width) run of bright/saturated-purple
+        // pixels scanning from top to bottom after we've already cleared
+        // the list content region.
+        val edgeButtonTop = (0 until h).firstOrNull { y ->
+            val (extent, avg) = brightCentredRun(img, y)
+            extent > w * 0.40 && avg > 400 // primary is bright on all channels
+        } ?: h
+
+        // Scan everything strictly above the EdgeButton band for the ghost
+        // signature: narrow (8–110 px), centred (± w/8 of centre), with a
+        // mean colour that is content-ish but distinctly DIMMER than the
+        // real EdgeButton (sum of RGB channels < 420 — well below the
+        // ~670 of Wear Material3 primary, above the ~0 of pure black
+        // background).
+        val ghostRows = mutableListOf<Int>()
+        for (y in 0 until edgeButtonTop) {
+            val row = extractCentredPillRow(img, y)
+            if (row != null) ghostRows += y
+        }
+
+        // Allow a tiny budget for AA fringing / unrelated chrome at
+        // extreme top (TimeText curvature), but the Wear long preview
+        // should produce zero peek-pill ghost rows in a correct stitch.
+        assertThat(ghostRows).isEmpty()
+    }
+
+    /**
      * Regression for the EdgeButton reveal animation at the bottom of a
      * scroll-to-end stitch: without a post-scroll settle pass, the final
      * slice captures `ScreenScaffold`'s `EdgeButton` mid-reveal, and the
@@ -192,5 +250,107 @@ class LongScrollPreviewPixelTest {
 
         val extent = maxRunWidth.toDouble() / w
         assertThat(extent).isGreaterThan(0.60)
+    }
+
+    /**
+     * Widest continuous horizontal run of bright visible pixels on row [y],
+     * returned as `(extent, averageChannelSum)` where `averageChannelSum`
+     * is the mean of `r + g + b` across the run (0..765). Transparent pill-
+     * clip pixels (alpha = 0) break the run, matching the shape of a
+     * Wear round-device capsule mask. Used to locate the real EdgeButton
+     * band in the stitched output.
+     */
+    private fun brightCentredRun(
+        img: java.awt.image.BufferedImage,
+        y: Int,
+    ): Pair<Int, Int> {
+        val w = img.width
+        var bestExtent = 0
+        var bestSum = 0L
+        var run = 0
+        var runSum = 0L
+        for (x in 0 until w) {
+            val argb = img.getRGB(x, y)
+            val alpha = (argb ushr 24) and 0xff
+            if (alpha == 0) {
+                run = 0
+                runSum = 0L
+                continue
+            }
+            val r = (argb shr 16) and 0xff
+            val g = (argb shr 8) and 0xff
+            val b = argb and 0xff
+            val s = r + g + b
+            // Only consider pixels that plausibly belong to a coloured
+            // element (not the black scaffold background).
+            if (s > 150) {
+                run++
+                runSum += s
+                if (run > bestExtent) {
+                    bestExtent = run
+                    bestSum = runSum
+                }
+            } else {
+                run = 0
+                runSum = 0L
+            }
+        }
+        val avg = if (bestExtent == 0) 0 else (bestSum / bestExtent).toInt()
+        return bestExtent to avg
+    }
+
+    /**
+     * Returns the first (x0, x1, avgRgbSum) tuple describing a centred
+     * "peek pill" run on row [y], or `null` if none qualifies. A peek
+     * pill of `EdgeButton` — the ghost-flake signature — has:
+     *  - extent ∈ [8, 110] px (too narrow to be a card, too wide to be
+     *    AA on a single icon edge);
+     *  - centred within ± w/8 of the image centre;
+     *  - mean `r + g + b` in `[60, 420]` — darker than the Wear
+     *    Material3 primary-coloured EdgeButton (~670) and brighter than
+     *    pure background (0);
+     *  - a distinct purple cast (`B − G ≥ 5`). This filters out
+     *    neutral-grey chrome like `TimeText` (`B == G == R`) that can
+     *    also present as a narrow centred run near the top of the
+     *    stitched image but is not the flake.
+     */
+    private fun extractCentredPillRow(
+        img: java.awt.image.BufferedImage,
+        y: Int,
+    ): Triple<Int, Int, Int>? {
+        val w = img.width
+        var first = -1
+        var last = -1
+        var sumS = 0L
+        var sumG = 0L
+        var sumB = 0L
+        var count = 0
+        for (x in 0 until w) {
+            val argb = img.getRGB(x, y)
+            val alpha = (argb ushr 24) and 0xff
+            if (alpha == 0) continue
+            val r = (argb shr 16) and 0xff
+            val g = (argb shr 8) and 0xff
+            val b = argb and 0xff
+            val s = r + g + b
+            if (s > 150) {
+                if (first < 0) first = x
+                last = x
+                sumS += s
+                sumG += g
+                sumB += b
+                count++
+            }
+        }
+        if (first < 0 || count == 0) return null
+        val extent = last - first + 1
+        if (extent !in 8..110) return null
+        val centre = (first + last) / 2
+        if (Math.abs(centre - w / 2) > w / 8) return null
+        val avg = (sumS / count).toInt()
+        if (avg !in 60..420) return null
+        val purpleCast = (sumB - sumG) / count.toDouble()
+        if (purpleCast < 5.0) return null
+        return Triple(first, last, avg)
     }
 }
