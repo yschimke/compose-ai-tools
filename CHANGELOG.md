@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.11](https://github.com/yschimke/compose-ai-tools/compare/v0.7.10...v0.7.11) (2026-04-24)
+
+
+### Features
+
+* **plugin:** composePreview.manageDependencies opt-out ([#179](https://github.com/yschimke/compose-ai-tools/issues/179)) ([31e560a](https://github.com/yschimke/compose-ai-tools/commit/31e560a65c4284c1435047b78441d8777a2d0957))
+
+
+### Bug Fixes
+
+* **install:** reuse pre-installed JDK 21 on Claude Cloud instead of forcing JDK 17 ([#174](https://github.com/yschimke/compose-ai-tools/issues/174)) ([2199334](https://github.com/yschimke/compose-ai-tools/commit/219933448da8167890b7fbe0252e348ad4ac1f71))
+* **install:** translate $https_proxy into JAVA_TOOL_OPTIONS in cloud mode ([#176](https://github.com/yschimke/compose-ai-tools/issues/176)) ([d397cbd](https://github.com/yschimke/compose-ai-tools/commit/d397cbd4aae26c7aa337bbc716f83be87781d3ae))
+* **plugin:** widen dep-jar filter + fail fast when @Preview not on classpath ([#162](https://github.com/yschimke/compose-ai-tools/issues/162)) ([#178](https://github.com/yschimke/compose-ai-tools/issues/178)) ([a00553e](https://github.com/yschimke/compose-ai-tools/commit/a00553ea6e08ae381d129f50fc482b13855ff157))
+* **renderer:** wear anchor-based stitch + wire sample-wear tests into CI ([#177](https://github.com/yschimke/compose-ai-tools/issues/177)) ([c32e450](https://github.com/yschimke/compose-ai-tools/commit/c32e450158cec70c704d417048c0918e817c407a))
+
 ## [0.7.10](https://github.com/yschimke/compose-ai-tools/compare/v0.7.9...v0.7.10) (2026-04-24)
 
 
