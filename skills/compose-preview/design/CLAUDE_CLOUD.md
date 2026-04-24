@@ -2,32 +2,54 @@
 
 Notes for running this project's tooling inside Claude Code's cloud sandbox
 (claude.ai/code / "Claude on the web"). The default network level handles
-the common case; Android-consumer builds need one extra step.
+CMP Desktop / pure-JVM; Android-consumer builds need one extra step.
 
 ## TL;DR
 
-- One-step install for both the skill bundle and the CLI:
-  ```
-  curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
-  ```
-  Lands the skill at `~/.claude/skills/compose-preview/` (where Claude Code
-  discovers it) with the CLI extracted as a sibling under `cli/` and a
-  `bin/compose-preview` launcher inside the bundle. Also symlinks
-  `~/.local/bin/compose-preview` for direct CLI use.
-- **CMP Desktop / pure-JVM consumers**: works on the default **Trusted**
-  network level. No allowlist changes needed.
-- **Android consumers** (anything pulling AGP / AndroidX / Robolectric):
-  switch the session to **Custom** and add `dl.google.com` and
-  `maven.google.com`, with the "include Trusted defaults" checkbox kept on.
-  Don't use **Full** — it's broader than needed.
-- `install.sh` auto-detects the Claude Code cloud sandbox (via
-  `$CLAUDE_ENV_FILE` / `$CLAUDE_CODE_SESSION_ID`) and handles the two things
-  the default image is missing: it apt-installs `openjdk-17-jdk-headless`
-  (the Gradle toolchain pin is 17; only 21 is pre-installed) and appends
-  `JAVA_HOME` + `PATH` to `$CLAUDE_ENV_FILE` so every subsequent tool
-  invocation sees them.
-- Put any project-specific Gradle pre-warm in the **environment setup
-  script** after the install line — what to render is yours to fill in.
+Two things, in order:
+
+1. **Network level → Custom** with these four hosts allowlisted (keep
+   "include Trusted defaults" on):
+
+   | Host | Why |
+   | --- | --- |
+   | `maven.google.com` | AGP + AndroidX |
+   | `dl.google.com` | Android SDK cmdline-tools / Google Maven mirror |
+   | `fonts.googleapis.com` | Google Fonts API (downloadable fonts) |
+   | `fonts.gstatic.com` | Google Fonts static assets |
+
+   CMP Desktop / pure-JVM consumers can stay on **Trusted** — the four hosts
+   are Android + downloadable-fonts specific. Don't use **Full**; it's broader
+   than needed.
+
+2. **Drop the install script into the environment setup script:**
+
+   ```
+   curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+   ```
+
+   Auto-detects the Claude Code cloud sandbox (via `$CLAUDE_ENV_FILE` /
+   `$CLAUDE_CODE_SESSION_ID`) and handles the two things the default image is
+   missing: apt-installs `openjdk-17-jdk-headless` (the Gradle toolchain pin
+   is 17; only 21 is pre-installed) and appends `JAVA_HOME` + `PATH` to
+   `$CLAUDE_ENV_FILE` so every subsequent tool invocation sees them. Lands
+   the skill at `~/.claude/skills/compose-preview/` (where Claude Code
+   discovers it) with the CLI as a sibling under `cli/`, and symlinks
+   `~/.local/bin/compose-preview` for direct CLI use.
+
+Verify in a fresh session:
+
+```
+compose-preview doctor
+```
+
+When it sees `$CLAUDE_CODE_SESSION_ID` / `$CLAUDE_ENV_FILE`, doctor emits an
+`env.claude-cloud` info check at the top, probes the four hosts above, and
+tailors its remediation to the Claude Code UI (Trusted → Custom, add the
+missing host) rather than generic "allow in your proxy" text.
+
+Put project-specific Gradle pre-warm in the **environment setup script**
+after the install line — what to render is yours to fill in.
 
 ## Cloud sandbox network levels
 

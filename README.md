@@ -24,6 +24,38 @@ Also provides a VS Code plugin that displays them
 
 <img height="400" alt="image" src="https://github.com/user-attachments/assets/fe9be596-13d9-4880-9e20-cedd6992f650" />
 
+## Cloud sandboxes (Claude Code on the web, etc.)
+
+If you're running this in a cloud agent sandbox, two things are required:
+
+1. **Allowlist the four Google hosts** the Android + downloadable-fonts render
+   paths pull from. In the Claude Code web UI, switch **Network access** from
+   *Trusted* to **Custom**, keep *"include Trusted defaults"* on, and add:
+
+   | Host | Used for |
+   | --- | --- |
+   | `maven.google.com` | AGP + AndroidX resolution |
+   | `dl.google.com` | Android SDK cmdline-tools / Google Maven mirror |
+   | `fonts.googleapis.com` | Google Fonts API (downloadable fonts) |
+   | `fonts.gstatic.com` | Google Fonts static assets |
+
+   Pure CMP Desktop / JVM consumers can stay on *Trusted* — the four hosts
+   are Android-specific.
+
+2. **Drop the install script into your environment setup.** It installs
+   JDK 17, the CLI, and the skill bundle (at `~/.claude/skills/compose-preview/`),
+   and appends `JAVA_HOME` / `PATH` to `$CLAUDE_ENV_FILE` so every subsequent
+   tool invocation in the session inherits them:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+   ```
+
+`compose-preview doctor` probes all four hosts and, when it sees
+`$CLAUDE_CODE_SESSION_ID` / `$CLAUDE_ENV_FILE`, tailors its remediation to the
+Claude Code UI (Trusted → Custom, add the missing host). Full walk-through
+including Gradle pre-warming, Android SDK install, and proxy gotchas:
+[skills/compose-preview/design/CLAUDE_CLOUD.md](skills/compose-preview/design/CLAUDE_CLOUD.md).
 
 ## How it works
 
