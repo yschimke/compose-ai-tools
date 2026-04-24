@@ -35,6 +35,25 @@ internal object AndroidPreviewSupport {
         "tiles-tooling",
     )
 
+    /**
+     * `(group, name)` of every artifact whose presence in a module's
+     * declared deps marks it as a "valid preview module" — the plugin
+     * registers its tasks and runs discovery only when at least one
+     * matches. Convention-plugin-everywhere setups (e.g. applying
+     * `composePreview` to every Android module) stay silent no-ops on
+     * utility modules without any preview surface.
+     *
+     * Group+name match only (no version): cheap, IP-safe, doesn't
+     * trigger dependency resolution.
+     */
+    private val previewArtifactSignals = setOf(
+        "androidx.compose.ui" to "ui-tooling-preview",
+        "androidx.compose.ui" to "ui-tooling-preview-android",
+        "androidx.wear.tiles" to "tiles-tooling-preview",
+        // CMP-only; AGP consumers never declare it but the helper is shared.
+        "org.jetbrains.compose.components" to "components-ui-tooling-preview",
+    )
+
     fun configure(project: Project, extension: PreviewExtension) {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
@@ -55,10 +74,41 @@ internal object AndroidPreviewSupport {
             if (registered) return@onVariants
             if (!extension.enabled.get()) return@onVariants
             if (variant.name != extension.variant.get()) return@onVariants
+            if (!hasPreviewDependency(project)) {
+                project.logger.info(
+                    "compose-preview: no known @Preview dependency declared in module " +
+                        "'${project.path}'; skipping task registration. " +
+                        "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
+                        "(or remove the plugin from this module) to opt in.",
+                )
+                return@onVariants
+            }
             registered = true
             registerAndroidTasks(project, extension, variant.name, androidComponents.sdkComponents.bootClasspath)
         }
     }
+
+    /**
+     * True when any declarative dep bucket (`implementation` / `api` /
+     * `runtimeOnly`, including their `<name>Implementation` variants)
+     * declares a coord in [previewArtifactSignals]. Read at onVariants
+     * time, after the consumer's `dependencies { }` block has populated
+     * configurations; avoids resolution and stays Isolated-Projects safe.
+     */
+    private fun hasPreviewDependency(project: Project): Boolean =
+        project.configurations.asSequence()
+            .filter { c ->
+                val n = c.name
+                n == "implementation" || n.endsWith("Implementation") ||
+                    n == "api" || n.endsWith("Api") ||
+                    n == "runtimeOnly" || n.endsWith("RuntimeOnly")
+            }
+            .any { c ->
+                c.allDependencies.any { dep ->
+                    val g = dep.group ?: return@any false
+                    previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }
+                }
+            }
 
     private fun registerAndroidTasks(
         project: Project,
