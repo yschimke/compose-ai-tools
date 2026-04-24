@@ -7,8 +7,6 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
-import java.util.Base64
-import java.util.Properties
 import kotlin.system.exitProcess
 
 /**
@@ -18,13 +16,6 @@ import kotlin.system.exitProcess
  *
  * **Environment** (always runs, safe outside a Gradle project):
  *   - Java 17+ on PATH
- *   - GitHub Packages credentials (`composeAiTools.githubUser` /
- *     `...Token` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` /
- *     `GITHUB_TOKEN` env vars). Only required when the consumer's
- *     Gradle scripts actually point at `maven.pkg.github.com` —
- *     otherwise the check reports `skipped`. See #161.
- *   - HEAD probe against `maven.pkg.github.com` verifies `read:packages`,
- *     same gate as above.
  *   - HEAD probes of Google-controlled hosts required by Android / downloadable-font
  *     render paths (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`,
  *     `fonts.gstatic.com`). Warnings only; set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`
@@ -66,16 +57,8 @@ class DoctorCommand(args: List<String>) {
         checkJava()
         checkPathJava()
 
-        // Resolve the project dir up-front so the GitHub Packages credential
-        // check can decide whether it's even relevant for this consumer.
-        // Since v0.6.0 the plugin is on Maven Central; GH Packages is only
-        // needed by projects that explicitly point at `maven.pkg.github.com`
-        // (typically for consuming snapshots). Issue #161.
         val projectDir = resolveProjectDir()
-        val needsGhPackages = projectDir?.let(::projectUsesGitHubPackages) ?: false
 
-        val creds = checkCredentials(needsGhPackages)
-        if (creds != null && needsGhPackages) probeMaven(creds)
         checkComposeBomVersion()
         if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1") {
             checkNetworkReach()
@@ -209,130 +192,6 @@ class DoctorCommand(args: List<String>) {
                 detail = summary,
             ),
         )
-    }
-
-    private fun checkCredentials(needsGhPackages: Boolean): Credentials? {
-        val propsFile = File(System.getProperty("user.home"), ".gradle/gradle.properties")
-        val props = loadProperties(propsFile)
-
-        val user = props["composeAiTools.githubUser"]
-            ?: System.getenv("GITHUB_ACTOR")
-        val token = props["composeAiTools.githubToken"]
-            ?: System.getenv("GITHUB_TOKEN")
-
-        when {
-            user == null && token == null -> {
-                if (needsGhPackages) {
-                    addCheck(
-                        DoctorCheck(
-                            id = "env.github-credentials",
-                            category = "env",
-                            status = "error",
-                            message = "no GitHub Packages credentials found (project points at maven.pkg.github.com)",
-                            remediation = DoctorRemediation(
-                                summary = "Store a GitHub token with `read:packages` scope.",
-                                commands = listOf(
-                                    "gh auth refresh -h github.com -s read:packages",
-                                    "gh auth token",
-                                ),
-                                docs = "https://github.com/$REPO#credentials",
-                            ),
-                        ),
-                    )
-                } else {
-                    addCheck(
-                        DoctorCheck(
-                            id = "env.github-credentials",
-                            category = "env",
-                            status = "skipped",
-                            message = "no GitHub Packages credentials — not required for this project",
-                            detail = "The plugin resolves from Maven Central; GH Packages is only needed when a repository declares `maven.pkg.github.com` (typically for consuming snapshots).",
-                        ),
-                    )
-                }
-                return null
-            }
-            token == null -> {
-                addCheck(
-                    DoctorCheck(
-                        id = "env.github-credentials",
-                        category = "env",
-                        status = if (needsGhPackages) "error" else "warning",
-                        message = "composeAiTools.githubToken is not set",
-                    ),
-                )
-                return null
-            }
-        }
-
-        val source = when {
-            props["composeAiTools.githubToken"] != null -> propsFile.path
-            else -> "\$GITHUB_TOKEN env var"
-        }
-        addCheck(
-            DoctorCheck(
-                id = "env.github-credentials",
-                category = "env",
-                status = if (user == null) "warning" else "ok",
-                message = "credentials found ($source)",
-                detail = if (user == null) "composeAiTools.githubUser not set; falling back to 'x' for BASIC auth" else null,
-            ),
-        )
-        return Credentials(user ?: "x", token!!)
-    }
-
-    private fun probeMaven(creds: Credentials) {
-        val path = "ee/schimke/composeai/gradle-plugin/$pluginVersion/gradle-plugin-$pluginVersion.pom"
-        val url = "$MAVEN_BASE/$path"
-
-        val (code, headers) = head(url, creds)
-
-        val check = when (code) {
-            in 200..299 -> DoctorCheck(
-                id = "env.github-packages",
-                category = "env",
-                status = "ok",
-                message = "GitHub Packages auth works (HEAD $pluginVersion → $code)",
-            )
-            404 -> DoctorCheck(
-                id = "env.github-packages",
-                category = "env",
-                status = "warning",
-                message = "plugin v$pluginVersion not found on GitHub Packages",
-                detail = "auth+scope work (404, not 401), but this version is not published; pick a different version",
-                remediation = DoctorRemediation(
-                    summary = "Check available releases.",
-                    docs = "https://github.com/$REPO/releases",
-                ),
-            )
-            401 -> DoctorCheck(
-                id = "env.github-packages",
-                category = "env",
-                status = "error",
-                message = "GitHub Packages rejected credentials (HTTP 401)",
-                detail = headers.entries.firstOrNull { it.key.equals("x-oauth-scopes", true) }?.value
-                    ?.let { "scopes reported: ${it.ifBlank { "(none)" }}" },
-                remediation = DoctorRemediation(
-                    summary = "Token is missing `read:packages` or is invalid.",
-                    commands = listOf("gh auth refresh -h github.com -s read:packages"),
-                    docs = "https://github.com/settings/tokens/new",
-                ),
-            )
-            403 -> DoctorCheck(
-                id = "env.github-packages",
-                category = "env",
-                status = "error",
-                message = "GitHub Packages refused (HTTP 403)",
-                detail = "token likely lacks `read:packages`",
-            )
-            else -> DoctorCheck(
-                id = "env.github-packages",
-                category = "env",
-                status = "error",
-                message = "unexpected HTTP $code from $url",
-            )
-        }
-        addCheck(check)
     }
 
     // --- Project checks -----------------------------------------------------
@@ -673,36 +532,6 @@ class DoctorCommand(args: List<String>) {
     }
 
     /**
-     * Does the project resolve anything from GitHub Packages? True when
-     * `settings.gradle[.kts]` or any `build.gradle[.kts]` under [root]
-     * mentions `maven.pkg.github.com`. Used to decide whether the
-     * GitHub-credentials check is relevant — the plugin has been on Maven
-     * Central since v0.6.0, so GH Packages only matters for projects
-     * that opt into it (typically for consuming snapshots). See #161.
-     */
-    private fun projectUsesGitHubPackages(root: File): Boolean {
-        val targets = setOf(
-            "settings.gradle", "settings.gradle.kts",
-            "build.gradle", "build.gradle.kts",
-        )
-        fun walk(dir: File, depth: Int): Boolean {
-            if (depth > 4 || dir.name.startsWith(".") || dir.name in SKIP_DIRS) return false
-            val children = dir.listFiles() ?: return false
-            for (f in children) {
-                if (f.isFile && f.name in targets) {
-                    val text = try { f.readText() } catch (_: Exception) { continue }
-                    if ("maven.pkg.github.com" in text) return true
-                }
-            }
-            for (f in children) {
-                if (f.isDirectory && walk(f, depth + 1)) return true
-            }
-            return false
-        }
-        return walk(root, 0)
-    }
-
-    /**
      * Returns `(fileWhereFound, parsedVersion)` for every
      * `androidx.compose:compose-bom` version literal we find under [root].
      * Scans `gradle/libs.versions.toml` and every `build.gradle[.kts]`,
@@ -934,40 +763,6 @@ class DoctorCommand(args: List<String>) {
         }
     }
 
-    private fun head(url: String, creds: Credentials): Pair<Int, Map<String, String>> {
-        val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "HEAD"
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            instanceFollowRedirects = true
-            val auth = Base64.getEncoder()
-                .encodeToString("${creds.user}:${creds.token}".toByteArray())
-            setRequestProperty("Authorization", "Basic $auth")
-            setRequestProperty("User-Agent", "compose-preview-doctor")
-        }
-        return try {
-            val code = conn.responseCode
-            val headers = conn.headerFields
-                .filterKeys { it != null }
-                .mapValues { it.value.joinToString(", ") }
-            code to headers
-        } catch (e: Exception) {
-            -1 to mapOf("error" to (e.message ?: e.javaClass.simpleName))
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun loadProperties(file: File): Map<String, String> {
-        if (!file.exists()) return emptyMap()
-        return try {
-            Properties().apply { file.inputStream().use { load(it) } }
-                .entries.associate { it.key.toString() to it.value.toString() }
-        } catch (e: Exception) {
-            emptyMap()
-        }
-    }
-
     /** Sanitise a module path (e.g. `:sample-wear` → `sample-wear`) for use in check ids. */
     private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }
 
@@ -1022,8 +817,6 @@ class DoctorCommand(args: List<String>) {
         return if (major == 1) raw.split('.').getOrNull(1)?.toIntOrNull() else major
     }
 
-    private data class Credentials(val user: String, val token: String)
-
     /**
      * One known `renderPreviews` failure signature. Pattern is a plain
      * substring we look for in the HTML test report; [hint] is the human
@@ -1038,7 +831,6 @@ class DoctorCommand(args: List<String>) {
 
     companion object {
         private const val REPO = "yschimke/compose-ai-tools"
-        private const val MAVEN_BASE = "https://maven.pkg.github.com/$REPO"
         private const val DEFAULT_PLUGIN_VERSION = "0.7.9" // x-release-please-version
 
         /**
