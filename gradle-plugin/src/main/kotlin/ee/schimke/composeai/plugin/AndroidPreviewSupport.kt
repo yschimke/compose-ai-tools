@@ -196,35 +196,63 @@ internal object AndroidPreviewSupport {
         //    classpath needs these classes too, not just the resource/manifest
         //    half of the story.
         //
+        // `composePreview.manageDependencies = false` opts out of all
+        // plugin-side injection. Deps are recorded as SKIPPED_BY_CONFIG
+        // in `doctor.json` so consumers can see what they need to add,
+        // and the afterEvaluate block below validates the consumer did
+        // add them — the build fails during configuration with an
+        // explicit coordinate list instead of surfacing a
+        // ClassNotFoundException from Robolectric at render time.
+        val manageDependencies = extension.manageDependencies.get()
+
         // No version: relies on the consumer's Compose BOM (or direct Compose
         // dep) to resolve these artifacts. Projects using
         // `implementation(platform(libs.compose.bom))` pick up the aligned
         // version automatically; projects without a BOM need to add one (a
         // reasonable ask — the plugin is for Compose apps).
-        project.dependencies.add(
-            "testImplementation",
-            "androidx.compose.ui:ui-test-manifest",
-        )
-        project.dependencies.add(
-            "testImplementation",
-            "androidx.compose.ui:ui-test-junit4",
-        )
-        recordInjectedDependency(
-            project,
-            injectedDependencies,
-            coordinate = "androidx.compose.ui:ui-test-manifest",
-            configuration = "testImplementation",
-            outcome = "APPLIED",
-            reason = "merges ComponentActivity into the unit-test manifest for renderer",
-        )
-        recordInjectedDependency(
-            project,
-            injectedDependencies,
-            coordinate = "androidx.compose.ui:ui-test-junit4",
-            configuration = "testImplementation",
-            outcome = "APPLIED",
-            reason = "provides createAndroidComposeRule / mainClock used by renderer",
-        )
+        if (manageDependencies) {
+            project.dependencies.add(
+                "testImplementation",
+                "androidx.compose.ui:ui-test-manifest",
+            )
+            project.dependencies.add(
+                "testImplementation",
+                "androidx.compose.ui:ui-test-junit4",
+            )
+            recordInjectedDependency(
+                project,
+                injectedDependencies,
+                coordinate = "androidx.compose.ui:ui-test-manifest",
+                configuration = "testImplementation",
+                outcome = "APPLIED",
+                reason = "merges ComponentActivity into the unit-test manifest for renderer",
+            )
+            recordInjectedDependency(
+                project,
+                injectedDependencies,
+                coordinate = "androidx.compose.ui:ui-test-junit4",
+                configuration = "testImplementation",
+                outcome = "APPLIED",
+                reason = "provides createAndroidComposeRule / mainClock used by renderer",
+            )
+        } else {
+            recordInjectedDependency(
+                project,
+                injectedDependencies,
+                coordinate = "androidx.compose.ui:ui-test-manifest",
+                configuration = "testImplementation",
+                outcome = "SKIPPED_BY_CONFIG",
+                reason = "manageDependencies=false; consumer must declare this in testImplementation",
+            )
+            recordInjectedDependency(
+                project,
+                injectedDependencies,
+                coordinate = "androidx.compose.ui:ui-test-junit4",
+                configuration = "testImplementation",
+                outcome = "SKIPPED_BY_CONFIG",
+                reason = "manageDependencies=false; consumer must declare this in testImplementation",
+            )
+        }
 
         // Conditionally inject `androidx.wear.tiles:tiles-renderer` into the
         // consumer's variant `implementation` when the consumer signals they
@@ -292,18 +320,29 @@ internal object AndroidPreviewSupport {
                     if (hit) matchedConfigs += c.name
                 }
             if (matchedConfigs.isNotEmpty()) {
-                project.dependencies.add(
-                    "${variantName}Implementation",
-                    "androidx.wear.tiles:tiles-renderer",
-                )
-                recordInjectedDependency(
-                    project,
-                    injectedDependencies,
-                    coordinate = "androidx.wear.tiles:tiles-renderer",
-                    configuration = "${variantName}Implementation",
-                    outcome = "MATCHED",
-                    reason = "signal matched on [${matchedConfigs.joinToString(", ")}]",
-                )
+                if (manageDependencies) {
+                    project.dependencies.add(
+                        "${variantName}Implementation",
+                        "androidx.wear.tiles:tiles-renderer",
+                    )
+                    recordInjectedDependency(
+                        project,
+                        injectedDependencies,
+                        coordinate = "androidx.wear.tiles:tiles-renderer",
+                        configuration = "${variantName}Implementation",
+                        outcome = "MATCHED",
+                        reason = "signal matched on [${matchedConfigs.joinToString(", ")}]",
+                    )
+                } else {
+                    recordInjectedDependency(
+                        project,
+                        injectedDependencies,
+                        coordinate = "androidx.wear.tiles:tiles-renderer",
+                        configuration = "${variantName}Implementation",
+                        outcome = "SKIPPED_BY_CONFIG",
+                        reason = "manageDependencies=false; tiles signal matched on [${matchedConfigs.joinToString(", ")}] but consumer must declare tiles-renderer in ${variantName}Implementation",
+                    )
+                }
             } else {
                 recordInjectedDependency(
                     project,
@@ -312,6 +351,21 @@ internal object AndroidPreviewSupport {
                     configuration = "",
                     outcome = "SKIPPED",
                     reason = "no androidx.wear.tiles / horologist-tiles dep on any *Implementation/*Api/*RuntimeOnly configuration",
+                )
+            }
+
+            // `manageDependencies=false`: verify the consumer actually
+            // declared the coords we would otherwise have injected. Fail
+            // during configuration (in afterEvaluate) with an explicit
+            // coordinate list rather than letting the render task die
+            // later with a ClassNotFoundException. Check by group/name
+            // across the relevant declarative buckets so the consumer
+            // can place them wherever their project conventions prefer.
+            if (!manageDependencies) {
+                validateExternallyManagedDependencies(
+                    project = project,
+                    variantName = variantName,
+                    tilesRendererRequired = matchedConfigs.isNotEmpty(),
                 )
             }
         }
@@ -862,5 +916,61 @@ internal object AndroidPreviewSupport {
         project.logger.info(
             "compose-ai-tools: inject[$coordinate] $outcome → $target  ($reason)"
         )
+    }
+
+    /**
+     * Validates that the consumer has declared every coordinate the plugin
+     * would otherwise have injected. Called from the `afterEvaluate` block
+     * in [registerAndroidTasks] when `composePreview.manageDependencies =
+     * false`. Fails during configuration (not at render time) so the
+     * error message carries the exact coordinate list to add, in the
+     * exact buckets the plugin would have used.
+     */
+    private fun validateExternallyManagedDependencies(
+        project: Project,
+        variantName: String,
+        tilesRendererRequired: Boolean,
+    ) {
+        // Declared-dependency scan, not resolved-classpath: we want to
+        // fail before Gradle resolves anything, and to accept the coord
+        // regardless of whether the consumer placed it in the explicit
+        // bucket below or any parent config that extends into it (Android
+        // library's `api` into variant `Implementation`, custom buckets,
+        // etc.). Group + name match only — versions are out of scope,
+        // matching how `manageDependencies=true` also passes no version.
+        fun declared(configName: String): Sequence<org.gradle.api.artifacts.Dependency> =
+            project.configurations.findByName(configName)
+                ?.allDependencies?.asSequence()
+                ?: emptySequence()
+
+        fun hasCoord(configName: String, group: String, name: String): Boolean =
+            declared(configName).any { it.group == group && it.name == name }
+
+        val missing = mutableListOf<String>()
+        if (!hasCoord("testImplementation", "androidx.compose.ui", "ui-test-manifest")) {
+            missing += "testImplementation(\"androidx.compose.ui:ui-test-manifest\")"
+        }
+        if (!hasCoord("testImplementation", "androidx.compose.ui", "ui-test-junit4")) {
+            missing += "testImplementation(\"androidx.compose.ui:ui-test-junit4\")"
+        }
+        if (tilesRendererRequired &&
+            !hasCoord("${variantName}Implementation", "androidx.wear.tiles", "tiles-renderer")
+        ) {
+            missing += "${variantName}Implementation(\"androidx.wear.tiles:tiles-renderer\")"
+        }
+
+        if (missing.isNotEmpty()) {
+            val suffix = if (tilesRendererRequired) {
+                "\n  tiles-renderer required: wear.tiles signal was matched on this module."
+            } else ""
+            throw org.gradle.api.GradleException(
+                "composePreview.manageDependencies = false, but the following required " +
+                    "dependencies are not declared in module '${project.path}':\n" +
+                    missing.joinToString(separator = "\n") { "  - $it" } +
+                    suffix +
+                    "\n\nAdd them to your build file, or set composePreview.manageDependencies = true " +
+                    "to let the plugin add them automatically.",
+            )
+        }
     }
 }

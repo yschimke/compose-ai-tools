@@ -86,6 +86,24 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
         objects.property(Boolean::class.java).convention(false)
 
     /**
+     * When `true` (default), the plugin auto-adds the test/runtime
+     * dependencies it needs (`androidx.compose.ui:ui-test-manifest`,
+     * `:ui-test-junit4`, and conditionally `androidx.wear.tiles:tiles-renderer`)
+     * to the consumer's classpath. When `false`, the plugin injects
+     * nothing and instead requires the consumer to declare every
+     * required coordinate themselves — `composePreviewDoctor` lists
+     * anything missing, and `discoverPreviews` / the render task fail
+     * fast with the exact coordinates to add.
+     *
+     * Flip to `false` in projects that enforce strict, explicit dependency
+     * management (version-catalog-only, custom BOMs, or consumers that
+     * require review before any plugin mutates their graph). Backwards-
+     * compatible default keeps existing builds working unchanged.
+     */
+    val manageDependencies: Property<Boolean> =
+        objects.property(Boolean::class.java).convention(true)
+
+    /**
      * ATF (Accessibility Test Framework) checks, run against each rendered
      * preview. Off by default — turning it on surfaces findings in the CLI,
      * VSCode diagnostics, and `accessibility.json`, but does NOT break the
