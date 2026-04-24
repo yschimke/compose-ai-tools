@@ -123,47 +123,54 @@ internal fun stitchSlicesWithFinalFrame(
         return outputFile
     }
 
-    val lastSliceFile = slices.last().file
-    val lastSliceImage = ImageIO.read(lastSliceFile)
-        ?: error("Failed to read last slice PNG: $lastSliceFile")
-
-    val topImage = buildStitchedImage(slices, viewportLayoutPx) ?: return null
+    val content = buildStitchedContent(slices, viewportLayoutPx) ?: return null
+    val topImage = content.image
     val width = topImage.width
     val topH = topImage.height
     val finalH = finalImage.height
     require(finalImage.width == width) {
         "final frame width (${finalImage.width}) differs from slice width ($width)"
     }
-    require(lastSliceImage.width == width && lastSliceImage.height == finalH) {
-        "last slice size (${lastSliceImage.width}x${lastSliceImage.height}) " +
+    require(content.lastSliceImage.width == width && content.lastSliceImage.height == finalH) {
+        "last slice size (${content.lastSliceImage.width}x${content.lastSliceImage.height}) " +
             "must match final frame (${width}x$finalH)"
     }
 
-    val diffStart = findFirstDifferingRow(lastSliceImage, finalImage)
+    val diffStart = findFirstDifferingRow(content.lastSliceImage, finalImage)
     if (diffStart < 0) {
-        // No animating tail — settled frame equals mid-reveal slice. The
-        // normal stitch is already correct.
+        // No animating tail — settled frame equals mid-reveal slice.
+        // [buildStitchedContent] already painted the last-slice pinned
+        // band into the reserved tail via the fallback in
+        // [buildStitchedImage], so the normal stitch is already correct.
         outputFile.parentFile?.mkdirs()
         ImageIO.write(topImage, "PNG", outputFile)
         return outputFile
     }
 
+    // Position the final-frame overlay: the last slice's pinned-bottom
+    // region lives at output rows [contentYEnd..topH); anything in the
+    // final frame above `pinnedBottomTop` that differs from the last
+    // slice is animating tail (EdgeButton list-shift, FAB slide-in)
+    // that should also be overlaid. Paint final rows [diffStart..finalH)
+    // at the corresponding position relative to `contentYEnd`.
+    val overwriteY = (content.contentYEnd - (content.pinnedBottomTop - diffStart))
+        .coerceAtLeast(0)
     val bandHeight = finalH - diffStart
-    val overwriteY = (topH - bandHeight).coerceAtLeast(0)
 
     val composed = BufferedImage(width, topH, BufferedImage.TYPE_INT_ARGB)
     val g = composed.createGraphics()
     try {
         g.drawImage(topImage, 0, 0, null)
-        // Draw only the animating band. Source rect is the diff region of
-        // the final frame; destination rect is the last bandHeight rows of
-        // the composed image. The row just above overwriteY in topImage
-        // came from the same last slice (painted at a shift ≥ bandHeight),
-        // so slice[diffStart-1] ≈ final[diffStart-1] and the top edge of
-        // the band blends naturally.
+        // Draw the animating band. Source is the diff region of the
+        // final frame; destination ends at topH (the output bottom). If
+        // the band starts above contentYEnd (diffStart < pinnedBottomTop),
+        // rows of the animating tail above the pinned region overwrite
+        // the last few painted list rows — exactly the layout-shift
+        // compensation that the original implementation was doing for
+        // Wear's EdgeButton-reveal list shift.
         g.drawImage(
             finalImage,
-            0, overwriteY, width, topH,
+            0, overwriteY, width, overwriteY + bandHeight,
             0, diffStart, width, finalH,
             null,
         )
@@ -222,13 +229,65 @@ private fun findFirstDifferingRow(a: BufferedImage, b: BufferedImage): Int {
 private const val FINAL_FRAME_DIFF_ROW_THRESHOLD = 2L
 
 /**
- * Core of [stitchSlices] without the PNG write — also used by
- * [stitchSlicesWithFinalFrame] to build the "top" image in memory.
+ * Per-pixel luminance tolerance used by [bottomPinnedRowsTop] when
+ * deciding whether two slices show identical content at a slice-local
+ * row. Matches `FINAL_FRAME_DIFF_ROW_THRESHOLD`'s intent — it's above
+ * the Robolectric capture + AA noise floor but below any real visual
+ * change (the peek-EdgeButton-pill vs list-card distinction, for
+ * example, comes in at ≥ 50 per pixel on luminance).
  */
-private fun buildStitchedImage(
+private const val PINNED_ROW_DIFF_THRESHOLD = 8L
+
+/**
+ * Shared state between [buildStitchedImage] and its final-frame-aware
+ * sibling — lets [stitchSlicesWithFinalFrame] paint the settled chrome
+ * overlay at the correct position without re-reading slice PNGs or
+ * redoing the matcher.
+ */
+private data class StitchedContent(
+    val image: BufferedImage,
+    val pinnedBottomTop: Int,
+    val sliceH: Int,
+    val contentYEnd: Int,
+    val lastSliceImage: BufferedImage,
+)
+
+/**
+ * Core stitching routine. Produces a tall image containing every
+ * slice's scrollable (non-pinned) content concatenated top-to-bottom,
+ * with the pinned-bottom region of each slice deliberately left
+ * transparent — the final-frame overlay in [stitchSlicesWithFinalFrame]
+ * paints the settled chrome there, so it appears exactly once at the
+ * output tail.
+ *
+ * Pinned-bottom detection ([bottomPinnedRowsTop]) walks each slice pair
+ * from the bottom upward and records the topmost row where the pair
+ * starts differing. The median across pairs is the slice-local y below
+ * which every slice carries scroll-independent chrome (Wear
+ * `EdgeButton` peek pill, `ScrollIndicator`, FAB, snackbar) or blank
+ * scaffold-reserved background. Because the per-pair walk stops at the
+ * first divergent row, top-pinned chrome (e.g. `TimeText`) is never
+ * marked — it remains visible in slice 0's contribution at the top of
+ * the output.
+ *
+ * The matcher ([findOverlapShift]) is re-run with `rowLimit =
+ * pinnedBottomTop` so the shift it picks reflects the scroll step in
+ * the list region only. Without that, the pinned-bottom band (identical
+ * across slices) biases the SAD score toward small shifts, which in
+ * turn leaves transparent gaps when the painter later skips those rows.
+ *
+ * The output advances `yPrev` by the number of rows actually painted
+ * (not by the nominal `d`), producing a continuous vertical strip of
+ * list content with no transparent gaps between slices. When no pinned
+ * region is detected (`pinnedBottomTop == sliceH`), this degrades to
+ * the original full-slice paint and output height stays at
+ * `sliceH + Σ d_i` — backward-compatible with existing
+ * [stitchSlices] tests.
+ */
+private fun buildStitchedContent(
     slices: List<SliceCapture>,
     viewportLayoutPx: Int,
-): BufferedImage? {
+): StitchedContent? {
     if (slices.isEmpty()) return null
 
     val firstImage = ImageIO.read(slices[0].file)
@@ -252,6 +311,8 @@ private fun buildStitchedImage(
     val luminance = images.map { readLuminanceRows(it) }
     val weights = luminance.map { rowStddevs(it) }
 
+    val pinnedBottomTop = bottomPinnedRowsTop(luminance, width, sliceH)
+
     val shifts = IntArray(slices.size - 1)
     for (i in 1 until slices.size) {
         val reportedDelta = slices[i].scrolledLayoutPx - slices[i - 1].scrolledLayoutPx
@@ -267,30 +328,133 @@ private fun buildStitchedImage(
             nextW = weights[i],
             sliceH = sliceH,
             hintPx = hintPx,
+            rowLimit = pinnedBottomTop,
         )
     }
 
-    val totalHeight = sliceH + shifts.sum()
+    // Rows painted per intermediate slice = min(d, pinnedBottomTop).
+    // Anything above that is redundant (seen in a prior slice) or in
+    // the pinned band (handled by the final-frame overlay).
+    val rowsPainted = IntArray(shifts.size) { idx ->
+        val d = shifts[idx]
+        if (d <= 0) 0 else minOf(d, pinnedBottomTop)
+    }
+    val contentHeight = pinnedBottomTop + rowsPainted.sum()
+    val tailHeight = sliceH - pinnedBottomTop
+    val totalHeight = contentHeight + tailHeight
+
     val stitched = BufferedImage(width, totalHeight, BufferedImage.TYPE_INT_ARGB)
     val g = stitched.createGraphics()
     try {
-        g.drawImage(images[0], 0, 0, null)
-        var yPrev = sliceH
-        for (i in 1 until images.size) {
-            val d = shifts[i - 1]
-            if (d <= 0) continue
+        // First slice: paint only the list region. The pinned tail stays
+        // transparent until the caller overlays the settled chrome.
+        if (pinnedBottomTop > 0) {
             g.drawImage(
-                images[i],
-                0, yPrev, width, yPrev + d,
-                0, sliceH - d, width, sliceH,
+                images[0],
+                0, 0, width, pinnedBottomTop,
+                0, 0, width, pinnedBottomTop,
                 null,
             )
-            yPrev += d
+        }
+        var yPrev = pinnedBottomTop
+        for (i in 1 until images.size) {
+            val rows = rowsPainted[i - 1]
+            if (rows <= 0) continue
+            // Source rows [pinnedBottomTop - rows, pinnedBottomTop) — the
+            // new content added at the bottom of the list region since
+            // the previous slice. Dest rows [yPrev, yPrev + rows). Skip
+            // the pinned band entirely (never painted from intermediate
+            // slices, so no ghost chrome can survive into the output).
+            g.drawImage(
+                images[i],
+                0, yPrev, width, yPrev + rows,
+                0, pinnedBottomTop - rows, width, pinnedBottomTop,
+                null,
+            )
+            yPrev += rows
         }
     } finally {
         g.dispose()
     }
-    return stitched
+    return StitchedContent(
+        image = stitched,
+        pinnedBottomTop = pinnedBottomTop,
+        sliceH = sliceH,
+        contentYEnd = contentHeight,
+        lastSliceImage = images.last(),
+    )
+}
+
+/** Legacy entry point preserved for [stitchSlices]. */
+private fun buildStitchedImage(
+    slices: List<SliceCapture>,
+    viewportLayoutPx: Int,
+): BufferedImage? = buildStitchedContent(slices, viewportLayoutPx)?.let { s ->
+    // When no pinned chrome was detected, contentYEnd == sliceH + Σd and
+    // the image is already the full stitch. When a pinned region exists
+    // but the caller didn't supply a final frame, paint the last slice's
+    // own pinned chrome into the reserved tail so `stitchSlices`
+    // (single-mode LONG without a settle step) still produces a complete
+    // image.
+    if (s.pinnedBottomTop < s.sliceH) {
+        val g = s.image.createGraphics()
+        try {
+            g.drawImage(
+                s.lastSliceImage,
+                0, s.contentYEnd, s.image.width, s.contentYEnd + (s.sliceH - s.pinnedBottomTop),
+                0, s.pinnedBottomTop, s.image.width, s.sliceH,
+                null,
+            )
+        } finally {
+            g.dispose()
+        }
+    }
+    s.image
+}
+
+/**
+ * Walks each adjacent slice pair from the bottom upward, finding the
+ * topmost slice-local row where the pair starts differing. Everything
+ * at or below that row for the pair is content that didn't move
+ * between slices captured at different scroll positions — pinned
+ * chrome or uniformly blank scaffold-reserved background. Returns the
+ * median across pairs (robust to one anomalous pair where the peek
+ * chrome hasn't appeared yet or has fully transitioned), or [sliceH]
+ * when there aren't enough slices to vote.
+ */
+private fun bottomPinnedRowsTop(
+    luminance: List<Array<IntArray>>,
+    width: Int,
+    sliceH: Int,
+): Int {
+    val pairs = luminance.size - 1
+    if (pairs < 1) return sliceH
+    val perPairTops = IntArray(pairs)
+    val threshold = PINNED_ROW_DIFF_THRESHOLD * width.toLong()
+    for (i in 1..pairs) {
+        val a = luminance[i - 1]
+        val b = luminance[i]
+        var pinnedTop = sliceH
+        var y = sliceH - 1
+        while (y >= 0) {
+            val ar = a[y]
+            val br = b[y]
+            var diff = 0L
+            for (x in 0 until width) {
+                val d = ar[x] - br[x]
+                diff += if (d < 0) -d.toLong() else d.toLong()
+            }
+            if (diff <= threshold) {
+                pinnedTop = y
+                y--
+            } else {
+                break
+            }
+        }
+        perPairTops[i - 1] = pinnedTop
+    }
+    perPairTops.sort()
+    return perPairTops[perPairTops.size / 2]
 }
 
 /**
@@ -314,6 +478,7 @@ private fun findOverlapShift(
     nextW: DoubleArray,
     sliceH: Int,
     hintPx: Int,
+    rowLimit: Int = sliceH,
 ): Int {
     val maxShift = sliceH - 1
     if (maxShift < 1) return 0
@@ -334,8 +499,13 @@ private fun findOverlapShift(
     var bestPlainScore = Double.POSITIVE_INFINITY
 
     for (d in lo..hi) {
-        val n = sliceH - d
-        if (n <= 0) break
+        // `rowLimit` clips both axes so only rows inside the list region
+        // (above any pinned-bottom chrome) contribute to the score. Without
+        // it, identical pinned rows skew the matcher toward small shifts.
+        val nFullOverlap = sliceH - d
+        if (nFullOverlap <= 0) break
+        val n = minOf(nFullOverlap, maxOf(0, rowLimit - d))
+        if (n <= 0) continue
         var weightSum = 0.0
         var weightedCost = 0.0
         var plainCost = 0.0

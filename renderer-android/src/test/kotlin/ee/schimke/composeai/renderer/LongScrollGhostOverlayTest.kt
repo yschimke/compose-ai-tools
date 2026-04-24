@@ -3,17 +3,17 @@ package ee.schimke.composeai.renderer
 import java.awt.Color
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pure-JVM regression for the "ghost overlay pill" flakiness that has shown
- * up intermittently on `@ScrollingPreview(LONG)` outputs (e.g. Wear's
- * `ActivityListLongPreview` — the small grey EdgeButton "peek" ellipsis
- * showing up as a phantom pill above the real EdgeButton in a subset of
- * stitched renders).
+ * Pure-JVM regression for the "ghost overlay pill" flakiness observed on
+ * `@ScrollingPreview(LONG)` outputs (e.g. Wear's `ActivityListLongPreview` —
+ * the small grey `EdgeButton` "peek" ellipsis showing up as a phantom pill
+ * above the real EdgeButton in a subset of stitched renders).
  *
  * Diagnosis from a diff of a known-bad vs known-good render:
  *
@@ -30,77 +30,46 @@ import org.junit.rules.TemporaryFolder
  *   rows 2228+      full "Start workout" EdgeButton (no ghost)
  * ```
  *
- * The 40-px height difference between good and bad output is exactly the
- * 33 pill rows + 7 gap rows inserted above the final EdgeButton.
+ * The 40-px height difference between good and bad is exactly the 33 pill
+ * rows + 7 gap rows inserted above the final EdgeButton.
  *
- * Mechanism: `ScreenScaffold` keeps an EdgeButton "peek pill" pinned to the
- * bottom of the viewport while the list is mid-scroll; at scroll-end the
- * scaffold grows that slot into a full-width button. The pill sits at the
- * SAME `y` within every intermediate slice (it's pinned, not scrolled).
- * When the stitcher paints slice N's bottom `d_N` rows at a shifted
- * destination `y`, a pill captured in the bottom of that slice's painted
- * band lands inside the scrolling-content region of the final stitch — it
- * is not overwritten by the next slice (whose own pinned pill is painted
- * lower) and it is not overwritten by `stitchSlicesWithFinalFrame`'s
- * final-frame band (which only covers the last-viewport region of the
- * output, ~topH − finalH..topH).
+ * Mechanism: `ScreenScaffold` pins the peek pill to the bottom of every
+ * intermediate slice. Under the pre-fix stitcher, each slice's painted
+ * bottom band dragged the pill into the scrolling-content region of the
+ * stitch, where the last-viewport-sized final-frame overwrite could not
+ * reach it. The fix (approach B in [buildStitchedContent]) detects the
+ * pinned-bottom region per slice pair via [bottomPinnedRowsTop] and skips
+ * those rows in every intermediate slice's contribution; the settled
+ * final-frame overlay paints the real chrome once at the output tail.
  *
- * This test reproduces that exact shape with synthetic slices so the bug
- * is deterministically demonstrable without Robolectric / Wear Compose.
- * Today it documents the broken state by asserting ghost rows are
- * observed; when the fix lands the stitcher will produce zero ghost rows
- * and the implementer should flip the assertion to the regression-guard
- * form (`assertThat(ghostRows).isEmpty()`).
- *
- * Fix avenues (for whoever picks this up):
- *  1. In [buildStitchedImage], before painting each slice `i ≥ 1`, detect
- *     the pinned-bottom region by comparing slice `i` against slice
- *     `i − 1` at identical `y` (rows that match despite different scroll
- *     positions are scroll-independent chrome). Mask those rows to
- *     transparent in the copy used for painting — the final-frame
- *     overlay restores the real chrome at the bottom.
- *  2. Alternatively, in [stitchSlicesWithFinalFrame], extend the
- *     final-frame band upwards to cover every slice boundary's tail, not
- *     only the last viewport.
- *  3. On the sample side: hide `EdgeButton`'s peek state during stitched
- *     captures by reading `LocalScrollCaptureInProgress` in the
- *     `edgeButton` slot, the same pattern already used for the scroll
- *     indicator. That avoids the bug without a stitcher change but
- *     requires every sample / consumer of `@ScrollingPreview(LONG)` on
- *     Wear to opt in.
+ * This test deterministically reproduces the pre-fix shape with synthetic
+ * slices (list content + pinned peek pill) and asserts that the stitched
+ * output is clean — no ghost pill above the real EdgeButton.
  */
 class LongScrollGhostOverlayTest {
     @get:Rule
     val tmp: TemporaryFolder = TemporaryFolder()
 
     /**
-     * Reproduces the ghost-pill signature deterministically.
+     * Four-slice fixture that mirrors the Wear `LongActivityListScreen`
+     * layout: the top `LIST_BOTTOM = 140` rows are scrolling list content
+     * (unique colour per source-y), the bottom 60 rows are black
+     * scaffold-reserved background with a peek pill pinned at rows
+     * `155..175`. The final frame replaces the peek with a full-width
+     * `EdgeButton` at rows `160..199`.
      *
-     * Scene:
-     *  - 4 slices, viewport = 200 px, 80 %-viewport scroll step (160 px per step).
-     *  - Each slice is `background` + a "list band" that scrolls + a pinned
-     *    "peek pill" at `y = 175..184` (10 px tall) in slice-local coords.
-     *  - Final frame: same list-at-bottom + a "full EdgeButton" rectangle at
-     *    `y = 130..194` (65 px tall) instead of the peek pill.
-     *
-     * Expected clean output (no ghost):
-     *  - The final EdgeButton lives only in the very bottom of the stitched
-     *    image (rows `topH − 65 .. topH`).
-     *  - Rows above the EdgeButton should be either list content or pure
-     *    background — never the peek-pill grey.
-     *
-     * Observed broken output (current stitcher):
-     *  - One or more ghost peek pills appear in the mid-to-upper rows of the
-     *    stitch, at positions `yPrev_i + 175 − (sliceH − d_i)` where the
-     *    matched shift `d_i` is small enough that the peek pill row lands
-     *    in the painted band.
+     * With the pinned-bottom-masking stitcher the output is a continuous
+     * list strip followed by exactly one EdgeButton band — no peek ghosts
+     * at slice seams.
      */
     @Test
-    fun `ghost peek pill survives stitch when pinned-bottom chrome differs from final`() {
+    fun `stitched output has no ghost peek pill above the EdgeButton`() {
         val viewport = 200
         val width = 120
-        val step = 160 // 80% viewport
-        // 4 slices, cumulative scroll 0 / 160 / 320 / 480.
+        // Step < LIST_BOTTOM so consecutive slices share real list-region
+        // overlap the matcher can lock onto (same invariant as real Wear:
+        // scroll step ≈ 80 % of the list-content height, not the viewport).
+        val step = 100
         val slices = (0..3).map { i ->
             val file = tmp.newFile("peek_slice_$i.png")
             ImageIO.write(buildPeekSlice(width, viewport, scrollOffset = i * step), "PNG", file)
@@ -114,61 +83,77 @@ class LongScrollGhostOverlayTest {
             ?: error("stitcher returned null")
         val stitched = ImageIO.read(out)
 
-        // Sanity: the final EdgeButton (bright primary, rows bottom-65 of final)
-        // is present at the very bottom of the output.
-        val finalEdgeButtonTop = stitched.height - FINAL_EDGE_BUTTON_HEIGHT
+        // Sanity: the final EdgeButton occupies the very bottom.
         assertTrue(
-            "expected a row of EdgeButton-primary pixels at the very bottom",
-            rowIsPredominantly(stitched, y = stitched.height - 2, rgb = EDGE_BUTTON_PRIMARY_RGB),
+            "expected EdgeButton-primary pixels near the very bottom",
+            rowIsPredominantly(stitched, y = stitched.height - 3, rgb = EDGE_BUTTON_PRIMARY_RGB),
         )
 
-        // The ghost-pill signature: ANY row above the final EdgeButton with
-        // a narrow centred run of peek-grey pixels is a ghost. Each
-        // intermediate slice's painted band contains the pinned peek pill
-        // at a shifted destination `y` in the stitched output, and those
-        // positions are all above `finalEdgeButtonTop` — they are not
-        // reached by the last-viewport-sized final-frame overwrite.
-        val ghostRows = (0 until finalEdgeButtonTop).filter { y ->
+        // Ghost-pill signature: narrow centred runs of peek-grey pixels
+        // anywhere above the settled EdgeButton band. With approach B,
+        // pinned rows are masked out of every intermediate slice's
+        // contribution, so the output is free of peek ghosts.
+        val edgeButtonTop = firstRowWithPrimaryWideRun(stitched)
+        val ghostRows = (0 until edgeButtonTop).filter { y ->
             rowHasNarrowCentredRun(stitched, y, rgb = PEEK_PILL_GREY_RGB, minWidth = 8, maxWidth = 60)
         }
-
-        // CURRENT (broken) stitcher: with a 4-slice × 80% step fixture,
-        // one ghost pill band appears per slice i whose painted band
-        // `[yPrev_i, yPrev_i + d_i]` covers the slice-local pill row
-        // (175..184). That's 4 bands × ~10 rows/band ≈ ≥ 30 leaked rows.
-        // The assertion below locks in the bug; flip it to
-        // `assertTrue(..., ghostRows.isEmpty())` once the stitcher stops
-        // propagating pinned-bottom chrome from intermediate slices (the
-        // documented fix avenues: mask the pinned-bottom region off each
-        // slice before painting, or extend the final-frame overwrite to
-        // every slice boundary).
-        System.err.println(
-            "Ghost pill rows observed above EdgeButton: ${ghostRows.size} " +
-                "(first 10: ${ghostRows.take(10)})",
-        )
-        assertTrue(
-            "reproducer expected to observe leaked peek-pill rows with current stitcher — " +
-                "if you're seeing this, the fix may have landed; flip the assertion",
-            ghostRows.isNotEmpty(),
+        assertEquals(
+            "expected zero ghost peek-pill rows above the EdgeButton; got $ghostRows",
+            0,
+            ghostRows.size,
         )
     }
 
     /**
-     * Guard that the input fixture is actually exercising the bug path:
-     * pinned chrome sits in the bottom `d` rows of intermediate slices, so
-     * the stitcher's `drawImage` of those rows paints the pill into the
-     * output. If this precondition ever stops holding (e.g. the fixture
-     * drifts so the pill no longer falls inside the painted band), the
-     * main test above is a no-op.
+     * Content-continuity check: the stitched list region should read out
+     * the same pseudo-random colour per source-y that the fixture
+     * generates — i.e. no gaps, no duplicated bands. Exercises approach
+     * B's "advance by rows painted, not nominal `d`" behaviour.
      */
     @Test
-    fun `fixture precondition - peek pill falls inside painted band of each slice`() {
+    fun `stitched output is a continuous list strip with no transparent gaps`() {
         val viewport = 200
-        val step = 160
-        val paintedBandStart = viewport - step // = 40 → source rows 40..199
-        // Peek pill rows 175..184 — well inside 40..199.
-        assertTrue(PEEK_PILL_TOP >= paintedBandStart)
-        assertTrue(PEEK_PILL_BOTTOM < viewport)
+        val width = 120
+        val step = 100
+        val slices = (0..3).map { i ->
+            val file = tmp.newFile("cont_slice_$i.png")
+            ImageIO.write(buildPeekSlice(width, viewport, scrollOffset = i * step), "PNG", file)
+            SliceCapture((i * step).toFloat(), file)
+        }
+        val finalFile = tmp.newFile("cont_final.png")
+        ImageIO.write(buildFinalFrame(width, viewport, scrollOffset = 3 * step), "PNG", finalFile)
+
+        val out = tmp.newFile("stitched_cont.png")
+        stitchSlicesWithFinalFrame(slices, finalFile, viewport, out)
+            ?: error("stitcher returned null")
+        val stitched = ImageIO.read(out)
+
+        // The list region occupies rows 0 until the start of the EdgeButton.
+        // Every row in that range should be fully opaque (no transparent
+        // slice-boundary gaps) AND match the hash colour for that source-y.
+        val edgeButtonTop = firstRowWithPrimaryWideRun(stitched)
+        val mismatches = mutableListOf<Int>()
+        for (y in 0 until edgeButtonTop) {
+            val centre = stitched.getRGB(width / 2, y)
+            val alpha = (centre ushr 24) and 0xFF
+            if (alpha == 0) {
+                mismatches += y
+                continue
+            }
+            val expected = expectedListColour(y)
+            val r = (centre shr 16) and 0xFF
+            val g = (centre shr 8) and 0xFF
+            val b = centre and 0xFF
+            val dr = r - ((expected shr 16) and 0xFF)
+            val dg = g - ((expected shr 8) and 0xFF)
+            val db = b - (expected and 0xFF)
+            if (dr * dr + dg * dg + db * db > 1200) mismatches += y
+        }
+        assertEquals(
+            "expected every list row to be opaque and match its source-y hash; mismatches: $mismatches",
+            0,
+            mismatches.size,
+        )
     }
 
     // ------------------------------------------------------------------
@@ -176,11 +161,11 @@ class LongScrollGhostOverlayTest {
     // ------------------------------------------------------------------
 
     /**
-     * An intermediate slice during scroll: black background, list cards that
-     * move with [scrollOffset], plus a centred peek-pill ellipse pinned at
-     * the bottom of the viewport. The list cards give the matcher an
-     * unambiguous overlap signal; the peek pill is the scroll-independent
-     * chrome whose leakage we're catching.
+     * An intermediate slice during scroll. Rows `[0..LIST_BOTTOM)` are
+     * scrolling list content with a unique colour per `sourceY = y +
+     * scrollOffset`. Rows `[LIST_BOTTOM..viewport)` are black scaffold-
+     * reserved background, with a grey peek-pill ellipse at
+     * `[PEEK_TOP..PEEK_BOT]` centred horizontally.
      */
     private fun buildPeekSlice(width: Int, height: Int, scrollOffset: Int): BufferedImage {
         val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
@@ -188,7 +173,7 @@ class LongScrollGhostOverlayTest {
         try {
             g.color = Color.BLACK
             g.fillRect(0, 0, width, height)
-            paintListBand(g, width, height, scrollOffset)
+            paintListBand(g, width, scrollOffset)
             paintPeekPill(g, width)
         } finally {
             g.dispose()
@@ -197,10 +182,10 @@ class LongScrollGhostOverlayTest {
     }
 
     /**
-     * The settled frame captured after `settlePostScrollAnimations`: same
-     * scroll position as the last slice, but the scaffold has grown the
-     * EdgeButton slot and the peek pill is gone — replaced by a full
-     * primary-coloured button.
+     * The settled frame captured after `settlePostScrollAnimations`:
+     * same list-at-bottom as the last slice, but the scaffold has grown
+     * the `EdgeButton` slot and the peek pill has been replaced by a
+     * full-width button.
      */
     private fun buildFinalFrame(width: Int, height: Int, scrollOffset: Int): BufferedImage {
         val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
@@ -208,12 +193,11 @@ class LongScrollGhostOverlayTest {
         try {
             g.color = Color.BLACK
             g.fillRect(0, 0, width, height)
-            paintListBand(g, width, height, scrollOffset)
-            // Full EdgeButton: wider + taller, replacing the peek region.
+            paintListBand(g, width, scrollOffset)
             val top = height - FINAL_EDGE_BUTTON_HEIGHT
             g.color = Color(
-                EDGE_BUTTON_PRIMARY_RGB shr 16 and 0xFF,
-                EDGE_BUTTON_PRIMARY_RGB shr 8 and 0xFF,
+                (EDGE_BUTTON_PRIMARY_RGB shr 16) and 0xFF,
+                (EDGE_BUTTON_PRIMARY_RGB shr 8) and 0xFF,
                 EDGE_BUTTON_PRIMARY_RGB and 0xFF,
             )
             g.fillRect(4, top, width - 8, FINAL_EDGE_BUTTON_HEIGHT)
@@ -223,60 +207,81 @@ class LongScrollGhostOverlayTest {
         return img
     }
 
-    /**
-     * Paints a band of scrollable "card" stripes — the content the matcher
-     * locks onto. Pattern is deterministic in `(x, y + scrollOffset)` so
-     * sliced windows reconstruct identically when stitched at the correct
-     * shift.
-     */
-    private fun paintListBand(
-        g: java.awt.Graphics2D,
-        width: Int,
-        height: Int,
-        scrollOffset: Int,
-    ) {
-        for (y in 0 until height) {
+    private fun paintListBand(g: java.awt.Graphics2D, width: Int, scrollOffset: Int) {
+        for (y in 0 until LIST_BOTTOM) {
             val sourceY = y + scrollOffset
-            // 40-px-tall stripes, alternating colours — gives the weighted
-            // row matcher plenty of variety to align on.
-            val band = (sourceY / 40) % 4
-            val c = when (band) {
-                0 -> Color(0x20, 0x55, 0x99)
-                1 -> Color(0x99, 0x30, 0x30)
-                2 -> Color(0x30, 0x99, 0x30)
-                else -> Color(0x99, 0x99, 0x30)
-            }
-            g.color = c
+            val rgb = expectedListColour(sourceY)
+            g.color = Color((rgb shr 16) and 0xFF, (rgb shr 8) and 0xFF, rgb and 0xFF)
             g.drawLine(0, y, width - 1, y)
         }
     }
 
+    /**
+     * Deterministic colour per source-y. Non-periodic so the row matcher
+     * can't collapse the search window onto an accidental alignment.
+     */
+    private fun expectedListColour(sourceY: Int): Int {
+        var h = sourceY.toLong() * 2654435761L xor (sourceY.toLong() shl 16)
+        h = h xor (h ushr 29)
+        val r = ((h ushr 16) and 0xFFL).toInt()
+        val g = ((h ushr 8) and 0xFFL).toInt()
+        val b = (h and 0xFFL).toInt()
+        return (r shl 16) or (g shl 8) or b
+    }
+
     private fun paintPeekPill(g: java.awt.Graphics2D, width: Int) {
         g.color = Color(
-            PEEK_PILL_GREY_RGB shr 16 and 0xFF,
-            PEEK_PILL_GREY_RGB shr 8 and 0xFF,
+            (PEEK_PILL_GREY_RGB shr 16) and 0xFF,
+            (PEEK_PILL_GREY_RGB shr 8) and 0xFF,
             PEEK_PILL_GREY_RGB and 0xFF,
         )
         val pillW = 30
-        g.fillOval((width - pillW) / 2, PEEK_PILL_TOP, pillW, PEEK_PILL_BOTTOM - PEEK_PILL_TOP + 1)
+        val pillH = PEEK_BOT - PEEK_TOP + 1
+        g.fillOval((width - pillW) / 2, PEEK_TOP, pillW, pillH)
     }
 
     // ------------------------------------------------------------------
-    // Pixel-probe helpers.
+    // Pixel probes.
     // ------------------------------------------------------------------
+
+    private fun firstRowWithPrimaryWideRun(img: BufferedImage): Int {
+        val w = img.width
+        val targetR = (EDGE_BUTTON_PRIMARY_RGB shr 16) and 0xFF
+        val targetG = (EDGE_BUTTON_PRIMARY_RGB shr 8) and 0xFF
+        val targetB = EDGE_BUTTON_PRIMARY_RGB and 0xFF
+        for (y in 0 until img.height) {
+            var run = 0
+            var maxRun = 0
+            for (x in 0 until w) {
+                val p = img.getRGB(x, y)
+                if ((p ushr 24) and 0xFF == 0) { run = 0; continue }
+                val dr = ((p shr 16) and 0xFF) - targetR
+                val dg = ((p shr 8) and 0xFF) - targetG
+                val db = (p and 0xFF) - targetB
+                if (dr * dr + dg * dg + db * db < 1200) {
+                    run++
+                    if (run > maxRun) maxRun = run
+                } else {
+                    run = 0
+                }
+            }
+            if (maxRun > w / 2) return y
+        }
+        return img.height
+    }
 
     private fun rowIsPredominantly(img: BufferedImage, y: Int, rgb: Int): Boolean {
         val w = img.width
-        var hits = 0
-        val targetR = rgb shr 16 and 0xFF
-        val targetG = rgb shr 8 and 0xFF
+        val targetR = (rgb shr 16) and 0xFF
+        val targetG = (rgb shr 8) and 0xFF
         val targetB = rgb and 0xFF
+        var hits = 0
         for (x in 0 until w) {
             val p = img.getRGB(x, y)
-            val dr = (p shr 16 and 0xFF) - targetR
-            val dg = (p shr 8 and 0xFF) - targetG
+            val dr = ((p shr 16) and 0xFF) - targetR
+            val dg = ((p shr 8) and 0xFF) - targetG
             val db = (p and 0xFF) - targetB
-            if (dr * dr + dg * dg + db * db < 600) hits++
+            if (dr * dr + dg * dg + db * db < 1200) hits++
         }
         return hits > w / 2
     }
@@ -289,15 +294,16 @@ class LongScrollGhostOverlayTest {
         maxWidth: Int,
     ): Boolean {
         val w = img.width
-        val targetR = rgb shr 16 and 0xFF
-        val targetG = rgb shr 8 and 0xFF
+        val targetR = (rgb shr 16) and 0xFF
+        val targetG = (rgb shr 8) and 0xFF
         val targetB = rgb and 0xFF
         var first = -1
         var last = -1
         for (x in 0 until w) {
             val p = img.getRGB(x, y)
-            val dr = (p shr 16 and 0xFF) - targetR
-            val dg = (p shr 8 and 0xFF) - targetG
+            if ((p ushr 24) and 0xFF == 0) continue
+            val dr = ((p shr 16) and 0xFF) - targetR
+            val dg = ((p shr 8) and 0xFF) - targetG
             val db = (p and 0xFF) - targetB
             if (dr * dr + dg * dg + db * db < 400) {
                 if (first < 0) first = x
@@ -312,14 +318,15 @@ class LongScrollGhostOverlayTest {
     }
 
     companion object {
-        // Rows (0-indexed, within a slice) where the peek pill sits.
-        private const val PEEK_PILL_TOP = 175
-        private const val PEEK_PILL_BOTTOM = 184
+        // Slice-local layout: list on top, scaffold-reserved band below.
+        private const val LIST_BOTTOM = 140
+        private const val PEEK_TOP = 155
+        private const val PEEK_BOT = 175
         // Muted purple-grey — the peek colour observed in the real bug.
         private const val PEEK_PILL_GREY_RGB = 0x72_6C_7E
         // Wear Material3 primary-ish — the full "Start workout" colour.
         private const val EDGE_BUTTON_PRIMARY_RGB = 0xE6_DA_FC
         // Full EdgeButton height within the settled viewport.
-        private const val FINAL_EDGE_BUTTON_HEIGHT = 65
+        private const val FINAL_EDGE_BUTTON_HEIGHT = 40
     }
 }
