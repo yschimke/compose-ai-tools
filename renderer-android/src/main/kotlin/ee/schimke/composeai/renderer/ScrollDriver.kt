@@ -189,6 +189,70 @@ internal fun driveScrollToStart(
     return ScrollDriveResult.IterationCapReached(scrolledPx)
 }
 
+/**
+ * Single-step scroll helper used by the scripted `ScrollMode.GIF` walk.
+ * Scrolls by `min(deltaPx, remaining)` on the first scrollable matching
+ * [axis], advances virtual time so `animateScrollBy` settles, and returns
+ * the pixels actually consumed (0 if no scrollable or already at end).
+ *
+ * Unlike [driveScrollByViewport], this does not emit intermediate callbacks
+ * or iterate — the caller owns per-step capture and timing. Kept tiny so
+ * the GIF script builder can shape the sequence (slow ramp, fling decay,
+ * inter-fling holds) without fighting the driver.
+ */
+internal fun driveScrollBy(
+    rule: AndroidComposeTestRule<*, *>,
+    axis: ScrollAxis,
+    deltaPx: Float,
+    advanceMsPerStep: Long = DEFAULT_ADVANCE_MS_PER_STEP,
+): Float {
+    if (deltaPx <= 0f) return 0f
+    val axisKey = when (axis) {
+        ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
+        ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
+    }
+    val scrollables = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
+    if (scrollables.isEmpty()) return 0f
+
+    val interaction = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))[0]
+    val node = interaction.fetchSemanticsNode()
+    val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
+    val scrollByAction = node.config.getOrNull(SemanticsActions.ScrollBy)?.action ?: return 0f
+
+    val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
+    if (remaining <= SETTLED_EPSILON_PX) return 0f
+
+    val step = minOf(deltaPx, remaining)
+    val (dx, dy) = when (axis) {
+        ScrollAxis.VERTICAL -> 0f to step
+        ScrollAxis.HORIZONTAL -> step to 0f
+    }
+    scrollByAction.invoke(dx, dy)
+    rule.mainClock.advanceTimeBy(advanceMsPerStep)
+    return step
+}
+
+/**
+ * Returns the remaining scrollable extent on [axis] — `maxValue - value`
+ * — or `0` if no scrollable is mounted. Used as an up-front hint when
+ * building the GIF scroll script; final length is still adaptive at
+ * runtime because LazyList reports its max progressively.
+ */
+internal fun remainingScrollPx(
+    rule: AndroidComposeTestRule<*, *>,
+    axis: ScrollAxis,
+): Float {
+    val axisKey = when (axis) {
+        ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
+        ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
+    }
+    val scrollables = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
+    if (scrollables.isEmpty()) return 0f
+    val node = rule.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))[0].fetchSemanticsNode()
+    val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
+    return (range.maxValue() - range.value()).coerceAtLeast(0f)
+}
+
 internal sealed interface ScrollDriveResult {
     /** No scrollable composable found on the requested axis. */
     data object NoScrollable : ScrollDriveResult

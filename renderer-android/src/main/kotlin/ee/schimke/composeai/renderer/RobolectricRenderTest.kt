@@ -890,16 +890,16 @@ private fun settlePostScrollAnimations(rule: AndroidComposeTestRule<*, *>) {
 private const val POST_SCROLL_SETTLE_MS = 1000L
 
 /**
- * Handles `@ScrollingPreview(modes = [GIF])` captures. Drives the scroller
- * by a small fraction of the viewport per step via [driveScrollByViewport],
- * captures each step to a temp PNG, then encodes the sequence as an
- * animated GIF at [outputFile] via [ScrollGifEncoder].
+ * Handles `@ScrollingPreview(modes = [GIF])` captures with a "realistic
+ * user" scroll shape: 1 s hold at the top, a slow finger-drag ramp, one
+ * or more fling bursts sized for the content, then a 1 s hold on the
+ * settled final frame. See [buildGifScrollScript] for the plan shape.
  *
- * Unlike LONG, every frame is a full viewport-sized image — the GIF shows
- * the scroll as an animation rather than stitching frames into one tall
- * still. Per-frame round crop stays ON (each GIF frame should show a
- * proper watch-shaped viewport), so we reuse the default
- * `RoborazziOptions` the caller wired for single-frame captures.
+ * Every frame is a full viewport-sized image — the GIF shows the scroll
+ * as an animation rather than stitching frames into one tall still.
+ * Per-frame round crop stays ON (each GIF frame should show a proper
+ * watch-shaped viewport), so we reuse the default `RoborazziOptions`
+ * the caller wired for single-frame captures.
  *
  * Returns `true` when [outputFile] was written; `false` to fall through
  * to the default single-capture path (e.g. when no scrollable matched, or
@@ -926,7 +926,18 @@ private fun handleGifCapture(
         recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
     )
 
+    val frameIntervalMs = if (scroll.frameIntervalMs > 0) scroll.frameIntervalMs
+                          else ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS
     val frameFiles = mutableListOf<File>()
+    val frameDelays = mutableListOf<Int>()
+
+    fun captureFrame(delayMs: Int) {
+        val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
+        rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+        frameFiles += frameFile
+        frameDelays += delayMs
+    }
+
     try {
         // Multi-mode annotations (`modes = [..., GIF]`) run captures in
         // enum ordinal order against the same composition, so an earlier
@@ -934,50 +945,92 @@ private fun handleGifCapture(
         // would animate "from end to end" — a single frame indistinguishable
         // from the END capture. Reset to the top before the frame walk
         // starts. Fix for #154.
-        driveScrollToStart(rule, scroll.axis)
-
-        // 10% of viewport per step → 10 frames per viewport. With the 80ms
-        // default cadence that's 800ms of animation per viewport scrolled;
-        // a typical Wear screen scrolls ~2–3 viewports of content, landing
-        // the resulting GIF at ~1.5–2.5s — long enough to read motion,
-        // short enough to embed in a PR body. Smaller fraction = smoother
-        // but explosive frame count on tall lists.
-        val result = driveScrollByViewport(
-            rule = rule,
-            axis = scroll.axis,
-            stepPx = viewportLayoutPx * GIF_STEP_FRACTION,
-            maxScrollPx = scroll.maxScrollPx,
-        ) { _ ->
-            val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
-            rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
-            frameFiles += frameFile
-        }
-        if (result is ScrollDriveResult.NoScrollable) {
+        val resetResult = driveScrollToStart(rule, scroll.axis)
+        if (resetResult is ScrollDriveResult.NoScrollable) {
             System.err.println(
                 "@ScrollingPreview(GIF) on '$previewId': no scrollable composable — falling through.",
             )
             return false
         }
-        if (frameFiles.isEmpty()) return false
 
-        // Mirror [handleLongCapture]'s post-scroll settle: re-capture the
-        // final frame after advancing the clock so animations that begin
-        // once the scroll lands (Wear `EdgeButton` reveal, spring overshoot)
-        // show their resting state at the end of the GIF rather than a
-        // caught-mid-reveal transient. Previous frames stay as captured —
-        // they represent the scroll-in-progress state, which is what a
-        // user would see while scrolling.
+        // Hold-start: the viewer needs a beat to read the top of the
+        // screen before motion begins. 1 s dwell.
+        captureFrame(HOLD_START_MS)
+
+        // Upfront extent hint — capped to `maxScrollPx` when the
+        // annotation sets one. Runtime clamps each step to live remaining
+        // anyway, so LazyList's progressive maxValue doesn't over-scroll.
+        val liveRemaining = remainingScrollPx(rule, scroll.axis)
+        val cap = if (scroll.maxScrollPx > 0) scroll.maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
+        val extentHint = minOf(liveRemaining, cap)
+
+        val script = buildGifScrollScript(
+            contentExtentPxHint = extentHint,
+            viewportPx = viewportLayoutPx.toFloat(),
+            density = density,
+            frameIntervalMs = frameIntervalMs,
+        )
+
+        var scrolledPx = 0f
+        var scriptHitEnd = false
+        for (step in script) {
+            if (step.scrollPx > 0f) {
+                val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+                val target = minOf(step.scrollPx, headroom)
+                if (target <= 0f) {
+                    scriptHitEnd = true
+                    break
+                }
+                val actual = driveScrollBy(rule, scroll.axis, target)
+                if (actual <= 0f) {
+                    scriptHitEnd = true
+                    break
+                }
+                scrolledPx += actual
+            } else {
+                // Inter-fling dwell: no scroll, just a pause frame. Advance
+                // virtual time a little so animations mid-composition keep
+                // ticking honestly across the hold.
+                rule.mainClock.advanceTimeBy(frameIntervalMs.toLong())
+            }
+            captureFrame(step.delayMs)
+        }
+
+        // Tail flings: LazyList reports `maxValue` progressively, so the
+        // upfront `extentHint` can under-cover — the script finishes with
+        // the scroll still mid-content. Keep emitting fling bursts against
+        // the *live* remaining until the scrollable is exhausted (or the
+        // `cap` / safety cap kicks in). Without this the final frame of
+        // the GIF can land in the middle of the gradient on tall lists.
+        if (!scriptHitEnd) {
+            emitTailFlings(
+                rule = rule,
+                axis = scroll.axis,
+                density = density,
+                viewportPx = viewportLayoutPx.toFloat(),
+                frameIntervalMs = frameIntervalMs,
+                cap = cap,
+                alreadyScrolledPx = scrolledPx,
+                captureFrame = ::captureFrame,
+            )
+        }
+
+        // Settle + hold-end: let animations that start when the scroll
+        // lands (Wear `EdgeButton` reveal, spring overshoot) reach their
+        // resting state, then capture one final frame with a long dwell.
         settlePostScrollAnimations(rule)
-        val lastFrameFile = frameFiles.last()
-        lastFrameFile.delete()
-        rule.onRoot().captureRoboImage(file = lastFrameFile, roborazziOptions = frameRoborazziOptions)
+        captureFrame(HOLD_END_MS)
+
+        if (frameFiles.isEmpty()) return false
 
         val frames = frameFiles.map {
             javax.imageio.ImageIO.read(it) ?: error("Failed to read GIF frame PNG: $it")
         }
-        val delay = if (scroll.frameIntervalMs > 0) scroll.frameIntervalMs
-                    else ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS
-        val written = ScrollGifEncoder.encode(frames, outputFile, delay) ?: return false
+        val written = ScrollGifEncoder.encode(
+            frames = frames,
+            outputFile = outputFile,
+            frameDelaysMs = frameDelays.toIntArray(),
+        ) ?: return false
         System.err.println(
             "@ScrollingPreview(GIF) on '$previewId': encoded ${frames.size} frames → ${written.name}.",
         )
@@ -987,10 +1040,76 @@ private fun handleGifCapture(
     }
 }
 
-// 10% of viewport per step → 10 frames per viewport. Tuned so a typical
-// Wear scroll (2–3 viewports of content at the default 80ms cadence) lands
-// at roughly 2 seconds of animation. Lower = smoother but more frames.
-private const val GIF_STEP_FRACTION = 0.1f
+/**
+ * Drives the remaining scroll to content end in fling-shaped bursts,
+ * capturing one frame per step. Used after the scripted plan runs out
+ * of steps on content taller than the initial extent hint — the common
+ * LazyList progressive-materialisation case where the first
+ * [remainingScrollPx] read under-reports the true scroll extent.
+ *
+ * Each iteration emits one fling (geometric decay from peak to min
+ * step, capped at [FLING_MAX_DISTANCE_VIEWPORTS] of a viewport) preceded
+ * by a short inter-fling hold so the continuation reads as "user
+ * swiped again" rather than one endless glide. Bounded by
+ * [MAX_TAIL_FLINGS] so a runaway `maxValue` (infinite LazyList with a
+ * no-op `ScrollBy`) can't spin forever.
+ */
+@Suppress("LongParameterList")
+private fun emitTailFlings(
+    rule: AndroidComposeTestRule<*, *>,
+    axis: ScrollAxis,
+    density: Float,
+    viewportPx: Float,
+    frameIntervalMs: Int,
+    cap: Float,
+    alreadyScrolledPx: Float,
+    captureFrame: (delayMs: Int) -> Unit,
+) {
+    val flingPeakPx = FLING_PEAK_DP_PER_FRAME * density
+    val flingMinPx = FLING_MIN_STEP_DP * density
+    val flingCapPx = FLING_MAX_DISTANCE_VIEWPORTS * viewportPx
+    var scrolledPx = alreadyScrolledPx
+
+    repeat(MAX_TAIL_FLINGS) {
+        val remaining = remainingScrollPx(rule, axis)
+        if (remaining <= TAIL_FLING_EPSILON_PX) return
+        val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+        if (headroom <= TAIL_FLING_EPSILON_PX) return
+
+        // Inter-fling hold frame: short dwell + no scroll. Makes the
+        // follow-up read as a distinct swipe.
+        rule.mainClock.advanceTimeBy(frameIntervalMs.toLong())
+        captureFrame(INTER_FLING_HOLD_MS)
+
+        var step = flingPeakPx
+        var distanceInFling = 0f
+        while (step >= flingMinPx && distanceInFling < flingCapPx) {
+            val live = remainingScrollPx(rule, axis)
+            val remainingHeadroom = (cap - scrolledPx).coerceAtLeast(0f)
+            val cappedRemaining = minOf(live, remainingHeadroom)
+            if (cappedRemaining <= TAIL_FLING_EPSILON_PX) return
+            val emit = minOf(step, cappedRemaining, flingCapPx - distanceInFling)
+            if (emit <= 0f) return
+            val actual = driveScrollBy(rule, axis, emit)
+            if (actual <= 0f) return
+            distanceInFling += actual
+            scrolledPx += actual
+            captureFrame(frameIntervalMs)
+            step *= FLING_DECAY
+        }
+    }
+}
+
+// Safety cap on continuation flings so an infinite or pathological
+// LazyList can't spin. Four flings × 1.5 viewports/fling covers six more
+// viewports beyond the initial scripted walk — enough for any reasonable
+// real-world preview.
+private const val MAX_TAIL_FLINGS = 4
+
+// Slightly looser than SETTLED_EPSILON_PX in ScrollDriver: LazyList's
+// maxValue can wobble a pixel or two as items recompose, and we don't
+// want a sub-pixel remainder to keep us spinning in the tail loop.
+private const val TAIL_FLING_EPSILON_PX = 1f
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
