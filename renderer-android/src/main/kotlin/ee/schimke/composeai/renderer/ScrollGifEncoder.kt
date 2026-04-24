@@ -43,16 +43,27 @@ internal object ScrollGifEncoder {
         frames: List<BufferedImage>,
         outputFile: File,
         frameDelayMs: Int = DEFAULT_FRAME_DELAY_MS,
+    ): File? = encode(frames, outputFile, IntArray(frames.size) { frameDelayMs })
+
+    /**
+     * Variable per-frame cadence: [frameDelaysMs] must have one entry per
+     * image in [frames]. Used by the scripted `ScrollMode.GIF` walk to give
+     * hold-start / hold-end frames a longer dwell (e.g. 1000ms) than the
+     * in-motion scroll frames (80ms) within a single GIF. Each frame's GCE
+     * already gets its own `delayTime` attribute, so variable delay is just
+     * a matter of plumbing the per-frame value through.
+     */
+    fun encode(
+        frames: List<BufferedImage>,
+        outputFile: File,
+        frameDelaysMs: IntArray,
     ): File? {
         if (frames.isEmpty()) return null
+        require(frameDelaysMs.size == frames.size) {
+            "frameDelaysMs size ${frameDelaysMs.size} != frames size ${frames.size}"
+        }
         val writer = ImageIO.getImageWritersByFormatName("gif").asSequence().firstOrNull()
             ?: return null
-
-        // GIF timing resolution is 1/100s. Rounding down to the nearest 10ms
-        // keeps our nominal delay honest; clamped to 20ms because many
-        // browsers treat <20ms as "use default ~100ms", which silently breaks
-        // fast-cadence encodes.
-        val delayCentiseconds = (frameDelayMs.coerceAtLeast(MIN_FRAME_DELAY_MS) / 10).coerceAtLeast(2)
 
         outputFile.parentFile?.mkdirs()
         FileImageOutputStream(outputFile).use { stream ->
@@ -61,14 +72,14 @@ internal object ScrollGifEncoder {
             val first = frames.first()
             val imageType = ImageTypeSpecifier.createFromRenderedImage(first)
             val meta = writer.getDefaultImageMetadata(imageType, param)
-            configureFrameMetadata(meta, delayCentiseconds, loopForever = true)
+            configureFrameMetadata(meta, toCentiseconds(frameDelaysMs[0]), loopForever = true)
 
             writer.prepareWriteSequence(null)
             writer.writeToSequence(IIOImage(first, null, meta), param)
 
             for (i in 1 until frames.size) {
                 val frameMeta = writer.getDefaultImageMetadata(imageType, param)
-                configureFrameMetadata(frameMeta, delayCentiseconds, loopForever = false)
+                configureFrameMetadata(frameMeta, toCentiseconds(frameDelaysMs[i]), loopForever = false)
                 writer.writeToSequence(IIOImage(frames[i], null, frameMeta), param)
             }
             writer.endWriteSequence()
@@ -76,6 +87,13 @@ internal object ScrollGifEncoder {
         writer.dispose()
         return outputFile
     }
+
+    // GIF timing resolution is 1/100s. Rounding down to the nearest 10ms
+    // keeps our nominal delay honest; clamped to 20ms because many browsers
+    // treat <20ms as "use default ~100ms", which silently breaks fast-cadence
+    // encodes.
+    private fun toCentiseconds(delayMs: Int): Int =
+        (delayMs.coerceAtLeast(MIN_FRAME_DELAY_MS) / 10).coerceAtLeast(2)
 
     /**
      * Writes the per-frame `GraphicControlExtension` (delay + disposal) and,
