@@ -37,6 +37,11 @@
 #     github.com HTML redirect instead. Sha256 verification is best-effort.
 #   - Appends JAVA_HOME and PATH to $CLAUDE_ENV_FILE so subsequent tool
 #     invocations see them.
+#   - If $https_proxy / $http_proxy is set, translates it into
+#     JAVA_TOOL_OPTIONS (-Dhttps.proxyHost / -Dhttp.proxyHost) and writes
+#     that to $CLAUDE_ENV_FILE too. The JVM's HttpURLConnection ignores the
+#     shell proxy env vars, so the Gradle wrapper download otherwise fails
+#     with UnknownHostException (anthropics/claude-code#16222).
 # Force on/off explicitly with CLAUDE_CLOUD=1 / CLAUDE_CLOUD=0.
 
 set -euo pipefail
@@ -122,11 +127,32 @@ SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+proxy_java_tool_options() {
+  # Translate $https_proxy / $http_proxy into JVM -D flags. The JVM's
+  # HttpURLConnection (used by the Gradle wrapper) ignores the shell proxy
+  # env vars, so without this the wrapper fails on
+  # `services.gradle.org` (anthropics/claude-code#16222). Prints an empty
+  # string when no proxy URL is set or it lacks an explicit port.
+  local url="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}"
+  [[ -n "$url" ]] || return 0
+  local hostport="${url#*://}"      # strip scheme
+  hostport="${hostport%%/*}"        # strip path
+  hostport="${hostport##*@}"        # strip optional user:pass@
+  local host="${hostport%:*}"
+  local port="${hostport##*:}"
+  [[ "$host" != "$hostport" ]] || return 0  # no ':' -> no port, skip
+  printf -- '-Dhttps.proxyHost=%s -Dhttps.proxyPort=%s -Dhttp.proxyHost=%s -Dhttp.proxyPort=%s' \
+    "$host" "$port" "$host" "$port"
+}
+
 maybe_write_env_file() {
   if [[ "$CLAUDE_CLOUD" == 1 && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
+    local jto
+    jto="$(proxy_java_tool_options)"
     {
       [[ -n "${JAVA_HOME:-}" ]] && echo "JAVA_HOME=$JAVA_HOME"
       echo "PATH=$BIN_DIR:${JAVA_HOME:+$JAVA_HOME/bin:}\$PATH"
+      [[ -n "$jto" ]] && echo "JAVA_TOOL_OPTIONS=$jto"
     } >> "$CLAUDE_ENV_FILE"
     log "wrote env vars to \$CLAUDE_ENV_FILE"
   fi
