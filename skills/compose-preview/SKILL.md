@@ -52,7 +52,7 @@ Commands:
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
   a11y     Render previews and print ATF accessibility findings
-  doctor   Verify Java 17 + project compatibility (run before Setup)
+  doctor   Verify Java 17+ + project compatibility (run before Setup)
 
 Options:
   --module <name>      Target a single module (default: auto-detect)
@@ -224,8 +224,9 @@ The install script is idempotent, pulls the latest release into
 script prints the exact command to add it (`fish_add_path …` or a `PATH=`
 line for bash/zsh).
 
-`compose-preview doctor` verifies Java 17 is on `PATH` (the only hard
-prereq for the plugin now that Maven Central resolution needs no auth).
+`compose-preview doctor` verifies Java 17 or newer is on `PATH` (the only
+hard prereq for the plugin now that Maven Central resolution needs no
+auth). JDK 21 / 25 are fine — the renderer is compiled to JDK 17 bytecode.
 
 ### 1. Register the plugin repository (only if mavenCentral is missing)
 
@@ -445,7 +446,7 @@ artifact split, and how Wear's `remote-material3` builds on
   when opening or reviewing a PR that touches UI.
 - **[design/CLAUDE_CLOUD.md](design/CLAUDE_CLOUD.md)** — running `compose-preview` in
   Claude Code cloud sessions: sandbox allowlist gotchas (Google Maven is blocked),
-  JDK 17 setup, and the release-tarball path that works under the default allowlist.
+  JDK setup (17+), and the release-tarball path that works under the default allowlist.
 
 ## Tips
 

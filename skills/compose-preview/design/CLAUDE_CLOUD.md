@@ -37,12 +37,14 @@ Two things, in order:
    ```
 
    Auto-detects the Claude Code cloud sandbox (via `$CLAUDE_ENV_FILE` /
-   `$CLAUDE_CODE_SESSION_ID`) and handles the two things the default image is
-   missing: apt-installs `openjdk-17-jdk-headless` (the Gradle toolchain pin
-   is 17; only 21 is pre-installed) and appends `JAVA_HOME` + `PATH` to
-   `$CLAUDE_ENV_FILE` so every subsequent tool invocation sees them. Lands
-   the skill at `~/.claude/skills/compose-preview/` (where Claude Code
-   discovers it) with the CLI as a sibling under `cli/`, and symlinks
+   `$CLAUDE_CODE_SESSION_ID`) and handles the things the default image is
+   missing: reuses the pre-installed JDK 21 when present (the CLI, plugin,
+   and renderer JARs target JDK 17 bytecode and run fine on any newer
+   JDK) and only falls back to apt-installing `openjdk-17-jdk-headless` if
+   no Java 17+ is on PATH. Appends `PATH` (and `JAVA_HOME` when the fallback
+   fired) to `$CLAUDE_ENV_FILE` so every subsequent tool invocation sees
+   them. Lands the skill at `~/.claude/skills/compose-preview/` (where Claude
+   Code discovers it) with the CLI as a sibling under `cli/`, and symlinks
    `~/.local/bin/compose-preview` for direct CLI use.
 
 Verify in a fresh session:
@@ -90,8 +92,13 @@ What's **not** on the Trusted defaults and matters here:
   `github.com` HTML redirect for version resolution and
   `github.com/.../releases/download/` for the asset).
 
-Pre-installed toolchains: **OpenJDK 21 only.** This project's Gradle build
-pins the JVM toolchain to 17, so 17 has to come from the setup script.
+Pre-installed toolchains: **OpenJDK 21 only.** The CLI, plugin, and
+renderer JARs are compiled to JDK 17 bytecode and run fine on the
+pre-installed 21, so `install.sh` reuses it — no apt-install step needed
+in the common case. If you're building *this* repo from source (not just
+running the released CLI), Gradle's daemon is pinned to JDK 17 via
+`gradle/gradle-daemon-jvm.properties`, and `install.sh` will apt-install
+`openjdk-17-jdk-headless` as a fallback when 17 isn't already on disk.
 
 ## One-step install
 
@@ -123,9 +130,10 @@ Auto-detected as a Claude cloud sandbox via `$CLAUDE_ENV_FILE` /
 `$CLAUDE_CODE_SESSION_ID` (force with `CLAUDE_CLOUD=1` / `CLAUDE_CLOUD=0`).
 What it does when it sees the sandbox:
 
-- `apt-get install -y openjdk-17-jdk-headless` if Java 17 isn't already
-  on disk. The pre-installed JDK 21 can't satisfy the project's toolchain
-  pin, and Gradle's auto-provisioning is firewalled.
+- Reuses the pre-installed JDK 21 when present. Only falls back to
+  `apt-get install -y openjdk-17-jdk-headless` when no JDK 17+ is on
+  PATH — Gradle's auto-provisioning is firewalled, so we can't lazily
+  download a toolchain.
 - Downloads release tarballs from `github.com` directly, skipping
   `api.github.com` (rate-limited on shared sandbox IPs).
 - Appends `JAVA_HOME` and `PATH` to `$CLAUDE_ENV_FILE` so subsequent tool
@@ -156,15 +164,15 @@ and the resulting filesystem is cached into the snapshot.
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Installs JDK 17 + the compose-preview skill bundle (skill files + CLI
-# under ~/.claude/skills/compose-preview/). Writes JAVA_HOME / PATH to
-# $CLAUDE_ENV_FILE.
+# Installs the compose-preview skill bundle (skill files + CLI under
+# ~/.claude/skills/compose-preview/), reusing the pre-installed JDK 21
+# (or falling back to apt-installing JDK 17 if no 17+ JDK is available).
+# Writes PATH (and JAVA_HOME when fallback fires) to $CLAUDE_ENV_FILE.
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
 
 # Optional: pre-warm your project's Gradle cache so the populated deps
 # get baked into the env snapshot. What to render is project-specific —
 # swap in whichever module(s) apply the plugin.
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export PATH=$HOME/.local/bin:$PATH
 compose-preview show --json --brief || true
 ```
@@ -186,8 +194,8 @@ Open a fresh session and run:
 compose-preview doctor
 ```
 
-Expected: a `[env]` block showing JDK 17 on PATH, Gradle reachable, and
-four `env.network.*` checks (one each for `maven.google.com`,
+Expected: a `[env]` block showing JDK 17+ on PATH (21 on current images),
+Gradle reachable, and four `env.network.*` checks (one each for `maven.google.com`,
 `dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). On
 **Trusted**, the Google hosts will show as warnings — that's expected if
 you only render CMP Desktop / JVM projects. Switch to **Custom** and add

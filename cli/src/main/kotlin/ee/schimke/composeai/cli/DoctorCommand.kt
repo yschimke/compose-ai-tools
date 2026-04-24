@@ -156,7 +156,8 @@ class DoctorCommand(args: List<String>) {
                     message = "Java 17+ required, got ${version ?: "unknown"}",
                     detail = detail,
                     remediation = DoctorRemediation(
-                        summary = "Install a JDK 17 and put it on PATH, or set JAVA_HOME.",
+                        summary = "Install a JDK 17 or newer and put it on PATH, or set JAVA_HOME. " +
+                            "The CLI and renderer target JDK 17 bytecode, so any newer JDK (21, 25, …) works.",
                         commands = listOf("sdk install java 17.0.11-tem"),
                     ),
                 ),
@@ -230,7 +231,9 @@ class DoctorCommand(args: List<String>) {
                     append(". Cloud renders need network level = Custom with ")
                     append(NETWORK_HOSTS.joinToString(", ") { it.host })
                     append(" allowlisted (keep 'include Trusted defaults' on). ")
-                    append("`scripts/install.sh` handles the JDK 17 + bundle install.")
+                    append("`scripts/install.sh` reuses the pre-installed JDK (21 on current ")
+                    append("Claude Cloud images) and installs the skill + CLI bundle. It only ")
+                    append("falls back to apt-installing JDK 17 when no JDK 17+ is available.")
                 },
                 remediation = DoctorRemediation(
                     summary = "Bootstrap the CLI + skill bundle and write JAVA_HOME/PATH to \$CLAUDE_ENV_FILE.",
