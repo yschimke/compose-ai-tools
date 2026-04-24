@@ -22,6 +22,14 @@ Two things, in order:
    are Android + downloadable-fonts specific. Don't use **Full**; it's broader
    than needed.
 
+   Extra conditional hosts, covered in detail further down:
+   - `repo.gradle.org` — only if building `:cli` from source (hosts
+     `gradle-tooling-api`); skipped by the release-tarball path.
+   - `api.adoptium.net` — only if you let Gradle auto-provision a JDK
+     instead of using `install.sh`'s pinned `JAVA_HOME`.
+   - `api.github.com` — rate-limited on shared sandbox IPs;
+     `install.sh` deliberately avoids it.
+
 2. **Drop the install script into the environment setup script:**
 
    ```

@@ -42,6 +42,11 @@ If you're running this in a cloud agent sandbox, two things are required:
    Pure CMP Desktop / JVM consumers can stay on *Trusted* — the four hosts
    are Android-specific.
 
+   Building the `:cli` module *from source* (not using `install.sh`) also
+   needs `repo.gradle.org` — it hosts `gradle-tooling-api` and isn't on the
+   Trusted defaults. If you consume the released CLI tarball this doesn't
+   apply.
+
 2. **Drop the install script into your environment setup.** It installs
    JDK 17, the CLI, and the skill bundle (at `~/.claude/skills/compose-preview/`),
    and appends `JAVA_HOME` / `PATH` to `$CLAUDE_ENV_FILE` so every subsequent
