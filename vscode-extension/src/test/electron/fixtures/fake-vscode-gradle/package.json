@@ -1,0 +1,15 @@
+{
+    "name": "vscode-gradle",
+    "displayName": "Gradle for Java (test stub)",
+    "description": "Test-only stub that satisfies the vscjava.vscode-gradle extensionDependency declared by compose-preview. Activates immediately and exports a GradleApi-shaped no-op object — production tests inject their own implementation via ComposePreviewTestApi.injectGradleApi.",
+    "publisher": "vscjava",
+    "version": "0.0.0-test",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "main": "./extension.js",
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "contributes": {}
+}

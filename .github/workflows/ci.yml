@@ -130,3 +130,32 @@ jobs:
           persist-credentials: false
       - name: Run compare-previews tests
         run: python3 .github/actions/lib/test_compare_previews.py -v
+
+  # VS Code extension tests — both the existing in-process Mocha suite and
+  # the @vscode/test-electron integration tests. The latter download a
+  # headless VS Code into ~/.vscode-test/, install the local fake
+  # vscjava.vscode-gradle stub so our extensionDependency check passes, and
+  # run the extension against a fixture workspace. xvfb is needed because
+  # VS Code expects a display even in headless mode.
+  vscode-extension-tests:
+    name: VS Code Extension Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+      - name: Compile
+        working-directory: vscode-extension
+        run: npm run compile
+      - name: Run unit tests
+        working-directory: vscode-extension
+        run: npm test
+      - name: Run integration tests (xvfb)
+        working-directory: vscode-extension
+        run: xvfb-run -a npm run test:electron

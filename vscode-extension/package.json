@@ -107,16 +107,20 @@
     "scripts": {
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "test": "npm run compile && mocha out/test/**/*.test.js",
+        "test": "npm run compile && mocha 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
+        "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies"
     },
     "devDependencies": {
+        "@types/glob": "^8.1.0",
         "@types/mocha": "^10.0.0",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
         "@vscode/codicons": "^0.0.45",
+        "@vscode/test-electron": "^2.5.2",
         "@vscode/vsce": "^3.0.0",
+        "glob": "^11.1.0",
         "mocha": "^10.7.0",
         "typescript": "^5.3.0"
     },

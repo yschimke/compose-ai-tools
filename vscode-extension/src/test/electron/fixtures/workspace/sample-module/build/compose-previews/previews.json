@@ -1,0 +1,61 @@
+{
+    "module": "sample-module",
+    "variant": "debug",
+    "previews": [
+        {
+            "id": "com.example.sample.PreviewsKt.StaticPreview",
+            "functionName": "StaticPreview",
+            "className": "com.example.sample.PreviewsKt",
+            "sourceFile": "com/example/sample/Previews.kt",
+            "params": {
+                "name": null,
+                "device": null,
+                "widthDp": null,
+                "heightDp": null,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": false,
+                "backgroundColor": 0,
+                "uiMode": 0,
+                "locale": null,
+                "group": null
+            },
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "renderOutput": "renders/com.example.sample.PreviewsKt.StaticPreview.png",
+                    "cost": 1.0
+                }
+            ]
+        },
+        {
+            "id": "com.example.sample.PreviewsKt.AnimatedPreview",
+            "functionName": "AnimatedPreview",
+            "className": "com.example.sample.PreviewsKt",
+            "sourceFile": "com/example/sample/Previews.kt",
+            "params": {
+                "name": null,
+                "device": null,
+                "widthDp": null,
+                "heightDp": null,
+                "fontScale": 1.0,
+                "showSystemUi": false,
+                "showBackground": false,
+                "backgroundColor": 0,
+                "uiMode": 0,
+                "locale": null,
+                "group": null
+            },
+            "captures": [
+                {
+                    "advanceTimeMillis": null,
+                    "scroll": null,
+                    "animation": { "durationMs": 1500, "frameIntervalMs": 33, "showCurves": true },
+                    "renderOutput": "renders/com.example.sample.PreviewsKt.AnimatedPreview.gif",
+                    "cost": 50.0
+                }
+            ]
+        }
+    ]
+}

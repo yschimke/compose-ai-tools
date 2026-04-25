@@ -98,7 +98,33 @@ function showJdkImageRemediation(err: JdkImageError): void {
     });
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+/**
+ * Test seam exposed via `activate`'s return value when the extension is
+ * loaded by `@vscode/test-electron`. Production builds do NOT consume this —
+ * `activate` returns void in normal use. The integration tests in
+ * `src/test/electron/` reach for it through
+ * `vscode.extensions.getExtension('yuri-schimke.compose-preview').exports`.
+ *
+ * The shape is deliberately small: enough to drive a refresh against a
+ * stub Gradle API and to inspect the messages the extension posts at the
+ * webview. Keeps test code from depending on internal module state.
+ */
+export interface ComposePreviewTestApi {
+    /** Replace the GradleService with one wired to the supplied stub API. */
+    injectGradleApi(api: GradleApi): void;
+    /** Drive {@link refresh} synchronously from a test. */
+    triggerRefresh(filePath: string, force?: boolean, tier?: 'fast' | 'full'): Promise<void>;
+    /** Snapshot of every panel message posted since [resetMessages]. */
+    getPostedMessages(): unknown[];
+    /** Drop the captured-messages buffer. */
+    resetMessages(): void;
+}
+
+/** Captured messages for [ComposePreviewTestApi.getPostedMessages]. Only
+ *  populated when running under `COMPOSE_PREVIEW_TEST_MODE=1`. */
+const postedMessageLog: unknown[] = [];
+
+export async function activate(context: vscode.ExtensionContext): Promise<ComposePreviewTestApi | void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) { return; }
 
@@ -108,16 +134,23 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(outputChannel);
     logLine = (msg: string) => outputChannel.appendLine(`[refresh] ${msg}`);
 
+    const isTestMode = process.env.COMPOSE_PREVIEW_TEST_MODE === '1';
+
     // vscjava.vscode-gradle is declared as an extensionDependency, so it's
-    // guaranteed to be installed. Activate it and get its API.
+    // guaranteed to be installed in production. Under
+    // `COMPOSE_PREVIEW_TEST_MODE=1` we tolerate the dep being a stub (the
+    // tests inject their own GradleApi via [ComposePreviewTestApi]).
     const gradleExt = vscode.extensions.getExtension('vscjava.vscode-gradle');
-    if (!gradleExt) {
+    if (!gradleExt && !isTestMode) {
         vscode.window.showErrorMessage(
             'Compose Preview requires the "Gradle for Java" extension (vscjava.vscode-gradle).',
         );
         return;
     }
-    const gradleApi = (await gradleExt.activate()) as GradleApi;
+    const gradleApi: GradleApi = gradleExt
+        ? ((await gradleExt.activate()) as GradleApi)
+        : { runTask: async () => { /* test-mode placeholder */ },
+            cancelRunTask: async () => { /* test-mode placeholder */ } };
 
     gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel, () => {
         // Read config lazily on each run so user toggles take effect without a reload.
@@ -130,6 +163,16 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
+    if (isTestMode) {
+        // Tap into every outgoing webview message so the test API can assert
+        // on the message stream. The wrapper preserves the original
+        // postMessage's behaviour (forwards to view?.webview.postMessage).
+        const original = panel.postMessage.bind(panel);
+        panel.postMessage = (msg) => {
+            postedMessageLog.push(msg);
+            original(msg);
+        };
+    }
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(PreviewPanel.viewId, panel),
     );
@@ -305,16 +348,46 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push({ dispose: () => gradleService?.dispose() });
 
-    setTimeout(() => {
-        const active = vscode.window.activeTextEditor;
-        if (active?.document.languageId === 'kotlin') {
-            refresh(false, active.document.uri.fsPath);
-        } else {
-            // No Kotlin file in focus — let refresh() emit the empty-state
-            // message without trying to load anything.
-            refresh(false);
-        }
-    }, INIT_DELAY_MS);
+    if (!isTestMode) {
+        // Suppressed under tests so the activation-time auto-refresh doesn't
+        // race with whatever the test driver wants to set up via the test
+        // API. Tests call triggerRefresh themselves at known points.
+        setTimeout(() => {
+            const active = vscode.window.activeTextEditor;
+            if (active?.document.languageId === 'kotlin') {
+                refresh(false, active.document.uri.fsPath);
+            } else {
+                // No Kotlin file in focus — let refresh() emit the empty-state
+                // message without trying to load anything.
+                refresh(false);
+            }
+        }, INIT_DELAY_MS);
+    }
+
+    if (isTestMode) {
+        const testApi: ComposePreviewTestApi = {
+            injectGradleApi(api: GradleApi): void {
+                gradleService = new GradleService(workspaceRoot, api, outputChannel, () => {
+                    const args: string[] = [];
+                    const config = vscode.workspace.getConfiguration('composePreview');
+                    if (config.get<boolean>('accessibilityChecks.enabled')) {
+                        args.push('-PcomposePreview.accessibilityChecks.enabled=true');
+                    }
+                    return args;
+                });
+            },
+            triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
+                return refresh(force, filePath, tier);
+            },
+            getPostedMessages(): unknown[] {
+                return [...postedMessageLog];
+            },
+            resetMessages(): void {
+                postedMessageLog.length = 0;
+            },
+        };
+        return testApi;
+    }
 }
 
 export function deactivate() {
