@@ -83,6 +83,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // Our own opt-in for scrolling-screenshot capture. Matched by FQN so projects
         // that don't depend on `ee.schimke.composeai:preview-annotations` are unaffected.
         private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
+        // Animation-window capture — sibling annotation to @ScrollingPreview, same
+        // FQN-match policy. See `AnimatedPreview.kt`.
+        private const val ANIMATED_PREVIEW_FQN = "ee.schimke.composeai.preview.AnimatedPreview"
         // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
         // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
         // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -402,6 +405,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         if (scrollModes.isNotEmpty()) {
             parts.add("scroll=" + scrollModes.joinToString(",") { it.name.lowercase() })
         }
+        val anim = preview.captures.firstNotNullOfOrNull { it.animation }
+        if (anim != null) {
+            val curveSuffix = if (anim.showCurves) "+curves" else ""
+            parts.add("animated=${anim.durationMs}ms@${anim.frameIntervalMs}ms$curveSuffix")
+        }
         return if (parts.isEmpty()) "" else "  [" + parts.joinToString(" · ") + "]"
     }
 
@@ -415,9 +423,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
         // to every @Preview on the function (including expansions from
         // multi-preview meta-annotations). `@ScrollingPreview.modes` fans out
-        // one capture per entry — see [buildCaptures].
+        // one capture per entry — see [buildCaptures]. `@AnimatedPreview` is
+        // single-shot (one GIF per function) so it doesn't fan out, but follows
+        // the same "one annotation per function, applies to every preview
+        // expansion" policy.
         val wrapperFqn = extractWrapperFqn(annotations)
         val scrollSpecs = extractScrollSpecs(annotations)
+        val animationSpec = extractAnimationSpec(annotations)
         // @RoboComposePreviewOptions, similarly, applies to the function as a
         // whole — each timing fans out into its own manifest entry, orthogonal
         // to any multi-preview expansion.
@@ -432,7 +444,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val directPreviews = collectDirectPreviews(annotations)
         if (directPreviews.isNotEmpty()) {
             for (ann in directPreviews) {
-                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpecs, timings, previewParameter))
+                previews.add(makePreview(classInfo, method, ann, wrapperFqn, scrollSpecs, animationSpec, timings, previewParameter))
             }
             return
         }
@@ -440,7 +452,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         for (ann in annotations) {
             val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
             for (resolvedAnn in resolved) {
-                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpecs, timings, previewParameter))
+                previews.add(makePreview(classInfo, method, resolvedAnn, wrapperFqn, scrollSpecs, animationSpec, timings, previewParameter))
             }
         }
     }
@@ -483,11 +495,30 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         ann: AnnotationInfo,
         previewId: String,
         scrolls: List<ScrollCapture>,
+        animation: AnimationCapture?,
         timings: List<Long>,
     ): List<Capture> {
         val isTile = ann.name == TILE_PREVIEW_FQN
         val effectiveTimings = if (isTile) emptyList() else timings
         val effectiveScrolls = if (isTile) emptyList() else scrolls
+        // Tile previews don't go through `mainClock` either — `TileRenderer`
+        // inflates a static View and there's no animation surface to drive.
+        val effectiveAnimation = if (isTile) null else animation
+
+        // @AnimatedPreview produces its own dedicated capture, alongside any
+        // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
+        // when other captures share the function (the multi-mode scroll
+        // pattern), and the plain filename otherwise.
+        val animationCaptures: List<Capture> = if (effectiveAnimation == null) emptyList() else {
+            val sharesFn = effectiveScrolls.isNotEmpty() || effectiveTimings.isNotEmpty()
+            val suffix = if (sharesFn) "_anim" else ""
+            listOf(
+                Capture(
+                    animation = effectiveAnimation,
+                    renderOutput = "renders/${previewId}${suffix}.gif",
+                ),
+            )
+        }
 
         // Single-mode scroll keeps the plain filename so migrations from the
         // old single-valued `mode = …` annotation land on identical paths.
@@ -502,20 +533,32 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             if (effectiveTimings.isEmpty()) listOf(null to "")
             else effectiveTimings.map { ms -> ms to "_TIME_${ms}ms" }
 
-        return scrollRows.flatMap { (scroll, scrollSuffix) ->
-            timeRows.map { (ms, timeSuffix) ->
-                // GIF captures land on `.gif`; everything else is `.png`.
-                // Branching the extension per-capture (rather than per-preview)
-                // keeps multi-mode annotations like `modes = [TOP, GIF]`
-                // producing one PNG + one GIF from the same function.
-                val ext = if (scroll?.mode == ScrollMode.GIF) "gif" else "png"
-                Capture(
-                    advanceTimeMillis = ms,
-                    scroll = scroll,
-                    renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.${ext}",
-                )
+        // When ONLY @AnimatedPreview is on the function, the scroll/time
+        // cross-product would still emit one (null, null) row — i.e. a static
+        // PNG capture. Suppress that to keep `@AnimatedPreview` a clean
+        // single-output annotation.
+        val emitStaticCross = effectiveScrolls.isNotEmpty() ||
+            effectiveTimings.isNotEmpty() ||
+            effectiveAnimation == null
+
+        val scrollTimeCaptures: List<Capture> = if (!emitStaticCross) emptyList() else {
+            scrollRows.flatMap { (scroll, scrollSuffix) ->
+                timeRows.map { (ms, timeSuffix) ->
+                    // GIF captures land on `.gif`; everything else is `.png`.
+                    // Branching the extension per-capture (rather than per-preview)
+                    // keeps multi-mode annotations like `modes = [TOP, GIF]`
+                    // producing one PNG + one GIF from the same function.
+                    val ext = if (scroll?.mode == ScrollMode.GIF) "gif" else "png"
+                    Capture(
+                        advanceTimeMillis = ms,
+                        scroll = scroll,
+                        renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.${ext}",
+                    )
+                }
             }
         }
+
+        return scrollTimeCaptures + animationCaptures
     }
 
     // Reads `@RoboComposePreviewOptions(manualClockOptions = [...])` on the
@@ -549,6 +592,25 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             is String -> value
             else -> null
         }
+    }
+
+    /**
+     * Reads `@AnimatedPreview(durationMs, frameIntervalMs, showCurves)` off
+     * the function annotation list. Single-shot — at most one animation
+     * capture per function, so we return a nullable spec rather than a list.
+     * Negative / zero numeric fields fall back to the annotation defaults.
+     */
+    private fun extractAnimationSpec(annotations: List<AnnotationInfo>): AnimationCapture? {
+        val ann = annotations.firstOrNull { it.name == ANIMATED_PREVIEW_FQN } ?: return null
+        val pv = ann.parameterValues
+        val durationMs = (pv.getValue("durationMs") as? Int)?.takeIf { it > 0 } ?: 1500
+        val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.takeIf { it > 0 } ?: 33
+        val showCurves = (pv.getValue("showCurves") as? Boolean) ?: false
+        return AnimationCapture(
+            durationMs = durationMs,
+            frameIntervalMs = frameIntervalMs,
+            showCurves = showCurves,
+        )
     }
 
     private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {
@@ -664,6 +726,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         ann: AnnotationInfo,
         wrapperClassName: String?,
         scrolls: List<ScrollCapture>,
+        animation: AnimationCapture?,
         timings: List<Long>,
         previewParameter: Pair<String, Int>?,
     ): PreviewInfo {
@@ -677,7 +740,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             className = classInfo.name,
             sourceFile = packageQualifiedSourcePath(classInfo),
             params = params,
-            captures = buildCaptures(ann, id, scrolls, timings),
+            captures = buildCaptures(ann, id, scrolls, animation, timings),
         )
     }
 

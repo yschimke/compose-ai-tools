@@ -2,6 +2,7 @@ package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -454,6 +455,17 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.any { it.scroll?.reduceMotion == true }
                 val reduceMotionLocal =
                     if (reduceMotion) WearReduceMotionLocal.get() else null
+                // @AnimatedPreview(showCurves = true): capture the slot table
+                // by wrapping the composition in `InspectablePreviewContent`,
+                // which seeds parameter information collection and snapshots
+                // `currentComposer.compositionData` into the holder for
+                // `AnimationInspector.attach(...)` to read post-settle. Held
+                // nullable so non-curve previews don't pay the
+                // collectParameterInformation cost.
+                val animationCurveCapture: SlotTreeCapture? =
+                    preview.captures.firstNotNullOfOrNull {
+                        it.animation?.takeIf { a -> a.showCurves }
+                    }?.let { SlotTreeCapture() }
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
                     if (scrollCaptureProvidable != null) {
@@ -465,49 +477,23 @@ abstract class RobolectricRenderTestBase(
                 }.toTypedArray()
                 rule.setContent {
                     CompositionLocalProvider(values = providedValues) {
-                        if (wrapWidth || wrapHeight) {
-                            // AS-parity wrap-to-content: measure the strategy's
-                            // composable with unbounded constraints on wrapped
-                            // axes, capture the child's pixel size, then size
-                            // the outer Box to match. Doing this in a single
-                            // layout pass (rather than via onGloballyPositioned)
-                            // keeps the measurement deterministic even when
-                            // Compose's post-layout scheduling is short-circuited
-                            // by Robolectric. The wrapping Box re-introduces the
-                            // layout-node bytecode the compat workaround in the
-                            // comment below avoids — acceptable because
-                            // wrap-content is only emitted when the user didn't
-                            // name a device / widthDp / heightDp, and the
-                            // old-Compose-BOM consumers who need that workaround
-                            // use device-pinned (e.g. wearos_*) previews.
-                            // Measure with *bounded* sandbox constraints (not
-                            // Infinity): that's what Android Studio's preview
-                            // pane does, and it's the only shape that
-                            // `Modifier.fillMax*` / `LazyColumn` accept without
-                            // throwing from `InlineClassHelper`. Relax the min
-                            // constraint on wrapped axes so small composables
-                            // can shrink below the sandbox; a `fillMaxWidth`
-                            // composable still measures at the sandbox width
-                            // and no width-crop happens on that axis.
-                            Box(
-                                modifier = Modifier.layout { measurable, constraints ->
-                                    val wrappedConstraints = Constraints(
-                                        minWidth = if (wrapWidth) 0 else constraints.minWidth,
-                                        maxWidth = constraints.maxWidth,
-                                        minHeight = if (wrapHeight) 0 else constraints.minHeight,
-                                        maxHeight = constraints.maxHeight,
-                                    )
-                                    val placeable = measurable.measure(wrappedConstraints)
-                                    measured = IntSize(placeable.width, placeable.height)
-                                    layout(placeable.width, placeable.height) {
-                                        placeable.place(0, 0)
-                                    }
-                                },
-                            ) {
+                        val previewBody: @Composable () -> Unit = {
+                            if (wrapWidth || wrapHeight) {
+                                MeasuredWrapBox(
+                                    wrapWidth = wrapWidth,
+                                    wrapHeight = wrapHeight,
+                                    onMeasured = { measured = it },
+                                ) {
+                                    strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                                }
+                            } else {
                                 strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
                             }
+                        }
+                        if (animationCurveCapture != null) {
+                            InspectablePreviewContent(animationCurveCapture, previewBody)
                         } else {
-                            strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                            previewBody()
                         }
                     }
                 }
@@ -571,7 +557,32 @@ abstract class RobolectricRenderTestBase(
                             outputFile = outputFile,
                         )
 
-                    if (!longHandled && !gifHandled) {
+                    // @AnimatedPreview: paused mainClock, advance per frame
+                    // across the annotation's window, capture each frame,
+                    // encode as GIF. When `showCurves = true`, the outer
+                    // setContent has already wrapped the composition in
+                    // Inspectable(animationCurveRecord, …) so we can attach
+                    // `AnimationInspector` to sample property values across
+                    // the same time window.
+                    val animationHandled = !longHandled && !gifHandled &&
+                        capture.animation != null &&
+                        handleAnimatedCapture(
+                            rule = rule,
+                            animation = capture.animation,
+                            previewId = preview.id,
+                            isRound = isRoundDevice(params.device) &&
+                                (params.showSystemUi || params.kind == PreviewKind.TILE),
+                            outputFile = outputFile,
+                            curveCapture = animationCurveCapture,
+                        ).also { handled ->
+                            // The clock has been driven well past `currentTime`
+                            // by the animation pass — keep our local marker in
+                            // sync so any subsequent capture in the same
+                            // composition asserts ascending time correctly.
+                            if (handled) currentTime += capture.animation.durationMs.toLong()
+                        }
+
+                    if (!longHandled && !gifHandled && !animationHandled) {
                         // TOP mode is the unscrolled initial frame — no
                         // drive, just a capture. END mode drives the first
                         // scrollable on the requested axis to its content
@@ -597,10 +608,12 @@ abstract class RobolectricRenderTestBase(
 
                     // AS-parity: crop the PNG down to the composable's
                     // intrinsic size on wrapped axes. Skipped for stitched
-                    // LONG output and animated GIF output — those files'
-                    // dimensions are the full scrollable extent / frame
-                    // size, not the composable's intrinsic box.
-                    if (!longHandled && !gifHandled && (wrapWidth || wrapHeight) && measured != null) {
+                    // LONG output, scroll GIF output, and @AnimatedPreview
+                    // GIF output — those files' dimensions are the full
+                    // scrollable extent / frame size, not the composable's
+                    // intrinsic box.
+                    if (!longHandled && !gifHandled && !animationHandled &&
+                        (wrapWidth || wrapHeight) && measured != null) {
                         cropPngTopLeft(
                             file = outputFile,
                             wrapWidth = wrapWidth,
@@ -692,6 +705,46 @@ abstract class RobolectricRenderTestBase(
         }
         if (qualifiers.isNotEmpty()) {
             org.robolectric.RuntimeEnvironment.setQualifiers("+${qualifiers.joinToString("-")}")
+        }
+    }
+
+    /**
+     * AS-parity wrap-to-content: measure the strategy's composable with
+     * unbounded constraints on wrapped axes, capture the child's pixel
+     * size via [onMeasured], then size the outer Box to match. Doing this
+     * in a single layout pass (rather than via onGloballyPositioned) keeps
+     * the measurement deterministic even when Compose's post-layout
+     * scheduling is short-circuited by Robolectric. Measures with bounded
+     * sandbox constraints (not Infinity): that's what Android Studio's
+     * preview pane does, and it's the only shape that `Modifier.fillMax*`
+     * / `LazyColumn` accept without throwing from `InlineClassHelper`. Min
+     * constraint on wrapped axes is relaxed to 0 so small composables can
+     * shrink below the sandbox; `fillMaxWidth` composables still measure
+     * at the sandbox width and no width-crop happens on that axis.
+     */
+    @Composable
+    private fun MeasuredWrapBox(
+        wrapWidth: Boolean,
+        wrapHeight: Boolean,
+        onMeasured: (IntSize) -> Unit,
+        content: @Composable () -> Unit,
+    ) {
+        Box(
+            modifier = Modifier.layout { measurable, constraints ->
+                val wrappedConstraints = Constraints(
+                    minWidth = if (wrapWidth) 0 else constraints.minWidth,
+                    maxWidth = constraints.maxWidth,
+                    minHeight = if (wrapHeight) 0 else constraints.minHeight,
+                    maxHeight = constraints.maxHeight,
+                )
+                val placeable = measurable.measure(wrappedConstraints)
+                onMeasured(IntSize(placeable.width, placeable.height))
+                layout(placeable.width, placeable.height) {
+                    placeable.place(0, 0)
+                }
+            },
+        ) {
+            content()
         }
     }
 
@@ -1110,6 +1163,136 @@ private const val MAX_TAIL_FLINGS = 4
 // maxValue can wobble a pixel or two as items recompose, and we don't
 // want a sub-pixel remainder to keep us spinning in the tail loop.
 private const val TAIL_FLING_EPSILON_PX = 1f
+
+/**
+ * Handles `@AnimatedPreview` captures. Drives the paused `mainClock` from
+ * `t=0` to [AnimationCapture.durationMs] in [AnimationCapture.frameIntervalMs]
+ * steps, captures each frame, and encodes them as an animated GIF via
+ * [ScrollGifEncoder].
+ *
+ * When [AnimationCapture.showCurves] is true, attaches a Compose UI
+ * Tooling [AnimationInspector] to the live composition. The inspector
+ * walks the slot tree for `Transition` / `InfiniteTransition` /
+ * `animateXAsState` registrations, samples each animated property at
+ * every frame, and emits a `<stem>_curves.png` sidecar plot.
+ *
+ * Returns `true` when [outputFile] was written.
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+private fun handleAnimatedCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    animation: AnimationCapture,
+    previewId: String,
+    isRound: Boolean,
+    outputFile: File,
+    curveCapture: SlotTreeCapture?,
+): Boolean {
+    val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_anim_frames")
+    framesDir.deleteRecursively()
+    framesDir.mkdirs()
+
+    val frameRoborazziOptions = RoborazziOptions(
+        recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
+    )
+
+    val frameIntervalMs = animation.frameIntervalMs.coerceAtLeast(10)
+    val durationMs = animation.durationMs.coerceAtLeast(frameIntervalMs)
+    val totalFrames = (durationMs / frameIntervalMs).coerceAtLeast(1)
+
+    val frameFiles = mutableListOf<File>()
+    val frameDelays = mutableListOf<Int>()
+
+    // Settle the composition by ticking one frame so any
+    // LaunchedEffect(Unit) { … } has fired — without this, animations
+    // gated by an initial state flip (e.g. `LaunchedEffect { visible = true }`
+    // → `AnimatedVisibility(visible)`) never start, and both the GIF
+    // and the curve sidecar capture the pre-effect zero state for every
+    // frame.
+    rule.mainClock.advanceTimeByFrame()
+    val inspector = if (animation.showCurves && curveCapture != null) {
+        runCatching { AnimationInspector.attach(curveCapture) }
+            .onFailure { e ->
+                framesDir.deleteRecursively()
+                throw e
+            }.getOrNull()
+    } else null
+
+    val curveTracksByLabel = linkedMapOf<String, MutableList<Pair<Long, Any?>>>()
+
+    fun captureFrame(virtualTimeMs: Long) {
+        val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
+        rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+        frameFiles += frameFile
+        frameDelays += frameIntervalMs
+
+        if (inspector != null) {
+            // Drive PreviewAnimationClock to the same virtual time the
+            // outer mainClock is at — `setClockTime` seeks every tracked
+            // transition to that point, so `getAnimatedProperties` reads
+            // a fresh value rather than the cached value from when the
+            // animation was first registered. The visual GIF is driven
+            // by mainClock; the inspector samples are driven by this
+            // seek, with the same time scale so the curve aligns with
+            // what's on screen.
+            inspector.setClockTime(virtualTimeMs)
+            inspector.snapshot().forEach { tracked ->
+                tracked.samples.forEach { sample ->
+                    val key = "${tracked.label} · ${sample.label}"
+                    curveTracksByLabel.getOrPut(key) { mutableListOf() }
+                        .add(virtualTimeMs to sample.value)
+                }
+            }
+        }
+    }
+
+    try {
+        // Frame 0 at t=0 — captures the immediate post-attach state. The
+        // pre-attach `advanceTimeByFrame()` (above, in the inspector
+        // setup block) has already let any LaunchedEffect run, so the
+        // animation is in flight; subsequent ticks advance through the
+        // window.
+        captureFrame(virtualTimeMs = 0L)
+        var t = 0L
+        repeat(totalFrames) {
+            t += frameIntervalMs.toLong()
+            rule.mainClock.advanceTimeBy(frameIntervalMs.toLong())
+            captureFrame(virtualTimeMs = t)
+        }
+
+        if (frameFiles.isEmpty()) return false
+
+        val frames = frameFiles.map {
+            javax.imageio.ImageIO.read(it) ?: error("Failed to read animation frame PNG: $it")
+        }
+        val written = ScrollGifEncoder.encode(
+            frames = frames,
+            outputFile = outputFile,
+            frameDelaysMs = frameDelays.toIntArray(),
+        ) ?: return false
+
+        if (inspector != null && curveTracksByLabel.isNotEmpty()) {
+            val curveFile = File(
+                outputFile.parentFile,
+                "${outputFile.nameWithoutExtension}_curves.png",
+            )
+            val tracks = curveTracksByLabel.map { (label, samples) ->
+                AnimationCurvePlotter.Track(label = label, samples = samples)
+            }
+            AnimationCurvePlotter.plot(tracks, durationMs, curveFile)
+            System.err.println(
+                "@AnimatedPreview on '$previewId': encoded ${frames.size} frames → ${written.name} " +
+                    "+ curves (${tracks.size} tracks) → ${curveFile.name}.",
+            )
+        } else {
+            System.err.println(
+                "@AnimatedPreview on '$previewId': encoded ${frames.size} frames → ${written.name}.",
+            )
+        }
+        return true
+    } finally {
+        framesDir.deleteRecursively()
+    }
+}
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
