@@ -1,0 +1,72 @@
+{
+  "entries": [
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
+      "findings": [],
+      "functionName": "ActivityListFontScalesPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif",
+      "findings": [],
+      "functionName": "ActivityListGifPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "ActivityListLongPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "ActivityListPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png",
+      "findings": [
+        {
+          "boundsInScreen": "144,144,240,240",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.widget.Button"
+        }
+      ],
+      "functionName": "BadWearButtonPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonPreview",
+      "module": "sample-wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    }
+  ]
+}
