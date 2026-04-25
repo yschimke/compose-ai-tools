@@ -41,6 +41,20 @@
     "sha256": "fe32f0419a83a7c61710013774bc6be5e169b790e0120abcb640f0f20370bab4",
     "sourceFile": "com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
   },
+  "sample-android/com.example.sampleandroid.AnimatedPreviewsKt.FadeInBoxAnimatedPreview": {
+    "captureLabel": "",
+    "functionName": "FadeInBoxAnimatedPreview",
+    "renderBasename": "AnimatedPreviewsKt.FadeInBoxAnimatedPreview.gif",
+    "sha256": "7c4127759d54f5754f6b7db0a2399bcda3dc7a94c669c49e2d8b1599eced28bf",
+    "sourceFile": "com/example/sampleandroid/AnimatedPreviews.kt"
+  },
+  "sample-android/com.example.sampleandroid.AnimatedPreviewsKt.RevealLabelAnimatedPreview": {
+    "captureLabel": "",
+    "functionName": "RevealLabelAnimatedPreview",
+    "renderBasename": "AnimatedPreviewsKt.RevealLabelAnimatedPreview.gif",
+    "sha256": "b26a26a2ea752e5349b984460d0f827f6c05cc69dc202f84c274a05b9ce7f182",
+    "sourceFile": "com/example/sampleandroid/AnimatedPreviews.kt"
+  },
   "sample-android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
     "captureLabel": "",
     "functionName": "BodyTextPreview",

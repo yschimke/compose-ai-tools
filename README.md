@@ -6,6 +6,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/sample-android/AnimatedPreviewsKt.FadeInBoxAnimatedPreview.gif" width="150" /> |
+| `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/sample-android/AnimatedPreviewsKt.RevealLabelAnimatedPreview.gif" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/sample-android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/sample-android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Short.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/sample-android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
