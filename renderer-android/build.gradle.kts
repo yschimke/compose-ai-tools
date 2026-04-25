@@ -91,6 +91,15 @@ dependencies {
     compileOnly(libs.activity.compose)
     compileOnly("androidx.compose.ui:ui-test-junit4")
     compileOnly("androidx.compose.ui:ui-test-manifest")
+    // `@AnimatedPreview(showCurves = true)` snapshots the active
+    // composition's slot table via `currentComposer.compositionData`
+    // (`@InternalComposeApi` from compose-runtime) and walks it via
+    // `androidx.compose.ui.tooling.data.asTree` (compose-ui-tooling-data).
+    // Renderer compile-classpath deps stop there — `PreviewAnimationClock`,
+    // `AnimationSearch`, and `ComposeAnimation` / `ComposeAnimatedProperty`
+    // are reached via reflection at runtime so consumers without curve
+    // support never need ui-tooling on their classpath.
+    compileOnly("androidx.compose.ui:ui-tooling-data")
 
     testImplementation(platform(libs.compose.bom.compat))
     testImplementation(libs.compose.ui)
@@ -101,6 +110,7 @@ dependencies {
     testImplementation(libs.activity.compose)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("androidx.compose.ui:ui-tooling-data")
     // GoogleFont detector's unit test constructs a real
     // `Font(GoogleFont("Roboto"), provider)` so the reflective FQCN check
     // runs against an actual `GoogleFontImpl` instance. Test-only — the

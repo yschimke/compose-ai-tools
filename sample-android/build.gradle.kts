@@ -84,4 +84,17 @@ dependencies {
     // at discovery time; no runtime behaviour.
     implementation(project(":preview-annotations"))
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // `@AnimatedPreview(showCurves = true)` reflectively probes
+    // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /
+    // `AnimationSearch` on the unit-test classpath. ui-tooling is only on
+    // the debug variant by default, so add it to the unit-test scope so
+    // the renderer can attach the animation inspector during render runs.
+    testImplementation("androidx.compose.ui:ui-tooling")
+    // `getAnimatedProperties(...)` returns
+    // `List<androidx.compose.animation.tooling.ComposeAnimatedProperty>` —
+    // those tooling types live in the `animation-tooling-internal`
+    // artifact, NOT in `animation-core`. The compose-bom pins it to the
+    // matching version; without this dep the curves path errors at attach
+    // time with "Missing class: ComposeAnimatedProperty".
+    testImplementation("androidx.compose.animation:animation-tooling-internal")
 }

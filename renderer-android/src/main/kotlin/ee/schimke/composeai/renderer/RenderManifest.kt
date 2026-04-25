@@ -41,6 +41,14 @@ data class ScrollCapture(
     val reachedPx: Int? = null,
 )
 
+/** Renderer-side mirror of the plugin's `AnimationCapture`. */
+@Serializable
+data class AnimationCapture(
+    val durationMs: Int,
+    val frameIntervalMs: Int,
+    val showCurves: Boolean = false,
+)
+
 @Serializable
 data class RenderManifest(
     val module: String,
@@ -114,6 +122,7 @@ data class RenderPreviewEntry(
 data class RenderPreviewCapture(
     val advanceTimeMillis: Long? = null,
     val scroll: ScrollCapture? = null,
+    val animation: AnimationCapture? = null,
     val renderOutput: String = "",
 )
 
