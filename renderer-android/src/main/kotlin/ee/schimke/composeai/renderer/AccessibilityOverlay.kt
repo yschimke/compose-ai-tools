@@ -40,23 +40,40 @@ internal object AccessibilityOverlay {
     private const val BADGE_RADIUS = 22f
 
     /**
-     * Aspect threshold (width / height) at which the layout flips from
-     * side-by-side to stacked. Portrait phones (0.5) stay side-by-side;
-     * Wear rounds/squares (1.0) and desktop/tablet landscapes (≥1.3) stack
-     * so the legend can use the full screenshot width without looking
-     * cramped next to a tiny round preview.
+     * Outline stroke width (px). The whole point of the overlay is to draw
+     * attention to the offending element without smothering the UI it sits
+     * on top of, so we keep the stroke thin and translucent
+     * ([OUTLINE_ALPHA]) and let the badge carry the colour weight.
      */
-    private const val STACK_ASPECT_THRESHOLD = 0.8f
+    private const val OUTLINE_STROKE = 2f
+
+    /**
+     * Outline stroke alpha (0–255). Picks up the level colour but at ~60%
+     * opacity so backgrounds, text, and small targets behind the stroke
+     * still read clearly. Earlier full-opacity 4f borders crowded out the
+     * UI on tiny Wear bounds.
+     */
+    private const val OUTLINE_ALPHA = 150
+
+    /**
+     * Minimum side length (px) for the screenshot panel. Sources smaller
+     * than this on both axes — Wear small/large round at 192–227 — are
+     * upscaled (preserving aspect) so they don't look dwarfed next to the
+     * fixed-width legend. Phones / tablets / desktop already comfortably
+     * exceed this on at least one axis and pass through unchanged.
+     */
+    private const val MIN_SCREENSHOT_DIM = 400
 
     /**
      * Writes the annotated PNG next to [sourcePng]. If [findings] is empty,
      * does nothing (keeps the build cache tidy — zero findings means nothing
      * to show, and the CLI/VSCode treat the absence of the file accordingly).
      *
-     * Layout is adaptive: portrait screenshots get a right-side legend
-     * ([LEGEND_WIDTH] wide), everything squarer (Wear, landscape, desktop)
-     * gets the legend *below* the screenshot so the legend panel can take
-     * the full screenshot width. See [STACK_ASPECT_THRESHOLD].
+     * Layout matches Paparazzi's a11y snapshots: screenshot on the left,
+     * fixed-width legend on the right — for every device. Wear previews
+     * end up looking proportionally narrow next to the legend, but a
+     * consistent shape makes batches of reports easier to skim than a
+     * Wear-specific stacked layout would.
      *
      * @return the destination [File] when written, `null` otherwise.
      */
@@ -98,14 +115,7 @@ internal object AccessibilityOverlay {
             return null
         }
 
-        val aspect = source.width.toFloat() / source.height.toFloat()
-        val stacked = aspect >= STACK_ASPECT_THRESHOLD
-
-        val composite = if (stacked) {
-            drawStacked(source, findings)
-        } else {
-            drawSideBySide(source, findings)
-        }
+        val composite = drawSideBySide(source, findings)
 
         val dest = File(sourcePng.parentFile, "${sourcePng.nameWithoutExtension}.a11y.png")
         dest.outputStream().use { composite.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -115,69 +125,71 @@ internal object AccessibilityOverlay {
     }
 
     /**
-     * Portrait (tall) composition: screenshot on the left, fixed-width legend
+     * Side-by-side composition: screenshot on the left, fixed-width legend
      * on the right. The canvas height is `max(screenshotHeight, legendHeight)`
-     * so both panes fit without cropping.
+     * so both panes fit without cropping; the screenshot is centred
+     * vertically in its column when the legend is taller, and Wear-sized
+     * sources are upscaled to [MIN_SCREENSHOT_DIM] so they don't look
+     * dwarfed next to the legend.
      */
     private fun drawSideBySide(source: Bitmap, findings: List<AccessibilityFinding>): Bitmap {
+        val scale = screenshotScale(source)
+        val drawn = if (scale > 1f) {
+            // ARGB_8888 + filter=true so the upscale stays smooth on the
+            // round-clipped Wear edges — nearest-neighbour produced
+            // distracting jaggies on the alpha boundary.
+            Bitmap.createScaledBitmap(
+                source,
+                (source.width * scale).toInt(),
+                (source.height * scale).toInt(),
+                true,
+            )
+        } else source
+
         val legendHeight = estimateLegendHeight(findings, LEGEND_WIDTH)
-        val canvasHeight = maxOf(source.height, legendHeight)
+        val canvasHeight = maxOf(drawn.height, legendHeight)
         val composite = Bitmap.createBitmap(
-            source.width + LEGEND_WIDTH,
+            drawn.width + LEGEND_WIDTH,
             canvasHeight,
             Bitmap.Config.ARGB_8888,
         )
         val canvas = Canvas(composite)
         canvas.drawColor(Color.WHITE)
 
-        val imageTop = (canvasHeight - source.height) / 2
-        canvas.drawBitmap(source, 0f, imageTop.toFloat(), null)
-        findings.forEachIndexed { i, f -> drawBadgeAndOutline(canvas, i + 1, f, 0f, imageTop.toFloat()) }
+        val imageTop = (canvasHeight - drawn.height) / 2
+        canvas.drawBitmap(drawn, 0f, imageTop.toFloat(), null)
+        findings.forEachIndexed { i, f ->
+            drawBadgeAndOutline(canvas, i + 1, f, 0f, imageTop.toFloat(), scale)
+        }
 
         drawLegend(
             canvas = canvas,
             findings = findings,
-            originX = source.width.toFloat(),
+            originX = drawn.width.toFloat(),
             originY = 0f,
             width = LEGEND_WIDTH,
             height = canvasHeight,
         )
+        // [drawn] is either [source] (scale = 1) or a fresh upscaled bitmap.
+        // The caller recycles [source] separately; only the scaled copy
+        // needs releasing here.
+        if (drawn !== source) drawn.recycle()
         return composite
     }
 
     /**
-     * Square-ish composition (Wear, landscape, desktop): screenshot on top,
-     * legend stretched across the full width below. Avoids the awkward
-     * "tall narrow legend beside a tiny round preview" look on Wear.
+     * Returns the upscale factor for [source] when both dimensions are
+     * smaller than [MIN_SCREENSHOT_DIM] (i.e. Wear). Larger sources get
+     * `1f` and pass through Bitmap.createScaledBitmap unchanged.
      */
-    private fun drawStacked(source: Bitmap, findings: List<AccessibilityFinding>): Bitmap {
-        // Legend stretches to the screenshot width, but clamp to a sensible
-        // minimum so a 200dp Wear round doesn't produce a painfully narrow
-        // legend column. Wear previews at 227 are a common case.
-        val legendWidth = maxOf(source.width, LEGEND_WIDTH)
-        val legendHeight = estimateLegendHeight(findings, legendWidth)
-        val composite = Bitmap.createBitmap(
-            legendWidth,
-            source.height + legendHeight,
-            Bitmap.Config.ARGB_8888,
-        )
-        val canvas = Canvas(composite)
-        canvas.drawColor(Color.WHITE)
-
-        // Centre the screenshot horizontally when the legend is wider than it.
-        val imageLeft = (legendWidth - source.width) / 2
-        canvas.drawBitmap(source, imageLeft.toFloat(), 0f, null)
-        findings.forEachIndexed { i, f -> drawBadgeAndOutline(canvas, i + 1, f, imageLeft.toFloat(), 0f) }
-
-        drawLegend(
-            canvas = canvas,
-            findings = findings,
-            originX = 0f,
-            originY = source.height.toFloat(),
-            width = legendWidth,
-            height = legendHeight,
-        )
-        return composite
+    private fun screenshotScale(source: Bitmap): Float {
+        if (source.width >= MIN_SCREENSHOT_DIM || source.height >= MIN_SCREENSHOT_DIM) {
+            return 1f
+        }
+        // Use the larger dimension so the screenshot exactly hits MIN on
+        // its long side and stays inside it on the short side — preserves
+        // the round/square shape Wear ships with.
+        return MIN_SCREENSHOT_DIM.toFloat() / maxOf(source.width, source.height)
     }
 
     private fun drawBadgeAndOutline(
@@ -186,24 +198,35 @@ internal object AccessibilityOverlay {
         finding: AccessibilityFinding,
         offsetX: Float,
         offsetY: Float,
+        scale: Float,
     ) {
         val bounds = parseBounds(finding.boundsInScreen) ?: return
         val color = levelColor(finding.level)
+        // boundsInScreen are in the source bitmap's pixel space; when we
+        // upscale Wear screenshots the badge / outline have to follow.
+        val left = bounds.left * scale
+        val top = bounds.top * scale
+        val right = bounds.right * scale
+        val bottom = bounds.bottom * scale
 
-        // Outline around the finding. Inset so the stroke sits *inside* the
-        // element's touch bounds — useful for tiny targets where a
-        // full-stroke outline would render entirely outside the visible box.
+        // Outline around the finding. Inset by half [OUTLINE_STROKE] so the
+        // stroke sits *inside* the element's touch bounds — useful for tiny
+        // targets where a full-thickness outline would otherwise render
+        // entirely outside the visible box. Translucent so the original UI
+        // still reads through; the badge carries the loud colour.
         val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 4f
+            strokeWidth = OUTLINE_STROKE
             this.color = color
+            alpha = OUTLINE_ALPHA
         }
+        val inset = OUTLINE_STROKE / 2f
         canvas.drawRect(
             RectF(
-                offsetX + bounds.left.toFloat() + 2f,
-                offsetY + bounds.top.toFloat() + 2f,
-                offsetX + bounds.right.toFloat() - 2f,
-                offsetY + bounds.bottom.toFloat() - 2f,
+                offsetX + left + inset,
+                offsetY + top + inset,
+                offsetX + right - inset,
+                offsetY + bottom - inset,
             ),
             outline,
         )
@@ -211,8 +234,8 @@ internal object AccessibilityOverlay {
         // Badge anchored at the top-left corner of the element so it stays
         // next to the offending control even when bounds clip the edge of
         // the image.
-        val cx = offsetX + bounds.left.toFloat().coerceAtLeast(BADGE_RADIUS)
-        val cy = offsetY + bounds.top.toFloat().coerceAtLeast(BADGE_RADIUS)
+        val cx = offsetX + left.coerceAtLeast(BADGE_RADIUS)
+        val cy = offsetY + top.coerceAtLeast(BADGE_RADIUS)
 
         val badgeBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
