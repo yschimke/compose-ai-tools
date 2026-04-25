@@ -324,10 +324,54 @@ def cmd_readme(args: argparse.Namespace) -> int:
 # comment
 # ---------------------------------------------------------------------------
 
+def _findings_fingerprint(entries: list[dict]) -> tuple:
+    """Stable representation of (preview, findings) used for change detection.
+
+    Compares only the data a reviewer would care about — module, previewId,
+    and the findings list itself. Filenames (`cleanBasename`,
+    `annotatedBasename`) are excluded because identical findings can move
+    around between files when the renderer renames variants, and we don't
+    want to wake the PR comment for that. Findings are tuple-ified so the
+    comparison is hash-stable and order-insensitive (sorted below).
+    """
+    def finding_tuple(f: dict) -> tuple:
+        return (
+            f.get("level"),
+            f.get("type"),
+            f.get("message"),
+            f.get("viewDescription"),
+            f.get("boundsInScreen"),
+        )
+    return tuple(
+        (
+            e["module"],
+            e["previewId"],
+            tuple(sorted(finding_tuple(f) for f in e.get("findings", []))),
+        )
+        for e in sorted(entries, key=lambda e: (e["module"], e["previewId"]))
+    )
+
+
 def cmd_comment(args: argparse.Namespace) -> int:
     findings_path = Path(args.findings)
     payload = json.loads(findings_path.read_text())
     entries: list[dict] = payload.get("entries", [])
+
+    # When a baseline (the on-`a11y_main` findings.json) is provided, stay
+    # silent if nothing has changed — the workflow runs on every PR and a
+    # comment that says "no findings" on PRs that don't touch a11y was
+    # noted as distracting in user feedback. Empty stdout signals the
+    # action to skip both the push and the upsert.
+    if args.baseline:
+        baseline_path = Path(args.baseline)
+        if baseline_path.exists():
+            try:
+                baseline_payload = json.loads(baseline_path.read_text())
+            except json.JSONDecodeError:
+                baseline_payload = {"entries": []}
+            baseline_entries = baseline_payload.get("entries", [])
+            if _findings_fingerprint(entries) == _findings_fingerprint(baseline_entries):
+                return 0  # silent
 
     err, warn, info = _level_counts(entries)
     findings_count = err + warn + info
@@ -414,6 +458,12 @@ def main() -> int:
     cm.add_argument(
         "--head-ref", required=True,
         help="a11y_pr commit SHA (or branch) for image URLs",
+    )
+    cm.add_argument(
+        "--baseline", default=None,
+        help="Optional baseline findings.json (from a11y_main). When set, "
+             "the comment subcommand emits empty stdout if findings haven't "
+             "changed vs the baseline — the action takes that as 'skip'.",
     )
 
     args = ap.parse_args()

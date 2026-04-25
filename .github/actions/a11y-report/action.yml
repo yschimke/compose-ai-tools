@@ -53,7 +53,55 @@ runs:
           --build-dir "${MODULE}/build/compose-previews" \
           --output-dir _a11y_renders
 
+    - name: Fetch baseline findings
+      if: inputs.mode == 'comment'
+      shell: bash
+      env:
+        BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+      run: |
+        set -euo pipefail
+        # Pull `findings.json` from a11y_main so the comment subcommand can
+        # compare and stay silent when nothing changed. Default to an empty
+        # entries list when the branch hasn't been seeded yet — the python
+        # treats a missing baseline the same as an empty one.
+        if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
+          git fetch origin "$BASELINE_BRANCH"
+          git show "origin/${BASELINE_BRANCH}:findings.json" \
+            > _baseline_findings.json 2>/dev/null \
+            || echo '{"entries":[]}' > _baseline_findings.json
+        else
+          echo '{"entries":[]}' > _baseline_findings.json
+        fi
+
+    - name: Generate PR comment body (and detect change vs baseline)
+      id: comment
+      if: inputs.mode == 'comment'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        PR_BRANCH: ${{ inputs.pr-branch }}
+      run: |
+        set -euo pipefail
+        # The python writes nothing when findings match the baseline, so an
+        # empty file is the signal to skip both the push and the upsert.
+        # `--head-ref` here is provisional (the SHA we'll push isn't known
+        # yet); if we DO end up pushing, the next step rewrites it.
+        python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
+          _a11y_renders/findings.json \
+          --repo "$REPO" \
+          --head-ref "$PR_BRANCH" \
+          --baseline _baseline_findings.json \
+          > _a11y_comment.md
+        if [ -s _a11y_comment.md ]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "No a11y changes vs ${PR_BRANCH}; skipping push + comment."
+        fi
+
     - name: Generate README for target branch
+      if: inputs.mode == 'baseline' || steps.comment.outputs.changed == 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -63,8 +111,8 @@ runs:
         set -euo pipefail
         # Image URLs reference the branch name rather than a SHA — same
         # contract preview-baselines uses for the on-branch README. The PR
-        # comment (generated separately below) is what pins to a SHA so it
-        # survives the PR merge.
+        # comment (regenerated below with the just-pushed SHA) is what pins
+        # the URLs that need to survive the PR merge.
         python3 "$ACTION_PATH/../lib/a11y-report.py" readme \
           _a11y_renders/findings.json \
           --repo "$REPO" \
@@ -73,6 +121,7 @@ runs:
 
     - name: Push a11y renders branch
       id: push
+      if: inputs.mode == 'baseline' || steps.comment.outputs.changed == 'true'
       shell: bash
       env:
         # Route every templated value through env so a malicious branch /
@@ -150,8 +199,8 @@ runs:
           sleep "$delay"
         done
 
-    - name: Generate PR comment body
-      if: inputs.mode == 'comment'
+    - name: Re-render PR comment body with pushed SHA
+      if: inputs.mode == 'comment' && steps.comment.outputs.changed == 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -160,9 +209,10 @@ runs:
         HEAD_SHA: ${{ steps.push.outputs.head_sha }}
       run: |
         set -euo pipefail
-        # Fall back to the branch name when no commit was pushed (e.g. the
-        # baseline-equivalent skip path landed). The body still resolves —
-        # branch URLs follow the tip until something else moves it.
+        # The earlier comment-generation step used the branch name as a
+        # provisional ref because the SHA wasn't known yet. Now that push
+        # has run, swap in the actual SHA so the comment's image URLs stay
+        # resolvable after a11y_pr advances or the PR merges.
         HEAD_REF="${HEAD_SHA:-$PR_BRANCH}"
         python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
           _a11y_renders/findings.json \
@@ -171,7 +221,7 @@ runs:
           > _a11y_comment.md
 
     - name: Upsert PR comment
-      if: inputs.mode == 'comment'
+      if: inputs.mode == 'comment' && steps.comment.outputs.changed == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
