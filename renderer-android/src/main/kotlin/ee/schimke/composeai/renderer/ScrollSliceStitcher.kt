@@ -124,7 +124,8 @@ internal fun stitchSlicesWithFinalFrame(
         return outputFile
     }
 
-    val content = buildStitchedContent(slices, viewportLayoutPx) ?: return null
+    val content = buildStitchedContent(slices, viewportLayoutPx, detectPinnedBottom = true)
+        ?: return null
     val topImage = content.image
     val width = topImage.width
     val topH = topImage.height
@@ -304,6 +305,7 @@ private data class StitchedContent(
 private fun buildStitchedContent(
     slices: List<SliceCapture>,
     viewportLayoutPx: Int,
+    detectPinnedBottom: Boolean = false,
 ): StitchedContent? {
     if (slices.isEmpty()) return null
 
@@ -328,7 +330,18 @@ private fun buildStitchedContent(
     val luminance = images.map { readLuminanceRows(it) }
     val weights = luminance.map { rowStddevs(it) }
 
-    val pinnedBottomTop = bottomPinnedRowsTop(luminance, width, sliceH)
+    // Pinned-bottom detection is only meaningful for captures that have a
+    // settled-frame overlay (Wear EdgeButton path) — that flow needs the
+    // pinned region masked off intermediate slices so peek-pill ghosts don't
+    // leak into the stitched output. The legacy [stitchSlices] path has no
+    // settled frame and no pinned chrome, so leaving it always-on caused
+    // false positives on synthetic test fixtures whose grey backgrounds
+    // happened to match across slices and shrank the matchable list region.
+    val pinnedBottomTop = if (detectPinnedBottom) {
+        bottomPinnedRowsTop(luminance, width, sliceH)
+    } else {
+        sliceH
+    }
 
     val shifts = IntArray(slices.size - 1)
     for (i in 1 until slices.size) {

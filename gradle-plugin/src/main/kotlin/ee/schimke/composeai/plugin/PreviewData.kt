@@ -70,6 +70,20 @@ data class ScrollCapture(
     val reachedPx: Int? = null,
 )
 
+/**
+ * Animation capture state sourced from `@AnimatedPreview`. Carried as its
+ * own field on [Capture] (orthogonal to [Capture.scroll] / [Capture.advanceTimeMillis])
+ * so the renderer can switch on its presence without overloading the scroll
+ * machinery. Output is always a single `.gif` plus an optional `<stem>_curves.png`
+ * sidecar when [showCurves] is true.
+ */
+@Serializable
+data class AnimationCapture(
+    val durationMs: Int,
+    val frameIntervalMs: Int,
+    val showCurves: Boolean = false,
+)
+
 @Serializable
 data class PreviewParams(
     val name: String? = null,
@@ -137,6 +151,8 @@ data class Capture(
     val advanceTimeMillis: Long? = null,
     /** `null` → no scroll drive. */
     val scroll: ScrollCapture? = null,
+    /** `null` → not an animation capture. Mutually exclusive with [scroll] in practice. */
+    val animation: AnimationCapture? = null,
     /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
     val renderOutput: String = "",
 )
