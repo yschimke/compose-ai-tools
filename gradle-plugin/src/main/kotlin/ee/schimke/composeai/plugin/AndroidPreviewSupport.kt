@@ -980,10 +980,33 @@ internal object AndroidPreviewSupport {
             project.logger.info("compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run")
             return 1
         }
-        // Simple count of `"id"` entries — cheap and avoids pulling kotlinx.serialization into the plugin classpath.
-        val previewCount = Regex("\"id\"\\s*:").findAll(previewsJson.readText()).count()
-        val resolved = ShardTuning.autoShards(previewCount)
-        project.logger.lifecycle("compose-ai-tools: shards=auto → $resolved (previewCount=$previewCount, cores=${Runtime.getRuntime().availableProcessors()})")
+        // Cheap regex parse — keeps kotlinx.serialization off the plugin
+        // classpath. Each Capture entry in `previews.json` carries its own
+        // `"renderOutput"` field (so counting those gives the capture
+        // count, not the preview count) and an optional `"cost"` (added
+        // post-0.8.0; older manifests omit it and the renderer treats
+        // missing as 1.0). We feed `(totalCost, maxIndividualCost,
+        // captureCount)` into [ShardTuning.autoShards] so a module with
+        // three GIF captures (cost = 40 each) gets sharded for the right
+        // reason rather than being judged by preview count alone.
+        val text = previewsJson.readText()
+        val captureCount = Regex("\"renderOutput\"\\s*:").findAll(text).count()
+        val costs = Regex("\"cost\"\\s*:\\s*([0-9.]+)")
+            .findAll(text)
+            .mapNotNull { it.groupValues[1].toDoubleOrNull() }
+            .toList()
+        val explicitCostSum = costs.sum()
+        val implicitCostSum = (captureCount - costs.size).coerceAtLeast(0).toDouble()
+        val totalCost = explicitCostSum + implicitCostSum
+        val maxIndividualCost = (costs.maxOrNull() ?: 1.0)
+            .coerceAtLeast(if (captureCount > costs.size) 1.0 else 0.0)
+        val resolved = ShardTuning.autoShards(totalCost, maxIndividualCost, captureCount)
+        project.logger.lifecycle(
+            "compose-ai-tools: shards=auto → $resolved " +
+                "(captures=$captureCount, totalCost=${"%.1f".format(totalCost)}, " +
+                "maxCost=${"%.1f".format(maxIndividualCost)}, " +
+                "cores=${Runtime.getRuntime().availableProcessors()})",
+        )
         return resolved
     }
 

@@ -80,13 +80,66 @@ object PreviewManifestLoader {
             if (keep.isEmpty()) null
             else PreviewRow(row.entry.copy(captures = keep), row.previewArgs)
         }
-        return filtered
-            .withIndex()
-            .filter { (i, _) -> i % shardCount == shardIndex }
-            .map { (_, row) -> arrayOf<Any>(row.entry, row.previewArgs) }
+        return assignToShard(filtered, shardCount, shardIndex)
+            .map { arrayOf<Any>(it.entry, it.previewArgs) }
     }
 
     internal data class PreviewRow(val entry: RenderPreviewEntry, val previewArgs: List<Any?>)
+
+    /**
+     * LPT (Longest-Processing-Time-first) bin-packing of preview rows onto
+     * `shardCount` shards by per-row cost (= sum of capture costs). Returns
+     * the rows assigned to `shardIndex`.
+     *
+     * Why LPT over the previous `i % shardCount` round-robin: round-robin
+     * was correct under the uniform-cost world (every preview ≈ 0.15s) but
+     * with the capture-cost catalogue (static = 1, GIF = 40, animated = 50)
+     * it routinely produced make-spans 3-5× worse than the optimum on
+     * heterogeneous modules — one shard would end up with every GIF while
+     * the others rendered cheap statics in seconds and then sat idle. LPT's
+     * 4/3-of-optimal worst-case bound is good enough that we don't bother
+     * with a true ILP solver.
+     *
+     * Tie-breaking on the `id` field (after the descending cost sort) keeps
+     * the assignment deterministic across runs even when several rows
+     * weigh the same — the build cache and snapshot tests don't have to
+     * round-trip a shuffle.
+     *
+     * `shardCount == 1` short-circuits the partitioning entirely; the
+     * shardIndex must be in `[0, shardCount)`.
+     */
+    internal fun assignToShard(
+        rows: List<PreviewRow>,
+        shardCount: Int,
+        shardIndex: Int,
+    ): List<PreviewRow> {
+        require(shardCount >= 1) { "shardCount must be >= 1" }
+        require(shardIndex in 0 until shardCount) {
+            "shardIndex must be in [0, $shardCount), was $shardIndex"
+        }
+        if (shardCount == 1) return rows
+
+        val rowsWithCost = rows.map { row ->
+            row to row.entry.captures.sumOf { it.cost.toDouble() }
+        }.sortedWith(
+            compareByDescending<Pair<PreviewRow, Double>> { it.second }
+                .thenBy { it.first.entry.id },
+        )
+        val shardLoads = DoubleArray(shardCount)
+        val ours = mutableListOf<PreviewRow>()
+        for ((row, cost) in rowsWithCost) {
+            // ArgMin scan is O(K) per row — K is bounded at
+            // [ShardTuning.MAX_SHARDS] = 8 in the plugin, so this stays
+            // cheap even on big modules.
+            var pick = 0
+            for (k in 1 until shardCount) {
+                if (shardLoads[k] < shardLoads[pick]) pick = k
+            }
+            shardLoads[pick] += cost
+            if (pick == shardIndex) ours += row
+        }
+        return ours
+    }
 
     internal fun expandParameterProvider(entry: RenderPreviewEntry): List<PreviewRow> {
         val providerFqn = entry.params.previewParameterProviderClassName
