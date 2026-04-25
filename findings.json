@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
@@ -11,27 +11,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif",
-      "findings": [],
-      "functionName": "ActivityListGifPreview",
-      "module": "sample-wear",
-      "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
-      "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-      "findings": [],
-      "functionName": "ActivityListLongPreview",
-      "module": "sample-wear",
-      "previewId": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
-      "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
@@ -59,7 +39,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ButtonPreview",
