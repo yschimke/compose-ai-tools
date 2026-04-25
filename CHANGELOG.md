@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/yschimke/compose-ai-tools/compare/v0.8.0...v0.8.1) (2026-04-25)
+
+
+### Features
+
+* **ext:** two-tier preview rendering + fix stuck "Building…" banner ([#196](https://github.com/yschimke/compose-ai-tools/issues/196)) ([e9308fc](https://github.com/yschimke/compose-ai-tools/commit/e9308fce68d2f1fd8e6405b46450ccdb387a025e))
+
 ## [0.8.0](https://github.com/yschimke/compose-ai-tools/compare/v0.7.12...v0.8.0) (2026-04-25)
 
 
