@@ -4,6 +4,11 @@ plugins {
     `maven-publish`
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.ktfmt)
+}
+
+ktfmt {
+    googleStyle()
 }
 
 group = "ee.schimke.composeai"
