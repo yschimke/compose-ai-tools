@@ -61,10 +61,42 @@ internal object AccessibilityOverlay {
      * @return the destination [File] when written, `null` otherwise.
      */
     fun generate(sourcePng: File, findings: List<AccessibilityFinding>): File? {
-        if (findings.isEmpty() || !sourcePng.exists()) return null
+        if (findings.isEmpty()) return null
+        if (!sourcePng.exists()) {
+            // The render pipeline is supposed to write outputFile before
+            // calling us, so a missing source means the wiring shifted —
+            // worth surfacing rather than silently dropping the overlay.
+            System.err.println(
+                "[compose-a11y] overlay skipped: source PNG missing at ${sourcePng.absolutePath}",
+            )
+            return null
+        }
+        return try {
+            generateInternal(sourcePng, findings)
+        } catch (t: Throwable) {
+            // Without this catch, an exception inside Canvas / Bitmap.createBitmap
+            // would propagate through writePerPreviewReport and skip the JSON
+            // report too — masking the original failure as "no a11y data".
+            // Logging the stack here keeps the report intact and tells CI logs
+            // exactly what to fix.
+            System.err.println(
+                "[compose-a11y] overlay failed for ${sourcePng.name}: " +
+                    "${t.javaClass.simpleName}: ${t.message}",
+            )
+            t.printStackTrace(System.err)
+            null
+        }
+    }
 
+    private fun generateInternal(sourcePng: File, findings: List<AccessibilityFinding>): File? {
         val source = BitmapFactory.decodeFile(sourcePng.absolutePath)
-            ?: return null
+        if (source == null) {
+            System.err.println(
+                "[compose-a11y] overlay skipped: BitmapFactory could not decode " +
+                    "${sourcePng.absolutePath} (size=${sourcePng.length()} bytes)",
+            )
+            return null
+        }
 
         val aspect = source.width.toFloat() / source.height.toFloat()
         val stacked = aspect >= STACK_ASPECT_THRESHOLD
