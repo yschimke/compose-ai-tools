@@ -37,9 +37,13 @@ function flushMicrotasks(): Promise<void> {
 }
 
 async function getApi(): Promise<ComposePreviewTestApi> {
+    console.log('[lifecycle] env COMPOSE_PREVIEW_TEST_MODE=' + process.env.COMPOSE_PREVIEW_TEST_MODE);
+    console.log('[lifecycle] all extensions: ' + vscode.extensions.all.map(e => e.id).join(', '));
     const ext = vscode.extensions.getExtension<ComposePreviewTestApi>('yuri-schimke.compose-preview');
     assert.ok(ext, 'compose-preview extension must be present in the test host');
+    console.log('[lifecycle] extension found, activating…');
     const api = await ext.activate();
+    console.log('[lifecycle] activate() returned: ' + (api ? 'ComposePreviewTestApi' : 'void'));
     assert.ok(api, 'activate() must return ComposePreviewTestApi under COMPOSE_PREVIEW_TEST_MODE=1');
     return api;
 }

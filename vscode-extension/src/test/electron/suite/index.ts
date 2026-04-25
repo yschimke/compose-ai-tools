@@ -17,14 +17,21 @@ export async function run(): Promise<void> {
         // Generous default — VS Code activation + view focus + a stub
         // Gradle round-trip lands well under this on a warm host, but a
         // cold-start CI run can spend several seconds on the
-        // `downloadAndUnzipVSCode` cache miss path.
-        timeout: 30_000,
+        // `downloadAndUnzipVSCode` cache miss path. 60s also gives the
+        // first test enough head room to drive the activation-time
+        // bookkeeping (extension-host event-loop spinup) before the
+        // assertions run.
+        timeout: 60_000,
+        reporter: 'spec',
     });
 
     const testsRoot = __dirname;
     const files = await glob('**/*.test.js', { cwd: testsRoot });
+    console.log(`[suite] discovered ${files.length} test file(s) in ${testsRoot}`);
     for (const f of files) {
-        mocha.addFile(path.resolve(testsRoot, f));
+        const abs = path.resolve(testsRoot, f);
+        console.log(`[suite] add ${abs}`);
+        mocha.addFile(abs);
     }
 
     return new Promise((resolve, reject) => {

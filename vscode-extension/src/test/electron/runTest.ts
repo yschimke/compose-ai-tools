@@ -31,7 +31,13 @@ async function main(): Promise<void> {
     const workspacePath = path.join(fixturesRoot, 'workspace');
     const fakeGradleExtensionPath = path.join(fixturesRoot, 'fake-vscode-gradle');
 
+    console.log(`[runTest] extensionDevelopmentPath=${extensionDevelopmentPath}`);
+    console.log(`[runTest] extensionTestsPath=${extensionTestsPath}`);
+    console.log(`[runTest] workspacePath=${workspacePath}`);
+    console.log(`[runTest] fakeGradleExtensionPath=${fakeGradleExtensionPath}`);
+
     const vscodeExecutablePath = await downloadAndUnzipVSCode('stable');
+    console.log(`[runTest] vscodeExecutablePath=${vscodeExecutablePath}`);
     const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutablePath);
 
     // Install the fake `vscjava.vscode-gradle` from disk so VS Code's
@@ -39,31 +45,42 @@ async function main(): Promise<void> {
     // a re-run with a tweaked stub picks up the new bytes. Failures here
     // are loud (build dies) rather than letting a misconfigured test host
     // silently fall back to "extension didn't activate".
+    console.log(`[runTest] installing fake vscjava.vscode-gradle…`);
     const install = spawnSync(
         cli,
         [...cliArgs, '--install-extension', fakeGradleExtensionPath, '--force'],
         { stdio: 'inherit', encoding: 'utf-8' },
     );
     if (install.status !== 0) {
-        throw new Error(`Failed to install fake vscjava.vscode-gradle from ${fakeGradleExtensionPath}`);
+        throw new Error(`Failed to install fake vscjava.vscode-gradle from ${fakeGradleExtensionPath} (exit ${install.status})`);
     }
 
+    console.log(`[runTest] launching tests…`);
     await runTests({
         vscodeExecutablePath,
         extensionDevelopmentPath,
         extensionTestsPath,
-        // `--disable-workspace-trust` skips the trust modal that would
-        // otherwise block activation of our extension on the fixture
-        // workspace. `--user-data-dir` keeps state out of the user's
-        // real ~/.vscode so reruns don't accumulate.
+        // CI-friendly launch args:
+        //  - `--disable-workspace-trust` skips the trust modal that would
+        //    otherwise block activation on the fixture workspace.
+        //  - `--no-sandbox` is required when running Electron under a
+        //    headless Linux CI without privileged kernel features (the
+        //    default chromium sandbox needs SUID helpers we don't ship).
+        //  - `--disable-gpu` avoids GL fallback noise on xvfb.
+        //  - `--disable-updates` keeps the host from spawning the update
+        //    check during a 30s test window.
         launchArgs: [
             workspacePath,
             '--disable-workspace-trust',
+            '--no-sandbox',
+            '--disable-gpu',
+            '--disable-updates',
         ],
         extensionTestsEnv: {
             COMPOSE_PREVIEW_TEST_MODE: '1',
         },
     });
+    console.log(`[runTest] tests complete`);
 }
 
 main().catch(err => {
