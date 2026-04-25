@@ -80,6 +80,14 @@ data class AccessibilityEntry(
     val previewId: String,
     val findings: List<AccessibilityFinding>,
     /**
+     * Every accessibility-relevant node ATF saw on the rendered tree.
+     * Populated whether or not [findings] is empty so consumers can render
+     * a Paparazzi-style "what TalkBack sees" overlay even when there's
+     * nothing to fix. Empty list ≈ a11y disabled or the View has no
+     * labelled / actionable content.
+     */
+    val nodes: List<AccessibilityNode> = emptyList(),
+    /**
      * Relative path (from the aggregated `accessibility.json`) to an
      * annotated screenshot showing each finding as a numbered badge + legend.
      * `null` when there were no findings, or when overlay generation was
@@ -87,6 +95,34 @@ data class AccessibilityEntry(
      * pointer — fall back to the clean render.
      */
     val annotatedPath: String? = null,
+)
+
+/**
+ * One accessibility-relevant node from the rendered View tree, captured for
+ * the Paparazzi-style overlay (translucent colour fill on the screenshot
+ * matched against a swatched legend). The shape is deliberately small — we
+ * keep only what TalkBack would announce and what the overlay needs to
+ * draw, not the full ATF [ViewHierarchyElement][com.google.android.apps.common.testing.accessibility.framework.uielement.ViewHierarchyElement]
+ * graph.
+ */
+@Serializable
+data class AccessibilityNode(
+    /** Visible text or contentDescription. Always non-empty for emitted nodes. */
+    val label: String,
+    /**
+     * TalkBack's class announcement (`Button`, `Image`, `TextView`, …).
+     * `null` for plain Views that only carry a label, so the legend can
+     * skip the role chip and avoid the noisy `View` everyone gets.
+     */
+    val role: String? = null,
+    /**
+     * Extra semantic state (`selected`, `checked`, `unchecked`). Empty for
+     * stateless nodes. Heading isn't here — ATF's hierarchy doesn't expose
+     * it cleanly enough to detect Compose-side `Modifier.semantics { heading() }`.
+     */
+    val states: List<String> = emptyList(),
+    /** `left,top,right,bottom` in source-bitmap pixels — same shape as [AccessibilityFinding.boundsInScreen]. */
+    val boundsInScreen: String,
 )
 
 @Serializable

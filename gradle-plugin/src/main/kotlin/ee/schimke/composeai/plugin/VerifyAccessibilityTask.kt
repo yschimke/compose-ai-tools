@@ -56,9 +56,22 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
     )
 
     @Serializable
+    private data class A11yNode(
+        val label: String,
+        val role: String? = null,
+        val states: List<String> = emptyList(),
+        val boundsInScreen: String,
+    )
+
+    @Serializable
     private data class A11yEntry(
         val previewId: String,
         val findings: List<A11yFinding>,
+        // Mirror of [renderer-android/RenderManifest.AccessibilityNode] —
+        // round-trips through the aggregate JSON so downstream tools (CLI,
+        // VS Code, the python report lib) can read the ANI overlay data
+        // without going through the renderer's classpath.
+        val nodes: List<A11yNode> = emptyList(),
         val annotatedPath: String? = null,
     )
 
