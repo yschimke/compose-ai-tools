@@ -1,0 +1,6 @@
+# Fixture override — the repo-root .gitignore excludes `build/`, but the
+# files under `*/build/compose-previews/` here are test fixtures that need
+# to be tracked. Tests read them in-place; the path mirrors what the
+# extension expects from a real Gradle output dir.
+!**/build/
+!**/build/**
