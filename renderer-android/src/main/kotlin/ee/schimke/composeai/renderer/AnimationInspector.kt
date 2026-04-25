@@ -319,21 +319,78 @@ internal fun InspectablePreviewContent(
 
 /**
  * Best-effort coercion of a Compose animation value to a plottable Double.
- * Floats / Ints / Longs / Booleans go straight; `Color` objects use a
- * stable hash code; `Dp` / unit-bearing Float wrappers use their `.value`
- * field. Returns `null` when the value can't be reduced — the plotter
- * draws a label-only legend entry rather than a curve in that case.
+ *
+ * Numeric primitives and `Boolean` go straight. The interesting cases
+ * are Compose's value-class wrappers, which box to `Object` when the
+ * inspector returns them through `Any?`. We special-case the common
+ * geometry types because:
+ *
+ *  - `IntSize.packedValue.hashCode()` is `(packed xor (packed ushr 32)).toInt()`,
+ *    which for `width == height` collapses to 0 — the exact case that
+ *    fooled the flat-curve filter into hiding `AnimatedVisibility`'s
+ *    `Built-in shrink/expand` track on a square-content reveal.
+ *  - `Dp` / `TextUnit` etc. expose their underlying value via `getValue`,
+ *    which the generic fallback already handles.
+ *
+ * Compose's `IntSize` / `Size` collapse to a `width * height` area, and
+ * `IntOffset` / `Offset` to `sqrt(x² + y²)` magnitude. Both produce a
+ * scalar that strictly distinguishes any two different value-class
+ * instances and gives the plotter something monotonic-ish to draw.
+ *
+ * Returns `null` when no scalar can be derived — the plotter draws a
+ * label-only legend entry without a curve.
  */
 internal fun coerceToDouble(value: Any?): Double? = when (value) {
     null -> null
     is Number -> value.toDouble()
     is Boolean -> if (value) 1.0 else 0.0
     else -> {
-        runCatching {
-            val v = value::class.java.getMethod("getValue").invoke(value)
-            (v as? Number)?.toDouble()
-        }.getOrNull() ?: runCatching {
-            value.hashCode().toDouble()
-        }.getOrNull()
+        val cls = value::class.java
+        // Compose's value-class wrappers (`IntSize`, `IntOffset`,
+        // `Size`, `Offset`) compile their property getters to STATIC
+        // `getWidth-impl(long)` / `getX-impl(long)` taking the packed
+        // long — the boxed class has no instance `getWidth()` to
+        // reflect against directly. Pull the packed long via the
+        // instance `getPackedValue()` accessor, then dispatch through
+        // the static `-impl` accessors so the unpacking (Int vs
+        // Float, signed vs unsigned-low-32) is whatever the type
+        // declares, no hard-coded bit-layout assumptions on our side.
+        when (cls.simpleName) {
+            "IntSize", "Size" -> sizeArea(value, cls)
+            "IntOffset", "Offset" -> offsetMagnitude(value, cls)
+            else -> runCatching {
+                val v = cls.getMethod("getValue").invoke(value)
+                (v as? Number)?.toDouble()
+            }.getOrNull() ?: runCatching {
+                // Last resort: a stable scalar identity for the value.
+                // Used for Color (luminance would be nicer, but
+                // packedValue.toDouble() is enough to keep the curve
+                // moving when it actually moves).
+                (cls.getMethod("getPackedValue").invoke(value) as? Long)?.toDouble()
+            }.getOrNull()
+        }
     }
 }
+
+private fun sizeArea(value: Any, cls: Class<*>): Double? {
+    val packed = readLongMethod(value, cls, "getPackedValue") ?: return null
+    val w = invokeStaticImpl(cls, "getWidth-impl", packed) ?: return null
+    val h = invokeStaticImpl(cls, "getHeight-impl", packed) ?: return null
+    return w * h
+}
+
+private fun offsetMagnitude(value: Any, cls: Class<*>): Double? {
+    val packed = readLongMethod(value, cls, "getPackedValue") ?: return null
+    val x = invokeStaticImpl(cls, "getX-impl", packed) ?: return null
+    val y = invokeStaticImpl(cls, "getY-impl", packed) ?: return null
+    return kotlin.math.sqrt(x * x + y * y)
+}
+
+private fun readLongMethod(receiver: Any, cls: Class<*>, name: String): Long? =
+    runCatching { (cls.getMethod(name).invoke(receiver) as? Long) }.getOrNull()
+
+private fun invokeStaticImpl(cls: Class<*>, name: String, packed: Long): Double? =
+    runCatching {
+        val m = cls.getDeclaredMethod(name, java.lang.Long.TYPE)
+        (m.invoke(null, packed) as? Number)?.toDouble()
+    }.getOrNull()
