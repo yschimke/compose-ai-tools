@@ -79,6 +79,21 @@ internal object AccessibilityChecker {
         val annotated = if (screenshot != null && findings.isNotEmpty()) {
             AccessibilityOverlay.generate(screenshot, findings)
         } else null
+        if (findings.isNotEmpty() && annotated == null) {
+            // Findings present but no overlay landed — log the precondition
+            // that wasn't met so the cause is visible in CI logs without
+            // having to enable the verbose `composeai.a11y.debug` flag.
+            // [AccessibilityOverlay.generate] logs the more specific reason
+            // when it gets to run; this branch covers the case where it
+            // wasn't called at all (annotation disabled or no screenshot).
+            val reason = when {
+                screenshot == null -> "screenshot=null (annotation disabled or capture not wired)"
+                else -> "AccessibilityOverlay.generate returned null (see preceding stderr)"
+            }
+            System.err.println(
+                "[compose-a11y] $previewId: ${findings.size} finding(s) but no overlay — $reason",
+            )
+        }
 
         // Path in the entry is stored relative to the aggregate
         // `accessibility.json` (which lives in the plugin output root next
