@@ -97,6 +97,25 @@ def load_previews(build_dir: Path) -> tuple[dict, dict]:
     return manifest, a11y_by_id
 
 
+def is_dynamic_preview(preview: dict) -> bool:
+    """Returns True for `@ScrollingPreview` / `@AnimatedPreview` variants.
+
+    Dynamic captures move during the render — `scroll != null` covers TOP,
+    END, LONG, and GIF scroll modes, and a `.gif` extension catches
+    `@AnimatedPreview`'s frame-strip output. Including them in the a11y
+    report would mean overlaying the legend onto a tall stitched scroll or
+    a single animation frame, neither of which is a useful "what TalkBack
+    sees" picture. The static variant of the same function (when it
+    exists) carries the a11y signal.
+    """
+    for capture in preview.get("captures", []):
+        if capture.get("scroll") is not None:
+            return True
+        if (capture.get("renderOutput") or "").endswith(".gif"):
+            return True
+    return False
+
+
 def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
     """Pick one variant per (functionName) and merge in a11y data.
 
@@ -104,16 +123,22 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
     module, functionName, sourceFile, previewId, variant, renderOutput
     (module-relative), annotatedPath (module-relative), findings.
 
-    Tile previews (``params.kind == "TILE"``) are filtered out — ATF runs
-    against the Robolectric View tree, but Wear Tiles render through
-    `TilePreviewRenderer`, so listing them with empty findings would falsely
-    imply they were checked.
+    Filtered out:
+    * Tile previews (``params.kind == "TILE"``) — ATF runs against the
+      Robolectric View tree, but Wear Tiles render through
+      `TilePreviewRenderer`, so listing them with empty findings would
+      falsely imply they were checked.
+    * Scroll / animation captures (``@ScrollingPreview`` /
+      ``@AnimatedPreview``) — see [is_dynamic_preview]. Functions whose
+      ONLY variants are dynamic drop out of the report entirely.
     """
     module = manifest["module"]
     by_fn: dict[str, list[dict]] = {}
     for preview in manifest.get("previews", []):
         kind = (preview.get("params") or {}).get("kind", "COMPOSE")
         if kind != "COMPOSE":
+            continue
+        if is_dynamic_preview(preview):
             continue
         by_fn.setdefault(preview["functionName"], []).append(preview)
 
