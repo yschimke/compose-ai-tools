@@ -262,18 +262,26 @@ class CommentTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
 
-    def test_comment_carries_marker(self):
-        findings_path = self.tmp / "findings.json"
-        findings_path.write_text(json.dumps({"entries": [{
+    def _entry(self, *, findings: list[dict] | None = None) -> dict:
+        return {
             "module": "sample-wear",
             "functionName": "Bad",
             "sourceFile": "Previews.kt",
             "previewId": "x.Bad_small_round",
             "variant": "small_round",
             "cleanBasename": "Bad.png",
-            "annotatedBasename": "Bad.a11y.png",
-            "findings": [_finding(level="ERROR")],
-        }]}))
+            "annotatedBasename": "Bad.a11y.png" if findings else "",
+            "findings": findings or [],
+        }
+
+    def _run_comment(self, current_entries, *, baseline_entries=None):
+        findings_path = self.tmp / "findings.json"
+        findings_path.write_text(json.dumps({"entries": current_entries}))
+        baseline_path = None
+        if baseline_entries is not None:
+            baseline_path = self.tmp / "baseline.json"
+            baseline_path.write_text(json.dumps({"entries": baseline_entries}))
+
         import argparse, io, contextlib
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -281,11 +289,44 @@ class CommentTest(unittest.TestCase):
                 findings=str(findings_path),
                 repo="org/repo",
                 head_ref="abc123",
+                baseline=str(baseline_path) if baseline_path else None,
             ))
-        body = buf.getvalue()
+        return buf.getvalue()
+
+    def test_comment_carries_marker(self):
+        body = self._run_comment([self._entry(findings=[_finding(level="ERROR")])])
         self.assertTrue(body.startswith("<!-- a11y-report -->"))
         self.assertIn("ERROR", body)
         self.assertIn("abc123", body)
+
+    def test_silent_when_findings_match_baseline(self):
+        # Identical findings on both sides → no comment body, the action
+        # uses the empty stdout to skip the upsert and the branch push.
+        entry = self._entry(findings=[_finding(level="ERROR")])
+        body = self._run_comment([entry], baseline_entries=[entry])
+        self.assertEqual(body, "")
+
+    def test_emits_when_finding_added(self):
+        baseline_entry = self._entry(findings=[])
+        current_entry = self._entry(findings=[_finding(level="ERROR")])
+        body = self._run_comment([current_entry], baseline_entries=[baseline_entry])
+        self.assertIn("<!-- a11y-report -->", body)
+
+    def test_emits_when_finding_removed(self):
+        baseline_entry = self._entry(findings=[_finding(level="ERROR")])
+        current_entry = self._entry(findings=[])
+        body = self._run_comment([current_entry], baseline_entries=[baseline_entry])
+        # Different finding count on the baseline side → fingerprint diverges.
+        self.assertIn("<!-- a11y-report -->", body)
+
+    def test_silent_when_baseline_missing_but_no_findings(self):
+        # No baseline file at all behaves like an empty baseline; so a PR
+        # that introduces zero findings on a fresh repo still goes silent.
+        body = self._run_comment(
+            [self._entry(findings=[])],
+            baseline_entries=[self._entry(findings=[])],
+        )
+        self.assertEqual(body, "")
 
 
 if __name__ == "__main__":
