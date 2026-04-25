@@ -125,6 +125,36 @@ class SelectVariantsTest(unittest.TestCase):
         rows = ar.select_variants(manifest, {})
         self.assertEqual([r["functionName"] for r in rows], ["Button"])
 
+    def test_filters_out_scroll_captures(self):
+        scroll_preview = _preview(
+            id="x.LongList_1", function="LongList",
+            device="id:wearos_large_round",
+        )
+        scroll_preview["captures"] = [
+            {"renderOutput": "renders/LongList.png", "scroll": {"mode": "LONG"}},
+        ]
+        manifest = {
+            "module": "sample-wear",
+            "previews": [
+                scroll_preview,
+                _preview(id="x.Button_1", function="Button",
+                         device="id:wearos_large_round"),
+            ],
+        }
+        rows = ar.select_variants(manifest, {})
+        # The scroll-only function drops; the static button stays.
+        self.assertEqual([r["functionName"] for r in rows], ["Button"])
+
+    def test_filters_out_gif_animations(self):
+        gif_preview = _preview(
+            id="x.Anim_1", function="Anim",
+            device="id:phone",
+        )
+        gif_preview["captures"] = [{"renderOutput": "renders/Anim.gif"}]
+        manifest = {"module": "app", "previews": [gif_preview]}
+        rows = ar.select_variants(manifest, {})
+        self.assertEqual(rows, [])
+
     def test_merges_a11y_for_chosen_variant(self):
         manifest = {
             "module": "sample-wear",

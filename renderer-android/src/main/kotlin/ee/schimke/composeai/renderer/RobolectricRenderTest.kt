@@ -631,7 +631,10 @@ abstract class RobolectricRenderTestBase(
                         // produces populated AccessibilityNodeInfo. DecorView
                         // here returns all NOT_RUN.
                         val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
-                        val findings = AccessibilityChecker.check(preview.id, view)
+                        // analyze() runs ATF and walks the hierarchy in one
+                        // pass — the overlay needs both findings (red badge
+                        // layer) and ANI nodes (the colour-swatched legend).
+                        val result = AccessibilityChecker.analyze(preview.id, view)
                         val a11yDir = File(
                             System.getProperty("composeai.a11y.outputDir")
                                 ?: "build/compose-previews/accessibility-per-preview",
@@ -639,7 +642,8 @@ abstract class RobolectricRenderTestBase(
                         AccessibilityChecker.writePerPreviewReport(
                             outputDir = a11yDir,
                             previewId = preview.id,
-                            findings = findings,
+                            findings = result.findings,
+                            nodes = result.nodes,
                             screenshot = outputFile.takeIf { annotate },
                         )
                     }

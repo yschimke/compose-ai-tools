@@ -31,7 +31,19 @@ internal object AccessibilityChecker {
 
     private val json = Json { prettyPrint = true; encodeDefaults = true }
 
-    fun check(previewId: String, root: View): List<AccessibilityFinding> {
+    /**
+     * Output of a single a11y pass over the rendered View tree. Both
+     * fields are populated unconditionally (so the Paparazzi-style overlay
+     * can render even when nothing's wrong), but consumers usually treat
+     * empty [findings] as "no ATF problems" and empty [nodes] as "a11y
+     * was disabled or the View has no labelled content".
+     */
+    data class Result(
+        val findings: List<AccessibilityFinding>,
+        val nodes: List<AccessibilityNode>,
+    )
+
+    fun analyze(previewId: String, root: View): Result {
         val originalFingerprint = Build.FINGERPRINT
         val needsSwap = originalFingerprint == "robolectric"
         if (needsSwap) {
@@ -49,12 +61,68 @@ internal object AccessibilityChecker {
                 val typeCounts = allResults.groupingBy { it.type?.name ?: "null" }.eachCount()
                 println("[compose-a11y] $previewId: ran ${checks.size} check(s), got ${allResults.size} raw result(s) on ${root.javaClass.simpleName} (attached=${root.isAttachedToWindow}) types=$typeCounts")
             }
-            return allResults.mapNotNull { it.toFinding() }
+            val findings = allResults.mapNotNull { it.toFinding() }
+            val nodes = extractNodes(hierarchy)
+            return Result(findings = findings, nodes = nodes)
         } finally {
             if (needsSwap) {
                 ShadowBuild.setFingerprint(originalFingerprint)
             }
         }
+    }
+
+    /** Back-compat shim — most call sites only care about findings. */
+    fun check(previewId: String, root: View): List<AccessibilityFinding> =
+        analyze(previewId, root).findings
+
+    private fun extractNodes(hierarchy: AccessibilityHierarchyAndroid): List<AccessibilityNode> {
+        val views = hierarchy.activeWindow.allViews
+        val out = mutableListOf<AccessibilityNode>()
+        for (v in views) {
+            val bounds = v.boundsInScreen
+            if (bounds == null || bounds.width <= 0 || bounds.height <= 0) continue
+            // Prefer contentDescription (what TalkBack actually announces);
+            // fall back to visible text. Both are SpannableStrings — toString()
+            // strips ATF's spans so we get plain UI copy.
+            val label = (v.contentDescription?.toString()?.trim().orEmpty())
+                .ifEmpty { v.text?.toString()?.trim().orEmpty() }
+            val role = simplifyRole(v.accessibilityClassName?.toString() ?: v.className?.toString())
+            val states = buildList {
+                if (v.isCheckable == true) {
+                    add(if (v.isChecked == true) "checked" else "unchecked")
+                }
+            }
+            // Drop nodes that wouldn't carry weight in the legend: a label,
+            // a role beyond plain View, an actionable state, or clickability
+            // is enough to keep them. Clickable-but-empty containers (a card
+            // with text inside it that's already its own node) drop out.
+            val keep = label.isNotEmpty() ||
+                states.isNotEmpty() ||
+                (role != null && v.isClickable)
+            if (!keep) continue
+            // The label is what reviewers scan for first; an unlabelled
+            // clickable element with a known role still surfaces, but with
+            // an empty `label` field — the overlay caller decides how to
+            // render that (we draw the role on its own line in the legend).
+            out += AccessibilityNode(
+                label = label,
+                role = role,
+                states = states,
+                boundsInScreen = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}",
+            )
+        }
+        return out
+    }
+
+    /**
+     * Strip the package off TalkBack's class name and drop the generic
+     * `android.view.View` so the legend doesn't fill up with `View` chips.
+     */
+    private fun simplifyRole(fqn: String?): String? {
+        if (fqn.isNullOrEmpty()) return null
+        val short = fqn.substringAfterLast('.')
+        if (short.isEmpty() || short == "View" || short == "ViewGroup") return null
+        return short
     }
 
     private val DEBUG = System.getProperty("composeai.a11y.debug") == "true"
@@ -65,22 +133,26 @@ internal object AccessibilityChecker {
      * per-preview avoids concurrent-writer issues when previews are sharded
      * across JVMs.
      *
-     * When [screenshot] is non-null and [findings] is non-empty, also
-     * generates an annotated PNG next to the screenshot and records the
-     * relative path back to the aggregate JSON in [AccessibilityEntry.annotatedPath].
+     * Always writes the JSON entry, even when both lists are empty (so
+     * `accessibility.json` covers every preview). The annotated PNG is
+     * generated whenever there's at least one finding OR one ANI node and
+     * a screenshot is available — that way the Paparazzi-style "what
+     * TalkBack sees" overlay shows up on clean previews too.
      */
     fun writePerPreviewReport(
         outputDir: File,
         previewId: String,
         findings: List<AccessibilityFinding>,
+        nodes: List<AccessibilityNode>,
         screenshot: File? = null,
     ) {
         outputDir.mkdirs()
-        val annotated = if (screenshot != null && findings.isNotEmpty()) {
-            AccessibilityOverlay.generate(screenshot, findings)
+        val hasContent = findings.isNotEmpty() || nodes.isNotEmpty()
+        val annotated = if (screenshot != null && hasContent) {
+            AccessibilityOverlay.generate(screenshot, findings, nodes)
         } else null
-        if (findings.isNotEmpty() && annotated == null) {
-            // Findings present but no overlay landed — log the precondition
+        if (hasContent && annotated == null) {
+            // Content present but no overlay landed — log the precondition
             // that wasn't met so the cause is visible in CI logs without
             // having to enable the verbose `composeai.a11y.debug` flag.
             // [AccessibilityOverlay.generate] logs the more specific reason
@@ -91,7 +163,8 @@ internal object AccessibilityChecker {
                 else -> "AccessibilityOverlay.generate returned null (see preceding stderr)"
             }
             System.err.println(
-                "[compose-a11y] $previewId: ${findings.size} finding(s) but no overlay — $reason",
+                "[compose-a11y] $previewId: ${findings.size} finding(s) / " +
+                    "${nodes.size} node(s) but no overlay — $reason",
             )
         }
 
@@ -108,6 +181,7 @@ internal object AccessibilityChecker {
         val entry = AccessibilityEntry(
             previewId = previewId,
             findings = findings,
+            nodes = nodes,
             annotatedPath = relative,
         )
         outputDir.resolve("$previewId.json").writeText(
