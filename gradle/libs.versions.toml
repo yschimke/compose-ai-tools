@@ -1,6 +1,6 @@
 [versions]
-kotlin = "2.2.21"
-agp = "9.1.0"
+kotlin = "2.3.20"
+agp = "9.1.1"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
 compose-bom = "2026.03.01"
@@ -15,28 +15,25 @@ compose-bom = "2026.03.01"
 compose-bom-compat = "2026.03.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
-wear-compose = "1.6.0"
+wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
 # Remote Compose — alpha artifacts, used only by `:sample-remotecompose` to
 # demonstrate `RemotePreview` + `@PreviewWrapper(RemotePreviewWrapper::class)`.
-# Version pins, chosen for AGP 9.1.0 / compileSdk 36 compatibility:
-#  * compose-remote alpha07 requires minCompileSdk=35 / AGP 8.6.0 (alpha08
-#    bumps both to 37 / 9.1).
-#  * wear-compose-remote alpha01 requires minCompileSdk=35 / AGP 8.6.0
-#    (alpha02 bumps to 37 / 9.1).
+# Re-check minCompileSdk / AGP requirements when bumping these — the alpha
+# line has historically tightened them between releases.
 #  * ui-tooling-preview 1.11.0-rc01 is the first released artifact that
 #    contains `PreviewWrapper` / `PreviewWrapperProvider` — 1.10.x (the
 #    current BOM) doesn't have them. Declared explicitly because the
 #    sample doesn't depend on compose-bom.
-compose-remote = "1.0.0-alpha07"
-wear-compose-remote = "1.0.0-alpha01"
+compose-remote = "1.0.0-alpha08"
+wear-compose-remote = "1.0.0-alpha02"
 compose-ui-tooling-preview-wrapper = "1.11.0-rc01"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
-truth = "1.4.4"
+truth = "1.4.5"
 maven-publish = "0.36.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
 # by `:sample-android-screenshot-test`, which exercises our co-existence
