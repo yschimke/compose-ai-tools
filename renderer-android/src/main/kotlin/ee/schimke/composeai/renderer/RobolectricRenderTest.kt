@@ -1282,9 +1282,23 @@ private fun handleAnimatedCapture(
         val rawFrames = frameFiles.map {
             javax.imageio.ImageIO.read(it) ?: error("Failed to read animation frame PNG: $it")
         }
-        val tracks = curveTracksByLabel.map { (label, samples) ->
-            AnimationCurvePlotter.Track(label = label, samples = samples)
-        }
+        // Drop tracks that never visibly changed across the captured
+        // window. AnimatedVisibility, AnimatedContent, and a few other
+        // composables register internal book-keeping animations
+        // (`Built-in InterruptionHandlingOffset` — slide-target on
+        // mid-flight interruption; `Built-in shrink/expand` — geometry
+        // change on a non-resizing reveal) that the inspector exposes
+        // alongside the user-meaningful properties (alpha, etc.). For
+        // a single state flip those internals stay flat at 0, so they
+        // add an empty 80px row each to the curve panel without
+        // information. Filtering by "values change" is more principled
+        // than maintaining a denylist of internal labels — if a track
+        // genuinely doesn't move, it's not interesting to plot.
+        val tracks = curveTracksByLabel
+            .map { (label, samples) ->
+                AnimationCurvePlotter.Track(label = label, samples = samples)
+            }
+            .filter { it.hasVisibleVariation() }
 
         // Combined-GIF mode: each frame composes the screenshot above a
         // curve panel that highlights the current frame's position with
@@ -1306,7 +1320,17 @@ private fun handleAnimatedCapture(
                 rawFrames
             }
 
-        val frameDelays = IntArray(composedFrames.size) { frameIntervalMs }
+        // Hold the first frame for [HOLD_START_MS] and the last for
+        // [HOLD_END_MS] so the GIF reads as "pre-state → animation → settled
+        // state" rather than instantly looping back. Single-frame GIFs
+        // collapse to one long-hold image.
+        val frameDelays = IntArray(composedFrames.size) { i ->
+            when (i) {
+                0 -> HOLD_START_ANIM_MS
+                composedFrames.lastIndex -> HOLD_END_ANIM_MS
+                else -> frameIntervalMs
+            }
+        }
         val written = ScrollGifEncoder.encode(
             frames = composedFrames,
             outputFile = outputFile,
@@ -1344,6 +1368,16 @@ private const val AUTO_DURATION_FALLBACK_MS = 1500
  * GIF holds the settled state visibly for a moment before looping.
  */
 private const val AUTO_DURATION_TAIL_MS = 200L
+
+/**
+ * Per-frame `delayTime` overrides for the first and last frames of an
+ * `@AnimatedPreview` GIF. Without them the GIF transitions straight from
+ * settled-end back to pre-animation start without giving the viewer time
+ * to read either state. Mirrors [HOLD_START_MS] / [HOLD_END_MS] in
+ * `@ScrollingPreview(GIF)`'s scripted scroll cadence.
+ */
+private const val HOLD_START_ANIM_MS = 500
+private const val HOLD_END_ANIM_MS = 1000
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes

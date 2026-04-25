@@ -29,7 +29,35 @@ import java.awt.image.BufferedImage
 internal object AnimationCurvePlotter {
 
     /** A single animated property's time-series — `(timeMs, value)` pairs. */
-    data class Track(val label: String, val samples: List<Pair<Long, Any?>>)
+    data class Track(val label: String, val samples: List<Pair<Long, Any?>>) {
+        /**
+         * `true` when at least two of the track's coerced numeric values
+         * differ by more than [VARIATION_EPSILON]. Used by the renderer
+         * to drop noise tracks (`AnimatedVisibility` / `AnimatedContent`
+         * book-keeping animations like `shrink/expand` and
+         * `InterruptionHandlingOffset` that stay at 0 when the relevant
+         * feature is disabled / unused) before plotting.
+         *
+         * Non-numeric tracks (Color, Dp, custom value classes that don't
+         * coerce) keep `false` — they show up as a label-only legend
+         * entry only if explicitly opted in.
+         */
+        fun hasVisibleVariation(): Boolean {
+            val numeric = samples.mapNotNull { (_, v) -> coerceToDouble(v) }
+            if (numeric.size < 2) return false
+            val min = numeric.min()
+            val max = numeric.max()
+            return (max - min) > VARIATION_EPSILON
+        }
+    }
+
+    /**
+     * Tolerance for treating a curve as "flat" — small enough to keep a
+     * 0..1 alpha tween plotted (variation 1.0 ≫ ε), large enough to
+     * absorb the floating-point noise in `Built-in InterruptionHandlingOffset`
+     * staying at 0 across a few dozen sampled frames.
+     */
+    private const val VARIATION_EPSILON = 1e-6
 
     /**
      * Renders the curve panel at [width] × computed-height. Each track
