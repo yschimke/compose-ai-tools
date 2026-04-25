@@ -1,7 +1,7 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.compose.compiler)
-    id("ee.schimke.composeai.preview")
+  alias(libs.plugins.android.library)
+  alias(libs.plugins.compose.compiler)
+  id("ee.schimke.composeai.preview")
 }
 
 // Regression coverage for issue #136: applying `composePreview` to a
@@ -11,34 +11,26 @@ plugins {
 // stays configured + executes end-to-end.
 
 android {
-    namespace = "com.example.samplelibrary"
-    compileSdk = 36
+  namespace = "com.example.samplelibrary"
+  compileSdk = 36
 
-    defaultConfig {
-        minSdk = 24
-    }
+  defaultConfig { minSdk = 24 }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
 
-    buildFeatures {
-        compose = true
-    }
+  buildFeatures { compose = true }
 
-    testOptions {
-        unitTests.all {
-            it.jvmArgs("-Xmx2048m")
-        }
-    }
+  testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
 dependencies {
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.foundation)
-    debugImplementation("androidx.compose.ui:ui-tooling")
+  implementation(platform(libs.compose.bom))
+  implementation(libs.compose.ui)
+  implementation(libs.compose.material3)
+  implementation(libs.compose.ui.tooling.preview)
+  implementation(libs.compose.foundation)
+  debugImplementation("androidx.compose.ui:ui-tooling")
 }

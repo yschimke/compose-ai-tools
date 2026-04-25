@@ -1,68 +1,66 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.compose.compiler)
-    id("ee.schimke.composeai.preview")
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.compose.compiler)
+  id("ee.schimke.composeai.preview")
 }
 
 composePreview {
-    accessibilityChecks {
-        // Sample wires a deliberately-broken `BadWearButtonPreview` so the
-        // `.a11y.png` for Wear exercises the stacked (legend-below) layout.
-        // Flip to `true` and re-run to see the annotation; defaults off so
-        // `./gradlew check` stays clean.
-        enabled = false
-    }
+  accessibilityChecks {
+    // Sample wires a deliberately-broken `BadWearButtonPreview` so the
+    // `.a11y.png` for Wear exercises the stacked (legend-below) layout.
+    // Flip to `true` and re-run to see the annotation; defaults off so
+    // `./gradlew check` stays clean.
+    enabled = false
+  }
 }
 
 android {
-    namespace = "com.example.samplewear"
-    compileSdk = 36
+  namespace = "com.example.samplewear"
+  compileSdk = 36
 
-    defaultConfig {
-        applicationId = "com.example.samplewear"
-        minSdk = 30
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
-    }
+  defaultConfig {
+    applicationId = "com.example.samplewear"
+    minSdk = 30
+    targetSdk = 36
+    versionCode = 1
+    versionName = "1.0"
+  }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
 
-    buildFeatures {
-        compose = true
-    }
+  buildFeatures { compose = true }
 }
 
 dependencies {
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.foundation)
-    implementation(libs.activity.compose)
-    implementation(libs.wear.compose.material3)
-    implementation(libs.wear.compose.foundation)
-    implementation(libs.wear.compose.ui.tooling)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation("androidx.compose.ui:ui-tooling")
+  implementation(platform(libs.compose.bom))
+  implementation(libs.compose.ui)
+  implementation(libs.compose.foundation)
+  implementation(libs.activity.compose)
+  implementation(libs.wear.compose.material3)
+  implementation(libs.wear.compose.foundation)
+  implementation(libs.wear.compose.ui.tooling)
+  implementation(libs.compose.ui.tooling.preview)
+  debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
-    // rendered via TilePreviewRenderer in renderer-android. `wear.tiles.renderer`
-    // is deliberately NOT declared here — the plugin injects it when the
-    // consumer's variant runtime classpath already includes `androidx.wear.tiles:tiles`,
-    // so consumer apps don't need to restate this preview-only dependency.
-    implementation(libs.wear.tiles)
-    implementation(libs.wear.tiles.tooling.preview)
-    implementation(libs.wear.protolayout)
-    implementation(libs.wear.protolayout.expression)
-    implementation(libs.wear.protolayout.material3)
-    implementation(libs.wear.tooling.preview)
-    // `@ScrollingPreview` — read by FQN at discovery time; no runtime cost.
-    implementation(project(":preview-annotations"))
+  // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
+  // rendered via TilePreviewRenderer in renderer-android. `wear.tiles.renderer`
+  // is deliberately NOT declared here — the plugin injects it when the
+  // consumer's variant runtime classpath already includes `androidx.wear.tiles:tiles`,
+  // so consumer apps don't need to restate this preview-only dependency.
+  implementation(libs.wear.tiles)
+  implementation(libs.wear.tiles.tooling.preview)
+  implementation(libs.wear.protolayout)
+  implementation(libs.wear.protolayout.expression)
+  implementation(libs.wear.protolayout.material3)
+  implementation(libs.wear.tooling.preview)
+  // `@ScrollingPreview` — read by FQN at discovery time; no runtime cost.
+  implementation(project(":preview-annotations"))
 
-    testImplementation(libs.junit)
-    testImplementation(libs.truth)
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }
 
 // `LongScrollPreviewPixelTest` reads PNGs produced by `renderAllPreviews`.
@@ -75,6 +73,7 @@ dependencies {
 // don't need the discouraged `afterEvaluate` block to wait for AGP to wire
 // the unit-test tasks.
 val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
-tasks.matching { it.name in pixelTestUnitTestTasks }.configureEach {
-    dependsOn("renderAllPreviews")
-}
+
+tasks
+  .matching { it.name in pixelTestUnitTestTasks }
+  .configureEach { dependsOn("renderAllPreviews") }

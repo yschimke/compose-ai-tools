@@ -1,6 +1,7 @@
 [versions]
 kotlin = "2.3.20"
 agp = "9.1.1"
+ktfmt = "0.26.0"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
 compose-bom = "2026.03.01"
@@ -92,3 +93,4 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
 android-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "android-compose-screenshot" }
+ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
