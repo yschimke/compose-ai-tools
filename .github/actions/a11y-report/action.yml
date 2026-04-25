@@ -1,0 +1,198 @@
+name: 'Compose A11y Report'
+description: >
+  Render @Preview functions with ATF accessibility checks enabled, generate
+  an annotated screenshot + finding table per preview, and publish to a
+  shared branch (`a11y_main` for `push`, `a11y_pr` for `pull_request`). For
+  PRs, also upserts a comment with finding counts and SHA-pinned image
+  links. Mirrors the push-and-retry / comment-upsert pattern used by
+  preview-comment, but is a separate action so a11y churn doesn't block the
+  pixel-diff hot path.
+
+inputs:
+  mode:
+    description: "'baseline' (push to `a11y_main`) or 'comment' (push to `a11y_pr` + upsert PR comment)"
+    required: true
+  module:
+    description: 'Gradle module path to render (e.g. `sample-wear`)'
+    default: 'sample-wear'
+  baseline-branch:
+    description: 'Long-lived branch holding the baseline a11y report'
+    default: 'a11y_main'
+  pr-branch:
+    description: 'Shared branch that accumulates per-PR a11y renders'
+    default: 'a11y_pr'
+  pr-number:
+    description: 'Pull request number (auto-detected from context if omitted)'
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Render previews with a11y checks enabled
+      shell: bash
+      env:
+        MODULE: ${{ inputs.module }}
+      run: |
+        set -euo pipefail
+        # `-PcomposePreview.accessibilityChecks.enabled=true` overrides the
+        # module DSL default so `./gradlew check` stays clean while CI still
+        # exercises the a11y path. The module's `verifyAccessibility` task is
+        # always registered; the property flips its `onlyIf` predicate.
+        ./gradlew ":${MODULE}:renderAllPreviews" \
+          -PcomposePreview.accessibilityChecks.enabled=true \
+          --no-daemon
+
+    - name: Copy annotated PNGs and emit findings.json
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        MODULE: ${{ inputs.module }}
+      run: |
+        set -euo pipefail
+        python3 "$ACTION_PATH/../lib/a11y-report.py" copy-annotated \
+          --build-dir "${MODULE}/build/compose-previews" \
+          --output-dir _a11y_renders
+
+    - name: Generate README for target branch
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        TARGET_BRANCH: ${{ inputs.mode == 'baseline' && inputs.baseline-branch || inputs.pr-branch }}
+      run: |
+        set -euo pipefail
+        # Image URLs reference the branch name rather than a SHA — same
+        # contract preview-baselines uses for the on-branch README. The PR
+        # comment (generated separately below) is what pins to a SHA so it
+        # survives the PR merge.
+        python3 "$ACTION_PATH/../lib/a11y-report.py" readme \
+          _a11y_renders/findings.json \
+          --repo "$REPO" \
+          --branch "$TARGET_BRANCH" \
+          --output _a11y_renders/README.md
+
+    - name: Push a11y renders branch
+      id: push
+      shell: bash
+      env:
+        # Route every templated value through env so a malicious branch /
+        # PR-number input can't expand inside the shell body. (zizmor:
+        # template-injection)
+        MODE: ${{ inputs.mode }}
+        BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+        PR_BRANCH: ${{ inputs.pr-branch }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if [ "$MODE" = "baseline" ]; then
+          TARGET_BRANCH="$BASELINE_BRANCH"
+        else
+          TARGET_BRANCH="$PR_BRANCH"
+        fi
+
+        cd _a11y_renders
+        git init -q
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git remote add origin \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+
+        git add -A
+        TREE=$(git write-tree)
+
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        if [ "$MODE" = "baseline" ]; then
+          MSG="Update accessibility baseline from ${GITHUB_SHA::8}"
+        else
+          MSG="A11y report for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+        fi
+
+        # Append commit on top of existing tip so older PR comments pinned
+        # to past SHAs stay reachable. Retry loop handles the push race
+        # when two PRs finish concurrently against the shared `a11y_pr`
+        # branch — same recipe as preview-comment/action.yml.
+        attempt=1
+        while :; do
+          PARENT=""
+          if git fetch --depth=1 --quiet origin "$TARGET_BRANCH" 2>/dev/null; then
+            PARENT=$(git rev-parse FETCH_HEAD)
+            PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
+            if [ "$MODE" = "baseline" ] && [ "$TREE" = "$PARENT_TREE" ]; then
+              # Nothing changed vs the current baseline — skip the no-op
+              # commit so the branch history doesn't grow on every CI run.
+              echo "A11y baseline unchanged; skipping push."
+              echo "head_sha=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          if [ -n "$PARENT" ]; then
+            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+          else
+            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+          fi
+
+          if git push --quiet origin "${COMMIT}:refs/heads/${TARGET_BRANCH}" 2>&1; then
+            echo "head_sha=${COMMIT}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$attempt" -ge 5 ]; then
+            echo "Push to ${TARGET_BRANCH} failed after ${attempt} attempts." >&2
+            exit 1
+          fi
+          delay=$((attempt * 2 + RANDOM % 3))
+          echo "Push to ${TARGET_BRANCH} lost the race; retry ${attempt}/5 in ${delay}s…" >&2
+          attempt=$((attempt + 1))
+          sleep "$delay"
+        done
+
+    - name: Generate PR comment body
+      if: inputs.mode == 'comment'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        PR_BRANCH: ${{ inputs.pr-branch }}
+        HEAD_SHA: ${{ steps.push.outputs.head_sha }}
+      run: |
+        set -euo pipefail
+        # Fall back to the branch name when no commit was pushed (e.g. the
+        # baseline-equivalent skip path landed). The body still resolves —
+        # branch URLs follow the tip until something else moves it.
+        HEAD_REF="${HEAD_SHA:-$PR_BRANCH}"
+        python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
+          _a11y_renders/findings.json \
+          --repo "$REPO" \
+          --head-ref "$HEAD_REF" \
+          > _a11y_comment.md
+
+    - name: Upsert PR comment
+      if: inputs.mode == 'comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        BODY=$(cat _a11y_comment.md)
+        MARKER="<!-- a11y-report -->"
+
+        COMMENT_ID=$(gh api \
+          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+
+        if [ -n "$COMMENT_ID" ]; then
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$BODY"
+        else
+          gh pr comment "$PR_NUMBER" --body "$BODY"
+        fi
