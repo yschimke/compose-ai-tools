@@ -378,6 +378,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 titleRow.appendChild(historyBtn);
             }
 
+            // Stale-tier refresh button — only attached up front for cards
+            // already known to be stale at setPreviews time. updateStaleBadges
+            // also adds/removes it on subsequent renders. Placed before the
+            // header is appended so its DOM order stays predictable.
+            applyStaleBadge(card, false);
+
             header.appendChild(titleRow);
             card.appendChild(header);
 
@@ -842,9 +848,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 setMessage('No @Preview functions found', 'empty');
                 return;
             }
-            // Only clear a message we own (filter/empty/fallback) — leave
-            // extension-set messages like "Building…" alone; the extension
-            // will drive its own lifecycle.
+            // Clear transient owner messages now that we have cards. The
+            // 'loading' Building… banner gets clobbered here so cards aren't
+            // hidden under it while images stream in. 'extension'-owned
+            // messages (build errors, empty-state notices) are left alone —
+            // those are terminal states the extension is asserting and the
+            // caller wouldn't be sending setPreviews alongside them anyway.
             if (message.dataset.owner && message.dataset.owner !== 'extension') {
                 setMessage('', message.dataset.owner);
             }
@@ -899,6 +908,57 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     lastInsertedCard = card;
                 }
             }
+        }
+
+        /**
+         * Toggles the "stale render — click to refresh" affordance on a card.
+         *
+         * Called both at card creation time (so cards born stale have the
+         * badge from the start) and from updateStaleBadges after each
+         * setPreviews (state can flip when the user toggles between fast
+         * and full saves). Idempotent: skips if the desired state already
+         * matches the DOM, so re-running on an unchanged card is cheap.
+         *
+         * Why a button rather than a static badge: clicking it is the only
+         * way the user can recover a fresh GIF/long-scroll image without
+         * editing source. Keeping it inside the title row puts it in the
+         * same affordance band as history / open-source buttons.
+         */
+        function applyStaleBadge(card, isStale) {
+            const titleRow = card.querySelector('.card-title-row');
+            if (!titleRow) return;
+            const existing = card.querySelector('.card-stale-btn');
+            if (isStale && !existing) {
+                const btn = document.createElement('button');
+                btn.className = 'icon-button card-stale-btn';
+                btn.title = 'Stale heavy capture — click to render at full tier';
+                btn.setAttribute('aria-label', 'Refresh stale capture');
+                btn.innerHTML = '<i class="codicon codicon-warning" aria-hidden="true"></i>';
+                btn.addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'refreshHeavy',
+                        previewId: card.dataset.previewId,
+                    });
+                });
+                titleRow.appendChild(btn);
+                card.classList.add('is-stale');
+            } else if (!isStale && existing) {
+                existing.remove();
+                card.classList.remove('is-stale');
+            }
+        }
+
+        /**
+         * Apply the heavy-stale badge state across all cards after
+         * setPreviews fires. The extension passes a list of preview IDs
+         * whose heavy captures weren't refreshed this run; everything else
+         * gets its badge cleared.
+         */
+        function updateStaleBadges(heavyStaleIds) {
+            const stale = new Set(heavyStaleIds || []);
+            grid.querySelectorAll('.preview-card').forEach(card => {
+                applyStaleBadge(card, stale.has(card.dataset.previewId));
+            });
         }
 
         /** Add a subtle spinner overlay to every card during a stealth refresh. */
@@ -1054,6 +1114,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     moduleDir = msg.moduleDir;
                     renderPreviews(msg.previews);
                     applyRelativeSizing(msg.previews);
+                    // Stale-tier badges depend on the latest render's tier
+                    // (sent from the extension as heavyStaleIds). Apply
+                    // *after* renderPreviews so the badge attaches to cards
+                    // that were just inserted, not stripped by a stale-state
+                    // diff from the previous setPreviews.
+                    updateStaleBadges(msg.heavyStaleIds);
 
                     const fns = [...new Set(msg.previews.map(p => p.functionName))].sort();
                     const groups = [...new Set(msg.previews.map(p => p.params.group).filter(Boolean))].sort();
@@ -1120,7 +1186,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                             }
                         }
                     } else {
-                        setMessage('Building…', 'extension');
+                        // 'loading' (not 'extension') so renderPreviews can
+                        // clear it the moment cards arrive — otherwise the
+                        // banner sits on top of skeleton cards while images
+                        // stream in, which looks like the build is stuck.
+                        setMessage('Building…', 'loading');
                     }
                     break;
 

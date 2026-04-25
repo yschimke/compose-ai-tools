@@ -132,9 +132,32 @@ export class GradleService {
         return manifest;
     }
 
-    async renderPreviews(module: string): Promise<PreviewManifest | null> {
+    /**
+     * Runs `:<module>:renderAllPreviews` and returns the parsed manifest.
+     *
+     * `tier` controls which captures the renderer produces:
+     *
+     *   - `'fast'` — append `-PcomposePreview.tier=fast`; the plugin's
+     *     `RobolectricRenderTest` and `RenderPreviewsTask` skip captures
+     *     whose `cost` exceeds `HEAVY_COST_THRESHOLD` (LONG / GIF /
+     *     animated). Cheap interactive loop on every save.
+     *   - `'full'` — explicit `-PcomposePreview.tier=full`; renders
+     *     everything. The user-triggered "Render All Previews" path.
+     *
+     * Same task name in either case so Gradle's up-to-date check still
+     * applies — the tier is an `@Input` on the underlying task, so flipping
+     * tier between calls correctly invalidates the up-to-date cache without
+     * burning a config-cache reconfigure (see `TierSystemPropProvider`).
+     */
+    async renderPreviews(
+        module: string,
+        tier: 'fast' | 'full' = 'full',
+    ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module);
-        await this.runTask(`:${module}:renderAllPreviews`);
+        await this.runTask(
+            `:${module}:renderAllPreviews`,
+            [`-PcomposePreview.tier=${tier}`],
+        );
         const manifest = this.readManifest(module);
         if (manifest) {
             this.manifestCache.set(module, { manifest, timestamp: Date.now() });
@@ -424,7 +447,7 @@ export class GradleService {
         this.cancel();
     }
 
-    private runTask(task: string): Promise<void> {
+    private runTask(task: string, extraArgs: ReadonlyArray<string> = []): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
         this.logger.appendLine(`> ${task}`);
@@ -445,7 +468,7 @@ export class GradleService {
         const taskPromise = this.gradleApi.runTask({
             projectFolder: this.workspaceRoot,
             taskName: task,
-            args: this.argsProvider(),
+            args: [...this.argsProvider(), ...extraArgs],
             showOutputColors: false,
             cancellationKey,
             onOutput: (output) => {

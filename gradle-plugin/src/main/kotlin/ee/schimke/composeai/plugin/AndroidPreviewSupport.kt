@@ -774,6 +774,24 @@ internal object AndroidPreviewSupport {
                     debug = project.providers.gradleProperty("composeai.a11y.debug").orElse("false"),
                 ),
             )
+            // Render-tier filter — fed via the same lazy `@Input` provider
+            // pattern so VS Code can flip `-PcomposePreview.tier=fast` on
+            // every save without paying a config-cache reconfigure. Renderer
+            // reads `composeai.render.tier` in [PreviewManifestLoader.loadShard]
+            // to drop HEAVY captures from each entry before sharding.
+            val tierProvider = resolveTier(project)
+            jvmArgumentProviders.add(TierSystemPropProvider(tier = tierProvider))
+            // Disable build-cache participation for `tier=fast` runs. A cache
+            // hit restores the cached `renders/` snapshot, which on a fast
+            // run only contains the cheap captures — heavy outputs from a
+            // previous full run would get wiped, breaking the "stale image"
+            // story VS Code shows on heavy cards. Up-to-date checks still
+            // apply, so a `tier=fast` re-run with no input changes is a
+            // no-op and the renders dir stays as-is. Full-tier runs cache
+            // normally.
+            outputs.cacheIf("renderPreviews caches tier=full runs only") {
+                tierProvider.get().equals("full", ignoreCase = true)
+            }
             // Per-preview dir is always an output — the feature being off just
             // means no files get written there. Declaring it unconditionally
             // lets the config cache key stay stable across toggles.
@@ -900,6 +918,39 @@ internal object AndroidPreviewSupport {
             .gradleProperty("composePreview.accessibilityChecks.annotateScreenshots")
             .map { it.toBooleanStrictOrNull() ?: true }
             .orElse(extension.accessibilityChecks.annotateScreenshots)
+
+    /**
+     * Resolve the active render tier from `-PcomposePreview.tier=<fast|full>`.
+     * `fast` tells the renderer to skip captures classified as
+     * [ee.schimke.composeai.plugin.CaptureCost.HEAVY] (`@AnimatedPreview` and
+     * non-TOP `@ScrollingPreview` modes); `full` (the default) renders
+     * everything as before.
+     *
+     * Returned as a `Provider<String>` for the same reason as
+     * [resolveA11yEnabled]: feeding `.get()` to a `CommandLineArgumentProvider`
+     * means the tier is resolved at task-execution time, so VS Code flipping
+     * the property between saves doesn't invalidate the configuration cache.
+     */
+    internal fun resolveTier(
+        project: org.gradle.api.Project,
+    ): org.gradle.api.provider.Provider<String> =
+        project.providers
+            .gradleProperty("composePreview.tier")
+            .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
+            .orElse("full")
+
+    /**
+     * Lazy holder for the render-tier system property on the `renderPreviews`
+     * `Test` task. Same pattern as [AccessibilitySystemPropsProvider] — the
+     * Provider is `@Input`, so flipping `-PcomposePreview.tier` re-runs the
+     * task without invalidating the configuration cache.
+     */
+    internal class TierSystemPropProvider(
+        @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>,
+    ) : org.gradle.process.CommandLineArgumentProvider {
+        override fun asArguments(): Iterable<String> =
+            listOf("-Dcomposeai.render.tier=${tier.get()}")
+    }
 
     private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {
         source.keySet().forEach { key ->

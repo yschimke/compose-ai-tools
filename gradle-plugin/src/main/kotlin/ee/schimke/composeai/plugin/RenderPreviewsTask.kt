@@ -31,6 +31,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
     @get:Input
     abstract val useComposeRenderer: Property<Boolean>
 
+    /**
+     * Render-tier filter. When `"fast"` the desktop / stub path skips any
+     * preview whose representative capture is heavier than
+     * [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
+     * fall out). Default `"full"` keeps the historical behaviour (every
+     * preview rendered).
+     */
+    @get:Input
+    abstract val tier: Property<String>
+
     @get:Classpath
     abstract val renderClasspath: ConfigurableFileCollection
 
@@ -43,10 +53,38 @@ abstract class RenderPreviewsTask : DefaultTask() {
     @get:Inject
     abstract val workerExecutor: WorkerExecutor
 
+    init {
+        // Caching is intentionally gated on `tier=full`: a `tier=fast` run
+        // only writes a subset of captures (fast ones), so a build-cache
+        // restore from a fast snapshot would *wipe* the previous full run's
+        // heavy outputs from `outputDir` — exactly the stale images the
+        // interactive UI relies on. Up-to-date checks still apply, so a
+        // re-run with no input changes is a no-op and the renders directory
+        // stays as-is regardless of tier.
+        outputs.cacheIf("renderPreviews caches tier=full runs only") {
+            tier.get().equals("full", ignoreCase = true)
+        }
+    }
+
     @TaskAction
     fun render() {
         val json = Json { ignoreUnknownKeys = true }
-        val manifest = json.decodeFromString<PreviewManifest>(previewsJson.get().asFile.readText())
+        val rawManifest = json.decodeFromString<PreviewManifest>(previewsJson.get().asFile.readText())
+
+        // Tier filter — drop previews whose representative capture is heavy
+        // when running in `fast` mode. The desktop / stub path renders just
+        // the first capture per preview, so the decision is per-preview
+        // rather than per-capture (unlike the Robolectric path which can
+        // pick and choose among an entry's captures). Skipped previews keep
+        // their previous PNG on disk (referenced by the manifest, untouched
+        // by `cleanStaleRenders`) so VS Code can still display the stale
+        // image with its badge.
+        val isFastTier = tier.get().equals("fast", ignoreCase = true)
+        val previews = if (!isFastTier) rawManifest.previews else rawManifest.previews.filter {
+            val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
+            !isHeavyCost(firstCost)
+        }
+        val manifest = if (isFastTier) rawManifest.copy(previews = previews) else rawManifest
 
         if (manifest.previews.isEmpty()) {
             logger.lifecycle("No previews to render.")
@@ -62,7 +100,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
             renderWithStub(manifest, outDir)
         }
 
-        logger.lifecycle("Rendered ${manifest.previews.size} preview(s)")
+        val tierTag = if (isFastTier) " (fast tier; ${rawManifest.previews.size - manifest.previews.size} heavy skipped)" else ""
+        logger.lifecycle("Rendered ${manifest.previews.size} preview(s)$tierTag")
     }
 
     private fun renderWithCompose(manifest: PreviewManifest, outDir: java.io.File) {

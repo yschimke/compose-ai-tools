@@ -41,6 +41,14 @@ export interface ScrollCapture {
 }
 
 /**
+ * Threshold above which a capture's `cost` is considered "heavy" — dropped
+ * from `composePreview.tier=fast` renders, surfaces in VS Code with a
+ * stale-state badge, refreshed only on explicit user action. Mirrors the
+ * plugin's `HEAVY_COST_THRESHOLD` in `PreviewData.kt`.
+ */
+export const HEAVY_COST_THRESHOLD = 5;
+
+/**
  * One rendered snapshot of a preview. Non-null dimensional fields
  * (advanceTimeMillis, scroll) are the coordinates that distinguish this
  * capture from its siblings. A static preview has a single capture with
@@ -56,6 +64,14 @@ export interface Capture {
      *  [captureLabels.captureLabel]) before sending to the webview so the
      *  carousel markup stays free of dimension logic. */
     label?: string;
+    /**
+     * Estimated render cost, normalised so a static `@Preview` is `1.0`.
+     * Catalogue: TOP=1, END=3, LONG=20, GIF=40, animation=50. Tooling
+     * thresholds on `cost > HEAVY_COST_THRESHOLD` to decide what to skip
+     * during interactive saves. Defaults to `1` when missing (older
+     * manifests pre-cost-field).
+     */
+    cost?: number;
 }
 
 export interface PreviewInfo {
@@ -144,7 +160,18 @@ export interface HistoryEntry {
 
 /** Messages from extension to webview */
 export type ExtensionToWebview =
-    | { command: 'setPreviews'; previews: PreviewInfo[]; moduleDir: string }
+    | {
+          command: 'setPreviews';
+          previews: PreviewInfo[];
+          moduleDir: string;
+          /**
+           * IDs of previews whose heavy captures (LONG / GIF / animated)
+           * were skipped this render — the on-disk PNG/GIF is from a
+           * previous full run. Drives the "stale, click to refresh" badge.
+           * Empty when the module was last rendered with `tier=full`.
+           */
+          heavyStaleIds?: string[];
+      }
     /** `captureIndex` addresses which capture within an animated preview the
      *  image belongs to. Static previews have a single capture at index 0. */
     | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
@@ -164,4 +191,11 @@ export type WebviewToExtension =
     | { command: 'openFile'; className: string; functionName: string }
     | { command: 'selectModule'; value: string }
     | { command: 'showHistory'; previewId: string }
-    | { command: 'loadHistoryImage'; previewId: string; filename: string };
+    | { command: 'loadHistoryImage'; previewId: string; filename: string }
+    /**
+     * User clicked the stale-badge refresh icon on a heavy card. Triggers a
+     * `tier='full'` render of the owning module so the heavy capture is
+     * re-rendered. (A future per-preview filter would scope this to the
+     * single previewId; today it falls back to a full-module render.)
+     */
+    | { command: 'refreshHeavy'; previewId: string };

@@ -62,6 +62,7 @@ internal object ComposePreviewTasks {
                 outputDir.set(previewOutputDir.map { it.dir("renders") })
                 renderBackend.set("desktop")
                 useComposeRenderer.set(true)
+                tier.set(tierProperty(project))
                 renderClasspath.from(sourceClassDirs)
                 project.configurations.findByName(dependencyConfigName)?.let { renderClasspath.from(it) }
                 renderClasspath.from(rendererConfig)
@@ -74,6 +75,20 @@ internal object ComposePreviewTasks {
             registerStubRenderTask(project, previewOutputDir, sourceClassDirs, dependencyConfigName, discoverTask, extension)
         }
     }
+
+    /**
+     * Shared `Provider<String>` for the `composePreview.tier` Gradle property.
+     * `"fast"` (case-insensitive) tells the renderer to skip captures whose
+     * `cost` exceeds [HEAVY_COST_THRESHOLD]; anything else maps to `"full"`.
+     * Lazy + cacheable through `project.providers`, so reading `.get()` at
+     * task-execution time doesn't invalidate the configuration cache when
+     * the Gradle property flips between runs.
+     */
+    internal fun tierProperty(project: Project): Provider<String> =
+        project.providers
+            .gradleProperty("composePreview.tier")
+            .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
+            .orElse("full")
 
     fun registerDiscoverTask(
         project: Project,
@@ -139,6 +154,7 @@ internal object ComposePreviewTasks {
             outputDir.set(previewOutputDir.map { it.dir("renders") })
             renderBackend.set("stub")
             useComposeRenderer.set(false)
+            tier.set(tierProperty(project))
             renderClasspath.from(sourceClassDirs)
             project.configurations.findByName(dependencyConfigName)?.let { renderClasspath.from(it) }
             group = "compose preview"
@@ -193,6 +209,14 @@ internal object ComposePreviewTasks {
         // check the failure surfaces only in downstream tools (CLI / VSCode).
         val manifestFile = previewOutputDir.map { it.file("previews.json") }
         val rendersDir = previewOutputDir.map { it.dir("renders") }
+        // Captured at config time so the `doLast` body doesn't reach for
+        // `project` at execution (config-cache safe). Resolves at execution
+        // to "fast" or "full"; "fast" tells the post-condition to tolerate
+        // heavy captures that legitimately weren't rendered this run.
+        val tierProvider = project.providers
+            .gradleProperty("composePreview.tier")
+            .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
+            .orElse("full")
         project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
             group = "compose preview"
             dependsOn(extension.historyEnabled.map { enabled -> if (enabled) historizeTask else renderTask })
@@ -202,6 +226,7 @@ internal object ComposePreviewTasks {
             // inspect when the a11y threshold trips the build.
             verifyAccessibilityTask?.let { finalizedBy(it) }
             doLast {
+                val isFastTier = tierProvider.get() == "fast"
                 val manifestOnDisk = manifestFile.get().asFile
                 if (!manifestOnDisk.exists()) return@doLast
                 val manifest = previewManifestJson
@@ -243,6 +268,13 @@ internal object ComposePreviewTasks {
                 val missing = manifest.previews
                     .filter { p ->
                         p.captures.any { c ->
+                            // `tier=fast` legitimately skips heavy captures —
+                            // their PNG/GIF either still exists on disk from a
+                            // prior full run (and stays usable as the "stale"
+                            // image) or hasn't been produced yet. Either way,
+                            // it isn't a wiring bug worth failing the build
+                            // over, so exclude them from the must-exist check.
+                            if (isFastTier && isHeavyCost(c.cost)) return@any false
                             val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
                             // `@PreviewParameter` previews fan out at render
                             // time: manifest carries a `<stem>.png` template,

@@ -66,7 +66,21 @@ object PreviewManifestLoader {
         // manifest: provider values can be arbitrary runtime objects, often
         // not JSON-representable.
         val expanded = manifest.previews.flatMap { expandParameterProvider(it) }
-        return expanded
+        // Tier filter (set by the plugin via TierSystemPropProvider). When
+        // `fast`, drop captures classified HEAVY (`@AnimatedPreview` and
+        // non-TOP `@ScrollingPreview`) — the interactive save loop only
+        // re-renders cheap captures; heavy ones keep their previous PNG/GIF
+        // on disk and stay reachable via VS Code's per-card refresh action.
+        // Entries left with zero captures are dropped from sharding entirely
+        // so shards don't allocate a row for a no-op render.
+        val isFast = System.getProperty("composeai.render.tier", "full")
+            .equals("fast", ignoreCase = true)
+        val filtered = if (!isFast) expanded else expanded.mapNotNull { row ->
+            val keep = row.entry.captures.filter { it.cost <= HEAVY_COST_THRESHOLD }
+            if (keep.isEmpty()) null
+            else PreviewRow(row.entry.copy(captures = keep), row.previewArgs)
+        }
+        return filtered
             .withIndex()
             .filter { (i, _) -> i % shardCount == shardIndex }
             .map { (_, row) -> arrayOf<Any>(row.entry, row.previewArgs) }
