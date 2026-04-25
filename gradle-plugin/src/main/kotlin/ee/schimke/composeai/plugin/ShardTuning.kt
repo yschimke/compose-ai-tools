@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import kotlin.math.ceil
+import kotlin.math.max
 
 /**
  * Measured costs for Robolectric-driven Compose preview rendering, used to pick a
@@ -13,16 +14,34 @@ import kotlin.math.ceil
  *  - First preview in a JVM: 4.03s (sandbox + classloader + first Compose setContent).
  *  - Previews 2–5 in the same JVM: 0.11–0.22s each (warm sandbox, cached classes).
  *
+ * **Cost-aware model.** Earlier versions modelled every preview as a flat
+ * [SECONDS_PER_COST_UNIT]; the per-capture `cost` field landed in the manifest
+ * (catalogue: static / TOP = 1, END = 3, LONG = 20, GIF = 40, animated = 50)
+ * lets us scale that estimate by the actual work the renderer is going to do
+ * for each preview. A module with three GIF captures dwarfs a module with
+ * thirty static ones, even though the preview count says otherwise.
+ *
  * Fork-startup overhead is an estimate — Gradle's worker-forking and JVM spin-up
  * cost above and beyond the shared sandbox warmup. Measure again if fork counts
  * ever seem wildly off.
  */
 internal object ShardTuning {
-    /** Seconds to render the first preview in a fresh JVM (sandbox + class init). */
-    const val COLD_FORK_WARMUP_SECONDS = 4.0
+    /**
+     * Per-fork sandbox + classloader setup, **before any Compose work**. The
+     * historical 4.0s "warmup" included the first capture's render; we split
+     * it out so the same constant works for both fast (1-cost static) and
+     * heavy (50-cost animation) first captures. Subsequent compose work is
+     * priced at [SECONDS_PER_COST_UNIT] × the capture's cost.
+     */
+    const val PER_FORK_SETUP_SECONDS = 3.85
 
-    /** Steady-state cost per preview once the sandbox is warm. */
-    const val PER_PREVIEW_SECONDS = 0.15
+    /**
+     * Wall-time per cost unit. A static `@Preview` is `cost = 1.0`, which
+     * historically rendered in ~0.15s once the sandbox was warm. Every
+     * other catalogue entry — END = 3, LONG = 20, GIF = 40, animated = 50
+     * — is a multiple of that baseline.
+     */
+    const val SECONDS_PER_COST_UNIT = 0.15
 
     /**
      * Extra seconds per additional fork, on top of warmup — Gradle worker
@@ -44,18 +63,23 @@ internal object ShardTuning {
     const val MIN_SAVING_FRACTION = 0.30
 
     /**
-     * Predicted wall time for K shards under the model
+     * Predicted wall time for K shards under the cost-aware model:
      *
-     *   T(K) = warmup + (ceil(N / K) − 1) * perPreview + (K − 1) * forkOverhead
+     *   makespanCost = max(totalCost / K, maxIndividualCost)
+     *   T(K) = PER_FORK_SETUP + makespanCost × SECONDS_PER_COST_UNIT + (K − 1) × FORK_OVERHEAD
      *
-     * The warmup is paid concurrently across forks, so only the `(K − 1)` extra
-     * fork-startup cost is summed. Returned in seconds.
+     * `makespanCost` is the lower bound on what an LPT-balanced K-way split
+     * can achieve: the average load per shard, floored by the largest
+     * individual capture (no shard can finish before its biggest preview
+     * completes). The setup is paid concurrently across forks, so only the
+     * `(K − 1)` extra fork-startup cost is summed. Returned in seconds.
      */
-    fun predictedSeconds(previewCount: Int, shards: Int): Double {
-        if (previewCount <= 0 || shards <= 0) return 0.0
-        val perShard = ceil(previewCount.toDouble() / shards).toInt()
-        return COLD_FORK_WARMUP_SECONDS +
-            (perShard - 1).coerceAtLeast(0) * PER_PREVIEW_SECONDS +
+    fun predictedSeconds(totalCost: Double, maxIndividualCost: Double, shards: Int): Double {
+        if (totalCost <= 0.0 || shards <= 0) return 0.0
+        val avgPerShard = totalCost / shards
+        val makespanCost = max(avgPerShard, maxIndividualCost)
+        return PER_FORK_SETUP_SECONDS +
+            makespanCost * SECONDS_PER_COST_UNIT +
             (shards - 1).coerceAtLeast(0) * FORK_OVERHEAD_SECONDS
     }
 
@@ -65,19 +89,28 @@ internal object ShardTuning {
      * absolute ([MIN_SAVING_SECONDS]) and relative ([MIN_SAVING_FRACTION])
      * thresholds. Otherwise returns 1.
      *
-     * Upper bound is `min(MAX_SHARDS, cores / 2, previewCount)` — leave CPU
-     * headroom for Gradle workers; never shard below one preview per fork.
+     * Upper bound is `min(MAX_SHARDS, cores / 2, captureCount)` — leave CPU
+     * headroom for Gradle workers; never shard below one capture per fork.
+     *
+     * @param totalCost          sum of `Capture.cost` across every capture in the manifest
+     * @param maxIndividualCost  largest single `Capture.cost` value (sets the makespan floor)
+     * @param captureCount       total number of captures (caps shard count so each fork gets ≥ 1)
      */
-    fun autoShards(previewCount: Int, cores: Int = Runtime.getRuntime().availableProcessors()): Int {
-        if (previewCount < 2) return 1
-        val maxK = minOf(MAX_SHARDS, (cores / 2).coerceAtLeast(1), previewCount)
+    fun autoShards(
+        totalCost: Double,
+        maxIndividualCost: Double,
+        captureCount: Int,
+        cores: Int = Runtime.getRuntime().availableProcessors(),
+    ): Int {
+        if (captureCount < 2 || totalCost <= 0.0) return 1
+        val maxK = minOf(MAX_SHARDS, (cores / 2).coerceAtLeast(1), captureCount)
         if (maxK < 2) return 1
 
-        val baseline = predictedSeconds(previewCount, 1)
+        val baseline = predictedSeconds(totalCost, maxIndividualCost, 1)
         var bestK = 1
         var bestT = baseline
         for (k in 2..maxK) {
-            val t = predictedSeconds(previewCount, k)
+            val t = predictedSeconds(totalCost, maxIndividualCost, k)
             if (t < bestT) { bestK = k; bestT = t }
         }
         val saved = baseline - bestT
