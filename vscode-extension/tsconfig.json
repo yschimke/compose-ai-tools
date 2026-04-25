@@ -3,6 +3,7 @@
         "module": "commonjs",
         "target": "ES2022",
         "lib": ["ES2022"],
+        "types": ["node", "mocha"],
         "outDir": "out",
         "rootDir": "src",
         "strict": true,
