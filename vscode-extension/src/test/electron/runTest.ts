@@ -1,10 +1,5 @@
 import * as path from 'path';
-import {
-    downloadAndUnzipVSCode,
-    resolveCliArgsFromVSCodeExecutablePath,
-    runTests,
-} from '@vscode/test-electron';
-import { spawnSync } from 'child_process';
+import { downloadAndUnzipVSCode, runTests } from '@vscode/test-electron';
 
 /**
  * Entry point for `npm run test:electron`.
@@ -38,27 +33,18 @@ async function main(): Promise<void> {
 
     const vscodeExecutablePath = await downloadAndUnzipVSCode('stable');
     console.log(`[runTest] vscodeExecutablePath=${vscodeExecutablePath}`);
-    const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutablePath);
 
-    // Install the fake `vscjava.vscode-gradle` from disk so VS Code's
-    // extensionDependencies check finds it. Idempotent — `--force` ensures
-    // a re-run with a tweaked stub picks up the new bytes. Failures here
-    // are loud (build dies) rather than letting a misconfigured test host
-    // silently fall back to "extension didn't activate".
-    console.log(`[runTest] installing fake vscjava.vscode-gradle…`);
-    const install = spawnSync(
-        cli,
-        [...cliArgs, '--install-extension', fakeGradleExtensionPath, '--force'],
-        { stdio: 'inherit', encoding: 'utf-8' },
-    );
-    if (install.status !== 0) {
-        throw new Error(`Failed to install fake vscjava.vscode-gradle from ${fakeGradleExtensionPath} (exit ${install.status})`);
-    }
-
+    // Load the fake `vscjava.vscode-gradle` stub alongside our extension by
+    // passing both paths to `extensionDevelopmentPath`. VS Code's
+    // `--install-extension` flag only accepts a `.vsix` or a marketplace
+    // ID, not an unpacked directory — pre-installing via the CLI fails
+    // with "Extension not found". Side-loading via
+    // `extensionDevelopmentPath` works for both extensions and is the
+    // standard pattern for satisfying an `extensionDependency` in tests.
     console.log(`[runTest] launching tests…`);
     await runTests({
         vscodeExecutablePath,
-        extensionDevelopmentPath,
+        extensionDevelopmentPath: [extensionDevelopmentPath, fakeGradleExtensionPath],
         extensionTestsPath,
         // CI-friendly launch args:
         //  - `--disable-workspace-trust` skips the trust modal that would
