@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.0](https://github.com/yschimke/compose-ai-tools/compare/v0.7.12...v0.8.0) (2026-04-25)
+
+
+### Features
+
+* **renderer:** @AnimatedPreview annotation + GIF + curve sidecar ([#183](https://github.com/yschimke/compose-ai-tools/issues/183)) ([b0d4674](https://github.com/yschimke/compose-ai-tools/commit/b0d46741fe931e8451983ac127d9a0870aa7b6d9))
+* **renderer:** ANI legend with matched colours, skip dynamic previews ([#193](https://github.com/yschimke/compose-ai-tools/issues/193)) ([8aa8388](https://github.com/yschimke/compose-ai-tools/commit/8aa838835570ed2b5af359c9f02472ecd8432463))
+
+
+### Bug Fixes
+
+* keep .a11y.png siblings during stale-render cleanup ([#185](https://github.com/yschimke/compose-ai-tools/issues/185)) ([c69617f](https://github.com/yschimke/compose-ai-tools/commit/c69617fac443542099934eb4f746cb2c3f25097d))
+* **renderer:** plot IntSize/IntOffset animation values correctly ([#192](https://github.com/yschimke/compose-ai-tools/issues/192)) ([0af9231](https://github.com/yschimke/compose-ai-tools/commit/0af9231356f29de50b5ae219f3fe9b016c729e46))
+
+
+### Miscellaneous Chores
+
+* release 0.8.0 ([444d934](https://github.com/yschimke/compose-ai-tools/commit/444d93479c11c692936df22cc4e6310bff895626))
+
 ## [0.7.12](https://github.com/yschimke/compose-ai-tools/compare/v0.7.11...v0.7.12) (2026-04-24)
 
 
