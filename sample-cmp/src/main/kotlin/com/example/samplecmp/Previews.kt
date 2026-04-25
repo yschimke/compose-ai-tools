@@ -14,27 +14,24 @@ import androidx.compose.ui.unit.dp
 @Preview(name = "Red Box", backgroundColor = 0xFFFF0000, showBackground = true)
 @Composable
 fun RedBoxPreview() {
-    Box(
-        modifier = Modifier.size(100.dp).background(Color.Red),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Red", color = Color.White)
-    }
+  Box(modifier = Modifier.size(100.dp).background(Color.Red), contentAlignment = Alignment.Center) {
+    Text("Red", color = Color.White)
+  }
 }
 
 @Preview(name = "Blue Box", backgroundColor = 0xFF0000FF, showBackground = true)
 @Composable
 fun BlueBoxPreview() {
-    Box(
-        modifier = Modifier.size(100.dp).background(Color.Blue),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Blue", color = Color.White)
-    }
+  Box(
+    modifier = Modifier.size(100.dp).background(Color.Blue),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text("Blue", color = Color.White)
+  }
 }
 
 @Preview
 @Composable
 fun AppPreview() {
-    App()
+  App()
 }

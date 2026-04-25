@@ -9,73 +9,68 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Writes `ee/schimke/composeai/renderer/robolectric.properties` into a
- * generated resources directory added to the `renderPreviews` test classpath.
+ * Writes `ee/schimke/composeai/renderer/robolectric.properties` into a generated resources
+ * directory added to the `renderPreviews` test classpath.
  *
- * Robolectric reads package-level `robolectric.properties` from the classpath
- * and merges its fields into each test's effective config.
- * `RobolectricRenderTestBase` deliberately carries NO `@Config` or
- * `@GraphicsMode` annotation so this file is the sole source of truth for
- * those settings — see that class's KDoc for the #142 motivation.
+ * Robolectric reads package-level `robolectric.properties` from the classpath and merges its fields
+ * into each test's effective config. `RobolectricRenderTestBase` deliberately carries NO `@Config`
+ * or `@GraphicsMode` annotation so this file is the sole source of truth for those settings — see
+ * that class's KDoc for the #142 motivation.
  *
  * Fields written unconditionally:
- *   - `sdk=$TARGET_SDK` — the Android SDK level Robolectric targets.
- *     Matches the renderer's compilation target.
- *   - `graphicsMode=NATIVE` — routes Compose capture through
- *     HardwareRenderer, the only path that replays RenderNodes correctly
- *     for `roborazzi`'s `captureRoboImage`.
- *   - `shadows=…ShadowFontsContractCompat` — globally registers the
- *     GoogleFont shadow so `Font(GoogleFont(...), provider)` renders
- *     without the consumer having to add `@Config(shadows = [...])`.
+ * - `sdk=$TARGET_SDK` — the Android SDK level Robolectric targets. Matches the renderer's
+ *   compilation target.
+ * - `graphicsMode=NATIVE` — routes Compose capture through HardwareRenderer, the only path that
+ *   replays RenderNodes correctly for `roborazzi`'s `captureRoboImage`.
+ * - `shadows=…ShadowFontsContractCompat` — globally registers the GoogleFont shadow so
+ *   `Font(GoogleFont(...), provider)` renders without the consumer having to add `@Config(shadows =
+ *   [...])`.
  *
  * Fields that depend on [useConsumerApplication]:
- *   - Default ([useConsumerApplication] = false): the file pins
- *     `application=android.app.Application`, so Robolectric creates a plain
- *     Application and SKIPS the consumer's `onCreate()`. Consumer-side init
- *     that depends on platform features Robolectric doesn't emulate
- *     (BridgingManager on non-Wear sandboxes, Firebase, WorkManager, Play
- *     Services) no longer runs during preview rendering.
- *   - Opt-out ([useConsumerApplication] = true): the file is written
- *     without `application=`, so Robolectric falls back to the manifest-
- *     declared Application class. Intended for preview setups that
- *     genuinely require their custom Application (e.g. Hilt's generated
- *     testing application).
+ * - Default ([useConsumerApplication] = false): the file pins
+ *   `application=android.app.Application`, so Robolectric creates a plain Application and SKIPS the
+ *   consumer's `onCreate()`. Consumer-side init that depends on platform features Robolectric
+ *   doesn't emulate (BridgingManager on non-Wear sandboxes, Firebase, WorkManager, Play Services)
+ *   no longer runs during preview rendering.
+ * - Opt-out ([useConsumerApplication] = true): the file is written without `application=`, so
+ *   Robolectric falls back to the manifest- declared Application class. Intended for preview setups
+ *   that genuinely require their custom Application (e.g. Hilt's generated testing application).
  */
 @CacheableTask
 abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
-    @get:Input
-    abstract val useConsumerApplication: Property<Boolean>
+  @get:Input abstract val useConsumerApplication: Property<Boolean>
 
-    @get:OutputDirectory
-    abstract val outputDir: DirectoryProperty
+  @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
-    @TaskAction
-    fun generate() {
-        val dir = outputDir.get().asFile.resolve("ee/schimke/composeai/renderer")
-        dir.deleteRecursively()
-        dir.mkdirs()
-        val file = dir.resolve("robolectric.properties")
-        // `shadows=` registers our GoogleFont shadow globally for every test
-        // in this package. See [ShadowFontsContractCompat].
-        val shadowsLine = "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat"
-        // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
-        // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
-        // resolving `@Config.application()`'s `android.app.Application` default
-        // during test-class discovery — that resolution fails under some
-        // JVM/classloader combinations and produces `ClassNotFoundException:
-        // android.app.Application`. See issue #142.
-        val sdkLine = "sdk=$TARGET_SDK"
-        val graphicsLine = "graphicsMode=NATIVE"
-        val body = if (useConsumerApplication.get()) {
-            """
+  @TaskAction
+  fun generate() {
+    val dir = outputDir.get().asFile.resolve("ee/schimke/composeai/renderer")
+    dir.deleteRecursively()
+    dir.mkdirs()
+    val file = dir.resolve("robolectric.properties")
+    // `shadows=` registers our GoogleFont shadow globally for every test
+    // in this package. See [ShadowFontsContractCompat].
+    val shadowsLine = "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat"
+    // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
+    // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
+    // resolving `@Config.application()`'s `android.app.Application` default
+    // during test-class discovery — that resolution fails under some
+    // JVM/classloader combinations and produces `ClassNotFoundException:
+    // android.app.Application`. See issue #142.
+    val sdkLine = "sdk=$TARGET_SDK"
+    val graphicsLine = "graphicsMode=NATIVE"
+    val body =
+      if (useConsumerApplication.get()) {
+        """
             |# Generated by compose-ai-tools.
             |# useConsumerApplication=true — Robolectric falls back to the manifest-declared Application.
             |$sdkLine
             |$graphicsLine
             |$shadowsLine
-            |""".trimMargin()
-        } else {
-            """
+            |"""
+          .trimMargin()
+      } else {
+        """
             |# Generated by compose-ai-tools.
             |# Override the consumer's Application to a Robolectric-safe stub so
             |# preview rendering skips app-lifecycle side effects (DI, BridgingManager,
@@ -85,19 +80,18 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
             |$sdkLine
             |$graphicsLine
             |$shadowsLine
-            |""".trimMargin()
-        }
-        file.writeText(body)
-    }
+            |"""
+          .trimMargin()
+      }
+    file.writeText(body)
+  }
 
-    companion object {
-        /**
-         * Android SDK level the renderer targets. Must match
-         * `renderer-android`'s `targetSdk` — Robolectric synthesizes a
-         * framework of this level, so a mismatch between this value and
-         * what the renderer compiles against surfaces as `NoSuchMethodError`
-         * on framework classes.
-         */
-        internal const val TARGET_SDK = 35
-    }
+  companion object {
+    /**
+     * Android SDK level the renderer targets. Must match `renderer-android`'s `targetSdk` —
+     * Robolectric synthesizes a framework of this level, so a mismatch between this value and what
+     * the renderer compiles against surfaces as `NoSuchMethodError` on framework classes.
+     */
+    internal const val TARGET_SDK = 35
+  }
 }
