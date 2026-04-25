@@ -1,46 +1,40 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.compose.compiler)
-    id("ee.schimke.composeai.preview")
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.compose.compiler)
+  id("ee.schimke.composeai.preview")
 }
 
 composePreview {
-    accessibilityChecks {
-        // Sample includes deliberately-broken previews (BadButton,
-        // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
-        // VSCode surfacing of a11y findings. Flip to `true` to exercise the
-        // opt-in path; defaults off to keep the sample's render build
-        // byte-identical to the non-a11y baseline.
-        enabled = false
-    }
+  accessibilityChecks {
+    // Sample includes deliberately-broken previews (BadButton,
+    // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
+    // VSCode surfacing of a11y findings. Flip to `true` to exercise the
+    // opt-in path; defaults off to keep the sample's render build
+    // byte-identical to the non-a11y baseline.
+    enabled = false
+  }
 }
 
 android {
-    namespace = "com.example.sampleandroid"
-    compileSdk = 36
+  namespace = "com.example.sampleandroid"
+  compileSdk = 36
 
-    defaultConfig {
-        applicationId = "com.example.sampleandroid"
-        minSdk = 24
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
-    }
+  defaultConfig {
+    applicationId = "com.example.sampleandroid"
+    minSdk = 24
+    targetSdk = 36
+    versionCode = 1
+    versionName = "1.0"
+  }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
 
-    buildFeatures {
-        compose = true
-    }
+  buildFeatures { compose = true }
 
-    testOptions {
-        unitTests.all {
-            it.jvmArgs("-Xmx2048m")
-        }
-    }
+  testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
 // `ScrollPreviewPixelTest` reads PNGs under `build/compose-previews/renders/`
@@ -56,45 +50,46 @@ android {
 // replaces the discouraged `afterEvaluate { tasks.findByName(...) }` block,
 // which forced eager configuration and isn't IP-friendly.
 val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
-tasks.matching { it.name in pixelTestUnitTestTasks }.configureEach {
-    dependsOn("renderAllPreviews")
+
+tasks
+  .matching { it.name in pixelTestUnitTestTasks }
+  .configureEach { dependsOn("renderAllPreviews") }
+
+dependencies {
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }
 
 dependencies {
-    testImplementation(libs.junit)
-    testImplementation(libs.truth)
-}
-
-dependencies {
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.foundation)
-    implementation(libs.activity.compose)
-    // Exercises the `Font(GoogleFont(...), provider)` path under Robolectric —
-    // the shadow in `renderer-android` swaps the GMS provider lookup for a
-    // local cache under `.compose-preview-history/fonts/`.
-    implementation("androidx.compose.ui:ui-text-google-fonts")
-    // Roborazzi's per-preview clock control annotation. Source-retained
-    // metadata read by `DiscoverPreviewsTask` — the annotation itself has no
-    // runtime behaviour in production builds.
-    implementation(libs.roborazzi.annotations)
-    // Our `@ScrollingPreview` lives here — same role as above, read by FQN
-    // at discovery time; no runtime behaviour.
-    implementation(project(":preview-annotations"))
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    // `@AnimatedPreview(showCurves = true)` reflectively probes
-    // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /
-    // `AnimationSearch` on the unit-test classpath. ui-tooling is only on
-    // the debug variant by default, so add it to the unit-test scope so
-    // the renderer can attach the animation inspector during render runs.
-    testImplementation("androidx.compose.ui:ui-tooling")
-    // `getAnimatedProperties(...)` returns
-    // `List<androidx.compose.animation.tooling.ComposeAnimatedProperty>` —
-    // those tooling types live in the `animation-tooling-internal`
-    // artifact, NOT in `animation-core`. The compose-bom pins it to the
-    // matching version; without this dep the curves path errors at attach
-    // time with "Missing class: ComposeAnimatedProperty".
-    testImplementation("androidx.compose.animation:animation-tooling-internal")
+  implementation(platform(libs.compose.bom))
+  implementation(libs.compose.ui)
+  implementation(libs.compose.material3)
+  implementation(libs.compose.ui.tooling.preview)
+  implementation(libs.compose.foundation)
+  implementation(libs.activity.compose)
+  // Exercises the `Font(GoogleFont(...), provider)` path under Robolectric —
+  // the shadow in `renderer-android` swaps the GMS provider lookup for a
+  // local cache under `.compose-preview-history/fonts/`.
+  implementation("androidx.compose.ui:ui-text-google-fonts")
+  // Roborazzi's per-preview clock control annotation. Source-retained
+  // metadata read by `DiscoverPreviewsTask` — the annotation itself has no
+  // runtime behaviour in production builds.
+  implementation(libs.roborazzi.annotations)
+  // Our `@ScrollingPreview` lives here — same role as above, read by FQN
+  // at discovery time; no runtime behaviour.
+  implementation(project(":preview-annotations"))
+  debugImplementation("androidx.compose.ui:ui-tooling")
+  // `@AnimatedPreview(showCurves = true)` reflectively probes
+  // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /
+  // `AnimationSearch` on the unit-test classpath. ui-tooling is only on
+  // the debug variant by default, so add it to the unit-test scope so
+  // the renderer can attach the animation inspector during render runs.
+  testImplementation("androidx.compose.ui:ui-tooling")
+  // `getAnimatedProperties(...)` returns
+  // `List<androidx.compose.animation.tooling.ComposeAnimatedProperty>` —
+  // those tooling types live in the `animation-tooling-internal`
+  // artifact, NOT in `animation-core`. The compose-bom pins it to the
+  // matching version; without this dep the curves path errors at attach
+  // time with "Missing class: ComposeAnimatedProperty".
+  testImplementation("androidx.compose.animation:animation-tooling-internal")
 }
