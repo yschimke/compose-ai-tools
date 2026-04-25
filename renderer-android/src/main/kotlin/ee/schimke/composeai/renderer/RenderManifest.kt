@@ -49,6 +49,15 @@ data class AnimationCapture(
     val showCurves: Boolean = false,
 )
 
+/**
+ * Heavy/fast threshold for [RenderPreviewCapture.cost]. Mirrors the plugin's
+ * `HEAVY_COST_THRESHOLD` — anything strictly greater is considered "heavy"
+ * and gets dropped when `composeai.render.tier=fast`. Single source of truth
+ * for the renderer; the plugin enforces the same threshold over the same
+ * cost numbers it stamped at discovery.
+ */
+const val HEAVY_COST_THRESHOLD: Float = 5.0f
+
 @Serializable
 data class RenderManifest(
     val module: String,
@@ -160,6 +169,12 @@ data class RenderPreviewCapture(
     val scroll: ScrollCapture? = null,
     val animation: AnimationCapture? = null,
     val renderOutput: String = "",
+    /**
+     * Estimated render cost normalised so a static `@Preview` is `1.0`. See
+     * the plugin's `Capture.cost` for the full catalogue. Defaults to `1.0`
+     * so older manifests parse as cheap-everywhere.
+     */
+    val cost: Float = 1.0f,
 )
 
 @Serializable

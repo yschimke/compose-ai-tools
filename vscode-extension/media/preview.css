@@ -390,6 +390,20 @@ body {
     border-color: var(--vscode-errorForeground);
 }
 
+/* Stale heavy capture: dim the rendered image so the user notices it isn't
+   fresh, and tint the warning icon. The badge button itself is the only
+   click target — clicking re-runs render at tier=full for this module. */
+.preview-card.is-stale .image-container img {
+    opacity: 0.7;
+}
+.card-stale-btn {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+.card-stale-btn:hover {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
 /* Persistent variant summary — sits below the preview image so it never
    overlaps content, while still letting sibling previews (e.g.
    @WearPreviewFontScales × 6) read as distinct without a hover header. */

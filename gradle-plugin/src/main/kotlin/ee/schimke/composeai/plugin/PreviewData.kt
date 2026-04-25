@@ -84,6 +84,46 @@ data class AnimationCapture(
     val showCurves: Boolean = false,
 )
 
+/**
+ * Cost catalogue, normalised so a static `@Preview` (single compose pass +
+ * one screenshot) is `1.0`. The discovery task stamps the right value onto
+ * each [Capture]; tooling reads them back to throttle interactive renders.
+ *
+ * Values are wall-time approximations (relative, not absolute):
+ *
+ *  - [STATIC_COST] / [SCROLL_TOP_COST] = 1 — one compose pass, one PNG.
+ *  - [SCROLL_END_COST] ≈ 3 — single capture plus a scroll-drive prelude.
+ *  - [SCROLL_LONG_COST] ≈ 20 — multi-slice stitched into a tall PNG.
+ *  - [SCROLL_GIF_COST] ≈ 40 — many frames + GIF encode.
+ *  - [ANIMATION_COST] ≈ 50 — `@AnimatedPreview` window: frame loop +
+ *    optional curve strip + GIF encode. Frame counts vary slightly with
+ *    the auto-detected duration, but the wall-time is dominated by the
+ *    GIF encode, so a flat figure approximates well enough for tiering.
+ *  - [ACCESSIBILITY_COST_PER_CAPTURE] = 4 — flat per-capture overhead
+ *    when ATF runs (not stored on the manifest because it's a global
+ *    runtime toggle; tooling adds it in when computing effective cost).
+ *
+ * [HEAVY_COST_THRESHOLD] sits above END (3) and below LONG (20), so the
+ * cheap-enough-for-every-save bucket includes static + TOP + END, and
+ * LONG / GIF / animated captures fall into the on-demand "heavy" bucket.
+ */
+const val STATIC_COST: Float = 1.0f
+const val SCROLL_TOP_COST: Float = 1.0f
+const val SCROLL_END_COST: Float = 3.0f
+const val SCROLL_LONG_COST: Float = 20.0f
+const val SCROLL_GIF_COST: Float = 40.0f
+const val ANIMATION_COST: Float = 50.0f
+const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
+const val HEAVY_COST_THRESHOLD: Float = 5.0f
+
+/**
+ * Returns `true` when [cost] exceeds [HEAVY_COST_THRESHOLD]. Single seam so
+ * the plugin, renderer, and VS Code extension all agree on which captures
+ * the interactive save loop should skip — there's no separate enum field
+ * on the manifest, just the numeric cost.
+ */
+fun isHeavyCost(cost: Float): Boolean = cost > HEAVY_COST_THRESHOLD
+
 @Serializable
 data class PreviewParams(
     val name: String? = null,
@@ -155,6 +195,15 @@ data class Capture(
     val animation: AnimationCapture? = null,
     /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
     val renderOutput: String = "",
+    /**
+     * Estimated render cost, normalised so a static `@Preview` is `1.0`.
+     * See the cost catalogue at the top of this file ([STATIC_COST],
+     * [SCROLL_LONG_COST], [ANIMATION_COST], …) for the figures the
+     * discovery task stamps in. Defaults to `1.0` so older manifests
+     * (pre-cost field) parse as cheap-everywhere and older tooling keeps
+     * its historical "render everything on every save" behaviour.
+     */
+    val cost: Float = STATIC_COST,
 )
 
 @Serializable

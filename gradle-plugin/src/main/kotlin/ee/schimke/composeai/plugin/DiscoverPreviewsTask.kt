@@ -523,6 +523,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 Capture(
                     animation = effectiveAnimation,
                     renderOutput = "renders/${previewId}${suffix}.gif",
+                    cost = ANIMATION_COST,
                 ),
             )
         }
@@ -556,10 +557,26 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                     // keeps multi-mode annotations like `modes = [TOP, GIF]`
                     // producing one PNG + one GIF from the same function.
                     val ext = if (scroll?.mode == ScrollMode.GIF) "gif" else "png"
+                    // Cost is normalised to a static @Preview = 1.0. The mode
+                    // ladder (TOP < END ≪ LONG < GIF) reflects how much extra
+                    // work each scroll variant adds on top of the baseline
+                    // compose pass. `advanceTimeMillis` alone is still one
+                    // pass at a specific virtual time, so it doesn't bump the
+                    // per-capture cost — the wall-time of a multi-timing
+                    // fan-out is in the *count*, which lives in the captures
+                    // list itself.
+                    val captureCost = when (scroll?.mode) {
+                        null -> STATIC_COST
+                        ScrollMode.TOP -> SCROLL_TOP_COST
+                        ScrollMode.END -> SCROLL_END_COST
+                        ScrollMode.LONG -> SCROLL_LONG_COST
+                        ScrollMode.GIF -> SCROLL_GIF_COST
+                    }
                     Capture(
                         advanceTimeMillis = ms,
                         scroll = scroll,
                         renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.${ext}",
+                        cost = captureCost,
                     )
                 }
             }

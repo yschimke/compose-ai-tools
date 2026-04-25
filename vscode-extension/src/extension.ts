@@ -12,7 +12,7 @@ import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { PreviewInfo } from './types';
+import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
 import { captureLabel } from './captureLabels';
 
 const DEBOUNCE_MS = 1500;
@@ -434,11 +434,16 @@ function maybeFirePendingRefresh(): void {
 
 /** Runs {@link refresh} with the `refreshInFlight` gate so the debounce queue
  *  can tell whether to defer. On completion picks up anything that arrived
- *  during the run, re-applying the debounce-elapsed check. */
+ *  during the run, re-applying the debounce-elapsed check.
+ *
+ *  Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
+ *  keep their previous PNG/GIF on disk and surface as stale in the panel —
+ *  the user re-renders them on demand via the refresh command, which uses
+ *  `tier='full'`. Keeps every save in the cheap interactive loop. */
 async function runRefreshExclusive(filePath: string): Promise<void> {
     refreshInFlight = true;
     try {
-        await refresh(true, filePath);
+        await refresh(true, filePath, 'fast');
     } finally {
         refreshInFlight = false;
         maybeFirePendingRefresh();
@@ -452,11 +457,28 @@ function sendModuleList() {
 }
 
 /**
+ * Modules where the most recent render was `tier='fast'` — heavy captures
+ * (LONG / GIF / animated) are stale on disk relative to the user's source.
+ * The webview reads this to decorate heavy cards with a "stale, click to
+ * refresh" badge. Cleared per module on a successful `tier='full'` render.
+ */
+const fastTierModules = new Set<string>();
+
+/**
  * Main refresh entry point.
  * @param forceRender  If true, runs renderAllPreviews (not just discover).
  * @param forFilePath  If set, scopes to the module owning this file.
+ * @param tier         Which render tier to request when `forceRender` is true.
+ *                     Defaults to `'full'` so explicit user-triggered refreshes
+ *                     produce up-to-date heavy captures; the save-driven path
+ *                     overrides to `'fast'` (see {@link runRefreshExclusive}).
+ *                     Ignored when `forceRender` is false (discover-only).
  */
-async function refresh(forceRender: boolean, forFilePath?: string) {
+async function refresh(
+    forceRender: boolean,
+    forFilePath?: string,
+    tier: 'fast' | 'full' = 'full',
+) {
     if (!gradleService || !panel) { return; }
 
     // Cancel any in-flight refresh
@@ -525,8 +547,19 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (abort.signal.aborted) { return; }
 
             const manifest = forceRender
-                ? await gradleService.renderPreviews(mod)
+                ? await gradleService.renderPreviews(mod, tier)
                 : await gradleService.discoverPreviews(mod);
+
+            // Track tier so the webview can mark heavy cards as stale after a
+            // fast save. A successful full render clears the flag for this
+            // module (heavy captures are now fresh on disk).
+            if (forceRender && manifest) {
+                if (tier === 'fast') {
+                    fastTierModules.add(mod);
+                } else {
+                    fastTierModules.delete(mod);
+                }
+            }
 
             const perModule: PreviewInfo[] = [];
             if (manifest) {
@@ -577,20 +610,38 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             return;
         }
 
+        // A preview is "heavyStale" when this module's most recent render was
+        // tier=fast AND the preview has at least one heavy capture. The
+        // webview decorates these cards with a stale badge so the user knows
+        // the GIF/long-scroll image is from a previous full render.
+        const moduleIsFastTier = modules.some(mod => fastTierModules.has(mod));
+        const heavyStaleIds = moduleIsFastTier
+            ? visiblePreviews
+                .filter(p => p.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD))
+                .map(p => p.id)
+            : [];
+
         panel.postMessage({
             command: 'setPreviews',
             previews: visiblePreviews,
             moduleDir: modules.join(','),
+            heavyStaleIds,
         });
         hasPreviewsLoaded = true;
         logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
 
-        // Load images asynchronously. Animated previews have multiple captures
+        // Load images in parallel. Animated previews have multiple captures
         // in `preview.captures`; one updateImage message per capture. The
         // registry (used for CodeLens / hover) keeps only the representative
         // (first) capture's PNG.
+        //
+        // Sequential awaits here used to be the long pole on a 16-preview
+        // module with @AnimatedPreview GIFs — each capture is a 1-5MB read +
+        // base64 encode. Streaming them concurrently lets each card paint
+        // as soon as its bytes arrive rather than waiting for an arbitrary
+        // serial position.
+        const imageJobs: Promise<void>[] = [];
         for (const preview of visiblePreviews) {
-            if (abort.signal.aborted) { return; }
             const captures = preview.captures;
             if (captures.length === 0) { continue; }
 
@@ -598,47 +649,50 @@ async function refresh(forceRender: boolean, forFilePath?: string) {
             if (!mod) { continue; }
 
             for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
-                if (abort.signal.aborted) { return; }
                 const capture = captures[captureIndex];
                 if (!capture.renderOutput) { continue; }
-                const imageData = await gradleService.readPreviewImage(mod, capture.renderOutput);
-                if (abort.signal.aborted) { return; }
+                const idx = captureIndex;
+                imageJobs.push((async () => {
+                    if (abort.signal.aborted) { return; }
+                    const imageData = await gradleService!.readPreviewImage(mod, capture.renderOutput);
+                    if (abort.signal.aborted || !panel) { return; }
 
-                if (imageData) {
-                    if (captureIndex === 0) {
-                        registry.setImage(preview.id, imageData);
+                    if (imageData) {
+                        if (idx === 0) {
+                            registry.setImage(preview.id, imageData);
+                        }
+                        panel.postMessage({
+                            command: 'updateImage',
+                            previewId: preview.id,
+                            captureIndex: idx,
+                            imageData,
+                        });
+                    } else if (forceRender) {
+                        // Render task completed but produced no PNG for this
+                        // capture — a per-capture failure that didn't fail the
+                        // whole task. Surface it on the card; root-cause log is
+                        // in Output ▸ Compose Preview.
+                        panel.postMessage({
+                            command: 'setImageError',
+                            previewId: preview.id,
+                            captureIndex: idx,
+                            message: 'Render failed — see Output ▸ Compose Preview',
+                        });
                     }
-                    panel.postMessage({
-                        command: 'updateImage',
-                        previewId: preview.id,
-                        captureIndex,
-                        imageData,
-                    });
-                } else if (forceRender) {
-                    // Render task completed but produced no PNG for this
-                    // capture — a per-capture failure that didn't fail the
-                    // whole task. Surface it on the card; root-cause log is
-                    // in Output ▸ Compose Preview.
-                    panel.postMessage({
-                        command: 'setImageError',
-                        previewId: preview.id,
-                        captureIndex,
-                        message: 'Render failed — see Output ▸ Compose Preview',
-                    });
-                }
-                // else: discover-only pass, PNG not produced yet. Leave the
-                // skeleton in place; the next save-triggered render will
-                // populate it.
+                    // else: discover-only pass, PNG not produced yet. Leave
+                    // the skeleton in place; the next save-triggered render
+                    // will populate it.
+                })());
             }
         }
+        await Promise.all(imageJobs);
 
         // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
-        // renderPreviews() already hides the "Building…" message when cards
-        // populate, so this used to be a no-op for the happy path — but it
-        // *did* clobber legitimate messages (e.g. "No previews match the
-        // current filters" set by applyFilters, or the empty-file notice
-        // above), which is what produced the "populate then go blank with
-        // nothing in the logs" symptom.
+        // renderPreviews() clears the 'loading' Building… banner the moment
+        // cards arrive, so the happy path is already covered. Posting a blank
+        // showMessage would also clobber legitimate extension-set messages
+        // (filter empty notice, build errors), which was the original
+        // "populate then go blank" regression.
     } catch (err: unknown) {
         if (abort.signal.aborted) { return; }
         if (err instanceof JdkImageError) {
@@ -681,10 +735,24 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 sendHistoryImage(msg.previewId, msg.filename);
             }
             break;
+        case 'refreshHeavy':
+            // Click on the stale badge → full-tier render of the owning
+            // module. Once we have a `-PcomposePreview.previewIds=` filter
+            // we can scope this to just the requested capture; for now the
+            // user pays a full-module render for the freshness guarantee.
+            if (msg.previewId) {
+                const mod = previewModuleMap.get(msg.previewId);
+                if (mod) {
+                    void refresh(true, currentScopeFile ?? undefined, 'full');
+                }
+            }
+            break;
     }
 }
 
-// Loose type for incoming webview messages (validated per-case above)
+// Loose type for incoming webview messages (validated per-case above).
+// Field union accommodates every case in handleWebviewMessage so no cast
+// gymnastics are needed at the use site.
 interface WebviewToExtensionMessage {
     command: string;
     className?: string;
