@@ -32,7 +32,7 @@ _No findings._
 
 ### `BadWearButtonPreview` · `wearos_small_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/a11y_pr/renders/sample-wear/PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/a11y_pr/renders/sample-wear/PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
