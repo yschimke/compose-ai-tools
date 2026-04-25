@@ -1,0 +1,62 @@
+name: A11y Report
+
+# Demo of the accessibility-checking pipeline on `sample-wear`. Mirrors the
+# preview-baselines / preview-comment split: pushes to `main` refresh the
+# `a11y_main` baseline branch; PRs render their own report on the shared
+# `a11y_pr` branch and post a comment with the findings table. Wired only
+# for `sample-wear` for now — the deliberately-broken `BadWearButtonPreview`
+# is what makes the annotated overlay non-empty.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # `push` runs serialise on a single group so two main commits can't race
+  # the baseline branch; PR runs each get their own group so concurrent PRs
+  # don't cancel each other.
+  group: a11y-report-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Update a11y baseline
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      # Composite action appends a commit to the long-lived `a11y_main`
+      # branch.
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/a11y-report
+        with:
+          mode: baseline
+
+  report:
+    name: Render a11y report for PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Push annotated PNGs to the shared `a11y_pr` branch and upsert a
+      # comment on the PR.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/a11y-report
+        with:
+          mode: comment
