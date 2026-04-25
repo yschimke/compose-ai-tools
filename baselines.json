@@ -360,14 +360,14 @@
     "captureLabel": "scroll gif",
     "functionName": "ActivityListGifPreview",
     "renderBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif",
-    "sha256": "ba67ef0cf79a79c64c429a3857a2a59f9e0c4fe7c263d78e4892044d22f26cb1",
+    "sha256": "de2dde1b374ea8f472ae6c22b0cf5558f85b1f91682664524c92f72c698f5d6f",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "sample-wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round": {
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "sample-wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
