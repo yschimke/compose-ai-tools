@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Verify staged Kotlin files are ktfmt-formatted before allowing the commit.
+# Install with `scripts/install-git-hooks.sh` (sets `core.hooksPath`).
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+mapfile -d '' staged < <(
+  git diff --cached --name-only --diff-filter=ACMR -z -- '*.kt' '*.kts'
+)
+
+if [ ${#staged[@]} -eq 0 ]; then
+  exit 0
+fi
+
+# `ktfmtCheck` is fast on the configuration cache once warm, but does a full
+# repo scan. For now that's the simplest correct option: same code path as CI.
+if ! ./gradlew --quiet ktfmtCheckAll; then
+  cat <<'MSG' >&2
+
+ktfmt found unformatted Kotlin code. Run:
+
+    ./gradlew ktfmtFormatAll
+
+then `git add` the changes and re-commit.
+MSG
+  exit 1
+fi
