@@ -36,7 +36,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * completes at 600ms.
  */
 @Preview(widthDp = 200, heightDp = 200, showBackground = true)
-@AnimatedPreview(durationMs = 1500, frameIntervalMs = 33, showCurves = true)
+@AnimatedPreview // durationMs = 0 → auto-detect via PreviewAnimationClock (600ms tween).
 @Composable
 fun FadeInBoxAnimatedPreview() {
     // `MutableTransitionState(false)` + `targetState = true` set during
@@ -67,7 +67,7 @@ fun FadeInBoxAnimatedPreview() {
  * the inspector should pick it up alongside any nested animateXAsState.
  */
 @Preview(widthDp = 240, heightDp = 240, showBackground = true)
-@AnimatedPreview(durationMs = 1200, frameIntervalMs = 40)
+@AnimatedPreview // showCurves = true (default) — captures AnimatedVisibility's transition.
 @Composable
 fun RevealLabelAnimatedPreview() {
     var visible by remember { mutableStateOf(false) }

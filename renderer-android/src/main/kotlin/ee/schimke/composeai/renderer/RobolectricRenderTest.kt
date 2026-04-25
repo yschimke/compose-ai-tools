@@ -27,6 +27,7 @@ import com.github.takahirom.roborazzi.inspectionMode
 import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
+import java.awt.image.BufferedImage
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Test
@@ -1165,16 +1166,26 @@ private const val MAX_TAIL_FLINGS = 4
 private const val TAIL_FLING_EPSILON_PX = 1f
 
 /**
- * Handles `@AnimatedPreview` captures. Drives the paused `mainClock` from
- * `t=0` to [AnimationCapture.durationMs] in [AnimationCapture.frameIntervalMs]
- * steps, captures each frame, and encodes them as an animated GIF via
- * [ScrollGifEncoder].
+ * Handles `@AnimatedPreview` captures.
  *
- * When [AnimationCapture.showCurves] is true, attaches a Compose UI
- * Tooling [AnimationInspector] to the live composition. The inspector
- * walks the slot tree for `Transition` / `InfiniteTransition` /
- * `animateXAsState` registrations, samples each animated property at
- * every frame, and emits a `<stem>_curves.png` sidecar plot.
+ * Single-pass with an inline measure step:
+ *
+ *   1. Tick one frame to settle the composition — any
+ *      `LaunchedEffect(Unit) { … }` that kicks an animation off must
+ *      fire before the inspector attaches, otherwise AnimationSearch
+ *      sees a target == initial transition and the curve is flat.
+ *   2. When `showCurves = true`, attach an [AnimationInspector] over
+ *      the slot table captured by [InspectablePreviewContent]. Read
+ *      `inspector.maxDurationMs` to determine the actual animation
+ *      duration; the user's `durationMs > 0` overrides this.
+ *   3. Loop one frame per `frameIntervalMs` of virtual time across
+ *      the effective duration, capturing the screenshot to a temp PNG
+ *      and seeking the inspector to the same time to sample each
+ *      animated property's value.
+ *   4. Build the output GIF. With `showCurves = true`, every frame is
+ *      a composite of (screenshot on top, curve panel below with a
+ *      moving dot on each curve at the current virtual time). With
+ *      `showCurves = false`, the GIF is screenshot-only.
  *
  * Returns `true` when [outputFile] was written.
  */
@@ -1196,18 +1207,12 @@ private fun handleAnimatedCapture(
     )
 
     val frameIntervalMs = animation.frameIntervalMs.coerceAtLeast(10)
-    val durationMs = animation.durationMs.coerceAtLeast(frameIntervalMs)
-    val totalFrames = (durationMs / frameIntervalMs).coerceAtLeast(1)
 
     val frameFiles = mutableListOf<File>()
-    val frameDelays = mutableListOf<Int>()
 
     // Settle the composition by ticking one frame so any
-    // LaunchedEffect(Unit) { … } has fired — without this, animations
-    // gated by an initial state flip (e.g. `LaunchedEffect { visible = true }`
-    // → `AnimatedVisibility(visible)`) never start, and both the GIF
-    // and the curve sidecar capture the pre-effect zero state for every
-    // frame.
+    // LaunchedEffect(Unit) { … } has fired before the inspector reads
+    // the slot table.
     rule.mainClock.advanceTimeByFrame()
     val inspector = if (animation.showCurves && curveCapture != null) {
         runCatching { AnimationInspector.attach(curveCapture) }
@@ -1217,23 +1222,41 @@ private fun handleAnimatedCapture(
             }.getOrNull()
     } else null
 
+    // Effective duration: user override (>0) wins; otherwise ask the
+    // inspector how long the discovered animations actually run, capped
+    // at AUTO_DURATION_MAX_MS so an InfiniteTransition or a measure
+    // glitch can't blow up GIF size, and floored at frameIntervalMs so
+    // we always emit at least one tick.
+    val measuredDurationMs = inspector?.maxDurationMs ?: -1L
+    val effectiveDurationMs = when {
+        animation.durationMs > 0 -> animation.durationMs.coerceAtMost(AUTO_DURATION_MAX_MS)
+        measuredDurationMs > 0 -> {
+            // Add a small tail beyond the animation's natural end so
+            // the viewer sees the settled state for a beat before the
+            // GIF loops. Cap at AUTO_DURATION_MAX_MS.
+            (measuredDurationMs + AUTO_DURATION_TAIL_MS)
+                .coerceAtMost(AUTO_DURATION_MAX_MS.toLong())
+                .toInt()
+        }
+        else -> AUTO_DURATION_FALLBACK_MS
+    }.coerceAtLeast(frameIntervalMs)
+    val totalFrames = (effectiveDurationMs / frameIntervalMs).coerceAtLeast(1)
+
     val curveTracksByLabel = linkedMapOf<String, MutableList<Pair<Long, Any?>>>()
+    val frameTimes = mutableListOf<Long>()
 
     fun captureFrame(virtualTimeMs: Long) {
         val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
         rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
         frameFiles += frameFile
-        frameDelays += frameIntervalMs
+        frameTimes += virtualTimeMs
 
         if (inspector != null) {
             // Drive PreviewAnimationClock to the same virtual time the
             // outer mainClock is at — `setClockTime` seeks every tracked
             // transition to that point, so `getAnimatedProperties` reads
             // a fresh value rather than the cached value from when the
-            // animation was first registered. The visual GIF is driven
-            // by mainClock; the inspector samples are driven by this
-            // seek, with the same time scale so the curve aligns with
-            // what's on screen.
+            // animation was first registered.
             inspector.setClockTime(virtualTimeMs)
             inspector.snapshot().forEach { tracked ->
                 tracked.samples.forEach { sample ->
@@ -1246,11 +1269,6 @@ private fun handleAnimatedCapture(
     }
 
     try {
-        // Frame 0 at t=0 — captures the immediate post-attach state. The
-        // pre-attach `advanceTimeByFrame()` (above, in the inspector
-        // setup block) has already let any LaunchedEffect run, so the
-        // animation is in flight; subsequent ticks advance through the
-        // window.
         captureFrame(virtualTimeMs = 0L)
         var t = 0L
         repeat(totalFrames) {
@@ -1261,38 +1279,71 @@ private fun handleAnimatedCapture(
 
         if (frameFiles.isEmpty()) return false
 
-        val frames = frameFiles.map {
+        val rawFrames = frameFiles.map {
             javax.imageio.ImageIO.read(it) ?: error("Failed to read animation frame PNG: $it")
         }
+        val tracks = curveTracksByLabel.map { (label, samples) ->
+            AnimationCurvePlotter.Track(label = label, samples = samples)
+        }
+
+        // Combined-GIF mode: each frame composes the screenshot above a
+        // curve panel that highlights the current frame's position with
+        // a moving dot on every track. Falls back to screenshot-only
+        // when there are no tracks (e.g. showCurves = false, or the
+        // inspector found nothing — which can happen on a static
+        // preview accidentally annotated).
+        val composedFrames: List<BufferedImage> =
+            if (tracks.isNotEmpty()) {
+                rawFrames.mapIndexed { i, screenshot ->
+                    AnimationCurvePlotter.composeFrameWithCurves(
+                        screenshot = screenshot,
+                        tracks = tracks,
+                        durationMs = effectiveDurationMs,
+                        currentTimeMs = frameTimes[i],
+                    )
+                }
+            } else {
+                rawFrames
+            }
+
+        val frameDelays = IntArray(composedFrames.size) { frameIntervalMs }
         val written = ScrollGifEncoder.encode(
-            frames = frames,
+            frames = composedFrames,
             outputFile = outputFile,
-            frameDelaysMs = frameDelays.toIntArray(),
+            frameDelaysMs = frameDelays,
         ) ?: return false
 
-        if (inspector != null && curveTracksByLabel.isNotEmpty()) {
-            val curveFile = File(
-                outputFile.parentFile,
-                "${outputFile.nameWithoutExtension}_curves.png",
-            )
-            val tracks = curveTracksByLabel.map { (label, samples) ->
-                AnimationCurvePlotter.Track(label = label, samples = samples)
-            }
-            AnimationCurvePlotter.plot(tracks, durationMs, curveFile)
-            System.err.println(
-                "@AnimatedPreview on '$previewId': encoded ${frames.size} frames → ${written.name} " +
-                    "+ curves (${tracks.size} tracks) → ${curveFile.name}.",
-            )
+        val durationLabel = if (animation.durationMs == 0) {
+            "auto-detected ${effectiveDurationMs}ms (measured ${measuredDurationMs}ms)"
         } else {
-            System.err.println(
-                "@AnimatedPreview on '$previewId': encoded ${frames.size} frames → ${written.name}.",
-            )
+            "${effectiveDurationMs}ms"
         }
+        val curvesLabel = if (tracks.isNotEmpty()) " + ${tracks.size} curve track(s)" else ""
+        System.err.println(
+            "@AnimatedPreview on '$previewId': encoded ${composedFrames.size} frames " +
+                "($durationLabel)$curvesLabel → ${written.name}.",
+        )
         return true
     } finally {
         framesDir.deleteRecursively()
     }
 }
+
+/**
+ * Hard cap on auto-detected animation duration. `InfiniteTransition`
+ * and a few hand-rolled `withFrameNanos` loops report enormous
+ * `maxDuration` values; we don't want one of them to spawn a 10-MB GIF.
+ */
+private const val AUTO_DURATION_MAX_MS = 5000
+
+/** Floor used when `durationMs = 0` and no animations were discovered. */
+private const val AUTO_DURATION_FALLBACK_MS = 1500
+
+/**
+ * Extra tail appended after the auto-detected animation end, so the
+ * GIF holds the settled state visibly for a moment before looping.
+ */
+private const val AUTO_DURATION_TAIL_MS = 200L
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes

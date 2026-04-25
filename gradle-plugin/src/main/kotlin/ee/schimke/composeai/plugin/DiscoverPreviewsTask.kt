@@ -603,9 +603,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     private fun extractAnimationSpec(annotations: List<AnnotationInfo>): AnimationCapture? {
         val ann = annotations.firstOrNull { it.name == ANIMATED_PREVIEW_FQN } ?: return null
         val pv = ann.parameterValues
-        val durationMs = (pv.getValue("durationMs") as? Int)?.takeIf { it > 0 } ?: 1500
+        // `durationMs = 0` is the auto-detect sentinel; let the renderer ask
+        // PreviewAnimationClock for the real duration. A positive value
+        // overrides; negatives clamp to the sentinel.
+        val durationMs = (pv.getValue("durationMs") as? Int)?.coerceAtLeast(0) ?: 0
         val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.takeIf { it > 0 } ?: 33
-        val showCurves = (pv.getValue("showCurves") as? Boolean) ?: false
+        val showCurves = (pv.getValue("showCurves") as? Boolean) ?: true
         return AnimationCapture(
             durationMs = durationMs,
             frameIntervalMs = frameIntervalMs,
