@@ -78,7 +78,20 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
 
 - **Configuration cache is strict** (`problems=fail` in [gradle.properties](gradle.properties)). Changes to plugin code must resolve classpaths/JVM args at configuration time via lazy providers — never call `.files` inside a task action or touch `project.*` at execution time.
 - **CMP Desktop previews require `implementation(compose.components.uiToolingPreview)`** — the bundled `@Preview` has `SOURCE` retention and is invisible to ClassGraph otherwise.
-- **Toolchain:** Java 17, Kotlin 2.2.21, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper.
+- **Toolchain:** Java 17, Kotlin 2.2.21, Gradle 9.4.1+, AGP 9.1.0, CMP 1.10.3. Always use the bundled `./gradlew` wrapper. Don't loosen the toolchain to a newer JDK to avoid the install — AGP 9.1.0 / Robolectric still target 17, and bumping silently produces classes-vs-resources skew on the consumer's unit-test classpath.
+- **Bringing up a fresh sandbox.** When `./gradlew` fails with "Unable to download toolchain": `sudo apt-get install -y openjdk-17-jdk-headless` — Gradle's auto-detection picks it up from `/usr/lib/jvm/`. When an Android-flavoured sample then fails with "SDK location not found", install the SDK manually (no apt package covers `compileSdk = 36`):
+  ```
+  curl -fsSL -o /tmp/cmdline-tools.zip \
+    https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+  sudo unzip -q /tmp/cmdline-tools.zip -d /tmp && \
+    sudo mkdir -p /opt/android-sdk/cmdline-tools && \
+    sudo mv /tmp/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+  yes | sudo /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+  sudo /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+    "platforms;android-36" "platform-tools" "build-tools;36.0.0"
+  echo "sdk.dir=/opt/android-sdk" > local.properties
+  ```
+  `local.properties` is `.gitignore`d; CI uses `ANDROID_HOME` instead. Re-running `:sample-wear:renderAllPreviews` after this end-to-end takes ~3 min cold.
 - **Do not run `collectPreviewInfo` / other internal plugin tasks by hand** — the plugin wires them as dependencies of `renderAllPreviews`.
 - **Plugin version** is driven by `.release-please-manifest.json` at the repo root (single source of truth, maintained by release-please). The three `build.gradle.kts` files read that manifest and compute next-patch `-SNAPSHOT` for local builds; CI overrides with the `PLUGIN_VERSION` env var from the git tag or `snapshot.yml`. See [docs/RELEASING.md](RELEASING.md).
 - **Android renderer is pinned to Robolectric SDK 35** via `@Config(sdk = [35])` in [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) (`renderer-android` itself is on `compileSdk = 36`). Capture depends on Robolectric's shadowed `ImageReader` / `PixelCopy` path, historically fragile across SDK × Robolectric combinations (e.g. `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is `maxSdk`-gated). Re-run `:sample-android:renderAllPreviews` end-to-end when bumping either the SDK level or Robolectric.

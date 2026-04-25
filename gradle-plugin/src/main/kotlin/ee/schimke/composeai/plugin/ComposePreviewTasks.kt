@@ -287,14 +287,19 @@ internal object ComposePreviewTasks {
     /**
      * Deletes files inside [rendersDir] that aren't referenced by [manifest].
      *
-     * Keeps three kinds of files:
+     * Keeps four kinds of files:
      * 1. Exact `renderOutput` matches from non-parameterized previews.
      * 2. `<stem>_*.<ext>` fan-out files where `<stem>` belongs to a
      *    `@PreviewParameter` preview — the renderer itself cleans up its
      *    own stale fan-outs (it knows the exact filenames), so the Gradle
      *    side deliberately stays conservative and doesn't delete files it
      *    can't be sure are stale.
-     * 3. Non-PNG/GIF files that aren't in the plugin's output domain.
+     * 3. `<stem>.a11y.png` siblings of registered renders. The renderer's
+     *    `AccessibilityOverlay` writes these next to the clean PNG when
+     *    a preview produces ATF findings; the manifest doesn't list them
+     *    (the pointer lives in `accessibility.json` instead), so without
+     *    this exemption they'd be deleted between writing and publishing.
+     * 4. Non-PNG/GIF files that aren't in the plugin's output domain.
      *
      * Anything else (PNGs or GIFs that were produced for a now-removed
      * preview) gets removed so downstream tools compare the manifest
@@ -339,10 +344,25 @@ internal object ComposePreviewTasks {
                 val rel = f.relativeTo(rendersDir).invariantSeparatorsPath
                 if (rel in expectedRelPaths) return@forEach
                 if (paramStems.any { it.matches(rel, f.name) }) return@forEach
+                if (isA11ySiblingOfExpected(rel, expectedRelPaths)) return@forEach
                 if (!f.delete()) {
                     logger.warn("compose-preview: couldn't delete stale render $f")
                 }
             }
+    }
+
+    // `<stem>.a11y.png` lives next to the clean `<stem>.png` registered in
+    // the manifest. Match by mechanical suffix-strip rather than scanning
+    // accessibility.json: the cleanup runs whether a11y is enabled or not,
+    // and a stale `.a11y.png` whose clean sibling has been removed is still
+    // garbage we want gone.
+    internal fun isA11ySiblingOfExpected(
+        rel: String,
+        expectedRelPaths: Set<String>,
+    ): Boolean {
+        if (!rel.endsWith(".a11y.png")) return false
+        val cleanSibling = rel.removeSuffix(".a11y.png") + ".png"
+        return cleanSibling in expectedRelPaths
     }
 
     private fun String.stripRendersPrefix(): String? {
