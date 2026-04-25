@@ -967,6 +967,70 @@ class DiscoveryFunctionalTest {
     }
 
     @Test
+    fun `discoverPreviews finds private and internal previews`() {
+        // Teams that don't want @Preview functions to leak into their public
+        // API mark them `private` (or `internal`). Kotlin compiles `private
+        // fun` to JVM `private` and ClassGraph's default visibility filter
+        // drops them; `internal fun` compiles to JVM `public` (with the
+        // `name$module` mangle) so it has always been visible. Asserting both
+        // shapes so the visibility regression doesn't return on either axis.
+        val projectDir = createCmpTestProject()
+
+        val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+        srcFile.writeText(
+            """
+            package test
+
+            import androidx.compose.ui.tooling.preview.Preview
+            import androidx.compose.foundation.background
+            import androidx.compose.foundation.layout.Box
+            import androidx.compose.foundation.layout.size
+            import androidx.compose.runtime.Composable
+            import androidx.compose.ui.Modifier
+            import androidx.compose.ui.graphics.Color
+            import androidx.compose.ui.unit.dp
+
+            @Preview
+            @Composable
+            fun PublicPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Red))
+            }
+
+            @Preview
+            @Composable
+            internal fun InternalPreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Green))
+            }
+
+            @Preview
+            @Composable
+            private fun PrivatePreview() {
+                Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+            }
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withArguments("discoverPreviews", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+        val manifest = json.decodeFromString<PreviewManifest>(
+            File(projectDir, "build/compose-previews/previews.json").readText()
+        )
+        // `internal fun` has its JVM name mangled to `InternalPreview$<module>`
+        // so we match by prefix rather than exact equality.
+        val names = manifest.previews.map { it.functionName }
+        assertThat(names).contains("PublicPreview")
+        assertThat(names).contains("PrivatePreview")
+        assertThat(names.any { it.startsWith("InternalPreview") }).isTrue()
+        assertThat(manifest.previews).hasSize(3)
+    }
+
+    @Test
     fun `failOnEmpty fails the build and emits diagnostics when no previews exist`() {
         val projectDir = createCmpTestProject()
 

@@ -149,6 +149,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             ClassGraph()
                 .enableMethodInfo()
                 .enableAnnotationInfo()
+                // Kotlin `private fun` compiles to a JVM `private` method and
+                // ClassGraph's default visibility filter drops it; `internal
+                // fun` compiles to JVM `public` (with the `name$module` mangle)
+                // so it slips through. Without this flag, projects that follow
+                // the "private @Preview to keep them out of the namespace"
+                // convention silently surface zero previews.
+                .ignoreMethodVisibility()
                 .overrideClasspath(classpath.map { it.absolutePath })
                 .ignoreParentClassLoaders()
                 .scan().use { scanResult ->
