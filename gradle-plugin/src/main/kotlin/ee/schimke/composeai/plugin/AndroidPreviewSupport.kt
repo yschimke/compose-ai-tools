@@ -134,6 +134,16 @@ internal object AndroidPreviewSupport {
    * one-time metadata 503 shouldn't push the user back into the "no @Preview dependency declared"
    * skip-and-confuse path.
    *
+   * Resolves a `copyRecursive()` rather than the original configuration. Resolving the original
+   * `${variantName}RuntimeClasspath` marks its `extendsFrom` parents —
+   * `${variantName}Implementation`, `implementation`, `runtimeOnly`, etc. — as observed, which then
+   * forbids the `dependencies.add( "testImplementation", …)` / `${variantName}Implementation` calls
+   * below in [registerAndroidTasks] (and its `afterEvaluate` block) when another plugin like
+   * tapmoc's `checkDependencies` has already pulled the test runtime classpath into resolution
+   * earlier in the lifecycle. The recursive copy flattens the parent chain into a detached
+   * configuration, so resolving it exercises the same dep graph without observing any of the
+   * consumer's declarable buckets — see issue #244 (cadence) for the original repro.
+   *
    * Returns false when the variant runtime classpath isn't present (non-Android modules / variants
    * that don't synthesise one) or when traversing the resolution result throws (corrupt graph
    * during early configuration). The caller treats both as "no signal found" and logs the standard
@@ -142,7 +152,8 @@ internal object AndroidPreviewSupport {
   private fun hasTransitivePreviewDependency(project: Project, variantName: String): Boolean {
     val runtime =
       project.configurations.findByName("${variantName}RuntimeClasspath") ?: return false
-    val root = runCatching { runtime.incoming.resolutionResult.root }.getOrNull() ?: return false
+    val probe = runCatching { runtime.copyRecursive() }.getOrNull() ?: return false
+    val root = runCatching { probe.incoming.resolutionResult.root }.getOrNull() ?: return false
     val seen = HashSet<org.gradle.api.artifacts.result.ResolvedComponentResult>()
     val stack = ArrayDeque<org.gradle.api.artifacts.result.ResolvedComponentResult>()
     stack.addLast(root)
