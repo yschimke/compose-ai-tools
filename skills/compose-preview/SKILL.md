@@ -404,20 +404,12 @@ animations tick during capture — toggle it off for animation-heavy previews.
 
 ## Compose Multiplatform shared modules
 
-For projects whose Compose UI lives in a Kotlin Multiplatform `:shared`-style
-module — typically `org.jetbrains.kotlin.multiplatform` +
-`com.android.kotlin.multiplatform.library` + Compose Multiplatform — see
-**[design/CMP_SHARED.md](./design/CMP_SHARED.md)**. Covers why the plugin
-routes those modules through the Desktop renderer (`ImageComposeScene`),
-the two prerequisites (declare a `jvm("desktop")` target, put `@Preview`
-in `commonMain`), and the canonical `shared/build.gradle.kts` setup.
-
-The short version: previews compose better when they exercise stateless,
-shared composables — pure functions of state and callbacks, with state
-hoisted into a `:composeApp`-level wrapper that wires DI. Prefer that
-shape over previews that touch androidMain-only types (Activity, Bundle,
-ContextCompat) — the Desktop renderer can't capture those, and the
-state-hoisting pattern unlocks fast preview iteration on every CMP target.
+For KMP `:shared` modules (`com.android.kotlin.multiplatform.library` +
+Compose Multiplatform), the plugin renders previews through the Desktop
+pipeline. Keep `@Preview` in `commonMain` over stateless composables and
+declare a `jvm("desktop")` target. See
+**[design/CMP_SHARED.md](./design/CMP_SHARED.md)** for the full setup,
+limitations, and rationale.
 
 ## Wear design guidance
 
