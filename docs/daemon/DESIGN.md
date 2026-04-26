@@ -166,6 +166,8 @@ This is the hard tier. `FooPreview()` calls `BarComposable()` defined in another
 
 ### Tier 4 — is the user looking at this?
 
+> See also [PREDICTIVE.md](PREDICTIVE.md) for a proposed extension that adds speculative-prefetch tiers on top of the reactive `setVisible` / `setFocus` signals described here.
+
 **State from VS Code:**
 
 - `setVisible({ ids })` — preview cards currently visible in the panel webview (not just the file scope; the actual visible cards).
@@ -211,6 +213,18 @@ Epilogue:
 1. `setContent { }` (empty) to give Compose a frame to dispose `LaunchedEffect` / `DisposableEffect`.
 2. Encode bitmap, then `bitmap.recycle()`.
 3. Close any `HardwareRenderer` / `ImageReader` opened by the capture path.
+
+### No mid-render cancellation — invariant + enforcement
+
+Once a render has started, it runs to completion. This is load-bearing for memory safety: aborting between any prologue / body / epilogue step leaves the sandbox holding a half-disposed Compose graph, an unrecycled `Bitmap` whose native `GraphicBuffer` is still owned by the `HardwareRenderer`, or `ShadowPackageManager` / `ActivityScenario` state the next preview will trip over. The worst failure shape is silent visual drift — colour-bleed across previews when a buffer is reused — which surfaces as a CI pixel-diff failure with no obvious memory leak to chase. See [PREDICTIVE.md § 9](PREDICTIVE.md#9-decisions-made) for the full leak-shape rationale.
+
+Enforced in code (so accidental cancellation can't sneak in):
+
+- Render thread does **not** poll `Thread.interrupted()`; the daemon's own code never calls `interrupt()` on it.
+- Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread abort. The in-flight render finishes before the sandbox tears down.
+- `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue before resolving the response.
+- JVM SIGTERM handler waits for the drain before exit. SIGKILL is the only way to force termination mid-render — it leaks the sandbox classloader, but nothing we can defend against at that point.
+- A regression test submits a render, immediately invokes shutdown, and asserts the render still completes and the result is observable.
 
 ### Recycle policy
 
