@@ -6,6 +6,21 @@ This file provides guidance to Agents when working with code in this repository.
 
 A Gradle plugin (`ee.schimke.composeai.preview`) plus supporting tools that discover `@Preview` composables in compiled Kotlin classes and render them to PNG outside Android Studio. Targets both Jetpack Compose (Android, via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
 
+## Documentation map: contributor vs. consumer
+
+Two audiences, two doc trees. Don't conflate them:
+
+- **This file + `docs/`** — contributor docs for working on *this repo*: editing the plugin, CLI, renderer modules, or VS Code extension; running the in-repo samples through `includeBuild("gradle-plugin")`; publishing releases. Build commands here use `./gradlew` against the local source tree.
+- **[`skills/compose-preview/SKILL.md`](../skills/compose-preview/SKILL.md) + [`skills/compose-preview/design/`](../skills/compose-preview/design/)** — consumer docs shipped to end users (humans and agents) of the *published* plugin and CLI. These describe how to apply `id("ee.schimke.composeai.preview")` to a downstream project and drive `compose-preview` against it. The `design/` subtree is per-target-stack guidance:
+  - [`CLAUDE_CLOUD.md`](../skills/compose-preview/design/CLAUDE_CLOUD.md) — running in Claude Code on the web (network allowlist, Setup script with `install.sh --android-sdk`, JVM-proxy gotcha)
+  - [`CI_PREVIEWS.md`](../skills/compose-preview/design/CI_PREVIEWS.md) — maintaining a `preview_main` branch with rendered PNGs and a `baselines.json` for diff-on-PR workflows
+  - [`AGENT_PR.md`](../skills/compose-preview/design/AGENT_PR.md) — authoring agent-opened PRs and reviewing PRs opened by other agents
+  - [`WEAR_UI.md`](../skills/compose-preview/design/WEAR_UI.md) — Material 3 Expressive design language for Wear OS
+  - [`WEAR_TILES.md`](../skills/compose-preview/design/WEAR_TILES.md) — Wear Tiles (protolayout-based, not Compose)
+  - [`REMOTE_COMPOSE.md`](../skills/compose-preview/design/REMOTE_COMPOSE.md) — Remote Compose (RemoteDocument byte stream for watch faces, tiles, widgets)
+
+The skill files are bundled into `compose-preview-skill-<ver>.tar.gz` at release time and end up under `~/.claude/skills/compose-preview/` after `scripts/install.sh` runs — so anything you change in `skills/` is what consumers (and their agents) see, not what contributors editing this repo see. When you change consumer-facing behaviour (a new flag, a network requirement, a setup-script step), update `skills/compose-preview/...`, not this file. Cross-link from here when contributors need the same information for sandbox setup (e.g. the Android SDK bootstrap referenced from "Bringing up a fresh sandbox" below).
+
 ## Common commands
 
 Build / test everything:
