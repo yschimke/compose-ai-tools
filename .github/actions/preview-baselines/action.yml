@@ -7,17 +7,44 @@ description: >
   so PR comments pinned to a past baseline keep resolving forever.
 
 inputs:
+  cli-version:
+    description: >
+      compose-preview CLI version. Literal (e.g. "0.8.1"), "latest"
+      (resolved via the GitHub releases API), or "catalog" (read from
+      a Gradle version catalog — see catalog-path / catalog-key).
+    default: 'latest'
+  catalog-path:
+    description: 'Path to the Gradle version catalog (when cli-version=catalog).'
+    default: 'gradle/libs.versions.toml'
+  catalog-key:
+    description: '[versions] key to read (when cli-version=catalog).'
+    default: 'composePreviewCli'
   timeout:
-    description: 'CLI render timeout in seconds'
+    description: 'CLI render timeout in seconds.'
     default: '600'
   branch:
-    description: 'Branch name for baselines'
+    description: 'Branch name for baselines.'
     default: 'preview_main'
 
 runs:
   using: 'composite'
   steps:
-    - uses: ./.github/actions/install-cli
+    # Source-build path is internal to this repo's CI: when a PR changes
+    # the CLI/plugin schema, the released CLI is one tag behind HEAD and
+    # would 'version-skew' against the new previews.json shape. External
+    # consumers never need this; their CLI/plugin pair always matches a
+    # released tag.
+    - name: Install CLI from source
+      if: inputs.cli-version == 'source'
+      uses: ./.github/actions/install-cli
+
+    - name: Install CLI from release
+      if: inputs.cli-version != 'source'
+      uses: ./.github/actions/install
+      with:
+        version: ${{ inputs.cli-version }}
+        catalog-path: ${{ inputs.catalog-path }}
+        catalog-key: ${{ inputs.catalog-key }}
 
     - name: Render previews
       id: render

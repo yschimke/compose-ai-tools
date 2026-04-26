@@ -25,3 +25,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/preview-baselines
+        with:
+          # In-repo CI uses the CLI built from the current checkout so
+          # PRs that change the previews.json schema don't render
+          # against a stale released CLI. External consumers omit this
+          # input — the default (latest release) is what they want.
+          cli-version: source

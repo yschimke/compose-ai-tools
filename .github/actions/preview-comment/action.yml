@@ -6,23 +6,46 @@ description: >
   URLs to commit SHAs so the images keep resolving after merge.
 
 inputs:
+  cli-version:
+    description: >
+      compose-preview CLI version. Literal (e.g. "0.8.1"), "latest"
+      (resolved via the GitHub releases API), or "catalog" (read from
+      a Gradle version catalog — see catalog-path / catalog-key).
+    default: 'latest'
+  catalog-path:
+    description: 'Path to the Gradle version catalog (when cli-version=catalog).'
+    default: 'gradle/libs.versions.toml'
+  catalog-key:
+    description: '[versions] key to read (when cli-version=catalog).'
+    default: 'composePreviewCli'
   timeout:
-    description: 'CLI render timeout in seconds'
+    description: 'CLI render timeout in seconds.'
     default: '600'
   base-branch:
-    description: 'Branch name for baselines'
+    description: 'Branch name for baselines.'
     default: 'preview_main'
   head-branch:
-    description: 'Shared branch that accumulates per-PR render commits'
+    description: 'Shared branch that accumulates per-PR render commits.'
     default: 'preview_pr'
   pr-number:
-    description: 'Pull request number (auto-detected from context if omitted)'
+    description: 'Pull request number (auto-detected from context if omitted).'
     default: ''
 
 runs:
   using: 'composite'
   steps:
-    - uses: ./.github/actions/install-cli
+    # See preview-baselines/action.yml for the source-vs-release rationale.
+    - name: Install CLI from source
+      if: inputs.cli-version == 'source'
+      uses: ./.github/actions/install-cli
+
+    - name: Install CLI from release
+      if: inputs.cli-version != 'source'
+      uses: ./.github/actions/install
+      with:
+        version: ${{ inputs.cli-version }}
+        catalog-path: ${{ inputs.catalog-path }}
+        catalog-key: ${{ inputs.catalog-key }}
 
     - name: Render previews
       shell: bash

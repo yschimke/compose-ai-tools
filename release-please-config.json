@@ -14,6 +14,7 @@
         "README.md",
         "vscode-extension/README.md",
         "skills/compose-preview/SKILL.md",
+        "skills/compose-preview/design/CI_PREVIEWS.md",
         "docs/RELEASING.md",
         {
           "type": "generic",

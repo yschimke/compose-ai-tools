@@ -34,8 +34,8 @@ inputs:
   github-token:
     description: >
       Token used to authenticate the releases API call (avoids the
-      unauthenticated rate limit on shared GHA runners). Defaults to
-      ${{ github.token }} via the runs.steps env block below.
+      unauthenticated rate limit on shared GHA runners). Empty falls
+      back to the workflow token (github.token) inside the steps below.
     default: ''
 
 outputs:
