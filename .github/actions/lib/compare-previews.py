@@ -433,6 +433,155 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# generate-resources mode
+#
+# Sibling of `generate`. Walks every `<module>/build/compose-previews/resources.json`
+# under `--workspace-root` and copies the rendered PNGs / GIFs into
+# `<output_dir>/renders/<module>/resources/<...>` so they land in `preview_main`
+# alongside the existing composable baselines. Writes `resource-baselines.json`
+# next to `baselines.json` and appends a section to the README.
+#
+# Independent walk (rather than reusing the `compose-preview show --json`
+# output) — the CLI doesn't know about resources today, and keeping the
+# resources path orthogonal to the composable path means modules with no
+# `resources.json` (consumers who applied the plugin but never enabled
+# `composePreview.resourcePreviews`) don't perturb the existing baselines tree.
+# ---------------------------------------------------------------------------
+
+def _resource_render_dest(render_output: str) -> str:
+    """`renders/resources/drawable/foo.png` → `resources/drawable/foo.png`.
+
+    The leading `renders/` segment is stripped so the destination tree is
+    `<output>/renders/<module>/resources/...`, consistent with how the
+    composable path lays out `<output>/renders/<module>/<basename>`.
+    """
+    if render_output.startswith("renders/"):
+        return render_output[len("renders/"):]
+    return render_output
+
+
+def load_resource_manifests(workspace_root: Path) -> dict[str, dict]:
+    """Globs `<module>/build/compose-previews/resources.json` and returns a
+    flat key→entry map. Key shape: `<module>::<resourceId>::<renderOutput>` —
+    stable enough to detect changes across runs without colliding when a single
+    resource has multiple captures (e.g. adaptive-icon shape masks).
+
+    Returns an empty dict when no `resources.json` exists anywhere — that's
+    the dominant case for projects that don't write XML drawables, and an
+    empty result is a no-op for `cmd_generate_resources`.
+    """
+    out: dict[str, dict] = {}
+    for manifest_path in sorted(workspace_root.glob("*/build/compose-previews/resources.json")):
+        module_dir = manifest_path.parent.parent.parent
+        module = str(module_dir.relative_to(workspace_root)).replace("\\", "/")
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        for resource in manifest.get("resources", []) or []:
+            resource_id = resource.get("id")
+            resource_type = resource.get("type", "")
+            if not resource_id:
+                continue
+            for capture in resource.get("captures", []) or []:
+                render_output = capture.get("renderOutput") or ""
+                if not render_output:
+                    continue
+                src = module_dir / "build" / "compose-previews" / render_output
+                key = f"{module}::{resource_id}::{render_output}"
+                out[key] = {
+                    "module": module,
+                    "moduleDir": module_dir,
+                    "resourceId": resource_id,
+                    "resourceType": resource_type,
+                    "renderOutput": render_output,
+                    "destRelative": _resource_render_dest(render_output),
+                    "pngPath": src,
+                    "sha256": sha256(src) if src.exists() else None,
+                    "qualifiers": (capture.get("variant") or {}).get("qualifiers"),
+                    "shape": (capture.get("variant") or {}).get("shape"),
+                }
+    return out
+
+
+def cmd_generate_resources(args: argparse.Namespace) -> int:
+    workspace_root = Path(args.workspace_root).resolve()
+    out_dir = Path(args.output_dir)
+
+    entries = load_resource_manifests(workspace_root)
+    if not entries:
+        # Not an error — modules without resources.json are common.
+        print("No Android resource manifests found; skipping resource baselines.",
+              file=sys.stderr)
+        return 0
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    resource_baselines: dict[str, dict] = {}
+    by_module: dict[str, list[tuple[str, dict]]] = {}
+    for key, info in entries.items():
+        if not info["sha256"]:
+            continue
+        dest = out_dir / "renders" / info["module"] / info["destRelative"]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(info["pngPath"], dest)
+        resource_baselines[key] = {
+            "sha256": info["sha256"],
+            "module": info["module"],
+            "resourceId": info["resourceId"],
+            "resourceType": info["resourceType"],
+            "renderBasename": info["destRelative"],
+            "qualifiers": info["qualifiers"],
+            "shape": info["shape"],
+        }
+        by_module.setdefault(info["module"], []).append((key, info))
+
+    if not resource_baselines:
+        print("Resource manifests existed but no rendered PNGs were on disk; "
+              "skipping resource baselines.",
+              file=sys.stderr)
+        return 0
+
+    (out_dir / "resource-baselines.json").write_text(
+        json.dumps(resource_baselines, indent=2, sort_keys=True) + "\n")
+
+    # Append the resource gallery to the README. The composable `cmd_generate`
+    # has already written the file; we add a sibling section. When run on its
+    # own (no prior README), seed the file so the section header has a parent.
+    readme = out_dir / "README.md"
+    existing = readme.read_text() if readme.exists() else "# Preview Baselines\n"
+    body_lines: list[str] = []
+    if not existing.rstrip().endswith(""):
+        body_lines.append("")
+    body_lines += [
+        "",
+        "## Android XML Resource Previews",
+        "",
+        "Rendered from `:<module>:renderAndroidResources`. One row per "
+        "(resource × qualifier × shape) capture. See "
+        "[`design/RESOURCE_PREVIEWS.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/design/RESOURCE_PREVIEWS.md) "
+        "for the rendering catalogue.",
+        "",
+    ]
+    for module in sorted(by_module):
+        module_entries = sorted(by_module[module], key=lambda kv: kv[0])
+        body_lines.append(f"### {module}")
+        body_lines.append("")
+        body_lines.append("| Resource | Type | Qualifiers | Shape | Image |")
+        body_lines.append("|---|---|---|---|---|")
+        for _, info in module_entries:
+            qualifiers = info["qualifiers"] or "—"
+            shape = info["shape"] or "—"
+            img_path = f"renders/{info['module']}/{info['destRelative']}"
+            body_lines.append(
+                f"| `{info['resourceId']}` | {info['resourceType']} | "
+                f"`{qualifiers}` | {shape} | <img src=\"{img_path}\" height=\"96\" /> |"
+            )
+        body_lines.append("")
+    readme.write_text(existing.rstrip() + "\n" + "\n".join(body_lines).lstrip("\n") + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -466,11 +615,22 @@ def main() -> int:
     cp.add_argument("--baselines", required=True)
     cp.add_argument("--output-dir", required=True)
 
+    gen_res = sub.add_parser(
+        "generate-resources",
+        help="Walk every <module>/build/compose-previews/resources.json and stage the "
+             "rendered PNGs / GIFs into the baselines tree. No-ops on workspaces "
+             "without any resources.json.",
+    )
+    gen_res.add_argument("--output-dir", required=True)
+    gen_res.add_argument("--workspace-root", default=".",
+                         help="Root to glob for <module>/build/compose-previews/resources.json")
+
     args = ap.parse_args()
     handlers = {
         "generate": cmd_generate,
         "compare": cmd_compare,
         "copy-changed": cmd_copy_changed,
+        "generate-resources": cmd_generate_resources,
     }
     return handlers[args.command](args)
 

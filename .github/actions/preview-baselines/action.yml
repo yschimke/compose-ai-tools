@@ -88,6 +88,21 @@ runs:
           --repo "$REPO" \
           --branch "$BASELINE_BRANCH"
 
+    # Stage Android XML resource previews (vector / animated-vector /
+    # adaptive-icon) into the same _baselines/ tree so the preview_main
+    # branch covers them alongside composable @Preview renders. No-ops on
+    # consumers without any resources.json — the helper exits 0 with a
+    # status line. The CLI doesn't surface resource captures yet, so the
+    # helper globs the workspace directly.
+    - name: Stage resource baselines
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
+          --output-dir _baselines \
+          --workspace-root .
+
     - name: Push to baselines branch
       shell: bash
       # All templated values go through env first so a malicious input
