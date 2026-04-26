@@ -23,8 +23,6 @@ via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
   comments), [`a11y-report`](.github/actions/a11y-report/) (accessibility
   findings).
 
-<img height="400" alt="VS Code extension preview panel" src="https://github.com/user-attachments/assets/fe9be596-13d9-4880-9e20-cedd6992f650" />
-
 ## Setup
 
 The plugin is published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
