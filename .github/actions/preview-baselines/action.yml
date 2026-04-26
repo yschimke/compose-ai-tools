@@ -23,8 +23,16 @@ inputs:
     description: 'CLI render timeout in seconds.'
     default: '600'
   branch:
-    description: 'Branch name for baselines.'
+    description: 'Branch name for composable @Preview baselines.'
     default: 'preview_main'
+  resource-branch:
+    description: >
+      Branch name for Android XML resource baselines (vector / animated-vector /
+      adaptive-icon). Kept separate from `branch` because resource and composable
+      previews are disjoint workflows — independent push cadence, independent
+      bisect history, independent diff comments. Set to '' to skip the resource
+      push entirely.
+    default: 'preview_resources_main'
 
 runs:
   using: 'composite'
@@ -88,21 +96,6 @@ runs:
           --repo "$REPO" \
           --branch "$BASELINE_BRANCH"
 
-    # Stage Android XML resource previews (vector / animated-vector /
-    # adaptive-icon) into the same _baselines/ tree so the preview_main
-    # branch covers them alongside composable @Preview renders. No-ops on
-    # consumers without any resources.json — the helper exits 0 with a
-    # status line. The CLI doesn't surface resource captures yet, so the
-    # helper globs the workspace directly.
-    - name: Stage resource baselines
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
-          --output-dir _baselines \
-          --workspace-root .
-
     - name: Push to baselines branch
       shell: bash
       # All templated values go through env first so a malicious input
@@ -152,3 +145,90 @@ runs:
         # its concurrency group so no race is expected; a non-FF rejection
         # here means something external moved the ref and warrants an alert.
         git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"
+
+    # ─── Android XML resource previews ────────────────────────────────────
+    # Sibling pipeline pushing to its own branch (default `preview_resources_main`).
+    # Workflows are disjoint from composable @Preview, so we keep the histories
+    # separate — independent bisect, independent diff comments, independent
+    # push cadence. See the `resource-branch` input docstring above.
+
+    - name: Render resource previews
+      if: inputs.resource-branch != ''
+      id: render-resources
+      shell: bash
+      env:
+        RENDER_TIMEOUT: ${{ inputs.timeout }}
+      # `compose-preview show-resources` self-no-ops on workspaces without
+      # any `resources.json` (exit 0 with "No Android resource previews
+      # found.") — the subsequent generate / push steps then short-circuit.
+      run: compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+
+    - name: Upload renderAndroidResources reports
+      if: failure() && steps.render-resources.outcome == 'failure'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: renderAndroidResources-reports
+        path: |
+          **/build/reports/tests/renderAndroidResources/
+          **/build/test-results/renderAndroidResources/
+          _resources.json
+        if-no-files-found: ignore
+        retention-days: 14
+
+    - name: Generate resource baselines
+      if: inputs.resource-branch != ''
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      # `generate-resources` globs `<module>/build/compose-previews/resources.json`
+      # — the show-resources call above guarantees those exist + their PNGs
+      # are fresh on disk. Output dir is the staging tree the next step pushes.
+      run: |
+        python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
+          --output-dir _resource_baselines \
+          --workspace-root .
+
+    - name: Push to resource baselines branch
+      if: inputs.resource-branch != ''
+      shell: bash
+      env:
+        RESOURCE_BRANCH: ${{ inputs.resource-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        # Workspace had no resource manifests / no rendered PNGs — generate
+        # didn't create the staging dir. Skip the push silently rather than
+        # creating an empty branch.
+        if [ ! -d _resource_baselines ] || [ ! -f _resource_baselines/resource-baselines.json ]; then
+          echo "No resource baselines staged; skipping push to ${RESOURCE_BRANCH}."
+          exit 0
+        fi
+
+        cd _resource_baselines
+        git init -q
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git remote add origin \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+
+        git add -A
+        TREE=$(git write-tree)
+
+        PARENT=""
+        if git fetch --depth=1 --quiet origin "$RESOURCE_BRANCH" 2>/dev/null; then
+          PARENT=$(git rev-parse FETCH_HEAD)
+          PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
+          if [ "$TREE" = "$PARENT_TREE" ]; then
+            echo "Resource baselines unchanged vs ${RESOURCE_BRANCH}; skipping push."
+            exit 0
+          fi
+        fi
+
+        MSG="Update resource baselines from ${GITHUB_SHA::8}"
+        if [ -n "$PARENT" ]; then
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+        else
+          COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+        fi
+        git push --quiet origin "${COMMIT}:refs/heads/${RESOURCE_BRANCH}"

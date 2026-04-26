@@ -22,8 +22,15 @@ inputs:
     description: 'CLI render timeout in seconds.'
     default: '600'
   base-branch:
-    description: 'Branch name for baselines.'
+    description: 'Branch name for composable @Preview baselines.'
     default: 'preview_main'
+  resource-base-branch:
+    description: >
+      Branch name for Android XML resource baselines. Kept separate from
+      `base-branch` because resource and composable previews are disjoint
+      workflows (sibling sticky comments, sibling baseline branches). Set
+      to '' to skip the resource compare entirely.
+    default: 'preview_resources_main'
   head-branch:
     description: 'Shared branch that accumulates per-PR render commits.'
     default: 'preview_pr'
@@ -82,19 +89,13 @@ runs:
       shell: bash
       env:
         BASE_BRANCH: ${{ inputs.base-branch }}
+        RESOURCE_BASE_BRANCH: ${{ inputs.resource-base-branch }}
       run: |
         mkdir -p _baselines
         if git ls-remote --exit-code origin "$BASE_BRANCH" >/dev/null 2>&1; then
           git fetch origin "$BASE_BRANCH"
           git show "origin/${BASE_BRANCH}:baselines.json" \
             > _baselines/baselines.json 2>/dev/null || true
-          # Resource baselines are a sibling file written by the
-          # `Stage resource baselines` step in preview-baselines/action.yml.
-          # First-ever resource render on a project doesn't have it yet —
-          # `git show` returns non-zero, the file stays absent, and the
-          # compare-resources call below treats every resource as new.
-          git show "origin/${BASE_BRANCH}:resource-baselines.json" \
-            > _baselines/resource-baselines.json 2>/dev/null || true
           # Extract the baseline renders/ tree alongside baselines.json so
           # the pixelmatch-based perceptual filter in compare-previews.py
           # has both PNGs to diff. `git archive` writes to stdout so the
@@ -104,6 +105,17 @@ runs:
             | tar -x -C _baselines/ 2>/dev/null || true
         else
           echo "No $BASE_BRANCH branch yet — treating all previews as new."
+        fi
+        # Resource baselines live on their own branch (default
+        # `preview_resources_main`) — disjoint workflow from the composable
+        # `preview_main`. First-ever resource render on a project hasn't
+        # populated it yet; absent branch falls back to "treat every
+        # resource as new".
+        if [ -n "$RESOURCE_BASE_BRANCH" ] && \
+           git ls-remote --exit-code origin "$RESOURCE_BASE_BRANCH" >/dev/null 2>&1; then
+          git fetch origin "$RESOURCE_BASE_BRANCH"
+          git show "origin/${RESOURCE_BASE_BRANCH}:resource-baselines.json" \
+            > _baselines/resource-baselines.json 2>/dev/null || true
         fi
 
     - name: Install perceptual-diff dependencies
@@ -120,6 +132,7 @@ runs:
       shell: bash
       env:
         BASE_BRANCH: ${{ inputs.base-branch }}
+        RESOURCE_BASE_BRANCH: ${{ inputs.resource-base-branch }}
         REPO: ${{ github.repository }}
         GITHUB_TOKEN_INLINE: ${{ github.token }}
       run: |
@@ -137,6 +150,21 @@ runs:
           BASE_SHA="$BASE_BRANCH"
         fi
         echo "$BASE_SHA" > _base_sha
+        # Sibling Before SHA for the resources comment — pins to its own
+        # branch (default `preview_resources_main`). When the input is
+        # blank the resources comment is skipped further down anyway, so
+        # we also blank `_resource_base_sha` to be defensive.
+        if [ -n "$RESOURCE_BASE_BRANCH" ]; then
+          RESOURCE_BASE_SHA=$(git ls-remote \
+            "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+            "refs/heads/${RESOURCE_BASE_BRANCH}" | awk '{print $1}')
+          if [ -z "$RESOURCE_BASE_SHA" ]; then
+            RESOURCE_BASE_SHA="$RESOURCE_BASE_BRANCH"
+          fi
+        else
+          RESOURCE_BASE_SHA=""
+        fi
+        echo "$RESOURCE_BASE_SHA" > _resource_base_sha
 
     - name: Copy changed PNGs
       shell: bash
@@ -255,10 +283,17 @@ runs:
         # and Android XML resource changes are different concerns and should
         # be edited / scrolled past independently. Empty stdout when nothing
         # diffed; the post step below skips emitting an empty comment.
+        # Before URL pins to the resource base branch (default
+        # `preview_resources_main`), distinct from the composable BASE_REF
+        # so the markdown image links resolve to the right tree.
+        RESOURCE_BASE_REF=$(cat _resource_base_sha 2>/dev/null || true)
+        if [ -z "$RESOURCE_BASE_REF" ]; then
+          RESOURCE_BASE_REF="$BASE_REF"
+        fi
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
           --baselines _baselines/resource-baselines.json \
           --repo "$REPO" \
-          --base-ref "$BASE_REF" \
+          --base-ref "$RESOURCE_BASE_REF" \
           --head-ref "$HEAD_REF" \
           --workspace-root . \
           > _comment_body_resources.md
