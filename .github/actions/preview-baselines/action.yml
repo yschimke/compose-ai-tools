@@ -180,13 +180,14 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-      # `generate-resources` globs `<module>/build/compose-previews/resources.json`
-      # — the show-resources call above guarantees those exist + their PNGs
-      # are fresh on disk. Output dir is the staging tree the next step pushes.
+      # `generate-resources` consumes the same `_resources.json` envelope the
+      # `show-resources` step just wrote — absolute pngPath / sha256 / variant
+      # come straight from the CLI, no second filesystem walk. Output dir is
+      # the staging tree the next step pushes.
       run: |
         python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
-          --output-dir _resource_baselines \
-          --workspace-root .
+          _resources.json \
+          --output-dir _resource_baselines
 
     - name: Push to resource baselines branch
       if: inputs.resource-branch != ''

@@ -741,86 +741,102 @@ class MultiCaptureCompareTest(unittest.TestCase):
         self.assertIn("S_SCROLL_end.png", out)
 
 
+def _resource_envelope(*resources: dict) -> dict:
+    """Wrap one or more `resources` entries in the
+    `compose-preview-show-resources/v1` envelope shape the CLI emits."""
+    return {
+        "schema": "compose-preview-show-resources/v1",
+        "resources": list(resources),
+        "counts": None,
+        "manifestReferences": [],
+    }
+
+
+def _resource_entry(*, id: str, module: str, type: str = "VECTOR",
+                    captures: list) -> dict:
+    """Build a `ResourcePreviewResult`-shaped dict for the envelope."""
+    return {
+        "id": id,
+        "module": module,
+        "type": type,
+        "sourceFiles": {},
+        "captures": captures,
+    }
+
+
+def _resource_capture(*, render_output: str, png_path: str | None,
+                      sha256: str | None,
+                      qualifiers: str | None = None,
+                      shape: str | None = None) -> dict:
+    """Build a `ResourceCaptureResult`-shaped dict for the envelope."""
+    return {
+        "variant": {"qualifiers": qualifiers, "shape": shape},
+        "renderOutput": render_output,
+        "pngPath": png_path,
+        "sha256": sha256,
+        "changed": None,
+    }
+
+
 class GenerateResourcesTests(unittest.TestCase):
-    """`cmd_generate_resources` walks `<module>/build/compose-previews/resources.json`
-    and stages the rendered PNGs / GIFs into `<output>/renders/<module>/resources/...`."""
+    """`cmd_generate_resources` reads `compose-preview show-resources --json`
+    output and stages the rendered PNGs / GIFs into
+    `<output>/renders/<module>/resources/...`."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
-        self.workspace = Path(self.tmp) / "ws"
-        self.workspace.mkdir()
-        self.output = Path(self.tmp) / "out"
+        self.tmp_path = Path(self.tmp)
+        self.png_root = self.tmp_path / "renders"
+        self.png_root.mkdir()
+        self.output = self.tmp_path / "out"
+        self.cli_json = self.tmp_path / "_resources.json"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp)
 
-    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
-        module_dir = self.workspace / module / "build" / "compose-previews"
-        module_dir.mkdir(parents=True, exist_ok=True)
-        (module_dir / "resources.json").write_text(json.dumps(manifest))
-        for relative, content in png_files.items():
-            target = module_dir / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+    def _stage_png(self, relative: str, content: bytes) -> Path:
+        """Drop a fixture PNG on disk and return its absolute path — mirrors
+        what the CLI emits as `pngPath` for a real render."""
+        target = self.png_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return target
+
+    def _write_envelope(self, *resources: dict) -> None:
+        self.cli_json.write_text(json.dumps(_resource_envelope(*resources)))
 
     def _run(self) -> int:
         from types import SimpleNamespace
         return cp.cmd_generate_resources(SimpleNamespace(
+            cli_json=str(self.cli_json),
             output_dir=str(self.output),
-            workspace_root=str(self.workspace),
         ))
 
     def test_no_manifests_is_a_clean_noop(self) -> None:
+        # Empty envelope (the CLI's "no Android modules" output).
+        self._write_envelope()
         self.assertEqual(self._run(), 0)
         # Output dir shouldn't be created when there's nothing to do — keeps
         # the baselines tree byte-identical for projects that don't write XML
         # resources.
         self.assertFalse(self.output.exists())
 
-    def test_finds_resources_json_in_nested_module_layouts(self) -> None:
-        """Regression for the `preview_resources_main`-not-created bug: this
-        repo's modules live at `samples/android/build/...` (two segments
-        deep), but the helper used to walk only one segment deep with
-        `workspace_root.glob('*/build/...')`. Nested layouts silently
-        produced empty entries, so the staging step skipped the push."""
-        manifest = {
-            "module": "samples:android",
-            "variant": "debug",
-            "resources": [
-                {
-                    "id": "drawable/ic_logo",
-                    "type": "VECTOR",
-                    "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
-                    "captures": [
-                        {
-                            "variant": {"qualifiers": "xhdpi", "shape": None},
-                            "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
-                        }
-                    ],
-                }
-            ],
-            "manifestReferences": [],
-        }
-        self._write_module(
-            "samples/android",
-            manifest,
-            {"renders/resources/drawable/ic_logo_xhdpi.png": b"vector-bytes"},
-        )
+    def test_translates_gradle_module_path_to_filesystem_layout(self) -> None:
+        """The CLI emits `module: "samples:android"` (gradle path); the
+        baselines tree wants `samples/android` so `renders/<module>/...`
+        resolves to a real directory tree on the GitHub-served raw URLs."""
+        png = self._stage_png("ic_logo_xhdpi.png", b"vector-bytes")
+        self._write_envelope(_resource_entry(
+            id="drawable/ic_logo", module="samples:android",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ic_logo_xhdpi.png",
+                png_path=str(png), sha256="abc", qualifiers="xhdpi",
+            )],
+        ))
         self.assertEqual(self._run(), 0)
-        # The generate step writes resource-baselines.json into the output dir
-        # ONLY when it found at least one resources.json on disk. Pre-fix,
-        # the recursive glob missed `samples/android/...` and the file was
-        # never written → preview-baselines/action.yml's push step
-        # short-circuited with "No resource baselines staged".
         baselines_file = self.output / "resource-baselines.json"
-        self.assertTrue(
-            baselines_file.exists(),
-            f"resource-baselines.json should exist after generate; got {list(self.output.iterdir()) if self.output.exists() else 'no output dir'}",
-        )
+        self.assertTrue(baselines_file.exists())
         baselines = json.loads(baselines_file.read_text())
-        self.assertEqual(len(baselines), 1)
-        # Module name comes from the filesystem path, with `/` left as-is so
-        # gradle:path-style identifiers map cleanly to the same string.
         first_key = next(iter(baselines))
         self.assertTrue(
             first_key.startswith("samples/android::"),
@@ -828,26 +844,14 @@ class GenerateResourcesTests(unittest.TestCase):
         )
 
     def test_copies_pngs_and_writes_resource_baselines_json(self) -> None:
-        self._write_module(
-            "app",
-            manifest={
-                "module": "app", "variant": "debug",
-                "resources": [
-                    {
-                        "id": "drawable/ic_logo",
-                        "type": "VECTOR",
-                        "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
-                        "captures": [{
-                            "variant": {"qualifiers": "xhdpi", "shape": None},
-                            "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
-                            "cost": 1.0,
-                        }],
-                    },
-                ],
-                "manifestReferences": [],
-            },
-            png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"png-bytes"},
-        )
+        png = self._stage_png("ic_logo_xhdpi.png", b"png-bytes")
+        self._write_envelope(_resource_entry(
+            id="drawable/ic_logo", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ic_logo_xhdpi.png",
+                png_path=str(png), sha256="abc", qualifiers="xhdpi",
+            )],
+        ))
 
         self.assertEqual(self._run(), 0)
 
@@ -869,55 +873,39 @@ class GenerateResourcesTests(unittest.TestCase):
         self.assertIsNone(entry["shape"])
         self.assertEqual(entry["renderBasename"], "resources/drawable/ic_logo_xhdpi.png")
 
-    def test_skips_captures_whose_pngs_dont_exist(self) -> None:
-        self._write_module(
-            "app",
-            manifest={
-                "module": "app", "variant": "debug",
-                "resources": [{
-                    "id": "drawable/ghost",
-                    "type": "VECTOR",
-                    "sourceFiles": {"": "src/main/res/drawable/ghost.xml"},
-                    "captures": [{
-                        "variant": {"qualifiers": "xhdpi", "shape": None},
-                        "renderOutput": "renders/resources/drawable/ghost_xhdpi.png",
-                    }],
-                }],
-                "manifestReferences": [],
-            },
-            png_files={},  # discovery saw the resource but renderer hasn't run
-        )
+    def test_skips_captures_whose_pngs_arent_in_envelope(self) -> None:
+        # CLI emits null pngPath/sha256 when discovery saw the resource but
+        # the renderer didn't produce a PNG (capture too expensive, error,
+        # etc.). These shouldn't land in the baseline.
+        self._write_envelope(_resource_entry(
+            id="drawable/ghost", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ghost_xhdpi.png",
+                png_path=None, sha256=None, qualifiers="xhdpi",
+            )],
+        ))
         self.assertEqual(self._run(), 0)
         # No baselines file should be written, since no PNG exists to record.
         self.assertFalse((self.output / "resource-baselines.json").exists())
 
     def test_records_adaptive_icon_shape_per_capture(self) -> None:
-        self._write_module(
-            "app",
-            manifest={
-                "module": "app", "variant": "debug",
-                "resources": [{
-                    "id": "mipmap/ic_launcher",
-                    "type": "ADAPTIVE_ICON",
-                    "sourceFiles": {"anydpi-v26": "src/main/res/mipmap-anydpi-v26/ic_launcher.xml"},
-                    "captures": [
-                        {
-                            "variant": {"qualifiers": "xhdpi", "shape": "CIRCLE"},
-                            "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
-                        },
-                        {
-                            "variant": {"qualifiers": "xhdpi", "shape": "LEGACY"},
-                            "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
-                        },
-                    ],
-                }],
-                "manifestReferences": [],
-            },
-            png_files={
-                "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png": b"circle",
-                "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png": b"legacy",
-            },
-        )
+        circle = self._stage_png("ic_launcher_xhdpi_SHAPE_circle.png", b"circle")
+        legacy = self._stage_png("ic_launcher_xhdpi_LEGACY.png", b"legacy")
+        self._write_envelope(_resource_entry(
+            id="mipmap/ic_launcher", module="app", type="ADAPTIVE_ICON",
+            captures=[
+                _resource_capture(
+                    render_output="renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+                    png_path=str(circle), sha256="c1",
+                    qualifiers="xhdpi", shape="CIRCLE",
+                ),
+                _resource_capture(
+                    render_output="renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+                    png_path=str(legacy), sha256="l1",
+                    qualifiers="xhdpi", shape="LEGACY",
+                ),
+            ],
+        ))
         self.assertEqual(self._run(), 0)
         baselines = json.loads((self.output / "resource-baselines.json").read_text())
         shapes = sorted(entry["shape"] for entry in baselines.values())
@@ -927,23 +915,14 @@ class GenerateResourcesTests(unittest.TestCase):
         # Simulate `cmd_generate` having already written a composable README.
         self.output.mkdir()
         (self.output / "README.md").write_text("# Preview Baselines\n\n## sample-android\n\n…\n")
-        self._write_module(
-            "app",
-            manifest={
-                "module": "app", "variant": "debug",
-                "resources": [{
-                    "id": "drawable/ic_logo",
-                    "type": "VECTOR",
-                    "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
-                    "captures": [{
-                        "variant": {"qualifiers": "xhdpi", "shape": None},
-                        "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
-                    }],
-                }],
-                "manifestReferences": [],
-            },
-            png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"png"},
-        )
+        png = self._stage_png("ic_logo_xhdpi.png", b"png")
+        self._write_envelope(_resource_entry(
+            id="drawable/ic_logo", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ic_logo_xhdpi.png",
+                png_path=str(png), sha256="abc", qualifiers="xhdpi",
+            )],
+        ))
         self.assertEqual(self._run(), 0)
         readme = (self.output / "README.md").read_text()
         # Original composable section preserved.
@@ -953,35 +932,45 @@ class GenerateResourcesTests(unittest.TestCase):
         self.assertIn("`drawable/ic_logo`", readme)
         self.assertIn("VECTOR", readme)
 
+    def test_missing_envelope_file_is_a_clean_noop(self) -> None:
+        # The action's `> _resources.json 2>/dev/null || true` redirect
+        # truncates to 0 bytes if the CLI fails. Treat as no entries.
+        self.cli_json.write_text("")
+        self.assertEqual(self._run(), 0)
+        self.assertFalse(self.output.exists())
+
 
 class CopyChangedResourcesTests(unittest.TestCase):
     """`cmd_copy_changed_resources` mirrors `cmd_copy_changed` for resource
-    captures: globs each module's `resources.json`, hashes the rendered PNGs,
-    and copies new/changed entries into `<output>/renders/<module>/...`."""
+    captures: reads `compose-preview show-resources --json`, compares each
+    capture's sha256 against the prior baseline, and copies new/changed
+    entries into `<output>/renders/<module>/...`."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
-        self.workspace = Path(self.tmp) / "ws"
-        self.workspace.mkdir()
-        self.output = Path(self.tmp) / "out"
-        self.baselines = Path(self.tmp) / "resource-baselines.json"
+        self.tmp_path = Path(self.tmp)
+        self.png_root = self.tmp_path / "renders"
+        self.png_root.mkdir()
+        self.output = self.tmp_path / "out"
+        self.baselines = self.tmp_path / "resource-baselines.json"
+        self.cli_json = self.tmp_path / "_resources.json"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp)
 
-    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
-        module_dir = self.workspace / module / "build" / "compose-previews"
-        module_dir.mkdir(parents=True, exist_ok=True)
-        (module_dir / "resources.json").write_text(json.dumps(manifest))
-        for relative, content in png_files.items():
-            target = module_dir / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+    def _stage_png(self, relative: str, content: bytes) -> Path:
+        target = self.png_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return target
+
+    def _write_envelope(self, *resources: dict) -> None:
+        self.cli_json.write_text(json.dumps(_resource_envelope(*resources)))
 
     def _run(self) -> int:
         from types import SimpleNamespace
         return cp.cmd_copy_changed_resources(SimpleNamespace(
-            workspace_root=str(self.workspace),
+            cli_json=str(self.cli_json),
             baselines=str(self.baselines),
             output_dir=str(self.output),
         ))
@@ -989,32 +978,25 @@ class CopyChangedResourcesTests(unittest.TestCase):
     def test_copies_only_new_or_changed_pngs(self) -> None:
         # Three captures: one matches baseline (skip), one differs (changed,
         # copy), one is absent from baseline (new, copy).
-        manifest = {
-            "module": "app", "variant": "debug",
-            "resources": [
-                {"id": "drawable/same", "type": "VECTOR",
-                 "sourceFiles": {"": "src/main/res/drawable/same.xml"},
-                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                               "renderOutput": "renders/resources/drawable/same_xhdpi.png"}]},
-                {"id": "drawable/changed", "type": "VECTOR",
-                 "sourceFiles": {"": "src/main/res/drawable/changed.xml"},
-                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                               "renderOutput": "renders/resources/drawable/changed_xhdpi.png"}]},
-                {"id": "drawable/new", "type": "VECTOR",
-                 "sourceFiles": {"": "src/main/res/drawable/new.xml"},
-                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                               "renderOutput": "renders/resources/drawable/new_xhdpi.png"}]},
-            ],
-            "manifestReferences": [],
-        }
-        self._write_module("app", manifest, {
-            "renders/resources/drawable/same_xhdpi.png": b"same",
-            "renders/resources/drawable/changed_xhdpi.png": b"NEW-CONTENT",
-            "renders/resources/drawable/new_xhdpi.png": b"new",
-        })
-        # Baseline has the SAME and CHANGED entries with their old shas.
-        same_sha = cp.sha256(self.workspace / "app" / "build" / "compose-previews"
-                             / "renders/resources/drawable/same_xhdpi.png")
+        same = self._stage_png("same_xhdpi.png", b"same")
+        changed = self._stage_png("changed_xhdpi.png", b"NEW-CONTENT")
+        new = self._stage_png("new_xhdpi.png", b"new")
+        same_sha = cp.sha256(same)
+
+        self._write_envelope(
+            _resource_entry(id="drawable/same", module="app", captures=[_resource_capture(
+                render_output="renders/resources/drawable/same_xhdpi.png",
+                png_path=str(same), sha256=same_sha, qualifiers="xhdpi",
+            )]),
+            _resource_entry(id="drawable/changed", module="app", captures=[_resource_capture(
+                render_output="renders/resources/drawable/changed_xhdpi.png",
+                png_path=str(changed), sha256="NEW-SHA", qualifiers="xhdpi",
+            )]),
+            _resource_entry(id="drawable/new", module="app", captures=[_resource_capture(
+                render_output="renders/resources/drawable/new_xhdpi.png",
+                png_path=str(new), sha256="brand-new-sha", qualifiers="xhdpi",
+            )]),
+        )
         self.baselines.write_text(json.dumps({
             "app::drawable/same::renders/resources/drawable/same_xhdpi.png": {
                 "sha256": same_sha,
@@ -1032,31 +1014,35 @@ class CopyChangedResourcesTests(unittest.TestCase):
         self.assertEqual(copied, ["changed_xhdpi.png", "new_xhdpi.png"])
 
     def test_no_resources_is_a_clean_noop(self) -> None:
+        self._write_envelope()
         self.assertEqual(self._run(), 0)
         self.assertFalse(self.output.exists())
 
 
 class CompareResourcesTests(unittest.TestCase):
-    """`cmd_compare_resources` emits a "Resource Changes" markdown section.
+    """`cmd_compare_resources` emits a "Resource Changes" markdown section
+    against `compose-preview show-resources --json` + `resource-baselines.json`.
     Empty stdout when no diff is detected."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
-        self.workspace = Path(self.tmp) / "ws"
-        self.workspace.mkdir()
-        self.baselines = Path(self.tmp) / "resource-baselines.json"
+        self.tmp_path = Path(self.tmp)
+        self.png_root = self.tmp_path / "renders"
+        self.png_root.mkdir()
+        self.baselines = self.tmp_path / "resource-baselines.json"
+        self.cli_json = self.tmp_path / "_resources.json"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp)
 
-    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
-        module_dir = self.workspace / module / "build" / "compose-previews"
-        module_dir.mkdir(parents=True, exist_ok=True)
-        (module_dir / "resources.json").write_text(json.dumps(manifest))
-        for relative, content in png_files.items():
-            target = module_dir / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+    def _stage_png(self, relative: str, content: bytes) -> Path:
+        target = self.png_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return target
+
+    def _write_envelope(self, *resources: dict) -> None:
+        self.cli_json.write_text(json.dumps(_resource_envelope(*resources)))
 
     def _run(self, base_ref: str = "deadbeef", head_ref: str = "cafef00d") -> str:
         import io, contextlib
@@ -1064,7 +1050,7 @@ class CompareResourcesTests(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             cp.cmd_compare_resources(SimpleNamespace(
-                workspace_root=str(self.workspace),
+                cli_json=str(self.cli_json),
                 baselines=str(self.baselines),
                 repo="owner/repo",
                 base_ref=base_ref,
@@ -1073,14 +1059,14 @@ class CompareResourcesTests(unittest.TestCase):
         return buf.getvalue()
 
     def test_emits_resource_changes_section_for_changed_capture(self) -> None:
-        self._write_module("app", manifest={
-            "module": "app", "variant": "debug",
-            "resources": [{"id": "drawable/ic_logo", "type": "VECTOR",
-                           "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
-                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                                         "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png"}]}],
-            "manifestReferences": [],
-        }, png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"NEW"})
+        png = self._stage_png("ic_logo_xhdpi.png", b"NEW")
+        self._write_envelope(_resource_entry(
+            id="drawable/ic_logo", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ic_logo_xhdpi.png",
+                png_path=str(png), sha256="NEW-SHA", qualifiers="xhdpi",
+            )],
+        ))
         self.baselines.write_text(json.dumps({
             "app::drawable/ic_logo::renders/resources/drawable/ic_logo_xhdpi.png": {
                 "sha256": "OLD-SHA",
@@ -1103,22 +1089,18 @@ class CompareResourcesTests(unittest.TestCase):
         # Four shape-mask captures of the same adaptive icon, all changed —
         # they should appear under a single `mipmap/ic_launcher` group, not
         # four separate ones (otherwise the comment drowns the diff).
-        captures = [
-            {"variant": {"qualifiers": "xhdpi", "shape": shape},
-             "renderOutput": f"renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png"}
-            for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY")
-        ]
-        png_files = {
-            f"renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png": shape.encode()
-            for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY")
-        }
-        self._write_module("app", manifest={
-            "module": "app", "variant": "debug",
-            "resources": [{"id": "mipmap/ic_launcher", "type": "ADAPTIVE_ICON",
-                           "sourceFiles": {"anydpi-v26": "src/main/res/mipmap-anydpi-v26/ic_launcher.xml"},
-                           "captures": captures}],
-            "manifestReferences": [],
-        }, png_files=png_files)
+        captures = []
+        for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY"):
+            png = self._stage_png(f"ic_launcher_xhdpi_{shape}.png", shape.encode())
+            captures.append(_resource_capture(
+                render_output=f"renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png",
+                png_path=str(png), sha256=f"NEW-{shape}",
+                qualifiers="xhdpi", shape=shape,
+            ))
+        self._write_envelope(_resource_entry(
+            id="mipmap/ic_launcher", module="app", type="ADAPTIVE_ICON",
+            captures=captures,
+        ))
         self.baselines.write_text(json.dumps({
             f"app::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png": {
                 "sha256": "OLD",
@@ -1133,22 +1115,22 @@ class CompareResourcesTests(unittest.TestCase):
         self.assertIn("Other variants:", out)
 
     def test_new_resource_shows_with_after_image(self) -> None:
-        self._write_module("app", manifest={
-            "module": "app", "variant": "debug",
-            "resources": [{"id": "drawable/new_icon", "type": "VECTOR",
-                           "sourceFiles": {"": "src/main/res/drawable/new_icon.xml"},
-                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                                         "renderOutput": "renders/resources/drawable/new_icon_xhdpi.png"}]}],
-            "manifestReferences": [],
-        }, png_files={"renders/resources/drawable/new_icon_xhdpi.png": b"hi"})
+        png = self._stage_png("new_icon_xhdpi.png", b"hi")
+        self._write_envelope(_resource_entry(
+            id="drawable/new_icon", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/new_icon_xhdpi.png",
+                png_path=str(png), sha256="hello", qualifiers="xhdpi",
+            )],
+        ))
         self.baselines.write_text("{}")
         out = self._run()
         self.assertIn("### New (1 variant(s) across 1 resource(s))", out)
         self.assertIn("`drawable/new_icon`", out)
 
     def test_removed_resource_appears_as_strikethrough(self) -> None:
-        # Empty workspace — every baseline entry counts as removed.
-        self.workspace.mkdir(exist_ok=True)
+        # Empty CLI envelope — every baseline entry counts as removed.
+        self._write_envelope()
         self.baselines.write_text(json.dumps({
             "app::drawable/gone::renders/resources/drawable/gone_xhdpi.png": {
                 "sha256": "abc",
@@ -1163,16 +1145,15 @@ class CompareResourcesTests(unittest.TestCase):
 
     def test_empty_when_nothing_changed(self) -> None:
         # Resource exists, baseline matches → no diff section at all.
-        self._write_module("app", manifest={
-            "module": "app", "variant": "debug",
-            "resources": [{"id": "drawable/stable", "type": "VECTOR",
-                           "sourceFiles": {"": "src/main/res/drawable/stable.xml"},
-                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                                         "renderOutput": "renders/resources/drawable/stable_xhdpi.png"}]}],
-            "manifestReferences": [],
-        }, png_files={"renders/resources/drawable/stable_xhdpi.png": b"stable"})
-        sha = cp.sha256(self.workspace / "app" / "build" / "compose-previews"
-                        / "renders/resources/drawable/stable_xhdpi.png")
+        png = self._stage_png("stable_xhdpi.png", b"stable")
+        sha = cp.sha256(png)
+        self._write_envelope(_resource_entry(
+            id="drawable/stable", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/stable_xhdpi.png",
+                png_path=str(png), sha256=sha, qualifiers="xhdpi",
+            )],
+        ))
         self.baselines.write_text(json.dumps({
             "app::drawable/stable::renders/resources/drawable/stable_xhdpi.png": {
                 "sha256": sha,
@@ -1241,26 +1222,21 @@ class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
     def test_empty_baselines_file_treats_every_resource_as_new(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
-        workspace = tmp / "ws"
-        workspace.mkdir()
         # Empty baseline file — the exact shape the action's truncating
         # redirect produces on first run.
         baselines = tmp / "resource-baselines.json"
         baselines.write_text("")
 
-        manifest_dir = workspace / "app" / "build" / "compose-previews"
-        manifest_dir.mkdir(parents=True)
-        (manifest_dir / "resources.json").write_text(json.dumps({
-            "module": "app", "variant": "debug",
-            "resources": [{"id": "drawable/foo", "type": "VECTOR",
-                           "sourceFiles": {"": "src/main/res/drawable/foo.xml"},
-                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
-                                         "renderOutput": "renders/resources/drawable/foo_xhdpi.png"}]}],
-            "manifestReferences": [],
-        }))
-        png = manifest_dir / "renders/resources/drawable/foo_xhdpi.png"
-        png.parent.mkdir(parents=True)
+        png = tmp / "foo_xhdpi.png"
         png.write_bytes(b"contents")
+        cli_json = tmp / "_resources.json"
+        cli_json.write_text(json.dumps(_resource_envelope(_resource_entry(
+            id="drawable/foo", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/foo_xhdpi.png",
+                png_path=str(png), sha256="contents-sha", qualifiers="xhdpi",
+            )],
+        ))))
 
         # Capture stdout; the run must succeed (no JSONDecodeError) AND emit
         # markdown listing the resource as new.
@@ -1269,7 +1245,7 @@ class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = cp.cmd_compare_resources(SimpleNamespace(
-                workspace_root=str(workspace),
+                cli_json=str(cli_json),
                 baselines=str(baselines),
                 repo="owner/repo",
                 base_ref="deadbeef",

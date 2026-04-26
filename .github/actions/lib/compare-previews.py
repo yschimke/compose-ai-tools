@@ -541,17 +541,17 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # generate-resources mode
 #
-# Sibling of `generate`. Walks every `<module>/build/compose-previews/resources.json`
-# under `--workspace-root` and copies the rendered PNGs / GIFs into
-# `<output_dir>/renders/<module>/resources/<...>` so they land in `preview_main`
-# alongside the existing composable baselines. Writes `resource-baselines.json`
-# next to `baselines.json` and appends a section to the README.
+# Sibling of `generate`. Reads `compose-preview show-resources --json` output
+# and copies each rendered PNG / GIF into
+# `<output_dir>/renders/<module>/resources/<...>` so they land in
+# `preview_resources_main` alongside the existing composable baselines.
+# Writes `resource-baselines.json` and appends a section to the README.
 #
-# Independent walk (rather than reusing the `compose-preview show --json`
-# output) — the CLI doesn't know about resources today, and keeping the
-# resources path orthogonal to the composable path means modules with no
-# `resources.json` (consumers who applied the plugin but never enabled
-# `composePreview.resourcePreviews`) don't perturb the existing baselines tree.
+# Mirrors the composable side's `cmd_generate` shape — a single CLI envelope
+# is the source of truth, no second filesystem walk. Modules without
+# `resources.json` are absent from the envelope (the CLI filters them out
+# via `isAndroidModule`), so workspaces that never opted into the resource
+# pipeline produce an empty `resources` list and short-circuit cleanly.
 # ---------------------------------------------------------------------------
 
 def _resource_render_dest(render_output: str) -> str:
@@ -566,71 +566,75 @@ def _resource_render_dest(render_output: str) -> str:
     return render_output
 
 
-def load_resource_manifests(workspace_root: Path) -> dict[str, dict]:
-    """Globs `<module>/build/compose-previews/resources.json` and returns a
-    flat key→entry map. Key shape: `<module>::<resourceId>::<renderOutput>` —
-    stable enough to detect changes across runs without colliding when a single
-    resource has multiple captures (e.g. adaptive-icon shape masks).
+def load_resource_results(cli_json_path: Path) -> dict[str, dict]:
+    """Parse `compose-preview show-resources --json` output into a flat key→entry map.
 
-    Walks recursively because consumer module layouts vary — flat
-    `app/build/...` works under a non-recursive glob, but nested layouts like
-    `samples/android/build/...` (used by this repo's own samples) need `**`.
-    The composable side dodges this via the CLI's Tooling-API module
-    enumeration (the resulting absolute paths are written into the JSON the
-    helper consumes); the resource side does its own filesystem walk and used
-    to silently miss every nested module on `preview_main` runs.
+    Key shape: `<module>::<resourceId>::<renderOutput>` — same convention the
+    earlier filesystem-walk variant used, so existing
+    `resource-baselines.json` files on `preview_resources_main` keep
+    matching. Module identifiers in the envelope are gradle paths
+    (`samples:android`); we translate `:` → `/` so the rendered tree under
+    `renders/<module>/...` keeps its filesystem-friendly layout.
 
-    Returns an empty dict when no `resources.json` exists anywhere — that's
-    the dominant case for projects that don't write XML drawables, and an
-    empty result is a no-op for `cmd_generate_resources`.
+    Treats missing / empty / malformed input as no entries (same shape as
+    `_load_baselines`). The `compose-preview show-resources` step always
+    writes the envelope, so an empty file means the CLI failed before
+    serialising — downstream steps then short-circuit gracefully rather than
+    crash.
     """
+    if not cli_json_path.exists():
+        return {}
+    try:
+        text = cli_json_path.read_text()
+    except OSError:
+        return {}
+    if not text.strip():
+        return {}
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
     out: dict[str, dict] = {}
-    # Skip the obvious noise dirs that can't contain a Gradle module's
-    # build/ output. Keeps the recursive walk fast on large monorepos.
-    skip_dirs = {".git", ".gradle", "node_modules", ".idea", "_baselines",
-                 "_resource_baselines", "_pr_renders"}
-    candidates = [
-        p for p in workspace_root.rglob("build/compose-previews/resources.json")
-        if not any(part in skip_dirs for part in p.relative_to(workspace_root).parts)
-    ]
-    for manifest_path in sorted(candidates):
-        module_dir = manifest_path.parent.parent.parent
-        module = str(module_dir.relative_to(workspace_root)).replace("\\", "/")
-        try:
-            manifest = json.loads(manifest_path.read_text())
-        except (OSError, json.JSONDecodeError):
+    for resource in raw.get("resources", []) or []:
+        gradle_path = resource.get("module") or ""
+        # `:samples:android` → `samples:android` (CLI strips leading `:` already,
+        # belt-and-braces) → `samples/android`, matching how composables layer
+        # their renders under `renders/<module>/...`.
+        module = gradle_path.lstrip(":").replace(":", "/")
+        resource_id = resource.get("id")
+        resource_type = resource.get("type", "")
+        if not resource_id:
             continue
-        for resource in manifest.get("resources", []) or []:
-            resource_id = resource.get("id")
-            resource_type = resource.get("type", "")
-            if not resource_id:
+        for capture in resource.get("captures", []) or []:
+            render_output = capture.get("renderOutput") or ""
+            if not render_output:
                 continue
-            for capture in resource.get("captures", []) or []:
-                render_output = capture.get("renderOutput") or ""
-                if not render_output:
-                    continue
-                src = module_dir / "build" / "compose-previews" / render_output
-                key = f"{module}::{resource_id}::{render_output}"
-                out[key] = {
-                    "module": module,
-                    "moduleDir": module_dir,
-                    "resourceId": resource_id,
-                    "resourceType": resource_type,
-                    "renderOutput": render_output,
-                    "destRelative": _resource_render_dest(render_output),
-                    "pngPath": src,
-                    "sha256": sha256(src) if src.exists() else None,
-                    "qualifiers": (capture.get("variant") or {}).get("qualifiers"),
-                    "shape": (capture.get("variant") or {}).get("shape"),
-                }
+            png_path = capture.get("pngPath")
+            sha = capture.get("sha256")
+            variant = capture.get("variant") or {}
+            key = f"{module}::{resource_id}::{render_output}"
+            out[key] = {
+                "module": module,
+                "resourceId": resource_id,
+                "resourceType": resource_type,
+                "renderOutput": render_output,
+                "destRelative": _resource_render_dest(render_output),
+                "pngPath": Path(png_path) if png_path else None,
+                "sha256": sha,
+                "qualifiers": variant.get("qualifiers"),
+                "shape": variant.get("shape"),
+            }
     return out
 
 
 def cmd_generate_resources(args: argparse.Namespace) -> int:
-    workspace_root = Path(args.workspace_root).resolve()
+    cli_json = Path(args.cli_json)
     out_dir = Path(args.output_dir)
 
-    entries = load_resource_manifests(workspace_root)
+    entries = load_resource_results(cli_json)
     if not entries:
         # Not an error — modules without resources.json are common.
         print("No Android resource manifests found; skipping resource baselines.",
@@ -708,21 +712,21 @@ def cmd_generate_resources(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
-    """Sibling of [cmd_copy_changed]. Globs every
-    `<workspace>/<module>/build/compose-previews/resources.json`, compares the
-    rendered PNGs / GIFs against `resource-baselines.json`, and copies new or
-    changed ones into `<output>/renders/<module>/resources/<...>`.
+    """Sibling of [cmd_copy_changed]. Reads
+    `compose-preview show-resources --json` output, compares the rendered
+    PNGs / GIFs against `resource-baselines.json`, and copies new or changed
+    ones into `<output>/renders/<module>/resources/<...>`.
 
-    Output layout matches [cmd_generate_resources] so the push to `preview_pr`
-    lands these PNGs at paths the comment markdown can `_render_url` to.
-    Modules without `resources.json` are skipped silently — same behaviour as
-    `cmd_generate_resources`.
+    Output layout matches [cmd_generate_resources] so the push to
+    `preview_resources_pr` lands these PNGs at paths the comment markdown
+    can `_resource_url` to. Empty CLI envelope (no Android modules) is a
+    silent no-op — same behaviour as `cmd_generate_resources`.
     """
-    workspace_root = Path(args.workspace_root).resolve()
+    cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     out_dir = Path(args.output_dir)
 
-    entries = load_resource_manifests(workspace_root)
+    entries = load_resource_results(cli_json)
     if not entries:
         return 0
     baselines = _load_baselines(baselines_path)
@@ -780,13 +784,13 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
     string when no resource manifests exist or no diff is detected, so the
     action can append unconditionally without polluting the comment.
     """
-    workspace_root = Path(args.workspace_root).resolve()
+    cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     repo = args.repo
     base_ref = args.base_ref
     head_ref = args.head_ref
 
-    current = load_resource_manifests(workspace_root)
+    current = load_resource_results(cli_json)
     baselines = _load_baselines(baselines_path)
 
     new: list[tuple[str, dict]] = []
@@ -933,34 +937,36 @@ def main() -> int:
 
     gen_res = sub.add_parser(
         "generate-resources",
-        help="Walk every <module>/build/compose-previews/resources.json and stage the "
-             "rendered PNGs / GIFs into the baselines tree. No-ops on workspaces "
-             "without any resources.json.",
+        help="Stage the rendered PNGs / GIFs from `compose-preview show-resources --json` "
+             "into the baselines tree. No-ops on empty envelopes (workspaces with no "
+             "Android resource modules).",
     )
+    gen_res.add_argument("cli_json",
+                         help="Path to compose-preview show-resources --json output")
     gen_res.add_argument("--output-dir", required=True)
-    gen_res.add_argument("--workspace-root", default=".",
-                         help="Root to glob for <module>/build/compose-previews/resources.json")
 
     cp_res = sub.add_parser(
         "copy-changed-resources",
         help="Sibling of `copy-changed` for resource captures.",
     )
+    cp_res.add_argument("cli_json",
+                        help="Path to compose-preview show-resources --json output")
     cp_res.add_argument("--baselines", required=True,
-                        help="Path to resource-baselines.json (fetched from preview_main)")
+                        help="Path to resource-baselines.json (fetched from preview_resources_main)")
     cp_res.add_argument("--output-dir", required=True)
-    cp_res.add_argument("--workspace-root", default=".")
 
     cmp_res = sub.add_parser(
         "compare-resources",
         help="Sibling of `compare` for resource captures. Emits the markdown section "
              "to append after the composable diff. Empty stdout when nothing changed.",
     )
+    cmp_res.add_argument("cli_json",
+                         help="Path to compose-preview show-resources --json output")
     cmp_res.add_argument("--baselines", required=True,
-                         help="Path to resource-baselines.json (fetched from preview_main)")
+                         help="Path to resource-baselines.json (fetched from preview_resources_main)")
     cmp_res.add_argument("--repo", required=True)
-    cmp_res.add_argument("--base-ref", default="preview_main")
+    cmp_res.add_argument("--base-ref", default="preview_resources_main")
     cmp_res.add_argument("--head-ref", required=True)
-    cmp_res.add_argument("--workspace-root", default=".")
 
     args = ap.parse_args()
     handlers = {
