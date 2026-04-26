@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer
 
+import android.animation.AnimatorSet
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -217,42 +218,211 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Renders [drawable] (an `AnimatedVectorDrawable` / `AnimatedVectorDrawableCompat`) into a GIF.
+   * Renders [drawable] (an `AnimatedVectorDrawable` / `AnimatedVectorDrawableCompat`) into a
+   * multi-frame GIF.
    *
-   * **Known limitation, documented:** under Robolectric's `looperMode=PAUSED` (which we pin
-   * because Compose's render path needs it — see `RobolectricRenderTestBase`), AVD's
-   * `ObjectAnimator` doesn't receive the `Choreographer` frame callbacks that drive its tick.
-   * Both `setVisible(true, true) + start() + idleFor(50ms)` and `LooperMode.LEGACY` (which gets
-   * overridden by the system property anyway) leave every frame at the animator's t=0 state.
+   * **The Robolectric paused-looper detour.** We pin `looperMode=PAUSED` because Compose's
+   * render path needs it. Under PAUSED, the AVD's `ObjectAnimator` doesn't receive the
+   * `Choreographer` frame callbacks that would normally tick its values forward — so a naive
+   * `start()` + `setVisible(true, true)` + `idleFor(50ms)` loop captures the same t=0 state on
+   * every frame. We tried both that idiom and `@LooperMode(LEGACY)` (overridden by the system
+   * property anyway) for #259/#277; both leave every frame at t=0.
    *
-   * Rather than write 30 identical frames, we emit a single-frame GIF showing the icon's rest
-   * state. Format stays `.gif` so the manifest/file-extension contract holds and a future
-   * commit that drives the animator (likely via a `RobolectricRenderTest.mainClock`-style
-   * Compose-host shim, or by parsing the animator XML and stepping values manually) can write
-   * multi-frame GIFs into the same path without touching the discovery / wiring side.
+   * **Workaround.** Reflect to the AVD's internal `AnimatorSet` and drive it manually via the
+   * public `setCurrentPlayTime(ms)` API. This bypasses Choreographer and the looper entirely:
+   * we walk frame times ourselves, set the animation clock, and capture each `draw()`. Works
+   * because `AnimatorSet.setCurrentPlayTime` synchronously updates each child animator's
+   * fraction and notifies its listeners (the AVD's `RenderNodeAnimatorSet`-equivalent path
+   * pokes the underlying `VectorDrawable`'s group/path properties), and the next `draw()`
+   * reflects those values.
+   *
+   * Falls back to a single-frame GIF (the previous behaviour) when reflection misses — e.g.
+   * an unfamiliar AVD subclass, or a future API where the field name changed. Single-frame is
+   * the safe degradation: the `.gif` extension stays intact so the manifest contract holds.
+   *
+   * Window length is bounded by [ANIMATED_DURATION_MS] regardless of `AnimatorSet.totalDuration`
+   * — looping animators (`repeatCount=-1`, e.g. the sample's pulse) report `DURATION_INFINITE`
+   * here, and even one-shot animators with `duration=10000` would produce an unwieldy GIF.
    */
   private fun renderAnimatedVector(drawable: Drawable, animatable: Animatable, outFile: File) {
     val width = drawable.intrinsicWidth.coerceAtLeast(1)
     val height = drawable.intrinsicHeight.coerceAtLeast(1)
     drawable.setBounds(0, 0, width, height)
     drawable.setVisible(true, true)
-    animatable.start()
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val frame: BufferedImage =
+    val frames =
       try {
-        val canvas = Canvas(bitmap)
-        drawable.draw(canvas)
-        bitmap.toBufferedImage()
+        val animatorSet = extractAnimatorSet(drawable, animatable)
+        if (animatorSet != null) {
+          captureAnimatedFrames(drawable, animatorSet, width, height)
+        } else {
+          listOf(captureSingleFrame(drawable, width, height))
+        }
       } finally {
-        bitmap.recycle()
-        animatable.stop()
         drawable.setVisible(false, false)
       }
     ScrollGifEncoder.encode(
-      frames = listOf(frame),
+      frames = frames,
       outputFile = outFile,
-      frameDelayMs = ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS,
+      frameDelayMs = ANIMATED_FRAME_INTERVAL_MS.toInt(),
     )
+  }
+
+  /**
+   * Extracts the internal `AnimatorSet` from an `AnimatedVectorDrawable` (platform) or
+   * `AnimatedVectorDrawableCompat` (support lib) via reflection. Returns `null` when the
+   * drawable isn't an AVD, or when the field layout has shifted in a way we don't handle —
+   * caller falls back to the single-frame path.
+   *
+   * Both implementations stash the animator on a state class behind a field whose name has
+   * been stable since the support lib's introduction (`mAnimatedVectorState.mAnimatorSet` for
+   * platform; `mAnimatedVectorState.mAnimatorSet` for compat too). Search both class
+   * hierarchies so a future subclass override doesn't break us silently.
+   */
+  private fun extractAnimatorSet(drawable: Drawable, animatable: Animatable): AnimatorSet? {
+    // Walking the drawable's class hierarchy looking for any `AnimatorSet` field. Tries the
+    // direct field first (`mAnimatorSetFromXml` on the platform AVD), then falls back to
+    // probing inside `mAnimatedVectorState` and the `mAnimatorSet` wrapper
+    // (`VectorDrawableAnimatorRT` on the platform path) — under Robolectric the direct
+    // field starts null because the inflate path doesn't populate it; the wrapper does
+    // hold an `AnimatorSet` reference once we kick start() the animation below.
+    //
+    // start() before reflection: forces the AVD to construct its child AnimatorSet on
+    // demand. Without it both `mAnimatorSetFromXml` and the wrapper's internal animator
+    // are null at this point.
+    animatable.start()
+    return try {
+      // Direct AnimatorSet field on the drawable (fast path — when populated).
+      findFieldValue(drawable) { it is AnimatorSet }?.let { return it as AnimatorSet }
+
+      // Drawable.mAnimatorSet on the platform AVD is `VectorDrawableAnimator` (an interface
+      // implemented by `VectorDrawableAnimatorRT` and `VectorDrawableAnimatorUI`); both
+      // hold a child AnimatorSet via reflectable fields.
+      val animatorWrapper =
+        findFieldValueByName(drawable, "mAnimatorSet")
+          ?: findFieldValueByName(drawable, "mAnimatorSetFromXml")
+      if (animatorWrapper != null) {
+        if (animatorWrapper is AnimatorSet) return animatorWrapper
+        findFieldValue(animatorWrapper) { it is AnimatorSet }?.let { return it as AnimatorSet }
+      }
+
+      // mAnimatedVectorState.<...>.AnimatorSet — search one level into the state.
+      val state = findFieldValueByName(drawable, "mAnimatedVectorState")
+      if (state != null) {
+        findFieldValue(state) { it is AnimatorSet }?.let { return it as AnimatorSet }
+      }
+
+      System.err.println(
+        "compose-preview: no AnimatorSet found in ${drawable.javaClass.name} " +
+          "(state=${state?.javaClass?.name}, wrapper=${animatorWrapper?.javaClass?.name}); " +
+          "falling back to single-frame GIF"
+      )
+      null
+    } catch (e: Throwable) {
+      System.err.println(
+        "compose-preview: AVD AnimatorSet reflection failed (${e.javaClass.simpleName}: " +
+          "${e.message}); falling back to single-frame GIF"
+      )
+      null
+    }
+  }
+
+  private fun findFieldValueByName(target: Any, name: String): Any? {
+    var cls: Class<*>? = target.javaClass
+    while (cls != null) {
+      val field = cls.declaredFields.firstOrNull { it.name == name }
+      if (field != null && !java.lang.reflect.Modifier.isStatic(field.modifiers)) {
+        return try {
+          field.isAccessible = true
+          field.get(target)
+        } catch (_: Throwable) {
+          null
+        }
+      }
+      cls = cls.superclass
+    }
+    return null
+  }
+
+  /**
+   * Walks [target]'s class hierarchy (including superclasses) and returns the first non-null
+   * field value matching [predicate]. Skips static fields and tolerates per-field access
+   * failures (returns the next candidate rather than aborting). One-level only — no recursion
+   * into the returned objects, which is what kept the previous implementation safe from JDK
+   * 17+ module-access restrictions on private collection internals.
+   */
+  private fun findFieldValue(target: Any, predicate: (Any?) -> Boolean): Any? {
+    var cls: Class<*>? = target.javaClass
+    while (cls != null) {
+      for (field in cls.declaredFields) {
+        if (java.lang.reflect.Modifier.isStatic(field.modifiers)) continue
+        try {
+          field.isAccessible = true
+          val value = field.get(target) ?: continue
+          if (predicate(value)) return value
+        } catch (_: Throwable) {
+          // Field inaccessible (e.g. JDK 17 module-restricted) or the value getter
+          // threw — try the next field.
+        }
+      }
+      cls = cls.superclass
+    }
+    return null
+  }
+
+  /**
+   * Walks the animator's timeline in [ANIMATED_FRAME_INTERVAL_MS] increments, captures one
+   * bitmap per frame. Caller has already called `setVisible(true, true)`. We `start()` the
+   * animator before stepping because `setCurrentPlayTime` on a never-started animator
+   * sometimes leaves children uninitialised; the explicit start ensures `mInitialized` is
+   * true on each child `ObjectAnimator`.
+   */
+  private fun captureAnimatedFrames(
+    drawable: Drawable,
+    animatorSet: AnimatorSet,
+    width: Int,
+    height: Int,
+  ): List<BufferedImage> {
+    val rawDuration = animatorSet.totalDuration
+    val duration =
+      if (rawDuration <= 0L || rawDuration == AnimatorSet.DURATION_INFINITE) {
+        ANIMATED_DURATION_MS
+      } else {
+        rawDuration.coerceAtMost(ANIMATED_DURATION_MS)
+      }
+    val frameCount = (duration / ANIMATED_FRAME_INTERVAL_MS).toInt().coerceAtLeast(2)
+    val frames = ArrayList<BufferedImage>(frameCount)
+    animatorSet.start()
+    try {
+      for (i in 0 until frameCount) {
+        val t = (i * ANIMATED_FRAME_INTERVAL_MS).coerceAtMost(duration - 1)
+        animatorSet.currentPlayTime = t
+        // Force the drawable to re-evaluate against the new animator state — without this,
+        // some AVD impls cache the last-drawn bitmap and skip the per-property update.
+        drawable.invalidateSelf()
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+          val canvas = Canvas(bitmap)
+          drawable.draw(canvas)
+          frames += bitmap.toBufferedImage()
+        } finally {
+          bitmap.recycle()
+        }
+      }
+    } finally {
+      animatorSet.cancel()
+    }
+    return frames
+  }
+
+  private fun captureSingleFrame(drawable: Drawable, width: Int, height: Int): BufferedImage {
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    return try {
+      val canvas = Canvas(bitmap)
+      drawable.draw(canvas)
+      bitmap.toBufferedImage()
+    } finally {
+      bitmap.recycle()
+    }
   }
 
   /**
@@ -279,5 +449,15 @@ class ResourcePreviewRenderTest {
 
   private companion object {
     val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Hard ceiling on AVD GIF length. Looping animators (`repeatCount=-1`, e.g. the sample's
+     * pulse) report `AnimatorSet.DURATION_INFINITE` from `totalDuration` and would otherwise
+     * walk forever; one-shot animators with `duration=10000` would produce an unwieldy GIF.
+     * 1.5s × 50ms/frame = 30 frames, enough to show ~2.5 cycles of a 600ms pulse.
+     */
+    const val ANIMATED_DURATION_MS: Long = 1500L
+
+    const val ANIMATED_FRAME_INTERVAL_MS: Long = 50L
   }
 }
