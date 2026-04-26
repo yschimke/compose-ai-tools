@@ -2,6 +2,11 @@ package ee.schimke.composeai.renderer
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
@@ -18,10 +23,8 @@ import org.robolectric.annotation.Config
  * (path via `composeai.resources.manifest`), iterates every [RenderResourceCapture], and writes a
  * PNG to the directory pointed at by `composeai.resources.outputDir`.
  *
- * Initial scope (this iteration): `RenderResourceType.VECTOR` only. `ANIMATED_VECTOR` and
- * `ADAPTIVE_ICON` captures are skipped with a single lifecycle-log line so the missing files don't
- * surprise downstream consumers — they land in subsequent commits (adaptive shape masks +
- * animated-vector GIF encoding).
+ * Supports `RenderResourceType.VECTOR` and `RenderResourceType.ADAPTIVE_ICON`. `ANIMATED_VECTOR`
+ * captures are skipped — they land in commit 4 (GIF encoding via `ScrollGifEncoder`).
  *
  * Robolectric setup mirrors [RobolectricRenderTest]'s pin: SDK 35, NATIVE graphics, paused looper,
  * hardware pixel-copy. The Gradle task wiring (`renderAndroidResources`) sets the same system
@@ -52,8 +55,8 @@ class ResourcePreviewRenderTest {
     var skipped = 0
     var missing = 0
     for (preview in manifest.resources) {
-      if (preview.type != RenderResourceType.VECTOR) {
-        // ADAPTIVE_ICON + ANIMATED_VECTOR land in follow-up commits.
+      if (preview.type == RenderResourceType.ANIMATED_VECTOR) {
+        // GIF encoding lands in commit 4.
         skipped += preview.captures.size
         continue
       }
@@ -82,15 +85,35 @@ class ResourcePreviewRenderTest {
           missing++
           continue
         }
-        val width = drawable.intrinsicWidth.coerceAtLeast(1)
-        val height = drawable.intrinsicHeight.coerceAtLeast(1)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val outFile = resolveOutputPath(outputRoot, capture.renderOutput)
+        outFile.parentFile?.mkdirs()
+
+        val bitmap =
+          when (preview.type) {
+            RenderResourceType.VECTOR -> renderStaticDrawable(drawable)
+            RenderResourceType.ADAPTIVE_ICON -> {
+              val shape = capture.variant?.shape
+              if (shape == null) {
+                System.err.println(
+                  "compose-preview: adaptive icon ${preview.id} capture has no shape; skipping"
+                )
+                missing++
+                continue
+              }
+              val adaptive = drawable as? AdaptiveIconDrawable
+              if (adaptive == null) {
+                System.err.println(
+                  "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
+                    "not AdaptiveIconDrawable; skipping ${shape.name} capture"
+                )
+                missing++
+                continue
+              }
+              renderAdaptiveIcon(adaptive, shape)
+            }
+            RenderResourceType.ANIMATED_VECTOR -> error("unreachable") // filtered above
+          }
         try {
-          val canvas = Canvas(bitmap)
-          drawable.setBounds(0, 0, width, height)
-          drawable.draw(canvas)
-          val outFile = resolveOutputPath(outputRoot, capture.renderOutput)
-          outFile.parentFile?.mkdirs()
           outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         } finally {
           bitmap.recycle()
@@ -102,6 +125,80 @@ class ResourcePreviewRenderTest {
       "compose-preview resource render: $rendered PNG(s), $skipped capture(s) skipped " +
         "(unsupported type), $missing capture(s) missing"
     )
+  }
+
+  /** Plain drawable → bitmap canvas at intrinsic size. Used for vectors. */
+  private fun renderStaticDrawable(drawable: Drawable): Bitmap {
+    val width = drawable.intrinsicWidth.coerceAtLeast(1)
+    val height = drawable.intrinsicHeight.coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, width, height)
+    drawable.draw(canvas)
+    return bitmap
+  }
+
+  /**
+   * Composites foreground + background into a 108dp canvas, then masks to [shape]. The mask path
+   * uses [PorterDuff.Mode.SRC_IN] so anti-aliased edges come through cleanly — `Canvas.clipPath` is
+   * documented as not anti-aliased, which produces visible jaggies on circular masks at the
+   * densities we render at.
+   *
+   * `LEGACY` skips the mask and renders just the foreground against transparent, approximating the
+   * pre-API-26 fallback. Real legacy mipmap files (`mipmap-mdpi/ic_launcher.png` etc.) aren't
+   * surfaced through `AdaptiveIconDrawable.foreground`, so this is the closest approximation
+   * without parsing the consumer's mipmap directory ourselves.
+   */
+  private fun renderAdaptiveIcon(drawable: AdaptiveIconDrawable, shape: RenderAdaptiveShape): Bitmap {
+    val width = drawable.intrinsicWidth.coerceAtLeast(1)
+    val height = drawable.intrinsicHeight.coerceAtLeast(1)
+
+    if (shape == RenderAdaptiveShape.LEGACY) {
+      val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bitmap)
+      drawable.foreground?.also {
+        it.setBounds(0, 0, width, height)
+        it.draw(canvas)
+      }
+      return bitmap
+    }
+
+    // 1. Compose fg+bg into an offscreen bitmap so the SRC_IN compositor below has a single
+    //    layer to mask.
+    val composed = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    try {
+      val composedCanvas = Canvas(composed)
+      drawable.background?.also {
+        it.setBounds(0, 0, width, height)
+        it.draw(composedCanvas)
+      }
+      drawable.foreground?.also {
+        it.setBounds(0, 0, width, height)
+        it.draw(composedCanvas)
+      }
+
+      // 2. Draw the mask shape into the output bitmap, then composite the icon with SRC_IN so
+      //    only the masked pixels survive — anti-aliased.
+      val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      val outputCanvas = Canvas(output)
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+      val rect = RectF(0f, 0f, width.toFloat(), height.toFloat())
+      when (shape) {
+        RenderAdaptiveShape.CIRCLE ->
+          outputCanvas.drawCircle(width / 2f, height / 2f, width / 2f, paint)
+        RenderAdaptiveShape.ROUNDED_SQUARE -> {
+          val r = width * 0.22f
+          outputCanvas.drawRoundRect(rect, r, r, paint)
+        }
+        RenderAdaptiveShape.SQUARE -> outputCanvas.drawRect(rect, paint)
+        RenderAdaptiveShape.LEGACY -> error("unreachable") // handled above
+      }
+      paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+      outputCanvas.drawBitmap(composed, 0f, 0f, paint)
+      return output
+    } finally {
+      composed.recycle()
+    }
   }
 
   /**
