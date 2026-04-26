@@ -125,11 +125,28 @@ data class AccessibilityNode(
      */
     val role: String? = null,
     /**
-     * Extra semantic state (`selected`, `checked`, `unchecked`). Empty for
-     * stateless nodes. Heading isn't here — ATF's hierarchy doesn't expose
-     * it cleanly enough to detect Compose-side `Modifier.semantics { heading() }`.
+     * Non-default behavioural / state flags surfaced to the legend
+     * subtitle. Currently emitted (when their underlying value differs
+     * from the View default): `clickable`, `long-clickable`, `scrollable`,
+     * `editable`, `disabled`, `checked` / `unchecked`, plus the verbatim
+     * `getStateDescription()` string and a `hint: <text>` line for
+     * `getHintText()`. Heading isn't here — ATF's hierarchy doesn't
+     * expose it cleanly enough to detect Compose-side
+     * `Modifier.semantics { heading() }`.
      */
     val states: List<String> = emptyList(),
+    /**
+     * `true` when this node is its own TalkBack focus target
+     * (ATF: `isScreenReaderFocusable()`, or no screen-reader-focusable
+     * ancestor exists). `false` when it sits underneath a focusable
+     * ancestor — e.g. the inner `Text` of a `Button` whose semantics
+     * are merged into the button. The overlay uses this to draw
+     * unmerged descendants with a dashed border + `↳ ` legend prefix
+     * so reviewers can see structure without confusing it for "two
+     * separate TalkBack stops". Default `true` keeps older
+     * `accessibility.json` files parsing as merged.
+     */
+    val merged: Boolean = true,
     /** `left,top,right,bottom` in source-bitmap pixels — same shape as [AccessibilityFinding.boundsInScreen]. */
     val boundsInScreen: String,
 )
