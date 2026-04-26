@@ -1,0 +1,9 @@
+{
+  "queued": ["com.example.HomeKt#HomePreview"],
+  "rejected": [
+    {
+      "id": "com.example.HomeKt#HomePreviewDark",
+      "reason": "unknown preview ID"
+    }
+  ]
+}

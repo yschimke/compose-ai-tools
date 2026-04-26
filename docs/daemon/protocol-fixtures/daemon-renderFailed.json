@@ -1,0 +1,8 @@
+{
+  "id": "com.example.HomeKt#HomePreview",
+  "error": {
+    "kind": "runtime",
+    "message": "java.lang.IllegalStateException: not on main thread",
+    "stackTrace": "java.lang.IllegalStateException: not on main thread\n\tat ee.schimke.composeai.daemon.RenderEngine.render(RenderEngine.kt:42)"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "renderStarted",
+  "params": {
+    "id": "com.example.HomeKt#HomePreview",
+    "queuedMs": 12
+  }
+}

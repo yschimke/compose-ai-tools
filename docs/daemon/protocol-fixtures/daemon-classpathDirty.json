@@ -1,0 +1,7 @@
+{
+  "reason": "fingerprintMismatch",
+  "detail": "libs.versions.toml SHA changed since daemon start",
+  "changedPaths": [
+    "/home/dev/projects/my-app/gradle/libs.versions.toml"
+  ]
+}
