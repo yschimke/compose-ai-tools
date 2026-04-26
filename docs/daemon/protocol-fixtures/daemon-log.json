@@ -1,0 +1,9 @@
+{
+  "level": "info",
+  "message": "discovery scan complete",
+  "category": "discovery",
+  "context": {
+    "scannedClasses": 124,
+    "previewsFound": 42
+  }
+}

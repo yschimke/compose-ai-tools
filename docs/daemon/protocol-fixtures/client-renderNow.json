@@ -1,0 +1,5 @@
+{
+  "previews": ["com.example.HomeKt#HomePreview", "com.example.HomeKt#HomePreviewDark"],
+  "tier": "fast",
+  "reason": "user clicked refresh"
+}

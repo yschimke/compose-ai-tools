@@ -1,0 +1,14 @@
+{
+  "added": [
+    {
+      "id": "com.example.HomeKt#HomePreview",
+      "className": "com.example.HomeKt",
+      "methodName": "HomePreview",
+      "displayName": "HomePreview",
+      "sourceFile": "/home/dev/projects/my-app/samples/android/src/main/kotlin/com/example/Home.kt"
+    }
+  ],
+  "removed": ["com.example.OldKt#OldPreview"],
+  "changed": [],
+  "totalPreviews": 42
+}

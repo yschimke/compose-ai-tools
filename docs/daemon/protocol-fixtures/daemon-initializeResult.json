@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "daemonVersion": "0.8.7-SNAPSHOT",
+  "pid": 12345,
+  "capabilities": {
+    "incrementalDiscovery": false,
+    "sandboxRecycle": true,
+    "leakDetection": ["light", "heavy"]
+  },
+  "classpathFingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "manifest": {
+    "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/previews.json",
+    "previewCount": 42
+  }
+}
