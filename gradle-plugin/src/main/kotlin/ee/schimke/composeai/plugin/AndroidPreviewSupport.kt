@@ -284,7 +284,7 @@ internal object AndroidPreviewSupport {
 
     // No version: relies on the consumer's Compose BOM (or direct Compose
     // dep) to resolve these artifacts. Projects using
-    // `implementation(platform(libs.compose.bom))` pick up the aligned
+    // `implementation(platform(libs.compose.bom.stable))` pick up the aligned
     // version automatically; projects without a BOM need to add one (a
     // reasonable ask — the plugin is for Compose apps).
     if (manageDependencies) {

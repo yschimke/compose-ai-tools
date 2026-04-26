@@ -1288,8 +1288,17 @@ private fun handleAnimatedCapture(
     val inspector = if (animation.showCurves && curveCapture != null) {
         runCatching { AnimationInspector.attach(curveCapture) }
             .onFailure { e ->
-                framesDir.deleteRecursively()
-                throw e
+                // Graceful degradation: incompat Compose UI Tooling (e.g. consumers
+                // on a Compose runtime older than the AnimationInspector reflective
+                // lookups support) → emit the GIF without the curves overlay
+                // rather than failing the render outright. The renderer module
+                // compiles against `compose-bom-compat` (currently the 1.9.x line)
+                // so a missing 1.10+ API surfaces here at runtime, not at compile.
+                System.err.println(
+                    "@AnimatedPreview(showCurves=true): inspector unavailable on " +
+                        "this Compose UI Tooling version, falling back to GIF " +
+                        "without curve overlay. Cause: ${e.message}",
+                )
             }.getOrNull()
     } else null
 
