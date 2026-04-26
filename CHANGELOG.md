@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.10](https://github.com/yschimke/compose-ai-tools/compare/v0.8.9...v0.8.10) (2026-04-26)
+
+
+### Bug Fixes
+
+* **diff-bot:** perceptual filter for resource captures ([#287](https://github.com/yschimke/compose-ai-tools/issues/287)) ([646d6fa](https://github.com/yschimke/compose-ai-tools/commit/646d6fae2dcd3af1cc22943770b0c3d5a4a0a4bf))
+
 ## [0.8.9](https://github.com/yschimke/compose-ai-tools/compare/v0.8.8...v0.8.9) (2026-04-26)
 
 
