@@ -32,8 +32,17 @@ inputs:
       to '' to skip the resource compare entirely.
     default: 'preview_resources_main'
   head-branch:
-    description: 'Shared branch that accumulates per-PR render commits.'
+    description: 'Shared branch that accumulates per-PR composable render commits.'
     default: 'preview_pr'
+  resource-head-branch:
+    description: >
+      Shared branch that accumulates per-PR Android XML resource render
+      commits. Sibling of `head-branch` for the resource pipeline — the After
+      URLs in the resource sticky comment pin to commits on this branch, so
+      it stays disjoint from `preview_pr` for the same reason
+      `preview_resources_main` is disjoint from `preview_main`. Set to '' to
+      skip the resource push entirely.
+    default: 'preview_resources_pr'
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted).'
     default: ''
@@ -193,12 +202,16 @@ runs:
           --baselines _baselines/baselines.json \
           --baseline-renders _baselines/renders \
           --output-dir _pr_renders
-        # Resource captures land alongside under _pr_renders/renders/<module>/
-        # resources/<...>. The script silently no-ops on workspaces without
-        # any resources.json, so this is safe to run unconditionally.
+        # Resource captures stage into a sibling tree (`_pr_resource_renders/`)
+        # so they push to a separate branch (`preview_resources_pr` by
+        # default). Same disjoint-workflow rationale as the
+        # `preview_main` / `preview_resources_main` baseline split: each
+        # kind of preview gets its own per-PR After-URL history, separate
+        # bisect lineage, separate sticky comment. Silent no-op on
+        # workspaces without any resources.json.
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
           --baselines _baselines/resource-baselines.json \
-          --output-dir _pr_renders \
+          --output-dir _pr_resource_renders \
           --workspace-root .
 
     - name: Push PR renders
@@ -272,12 +285,78 @@ runs:
           sleep "$delay"
         done
 
+    - name: Push resource PR renders
+      if: inputs.resource-head-branch != ''
+      shell: bash
+      env:
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        RESOURCE_HEAD_BRANCH: ${{ inputs.resource-head-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      # Sibling of `Push PR renders` for resource captures. Same retry-on-
+      # race logic, same orphan-vs-parented commit shape — just a different
+      # input directory and a different target branch. When no resource
+      # captures changed (empty staging dir), short-circuits silently
+      # without creating an empty branch — matches `Push to resource
+      # baselines branch` in preview-baselines/action.yml.
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+
+        if [ ! -d _pr_resource_renders/renders ] || \
+           [ -z "$(ls -A _pr_resource_renders/renders 2>/dev/null)" ]; then
+          echo "No changed resource renders to push."
+          : > _resource_head_sha
+          exit 0
+        fi
+
+        cd _pr_resource_renders
+        git init -q
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git remote add origin \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+
+        git add -A
+        TREE=$(git write-tree)
+        MSG="Resource preview renders for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+
+        attempt=1
+        while :; do
+          PARENT=""
+          if git fetch --depth=1 --quiet origin "$RESOURCE_HEAD_BRANCH" 2>/dev/null; then
+            PARENT=$(git rev-parse FETCH_HEAD)
+          fi
+
+          if [ -n "$PARENT" ]; then
+            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+          else
+            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+          fi
+
+          if git push --quiet origin "${COMMIT}:refs/heads/${RESOURCE_HEAD_BRANCH}" 2>&1; then
+            echo "$COMMIT" > "$GITHUB_WORKSPACE/_resource_head_sha"
+            exit 0
+          fi
+
+          if [ "$attempt" -ge 5 ]; then
+            echo "Push to ${RESOURCE_HEAD_BRANCH} failed after ${attempt} attempts." >&2
+            exit 1
+          fi
+          delay=$((attempt * 2 + RANDOM % 3))
+          echo "Push to ${RESOURCE_HEAD_BRANCH} lost the race; retry ${attempt}/5 in ${delay}s…" >&2
+          attempt=$((attempt + 1))
+          sleep "$delay"
+        done
+
     - name: Generate comment
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         REPO: ${{ github.repository }}
         HEAD_BRANCH: ${{ inputs.head-branch }}
+        RESOURCE_HEAD_BRANCH: ${{ inputs.resource-head-branch }}
       run: |
         set -euo pipefail
         BASE_REF=$(cat _base_sha)
@@ -308,11 +387,20 @@ runs:
         if [ -z "$RESOURCE_BASE_REF" ]; then
           RESOURCE_BASE_REF="$BASE_REF"
         fi
+        # After URL pins to the resource PR-renders branch (default
+        # `preview_resources_pr`) — sibling of HEAD_REF for resources.
+        # Falls back to the branch name when nothing was pushed (the
+        # comment body won't contain any new/changed image tags in that
+        # case so the unresolved ref doesn't matter).
+        RESOURCE_HEAD_REF=$(cat _resource_head_sha 2>/dev/null || true)
+        if [ -z "$RESOURCE_HEAD_REF" ]; then
+          RESOURCE_HEAD_REF="${RESOURCE_HEAD_BRANCH:-$HEAD_REF}"
+        fi
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
           --baselines _baselines/resource-baselines.json \
           --repo "$REPO" \
           --base-ref "$RESOURCE_BASE_REF" \
-          --head-ref "$HEAD_REF" \
+          --head-ref "$RESOURCE_HEAD_REF" \
           --workspace-root . \
           > _comment_body_resources.md
 
