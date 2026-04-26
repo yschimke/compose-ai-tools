@@ -116,30 +116,37 @@ internal class AnimationInspector private constructor(
             val rootGroup: Any = compositionData.asTree()
             val slotTrees = listOf(rootGroup)
 
-            // PreviewAnimationClock(setAnimationsTimeCallback: () -> Unit).
-            // Some Compose versions also overload to accept Function1<Long, Unit>;
-            // we look up by arity rather than exact type to absorb that drift.
-            val clockCtor = clockClass.declaredConstructors.firstOrNull {
-                it.parameterTypes.size == 1 &&
-                    kotlin.jvm.functions.Function0::class.java.isAssignableFrom(it.parameterTypes[0])
-            }?.also { it.isAccessible = true }
+            // PreviewAnimationClock's primary constructor takes `() -> Unit`
+            // callbacks the clock fires when state changes. Arity differs
+            // across Compose UI Tooling versions:
+            //  * 1.10.x — 1-arg: `(setAnimationsTimeCallback: () -> Unit)`.
+            //  * 1.11.x — 2-arg: `(requestLayout: () -> Unit, applySnapshot: () -> Unit)`.
+            // We pick whichever Function0-only constructor the runtime
+            // exposes and pad with no-op callbacks; the renderer never
+            // observes layout/snapshot side effects.
+            val clockCtor = pickFunction0Constructor(clockClass)
                 ?: error(
-                    "PreviewAnimationClock has no single-arg Function0 constructor — Compose UI " +
+                    "PreviewAnimationClock has no Function0-only constructor — Compose UI " +
                         "Tooling version is incompatible with @AnimatedPreview(showCurves=true).",
                 )
-            val clock = clockCtor.newInstance(NO_OP_CALLBACK)
+            val clock = clockCtor.newInstance(*noOpCallbacks(clockCtor.parameterTypes.size))
 
-            // AnimationSearch(clock: () -> PreviewAnimationClock, onSeek: () -> Unit)
-            // is internal in compose-ui-tooling.
+            // AnimationSearch's first constructor parameter is always
+            // `() -> PreviewAnimationClock`; arity differs:
+            //  * 1.10.x — 2-arg: `(clock, onSeek: () -> Unit)`.
+            //  * 1.11.x — 1-arg: `(clock)` (onSeek folded in).
+            // Match the same Function0-only shape and pass the clock
+            // provider as the first arg, no-ops for the rest.
             val clockProvider = Function0Adapter { clock }
-            val onSeek = Function0Adapter { Unit }
-            val search = searchClass
-                .getDeclaredConstructor(
-                    kotlin.jvm.functions.Function0::class.java,
-                    kotlin.jvm.functions.Function0::class.java,
+            val searchCtor = pickFunction0Constructor(searchClass)
+                ?: error(
+                    "AnimationSearch has no Function0-only constructor — Compose UI Tooling " +
+                        "version is incompatible with @AnimatedPreview(showCurves=true).",
                 )
-                .also { it.isAccessible = true }
-                .newInstance(clockProvider, onSeek)
+            val searchArgs = Array<Any>(searchCtor.parameterTypes.size) { i ->
+                if (i == 0) clockProvider else NO_OP_CALLBACK
+            }
+            val search = searchCtor.newInstance(*searchArgs)
 
             val searchAny = searchClass.declaredMethods.firstOrNull {
                 it.name == "searchAny" && it.parameterTypes.size == 1 &&
@@ -168,11 +175,13 @@ internal class AnimationInspector private constructor(
             //   setClockTime(animationTimeMs: Long): Unit
             //   getAnimatedProperties(animation: ComposeAnimation): List<ComposeAnimatedProperty>
             //
-            // Tracked animations live across several typed clock maps
-            // (transitions / animatedVisibility / animateXAsState / infinite /
-            // animatedContent), each exposed via a `get*Clocks$ui_tooling()`
-            // accessor — JVM-public, Kotlin-`internal`. We gather their map
-            // keys (which ARE the ComposeAnimation instances) into one Set.
+            // Tracked animations are exposed via `get*Clocks$ui_tooling()`
+            // accessors (JVM-public, Kotlin-`internal`). 1.10.x splits them
+            // across five typed maps (transitions / animatedVisibility /
+            // animateXAsState / infinite / animatedContent); 1.11.x
+            // consolidates into a single `getAnimationClocks$ui_tooling()`.
+            // The shared `endsWith("Clocks\$ui_tooling")` filter picks up
+            // both shapes; the map keys are `ComposeAnimation` in either.
             val getMaxDurationMethod = clockClass.getMethod("getMaxDuration")
             val setClockTimeMethod = findSetClockTimeMethod(clockClass)
             val getAnimatedPropertiesMethod = findGetAnimatedPropertiesMethod(clockClass)
@@ -269,6 +278,31 @@ internal class AnimationInspector private constructor(
         }
 
         private fun loadClass(fqn: String): Class<*>? = runCatching { Class.forName(fqn) }.getOrNull()
+
+        /**
+         * Locate a constructor whose parameters are all `Function0` (Kotlin
+         * `() -> Unit` or any covariant return). Used for both
+         * `PreviewAnimationClock` and `AnimationSearch`, whose constructor
+         * arities drifted between Compose UI Tooling 1.10.x and 1.11.x.
+         *
+         * If multiple such constructors exist (e.g. 1.10.x synthesises a
+         * no-arg variant alongside the primary), we prefer the one with
+         * the most parameters — that's the primary constructor; the
+         * shorter ones are default-arg synthetics whose callbacks would
+         * be unset.
+         */
+        private fun pickFunction0Constructor(cls: Class<*>) =
+            cls.declaredConstructors
+                .filter { ctor ->
+                    ctor.parameterTypes.isNotEmpty() &&
+                        ctor.parameterTypes.all { p ->
+                            kotlin.jvm.functions.Function0::class.java.isAssignableFrom(p)
+                        }
+                }
+                .maxByOrNull { it.parameterTypes.size }
+                ?.also { it.isAccessible = true }
+
+        private fun noOpCallbacks(count: Int): Array<Any> = Array(count) { NO_OP_CALLBACK }
 
         private val NO_OP_CALLBACK = object : kotlin.jvm.functions.Function0<Unit> {
             override fun invoke() = Unit
