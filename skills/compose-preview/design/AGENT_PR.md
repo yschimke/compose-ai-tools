@@ -124,9 +124,18 @@ destination before acting:
   `gh` and `git` on PATH and a `git config user.name|user.email` set
   somewhere in the global/local chain (used only as the commit
   identity in the throwaway clone).
-- **Dedicated branch in the repo** (the CI integration appends to a
-  shared `preview_pr` branch, pinning URLs to commit SHAs) — clean raw
-  URLs but creates a branch the user may not want; get confirmation.
+- **Dedicated branch in the repo** (`compose-preview publish-images
+  DIR [--branch preview_pr] [--remote origin] [--pr-number N] [--json]`).
+  Pushes the staging directory's contents as a single commit on the
+  shared `preview_pr` branch, mirroring what the `preview-comment` CI
+  integration does — same retry-on-race loop for parallel pushes from
+  sibling PRs. Output is the resulting commit SHA and a raw URL pattern
+  (`https://raw.githubusercontent.com/<owner>/<repo>/<sha>/{path}`)
+  that pins images to the SHA so they survive merges. `--json` emits a
+  `compose-preview-publish-images/v1` envelope. Prefer this over the
+  gist when you want clean GitHub-hosted URLs and the user's confirmed
+  they want a branch created — the CLI does NOT auto-detect prior
+  consent; it just runs the push.
 - **Issue/PR attachment upload** — not reliably available via `gh`; skip.
 
 Never use inline base64 or data URIs — GitHub strips them. Never push images
