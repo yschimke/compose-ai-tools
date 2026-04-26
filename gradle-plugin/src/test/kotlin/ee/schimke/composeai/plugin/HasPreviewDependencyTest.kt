@@ -134,4 +134,69 @@ class HasPreviewDependencyTest {
     // Function should return false instead of throwing.
     assertThat(AndroidPreviewSupport.hasPreviewDependency(project, "debug")).isFalse()
   }
+
+  @Test
+  fun `transitive walk does not lock parent configurations against later modification`() {
+    // Issue #244 (cadence): the transitive walk has to inspect the resolved runtime
+    // dep graph but mustn't observe `${variant}Implementation` / `implementation`
+    // in the process — `registerAndroidTasks` adds testImplementation / variant-
+    // implementation deps after this method returns true (and an `afterEvaluate`
+    // block adds `tiles-renderer` to `${variant}Implementation` later). Resolving
+    // `${variant}RuntimeClasspath` directly marks its parent chain as observed,
+    // which in projects where another plugin (tapmoc's checkDependencies in cadence's
+    // case) has already pulled the unit-test classpath into resolution lifts that
+    // observation up to `testImplementation` itself. Walking a `copyRecursive()`
+    // sidesteps the issue — pin that here so the fix doesn't regress.
+    val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
+    val lib =
+      ProjectBuilder.builder()
+        .withName("lib")
+        .withProjectDir(tmp.newFolder("lib"))
+        .withParent(rootProject)
+        .build()
+    val app =
+      ProjectBuilder.builder()
+        .withName("app")
+        .withProjectDir(tmp.newFolder("app"))
+        .withParent(rootProject)
+        .build()
+
+    lib.plugins.apply("java-library")
+    app.plugins.apply("java")
+    app.repositories.mavenCentral()
+    lib.repositories.mavenCentral()
+    lib.dependencies.add(
+      "api",
+      "org.jetbrains.compose.components:components-ui-tooling-preview:1.7.5",
+    )
+
+    val implementation = app.configurations.getByName("implementation")
+    implementation.dependencies.add(app.dependencies.project(mapOf("path" to ":lib")))
+
+    // Mirror AGP's `${variant}Implementation` / `${variant}RuntimeClasspath`
+    // shape so the locking semantics match a real consumer.
+    val debugImplementation =
+      app.configurations.create("debugImplementation") { extendsFrom(implementation) }
+    app.configurations.create("debugRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+      extendsFrom(debugImplementation)
+      attributes.attribute(
+        org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+        app.objects.named(
+          org.gradle.api.attributes.Usage::class.java,
+          org.gradle.api.attributes.Usage.JAVA_RUNTIME,
+        ),
+      )
+    }
+
+    assertThat(AndroidPreviewSupport.hasPreviewDependency(app, "debug")).isTrue()
+
+    // The fix matters: without `copyRecursive()`, both of these would throw
+    // `InvalidUserCodeException: Cannot mutate the dependencies of configuration
+    // ':app:implementation' / ':app:debugImplementation' after the configuration's
+    // child configuration ':app:debugRuntimeClasspath' was resolved.`
+    app.dependencies.add("debugImplementation", "androidx.wear.tiles:tiles-renderer:1.0.0")
+    app.dependencies.add("implementation", "androidx.appcompat:appcompat:1.6.1")
+  }
 }
