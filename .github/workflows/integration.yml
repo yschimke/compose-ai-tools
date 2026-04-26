@@ -347,3 +347,97 @@ jobs:
           path: external/**/build/compose-previews/renders/*.png
           if-no-files-found: warn
           retention-days: 7
+
+  agp8-min:
+    # Floor-coverage job for AGP 8.x consumers. Uses the in-repo fixture under
+    # `.github/ci/fixtures/agp8-min/` (Gradle 8.13 + AGP 8.13.0 + Kotlin 2.0.21
+    # + compileSdk 36) so we exercise the bottom of our publicly-supported
+    # consumer envelope on every push, without cloning a 2 GB external repo.
+    # Distinct from the `integration` matrix above because it skips the
+    # external-checkout / pre-Gradle-patch dance entirely — the fixture is
+    # already shaped exactly the way we want it.
+    name: agp8-min (Gradle 8.13)
+    needs: build-plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo (for the fixture)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: compose-ai-bundle
+          path: .
+
+      - name: Install plugin, CLI, and init script
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          tar -xzf compose-ai-bundle.tar.gz -C bundle
+          mkdir -p "$HOME/.m2/repository"
+          cp -R bundle/m2/. "$HOME/.m2/repository/"
+          mkdir -p "$HOME/.gradle/init.d"
+          cp bundle/init/apply-compose-ai.init.gradle.kts "$HOME/.gradle/init.d/"
+
+      - name: Stage fixture outside the source tree
+        # Copying out of the checkout keeps the fixture's `build/` and
+        # `.gradle/` directories from polluting `git status` if a developer
+        # runs the same workflow locally with `act`.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fixture"
+          cp -R .github/ci/fixtures/agp8-min/. "$RUNNER_TEMP/fixture/"
+          chmod +x "$RUNNER_TEMP/fixture/gradlew"
+
+      - name: Patch fixture's app module to apply the plugin
+        working-directory: ${{ runner.temp }}/fixture
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/bundle/ci/patch-consumer.py" \
+            --walk . \
+            --plugin-version "${{ env.PLUGIN_VERSION }}"
+
+      - name: Discover previews via Gradle 8.13
+        working-directory: ${{ runner.temp }}/fixture
+        env:
+          COMPOSE_AI_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: ./gradlew discoverPreviews --no-configuration-cache --stacktrace
+
+      - name: Verify previews.json was produced
+        working-directory: ${{ runner.temp }}/fixture
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find . -path '*/build/compose-previews/previews.json' 2>/dev/null)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::No previews.json produced anywhere in the tree."
+            exit 1
+          fi
+          total=0
+          for m in "${manifests[@]}"; do
+            n=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$m")
+            echo "  $m → $n preview(s)"
+            total=$((total + n))
+          done
+          echo "Total discovered: $total preview(s) across ${#manifests[@]} module(s)"
+          if [ "$total" -lt 1 ]; then
+            echo "::error::Discovery ran but every module reported zero previews."
+            exit 1
+          fi
+
+      - name: Upload previews.json
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: previews-agp8-min
+          path: ${{ runner.temp }}/fixture/**/build/compose-previews/previews.json
+          if-no-files-found: warn
+          retention-days: 7
