@@ -5,7 +5,7 @@
       "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
-      "module": "sample-wear",
+      "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large",
       "sourceFile": "com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
@@ -15,7 +15,7 @@
       "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
-      "module": "sample-wear",
+      "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round",
       "sourceFile": "com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
@@ -33,7 +33,7 @@
         }
       ],
       "functionName": "BadWearButtonPreview",
-      "module": "sample-wear",
+      "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
       "sourceFile": "com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
@@ -43,7 +43,7 @@
       "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ButtonPreview",
-      "module": "sample-wear",
+      "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round",
       "sourceFile": "com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
