@@ -8,13 +8,16 @@ composePreview { accessibilityChecks { enabled = false } }
 
 android {
   namespace = "com.example.sampleremotecompose"
-  compileSdk = 36
+  // compose-remote alpha08+ / wear-compose-remote alpha02+ raise the AAR
+  // minCompileSdk to 37, so this module diverges from the rest of the repo
+  // (which still targets 36).
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.example.sampleremotecompose"
     // Remote Compose alpha artifacts require API 29+.
     minSdk = 29
-    targetSdk = 36
+    targetSdk = 37
     versionCode = 1
     versionName = "1.0"
   }
@@ -49,5 +52,5 @@ dependencies {
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
   implementation(libs.activity.compose)
-  debugImplementation("androidx.compose.ui:ui-tooling:1.11.0-rc01")
+  debugImplementation("androidx.compose.ui:ui-tooling:1.11.0")
 }
