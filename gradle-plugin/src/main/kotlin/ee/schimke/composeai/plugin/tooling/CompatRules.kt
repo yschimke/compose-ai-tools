@@ -16,8 +16,9 @@ internal object CompatRules {
   /**
    * Effective minimum Gradle version for consumers applying the plugin.
    *
-   * Set to the lowest Gradle line our integration matrix routinely exercises (9.0.x). The plugin's
-   * own code only reaches Gradle APIs that have been stable since the 8.x line, so this floor is a
+   * Set to the lowest Gradle line our integration matrix routinely exercises. The `agp8-min`
+   * fixture pins the bottom edge to Gradle 8.13 (Signal-Android-class consumer); the plugin's own
+   * code only reaches Gradle APIs that have been stable since the 8.x line, so this floor is a
    * coverage statement, not a hard API requirement. Most Android consumers are gated more strictly
    * by AGP's own floor anyway — AGP 9.0.x needs Gradle 9.1.0+, AGP 9.1.x needs 9.3.1+ — and AGP
    * rejects older Gradle at its own version check long before our `apply()` runs.
@@ -25,7 +26,7 @@ internal object CompatRules {
    * The repo wrapper (currently 9.4.1) is the dev/test toolchain — not a floor we impose on
    * consumers. Don't conflate the two.
    */
-  internal val GRADLE_MIN = Semver(9, 0, 0)
+  internal val GRADLE_MIN = Semver(8, 13, 0)
 
   /**
    * activity 1.11+ transitively brought `androidx.navigationevent:1.0.0`. Consumers whose main
