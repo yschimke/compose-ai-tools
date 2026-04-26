@@ -43,12 +43,12 @@ Extract `buildTestClasspath(variant)` and `buildJvmArgs(variant)` from `AndroidP
 - **Depends on:** none
 - **DoD:** `:gradle-plugin:functionalTest` passes unchanged. `:samples:android:renderAllPreviews` produces identical PNGs to `main` (manual diff check in PR description).
 
-### P0.4 — Lock IPC protocol [Streams B + C, joint] [shared seam]
+### P0.4 — Lock IPC protocol [Streams B + C, joint] [shared seam] ✅
 
-Define the JSON-RPC protocol in `docs/daemon/PROTOCOL.md` (new file). Lock message shapes for `setVisible`, `setFocus`, `fileChanged`, `renderNow`, `shutdown`, `discoveryUpdated`, `renderStarted/Finished/Failed`, `classpathDirty`, `sandboxRecycle`, `daemonWarming`. Include JSON examples and field semantics.
+Define the JSON-RPC protocol in [PROTOCOL.md](PROTOCOL.md). Locked message shapes for `setVisible`, `setFocus`, `fileChanged`, `renderNow`, `shutdown`/`exit`, `discoveryUpdated`, `renderStarted/Finished/Failed`, `classpathDirty`, `sandboxRecycle`, `daemonWarming`/`daemonReady`, `log`. Includes lifecycle, framing (LSP-style `Content-Length`), error codes, versioning rules.
 
 - **Depends on:** none
-- **DoD:** doc merged. Both Kotlin (`Messages.kt`) and TypeScript (`daemonProtocol.ts`) types in later phases reference it as the source of truth.
+- **DoD:** doc merged. Both Kotlin (`Messages.kt`) and TypeScript (`daemonProtocol.ts`) types in later phases reference it as the source of truth. Shared golden-message corpus lives in [protocol-fixtures/](protocol-fixtures/) (populated by B1.2 and C1.1).
 
 ---
 
