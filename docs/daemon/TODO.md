@@ -80,26 +80,27 @@ Add `composePreview.experimental.daemon { … }` extension with `enabled`, `maxH
 
 ### Stream B — daemon core
 
-#### B1.1 — Module skeleton
+#### B1.1 — Module skeleton ✅
 
 Create `renderer-android-daemon/` module. `build.gradle.kts` depends on `renderer-android` + Robolectric + kotlinx-serialization. Empty `DaemonMain.kt` that prints "hello" and exits.
 
 - **Depends on:** none
 - **DoD:** `./gradlew :renderer-android-daemon:assemble` succeeds. Manual `java -cp ... DaemonMainKt` prints "hello".
 
-#### B1.2 — `Messages.kt` protocol types
+#### B1.2 — `Messages.kt` protocol types ✅
 
 `@Serializable` Kotlin data classes mirroring P0.4. One file under `daemon/protocol/`.
 
 - **Depends on:** P0.4, B1.1
 - **DoD:** unit test round-trips one of each message via `Json.encodeToString` / `decodeFromString`.
 
-#### B1.3 — `DaemonHost` (sandbox holder)
+#### B1.3 — `DaemonHost` (sandbox holder) ✅
 
 A class that runs a single dummy `@Test` whose body blocks on `LinkedBlockingQueue<RenderRequest>`. Submitting a request triggers a render in the sandbox thread; result returned via callback.
 
 - **Depends on:** B1.1
 - **DoD:** unit test: submit 10 dummy renders to a single host instance; all complete; sandbox classloader is reused (assert via reflection on `Thread.currentThread().contextClassLoader.hashCode()`).
+- **Note:** required a custom `SandboxHoldingRunner` that adds `ee.schimke.composeai.daemon.bridge` to Robolectric's `doNotAcquirePackage` list. Without that rule the dummy-`@Test` queue holder is loaded twice (once in the sandbox classloader, once in the host classloader) and the cross-thread handoff silently breaks. Static handoff state lives in [`DaemonHostBridge`](../../renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/bridge/DaemonHostBridge.kt) with `java.util.concurrent.*`-only types.
 
 #### B1.4 — `RenderEngine` (per-preview body)
 
