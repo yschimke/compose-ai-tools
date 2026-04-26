@@ -23,12 +23,12 @@ import org.robolectric.annotation.GraphicsMode
  * `DashPathEffect` actually rasterises (the JVM-only path skips effects).
  *
  * Strategy: render two overlays against a **black** source bitmap. With a
- * black background the translucent fill + border treatment maps to easy-
- * to-distinguish pixel intensities — the alpha-200 solid border stroke
- * for merged nodes blends to a clearly bright pastel, while the alpha-40
- * fill-only zones in a dashed-border gap stay dark. Counting "bright"
- * pixels along the bounds rectangle's top edge then separates solid from
- * dashed cleanly.
+ * black background the border treatment maps to easy-to-distinguish pixel
+ * intensities — the alpha-200 solid border stroke for merged nodes blends
+ * to a clearly bright pastel, while the dotted unmerged border leaves
+ * regular gaps that stay black (no fill underneath either, since
+ * unmerged regions are line-only). Counting "bright" pixels along the
+ * bounds rectangle's top edge separates solid from dotted cleanly.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])

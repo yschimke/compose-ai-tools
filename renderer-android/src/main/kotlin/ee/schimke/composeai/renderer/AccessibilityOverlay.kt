@@ -55,23 +55,22 @@ internal object AccessibilityOverlay {
     private const val OUTLINE_ALPHA = 150
 
     /**
-     * Alpha (0–255) for the translucent fill drawn over each ANI element.
-     * ~30% opacity — enough to identify the region in the legend mapping,
-     * not enough to obscure the underlying control. Findings still get the
-     * full-strength outline + badge on top.
+     * Alpha (0–255) for the translucent fill drawn over each merged ANI
+     * element. Kept low (~10% opacity) so the underlying screenshot reads
+     * through cleanly — the colour cue is just enough to discern the
+     * region and match it to a legend swatch, not enough to obscure the
+     * control underneath. Findings still get the full-strength outline
+     * + badge on top.
      */
-    private const val NODE_FILL_ALPHA = 80
+    private const val NODE_FILL_ALPHA = 24
 
     /**
-     * Fill alpha for unmerged descendants (the inner `Text` of a `Button`
-     * whose semantics merge into the button). Roughly half [NODE_FILL_ALPHA]
-     * so reviewers eyeball "this is structure underneath a real focus
-     * stop, not its own TalkBack stop".
+     * Dot on/off pattern (px) for unmerged-node borders. Unmerged
+     * descendants get a dotted outline with no fill so they don't compete
+     * visually with their merged parent's solid pastel — they're structure
+     * inside an existing focus stop, not their own TalkBack reading.
      */
-    private const val UNMERGED_NODE_FILL_ALPHA = 40
-
-    /** Dash on/off pattern (px) for unmerged-node borders. */
-    private val UNMERGED_DASH_INTERVAL = floatArrayOf(6f, 4f)
+    private val UNMERGED_DASH_INTERVAL = floatArrayOf(2f, 4f)
 
     /** Wear sources upscale to this short side so the legend doesn't dwarf them. */
     private const val MIN_SCREENSHOT_DIM = 400
@@ -227,9 +226,13 @@ internal object AccessibilityOverlay {
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         nodes.forEachIndexed { i, node ->
+            // Unmerged descendants are line-only (drawn by drawNodeBorders) —
+            // skipping the fill keeps them quiet against their merged
+            // parent's pastel without losing the colour cue on the border.
+            if (!node.merged) return@forEachIndexed
             val r = parseBounds(node.boundsInScreen) ?: return@forEachIndexed
             paint.color = nodeColors[i]
-            paint.alpha = if (node.merged) NODE_FILL_ALPHA else UNMERGED_NODE_FILL_ALPHA
+            paint.alpha = NODE_FILL_ALPHA
             canvas.drawRect(
                 offsetX + r.left, offsetY + r.top, offsetX + r.right, offsetY + r.bottom,
                 paint,
