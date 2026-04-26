@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.4](https://github.com/yschimke/compose-ai-tools/compare/v0.8.3...v0.8.4) (2026-04-26)
+
+
+### Bug Fixes
+
+* **actions:** pin nested uses: refs so external consumers resolve ([#240](https://github.com/yschimke/compose-ai-tools/issues/240)) ([ade2acd](https://github.com/yschimke/compose-ai-tools/commit/ade2acdb3707f8ca7c946fb4623b524d702870f8))
+* **format:** reformat Commands.kt + auto-install git hooks on session start ([#237](https://github.com/yschimke/compose-ai-tools/issues/237)) ([a81c37a](https://github.com/yschimke/compose-ai-tools/commit/a81c37a0fabdeacbaf54e8491f72d975f2c3f2a9))
+
 ## [0.8.3](https://github.com/yschimke/compose-ai-tools/compare/v0.8.2...v0.8.3) (2026-04-26)
 
 
