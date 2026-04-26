@@ -64,6 +64,13 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `BlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:cmp/PreviewsKt.BlueBoxPreview_Blue_Box.png" width="150" /> |
 | `RedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:cmp/PreviewsKt.RedBoxPreview_Red_Box.png" width="150" /> |
 
+## samples:cmp-shared
+
+| Preview | Image |
+|---------|-------|
+| `SharedBlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:cmp-shared/SharedBlueBoxPreview_Blue.png" width="150" /> |
+| `SharedRedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:cmp-shared/SharedRedBoxPreview.png" width="150" /> |
+
 ## samples:remotecompose
 
 | Preview | Image |

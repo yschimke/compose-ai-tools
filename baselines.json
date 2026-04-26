@@ -244,6 +244,20 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
+    "captureLabel": "",
+    "functionName": "SharedBlueBoxPreview",
+    "renderBasename": "SharedBlueBoxPreview_Blue.png",
+    "sha256": "0a12bb906242503d43c1671cfa76400698382b137ad23c7335f2238f024b5509",
+    "sourceFile": "com/example/cmpshared/SharedPreviews.kt"
+  },
+  "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview": {
+    "captureLabel": "",
+    "functionName": "SharedRedBoxPreview",
+    "renderBasename": "SharedRedBoxPreview.png",
+    "sha256": "70afa24f0e257bb7adddc922b875bbb4611e7ed07e6067a081ea62ceea643b2c",
+    "sourceFile": "com/example/cmpshared/SharedPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
     "captureLabel": "",
     "functionName": "SwatchPreview",
@@ -367,7 +381,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
