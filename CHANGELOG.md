@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/yschimke/compose-ai-tools/compare/v0.8.2...v0.8.3) (2026-04-26)
+
+
+### Features
+
+* **actions:** add consumer-facing install composite action ([#233](https://github.com/yschimke/compose-ai-tools/issues/233)) ([a64939a](https://github.com/yschimke/compose-ai-tools/commit/a64939aaf2dd07511639dc4c0689f1b85e424163))
+
 ## [0.8.2](https://github.com/yschimke/compose-ai-tools/compare/v0.8.1...v0.8.2) (2026-04-26)
 
 
