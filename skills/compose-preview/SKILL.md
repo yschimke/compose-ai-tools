@@ -95,21 +95,26 @@ keep anything that publishes or mutates shared state on the prompt path.
 - `./gradlew` / `gradle` — already trusted in most JVM projects.
 - Reading `**/build/**` — rendered PNGs and staged copies live here.
 - `mkdir -p`, `cp`, `rm -f` — for staging copies (see below).
-- `git worktree add|remove|list`, `git ls-remote`, `git fetch`, `git show` —
-  used by the PR-review workflow to render a base branch without touching
-  the working copy.
-- `gh pr view`, `gh pr diff`, and `GET` on `gh api repos/…/comments`.
+- Read-only git: `git worktree add|remove|list`, `git ls-remote`, `git fetch`,
+  `git show`, `git diff`, `git log`. Used by the PR-review workflow to render
+  a base branch without touching the working copy.
+- Read-only `gh`: `gh pr view`, `gh pr diff`, `gh run list|view [--log[-failed]]|watch`,
+  `gh workflow list|view`, `gh release list|view`, `gh auth status`, plus GET
+  on `gh api repos/<owner>/<repo>/{comments,actions,contents,…}`. The
+  `gh run` calls come up constantly when a render fails on the runner.
 
 **Require explicit consent** (publish or mutate shared state — keep on the
 prompt path):
 
 - `gh gist create` — public by default; even `--secret` URLs are shareable.
-- `gh pr comment`, `gh pr review`, `POST`/`PATCH`/`DELETE` via `gh api`.
+- `gh pr edit`, `gh pr comment`, `gh pr review`, `gh pr merge|close|reopen|ready`.
+- `POST`/`PATCH`/`DELETE` via `gh api`.
 - `git push`, `git commit`, `git branch -D`, `git reset --hard`.
 - Uploads to external hosts (image hosts, paste services).
 
-If the user approves a gist or PR comment once, don't persist it as a
-general allowlist entry — the next PR may not want it.
+If the user approves a gist, PR edit, or push once, don't persist it as a
+general allowlist entry — the next iteration may not want the same level of
+publicity.
 
 ### Staging PNGs outside the render output
 
