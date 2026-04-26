@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.2](https://github.com/yschimke/compose-ai-tools/compare/v0.8.1...v0.8.2) (2026-04-26)
+
+
+### Features
+
+* **install:** add --android-sdk flag for cloud bootstrapping ([#215](https://github.com/yschimke/compose-ai-tools/issues/215)) ([cd58cc5](https://github.com/yschimke/compose-ai-tools/commit/cd58cc543b43ee15d9d68139a410fd673a5ff96b))
+* **plugin:** cost-aware shard auto-tuning + LPT bin-packing ([#207](https://github.com/yschimke/compose-ai-tools/issues/207)) ([44b080d](https://github.com/yschimke/compose-ai-tools/commit/44b080d1f7e9bd31757d7964b83c336ef5f09710))
+* **plugin:** fail-fast on too-old Gradle at apply time ([#214](https://github.com/yschimke/compose-ai-tools/issues/214)) ([60a04be](https://github.com/yschimke/compose-ai-tools/commit/60a04be8c0def61e21849ba33d309374d51a71cc))
+* **plugin:** support AGP 8.x consumers; add agp8-min integration fixture ([#217](https://github.com/yschimke/compose-ai-tools/issues/217)) ([1e4c559](https://github.com/yschimke/compose-ai-tools/commit/1e4c559f3a996c100ab981944fe0476669d70401))
+* **renderer:** mark unmerged a11y nodes and surface more semantic state ([#234](https://github.com/yschimke/compose-ai-tools/issues/234)) ([5f0e887](https://github.com/yschimke/compose-ai-tools/commit/5f0e8877e921f3532a51c2f19ce6ebc1a0f76626))
+
+
+### Bug Fixes
+
+* **cli:** hash GIF previews by first+last frame ([#209](https://github.com/yschimke/compose-ai-tools/issues/209)) ([#231](https://github.com/yschimke/compose-ai-tools/issues/231)) ([0a32deb](https://github.com/yschimke/compose-ai-tools/commit/0a32debd4cf5404e4d2c51537c6888c8c399b8fa))
+* **cli:** surface failing renderPreviews tests on build failure ([#224](https://github.com/yschimke/compose-ai-tools/issues/224)) ([96710a4](https://github.com/yschimke/compose-ai-tools/commit/96710a4d6745edc9d108d38676e0daa731a6d956))
+* **deps:** hold compose-remote at alpha08 to match remote-material3 alpha02 ([#232](https://github.com/yschimke/compose-ai-tools/issues/232)) ([ec6df08](https://github.com/yschimke/compose-ai-tools/commit/ec6df08df0c3cf0fea7e0c4f9560f1a80cc5e0ba))
+* **deps:** update dependency androidx.compose:compose-bom to v2026 ([#206](https://github.com/yschimke/compose-ai-tools/issues/206)) ([5f67f00](https://github.com/yschimke/compose-ai-tools/commit/5f67f001a0c49748f148538cffc531b0fe05d97b))
+* **deps:** update gradle minor/patch ([#199](https://github.com/yschimke/compose-ai-tools/issues/199)) ([1290600](https://github.com/yschimke/compose-ai-tools/commit/12906003270ecf4b1ee502abed134b2e6eae2d11))
+* **install:** pre-write Android SDK license hashes instead of `yes |` pipe ([#219](https://github.com/yschimke/compose-ai-tools/issues/219)) ([f0535b8](https://github.com/yschimke/compose-ai-tools/commit/f0535b8c272c35a262dd61ad56742471363a3c29))
+* **plugin:** accept org.jetbrains.compose.ui:ui-tooling-preview as @Preview signal ([#220](https://github.com/yschimke/compose-ai-tools/issues/220)) ([222eb69](https://github.com/yschimke/compose-ai-tools/commit/222eb69c6f85417738db2a0a4ed15ed7190e6cb2))
+* **renderer:** support PreviewAnimationClock 1.11 constructor shape ([#228](https://github.com/yschimke/compose-ai-tools/issues/228)) ([04745df](https://github.com/yschimke/compose-ai-tools/commit/04745df5a1a770b68069bd4b54e248220841f859))
+
 ## [0.8.1](https://github.com/yschimke/compose-ai-tools/compare/v0.8.0...v0.8.1) (2026-04-25)
 
 
