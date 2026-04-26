@@ -908,8 +908,8 @@ private fun sha256(bytes: ByteArray): String {
  * progressive item materialisation produces a slightly different frame sequence on every run — and
  * therefore a different encoded GIF — even when the source composable hasn't changed (issue #209).
  * The bookend frames are the hold-start dwell at scroll position 0 and the settled hold-end at
- * content end, both of which are stable for fixed source content. Mid-scroll frames are ignored,
- * so changes that only manifest while scrolling won't show as Changed.
+ * content end, both of which are stable for fixed source content. Mid-scroll frames are ignored, so
+ * changes that only manifest while scrolling won't show as Changed.
  */
 internal fun previewSha256(file: File): String =
   if (file.extension.equals("gif", ignoreCase = true)) {
