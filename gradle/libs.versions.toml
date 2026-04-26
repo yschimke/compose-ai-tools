@@ -4,7 +4,15 @@ kotlin = "2.3.21"
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
 # the floor. Bump only when the published surface needs a newer feature.
-kotlinCoreLibraries = "2.1.21"
+# 2.0.21 captures consumers on Kotlin 2.0.x (e.g. apps still on Gradle 8.x,
+# whose embedded Kotlin runtime tops out around 2.0.21); we use no 2.1+
+# language features in any published module so dropping to 2.0.21 has zero
+# cost on our source today.
+# Caveat: the 2.3.x compiler emits `Language version 2.0 is deprecated and
+# its support will be removed in a future version of Kotlin`. When that
+# removal lands (likely 2.4.x), bump this to `2.1.x` and accept that
+# Kotlin 2.0.x consumers will need to upgrade.
+kotlinCoreLibraries = "2.0.21"
 agp = "9.2.0"
 ktfmt = "0.26.0"
 tapmoc = "0.4.0"
