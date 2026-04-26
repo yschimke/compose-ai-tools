@@ -350,7 +350,7 @@ await renderer.renderPreviews(module, tier);
 
 ## 13. Latency budget
 
-Estimated; first task in implementation is to capture a real baseline with the bench harness.
+Estimates below; **measured baseline captured by P0.1 — see [`baseline-latency.csv`](baseline-latency.csv)** + [methodology sidecar](baseline-latency.md). The bench module is `:samples:android-daemon-bench`. Re-run with `./gradlew :samples:android-daemon-bench:benchPreviewLatency`.
 
 | Phase | Cold | Warm (Gradle daemon hot, no code change) | Daemon warm |
 |-------|------|------------------------------------------|-------------|
@@ -361,6 +361,27 @@ Estimated; first task in implementation is to capture a real baseline with the b
 | Render N previews | 0.3–1s each | 0.3–1s each | 0.3–1s each |
 
 Daemon-warm floor for a single focused preview: **kotlinc (1–2s) + 1 render (0.3–1s) ≈ 1.5–3s**. Sub-second is achievable when the user pre-saves a class-only file with a non-source change, or with a v2 kotlinc-daemon path. v1 target: **< 1s for a single focused preview when no kotlinc work is needed; < 3s with kotlinc.**
+
+### Measured baseline (Ryzen 9 3900X, JDK 21, Gradle 9.4.1, AGP 9.2.0, 5 trivial previews)
+
+Median per (phase, scenario) from the bench, rounded:
+
+| Phase         | Cold (median) | Warm-no-edit | Warm-after-1-line-edit |
+| ------------- | ------------- | ------------ | ---------------------- |
+| `config`      | 1.3s          | 0.55s        | 0.53s                  |
+| `compile`     | 1.7s (incl. config) | 0.5s (UP-TO-DATE) | 0.9s (incl. config) |
+| `discovery`   | 1.2s (incl. config) | 0.55s (UP-TO-DATE) | 0.7s (incl. config) |
+| `forkAndInit` | 2.9s          | 0.6s (renderPreviews UP-TO-DATE) | 1.7s |
+| `render`      | 5.5s for 5 previews ≈ 1.1s each | 0 (UP-TO-DATE) | 5.5s for 5 ≈ 1.1s each |
+
+Surprises versus the estimated table:
+
+- **Cold Gradle config is ~1.3s, not 3–8s.** The estimate was conservative; on this machine config is consistently sub-1.5s once toolchains are downloaded. Likely much higher on first-ever run where toolchain provisioning dominates — the bench skips that.
+- **`forkAndInit` warm-after-edit is ~1.7s, not 3–6s.** Test JVM fork + Robolectric init was estimated as a fixed ~5s cost; in practice the JVM fork itself is < 1s on a warm OS page cache and Robolectric sandbox init for 5 previews is closer to ~1s. The estimate was sized for `:samples:android` (heavier classpath, more shadows). The daemon's value-add here is closer to ~2s amortised, not ~5s — still a meaningful win, especially compounded across many edits.
+- **Render is at the high end of 0.3–1s/preview.** 1.1s/preview on this trivial workload sets the floor — the daemon path can't beat this without changes to the per-preview render body itself (out of v1 scope).
+- **Pure-comment edits leave `renderPreviews` UP-TO-DATE.** Because kotlinc emits identical bytecode for comment-only changes, the downstream input snapshots don't budge. The bench therefore uses a **string-literal swap** to force a full pipeline run; comment-only edits in the wild will measure as `warm-no-edit` performance (i.e., near-instant).
+
+The headline takeaway: **the cold→warm-after-edit delta on this machine is ~12s → ~9s** (`config + compile + discovery + forkAndInit + render`), with the daemon's addressable surface being the **~2.5s of `config + forkAndInit`** in the warm-edit case. Hitting the v1 sub-second target requires both eliminating that 2.5s and short-circuiting the per-preview render to a single focused preview (saving ~4.4s of the 5.5s render row). Both are designed for; the bench is now in place to verify.
 
 ## 14. Validation strategy
 

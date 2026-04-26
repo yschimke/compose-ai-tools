@@ -1,0 +1,49 @@
+# baseline-latency.csv — captured by :samples:android-daemon-bench:benchPreviewLatency
+# See docs/daemon/TODO.md P0.1 and DESIGN.md § 13. Hardware/JDK/etc captured
+# in docs/daemon/baseline-latency.md sidecar.
+phase,scenario,run,milliseconds,notes
+config,cold,1,2337,wall of renderPreviews --dry-run
+compile,cold,1,2472,wall of compileDebugKotlin task (incl. config)
+discovery,cold,1,1415,wall of discoverPreviews task (incl. config)
+forkAndInit,cold,1,4041,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,cold,1,5561,sum of 5 JUnit testcase time= attrs (full preview set)
+config,cold,2,1311,wall of renderPreviews --dry-run
+compile,cold,2,1670,wall of compileDebugKotlin task (incl. config)
+discovery,cold,2,1218,wall of discoverPreviews task (incl. config)
+forkAndInit,cold,2,2870,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,cold,2,5464,sum of 5 JUnit testcase time= attrs (full preview set)
+config,cold,3,1106,wall of renderPreviews --dry-run
+compile,cold,3,1358,wall of compileDebugKotlin task (incl. config)
+discovery,cold,3,1122,wall of discoverPreviews task (incl. config)
+forkAndInit,cold,3,2661,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,cold,3,5448,sum of 5 JUnit testcase time= attrs (full preview set)
+config,warm-no-edit,1,564,wall of renderPreviews --dry-run
+compile,warm-no-edit,1,1062,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+discovery,warm-no-edit,1,1156,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+forkAndInit,warm-no-edit,1,622,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+render,warm-no-edit,1,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+config,warm-no-edit,2,553,wall of renderPreviews --dry-run
+compile,warm-no-edit,2,534,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+discovery,warm-no-edit,2,572,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+forkAndInit,warm-no-edit,2,598,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+render,warm-no-edit,2,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+config,warm-no-edit,3,557,wall of renderPreviews --dry-run
+compile,warm-no-edit,3,523,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+discovery,warm-no-edit,3,557,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+forkAndInit,warm-no-edit,3,578,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+render,warm-no-edit,3,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+config,warm-after-1-line-edit,1,524,wall of renderPreviews --dry-run
+compile,warm-after-1-line-edit,1,950,wall of compileDebugKotlin task (incl. config)
+discovery,warm-after-1-line-edit,1,705,wall of discoverPreviews task (incl. config)
+forkAndInit,warm-after-1-line-edit,1,1690,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,warm-after-1-line-edit,1,5433,sum of 5 JUnit testcase time= attrs (full preview set)
+config,warm-after-1-line-edit,2,527,wall of renderPreviews --dry-run
+compile,warm-after-1-line-edit,2,909,wall of compileDebugKotlin task (incl. config)
+discovery,warm-after-1-line-edit,2,695,wall of discoverPreviews task (incl. config)
+forkAndInit,warm-after-1-line-edit,2,1690,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,warm-after-1-line-edit,2,5518,sum of 5 JUnit testcase time= attrs (full preview set)
+config,warm-after-1-line-edit,3,534,wall of renderPreviews --dry-run
+compile,warm-after-1-line-edit,3,879,wall of compileDebugKotlin task (incl. config)
+discovery,warm-after-1-line-edit,3,666,wall of discoverPreviews task (incl. config)
+forkAndInit,warm-after-1-line-edit,3,1681,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+render,warm-after-1-line-edit,3,5534,sum of 5 JUnit testcase time= attrs (full preview set)
