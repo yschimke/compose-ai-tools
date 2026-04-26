@@ -685,10 +685,15 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
         if key not in current:
             removed.append((key, bl_info))
 
+    marker = "<!-- preview-diff-resources -->"
     if not (new or changed or removed):
-        return 0  # nothing to append
+        # Empty stdout when nothing diffed — the action treats no output as
+        # "skip the resource comment entirely" rather than posting a "no
+        # changes" sticky comment that would clutter PRs that don't touch
+        # resources.
+        return 0
 
-    lines: list[str] = ["## Resource Changes", ""]
+    lines: list[str] = [marker, "## Resource Changes", ""]
 
     if changed:
         # Group by (module, resourceId) so all captures of the same resource

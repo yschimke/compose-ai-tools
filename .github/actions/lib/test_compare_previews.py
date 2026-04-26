@@ -842,6 +842,10 @@ class CompareResourcesTests(unittest.TestCase):
             },
         }))
         out = self._run()
+        # First line is the dedicated marker so the action's post step can
+        # find / patch a sibling sticky comment without colliding with the
+        # composable `<!-- preview-diff -->` marker.
+        self.assertTrue(out.startswith("<!-- preview-diff-resources -->"))
         self.assertIn("## Resource Changes", out)
         self.assertIn("### Changed (1 variant(s) across 1 resource(s))", out)
         self.assertIn("`drawable/ic_logo`", out)

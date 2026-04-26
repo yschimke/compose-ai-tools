@@ -222,17 +222,18 @@ runs:
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
           > _comment_body.md
-        # Append the resource diff section. Empty stdout when nothing
-        # changed (or no resources.json on the workspace), so the
-        # composable comment stays unaffected on projects without XML
-        # drawables.
+        # Resources land in their own sticky comment with a sibling marker
+        # (`<!-- preview-diff-resources -->`) — composable @Preview changes
+        # and Android XML resource changes are different concerns and should
+        # be edited / scrolled past independently. Empty stdout when nothing
+        # diffed; the post step below skips emitting an empty comment.
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
           --baselines _baselines/resource-baselines.json \
           --repo "$REPO" \
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
           --workspace-root . \
-          >> _comment_body.md
+          > _comment_body_resources.md
 
     - name: Post or update PR comment
       shell: bash
@@ -258,4 +259,45 @@ runs:
             -X PATCH -f body="$BODY"
         else
           gh pr comment "$PR_NUMBER" --body "$BODY"
+        fi
+
+    - name: Post or update resource preview comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        MARKER="<!-- preview-diff-resources -->"
+
+        COMMENT_ID=$(gh api \
+          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+
+        # Three states for resource comments:
+        #
+        # 1. New diff this run + no prior comment  → post a fresh comment.
+        # 2. New diff this run + prior comment      → PATCH the existing one.
+        # 3. No diff this run + prior comment      → PATCH to a "resolved"
+        #    body so reviewers can see resources used to differ but no longer
+        #    do. Deleting outright would lose the comment-thread link in PR
+        #    review history.
+        # 4. No diff this run + no prior comment   → do nothing.
+        if [ -s _comment_body_resources.md ]; then
+          BODY=$(cat _comment_body_resources.md)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH -f body="$BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+        elif [ -n "$COMMENT_ID" ]; then
+          BODY="${MARKER}"$'\n'"## Resource Changes"$'\n\n'"_No resource changes in this PR's latest render._"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$BODY"
         fi
