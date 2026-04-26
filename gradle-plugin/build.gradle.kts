@@ -1,3 +1,6 @@
+import tapmoc.TapmocExtension
+import tapmoc.configureKotlinCompatibility
+
 plugins {
   `java-gradle-plugin`
   `kotlin-dsl`
@@ -5,9 +8,18 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.maven.publish)
   alias(libs.plugins.ktfmt)
+  alias(libs.plugins.tapmoc)
 }
 
 ktfmt { googleStyle() }
+
+// `kotlin-dsl` already pins the language/api version to Gradle's embedded
+// Kotlin (currently 2.x); tapmoc is wired here primarily for
+// `checkDependencies()`, which surfaces if any KGP/AGP transitive raises the
+// Kotlin floor we'd push onto plugin consumers' buildscript classpaths.
+configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+extensions.configure<TapmocExtension> { checkDependencies() }
 
 group = "ee.schimke.composeai"
 

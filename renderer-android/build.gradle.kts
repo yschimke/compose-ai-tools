@@ -5,6 +5,8 @@
 // types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
 
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import tapmoc.TapmocExtension
+import tapmoc.configureKotlinCompatibility
 
 plugins {
   alias(libs.plugins.android.library)
@@ -12,7 +14,13 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   `maven-publish`
   alias(libs.plugins.maven.publish)
+  alias(libs.plugins.tapmoc)
 }
+
+// See preview-annotations/build.gradle.kts for the rationale.
+configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+extensions.configure<TapmocExtension> { checkDependencies() }
 
 group = "ee.schimke.composeai"
 
