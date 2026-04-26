@@ -45,7 +45,26 @@ class DoctorCommand(args: List<String>) {
   private val explain = "--explain" in args
   private val verbose = "--verbose" in args || "-v" in args
   private val projectDirArg = args.flagValue("--project")
-  private val pluginVersion = args.flagValue("--plugin-version") ?: DEFAULT_PLUGIN_VERSION
+
+  /**
+   * Version the CLI suggests in remediation messages ("install version X"). Comes from
+   * `--plugin-version` or the CLI's compiled-in default. Distinct from [appliedPluginVersion],
+   * which is what the project actually has on its classpath.
+   */
+  private val recommendedPluginVersion =
+    args.flagValue("--plugin-version") ?: DEFAULT_PLUGIN_VERSION
+
+  /**
+   * Plugin version actually applied to the project, read from the Tooling model after
+   * [runProjectChecks] fetches it. Null when no project was detected or no module applies the
+   * plugin. Surfaced in the report header and as an explicit `project.plugin-version` check so
+   * agents debugging "my bump didn't take" can see exactly what's on the classpath.
+   */
+  private var appliedPluginVersion: String? = null
+
+  /** Plugin version to use in headers and the JSON `pluginVersion` field — applied if known. */
+  private val reportPluginVersion: String
+    get() = appliedPluginVersion ?: recommendedPluginVersion
 
   private val checks = mutableListOf<DoctorCheck>()
 
@@ -294,13 +313,18 @@ class DoctorCommand(args: List<String>) {
           remediation =
             DoctorRemediation(
               summary = "Apply the plugin in your module's `plugins { }` block.",
-              commands = listOf("id(\"ee.schimke.composeai.preview\") version \"$pluginVersion\""),
+              commands =
+                listOf(
+                  "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\""
+                ),
               docs = "https://github.com/$REPO#usage",
             ),
         )
       )
       return
     }
+
+    appliedPluginVersion = model.pluginVersion.takeIf { it.isNotEmpty() }
 
     addCheck(
       DoctorCheck(
@@ -311,6 +335,20 @@ class DoctorCommand(args: List<String>) {
         detail = model.modules.keys.joinToString(", "),
       )
     )
+
+    appliedPluginVersion?.let { applied ->
+      val skew = applied != recommendedPluginVersion
+      addCheck(
+        DoctorCheck(
+          id = "project.plugin-version",
+          category = "project",
+          status = "ok",
+          message = "compose-preview plugin v$applied",
+          detail =
+            if (skew) "CLI is on $recommendedPluginVersion — bump the plugin to align" else null,
+        )
+      )
+    }
 
     for ((modulePath, info) in model.modules) {
       checkModuleVersions(modulePath, info)
@@ -688,7 +726,7 @@ class DoctorCommand(args: List<String>) {
     val project = checks.filter { it.category == "project" }
     val deps = checks.filter { it.category == "deps" }
 
-    println("plugin: $pluginVersion")
+    println("plugin: $reportPluginVersion")
     for (c in env) {
       val tail = c.detail?.let { "  ($it)" } ?: ""
       println("${c.id}: ${c.message}$tail")
@@ -760,7 +798,7 @@ class DoctorCommand(args: List<String>) {
   private fun emitJson() {
     val report =
       DoctorReport(
-        pluginVersion = pluginVersion,
+        pluginVersion = reportPluginVersion,
         overall =
           when {
             checks.any { it.status == "error" } -> "error"
