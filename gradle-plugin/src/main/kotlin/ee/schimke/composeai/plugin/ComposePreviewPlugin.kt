@@ -3,9 +3,11 @@ package ee.schimke.composeai.plugin
 import ee.schimke.composeai.plugin.tooling.ComposePreviewAppliedTask
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModelBuilder
 import javax.inject.Inject
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
+import org.gradle.util.GradleVersion
 
 abstract class ComposePreviewPlugin
 @Inject
@@ -16,6 +18,8 @@ constructor(
   private val toolingRegistry: ToolingModelBuilderRegistry
 ) : Plugin<Project> {
   override fun apply(project: Project) {
+    GradleVersionCheck.problem(GradleVersion.current())?.let { throw GradleException(it) }
+
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
 
     // ToolingModelBuilderRegistry is a build-scoped service — registering
