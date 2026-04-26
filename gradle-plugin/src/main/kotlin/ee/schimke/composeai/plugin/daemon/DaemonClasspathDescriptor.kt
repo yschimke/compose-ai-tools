@@ -57,14 +57,10 @@ internal data class DaemonClasspathDescriptor(
    */
   val javaLauncher: String?,
   /**
-   * Resolved test-runtime classpath, in load order. Includes everything
-   * [ee.schimke.composeai.plugin.AndroidPreviewClasspath.buildTestClasspath] produces plus AGP's
-   * unit-test task classpath additions (R.jar etc.).
-   *
-   * **TODO (Stream B):** prepend the `renderer-android-daemon` JAR(s) once that module exists.
-   * Today the daemon entry point class isn't on this classpath, so VS Code will fail with
-   * `ClassNotFoundException` if it tries to spawn — but [enabled] defaults to `false` precisely so
-   * that doesn't happen. See [DaemonBootstrapTask] for the in-code TODO.
+   * Resolved test-runtime classpath, in load order. Daemon module's classes lead, so [mainClass] is
+   * loaded ahead of any consumer-graph collisions. Then everything
+   * [ee.schimke.composeai.plugin.AndroidPreviewClasspath.buildTestClasspath] produces, then AGP's
+   * unit-test task classpath additions (R.jar etc.) at the tail.
    */
   val classpath: List<String>,
   /**

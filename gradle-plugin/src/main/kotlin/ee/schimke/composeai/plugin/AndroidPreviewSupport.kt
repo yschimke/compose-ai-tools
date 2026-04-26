@@ -584,6 +584,52 @@ internal object AndroidPreviewSupport {
       )
     }
 
+    // Mirror of rendererConfig for `:renderer-android-daemon`. The daemon
+    // module depends on :renderer-android, so transitive deps flow through
+    // the same `extendsFrom(testConfig)` graph and stay version-coherent
+    // with the consumer's classpath. Used by composePreviewDaemonStart to
+    // place the daemon's main class on the launch descriptor's classpath.
+    val daemonRendererConfig =
+      project.configurations.maybeCreate("composePreviewAndroidDaemon$capVariant").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        if (testConfig != null) {
+          copyAttributes(attributes, testConfig.attributes)
+          extendsFrom(testConfig)
+        }
+      }
+
+    val daemonRendererProjectDir = project.rootDir.resolve("renderer-android-daemon")
+    val useLocalDaemonRenderer =
+      daemonRendererProjectDir.resolve("build.gradle.kts").exists() ||
+        daemonRendererProjectDir.resolve("build.gradle").exists()
+
+    if (useLocalDaemonRenderer) {
+      try {
+        project.dependencies.add(
+          daemonRendererConfig.name,
+          project.dependencies.project(mapOf("path" to ":renderer-android-daemon")),
+        )
+      } catch (e: org.gradle.api.UnknownProjectException) {
+        project.logger.debug(
+          "compose-ai-tools: :renderer-android-daemon project not found, skipping",
+          e,
+        )
+      }
+    } else {
+      // External mode is intentionally a no-op while the daemon is
+      // experimental and unpublished. The daemon stays disabled by
+      // default (DaemonExtension.enabled = false), so a consumer outside
+      // this repo who flips it on will see VS Code surface a clear
+      // ClassNotFoundException rather than silently picking a stale path.
+      // When publishing of :renderer-android-daemon lands, replace this
+      // log with the same coords shape used for rendererConfig above.
+      project.logger.debug(
+        "compose-ai-tools: :renderer-android-daemon is not yet published; " +
+          "experimental.daemon only works with the in-repo source layout."
+      )
+    }
+
     // Classes used for Gradle's test-class scanning. Local mode: the
     // renderer-android project's compiled output directories. External
     // mode: the AAR's `classes.jar`, expanded via `zipTree` so Gradle's
@@ -980,16 +1026,27 @@ internal object AndroidPreviewSupport {
           daemonAgpTestTask.orNull?.javaLauncher?.orNull?.executablePath?.asFile?.absolutePath
         }
       )
+      // Daemon module's classes FIRST so [mainClass] resolves before
+      // anything in the consumer's transitive graph shadows it. Both
+      // `jar` and `android-classes` artifact views are pulled because
+      // the daemon module is an AGP library — `android-classes` is its
+      // built classes JAR, `jar` would be a plain Kotlin JAR if Stream
+      // B ever splits the module. Same defensive pair as
+      // AndroidPreviewClasspath uses for testConfig.
+      this.classpath.from(
+        daemonRendererConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "jar") }
+          .files
+      )
+      this.classpath.from(
+        daemonRendererConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "android-classes") }
+          .files
+      )
       // Same FileCollection the renderPreviews `Test` task assembles, plus
       // the AGP unit-test task's classpath (R.jar etc.) appended at the
       // tail — see line ~764 for the rationale. Composed lazily to defer
       // `findByName("test${capVariant}UnitTest")` resolution.
-      //
-      // TODO (Stream B / task B1.1): prepend `renderer-android-daemon`'s
-      // configuration here once the module exists, so [mainClass] is
-      // loadable. Until then, the descriptor's `enabled: false` default
-      // gates the VS Code extension from spawning a JVM that would fail
-      // with ClassNotFoundException.
       this.classpath.from(resolvedClasspath)
       this.classpath.from(
         project.provider { daemonAgpTestTask.orNull?.testClassesDirs ?: project.files() }
@@ -1017,10 +1074,6 @@ internal object AndroidPreviewSupport {
       // invalidation isn't a concern in this task the way it is for
       // renderPreviews.
       //
-      // TODO (Stream B): wire `composeai.daemon.protocolVersion`,
-      // `composeai.daemon.idleTimeoutMs`, and any other daemon-runtime
-      // sysprops once the daemon module is on the classpath. Until then
-      // the four extension-derived keys below are the contract.
       this.systemProperties.set(
         project.provider {
           val base =
@@ -1032,6 +1085,8 @@ internal object AndroidPreviewSupport {
             )
           val daemonProps =
             linkedMapOf(
+              "composeai.daemon.protocolVersion" to "1",
+              "composeai.daemon.idleTimeoutMs" to "5000",
               "composeai.daemon.maxHeapMb" to
                 extension.experimental.daemon.maxHeapMb.get().toString(),
               "composeai.daemon.maxRendersPerSandbox" to
