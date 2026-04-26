@@ -15,7 +15,7 @@ kotlin = "2.3.21"
 kotlinCoreLibraries = "2.0.21"
 agp = "9.2.0"
 ktfmt = "0.26.0"
-tapmoc = "0.4.0"
+tapmoc = "0.4.2"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `renderPreviews` /
