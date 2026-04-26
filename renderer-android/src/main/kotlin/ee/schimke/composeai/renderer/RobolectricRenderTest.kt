@@ -712,6 +712,9 @@ abstract class RobolectricRenderTestBase(
                             findings = result.findings,
                             nodes = result.nodes,
                             screenshot = outputFile.takeIf { annotate },
+                            isRound = isRoundDevice(preview.params.device) &&
+                                (preview.params.showSystemUi ||
+                                    preview.params.kind == PreviewKind.TILE),
                         )
                     }
                 }

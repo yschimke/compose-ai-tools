@@ -6,11 +6,13 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import java.io.File
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Generates an annotated screenshot for each preview that has either ATF
@@ -22,17 +24,15 @@ import kotlin.math.max
  * map "what TalkBack sees" without counting overlays. ATF findings layer on
  * top with the louder red/orange/blue numbered badges they've always had.
  *
- * Layout adapts to aspect ratio:
- *  - **Tall** previews (h/w ≥ [TALL_ASPECT]) keep the side-by-side shape —
- *    screenshot left, legend right, ANI rows y-aligned to their element's
- *    top edge so the eye can scan straight across.
- *  - **Non-tall** (Wear, landscape) stack the legend vertically: findings
- *    above the screenshot, ANI rows below it, so the small round Wear face
- *    isn't squeezed by a fixed-width side panel.
+ * Layout: screenshot on the left, legend panel on the right. Merged children
+ * (the inner `Text`s of a clickable container) are not given their own row —
+ * they're inlined under their merged parent's row with mini-swatches that
+ * match the per-child screenshot fills, so the legend stays short and the
+ * parent/child grouping reads at a glance.
  */
 internal object AccessibilityOverlay {
 
-    /** Width of the legend panel when laid out beside a tall screenshot. */
+    /** Width of the legend panel beside the screenshot. */
     private const val LEGEND_WIDTH = 540
 
     /** Vertical padding between legend rows. */
@@ -47,6 +47,9 @@ internal object AccessibilityOverlay {
     /** Side of the colour swatch drawn next to each ANI legend row. */
     private const val SWATCH_SIDE = 28f
 
+    /** Side of the inline-child swatch drawn under a merged parent row. */
+    private const val MINI_SWATCH_SIDE = 18f
+
     /** Outline stroke width (px) on a finding's element bounds. */
     private const val OUTLINE_STROKE = 2f
 
@@ -54,26 +57,22 @@ internal object AccessibilityOverlay {
     private const val OUTLINE_ALPHA = 150
 
     /**
-     * Alpha (0–255) for the translucent fill drawn over each ANI element.
-     * ~30% opacity — enough to identify the region in the legend mapping,
-     * not enough to obscure the underlying control. Findings still get the
-     * full-strength outline + badge on top.
+     * Alpha (0–255) for the translucent fill drawn over each merged ANI
+     * element. Kept low (~10% opacity) so the underlying screenshot reads
+     * through cleanly — the colour cue is just enough to discern the
+     * region and match it to a legend swatch, not enough to obscure the
+     * control underneath. Findings still get the full-strength outline
+     * + badge on top.
      */
-    private const val NODE_FILL_ALPHA = 80
+    private const val NODE_FILL_ALPHA = 24
 
     /**
-     * Fill alpha for unmerged descendants (the inner `Text` of a `Button`
-     * whose semantics merge into the button). Roughly half [NODE_FILL_ALPHA]
-     * so reviewers eyeball "this is structure underneath a real focus
-     * stop, not its own TalkBack stop".
+     * Dot on/off pattern (px) for unmerged-node borders. Unmerged
+     * descendants get a dotted outline with no fill so they don't compete
+     * visually with their merged parent's solid pastel — they're structure
+     * inside an existing focus stop, not their own TalkBack reading.
      */
-    private const val UNMERGED_NODE_FILL_ALPHA = 40
-
-    /** Dash on/off pattern (px) for unmerged-node borders. */
-    private val UNMERGED_DASH_INTERVAL = floatArrayOf(6f, 4f)
-
-    /** Aspect at which we switch from stacked-legend to side-by-side. */
-    private const val TALL_ASPECT = 1.3f
+    private val UNMERGED_DASH_INTERVAL = floatArrayOf(2f, 4f)
 
     /** Wear sources upscale to this short side so the legend doesn't dwarf them. */
     private const val MIN_SCREENSHOT_DIM = 400
@@ -104,6 +103,7 @@ internal object AccessibilityOverlay {
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean = false,
     ): File? {
         if (findings.isEmpty() && nodes.isEmpty()) return null
         if (!sourcePng.exists()) {
@@ -116,7 +116,7 @@ internal object AccessibilityOverlay {
             return null
         }
         return try {
-            generateInternal(sourcePng, findings, nodes)
+            generateInternal(sourcePng, findings, nodes, isRound)
         } catch (t: Throwable) {
             // Without this catch, a Canvas / Bitmap.createBitmap blow-up
             // would propagate through writePerPreviewReport and skip the
@@ -135,6 +135,7 @@ internal object AccessibilityOverlay {
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean,
     ): File? {
         val source = BitmapFactory.decodeFile(sourcePng.absolutePath)
         if (source == null) {
@@ -144,7 +145,7 @@ internal object AccessibilityOverlay {
             )
             return null
         }
-        val composite = compose(source, findings, nodes)
+        val composite = compose(source, findings, nodes, isRound)
         val dest = File(sourcePng.parentFile, "${sourcePng.nameWithoutExtension}.a11y.png")
         dest.outputStream().use { composite.compress(Bitmap.CompressFormat.PNG, 100, it) }
         source.recycle()
@@ -152,134 +153,88 @@ internal object AccessibilityOverlay {
         return dest
     }
 
+    /**
+     * Side-by-side composer: screenshot on the left at its native (or
+     * upscaled-Wear) size, legend panel on the right at [LEGEND_WIDTH]. The
+     * canvas height is the larger of the screenshot height and the legend's
+     * content height, so a tall phone preview won't pad the legend and a
+     * short Wear preview won't truncate it.
+     */
     private fun compose(
         source: Bitmap,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean,
     ): Bitmap {
         val scale = screenshotScale(source)
+        // Apply the circular clip *before* upscaling — the clip's radius
+        // is min(w,h)/2 in source-pixel space, and feeding the upscaled
+        // bitmap back through the clipper would introduce a second AA
+        // edge that differs from the one Roborazzi already painted.
+        val clipped = if (isRound) applyCircularClip(source) else source
         val drawn = if (scale > 1f) {
             Bitmap.createScaledBitmap(
-                source,
-                (source.width * scale).toInt(),
-                (source.height * scale).toInt(),
+                clipped,
+                (clipped.width * scale).toInt(),
+                (clipped.height * scale).toInt(),
                 /* filter = */ true,
             )
-        } else source
+        } else clipped
         // Stable per-node colour assignment; both the screenshot fill and the
         // legend swatch read the same index, so they always match.
         val nodeColors = IntArray(nodes.size) { NODE_PALETTE[it % NODE_PALETTE.size] }
-        val isTall = drawn.height.toFloat() / drawn.width.toFloat() >= TALL_ASPECT
-        val composite = if (isTall) {
-            composeTall(drawn, findings, nodes, nodeColors)
-        } else {
-            composeStacked(drawn, findings, nodes, nodeColors)
-        }
-        if (drawn !== source) drawn.recycle()
-        return composite
-    }
+        val groups = groupNodes(nodes, nodeColors)
 
-    /**
-     * Tall layout: screenshot on the left, legend on the right. Findings are
-     * stacked at the top of the legend; ANI rows below them, each y-anchored
-     * at the element's `bounds.top` (with overlap prevention so adjacent
-     * elements don't trample each other).
-     */
-    private fun composeTall(
-        screenshot: Bitmap,
-        findings: List<AccessibilityFinding>,
-        nodes: List<AccessibilityNode>,
-        nodeColors: IntArray,
-    ): Bitmap {
         val findingsBlock = measureFindingsBlock(findings, LEGEND_WIDTH)
-        val nodesBlockMin = measureNodesBlockMin(nodes)
-        val legendMin = LEGEND_MARGIN + findingsBlock + nodesBlockMin + LEGEND_MARGIN
-        val canvasHeight = max(screenshot.height, legendMin)
+        val nodesBlock = measureNodesBlock(groups, LEGEND_WIDTH)
+        val headerBlock = 28 + ROW_PADDING + 6
+        val legendMin = LEGEND_MARGIN + headerBlock + findingsBlock + nodesBlock + LEGEND_MARGIN
+        val canvasHeight = max(drawn.height, legendMin)
         val composite = Bitmap.createBitmap(
-            screenshot.width + LEGEND_WIDTH,
+            drawn.width + LEGEND_WIDTH,
             canvasHeight,
             Bitmap.Config.ARGB_8888,
         )
         val canvas = Canvas(composite).apply { drawColor(Color.WHITE) }
-        val imageTopOffset = (canvasHeight - screenshot.height) / 2
+        val imageTopOffset = (canvasHeight - drawn.height) / 2
 
+        // Bounds from `node.boundsInScreen` are in source-pixel space;
+        // when we upscale the bitmap to MIN_SCREENSHOT_DIM, fills /
+        // borders / badges have to scale with it or they'd land on the
+        // unscaled top-left quadrant.
+        // Round previews additionally clip the screenshot half to a
+        // circle so overlay paint stays inside the watch face — saves
+        // doing it in two places (Roborazzi already clips the bitmap
+        // for showSystemUi=true, but the corners would still get
+        // painted by drawNodeFills/drawFindingBadge without this).
+        canvas.save()
+        if (isRound) {
+            val cx = drawn.width / 2f
+            val cy = imageTopOffset + drawn.height / 2f
+            val radius = min(drawn.width, drawn.height) / 2f
+            canvas.clipPath(Path().apply { addCircle(cx, cy, radius, Path.Direction.CW) })
+        }
         // Translucent pastel fills first so finding outlines layer on top.
-        drawNodeFills(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
-        canvas.drawBitmap(screenshot, 0f, imageTopOffset.toFloat(), null)
+        drawNodeFills(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        canvas.drawBitmap(drawn, 0f, imageTopOffset.toFloat(), null)
         // Re-draw fills *over* the bitmap with their full stroke — the bitmap
         // we just drew covers the pre-fill, so we paint the fill again and
         // add a thin border so each region reads as a region, not a tint.
-        drawNodeFills(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
-        drawNodeBorders(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        drawNodeFills(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        drawNodeBorders(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
         findings.forEachIndexed { i, f ->
-            drawFindingBadge(canvas, i + 1, f, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+            drawFindingBadge(canvas, i + 1, f, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
         }
+        canvas.restore()
 
-        val legendX = screenshot.width.toFloat()
+        val legendX = drawn.width.toFloat()
         drawLegendBackground(canvas, legendX, 0f, LEGEND_WIDTH, canvasHeight)
         var y = LEGEND_MARGIN.toFloat()
         y = drawHeader(canvas, findings.size, nodes.size, legendX + LEGEND_MARGIN, y)
         y = drawFindingsRows(canvas, findings, legendX, y, LEGEND_WIDTH)
-        drawNodeRowsAligned(
-            canvas = canvas,
-            nodes = nodes,
-            nodeColors = nodeColors,
-            originX = legendX,
-            top = y,
-            bottom = canvasHeight - LEGEND_MARGIN.toFloat(),
-            panelWidth = LEGEND_WIDTH,
-            imageTopOffset = imageTopOffset.toFloat(),
-        )
-        return composite
-    }
-
-    /**
-     * Non-tall layout (Wear, landscape): findings stacked above the
-     * screenshot, ANI rows stacked below it. Screenshot is centred
-     * horizontally inside the wider of the two rails.
-     */
-    private fun composeStacked(
-        screenshot: Bitmap,
-        findings: List<AccessibilityFinding>,
-        nodes: List<AccessibilityNode>,
-        nodeColors: IntArray,
-    ): Bitmap {
-        // Stacked legend wants more elbow room than the side-by-side one —
-        // a Wear screenshot is ~400px wide, so we let rows fill that plus a
-        // margin instead of clipping to LEGEND_WIDTH.
-        val panelWidth = max(screenshot.width, LEGEND_WIDTH) + LEGEND_MARGIN * 2
-        val findingsBlock = if (findings.isEmpty()) 0 else
-            measureFindingsBlock(findings, panelWidth) + LEGEND_MARGIN
-        val nodesBlock = if (nodes.isEmpty()) 0 else
-            measureNodesStackedBlock(nodes, panelWidth) + LEGEND_MARGIN
-        val headerBlock = LEGEND_MARGIN + 28 + ROW_PADDING + 16
-        val canvasWidth = panelWidth
-        val canvasHeight = headerBlock + findingsBlock + screenshot.height + nodesBlock + LEGEND_MARGIN
-        val composite = Bitmap.createBitmap(canvasWidth, canvasHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(composite).apply { drawColor(Color.WHITE) }
-
-        var y = LEGEND_MARGIN.toFloat()
-        y = drawHeader(canvas, findings.size, nodes.size, LEGEND_MARGIN.toFloat(), y)
-        if (findings.isNotEmpty()) {
-            y = drawFindingsRows(canvas, findings, originX = 0f, top = y, panelWidth = canvasWidth)
-            y += LEGEND_MARGIN
-        }
-        // Centre the screenshot horizontally; record its origin so finding /
-        // node draws line up with the same coordinates.
-        val imageX = ((canvasWidth - screenshot.width) / 2).toFloat()
-        val imageY = y
-        drawNodeFills(canvas, nodes, nodeColors, imageX, imageY)
-        canvas.drawBitmap(screenshot, imageX, imageY, null)
-        drawNodeFills(canvas, nodes, nodeColors, imageX, imageY)
-        drawNodeBorders(canvas, nodes, nodeColors, imageX, imageY)
-        findings.forEachIndexed { i, f ->
-            drawFindingBadge(canvas, i + 1, f, imageX, imageY)
-        }
-        y = imageY + screenshot.height
-        if (nodes.isNotEmpty()) {
-            y += LEGEND_MARGIN
-            drawNodeRowsStacked(canvas, nodes, nodeColors, originX = 0f, top = y, panelWidth = canvasWidth)
-        }
+        drawNodeGroups(canvas, groups, legendX, y, LEGEND_WIDTH)
+        if (drawn !== source) drawn.recycle()
+        if (clipped !== source && clipped !== drawn) clipped.recycle()
         return composite
     }
 
@@ -294,16 +249,22 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         nodes: List<AccessibilityNode>,
         nodeColors: IntArray,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         nodes.forEachIndexed { i, node ->
+            // Unmerged descendants are line-only (drawn by drawNodeBorders) —
+            // skipping the fill keeps them quiet against their merged
+            // parent's pastel without losing the colour cue on the border.
+            if (!node.merged) return@forEachIndexed
             val r = parseBounds(node.boundsInScreen) ?: return@forEachIndexed
             paint.color = nodeColors[i]
-            paint.alpha = if (node.merged) NODE_FILL_ALPHA else UNMERGED_NODE_FILL_ALPHA
+            paint.alpha = NODE_FILL_ALPHA
             canvas.drawRect(
-                offsetX + r.left, offsetY + r.top, offsetX + r.right, offsetY + r.bottom,
+                offsetX + r.left * scale, offsetY + r.top * scale,
+                offsetX + r.right * scale, offsetY + r.bottom * scale,
                 paint,
             )
         }
@@ -313,6 +274,7 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         nodes: List<AccessibilityNode>,
         nodeColors: IntArray,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
@@ -333,8 +295,8 @@ internal object AccessibilityOverlay {
             paint.color = nodeColors[i]
             paint.alpha = if (node.merged) 200 else 140
             canvas.drawRect(
-                offsetX + r.left + 0.5f, offsetY + r.top + 0.5f,
-                offsetX + r.right - 0.5f, offsetY + r.bottom - 0.5f,
+                offsetX + r.left * scale + 0.5f, offsetY + r.top * scale + 0.5f,
+                offsetX + r.right * scale - 0.5f, offsetY + r.bottom * scale - 0.5f,
                 paint,
             )
         }
@@ -344,6 +306,7 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         number: Int,
         finding: AccessibilityFinding,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
@@ -358,15 +321,15 @@ internal object AccessibilityOverlay {
         val inset = OUTLINE_STROKE / 2f
         canvas.drawRect(
             RectF(
-                offsetX + r.left + inset, offsetY + r.top + inset,
-                offsetX + r.right - inset, offsetY + r.bottom - inset,
+                offsetX + r.left * scale + inset, offsetY + r.top * scale + inset,
+                offsetX + r.right * scale - inset, offsetY + r.bottom * scale - inset,
             ),
             outline,
         )
         // Badge anchored at the top-left so it stays next to the offending
         // control even when bounds clip the edge of the image.
-        val cx = offsetX + r.left.toFloat().coerceAtLeast(BADGE_RADIUS)
-        val cy = offsetY + r.top.toFloat().coerceAtLeast(BADGE_RADIUS)
+        val cx = offsetX + (r.left * scale).coerceAtLeast(BADGE_RADIUS)
+        val cy = offsetY + (r.top * scale).coerceAtLeast(BADGE_RADIUS)
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; this.color = color }
         canvas.drawCircle(cx, cy, BADGE_RADIUS, bg)
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -476,87 +439,76 @@ internal object AccessibilityOverlay {
     }
 
     /**
-     * Y-aligned ANI rows for the tall layout. Each row's preferred top is the
-     * element's `bounds.top` in canvas space; we walk top-down and push any
-     * row that would collide with the previous one downward by a row
-     * height + padding, so the relative ordering matches the screenshot
-     * even if some elements are stacked too tightly to align exactly.
+     * Pairs a merged parent node with the merged children that follow it in
+     * the extraction order. Orphan unmerged nodes (no preceding focusable
+     * parent in the list) get rendered as standalone groups with an empty
+     * [children] list and the dashed-border + `↳ ` legend treatment.
      */
-    private fun drawNodeRowsAligned(
-        canvas: Canvas,
-        nodes: List<AccessibilityNode>,
-        nodeColors: IntArray,
-        originX: Float,
-        top: Float,
-        bottom: Float,
-        panelWidth: Int,
-        imageTopOffset: Float,
-    ) {
-        if (nodes.isEmpty()) return
-        // Index-color pairs sorted by anchor Y. Sorting is stable on tied
-        // anchors so left-to-right reading order survives.
-        data class Anchored(val node: AccessibilityNode, val color: Int, val anchor: Float)
-        val anchored = nodes.mapIndexedNotNull { i, n ->
-            val r = parseBounds(n.boundsInScreen) ?: return@mapIndexedNotNull null
-            Anchored(n, nodeColors[i], imageTopOffset + r.top)
-        }.sortedBy { it.anchor }
+    private data class NodeGroup(
+        val parent: AccessibilityNode,
+        val parentColor: Int,
+        val children: List<Pair<AccessibilityNode, Int>>,
+    )
 
-        var prevBottom = top
-        for (a in anchored) {
-            val rowTop = max(a.anchor, prevBottom + ROW_PADDING)
-            val rowBottom = drawNodeRow(canvas, a.node, a.color, originX, rowTop, panelWidth)
-            if (rowBottom > bottom) break
-            prevBottom = rowBottom
+    /**
+     * Walks the node list once, attaching each run of `merged=false` nodes
+     * to the most recent `merged=true` node. Relies on ATF's depth-first
+     * `allViews` iteration putting parent before its descendants — the same
+     * ordering [AccessibilityChecker.extractNodes] preserves.
+     */
+    private fun groupNodes(
+        nodes: List<AccessibilityNode>,
+        colors: IntArray,
+    ): List<NodeGroup> {
+        val groups = mutableListOf<NodeGroup>()
+        var i = 0
+        while (i < nodes.size) {
+            val node = nodes[i]
+            if (node.merged) {
+                val children = mutableListOf<Pair<AccessibilityNode, Int>>()
+                var j = i + 1
+                while (j < nodes.size && !nodes[j].merged) {
+                    children += nodes[j] to colors[j]
+                    j++
+                }
+                groups += NodeGroup(node, colors[i], children)
+                i = j
+            } else {
+                groups += NodeGroup(node, colors[i], emptyList())
+                i++
+            }
         }
+        return groups
     }
 
-    private fun drawNodeRowsStacked(
+    private fun drawNodeGroups(
         canvas: Canvas,
-        nodes: List<AccessibilityNode>,
-        nodeColors: IntArray,
+        groups: List<NodeGroup>,
         originX: Float,
         top: Float,
         panelWidth: Int,
     ): Float {
         var y = top
-        nodes.forEachIndexed { i, n ->
-            y = drawNodeRow(canvas, n, nodeColors[i], originX, y, panelWidth)
-        }
+        for (g in groups) y = drawNodeGroup(canvas, g, originX, y, panelWidth)
         return y
     }
 
     /**
-     * One ANI legend row: solid swatch (matching the screenshot fill) +
-     * label, with role / states as a smaller second line. Returns the next
-     * row's top Y.
+     * One legend block: parent swatch + label + role/states subtitle, then
+     * (if any merged children) an inline child line indented under the
+     * label, where each child is a mini-swatch + label pair separated by
+     * `·`. Returns the next row's top Y.
      */
-    private fun drawNodeRow(
+    private fun drawNodeGroup(
         canvas: Canvas,
-        node: AccessibilityNode,
-        color: Int,
+        group: NodeGroup,
         originX: Float,
         top: Float,
         panelWidth: Int,
     ): Float {
-        // Swatch — full opacity in the legend so the colour is unambiguous,
-        // even though its on-screenshot counterpart is translucent.
         val swatchX = originX + LEGEND_MARGIN
         val swatchY = top + 4f
-        val swatchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; this.color = color }
-        canvas.drawRoundRect(
-            RectF(swatchX, swatchY, swatchX + SWATCH_SIDE, swatchY + SWATCH_SIDE),
-            6f, 6f, swatchPaint,
-        )
-        val swatchBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 1f
-            this.color = Color.rgb(0x60, 0x60, 0x66)
-            alpha = 120
-        }
-        canvas.drawRoundRect(
-            RectF(swatchX, swatchY, swatchX + SWATCH_SIDE, swatchY + SWATCH_SIDE),
-            6f, 6f, swatchBorder,
-        )
+        drawSwatch(canvas, swatchX, swatchY, SWATCH_SIDE, group.parentColor)
 
         val textX = swatchX + SWATCH_SIDE + 14f
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -566,13 +518,12 @@ internal object AccessibilityOverlay {
         }
         val rightMargin = LEGEND_MARGIN
         val textWidth = (panelWidth - (textX - originX) - rightMargin).toInt()
-        val baseLabel = node.label.ifEmpty { node.role ?: "(unlabelled)" }
-        // ↳ marks rows whose semantics merge into a screen-reader-focusable
-        // ancestor, so reviewers can tell "extra structure underneath a
-        // focus stop" from "a separate TalkBack stop". Kept on the same
-        // line as the label rather than as a state chip — the prefix is
-        // structural, not a state.
-        val labelText = if (node.merged) baseLabel else "↳ $baseLabel"
+        val baseLabel = group.parent.label.ifEmpty { group.parent.role ?: "(unlabelled)" }
+        // ↳ marks orphan rows whose semantics merge into a screen-reader-
+        // focusable ancestor we couldn't pair up — kept as a standalone
+        // legend row, distinguishable from a true focus stop. Inline
+        // children under a real parent don't need this prefix.
+        val labelText = if (group.parent.merged) baseLabel else "↳ $baseLabel"
         val labelLines = wrap(labelText, labelPaint, textWidth)
         var y = top + 22f
         for (line in labelLines) {
@@ -583,8 +534,8 @@ internal object AccessibilityOverlay {
         // Subtitle: role + states separated by ' · ', skipped when both
         // empty (purely-textual nodes don't need a subtitle line).
         val subtitleParts = buildList {
-            node.role?.let { add(it) }
-            addAll(node.states)
+            group.parent.role?.let { add(it) }
+            addAll(group.parent.states)
         }
         if (subtitleParts.isNotEmpty()) {
             val sub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -594,7 +545,104 @@ internal object AccessibilityOverlay {
             canvas.drawText(subtitleParts.joinToString(" · "), textX, y, sub)
             y += 20f
         }
+
+        if (group.children.isNotEmpty()) {
+            y += 4f
+            y = drawInlineChildren(
+                canvas = canvas,
+                children = group.children,
+                leftX = textX,
+                top = y,
+                maxWidth = textWidth,
+            )
+        }
         return y + ROW_PADDING.toFloat()
+    }
+
+    /**
+     * Lays out merged children horizontally under their parent's label,
+     * each as a `[mini-swatch] label` pair separated by `·`. Wraps to a new
+     * line when the next pair would overflow [maxWidth]. Returns the y of
+     * the last drawn line's baseline.
+     */
+    private fun drawInlineChildren(
+        canvas: Canvas,
+        children: List<Pair<AccessibilityNode, Int>>,
+        leftX: Float,
+        top: Float,
+        maxWidth: Int,
+    ): Float {
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.rgb(0x20, 0x20, 0x24)
+            textSize = 18f
+        }
+        val sepPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.rgb(0x80, 0x80, 0x88)
+            textSize = 18f
+        }
+        val sepText = "·"
+        val sepWidth = sepPaint.measureText(sepText)
+        val sepGap = 8f
+        val miniGap = 6f
+        val lineHeight = 26f
+        val maxX = leftX + maxWidth
+
+        var x = leftX
+        var y = top + 16f
+        for ((idx, pair) in children.withIndex()) {
+            val (child, color) = pair
+            val rawLabel = child.label.ifEmpty { child.role ?: "(unlabelled)" }
+            val labelWidth = labelPaint.measureText(rawLabel)
+            val itemWidth = MINI_SWATCH_SIDE + miniGap + labelWidth
+            val sepNeeded = idx > 0
+            val advance = if (sepNeeded) sepGap + sepWidth + sepGap + itemWidth else itemWidth
+            if (sepNeeded && x + advance > maxX) {
+                x = leftX
+                y += lineHeight
+            } else if (sepNeeded) {
+                x += sepGap
+                canvas.drawText(sepText, x, y, sepPaint)
+                x += sepWidth + sepGap
+            }
+            // Mini swatch — vertically centred on the label baseline.
+            val miniTop = y - MINI_SWATCH_SIDE + 4f
+            drawSwatch(canvas, x, miniTop, MINI_SWATCH_SIDE, color)
+            x += MINI_SWATCH_SIDE + miniGap
+            // If the label alone overflows the line, wrap-fit the trailing
+            // text instead of spilling into the legend background. Rare —
+            // child labels are short — but keeps Wear-narrow panels safe.
+            val drawn = if (x + labelWidth <= maxX) {
+                canvas.drawText(rawLabel, x, y, labelPaint)
+                labelWidth
+            } else {
+                val fitted = ellipsize(rawLabel, labelPaint, (maxX - x).toInt())
+                canvas.drawText(fitted, x, y, labelPaint)
+                labelPaint.measureText(fitted)
+            }
+            x += drawn
+        }
+        return y + 4f
+    }
+
+    private fun drawSwatch(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        side: Float,
+        color: Int,
+    ) {
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            this.color = color
+        }
+        canvas.drawRoundRect(RectF(x, y, x + side, y + side), 6f, 6f, fill)
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            this.color = Color.rgb(0x60, 0x60, 0x66)
+            alpha = 120
+        }
+        canvas.drawRoundRect(RectF(x, y, x + side, y + side), 6f, 6f, border)
     }
 
     // ---------- measurement ----------
@@ -613,29 +661,52 @@ internal object AccessibilityOverlay {
     }
 
     /**
-     * Lower bound on tall-layout ANI block height — assumes each row is one
-     * line of label + one subtitle line. Y-alignment may push some rows
-     * further down, but those overflow into the canvas's bottom margin
-     * rather than getting clipped.
+     * Sum of grouped-row heights — parent label + optional subtitle +
+     * optional inline-children block (with wrap simulation so we reserve
+     * the right number of lines for narrow panels).
      */
-    private fun measureNodesBlockMin(nodes: List<AccessibilityNode>): Int {
-        if (nodes.isEmpty()) return 0
-        return nodes.size * (22 + 24 + 20 + ROW_PADDING)
-    }
-
-    private fun measureNodesStackedBlock(nodes: List<AccessibilityNode>, panelWidth: Int): Int {
-        if (nodes.isEmpty()) return 0
+    private fun measureNodesBlock(groups: List<NodeGroup>, panelWidth: Int): Int {
+        if (groups.isEmpty()) return 0
         val labelPaint = Paint().apply { textSize = 20f }
+        val childPaint = Paint().apply { textSize = 18f }
         val textWidth = panelWidth - LEGEND_MARGIN * 2 - (SWATCH_SIDE + 14f).toInt()
         var total = 0
-        for (n in nodes) {
-            val baseLabel = n.label.ifEmpty { n.role ?: "(unlabelled)" }
-            val labelText = if (n.merged) baseLabel else "↳ $baseLabel"
-            val lines = wrap(labelText, labelPaint, textWidth).size.coerceAtLeast(1)
-            val hasSubtitle = n.role != null || n.states.isNotEmpty()
-            total += 22 + 24 * lines + (if (hasSubtitle) 20 else 0) + ROW_PADDING
+        for (g in groups) {
+            val baseLabel = g.parent.label.ifEmpty { g.parent.role ?: "(unlabelled)" }
+            val labelText = if (g.parent.merged) baseLabel else "↳ $baseLabel"
+            val labelLines = wrap(labelText, labelPaint, textWidth).size.coerceAtLeast(1)
+            val hasSubtitle = g.parent.role != null || g.parent.states.isNotEmpty()
+            var rowHeight = 22 + 24 * labelLines + (if (hasSubtitle) 20 else 0)
+            if (g.children.isNotEmpty()) {
+                rowHeight += 4 + measureChildLines(g.children, childPaint, textWidth) * 26 + 4
+            }
+            total += rowHeight + ROW_PADDING
         }
         return total
+    }
+
+    private fun measureChildLines(
+        children: List<Pair<AccessibilityNode, Int>>,
+        labelPaint: Paint,
+        maxWidth: Int,
+    ): Int {
+        val sepGap = 8f
+        val sepWidth = labelPaint.measureText("·")
+        val miniGap = 6f
+        var x = 0f
+        var lines = 1
+        for ((idx, pair) in children.withIndex()) {
+            val rawLabel = pair.first.label.ifEmpty { pair.first.role ?: "(unlabelled)" }
+            val itemWidth = MINI_SWATCH_SIDE + miniGap + labelPaint.measureText(rawLabel)
+            val advance = if (idx > 0) sepGap + sepWidth + sepGap + itemWidth else itemWidth
+            if (idx > 0 && x + advance > maxWidth) {
+                lines++
+                x = itemWidth
+            } else {
+                x += advance
+            }
+        }
+        return lines
     }
 
     // ---------- shared helpers ----------
@@ -671,5 +742,21 @@ internal object AccessibilityOverlay {
         }
         if (current.isNotEmpty()) out.add(current.toString())
         return out
+    }
+
+    /**
+     * Truncate [text] with a trailing `…` so the result fits in [maxWidth]
+     * pixels. Used when a single inline-child label would otherwise spill
+     * past the legend's right edge — rare, but Wear's narrow rendering
+     * makes it possible enough to handle defensively.
+     */
+    private fun ellipsize(text: String, paint: Paint, maxWidth: Int): String {
+        val ellipsis = "…"
+        if (paint.measureText(text) <= maxWidth) return text
+        val ellipsisWidth = paint.measureText(ellipsis)
+        if (ellipsisWidth >= maxWidth) return ""
+        var end = text.length
+        while (end > 0 && paint.measureText(text, 0, end) + ellipsisWidth > maxWidth) end--
+        return text.substring(0, end) + ellipsis
     }
 }
