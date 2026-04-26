@@ -41,11 +41,11 @@ runs:
     # use). The pinned tag is bumped per release by release-please.
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.8.3 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.8.4 # x-release-please-version
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
-      uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.3 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.4 # x-release-please-version
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
