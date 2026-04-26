@@ -45,7 +45,7 @@ android {
 }
 
 dependencies {
-  implementation(platform(libs.compose.bom))
+  implementation(platform(libs.compose.bom.stable))
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
   implementation(libs.compose.ui.tooling.preview)
@@ -58,7 +58,7 @@ dependencies {
   // functions under Layoutlib. Our renderer doesn't use this configuration
   // — it drives composables via its own ClassGraph-discovered methods —
   // but compiling the screenshotTest source set still needs it.
-  "screenshotTestImplementation"(platform(libs.compose.bom))
+  "screenshotTestImplementation"(platform(libs.compose.bom.stable))
   "screenshotTestImplementation"(libs.compose.ui.tooling.preview)
   "screenshotTestImplementation"("androidx.compose.ui:ui-tooling")
 }

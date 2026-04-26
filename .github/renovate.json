@@ -27,6 +27,35 @@
         "patch"
       ],
       "groupName": "{{manager}} minor/patch"
+    },
+    {
+      "description": "Freeze the AGP 8.x minimum-supported fixture: every pin here is deliberate and must be bumped by hand.",
+      "matchFileNames": [
+        ".github/ci/fixtures/agp8-min/**"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "compose-bom-compat: pin to the 2025.11.x line (compose-ui 1.9.5) — renderer-android's published bytecode targets the oldest supported Compose. Renovate must not drift this floor higher; bumping the supported-Compose-minimum is a manual decision.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "androidx.compose:compose-bom"
+      ],
+      "matchCurrentValue": "/^2025\\.11\\./",
+      "allowedVersions": "/^2025\\.11\\./"
+    },
+    {
+      "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
+      "matchFileNames": [
+        "vscode-extension/package.json"
+      ],
+      "matchDepNames": [
+        "vscode",
+        "@types/vscode"
+      ],
+      "enabled": false
     }
   ]
 }
