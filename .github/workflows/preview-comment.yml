@@ -29,3 +29,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/preview-comment
+        with:
+          # See preview-baselines.yml for the source-vs-release rationale.
+          cli-version: source

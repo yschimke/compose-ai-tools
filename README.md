@@ -206,12 +206,12 @@ The snapshot version is the next patch ahead of the latest release
 
 <!-- x-release-please-start-version -->
 Download `compose-preview-0.8.2.tar.gz` (or `.zip`) from the
-[v0.8.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.4.0)
+[v0.8.2 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.8.2)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.8.2/compose-preview-0.4.0.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.8.2/compose-preview-0.8.2.tar.gz
 tar -xzf compose-preview.tar.gz
 export PATH="$PWD/compose-preview-0.8.2/bin:$PATH"
 
@@ -221,6 +221,65 @@ compose-preview --help
 
 Requires Java 17 or newer on `PATH` (or `JAVA_HOME`). JDK 21 / 25 are
 fine — the CLI and renderer are compiled to JDK 17 bytecode.
+
+### On GitHub Actions
+
+Use the install composite action instead of curl-piping the install
+script — it pins to a tagged version of this repo, so consumer CI
+isn't exposed to changes on `main`:
+
+<!-- x-release-please-start-version -->
+```yaml
+- uses: actions/setup-java@v5
+  with:
+    distribution: temurin
+    java-version: 17
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.2
+  with:
+    # Literal "0.8.2", "latest", or "catalog" (read from a Gradle
+    # version catalog — see catalog-path / catalog-key inputs).
+    version: latest
+```
+<!-- x-release-please-end -->
+
+After this step the `compose-preview` binary is on `$PATH` for the
+remainder of the job.
+
+To keep the CLI version in lockstep with the rest of the project's
+toolchain, declare it in `gradle/libs.versions.toml` and let
+[Renovate](https://docs.renovatebot.com/) bump it on releases:
+
+<!-- x-release-please-start-version -->
+```toml
+# gradle/libs.versions.toml
+[versions]
+composePreviewCli = "0.8.2"
+```
+
+```yaml
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.2
+  with:
+    version: catalog   # reads composePreviewCli from libs.versions.toml
+```
+<!-- x-release-please-end -->
+
+```json
+// .github/renovate.json
+{
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)gradle/libs\\.versions\\.toml$"],
+      "matchStrings": [
+        "composePreviewCli\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "yschimke/compose-ai-tools",
+      "extractVersionTemplate": "^v?(?<version>.+)$"
+    }
+  ]
+}
+```
 
 ## Install the VS Code extension
 
