@@ -188,6 +188,129 @@ class CopyChangedTest(unittest.TestCase):
         self.assertEqual(copied, ["Blue.png", "Red.png"])
 
 
+class PerceptualFilterEndToEndTest(unittest.TestCase):
+    """End-to-end: ``cmd_copy_changed`` and ``cmd_compare`` must consult the
+    perceptual filter when ``--baseline-renders`` is supplied."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+        # Three previews: byte-equal, sha-different-but-perceptually-clean
+        # (the issue #190 noise), and sha-different-with-real-change.
+        self.equal_png = self.tmp / "Equal.png"
+        self.equal_png.write_bytes(b"equal")
+        self.noise_png = self.tmp / "Noise_noise.png"
+        self.noise_png.write_bytes(b"noise-current")
+        self.real_png = self.tmp / "Real.png"
+        self.real_png.write_bytes(b"real-current")
+
+        baseline_root = self.tmp / "_baselines" / "renders" / "app"
+        baseline_root.mkdir(parents=True)
+        (baseline_root / "Equal.png").write_bytes(b"equal")
+        (baseline_root / "Noise_noise.png").write_bytes(b"noise-baseline")
+        (baseline_root / "Real.png").write_bytes(b"real-baseline")
+        self.baseline_renders = baseline_root.parent
+
+        self.cli_path = self.tmp / "cli.json"
+        self.cli_path.write_text(json.dumps({
+            "schema": "compose-preview-show/v1",
+            "previews": [
+                _entry(id="Equal", function="EqualFn", png=str(self.equal_png), sha="equal"),
+                _entry(id="Noise_noise", function="NoiseFn", png=str(self.noise_png), sha="new-noise-sha"),
+                _entry(id="Real", function="RealFn", png=str(self.real_png), sha="new-real-sha"),
+            ],
+        }))
+        self.baselines = self.tmp / "baselines.json"
+        self.baselines.write_text(json.dumps({
+            "app/Equal": {"sha256": "equal", "functionName": "EqualFn", "renderBasename": "Equal.png"},
+            "app/Noise_noise": {"sha256": "old-noise-sha", "functionName": "NoiseFn", "renderBasename": "Noise_noise.png"},
+            "app/Real": {"sha256": "old-real-sha", "functionName": "RealFn", "renderBasename": "Real.png"},
+        }))
+
+        # Same filename-based stub as PerceptualFilterTest: the convention
+        # "noise" in the basename → unchanged, anything else → changed.
+        self._real = cp._perceptually_changed
+        cp._perceptually_changed = lambda prior, current: "noise" not in current.name
+        self.addCleanup(setattr, cp, "_perceptually_changed", self._real)
+
+    def test_copy_changed_filters_perceptual_noise(self):
+        from types import SimpleNamespace
+        out_dir = self.tmp / "out"
+        rc = cp.cmd_copy_changed(SimpleNamespace(
+            cli_json=str(self.cli_path),
+            baselines=str(self.baselines),
+            output_dir=str(out_dir),
+            baseline_renders=str(self.baseline_renders),
+        ))
+        self.assertEqual(rc, 0)
+        copied = sorted(p.name for p in (out_dir / "renders" / "app").iterdir())
+        # Equal: byte-identical → skipped.
+        # Noise_noise: sha-different but perceptually clean → skipped.
+        # Real: sha-different and perceptually different → copied.
+        self.assertEqual(copied, ["Real.png"])
+
+    def test_compare_filters_perceptual_noise_from_changed_section(self):
+        from types import SimpleNamespace
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(self.cli_path),
+                baselines=str(self.baselines),
+                repo="owner/repo",
+                base_ref="bef0",
+                head_ref="aft0",
+                baseline_renders=str(self.baseline_renders),
+            ))
+        out = buf.getvalue()
+        # Split at the Unchanged collapsible so each section's contents can
+        # be asserted independently — noise rolls into Unchanged, not Changed.
+        changed_part, _, unchanged_part = out.partition("<details><summary>Unchanged")
+        self.assertIn("`RealFn`", changed_part)
+        self.assertNotIn("`NoiseFn`", changed_part)
+        self.assertIn("`NoiseFn`", unchanged_part)
+        self.assertIn("`EqualFn`", unchanged_part)
+
+
+class PerceptualFilterRealLibTest(unittest.TestCase):
+    """Smoke-test the actual pixelmatch path against ``ActivityListLongPreview``
+    flake PNGs from issue #190. Skipped when the lib isn't installed
+    locally (the GitHub action installs it explicitly)."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+        cls.fixtures = Path(__file__).resolve().parent / "fixtures" / "issue-190"
+        if not cls.fixtures.exists():
+            raise unittest.SkipTest("issue-190 fixture PNGs not present")
+
+    def test_today_flake_collapses_to_unchanged(self):
+        # Both PNGs are real ActivityListLongPreview captures from today's
+        # PRs (#244 and #249), confirmed sha256-different but with only
+        # 4 differing AA-corner pixels at ΔE ≤ 7.
+        a = self.fixtures / "ActivityListLongPreview_A.png"
+        b = self.fixtures / "ActivityListLongPreview_B.png"
+        self.assertFalse(cp._perceptually_changed(a, b))
+
+    def test_size_mismatch_reads_as_changed(self):
+        from PIL import Image
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        small = tmp / "small.png"
+        big = tmp / "big.png"
+        with Image.new("RGB", (10, 10), (0, 0, 0)) as s:
+            s.save(small)
+        with Image.new("RGB", (20, 20), (0, 0, 0)) as b:
+            b.save(big)
+        self.assertTrue(cp._perceptually_changed(small, big))
+
+
 class GenerateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -228,6 +351,79 @@ class GenerateTest(unittest.TestCase):
 
         # PNG copied under renders/<module>/<id>.png.
         self.assertTrue((self.out / "renders" / "m" / "A.png").exists())
+
+
+class PerceptualFilterTest(unittest.TestCase):
+    """sha-different but pixelmatch-clean PNGs must read as ``unchanged``.
+
+    The filter is opt-in via ``--baseline-renders`` and falls back to
+    strict-bytes when the directory isn't passed. Tests stub
+    ``_perceptually_changed`` so unittest stays stdlib-only — the real
+    pixelmatch path is exercised by the CI action that installs the lib.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.calls: list[tuple[Path, Path]] = []
+        self._real_perceptually_changed = cp._perceptually_changed
+
+        def stub(prior: Path, current: Path) -> bool:
+            self.calls.append((prior, current))
+            # File-name convention used by tests below: PNGs whose name
+            # contains "noise" model the today's-flake case (sha-different
+            # but visually identical), everything else is a real change.
+            return "noise" not in current.name
+
+        cp._perceptually_changed = stub
+        self.addCleanup(setattr, cp, "_perceptually_changed", self._real_perceptually_changed)
+
+    def _setup_pair(self, *, baseline_basename: str, current_basename: str) -> tuple[Path, Path, Path]:
+        """Build a baseline-renders dir + a current PNG path for one preview."""
+        baseline_root = self.tmp / "_baselines" / "renders" / "m"
+        baseline_root.mkdir(parents=True)
+        (baseline_root / baseline_basename).write_bytes(b"baseline-bytes")
+        current_png = self.tmp / current_basename
+        current_png.write_bytes(b"current-bytes")
+        return baseline_root.parent, current_png, baseline_root / baseline_basename
+
+    def test_is_changed_fast_path_when_shas_match(self):
+        # Doesn't even consult the perceptual filter when the bytes agree.
+        info = {"sha256": "s", "module": "m", "pngPath": "/x.png"}
+        bl = {"sha256": "s", "renderBasename": "x.png"}
+        self.assertFalse(cp._is_changed(info, bl, self.tmp))
+        self.assertEqual(self.calls, [])
+
+    def test_is_changed_falls_back_to_strict_when_baseline_renders_missing(self):
+        # No baseline-renders dir → preserve current strict-bytes behaviour.
+        info = {"sha256": "new", "module": "m", "pngPath": "/x.png"}
+        bl = {"sha256": "old", "renderBasename": "x.png"}
+        self.assertTrue(cp._is_changed(info, bl, None))
+        self.assertEqual(self.calls, [])
+
+    def test_is_changed_defers_to_perceptual_filter_on_sha_mismatch(self):
+        # Filename ends with "noise.png" → stub returns False (not changed).
+        baseline_dir, current_png, prior_png = self._setup_pair(
+            baseline_basename="A_noise.png", current_basename="A_noise.png")
+        info = {"sha256": "new", "module": "m", "pngPath": str(current_png)}
+        bl = {"sha256": "old", "renderBasename": "A_noise.png"}
+        self.assertFalse(cp._is_changed(info, bl, baseline_dir))
+        # The filter was consulted and pointed at the right files.
+        self.assertEqual(self.calls, [(prior_png, current_png)])
+
+    def test_is_changed_surfaces_real_change_through_perceptual_filter(self):
+        baseline_dir, current_png, _ = self._setup_pair(
+            baseline_basename="A.png", current_basename="A.png")
+        info = {"sha256": "new", "module": "m", "pngPath": str(current_png)}
+        bl = {"sha256": "old", "renderBasename": "A.png"}
+        self.assertTrue(cp._is_changed(info, bl, baseline_dir))
+
+    def test_is_changed_when_baseline_basename_unknown_falls_back_to_changed(self):
+        # Old-format baselines.json without renderBasename: don't drop the
+        # change, surface it. Strictly more permissive than ignoring it.
+        info = {"sha256": "new", "module": "m", "pngPath": "/x.png"}
+        bl = {"sha256": "old"}  # no renderBasename
+        self.assertTrue(cp._is_changed(info, bl, self.tmp / "_baselines/renders"))
 
 
 class CompareMarkdownTest(unittest.TestCase):
@@ -936,6 +1132,103 @@ class CompareResourcesTests(unittest.TestCase):
         out = self._run()
         self.assertEqual(out, "",
                          "Comment should append nothing when no diff was detected.")
+
+
+class LoadBaselinesTest(unittest.TestCase):
+    """Pins `_load_baselines`'s permissive shape against everything the
+    `git show … > file 2>/dev/null || true` redirect in
+    `preview-comment/action.yml` can produce."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_missing_file_is_empty_dict(self):
+        self.assertEqual(cp._load_baselines(self.tmp / "nope.json"), {})
+
+    def test_empty_file_is_empty_dict(self):
+        # The original failure mode: bash `> file 2>/dev/null || true`
+        # truncates `file` to 0 bytes before git show runs; the file is
+        # then `exists() == True` but contents = "".
+        p = self.tmp / "empty.json"
+        p.write_text("")
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_whitespace_only_file_is_empty_dict(self):
+        # Defensive — strip-then-test rather than literal "" check, in case
+        # a future redirect path leaves a stray newline.
+        p = self.tmp / "ws.json"
+        p.write_text("   \n\t  \n")
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_malformed_json_is_empty_dict(self):
+        p = self.tmp / "bad.json"
+        p.write_text('{"oops')
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_non_dict_payload_is_empty_dict(self):
+        # baselines.json is supposed to be an object; treat anything else
+        # as no baselines rather than letting downstream `key in baselines`
+        # blow up on a list/string/null.
+        for payload in ('[]', '"oops"', '42', 'null'):
+            p = self.tmp / "shape.json"
+            p.write_text(payload)
+            self.assertEqual(cp._load_baselines(p), {}, f"{payload} should normalise to {{}}")
+
+    def test_valid_dict_payload_returns_parsed(self):
+        p = self.tmp / "ok.json"
+        p.write_text(json.dumps({"app/Foo": {"sha256": "abc"}}))
+        self.assertEqual(cp._load_baselines(p), {"app/Foo": {"sha256": "abc"}})
+
+
+class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
+    """End-to-end regression for the failure mode that broke PR comments
+    after #269 landed: `git show … > resource-baselines.json` truncated the
+    file to zero bytes when `preview_main` didn't yet have a
+    `resource-baselines.json`, and `cmd_compare_resources` blew up with
+    `JSONDecodeError`."""
+
+    def test_empty_baselines_file_treats_every_resource_as_new(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        workspace = tmp / "ws"
+        workspace.mkdir()
+        # Empty baseline file — the exact shape the action's truncating
+        # redirect produces on first run.
+        baselines = tmp / "resource-baselines.json"
+        baselines.write_text("")
+
+        manifest_dir = workspace / "app" / "build" / "compose-previews"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "resources.json").write_text(json.dumps({
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "drawable/foo", "type": "VECTOR",
+                           "sourceFiles": {"": "src/main/res/drawable/foo.xml"},
+                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                                         "renderOutput": "renders/resources/drawable/foo_xhdpi.png"}]}],
+            "manifestReferences": [],
+        }))
+        png = manifest_dir / "renders/resources/drawable/foo_xhdpi.png"
+        png.parent.mkdir(parents=True)
+        png.write_bytes(b"contents")
+
+        # Capture stdout; the run must succeed (no JSONDecodeError) AND emit
+        # markdown listing the resource as new.
+        import io, contextlib
+        from types import SimpleNamespace
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cp.cmd_compare_resources(SimpleNamespace(
+                workspace_root=str(workspace),
+                baselines=str(baselines),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+            ))
+        self.assertEqual(rc, 0)
+        self.assertIn("## Resource Changes", buf.getvalue())
+        self.assertIn("### New", buf.getvalue())
+        self.assertIn("`drawable/foo`", buf.getvalue())
 
 
 if __name__ == "__main__":

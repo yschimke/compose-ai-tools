@@ -37,6 +37,106 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _load_baselines(path: Path) -> dict:
+    """Read a baselines JSON file, treating missing / empty / malformed input as `{}`.
+
+    The fetch step in `preview-comment/action.yml` runs
+    `git show "$REF:baselines.json" > path 2>/dev/null || true`. Bash's `>`
+    truncates `path` to zero bytes BEFORE the command runs — so when the
+    target file doesn't exist on the base branch (the typical case for the
+    first run after a new baseline file is added, e.g. `resource-baselines.json`
+    landing on `preview_main`), the action ends up with an existing-but-empty
+    file. `json.loads("")` then raises `JSONDecodeError`, breaking the
+    diff-on-PR comment for everyone — including the composable side, which
+    has historically dodged this only because the composable `baselines.json`
+    has been on `preview_main` for so long that nobody re-runs the
+    bootstrap path.
+
+    Treat any of (missing path, empty file, unparseable JSON, non-dict
+    payload) as "no baselines to compare against" — strictly more permissive
+    than the previous behaviour, never less.
+    """
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text()
+    except OSError:
+        return {}
+    if not text.strip():
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+# Pixel count above pixelmatch's per-pixel threshold that we still treat as
+# perceptually unchanged. The Compose stitched-LONG renderer (issue #190) can
+# emit a handful of sub-pixel-AA-different rounded-corner pixels between runs
+# even when the source composable hasn't changed; pixelmatch's AA detection
+# catches most but not all of those, so we leave a small slack.
+_PERCEPTUAL_PIXEL_TOLERANCE = 16
+
+
+def _perceptually_changed(prior_png: Path, current_png: Path) -> bool:
+    """Return True if the two PNGs differ by more than rounding noise.
+
+    Uses the pixelmatch algorithm (Mapbox; widely used by Playwright,
+    Storybook, jest-image-snapshot, Percy) with anti-aliasing detection on,
+    so AA pixels around rounded corners and text glyphs don't count as
+    real differences. This is what collapses today's
+    ``ActivityListLongPreview`` flake (4 stray AA-corner pixels, ΔE ≤ 7)
+    while still surfacing genuine changes (the doubled-label artifact at
+    1–3 px offset shows ~1k differing pixels).
+
+    Falls back to ``True`` (i.e. defer to the existing sha-mismatch
+    behaviour) when the library isn't importable, the prior PNG can't be
+    located on disk, or the images can't be decoded — strictly more
+    permissive than current behaviour, never less.
+    """
+    try:
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+    except ImportError:
+        return True
+    if not prior_png.exists() or not current_png.exists():
+        return True
+    try:
+        with Image.open(prior_png) as prior, Image.open(current_png) as current:
+            if prior.size != current.size:
+                return True
+            diff = pixelmatch(prior, current, threshold=0.1, includeAA=False)
+    except Exception:
+        return True
+    return diff > _PERCEPTUAL_PIXEL_TOLERANCE
+
+
+def _is_changed(
+    cur_info: dict,
+    bl_info: dict,
+    baseline_renders: Path | None,
+) -> bool:
+    """Decide whether ``cur_info`` represents a real change vs ``bl_info``.
+
+    Fast path: bytes match → unchanged. Otherwise, when a baseline-renders
+    directory is available, defer to ``_perceptually_changed`` so
+    sha-different-but-perceptually-identical pairs (renderer noise, e.g.
+    issue #190) don't trip the diff bot. With no baseline renders to
+    compare against, we fall back to the strict sha-only behaviour.
+    """
+    if cur_info["sha256"] == bl_info["sha256"]:
+        return False
+    if baseline_renders is None:
+        return True
+    basename = bl_info.get("renderBasename")
+    png_path = cur_info.get("pngPath")
+    if not basename or not png_path:
+        return True
+    prior = baseline_renders / cur_info["module"] / basename
+    return _perceptually_changed(prior, Path(png_path))
+
+
 def _capture_label(capture: dict) -> str:
     """Human-readable summary of a capture's non-null dimensions.
 
@@ -275,9 +375,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
     repo = args.repo
     base_ref = args.base_ref
     head_ref = args.head_ref
+    baseline_renders = (
+        Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
+    )
 
     current = load_cli_output(cli_json)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
@@ -289,7 +392,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
             continue
         if key not in baselines:
             new.append((key, info))
-        elif info["sha256"] != baselines[key]["sha256"]:
+        elif _is_changed(info, baselines[key], baseline_renders):
             changed.append((key, info, baselines[key]))
         else:
             unchanged.append((key, info))
@@ -405,9 +508,12 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     out_dir = Path(args.output_dir)
+    baseline_renders = (
+        Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
+    )
 
     current = load_cli_output(cli_json)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     copied = 0
     for key, info in current.items():
@@ -419,7 +525,7 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
         if not png.exists():
             continue
         is_new = key not in baselines
-        is_changed = not is_new and info["sha256"] != baselines[key]["sha256"]
+        is_changed = not is_new and _is_changed(info, baselines[key], baseline_renders)
         if is_new or is_changed:
             # Use the renderer's on-disk basename so multi-capture previews
             # don't collide — matches the generate path.
@@ -603,7 +709,7 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
     entries = load_resource_manifests(workspace_root)
     if not entries:
         return 0
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     copied = 0
     for key, info in entries.items():
@@ -665,7 +771,7 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
     head_ref = args.head_ref
 
     current = load_resource_manifests(workspace_root)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
@@ -796,11 +902,18 @@ def main() -> int:
                      help="preview_main commit SHA (or branch name) for Before URLs")
     cmp.add_argument("--head-ref", required=True,
                      help="preview_pr commit SHA (or branch name) for After URLs")
+    # Optional. When supplied, sha-mismatched pairs run through pixelmatch
+    # before being flagged as Changed so renderer-side AA noise (issue #190)
+    # doesn't appear in the comment. Falls back to strict-bytes when omitted.
+    cmp.add_argument("--baseline-renders",
+                     help="Directory containing baseline PNGs (renders/<module>/<basename>)")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")
     cp.add_argument("--baselines", required=True)
     cp.add_argument("--output-dir", required=True)
+    cp.add_argument("--baseline-renders",
+                    help="Directory containing baseline PNGs (renders/<module>/<basename>)")
 
     gen_res = sub.add_parser(
         "generate-resources",
