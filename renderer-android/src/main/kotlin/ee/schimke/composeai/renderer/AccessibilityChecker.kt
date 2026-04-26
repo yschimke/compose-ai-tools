@@ -233,11 +233,12 @@ internal object AccessibilityChecker {
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
         screenshot: File? = null,
+        isRound: Boolean = false,
     ) {
         outputDir.mkdirs()
         val hasContent = findings.isNotEmpty() || nodes.isNotEmpty()
         val annotated = if (screenshot != null && hasContent) {
-            AccessibilityOverlay.generate(screenshot, findings, nodes)
+            AccessibilityOverlay.generate(screenshot, findings, nodes, isRound)
         } else null
         if (hasContent && annotated == null) {
             // Content present but no overlay landed — log the precondition

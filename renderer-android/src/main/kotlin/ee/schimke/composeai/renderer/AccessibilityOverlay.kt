@@ -6,11 +6,13 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import java.io.File
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Generates an annotated screenshot for each preview that has either ATF
@@ -101,6 +103,7 @@ internal object AccessibilityOverlay {
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean = false,
     ): File? {
         if (findings.isEmpty() && nodes.isEmpty()) return null
         if (!sourcePng.exists()) {
@@ -113,7 +116,7 @@ internal object AccessibilityOverlay {
             return null
         }
         return try {
-            generateInternal(sourcePng, findings, nodes)
+            generateInternal(sourcePng, findings, nodes, isRound)
         } catch (t: Throwable) {
             // Without this catch, a Canvas / Bitmap.createBitmap blow-up
             // would propagate through writePerPreviewReport and skip the
@@ -132,6 +135,7 @@ internal object AccessibilityOverlay {
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean,
     ): File? {
         val source = BitmapFactory.decodeFile(sourcePng.absolutePath)
         if (source == null) {
@@ -141,7 +145,7 @@ internal object AccessibilityOverlay {
             )
             return null
         }
-        val composite = compose(source, findings, nodes)
+        val composite = compose(source, findings, nodes, isRound)
         val dest = File(sourcePng.parentFile, "${sourcePng.nameWithoutExtension}.a11y.png")
         dest.outputStream().use { composite.compress(Bitmap.CompressFormat.PNG, 100, it) }
         source.recycle()
@@ -160,16 +164,22 @@ internal object AccessibilityOverlay {
         source: Bitmap,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean,
     ): Bitmap {
         val scale = screenshotScale(source)
+        // Apply the circular clip *before* upscaling — the clip's radius
+        // is min(w,h)/2 in source-pixel space, and feeding the upscaled
+        // bitmap back through the clipper would introduce a second AA
+        // edge that differs from the one Roborazzi already painted.
+        val clipped = if (isRound) applyCircularClip(source) else source
         val drawn = if (scale > 1f) {
             Bitmap.createScaledBitmap(
-                source,
-                (source.width * scale).toInt(),
-                (source.height * scale).toInt(),
+                clipped,
+                (clipped.width * scale).toInt(),
+                (clipped.height * scale).toInt(),
                 /* filter = */ true,
             )
-        } else source
+        } else clipped
         // Stable per-node colour assignment; both the screenshot fill and the
         // legend swatch read the same index, so they always match.
         val nodeColors = IntArray(nodes.size) { NODE_PALETTE[it % NODE_PALETTE.size] }
@@ -188,17 +198,34 @@ internal object AccessibilityOverlay {
         val canvas = Canvas(composite).apply { drawColor(Color.WHITE) }
         val imageTopOffset = (canvasHeight - drawn.height) / 2
 
+        // Bounds from `node.boundsInScreen` are in source-pixel space;
+        // when we upscale the bitmap to MIN_SCREENSHOT_DIM, fills /
+        // borders / badges have to scale with it or they'd land on the
+        // unscaled top-left quadrant.
+        // Round previews additionally clip the screenshot half to a
+        // circle so overlay paint stays inside the watch face — saves
+        // doing it in two places (Roborazzi already clips the bitmap
+        // for showSystemUi=true, but the corners would still get
+        // painted by drawNodeFills/drawFindingBadge without this).
+        canvas.save()
+        if (isRound) {
+            val cx = drawn.width / 2f
+            val cy = imageTopOffset + drawn.height / 2f
+            val radius = min(drawn.width, drawn.height) / 2f
+            canvas.clipPath(Path().apply { addCircle(cx, cy, radius, Path.Direction.CW) })
+        }
         // Translucent pastel fills first so finding outlines layer on top.
-        drawNodeFills(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        drawNodeFills(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
         canvas.drawBitmap(drawn, 0f, imageTopOffset.toFloat(), null)
         // Re-draw fills *over* the bitmap with their full stroke — the bitmap
         // we just drew covers the pre-fill, so we paint the fill again and
         // add a thin border so each region reads as a region, not a tint.
-        drawNodeFills(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
-        drawNodeBorders(canvas, nodes, nodeColors, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        drawNodeFills(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+        drawNodeBorders(canvas, nodes, nodeColors, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
         findings.forEachIndexed { i, f ->
-            drawFindingBadge(canvas, i + 1, f, offsetX = 0f, offsetY = imageTopOffset.toFloat())
+            drawFindingBadge(canvas, i + 1, f, scale, offsetX = 0f, offsetY = imageTopOffset.toFloat())
         }
+        canvas.restore()
 
         val legendX = drawn.width.toFloat()
         drawLegendBackground(canvas, legendX, 0f, LEGEND_WIDTH, canvasHeight)
@@ -207,6 +234,7 @@ internal object AccessibilityOverlay {
         y = drawFindingsRows(canvas, findings, legendX, y, LEGEND_WIDTH)
         drawNodeGroups(canvas, groups, legendX, y, LEGEND_WIDTH)
         if (drawn !== source) drawn.recycle()
+        if (clipped !== source && clipped !== drawn) clipped.recycle()
         return composite
     }
 
@@ -221,6 +249,7 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         nodes: List<AccessibilityNode>,
         nodeColors: IntArray,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
@@ -234,7 +263,8 @@ internal object AccessibilityOverlay {
             paint.color = nodeColors[i]
             paint.alpha = NODE_FILL_ALPHA
             canvas.drawRect(
-                offsetX + r.left, offsetY + r.top, offsetX + r.right, offsetY + r.bottom,
+                offsetX + r.left * scale, offsetY + r.top * scale,
+                offsetX + r.right * scale, offsetY + r.bottom * scale,
                 paint,
             )
         }
@@ -244,6 +274,7 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         nodes: List<AccessibilityNode>,
         nodeColors: IntArray,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
@@ -264,8 +295,8 @@ internal object AccessibilityOverlay {
             paint.color = nodeColors[i]
             paint.alpha = if (node.merged) 200 else 140
             canvas.drawRect(
-                offsetX + r.left + 0.5f, offsetY + r.top + 0.5f,
-                offsetX + r.right - 0.5f, offsetY + r.bottom - 0.5f,
+                offsetX + r.left * scale + 0.5f, offsetY + r.top * scale + 0.5f,
+                offsetX + r.right * scale - 0.5f, offsetY + r.bottom * scale - 0.5f,
                 paint,
             )
         }
@@ -275,6 +306,7 @@ internal object AccessibilityOverlay {
         canvas: Canvas,
         number: Int,
         finding: AccessibilityFinding,
+        scale: Float,
         offsetX: Float,
         offsetY: Float,
     ) {
@@ -289,15 +321,15 @@ internal object AccessibilityOverlay {
         val inset = OUTLINE_STROKE / 2f
         canvas.drawRect(
             RectF(
-                offsetX + r.left + inset, offsetY + r.top + inset,
-                offsetX + r.right - inset, offsetY + r.bottom - inset,
+                offsetX + r.left * scale + inset, offsetY + r.top * scale + inset,
+                offsetX + r.right * scale - inset, offsetY + r.bottom * scale - inset,
             ),
             outline,
         )
         // Badge anchored at the top-left so it stays next to the offending
         // control even when bounds clip the edge of the image.
-        val cx = offsetX + r.left.toFloat().coerceAtLeast(BADGE_RADIUS)
-        val cy = offsetY + r.top.toFloat().coerceAtLeast(BADGE_RADIUS)
+        val cx = offsetX + (r.left * scale).coerceAtLeast(BADGE_RADIUS)
+        val cy = offsetY + (r.top * scale).coerceAtLeast(BADGE_RADIUS)
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; this.color = color }
         canvas.drawCircle(cx, cy, BADGE_RADIUS, bg)
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
