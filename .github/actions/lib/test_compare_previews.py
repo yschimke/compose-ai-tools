@@ -545,5 +545,168 @@ class MultiCaptureCompareTest(unittest.TestCase):
         self.assertIn("S_SCROLL_end.png", out)
 
 
+class GenerateResourcesTests(unittest.TestCase):
+    """`cmd_generate_resources` walks `<module>/build/compose-previews/resources.json`
+    and stages the rendered PNGs / GIFs into `<output>/renders/<module>/resources/...`."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp()
+        self.workspace = Path(self.tmp) / "ws"
+        self.workspace.mkdir()
+        self.output = Path(self.tmp) / "out"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp)
+
+    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
+        module_dir = self.workspace / module / "build" / "compose-previews"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        (module_dir / "resources.json").write_text(json.dumps(manifest))
+        for relative, content in png_files.items():
+            target = module_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+    def _run(self) -> int:
+        from types import SimpleNamespace
+        return cp.cmd_generate_resources(SimpleNamespace(
+            output_dir=str(self.output),
+            workspace_root=str(self.workspace),
+        ))
+
+    def test_no_manifests_is_a_clean_noop(self) -> None:
+        self.assertEqual(self._run(), 0)
+        # Output dir shouldn't be created when there's nothing to do — keeps
+        # the baselines tree byte-identical for projects that don't write XML
+        # resources.
+        self.assertFalse(self.output.exists())
+
+    def test_copies_pngs_and_writes_resource_baselines_json(self) -> None:
+        self._write_module(
+            "app",
+            manifest={
+                "module": "app", "variant": "debug",
+                "resources": [
+                    {
+                        "id": "drawable/ic_logo",
+                        "type": "VECTOR",
+                        "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
+                        "captures": [{
+                            "variant": {"qualifiers": "xhdpi", "shape": None},
+                            "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
+                            "cost": 1.0,
+                        }],
+                    },
+                ],
+                "manifestReferences": [],
+            },
+            png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"png-bytes"},
+        )
+
+        self.assertEqual(self._run(), 0)
+
+        # PNG copied to the canonical baselines layout — the leading
+        # `renders/` of the manifest's `renderOutput` is absorbed into the
+        # destination root so it doesn't double-up.
+        dest = self.output / "renders" / "app" / "resources" / "drawable" / "ic_logo_xhdpi.png"
+        self.assertTrue(dest.exists())
+        self.assertEqual(dest.read_bytes(), b"png-bytes")
+
+        baselines = json.loads((self.output / "resource-baselines.json").read_text())
+        self.assertEqual(len(baselines), 1)
+        key = next(iter(baselines))
+        self.assertIn("app::drawable/ic_logo::renders/resources/drawable/ic_logo_xhdpi.png", key)
+        entry = baselines[key]
+        self.assertEqual(entry["resourceId"], "drawable/ic_logo")
+        self.assertEqual(entry["resourceType"], "VECTOR")
+        self.assertEqual(entry["qualifiers"], "xhdpi")
+        self.assertIsNone(entry["shape"])
+        self.assertEqual(entry["renderBasename"], "resources/drawable/ic_logo_xhdpi.png")
+
+    def test_skips_captures_whose_pngs_dont_exist(self) -> None:
+        self._write_module(
+            "app",
+            manifest={
+                "module": "app", "variant": "debug",
+                "resources": [{
+                    "id": "drawable/ghost",
+                    "type": "VECTOR",
+                    "sourceFiles": {"": "src/main/res/drawable/ghost.xml"},
+                    "captures": [{
+                        "variant": {"qualifiers": "xhdpi", "shape": None},
+                        "renderOutput": "renders/resources/drawable/ghost_xhdpi.png",
+                    }],
+                }],
+                "manifestReferences": [],
+            },
+            png_files={},  # discovery saw the resource but renderer hasn't run
+        )
+        self.assertEqual(self._run(), 0)
+        # No baselines file should be written, since no PNG exists to record.
+        self.assertFalse((self.output / "resource-baselines.json").exists())
+
+    def test_records_adaptive_icon_shape_per_capture(self) -> None:
+        self._write_module(
+            "app",
+            manifest={
+                "module": "app", "variant": "debug",
+                "resources": [{
+                    "id": "mipmap/ic_launcher",
+                    "type": "ADAPTIVE_ICON",
+                    "sourceFiles": {"anydpi-v26": "src/main/res/mipmap-anydpi-v26/ic_launcher.xml"},
+                    "captures": [
+                        {
+                            "variant": {"qualifiers": "xhdpi", "shape": "CIRCLE"},
+                            "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+                        },
+                        {
+                            "variant": {"qualifiers": "xhdpi", "shape": "LEGACY"},
+                            "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+                        },
+                    ],
+                }],
+                "manifestReferences": [],
+            },
+            png_files={
+                "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png": b"circle",
+                "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png": b"legacy",
+            },
+        )
+        self.assertEqual(self._run(), 0)
+        baselines = json.loads((self.output / "resource-baselines.json").read_text())
+        shapes = sorted(entry["shape"] for entry in baselines.values())
+        self.assertEqual(shapes, ["CIRCLE", "LEGACY"])
+
+    def test_appends_resource_section_to_existing_readme(self) -> None:
+        # Simulate `cmd_generate` having already written a composable README.
+        self.output.mkdir()
+        (self.output / "README.md").write_text("# Preview Baselines\n\n## sample-android\n\n…\n")
+        self._write_module(
+            "app",
+            manifest={
+                "module": "app", "variant": "debug",
+                "resources": [{
+                    "id": "drawable/ic_logo",
+                    "type": "VECTOR",
+                    "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
+                    "captures": [{
+                        "variant": {"qualifiers": "xhdpi", "shape": None},
+                        "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
+                    }],
+                }],
+                "manifestReferences": [],
+            },
+            png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"png"},
+        )
+        self.assertEqual(self._run(), 0)
+        readme = (self.output / "README.md").read_text()
+        # Original composable section preserved.
+        self.assertIn("## sample-android", readme)
+        # Resource section appended.
+        self.assertIn("## Android XML Resource Previews", readme)
+        self.assertIn("`drawable/ic_logo`", readme)
+        self.assertIn("VECTOR", readme)
+
+
 if __name__ == "__main__":
     unittest.main()
