@@ -26,7 +26,17 @@ fun main(args: Array<String>) {
       "--message",
     )
   val commands =
-    setOf("show", "list", "render", "a11y", "doctor", "share-gist", "publish-images", "help")
+    setOf(
+      "show",
+      "show-resources",
+      "list",
+      "render",
+      "a11y",
+      "doctor",
+      "share-gist",
+      "publish-images",
+      "help",
+    )
 
   var commandIndex = -1
   var i = 0
@@ -59,6 +69,7 @@ fun main(args: Array<String>) {
 
   when (command) {
     "show" -> ShowCommand(allArgs).run()
+    "show-resources" -> ShowResourcesCommand(allArgs).run()
     "list" -> ListCommand(allArgs).run()
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
@@ -83,6 +94,10 @@ private fun printUsage() {
 
     Commands:
       show             Discover and render previews; print id, path, sha256, changed flag
+      show-resources   Render Android XML resource previews (vector, animated-vector,
+                       adaptive-icon); same id/path/sha/changed shape as `show`. Sibling
+                       command, separate from `show` because the workflows are disjoint —
+                       see also `compose-preview-show-resources/v1` JSON envelope.
       list             List discovered previews
       render           Render previews; with --output copies a single match to disk
       a11y             Render previews and print ATF accessibility findings
