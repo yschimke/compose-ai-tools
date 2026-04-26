@@ -20,8 +20,13 @@ fun main(args: Array<String>) {
       "--plugin-version",
       "--fail-on",
       "--desc",
+      "--branch",
+      "--remote",
+      "--pr-number",
+      "--message",
     )
-  val commands = setOf("show", "list", "render", "a11y", "doctor", "share-gist", "help")
+  val commands =
+    setOf("show", "list", "render", "a11y", "doctor", "share-gist", "publish-images", "help")
 
   var commandIndex = -1
   var i = 0
@@ -59,6 +64,7 @@ fun main(args: Array<String>) {
     "a11y" -> A11yCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
+    "publish-images" -> PublishImagesCommand(allArgs).run()
     "help" -> printUsage()
     else -> {
       System.err.println("Unknown command: $command")
@@ -76,13 +82,14 @@ private fun printUsage() {
     Usage: compose-preview [options] <command> [options]
 
     Commands:
-      show         Discover and render previews; print id, path, sha256, changed flag
-      list         List discovered previews
-      render       Render previews; with --output copies a single match to disk
-      a11y         Render previews and print ATF accessibility findings
-      doctor       Verify Java 17 + Compose/AGP environment before editing Gradle files
-      share-gist   Create a gist from a markdown file plus image attachments
-      help         Show this help message
+      show             Discover and render previews; print id, path, sha256, changed flag
+      list             List discovered previews
+      render           Render previews; with --output copies a single match to disk
+      a11y             Render previews and print ATF accessibility findings
+      doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
+      share-gist       Create a gist from a markdown file plus image attachments
+      publish-images   Push a directory of rendered PNGs to a shared branch (default preview_pr)
+      help             Show this help message
 
     Options:
       --module <name>      Target module (default: auto-detect all)
