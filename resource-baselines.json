@@ -1,0 +1,137 @@
+{
+  "samples/android::drawable/avd_pulse::renders/resources/drawable/avd_pulse_xhdpi.gif": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/avd_pulse_xhdpi.gif",
+    "resourceId": "drawable/avd_pulse",
+    "resourceType": "ANIMATED_VECTOR",
+    "sha256": "f0fc7c32ac527b44ce22078ae2936da23f5622e8823e2b959478721692859a8d",
+    "shape": null
+  },
+  "samples/android::drawable/ic_compose_logo::renders/resources/drawable/ic_compose_logo_night-xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "night-xhdpi",
+    "renderBasename": "resources/drawable/ic_compose_logo_night-xhdpi.png",
+    "resourceId": "drawable/ic_compose_logo",
+    "resourceType": "VECTOR",
+    "sha256": "42867812c7b1c5c24c873f8a4ea1f6d4f2032427c03a564a8c1fa00b95361583",
+    "shape": null
+  },
+  "samples/android::drawable/ic_compose_logo::renders/resources/drawable/ic_compose_logo_xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/ic_compose_logo_xhdpi.png",
+    "resourceId": "drawable/ic_compose_logo",
+    "resourceType": "VECTOR",
+    "sha256": "a1cfd906cc33a9a916c3f445e53564bd876ecf9cabdb074edf41505f73fd7610",
+    "shape": null
+  },
+  "samples/android::drawable/ic_launcher_background::renders/resources/drawable/ic_launcher_background_xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/ic_launcher_background_xhdpi.png",
+    "resourceId": "drawable/ic_launcher_background",
+    "resourceType": "VECTOR",
+    "sha256": "3649949e08ff94232b332f41f3366bb3a95cab12628ebb7b1eafdcab053ebcdc",
+    "shape": null
+  },
+  "samples/android::drawable/ic_launcher_foreground::renders/resources/drawable/ic_launcher_foreground_xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/ic_launcher_foreground_xhdpi.png",
+    "resourceId": "drawable/ic_launcher_foreground",
+    "resourceType": "VECTOR",
+    "sha256": "1fe0369479bf15092144fc6418d82c7f7b83fa23df732ccc59e97def8cb8b6cb",
+    "shape": null
+  },
+  "samples/android::drawable/ic_launcher_legacy::renders/resources/drawable/ic_launcher_legacy_xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/ic_launcher_legacy_xhdpi.png",
+    "resourceId": "drawable/ic_launcher_legacy",
+    "resourceType": "VECTOR",
+    "sha256": "b49e56dadc326346c8306307fb8c06978ecbaac2b2966f94d9533485c30ab636",
+    "shape": null
+  },
+  "samples/android::drawable/ic_settings::renders/resources/drawable/ic_settings_xhdpi.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/ic_settings_xhdpi.png",
+    "resourceId": "drawable/ic_settings",
+    "resourceType": "VECTOR",
+    "sha256": "97dd41fabbba6a807a062b03bf23c133b9c5036b962f86bef0695172614e522a",
+    "shape": null
+  },
+  "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+    "resourceId": "mipmap/ic_launcher",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "b22fec25a85cb0e5cc8c2c59db60b681d83fcf17dca4457144a2501456179e7f",
+    "shape": "LEGACY"
+  },
+  "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+    "resourceId": "mipmap/ic_launcher",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "76a33ae30822437533c26be1c66a89cad55c03cf9f409bca991e0dc9f45290b6",
+    "shape": "CIRCLE"
+  },
+  "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png",
+    "resourceId": "mipmap/ic_launcher",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "dd02a3ea1629b555419bbeddc41fcca839dd06065669fd36337fc810d7baacb3",
+    "shape": "ROUNDED_SQUARE"
+  },
+  "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png",
+    "resourceId": "mipmap/ic_launcher",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "8640bc2b8e504e7c49169ec03e227016a169a67b59030e4ed3bfa1c7cac59db8",
+    "shape": "SQUARE"
+  },
+  "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png",
+    "resourceId": "mipmap/ic_launcher_round",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "b22fec25a85cb0e5cc8c2c59db60b681d83fcf17dca4457144a2501456179e7f",
+    "shape": "LEGACY"
+  },
+  "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png",
+    "resourceId": "mipmap/ic_launcher_round",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "76a33ae30822437533c26be1c66a89cad55c03cf9f409bca991e0dc9f45290b6",
+    "shape": "CIRCLE"
+  },
+  "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png",
+    "resourceId": "mipmap/ic_launcher_round",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "dd02a3ea1629b555419bbeddc41fcca839dd06065669fd36337fc810d7baacb3",
+    "shape": "ROUNDED_SQUARE"
+  },
+  "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png",
+    "resourceId": "mipmap/ic_launcher_round",
+    "resourceType": "ADAPTIVE_ICON",
+    "sha256": "8640bc2b8e504e7c49169ec03e227016a169a67b59030e4ed3bfa1c7cac59db8",
+    "shape": "SQUARE"
+  }
+}
