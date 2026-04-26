@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.9](https://github.com/yschimke/compose-ai-tools/compare/v0.8.8...v0.8.9) (2026-04-26)
+
+
+### Features
+
+* **actions:** include resource diffs in PR preview comments ([#269](https://github.com/yschimke/compose-ai-tools/issues/269)) ([2852250](https://github.com/yschimke/compose-ai-tools/commit/285225016f61a70187e03addc843d8be5b8ec5f4))
+* **cli:** add publish-images subcommand for preview_pr-style branch pushes ([#274](https://github.com/yschimke/compose-ai-tools/issues/274)) ([7c6102c](https://github.com/yschimke/compose-ai-tools/commit/7c6102c73632e2c8cea616f20f08631da63516a4))
+* **cli:** add share-gist subcommand for markdown + image attachments ([#271](https://github.com/yschimke/compose-ai-tools/issues/271)) ([c2a602a](https://github.com/yschimke/compose-ai-tools/commit/c2a602a05dd5bc7d6f310df14f522f7fa743d661))
+* **cli:** doctor surfaces the applied plugin version ([#268](https://github.com/yschimke/compose-ai-tools/issues/268)) ([5d4d893](https://github.com/yschimke/compose-ai-tools/commit/5d4d893c6f07959aaccaf054dce8bcbb71bf9723))
+* **render:** android XML resource previews (vector / AVD / adaptive icon) ([#259](https://github.com/yschimke/compose-ai-tools/issues/259)) ([da187a6](https://github.com/yschimke/compose-ai-tools/commit/da187a6598620a98796dbded404fc270899fad83))
+* **render:** stage Android resource renders into preview_main ([#267](https://github.com/yschimke/compose-ai-tools/issues/267)) ([e7405f9](https://github.com/yschimke/compose-ai-tools/commit/e7405f9b3273f1153d1e10b23f63a5aa03fe37e4))
+
+
+### Bug Fixes
+
+* **ci:** stop install smoke test racing release uploads ([#261](https://github.com/yschimke/compose-ai-tools/issues/261)) ([8aed84e](https://github.com/yschimke/compose-ai-tools/commit/8aed84e23811b660e4f2a151e729d7670d682457))
+* **cli:** publish-images branch-name allowlist + refname validation ([#278](https://github.com/yschimke/compose-ai-tools/issues/278)) ([66e5cb4](https://github.com/yschimke/compose-ai-tools/commit/66e5cb4ebc041aec7da0416e03da316a61a36a4d))
+* **diff-bot:** perceptual filter for sha-different-but-AA-identical previews ([#270](https://github.com/yschimke/compose-ai-tools/issues/270)) ([476d0aa](https://github.com/yschimke/compose-ai-tools/commit/476d0aa18b34ae457288037cb318469cadaa02e3))
+* **diff:** tolerate empty / missing baselines.json in preview-comment action ([#273](https://github.com/yschimke/compose-ai-tools/issues/273)) ([4840346](https://github.com/yschimke/compose-ai-tools/commit/484034686389a90625069474c0e2d8886d705e75))
+* **plugin:** align Hamcrest on renderer classpath; doctor flags 2.x/1.3 skew ([#282](https://github.com/yschimke/compose-ai-tools/issues/282)) ([d86ee97](https://github.com/yschimke/compose-ai-tools/commit/d86ee97aabd99f5839b6edc172e254b9f97c371a))
+
 ## [0.8.8](https://github.com/yschimke/compose-ai-tools/compare/v0.8.7...v0.8.8) (2026-04-26)
 
 
