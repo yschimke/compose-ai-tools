@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.8](https://github.com/yschimke/compose-ai-tools/compare/v0.8.7...v0.8.8) (2026-04-26)
+
+
+### Features
+
+* **a11y:** legend right of screenshot, inline merged children ([#257](https://github.com/yschimke/compose-ai-tools/issues/257)) ([81b4937](https://github.com/yschimke/compose-ai-tools/commit/81b4937c1fa3fa8273c08fecf0c2999921f52aa8))
+* **renderer:** paint synthetic system bars when showSystemUi = true ([#258](https://github.com/yschimke/compose-ai-tools/issues/258)) ([bd73749](https://github.com/yschimke/compose-ai-tools/commit/bd73749797ed1bc4bbb042740ed98f9ccd56f3d0))
+
 ## [0.8.7](https://github.com/yschimke/compose-ai-tools/compare/v0.8.6...v0.8.7) (2026-04-26)
 
 
