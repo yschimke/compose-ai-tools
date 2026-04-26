@@ -1,143 +1,31 @@
 # compose-ai-tools
 
-A Gradle plugin and CLI that discovers `@Preview` composables and renders them to PNG — outside
-of Android Studio. Works with both Android (Jetpack Compose) and Compose Multiplatform
-Desktop projects.
+Render `@Preview` composables to PNG outside Android Studio, so AI coding
+agents can see what they're changing. Works with Jetpack Compose (Android,
+via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
 
-See [SKILL.md](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/SKILL.md)
+## What it ships
 
-```
-$ compose-preview list --module samples:wear
-com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Larger  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Largest  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Medium  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Normal  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Small  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round  (com/example/samplewear/Previews.kt)
-com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Small Round  (com/example/samplewear/Previews.kt)
-```
+- **Agent skill** — [`skills/compose-preview/SKILL.md`](skills/compose-preview/SKILL.md).
+  Point any agent that can fetch a URL at it; the skill is a complete
+  install-and-iterate playbook. Bootstrap a host machine with
+  [`scripts/install.sh`](scripts/install.sh).
+- **VS Code extension** — [Compose Preview on the Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
+  (`code --install-extension yuri-schimke.compose-preview`). Source in
+  [`vscode-extension/`](vscode-extension/).
+- **GitHub Actions** — composite actions for CI:
+  [`install`](.github/actions/install/) (CLI on `$PATH`),
+  [`preview-baselines`](.github/actions/preview-baselines/) (push baselines),
+  [`preview-comment`](.github/actions/preview-comment/) (before/after PR
+  comments), [`a11y-report`](.github/actions/a11y-report/) (accessibility
+  findings).
 
-Also provides a VS Code plugin that displays them
-
-<img height="400" alt="image" src="https://github.com/user-attachments/assets/fe9be596-13d9-4880-9e20-cedd6992f650" />
-
-## Cloud sandboxes (Claude Code on the web, etc.)
-
-If you're running this in a cloud agent sandbox, two things are required:
-
-1. **Allowlist the four Google hosts** the Android + downloadable-fonts render
-   paths pull from. In the Claude Code web UI, switch **Network access** from
-   *Trusted* to **Custom**, keep *"include Trusted defaults"* on, and add:
-
-   | Host | Used for |
-   | --- | --- |
-   | `maven.google.com` | AGP + AndroidX resolution |
-   | `dl.google.com` | Android SDK cmdline-tools / Google Maven mirror |
-   | `fonts.googleapis.com` | Google Fonts API (downloadable fonts) |
-   | `fonts.gstatic.com` | Google Fonts static assets |
-
-   Pure CMP Desktop / JVM consumers can stay on *Trusted* — the four hosts
-   are Android-specific.
-
-   Building the `:cli` module *from source* (not using `install.sh`) also
-   needs `repo.gradle.org` — it hosts `gradle-tooling-api` and isn't on the
-   Trusted defaults. If you consume the released CLI tarball this doesn't
-   apply.
-
-2. **Drop the install script into your environment setup.** It installs
-   the CLI and the skill bundle (at `~/.claude/skills/compose-preview/`),
-   reuses the pre-installed JDK 21 (falling back to apt-installing JDK 17
-   only if no 17+ JDK is present), and appends `PATH` (and `JAVA_HOME`
-   when the fallback fires) to `$CLAUDE_ENV_FILE` so every subsequent
-   tool invocation in the session inherits them:
-
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
-   ```
-
-`compose-preview doctor` probes all four hosts and, when it sees
-`$CLAUDE_CODE_SESSION_ID` / `$CLAUDE_ENV_FILE`, tailors its remediation to the
-Claude Code UI (Trusted → Custom, add the missing host). Full walk-through
-including Gradle pre-warming, Android SDK install, and proxy gotchas:
-[skills/compose-preview/design/CLAUDE_CLOUD.md](skills/compose-preview/design/CLAUDE_CLOUD.md).
-
-## How it works
-
-### Discovery
-
-Scan compiled class files for `@Preview` annotations → `build/compose-previews/previews.json`.
-
-```
-For each method in each compiled class:
-
-  1. Check for direct @Preview or @Preview.Container annotations on the method.
-     If found, extract preview parameters (name, device, dimensions, backgroundColor, etc.)
-     and emit a preview entry.
-
-  2. Otherwise, walk the method's annotations looking for multi-preview meta-annotations.
-     For each annotation, check whether *its* annotation class carries @Preview.
-     Recurse through meta-annotations (with cycle detection via a visited set).
-     Emit a preview entry for each @Preview found transitively.
-
-Deduplicate by fully-qualified name + preview name + device + dimensions.
-```
-
-### Rendering (Desktop)
-
-Launch a subprocess with the module's full classpath plus the renderer-desktop module.
-
-```
-1. Load the target class by name and resolve the composable function
-   via the Compose runtime's reflection API.
-
-2. Create a headless ImageComposeScene at the target dimensions (2x density).
-
-3. Set the scene content to: a background fill (from the @Preview annotation's
-   backgroundColor), with the composable function invoked inside it.
-   LocalInspectionMode is enabled so preview-aware composables render correctly.
-
-4. Render two frames (the second allows animations and effects to settle).
-
-5. Encode the Skia surface to PNG and write to the output file.
-```
-
-### Rendering (Android)
-
-Launch a Gradle `Test` task inside a Robolectric sandbox with native graphics
-(`graphicsMode=NATIVE`, `pixelCopyRenderMode=hardware`).
-
-```
-1. Bootstrap a ComponentActivity through `createAndroidComposeRule`.
-   Apply the @Preview qualifiers (size, density, locale, uiMode, round,
-   orientation) via `RuntimeEnvironment.setQualifiers` and `setFontScale`.
-
-2. Set the activity content to a background fill + reflected composable
-   invocation, with `LocalInspectionMode = true`.
-
-3. Pause Compose's main clock (`autoAdvance = false`) and step it by a
-   fixed amount so infinite animations terminate deterministically instead
-   of hanging the idling resource.
-
-4. Capture the root view via `captureRoboImage`, which routes ShadowPixelCopy
-   through HardwareRenderer + ImageReader to replay Compose's RenderNodes,
-   compress as PNG, write to file.
-```
-
-### Caching
-
-Both discovery and rendering are Gradle cacheable tasks with declared input/output
-contracts. Unchanged source files produce no re-work on subsequent runs.
-Configuration caching is strict (`problems=fail`).
+<img height="400" alt="VS Code extension preview panel" src="https://github.com/user-attachments/assets/fe9be596-13d9-4880-9e20-cedd6992f650" />
 
 ## Setup
 
-The plugin is published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin).
-No authentication, no PAT — just apply it.
-
-### 1. Apply the plugin
+The plugin is published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
+— no auth, no PAT.
 
 <!-- x-release-please-start-version -->
 ```kotlin
@@ -148,197 +36,26 @@ plugins {
 ```
 <!-- x-release-please-end -->
 
-Most projects already have `mavenCentral()` in their
-`pluginManagement.repositories` (AGP and the Kotlin Gradle Plugin are both
-on Central). If yours doesn't, add it:
+Working examples: [`samples/android/build.gradle.kts`](samples/android/build.gradle.kts),
+[`samples/wear/build.gradle.kts`](samples/wear/build.gradle.kts),
+[`samples/cmp/build.gradle.kts`](samples/cmp/build.gradle.kts).
 
-```kotlin
-// settings.gradle.kts
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-```
-
-CMP Desktop projects additionally need
-`implementation(compose.components.uiToolingPreview)` — the bundled
-`@Preview` annotation has `SOURCE` retention and is invisible to ClassGraph.
-
-Check [Releases](https://github.com/yschimke/compose-ai-tools/releases) for
-the latest version.
-
-### Testing against a snapshot
-
-Every push to `main` publishes a `-SNAPSHOT` build to the Central snapshots
-repository. To try an unreleased change, add the snapshots repo to
-`pluginManagement` and bump the plugin version to the next patch
-`-SNAPSHOT`:
-
-```kotlin
-// settings.gradle.kts
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-        maven("https://central.sonatype.com/repository/maven-snapshots/") {
-            mavenContent { snapshotsOnly() }
-        }
-    }
-}
-```
-
-```kotlin
-// <module>/build.gradle.kts
-plugins {
-    id("ee.schimke.composeai.preview") version "0.3.5-SNAPSHOT"
-}
-```
-
-The snapshot version is the next patch ahead of the latest release
-(e.g. last tag `v0.3.4` → `0.3.5-SNAPSHOT`). Snapshots are unsigned. See
-[docs/RELEASING.md](docs/RELEASING.md) for more detail.
-
-## Install the CLI
-
-<!-- x-release-please-start-version -->
-Download `compose-preview-0.8.6.tar.gz` (or `.zip`) from the
-[v0.8.6 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.8.2)
-and put the `bin/` directory on your `PATH`:
+Then:
 
 ```sh
-curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.8.6/compose-preview-0.8.2.tar.gz
-tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.8.6/bin:$PATH"
-
-compose-preview --help
-```
-<!-- x-release-please-end -->
-
-Requires Java 17 or newer on `PATH` (or `JAVA_HOME`). JDK 21 / 25 are
-fine — the CLI and renderer are compiled to JDK 17 bytecode.
-
-### On GitHub Actions
-
-Use the install composite action instead of curl-piping the install
-script — it pins to a tagged version of this repo, so consumer CI
-isn't exposed to changes on `main`:
-
-<!-- x-release-please-start-version -->
-```yaml
-- uses: actions/setup-java@v5
-  with:
-    distribution: temurin
-    java-version: 17
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.6
-  with:
-    # Literal "0.8.6", "latest", or "catalog" (read from a Gradle
-    # version catalog — see catalog-path / catalog-key inputs).
-    version: latest
-```
-<!-- x-release-please-end -->
-
-After this step the `compose-preview` binary is on `$PATH` for the
-remainder of the job.
-
-To keep the CLI version in lockstep with the rest of the project's
-toolchain, declare it in `gradle/libs.versions.toml` and let
-[Renovate](https://docs.renovatebot.com/) bump it on releases:
-
-<!-- x-release-please-start-version -->
-```toml
-# gradle/libs.versions.toml
-[versions]
-composePreviewCli = "0.8.6"
+./gradlew :app:discoverPreviews    # scan @Preview annotations
+./gradlew :app:renderAllPreviews   # render every @Preview to PNG
 ```
 
-```yaml
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.6
-  with:
-    version: catalog   # reads composePreviewCli from libs.versions.toml
-```
-<!-- x-release-please-end -->
+Requires Java 17+, Gradle 9.4.1+, AGP 9.1+ (Android), Kotlin 2.2.21,
+Compose Multiplatform 1.10.3 (Desktop).
 
-```json
-// .github/renovate.json
-{
-  "customManagers": [
-    {
-      "customType": "regex",
-      "fileMatch": ["(^|/)gradle/libs\\.versions\\.toml$"],
-      "matchStrings": [
-        "composePreviewCli\\s*=\\s*\"(?<currentValue>[^\"]+)\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "yschimke/compose-ai-tools",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
-    }
-  ]
-}
-```
+## More
 
-## Install the VS Code extension
-
-Install [Compose Preview](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
-from the VS Code Marketplace, or from the command line:
-
-```sh
-code --install-extension yuri-schimke.compose-preview
-```
-
-The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.8.6` <!-- x-release-please-version --> in your project as shown above.
-
-## Usage
-
-Run discovery and rendering:
-
-```
-./gradlew :app:discoverPreviews    # scan for @Preview annotations
-./gradlew :app:renderAllPreviews   # discover + render to PNG
-```
-
-### Configuration
-
-```kotlin
-composePreview {
-    variant.set("debug")     // Android build variant (default: "debug")
-    sdkVersion.set(35)       // Robolectric SDK version (default: 35)
-    enabled.set(true)        // disable to skip registration (default: true)
-}
-```
-
-## Project structure
-
-| Module | Purpose |
-|--------|---------|
-| `gradle-plugin/` | Gradle plugin — discovery, rendering task orchestration |
-| `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
-| `renderer-android/` | Android renderer — Robolectric harness |
-| `preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
-| `cli/` | CLI — Tooling-API driver over `discoverPreviews` / `renderAllPreviews` |
-| `vscode-extension/` | VS Code extension that surfaces rendered previews in the editor |
-| `samples/android/` | Android sample with colored box `@Preview` composables |
-| `samples/android-library/` | Android library variant — exercises AAR class-jar discovery |
-| `samples/android-screenshot-test/` | Co-existence with `com.android.compose.screenshot` |
-| `samples/wear/` | Wear OS sample — Material 3 Expressive, `EdgeButton`, tile previews |
-| `samples/cmp/` | CMP Desktop sample with colored box `@Preview` composables |
-| `samples/remotecompose/` | Remote Compose sample — wrapper-inside-Composable vs. `@PreviewWrapper(RemotePreviewWrapper::class)` against `wear-compose-remote-material3` |
-
-## Requirements
-
-- Gradle 9.4.1+
-- Java 17 or newer (renderer / plugin target JDK 17 bytecode; any newer JDK runs them)
-- AGP 9.1.0 (Android projects)
-- Kotlin 2.2.21
-- Compose Multiplatform 1.10.3 (Desktop projects)
-
-## Contributing
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building the plugin, CLI, and
-VS Code extension from source and running them locally against the bundled
-samples.
+- [How it works](docs/AGENTS.md) — discovery, renderer, caching.
+- [Cloud sandbox setup](skills/compose-preview/design/CLAUDE_CLOUD.md) — Claude Code on the web, network allowlist.
+- [CI workflows](skills/compose-preview/design/CI_PREVIEWS.md) — `preview_main` baselines, PR diff comments.
+- [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source.
+- [Releases](https://github.com/yschimke/compose-ai-tools/releases) ·
+  [Changelog](CHANGELOG.md) ·
+  [License (Apache 2.0)](LICENSE)
