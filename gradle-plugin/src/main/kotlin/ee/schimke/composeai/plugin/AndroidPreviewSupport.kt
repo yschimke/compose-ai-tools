@@ -1001,6 +1001,64 @@ internal object AndroidPreviewSupport {
         }
       }
 
+    if (extension.resourcePreviews.enabled.get()) {
+      // Resource render task — same Robolectric harness as `renderPreviews`, different test
+      // class + manifest sysprops. Reuses the renderer/test/runtime classpaths computed above.
+      // Kept as a sibling task (not folded into renderPreviews) so consumers can run resource
+      // discovery + render without paying for composable rendering, and vice versa.
+      // Output dir is the shared `renders/` parent (same as `composeai.render.outputDir`),
+      // NOT the `renders/resources/` subtree — the manifest's `renderOutput` paths are already
+      // module-relative starting `renders/resources/...` and the renderer strips the leading
+      // `renders/` segment when resolving. The Gradle `outputs.dir` declaration below scopes
+      // the cache key to the narrower `renders/resources/` subtree this task actually writes.
+      val resourcesManifestPath = previewOutputDir.map {
+        it.file("resources.json").asFile.absolutePath
+      }
+      val resourcesRendersOutputDir = rendersDir
+      val resourcesRendersSubtree = previewOutputDir.map { it.dir("renders/resources") }
+
+      project.tasks.register("renderAndroidResources", Test::class.java) {
+        group = "compose preview"
+        description = "Render Android XML resource previews via Robolectric"
+        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        testClassesDirs = rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        classpath =
+          resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
+        include("**/ResourcePreviewRenderTest.class")
+        useJUnit()
+
+        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
+        jvmArgs(
+          "--add-opens=java.base/java.lang=ALL-UNNAMED",
+          "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+          "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        )
+        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+
+        systemProperty("robolectric.graphicsMode", "NATIVE")
+        systemProperty("robolectric.looperMode", "PAUSED")
+        systemProperty("robolectric.conscryptMode", "OFF")
+        systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
+        systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
+
+        outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
+
+        dependsOn("discoverAndroidResources")
+        dependsOn(generateRobolectricPropertiesTask)
+        if (useLocalRenderer) {
+          dependsOn(":renderer-android:compile${capVariant}Kotlin")
+        }
+        listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig").forEach {
+          taskName ->
+          if (project.tasks.findByName(taskName) != null) {
+            dependsOn(taskName)
+          }
+        }
+      }
+    }
+
     // `verifyAccessibility` is ALWAYS registered so toggling
     // `-PcomposePreview.accessibilityChecks.enabled` doesn't change the
     // task graph — config cache stays valid across VSCode / CLI toggles.
