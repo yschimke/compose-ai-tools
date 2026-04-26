@@ -30,6 +30,15 @@ inputs:
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted).'
     default: ''
+  comment-on-empty-diff:
+    description: >
+      When `false` (default), skip posting a fresh PR comment if there are
+      no preview changes in this run — avoids notifying reviewers about a
+      "no visual changes" comment on every push. An existing diff comment
+      is still patched in place to reflect the empty state (PATCHing
+      doesn't trigger notifications). Set to `true` to always post / update
+      the comment.
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -261,6 +270,7 @@ runs:
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
+        COMMENT_ON_EMPTY_DIFF: ${{ inputs.comment-on-empty-diff }}
       run: |
         set -euo pipefail
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -272,6 +282,18 @@ runs:
           --paginate \
           --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
           | head -1)
+
+        # Sentinel emitted by compare-previews.py's `compare` subcommand
+        # when new/changed/removed are all empty (see cmd_compare). PATCHing
+        # an existing comment is still useful — reviewers see the previously
+        # flagged variants are now stable — and PATCH doesn't notify, so
+        # skipping only applies to fresh comments.
+        if grep -qF "No visual changes detected." _comment_body.md \
+           && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ] \
+           && [ -z "$COMMENT_ID" ]; then
+          echo "No preview diff and no existing comment — skipping (comment-on-empty-diff=false)."
+          exit 0
+        fi
 
         if [ -n "$COMMENT_ID" ]; then
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
@@ -287,6 +309,7 @@ runs:
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
+        COMMENT_ON_EMPTY_DIFF: ${{ inputs.comment-on-empty-diff }}
       run: |
         set -euo pipefail
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -298,7 +321,7 @@ runs:
           --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
           | head -1)
 
-        # Three states for resource comments:
+        # Four states for resource comments:
         #
         # 1. New diff this run + no prior comment  → post a fresh comment.
         # 2. New diff this run + prior comment      → PATCH the existing one.
@@ -306,7 +329,10 @@ runs:
         #    body so reviewers can see resources used to differ but no longer
         #    do. Deleting outright would lose the comment-thread link in PR
         #    review history.
-        # 4. No diff this run + no prior comment   → do nothing.
+        # 4. No diff this run + no prior comment   → only post a fresh
+        #    "resolved" body when comment-on-empty-diff=true; otherwise
+        #    stay silent to avoid notification noise.
+        RESOLVED_BODY="${MARKER}"$'\n'"## Resource Changes"$'\n\n'"_No resource changes in this PR's latest render._"
         if [ -s _comment_body_resources.md ]; then
           BODY=$(cat _comment_body_resources.md)
           if [ -n "$COMMENT_ID" ]; then
@@ -316,7 +342,8 @@ runs:
             gh pr comment "$PR_NUMBER" --body "$BODY"
           fi
         elif [ -n "$COMMENT_ID" ]; then
-          BODY="${MARKER}"$'\n'"## Resource Changes"$'\n\n'"_No resource changes in this PR's latest render._"
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-            -X PATCH -f body="$BODY"
+            -X PATCH -f body="$RESOLVED_BODY"
+        elif [ "$COMMENT_ON_EMPTY_DIFF" = "true" ]; then
+          gh pr comment "$PR_NUMBER" --body "$RESOLVED_BODY"
         fi
