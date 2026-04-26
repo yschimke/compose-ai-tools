@@ -10,10 +10,11 @@ import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
 import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { AndroidManifestCodeLensProvider } from './androidManifestCodeLensProvider';
+import { AndroidManifestHoverProvider } from './androidManifestHoverProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
+import { HEAVY_COST_THRESHOLD, PreviewInfo, ResourceManifest } from './types';
 import { captureLabel } from './captureLabels';
 
 const DEBOUNCE_MS = 1500;
@@ -246,12 +247,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         pattern: '**/AndroidManifest.xml',
     };
     const androidManifestCodeLensProvider = new AndroidManifestCodeLensProvider(gradleService);
+    const androidManifestHoverProvider = new AndroidManifestHoverProvider(gradleService);
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
         vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
         vscode.languages.registerCodeLensProvider(
             androidManifestFiles,
             androidManifestCodeLensProvider,
+        ),
+        vscode.languages.registerHoverProvider(
+            androidManifestFiles,
+            androidManifestHoverProvider,
         ),
         codeLensProvider,
         androidManifestCodeLensProvider,
@@ -590,14 +596,19 @@ const fastTierModules = new Set<string>();
  */
 /**
  * Loads `<module>/build/compose-previews/resources.json` for the module that owns the open
- * `AndroidManifest.xml` and posts a [setResources] payload to the webview. Falls back to a
- * sensible empty-state message when the manifest belongs to an older-plugin module that hasn't
- * written `resources.json` (CodeLens provider's same defensive shape — see the comment in
- * `androidManifestCodeLensProvider.ts`).
+ * `AndroidManifest.xml` and posts a [setResources] payload to the webview.
  *
- * Image loading mirrors the composable refresh path: post `setResources` first so the webview
- * can paint card skeletons, then stream `updateImage` per capture so each card paints as soon
- * as its bytes arrive.
+ * Two-phase to keep the panel snappy:
+ *   1. Read the existing `resources.json` (if any) and post it immediately — the user sees
+ *      cards within ~ms of opening the manifest, even on a cold gradle daemon.
+ *   2. In the background, run `:<module>:renderAndroidResources` to refresh stale captures.
+ *      Re-post the updated manifest when it returns. Gradle's up-to-date check makes this a
+ *      sub-second no-op when nothing changed since the last render.
+ *
+ * Falls back to a clear empty-state message when the consumer is on an older plugin that
+ * doesn't emit `resources.json` and the render-task invocation failed (likely "task not
+ * found" — same defensive shape as the AndroidManifest CodeLens, see the comment in
+ * `androidManifestCodeLensProvider.ts`).
  */
 async function refreshForManifest(filePath: string): Promise<void> {
     if (!gradleService || !panel) { return; }
@@ -615,19 +626,61 @@ async function refreshForManifest(filePath: string): Promise<void> {
         });
         return;
     }
-    const manifest = gradleService.readResourceManifest(module);
-    if (!manifest) {
-        logLine(`manifest no resources.json — module=${module}`);
+
+    // Phase 1 — paint whatever's on disk right now. May be stale (or null
+    // on first-ever open), but at worst the user sees nothing for a few ms
+    // longer than they would have. Empty/null is silent here; the
+    // background render below will own the empty-state message if needed.
+    const cached = gradleService.readResourceManifest(module);
+    if (cached) {
+        await postResources(cached, module, abort);
+    } else {
+        // No resources.json on disk yet — show a "rendering…" message so
+        // the panel isn't blank during the gradle cold start.
         panel.postMessage({ command: 'clearAll' });
         panel.postMessage({
             command: 'showMessage',
-            text:
-                `No resources.json for ${module}. Run \`:${module}:renderAndroidResources\` ` +
-                `or upgrade the plugin to a version that emits the manifest.`,
+            text: `Rendering ${module} resource previews…`,
         });
+    }
+
+    // Phase 2 — refresh in the background. `renderAndroidResources` is
+    // catalogue-driven (Gradle up-to-date), so this is a sub-second no-op
+    // when nothing changed. First-ever invocation pays the Robolectric
+    // cold-start cost (~3–5s) but the cards from phase 1 mask that wait.
+    const fresh = await gradleService.renderAndroidResources(module);
+    if (abort.signal.aborted || !panel) { return; }
+    if (!fresh) {
+        if (!cached) {
+            // Couldn't render AND nothing was on disk — older plugin or a
+            // genuine task failure. Surface the empty state so the user
+            // knows what to do.
+            panel.postMessage({ command: 'clearAll' });
+            panel.postMessage({
+                command: 'showMessage',
+                text:
+                    `Couldn't render ${module} resource previews. Check the gradle output, ` +
+                    `or upgrade the plugin to a version that emits resources.json.`,
+            });
+        }
+        // Cached payload already painted; leave it. The user can re-trigger
+        // a render from the command palette if they need to.
         return;
     }
 
+    // Re-post even if the manifest didn't change shape — the captures' on-
+    // disk PNGs may have been refreshed even though the manifest entries
+    // are identical, and the webview's image cache won't notice without
+    // a fresh round of updateImage messages.
+    await postResources(fresh, module, abort);
+}
+
+async function postResources(
+    manifest: ResourceManifest,
+    module: string,
+    abort: AbortController,
+): Promise<void> {
+    if (!gradleService || !panel) { return; }
     // The reference index records the merged manifest path under `build/`.
     // Filter to references whose resourceType+resourceName actually has a
     // matching ResourcePreview — the source field comparison would miss
@@ -636,7 +689,6 @@ async function refreshForManifest(filePath: string): Promise<void> {
     const references = manifest.manifestReferences.filter(ref =>
         knownIds.has(`${ref.resourceType}/${ref.resourceName}`),
     );
-
     panel.postMessage({
         command: 'setResources',
         resources: manifest.resources,
@@ -644,11 +696,9 @@ async function refreshForManifest(filePath: string): Promise<void> {
         module,
     });
     logLine(
-        `rendered ${manifest.resources.length} resource preview(s) for ${path.basename(filePath)} ` +
+        `rendered ${manifest.resources.length} resource preview(s) for ${module} ` +
             `(${references.length} manifest reference(s))`,
     );
-
-    // Stream PNG/GIF bytes per capture, same shape as the composable refresh.
     const imageJobs: Promise<void>[] = [];
     for (const resource of manifest.resources) {
         for (let captureIndex = 0; captureIndex < resource.captures.length; captureIndex++) {
