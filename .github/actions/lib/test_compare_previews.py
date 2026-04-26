@@ -777,6 +777,56 @@ class GenerateResourcesTests(unittest.TestCase):
         # resources.
         self.assertFalse(self.output.exists())
 
+    def test_finds_resources_json_in_nested_module_layouts(self) -> None:
+        """Regression for the `preview_resources_main`-not-created bug: this
+        repo's modules live at `samples/android/build/...` (two segments
+        deep), but the helper used to walk only one segment deep with
+        `workspace_root.glob('*/build/...')`. Nested layouts silently
+        produced empty entries, so the staging step skipped the push."""
+        manifest = {
+            "module": "samples:android",
+            "variant": "debug",
+            "resources": [
+                {
+                    "id": "drawable/ic_logo",
+                    "type": "VECTOR",
+                    "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
+                    "captures": [
+                        {
+                            "variant": {"qualifiers": "xhdpi", "shape": None},
+                            "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png",
+                        }
+                    ],
+                }
+            ],
+            "manifestReferences": [],
+        }
+        self._write_module(
+            "samples/android",
+            manifest,
+            {"renders/resources/drawable/ic_logo_xhdpi.png": b"vector-bytes"},
+        )
+        self.assertEqual(self._run(), 0)
+        # The generate step writes resource-baselines.json into the output dir
+        # ONLY when it found at least one resources.json on disk. Pre-fix,
+        # the recursive glob missed `samples/android/...` and the file was
+        # never written → preview-baselines/action.yml's push step
+        # short-circuited with "No resource baselines staged".
+        baselines_file = self.output / "resource-baselines.json"
+        self.assertTrue(
+            baselines_file.exists(),
+            f"resource-baselines.json should exist after generate; got {list(self.output.iterdir()) if self.output.exists() else 'no output dir'}",
+        )
+        baselines = json.loads(baselines_file.read_text())
+        self.assertEqual(len(baselines), 1)
+        # Module name comes from the filesystem path, with `/` left as-is so
+        # gradle:path-style identifiers map cleanly to the same string.
+        first_key = next(iter(baselines))
+        self.assertTrue(
+            first_key.startswith("samples/android::"),
+            f"expected 'samples/android::' prefix, got {first_key!r}",
+        )
+
     def test_copies_pngs_and_writes_resource_baselines_json(self) -> None:
         self._write_module(
             "app",

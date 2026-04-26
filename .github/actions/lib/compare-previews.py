@@ -572,12 +572,28 @@ def load_resource_manifests(workspace_root: Path) -> dict[str, dict]:
     stable enough to detect changes across runs without colliding when a single
     resource has multiple captures (e.g. adaptive-icon shape masks).
 
+    Walks recursively because consumer module layouts vary — flat
+    `app/build/...` works under a non-recursive glob, but nested layouts like
+    `samples/android/build/...` (used by this repo's own samples) need `**`.
+    The composable side dodges this via the CLI's Tooling-API module
+    enumeration (the resulting absolute paths are written into the JSON the
+    helper consumes); the resource side does its own filesystem walk and used
+    to silently miss every nested module on `preview_main` runs.
+
     Returns an empty dict when no `resources.json` exists anywhere — that's
     the dominant case for projects that don't write XML drawables, and an
     empty result is a no-op for `cmd_generate_resources`.
     """
     out: dict[str, dict] = {}
-    for manifest_path in sorted(workspace_root.glob("*/build/compose-previews/resources.json")):
+    # Skip the obvious noise dirs that can't contain a Gradle module's
+    # build/ output. Keeps the recursive walk fast on large monorepos.
+    skip_dirs = {".git", ".gradle", "node_modules", ".idea", "_baselines",
+                 "_resource_baselines", "_pr_renders"}
+    candidates = [
+        p for p in workspace_root.rglob("build/compose-previews/resources.json")
+        if not any(part in skip_dirs for part in p.relative_to(workspace_root).parts)
+    ]
+    for manifest_path in sorted(candidates):
         module_dir = manifest_path.parent.parent.parent
         module = str(module_dir.relative_to(workspace_root)).replace("\\", "/")
         try:
