@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.7](https://github.com/yschimke/compose-ai-tools/compare/v0.8.6...v0.8.7) (2026-04-26)
+
+
+### Bug Fixes
+
+* **plugin:** route com.android.kotlin.multiplatform.library through the desktop renderer ([#254](https://github.com/yschimke/compose-ai-tools/issues/254)) ([315a961](https://github.com/yschimke/compose-ai-tools/commit/315a961a9e47737e7085dfc9a3e7c260939374b3))
+
 ## [0.8.6](https://github.com/yschimke/compose-ai-tools/compare/v0.8.5...v0.8.6) (2026-04-26)
 
 
