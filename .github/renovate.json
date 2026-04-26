@@ -27,6 +27,47 @@
         "patch"
       ],
       "groupName": "{{manager}} minor/patch"
+    },
+    {
+      "description": "Freeze the AGP 8.x minimum-supported fixture: every pin here is deliberate and must be bumped by hand.",
+      "matchFileNames": [
+        ".github/ci/fixtures/agp8-min/**"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "compose-bom-compat: hold on the 2025.x line so renderer-android keeps emitting Compose 1.9.x bytecode.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "androidx.compose:compose-bom"
+      ],
+      "matchCurrentValue": "/^2025\\./",
+      "allowedVersions": "/^2025\\./"
+    },
+    {
+      "description": "compose-bom-stable: hold the :samples:remotecompose ui-tooling artifacts on the 1.11.x line.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "androidx.compose.ui:ui-tooling",
+        "androidx.compose.ui:ui-tooling-preview"
+      ],
+      "matchCurrentValue": "/^1\\.11\\./",
+      "allowedVersions": "/^1\\.11\\./"
+    },
+    {
+      "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
+      "matchFileNames": [
+        "vscode-extension/package.json"
+      ],
+      "matchDepNames": [
+        "vscode",
+        "@types/vscode"
+      ],
+      "enabled": false
     }
   ]
 }

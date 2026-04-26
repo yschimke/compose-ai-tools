@@ -27,7 +27,9 @@ compose-bom = "2026.04.01"
 # check `./gradlew :renderer-android:compileKotlin` against the new floor.
 # 2025.11.01 pins compose-ui AND compose-runtime to 1.9.5 — latest 1.9.x
 # release line. See https://developer.android.com/develop/ui/compose/bom/bom-mapping
-compose-bom-compat = "2026.04.01"
+# Renovate is constrained to the 2025.x line for this key in `.github/renovate.json` —
+# the whole point of the floor is that bumps must be manual.
+compose-bom-compat = "2025.11.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
 wear-compose = "1.6.1"
@@ -44,7 +46,12 @@ wear-tooling-preview = "1.0.0"
 #    sample doesn't depend on compose-bom.
 compose-remote = "1.0.0-alpha09"
 wear-compose-remote = "1.0.0-alpha02"
-compose-ui-tooling-preview-wrapper = "1.11.0"
+# Compose UI artifacts on the 1.11.x line — used by `:samples:remotecompose`,
+# which deliberately diverges from `compose-bom` (1.10.x) to track what
+# wear-compose-remote-material3 pulls in transitively (compose 1.11.0-beta+
+# for `PreviewWrapper` and friends). Renovate is constrained to /^1\.11\./
+# in `.github/renovate.json` so minor bumps are a manual decision.
+compose-bom-stable = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
@@ -81,7 +88,8 @@ compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tool
 compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
 compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }
 wear-compose-remote-material3 = { module = "androidx.wear.compose.remote:remote-material3", version.ref = "wear-compose-remote" }
-compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-ui-tooling-preview-wrapper" }
+compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-bom-stable" }
+compose-ui-tooling-stable = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose-bom-stable" }
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
 wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }

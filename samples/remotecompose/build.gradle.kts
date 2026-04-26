@@ -52,5 +52,5 @@ dependencies {
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
   implementation(libs.activity.compose)
-  debugImplementation("androidx.compose.ui:ui-tooling:1.11.0")
+  debugImplementation(libs.compose.ui.tooling.stable)
 }
