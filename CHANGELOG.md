@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6](https://github.com/yschimke/compose-ai-tools/compare/v0.8.5...v0.8.6) (2026-04-26)
+
+
+### Bug Fixes
+
+* **plugin:** walk a copyRecursive() so transitive detection doesn't lock parent configs ([#244](https://github.com/yschimke/compose-ai-tools/issues/244)) ([5c5b518](https://github.com/yschimke/compose-ai-tools/commit/5c5b5184e37c904618b8aee800e66de397d5cda7))
+
 ## [0.8.5](https://github.com/yschimke/compose-ai-tools/compare/v0.8.4...v0.8.5) (2026-04-26)
 
 
