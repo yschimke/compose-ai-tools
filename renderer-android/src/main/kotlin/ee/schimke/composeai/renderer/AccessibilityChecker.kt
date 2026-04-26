@@ -100,6 +100,13 @@ internal object AccessibilityChecker {
                 hintText = v.hintText?.toString()?.trim().orEmpty(),
             )
             val merged = isMergedSemanticsRoot(v)
+            // Drop merged descendants of a focusable ancestor that already
+            // carries its own contentDescription — TalkBack reads only the
+            // ancestor's announcement, so the inner Text rows would clutter
+            // the legend with content that isn't actually spoken.
+            if (!merged && screenReaderFocusableAncestor(v)?.contentDescription
+                    ?.toString()?.trim()?.isNotEmpty() == true
+            ) continue
             // Drop nodes that wouldn't carry weight in the legend: a label,
             // a role beyond plain View, an actionable state, or clickability
             // is enough to keep them. Clickable-but-empty containers (a card
@@ -177,12 +184,22 @@ internal object AccessibilityChecker {
      */
     internal fun isMergedSemanticsRoot(v: ViewHierarchyElement): Boolean {
         if (v.isScreenReaderFocusable) return true
+        return screenReaderFocusableAncestor(v) == null
+    }
+
+    /**
+     * Closest screen-reader-focusable ancestor of [v], or `null` when [v] is
+     * itself a focus stop or has no focusable ancestor at all. Used to find
+     * "the parent that owns this node's TalkBack announcement" when filtering
+     * shadowed children.
+     */
+    internal fun screenReaderFocusableAncestor(v: ViewHierarchyElement): ViewHierarchyElement? {
         var p = v.parentView
         while (p != null) {
-            if (p.isScreenReaderFocusable) return false
+            if (p.isScreenReaderFocusable) return p
             p = p.parentView
         }
-        return true
+        return null
     }
 
     /**

@@ -92,6 +92,50 @@ class AccessibilityOverlayMergedTest {
     }
 
     @Test
+    fun `merged parent and its children render as a single grouped row`() {
+        // A Wear-shaped card (clickable parent + two Text children whose
+        // bounds sit inside it) is the canonical pattern for inline-child
+        // rendering. Verify the legend produces a single grouped row by
+        // checking the canvas height stays well below what three separate
+        // rows (one per node) would consume.
+        val sourceFile = blackSourcePng(width = 400, height = 400)
+        val parent = AccessibilityNode(
+            label = "",
+            role = "ViewGroup",
+            states = listOf("clickable"),
+            merged = true,
+            boundsInScreen = "40,80,360,200",
+        )
+        val child1 = AccessibilityNode(
+            label = "Morning run",
+            role = "TextView",
+            states = emptyList(),
+            merged = false,
+            boundsInScreen = "60,100,340,140",
+        )
+        val child2 = AccessibilityNode(
+            label = "5.2 km · 28 min",
+            role = "TextView",
+            states = emptyList(),
+            merged = false,
+            boundsInScreen = "60,150,340,190",
+        )
+        val written = AccessibilityOverlay.generate(
+            sourceFile, emptyList(), listOf(parent, child1, child2),
+        )
+        assertNotNull("overlay should be written", written)
+        val bm = BitmapFactory.decodeFile(written!!.absolutePath)
+        assertNotNull("overlay PNG should decode", bm)
+        // Side-by-side layout means width = screenshot.width + LEGEND_WIDTH.
+        assertEquals("expected side-by-side composition", 400 + 540, bm.width)
+        // Three separate rows would push canvas height past ~360. A single
+        // grouped row (parent label + subtitle + one inline-child line)
+        // lands well under that, so the screenshot height (400) ends up
+        // dominating canvas height.
+        assertEquals("grouped row should leave screenshot taller than legend", 400, bm.height)
+    }
+
+    @Test
     fun `older accessibility json without merged field deserializes as merged`() {
         // Backward-compat guard for accessibility.json files written before
         // the merged flag was added: missing field must round-trip as
