@@ -603,6 +603,32 @@ internal object AndroidPreviewSupport {
           copyAttributes(attributes, testConfig.attributes)
           extendsFrom(testConfig)
         }
+        // Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
+        // compiled against Hamcrest 1.3, whose `Matchers.java:33` invokes
+        // `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — an explicit 2-arg
+        // overload that 2.x removed in favour of varargs. When a consumer adds
+        // `org.hamcrest:hamcrest:2.x` (e.g. via `junit-jupiter:5.x`), the merged
+        // 2.x jar coexists with the legacy split `hamcrest-core` / `hamcrest-library`
+        // 1.3 jars (different module coordinates → no Gradle dedup). Whichever
+        // class wins for `AllOf` vs `Matchers` is classpath-order-dependent; in
+        // the failing case `Matchers` comes from 1.3 and calls into 2.x's
+        // `AllOf` — `NoSuchMethodError` at `Espresso.<clinit>` triggered the
+        // first time `runUntilIdle` walks through `EspressoLink`.
+        //
+        // Substituting the merged artifact back to `hamcrest-core:1.3` on
+        // *this* configuration is enough: `resolvedClasspath` puts rendererConfig's
+        // files ahead of the AGP test classpath in the renderPreviews JVM
+        // classpath (see comment above `resolvedClasspath` below), so Hamcrest
+        // 1.3 wins class lookup even if the consumer's `${variant}UnitTestRuntimeClasspath`
+        // still resolves 2.x for their own tests.
+        resolutionStrategy.eachDependency {
+          if (requested.group == "org.hamcrest" && requested.name == "hamcrest") {
+            useTarget("org.hamcrest:hamcrest-core:1.3")
+            because(
+              "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it"
+            )
+          }
+        }
       }
 
     if (useLocalRenderer) {
