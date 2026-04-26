@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -59,6 +60,17 @@ internal object AccessibilityOverlay {
      * full-strength outline + badge on top.
      */
     private const val NODE_FILL_ALPHA = 80
+
+    /**
+     * Fill alpha for unmerged descendants (the inner `Text` of a `Button`
+     * whose semantics merge into the button). Roughly half [NODE_FILL_ALPHA]
+     * so reviewers eyeball "this is structure underneath a real focus
+     * stop, not its own TalkBack stop".
+     */
+    private const val UNMERGED_NODE_FILL_ALPHA = 40
+
+    /** Dash on/off pattern (px) for unmerged-node borders. */
+    private val UNMERGED_DASH_INTERVAL = floatArrayOf(6f, 4f)
 
     /** Aspect at which we switch from stacked-legend to side-by-side. */
     private const val TALL_ASPECT = 1.3f
@@ -289,7 +301,7 @@ internal object AccessibilityOverlay {
         nodes.forEachIndexed { i, node ->
             val r = parseBounds(node.boundsInScreen) ?: return@forEachIndexed
             paint.color = nodeColors[i]
-            paint.alpha = NODE_FILL_ALPHA
+            paint.alpha = if (node.merged) NODE_FILL_ALPHA else UNMERGED_NODE_FILL_ALPHA
             canvas.drawRect(
                 offsetX + r.left, offsetY + r.top, offsetX + r.right, offsetY + r.bottom,
                 paint,
@@ -304,15 +316,22 @@ internal object AccessibilityOverlay {
         offsetX: Float,
         offsetY: Float,
     ) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Two paint instances so the cached `pathEffect` doesn't leak across
+        // merged borders (Paint mutates its effect ref on assignment).
+        val solid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 1.5f
-            alpha = 200
+        }
+        val dashed = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            pathEffect = DashPathEffect(UNMERGED_DASH_INTERVAL, 0f)
         }
         nodes.forEachIndexed { i, node ->
             val r = parseBounds(node.boundsInScreen) ?: return@forEachIndexed
+            val paint = if (node.merged) solid else dashed
             paint.color = nodeColors[i]
-            paint.alpha = 200
+            paint.alpha = if (node.merged) 200 else 140
             canvas.drawRect(
                 offsetX + r.left + 0.5f, offsetY + r.top + 0.5f,
                 offsetX + r.right - 0.5f, offsetY + r.bottom - 0.5f,
@@ -547,7 +566,13 @@ internal object AccessibilityOverlay {
         }
         val rightMargin = LEGEND_MARGIN
         val textWidth = (panelWidth - (textX - originX) - rightMargin).toInt()
-        val labelText = node.label.ifEmpty { node.role ?: "(unlabelled)" }
+        val baseLabel = node.label.ifEmpty { node.role ?: "(unlabelled)" }
+        // ↳ marks rows whose semantics merge into a screen-reader-focusable
+        // ancestor, so reviewers can tell "extra structure underneath a
+        // focus stop" from "a separate TalkBack stop". Kept on the same
+        // line as the label rather than as a state chip — the prefix is
+        // structural, not a state.
+        val labelText = if (node.merged) baseLabel else "↳ $baseLabel"
         val labelLines = wrap(labelText, labelPaint, textWidth)
         var y = top + 22f
         for (line in labelLines) {
@@ -604,7 +629,8 @@ internal object AccessibilityOverlay {
         val textWidth = panelWidth - LEGEND_MARGIN * 2 - (SWATCH_SIDE + 14f).toInt()
         var total = 0
         for (n in nodes) {
-            val labelText = n.label.ifEmpty { n.role ?: "(unlabelled)" }
+            val baseLabel = n.label.ifEmpty { n.role ?: "(unlabelled)" }
+            val labelText = if (n.merged) baseLabel else "↳ $baseLabel"
             val lines = wrap(labelText, labelPaint, textWidth).size.coerceAtLeast(1)
             val hasSubtitle = n.role != null || n.states.isNotEmpty()
             total += 22 + 24 * lines + (if (hasSubtitle) 20 else 0) + ROW_PADDING
