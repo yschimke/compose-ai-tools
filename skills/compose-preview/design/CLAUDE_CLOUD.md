@@ -184,7 +184,7 @@ compose-preview show --json --brief || true
 ```
 
 The CLI auto-discovers every module that applies the plugin, so the
-pre-warm step doesn't need a hardcoded `:app` / `:sample-cmp` /
+pre-warm step doesn't need a hardcoded `:app` / `:samples:cmp` /
 whatever — `compose-preview show` resolves them on its own. Tolerate
 failure (`|| true`) — even a partial render still populates Gradle's
 cache.
@@ -250,7 +250,7 @@ curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scri
 # Optional: pre-warm the Android render path so AGP / Robolectric jars get
 # baked into the env snapshot. `|| true` so a partial render still populates
 # the cache.
-./gradlew --no-daemon :sample-android:renderAllPreviews || true
+./gradlew --no-daemon :samples:android:renderAllPreviews || true
 ```
 
 Override the install location with `ANDROID_HOME=…` before the curl if you

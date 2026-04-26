@@ -14,7 +14,7 @@ import org.junit.Test
  *  - Pixels in the top / middle / bottom thirds differ — proves real
  *    scroll-through content rather than the same frame repeated.
  *
- * `testDebugUnitTest.dependsOn("renderAllPreviews")` in sample-wear's
+ * `testDebugUnitTest.dependsOn("renderAllPreviews")` in samples/wear's
  * build.gradle.kts guarantees the PNG exists by the time this test runs.
  */
 class LongScrollPreviewPixelTest {

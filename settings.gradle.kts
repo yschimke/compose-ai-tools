@@ -23,17 +23,17 @@ include(":cli")
 
 include(":preview-annotations")
 
-include(":sample-android")
+include(":samples:android")
 
-include(":sample-android-library")
+include(":samples:android-library")
 
-include(":sample-android-screenshot-test")
+include(":samples:android-screenshot-test")
 
-include(":sample-wear")
+include(":samples:wear")
 
-include(":sample-cmp")
+include(":samples:cmp")
 
-include(":sample-remotecompose")
+include(":samples:remotecompose")
 
 include(":renderer-desktop")
 

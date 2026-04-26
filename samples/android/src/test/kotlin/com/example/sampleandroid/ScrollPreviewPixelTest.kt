@@ -10,11 +10,11 @@ import org.junit.Test
  * End-to-end verification that `@ScrollingPreview(modes = [TOP, END])`
  * produces two distinct captures from one preview function: an unscrolled
  * top frame and a scrolled-to-end frame. Reads the PNGs produced by
- * `:sample-android:renderAllPreviews` and asserts colour dominance matches
+ * `:samples:android:renderAllPreviews` and asserts colour dominance matches
  * the expected top (red) / bottom (blue) of [RedToBlueList].
  *
  * The `renderAllPreviews` task is wired into this module's `test` task
- * dependency graph in build.gradle.kts so running `:sample-android:test` (or
+ * dependency graph in build.gradle.kts so running `:samples:android:test` (or
  * `:check`) renders the PNGs first.
  */
 class ScrollPreviewPixelTest {

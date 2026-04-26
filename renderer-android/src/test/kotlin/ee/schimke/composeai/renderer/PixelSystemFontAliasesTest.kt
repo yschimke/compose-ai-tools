@@ -17,7 +17,7 @@ import java.io.File
  * `Font(DeviceFontFamilyName("roboto-flex"), …)` transparently resolve via
  * the downloadable Google Fonts cache.
  *
- * The end-to-end seeding path is exercised by `:sample-android:renderAllPreviews`
+ * The end-to-end seeding path is exercised by `:samples:android:renderAllPreviews`
  * (see `DeviceFontFamilyShowcasePreview`); these tests cover the pure-JVM
  * surface — the mapping table and the lookup/builder/map plumbing. The real
  * `Typeface.sSystemFontMap` only exists when the test runs inside Robolectric

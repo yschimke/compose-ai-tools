@@ -130,7 +130,7 @@ annotations work identically to the Compose side.
 ## Reference sample
 
 Working examples live in
-[`sample-wear/src/main/kotlin/com/example/samplewear/TilePreviews.kt`](../../../sample-wear/src/main/kotlin/com/example/samplewear/TilePreviews.kt):
+[`samples/wear/src/main/kotlin/com/example/samplewear/TilePreviews.kt`](../../../samples/wear/src/main/kotlin/com/example/samplewear/TilePreviews.kt):
 
 - `HelloTilePreview` — minimal `titleCard` inside `primaryLayout`,
   exercising `materialScope` + `.layoutString`.
@@ -139,6 +139,6 @@ Working examples live in
 - `MultiRoundTilesPreviews` — multi-preview fan-out across small and large
   round devices.
 
-`./gradlew :sample-wear:renderAllPreviews` produces the tile PNGs alongside
+`./gradlew :samples:wear:renderAllPreviews` produces the tile PNGs alongside
 the Compose ones; the preview manifest tags tile entries with
 `kind = TILE` so tooling can treat them differently if needed.

@@ -7,7 +7,7 @@ import kotlin.math.max
  * auto mode. Update these when the cost profile changes (faster hardware, a slimmer sandbox, a new
  * Robolectric release).
  *
- * Benchmarked on 2026-04-14 against the `sample-android` module (5 previews, Robolectric `sdk=34`,
+ * Benchmarked on 2026-04-14 against the `samples/android` module (5 previews, Robolectric `sdk=34`,
  * `graphicsMode=NATIVE`). Numbers come from the per-testcase times in
  * `build/test-results/renderPreviews/` (one XML per task run):
  * - First preview in a JVM: 4.03s (sandbox + classloader + first Compose setContent).

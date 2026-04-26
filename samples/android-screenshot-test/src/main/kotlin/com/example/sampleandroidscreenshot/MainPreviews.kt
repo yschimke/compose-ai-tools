@@ -16,7 +16,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * Regular top-level @Preview — same shape as every preview in `:sample-android`.
+ * Regular top-level @Preview — same shape as every preview in `:samples:android`.
  * Confirms that applying the Google screenshot plugin hasn't broken our
  * ordinary discovery path (shared `sourceClassDirs` still picks up main).
  */

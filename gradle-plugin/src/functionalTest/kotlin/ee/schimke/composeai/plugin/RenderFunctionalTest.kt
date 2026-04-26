@@ -137,7 +137,7 @@ class RenderFunctionalTest {
     // Under AS-parity sizing, a bare `@Preview` gets the wrap-content
     // sandbox (400×800 dp) at DEFAULT_DENSITY (2.625x) = 1050×2100 px.
     // The real wrap-to-intrinsic crop is exercised end-to-end through the
-    // sample-cmp / sample-android render tasks, which pull in the actual
+    // samples/cmp / samples/android render tasks, which pull in the actual
     // renderer modules.
     assertThat(img.width).isEqualTo(1050)
     assertThat(img.height).isEqualTo(2100)

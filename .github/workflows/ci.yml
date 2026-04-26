@@ -60,51 +60,51 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Build CMP sample and discover previews
-        run: ./gradlew :sample-cmp:discoverPreviews
+        run: ./gradlew :samples:cmp:discoverPreviews
       - name: Build Android sample and discover previews
-        run: ./gradlew :sample-android:discoverPreviews
+        run: ./gradlew :samples:android:discoverPreviews
       # Full render for the screenshot-test sample — the interesting behaviour
-      # isn't discovery (which `:sample-android` also exercises) but rendering
+      # isn't discovery (which `:samples:android` also exercises) but rendering
       # class-member @Previews co-applied with `com.android.compose.screenshot`.
       # Regressions in `PreviewRenderStrategy.resolveReceiver` or in the
       # screenshotTest classpath wiring surface only at render time, so
       # `discoverPreviews` alone would pass even when broken.
       - name: Render Android screenshot-test sample previews
-        run: ./gradlew :sample-android-screenshot-test:renderAllPreviews
-      # sample-wear's pixel-scan tests (`LongScrollPreviewPixelTest`) gate
+        run: ./gradlew :samples:android-screenshot-test:renderAllPreviews
+      # samples/wear's pixel-scan tests (`LongScrollPreviewPixelTest`) gate
       # the stitched Wear long-preview output against known flake
       # signatures — ghost peek-pill rows, scaled-card seam ghosts,
       # incomplete EdgeButton reveal. The test task `dependsOn
-      # renderAllPreviews` in sample-wear/build.gradle.kts, so this single
+      # renderAllPreviews` in samples/wear/build.gradle.kts, so this single
       # invocation both renders and asserts.
       - name: Render + pixel-test Wear sample previews
-        run: ./gradlew :sample-wear:testDebugUnitTest
+        run: ./gradlew :samples:wear:testDebugUnitTest
       - name: Upload preview manifests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preview-manifests
           path: |
-            sample-android/build/compose-previews/previews.json
-            sample-android-screenshot-test/build/compose-previews/previews.json
-            sample-cmp/build/compose-previews/previews.json
+            samples/android/build/compose-previews/previews.json
+            samples/android-screenshot-test/build/compose-previews/previews.json
+            samples/cmp/build/compose-previews/previews.json
       - name: Upload screenshot-test renders
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sample-android-screenshot-test-renders
-          path: sample-android-screenshot-test/build/compose-previews/renders/
-      - name: Upload sample-wear renders
+          name: samples-android-screenshot-test-renders
+          path: samples/android-screenshot-test/build/compose-previews/renders/
+      - name: Upload Wear sample renders
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sample-wear-renders
-          path: sample-wear/build/compose-previews/renders/
-      - name: Upload sample-wear test results
+          name: samples-wear-renders
+          path: samples/wear/build/compose-previews/renders/
+      - name: Upload Wear sample test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sample-wear-test-results
-          path: sample-wear/build/reports/tests/
+          name: samples-wear-test-results
+          path: samples/wear/build/reports/tests/
 
   build-cli:
     name: Build CLI
