@@ -19,6 +19,14 @@
         {
           "type": "generic",
           "path": "cli/src/main/kotlin/ee/schimke/composeai/cli/DoctorCommand.kt"
+        },
+        {
+          "type": "generic",
+          "path": ".github/actions/preview-baselines/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/actions/preview-comment/action.yml"
         }
       ]
     }

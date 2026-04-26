@@ -34,14 +34,18 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # See preview-baselines/action.yml for the source-vs-release rationale.
+    # See preview-baselines/action.yml for the source-vs-release rationale
+    # and for why these are full `org/repo/path@ref` references rather than
+    # `./.github/actions/...` (relative `./` from inside a composite action
+    # resolves against the consumer's $GITHUB_WORKSPACE, breaking external
+    # use). The pinned tag is bumped per release by release-please.
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
-      uses: ./.github/actions/install-cli
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.8.3 # x-release-please-version
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
-      uses: ./.github/actions/install
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.3 # x-release-please-version
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
