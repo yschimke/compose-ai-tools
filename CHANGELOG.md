@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/yschimke/compose-ai-tools/compare/v0.8.4...v0.8.5) (2026-04-26)
+
+
+### Bug Fixes
+
+* **plugin:** detect transitive @Preview dep in CMP-Android layouts ([#242](https://github.com/yschimke/compose-ai-tools/issues/242)) ([1caf3f9](https://github.com/yschimke/compose-ai-tools/commit/1caf3f927cac71930ecad2c90a9faac59416721e))
+
 ## [0.8.4](https://github.com/yschimke/compose-ai-tools/compare/v0.8.3...v0.8.4) (2026-04-26)
 
 

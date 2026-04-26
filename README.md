@@ -143,7 +143,7 @@ No authentication, no PAT — just apply it.
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.8.4"
+    id("ee.schimke.composeai.preview") version "0.8.5"
 }
 ```
 <!-- x-release-please-end -->
@@ -205,15 +205,15 @@ The snapshot version is the next patch ahead of the latest release
 ## Install the CLI
 
 <!-- x-release-please-start-version -->
-Download `compose-preview-0.8.4.tar.gz` (or `.zip`) from the
-[v0.8.4 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.8.2)
+Download `compose-preview-0.8.5.tar.gz` (or `.zip`) from the
+[v0.8.5 release](https://github.com/yschimke/compose-ai-tools/releases/tag/v0.8.2)
 and put the `bin/` directory on your `PATH`:
 
 ```sh
 curl -L -o compose-preview.tar.gz \
-  https://github.com/yschimke/compose-ai-tools/releases/download/v0.8.4/compose-preview-0.8.2.tar.gz
+  https://github.com/yschimke/compose-ai-tools/releases/download/v0.8.5/compose-preview-0.8.2.tar.gz
 tar -xzf compose-preview.tar.gz
-export PATH="$PWD/compose-preview-0.8.4/bin:$PATH"
+export PATH="$PWD/compose-preview-0.8.5/bin:$PATH"
 
 compose-preview --help
 ```
@@ -234,9 +234,9 @@ isn't exposed to changes on `main`:
   with:
     distribution: temurin
     java-version: 17
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.4
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.5
   with:
-    # Literal "0.8.4", "latest", or "catalog" (read from a Gradle
+    # Literal "0.8.5", "latest", or "catalog" (read from a Gradle
     # version catalog — see catalog-path / catalog-key inputs).
     version: latest
 ```
@@ -253,11 +253,11 @@ toolchain, declare it in `gradle/libs.versions.toml` and let
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewCli = "0.8.4"
+composePreviewCli = "0.8.5"
 ```
 
 ```yaml
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.4
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.5
   with:
     version: catalog   # reads composePreviewCli from libs.versions.toml
 ```
@@ -291,7 +291,7 @@ code --install-extension yuri-schimke.compose-preview
 ```
 
 The extension uses the Gradle plugin to render previews, so apply
-`ee.schimke.composeai.preview` version `0.8.4` <!-- x-release-please-version --> in your project as shown above.
+`ee.schimke.composeai.preview` version `0.8.5` <!-- x-release-please-version --> in your project as shown above.
 
 ## Usage
 
