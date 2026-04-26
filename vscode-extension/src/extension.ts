@@ -12,7 +12,7 @@ import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
+import { HEAVY_COST_THRESHOLD, PreviewInfo, PreviewManifest } from './types';
 import { captureLabel } from './captureLabels';
 
 const DEBOUNCE_MS = 1500;
@@ -538,6 +538,100 @@ function sendModuleList() {
 const fastTierModules = new Set<string>();
 
 /**
+ * Mutable state shared between the streaming watcher and the post-render
+ * reconciler in {@link refresh}. The watcher fires before the render task
+ * finishes; the reconciler runs after — both consult the same set/map so the
+ * post-render pass can skip captures the watcher already streamed.
+ */
+interface StreamingState {
+    /** Module-relative `renders/...` paths whose `updateImage` was already posted. */
+    streamedRenderOutputs: Set<string>;
+    /** `renderOutput` → owning preview/capture, rebuilt on every manifest read. */
+    captureMap: Map<string, { previewId: string; captureIndex: number }>;
+    /** True once the early `setPreviews` has gone out, so subsequent manifest
+     *  rewrites refresh the [captureMap] without re-posting skeletons. */
+    skeletonsPosted: boolean;
+}
+
+/**
+ * Sets up file-system watchers under `<module>/build/compose-previews/` for
+ * the duration of a streaming-enabled render:
+ *
+ *   - `previews.json` → first appearance fires [onSkeletonReady] with the
+ *     parsed manifest so the panel can show placeholder cards immediately,
+ *     before any PNG lands. Subsequent rewrites only refresh
+ *     [state.captureMap].
+ *   - `renders/*.{png,gif}` → each create/change fires [onCaptureReady] once
+ *     per `renderOutput`. The caller reads + base64-encodes the file and
+ *     posts an `updateImage` to the webview.
+ *
+ * The returned disposable tears both watchers down; callers must dispose it
+ * in a `finally` so a cancelled refresh doesn't leak watchers across runs.
+ *
+ * @PreviewParameter fan-out files (`<id>_PARAM_<idx>.png`) only show up in
+ * [state.captureMap] after `expandParamCaptures` (in `gradleService.readManifest`)
+ * sees them on disk — so streaming is a no-op for those captures and they're
+ * picked up by the post-render reconciler instead.
+ */
+function setupStreamingWatcher(
+    module: string,
+    state: StreamingState,
+    abort: AbortController,
+    onSkeletonReady: (manifest: PreviewManifest) => void,
+    onCaptureReady: (renderOutput: string) => void,
+): vscode.Disposable {
+    if (!gradleService) { return { dispose: () => { /* nothing to tear down */ } }; }
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return { dispose: () => { /* nothing to tear down */ } };
+    }
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    const previewsDir = path.join(workspaceRoot, module, 'build', 'compose-previews');
+    const previewsDirUri = vscode.Uri.file(previewsDir);
+    const watchers: vscode.Disposable[] = [];
+
+    const onManifestEvent = () => {
+        if (abort.signal.aborted) { return; }
+        const manifest = gradleService!.readManifest(module);
+        if (!manifest) { return; } // Mid-write JSON or read failure; next event will retry.
+        state.captureMap.clear();
+        for (const p of manifest.previews) {
+            for (let i = 0; i < p.captures.length; i++) {
+                const ro = p.captures[i].renderOutput;
+                if (ro) { state.captureMap.set(ro, { previewId: p.id, captureIndex: i }); }
+            }
+        }
+        if (!state.skeletonsPosted) {
+            state.skeletonsPosted = true;
+            onSkeletonReady(manifest);
+        }
+    };
+    const manifestWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(previewsDirUri, 'previews.json'),
+    );
+    manifestWatcher.onDidCreate(onManifestEvent);
+    manifestWatcher.onDidChange(onManifestEvent);
+    watchers.push(manifestWatcher);
+
+    const onRenderEvent = (uri: vscode.Uri) => {
+        if (abort.signal.aborted) { return; }
+        const rel = path.relative(previewsDir, uri.fsPath).split(path.sep).join('/');
+        if (state.streamedRenderOutputs.has(rel)) { return; }
+        if (!state.captureMap.has(rel)) { return; } // Unmapped file (e.g. PARAM fan-out); reconciler will pick up.
+        state.streamedRenderOutputs.add(rel);
+        onCaptureReady(rel);
+    };
+    const rendersWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(previewsDirUri, 'renders/**/*.{png,gif}'),
+    );
+    rendersWatcher.onDidCreate(onRenderEvent);
+    rendersWatcher.onDidChange(onRenderEvent);
+    watchers.push(rendersWatcher);
+
+    return { dispose: () => { for (const w of watchers) { w.dispose(); } } };
+}
+
+/**
  * Main refresh entry point.
  * @param forceRender  If true, runs renderAllPreviews (not just discover).
  * @param forFilePath  If set, scopes to the module owning this file.
@@ -611,6 +705,67 @@ async function refresh(
     }
     lastLoadedModules = modules;
     gradleService.cancel();
+
+    // Streaming experiment (composePreview.experimental.streamingPreviews):
+    // when the user opted in AND we're force-rendering (discover-only is
+    // already cheap), watch the build output and post placeholder cards
+    // + per-PNG updateImage messages as Gradle writes them, before the
+    // render task returns. The post-render reconciler below skips captures
+    // already streamed.
+    const config = vscode.workspace.getConfiguration('composePreview');
+    const streamingEnabled = forceRender && (config.get<boolean>('experimental.streamingPreviews') ?? false);
+    const streamingState: StreamingState = {
+        streamedRenderOutputs: new Set(),
+        captureMap: new Map(),
+        skeletonsPosted: false,
+    };
+    let streamingWatcher: vscode.Disposable | undefined;
+    if (streamingEnabled) {
+        streamingWatcher = setupStreamingWatcher(
+            module,
+            streamingState,
+            abort,
+            (manifest) => {
+                if (abort.signal.aborted || !panel || !gradleService) { return; }
+                const visible = manifest.previews.filter(p => p.sourceFile === filterFile);
+                if (visible.length === 0) { return; }
+                for (const p of visible) {
+                    p.hasHistory = gradleService.listHistory(module, p.id).length > 0;
+                    for (const c of p.captures) { c.label = captureLabel(c); }
+                }
+                const heavyStaleIds = tier === 'fast'
+                    ? visible
+                        .filter(p => p.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD))
+                        .map(p => p.id)
+                    : [];
+                panel.postMessage({
+                    command: 'setPreviews',
+                    previews: visible,
+                    moduleDir: module,
+                    heavyStaleIds,
+                });
+                hasPreviewsLoaded = true;
+                logLine(`stream: posted ${visible.length} skeleton(s)`);
+            },
+            (renderOutput) => {
+                void (async () => {
+                    if (abort.signal.aborted || !panel || !gradleService) { return; }
+                    const entry = streamingState.captureMap.get(renderOutput);
+                    if (!entry) { return; }
+                    const imageData = await gradleService.readPreviewImage(module, renderOutput);
+                    if (abort.signal.aborted || !panel || !imageData) { return; }
+                    if (entry.captureIndex === 0) { registry.setImage(entry.previewId, imageData); }
+                    panel.postMessage({
+                        command: 'updateImage',
+                        previewId: entry.previewId,
+                        captureIndex: entry.captureIndex,
+                        imageData,
+                    });
+                    logLine(`stream: ${entry.previewId}[${entry.captureIndex}]`);
+                })();
+            },
+        );
+    }
 
     try {
         const allPreviews: PreviewInfo[] = [];
@@ -724,6 +879,7 @@ async function refresh(
             for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
                 const capture = captures[captureIndex];
                 if (!capture.renderOutput) { continue; }
+                if (streamingState.streamedRenderOutputs.has(capture.renderOutput)) { continue; }
                 const idx = captureIndex;
                 imageJobs.push((async () => {
                     if (abort.signal.aborted) { return; }
@@ -784,6 +940,7 @@ async function refresh(
             text: message,
         });
     } finally {
+        streamingWatcher?.dispose();
         if (pendingRefresh === abort) { pendingRefresh = null; }
     }
 }
