@@ -708,5 +708,231 @@ class GenerateResourcesTests(unittest.TestCase):
         self.assertIn("VECTOR", readme)
 
 
+class CopyChangedResourcesTests(unittest.TestCase):
+    """`cmd_copy_changed_resources` mirrors `cmd_copy_changed` for resource
+    captures: globs each module's `resources.json`, hashes the rendered PNGs,
+    and copies new/changed entries into `<output>/renders/<module>/...`."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp()
+        self.workspace = Path(self.tmp) / "ws"
+        self.workspace.mkdir()
+        self.output = Path(self.tmp) / "out"
+        self.baselines = Path(self.tmp) / "resource-baselines.json"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp)
+
+    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
+        module_dir = self.workspace / module / "build" / "compose-previews"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        (module_dir / "resources.json").write_text(json.dumps(manifest))
+        for relative, content in png_files.items():
+            target = module_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+    def _run(self) -> int:
+        from types import SimpleNamespace
+        return cp.cmd_copy_changed_resources(SimpleNamespace(
+            workspace_root=str(self.workspace),
+            baselines=str(self.baselines),
+            output_dir=str(self.output),
+        ))
+
+    def test_copies_only_new_or_changed_pngs(self) -> None:
+        # Three captures: one matches baseline (skip), one differs (changed,
+        # copy), one is absent from baseline (new, copy).
+        manifest = {
+            "module": "app", "variant": "debug",
+            "resources": [
+                {"id": "drawable/same", "type": "VECTOR",
+                 "sourceFiles": {"": "src/main/res/drawable/same.xml"},
+                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                               "renderOutput": "renders/resources/drawable/same_xhdpi.png"}]},
+                {"id": "drawable/changed", "type": "VECTOR",
+                 "sourceFiles": {"": "src/main/res/drawable/changed.xml"},
+                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                               "renderOutput": "renders/resources/drawable/changed_xhdpi.png"}]},
+                {"id": "drawable/new", "type": "VECTOR",
+                 "sourceFiles": {"": "src/main/res/drawable/new.xml"},
+                 "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                               "renderOutput": "renders/resources/drawable/new_xhdpi.png"}]},
+            ],
+            "manifestReferences": [],
+        }
+        self._write_module("app", manifest, {
+            "renders/resources/drawable/same_xhdpi.png": b"same",
+            "renders/resources/drawable/changed_xhdpi.png": b"NEW-CONTENT",
+            "renders/resources/drawable/new_xhdpi.png": b"new",
+        })
+        # Baseline has the SAME and CHANGED entries with their old shas.
+        same_sha = cp.sha256(self.workspace / "app" / "build" / "compose-previews"
+                             / "renders/resources/drawable/same_xhdpi.png")
+        self.baselines.write_text(json.dumps({
+            "app::drawable/same::renders/resources/drawable/same_xhdpi.png": {
+                "sha256": same_sha,
+                "renderBasename": "resources/drawable/same_xhdpi.png",
+            },
+            "app::drawable/changed::renders/resources/drawable/changed_xhdpi.png": {
+                "sha256": "OLD-SHA",
+                "renderBasename": "resources/drawable/changed_xhdpi.png",
+            },
+        }))
+
+        self.assertEqual(self._run(), 0)
+        # Only `changed` and `new` should be copied.
+        copied = sorted(p.name for p in (self.output / "renders" / "app" / "resources" / "drawable").iterdir())
+        self.assertEqual(copied, ["changed_xhdpi.png", "new_xhdpi.png"])
+
+    def test_no_resources_is_a_clean_noop(self) -> None:
+        self.assertEqual(self._run(), 0)
+        self.assertFalse(self.output.exists())
+
+
+class CompareResourcesTests(unittest.TestCase):
+    """`cmd_compare_resources` emits a "Resource Changes" markdown section.
+    Empty stdout when no diff is detected."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp()
+        self.workspace = Path(self.tmp) / "ws"
+        self.workspace.mkdir()
+        self.baselines = Path(self.tmp) / "resource-baselines.json"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp)
+
+    def _write_module(self, module: str, manifest: dict, png_files: dict[str, bytes]) -> None:
+        module_dir = self.workspace / module / "build" / "compose-previews"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        (module_dir / "resources.json").write_text(json.dumps(manifest))
+        for relative, content in png_files.items():
+            target = module_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+    def _run(self, base_ref: str = "deadbeef", head_ref: str = "cafef00d") -> str:
+        import io, contextlib
+        from types import SimpleNamespace
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare_resources(SimpleNamespace(
+                workspace_root=str(self.workspace),
+                baselines=str(self.baselines),
+                repo="owner/repo",
+                base_ref=base_ref,
+                head_ref=head_ref,
+            ))
+        return buf.getvalue()
+
+    def test_emits_resource_changes_section_for_changed_capture(self) -> None:
+        self._write_module("app", manifest={
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "drawable/ic_logo", "type": "VECTOR",
+                           "sourceFiles": {"": "src/main/res/drawable/ic_logo.xml"},
+                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                                         "renderOutput": "renders/resources/drawable/ic_logo_xhdpi.png"}]}],
+            "manifestReferences": [],
+        }, png_files={"renders/resources/drawable/ic_logo_xhdpi.png": b"NEW"})
+        self.baselines.write_text(json.dumps({
+            "app::drawable/ic_logo::renders/resources/drawable/ic_logo_xhdpi.png": {
+                "sha256": "OLD-SHA",
+                "renderBasename": "resources/drawable/ic_logo_xhdpi.png",
+            },
+        }))
+        out = self._run()
+        self.assertIn("## Resource Changes", out)
+        self.assertIn("### Changed (1 variant(s) across 1 resource(s))", out)
+        self.assertIn("`drawable/ic_logo`", out)
+        # Before/After URLs pinned to the supplied SHAs.
+        self.assertIn("/deadbeef/renders/app/resources/drawable/ic_logo_xhdpi.png", out)
+        self.assertIn("/cafef00d/renders/app/resources/drawable/ic_logo_xhdpi.png", out)
+
+    def test_groups_adaptive_icon_shapes_under_one_resource_heading(self) -> None:
+        # Four shape-mask captures of the same adaptive icon, all changed —
+        # they should appear under a single `mipmap/ic_launcher` group, not
+        # four separate ones (otherwise the comment drowns the diff).
+        captures = [
+            {"variant": {"qualifiers": "xhdpi", "shape": shape},
+             "renderOutput": f"renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png"}
+            for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY")
+        ]
+        png_files = {
+            f"renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png": shape.encode()
+            for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY")
+        }
+        self._write_module("app", manifest={
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "mipmap/ic_launcher", "type": "ADAPTIVE_ICON",
+                           "sourceFiles": {"anydpi-v26": "src/main/res/mipmap-anydpi-v26/ic_launcher.xml"},
+                           "captures": captures}],
+            "manifestReferences": [],
+        }, png_files=png_files)
+        self.baselines.write_text(json.dumps({
+            f"app::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_{shape}.png": {
+                "sha256": "OLD",
+                "renderBasename": f"resources/mipmap/ic_launcher_xhdpi_{shape}.png",
+            }
+            for shape in ("CIRCLE", "ROUNDED_SQUARE", "SQUARE", "LEGACY")
+        }))
+        out = self._run()
+        # 4 variants but 1 resource group.
+        self.assertIn("### Changed (4 variant(s) across 1 resource(s))", out)
+        # Other 3 shapes link out as variants under the hero.
+        self.assertIn("Other variants:", out)
+
+    def test_new_resource_shows_with_after_image(self) -> None:
+        self._write_module("app", manifest={
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "drawable/new_icon", "type": "VECTOR",
+                           "sourceFiles": {"": "src/main/res/drawable/new_icon.xml"},
+                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                                         "renderOutput": "renders/resources/drawable/new_icon_xhdpi.png"}]}],
+            "manifestReferences": [],
+        }, png_files={"renders/resources/drawable/new_icon_xhdpi.png": b"hi"})
+        self.baselines.write_text("{}")
+        out = self._run()
+        self.assertIn("### New (1 variant(s) across 1 resource(s))", out)
+        self.assertIn("`drawable/new_icon`", out)
+
+    def test_removed_resource_appears_as_strikethrough(self) -> None:
+        # Empty workspace — every baseline entry counts as removed.
+        self.workspace.mkdir(exist_ok=True)
+        self.baselines.write_text(json.dumps({
+            "app::drawable/gone::renders/resources/drawable/gone_xhdpi.png": {
+                "sha256": "abc",
+                "module": "app",
+                "resourceId": "drawable/gone",
+                "renderBasename": "resources/drawable/gone_xhdpi.png",
+            },
+        }))
+        out = self._run()
+        self.assertIn("### Removed", out)
+        self.assertIn("~`drawable/gone`~", out)
+
+    def test_empty_when_nothing_changed(self) -> None:
+        # Resource exists, baseline matches → no diff section at all.
+        self._write_module("app", manifest={
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "drawable/stable", "type": "VECTOR",
+                           "sourceFiles": {"": "src/main/res/drawable/stable.xml"},
+                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                                         "renderOutput": "renders/resources/drawable/stable_xhdpi.png"}]}],
+            "manifestReferences": [],
+        }, png_files={"renders/resources/drawable/stable_xhdpi.png": b"stable"})
+        sha = cp.sha256(self.workspace / "app" / "build" / "compose-previews"
+                        / "renders/resources/drawable/stable_xhdpi.png")
+        self.baselines.write_text(json.dumps({
+            "app::drawable/stable::renders/resources/drawable/stable_xhdpi.png": {
+                "sha256": sha,
+                "renderBasename": "resources/drawable/stable_xhdpi.png",
+            },
+        }))
+        out = self._run()
+        self.assertEqual(out, "",
+                         "Comment should append nothing when no diff was detected.")
+
+
 if __name__ == "__main__":
     unittest.main()

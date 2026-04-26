@@ -57,6 +57,18 @@ runs:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
       run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
 
+    # Render Android XML resource previews (vector / animated-vector /
+    # adaptive-icon) so the comment can include before/after for resource
+    # changes. The CLI's `show` command runs `:<module>:renderAllPreviews`
+    # which doesn't yet depend on `:<module>:renderAndroidResources`, so we
+    # invoke the resource render explicitly. `|| true` keeps the action
+    # forgiving on consumers who haven't applied the plugin to any module
+    # with resources — `compare-resources` no-ops on an empty workspace
+    # anyway.
+    - name: Render Android resource previews
+      shell: bash
+      run: ./gradlew renderAndroidResources --quiet 2>/dev/null || true
+
     - name: Fetch baselines
       shell: bash
       env:
@@ -67,6 +79,13 @@ runs:
           git fetch origin "$BASE_BRANCH"
           git show "origin/${BASE_BRANCH}:baselines.json" \
             > _baselines/baselines.json 2>/dev/null || true
+          # Resource baselines are a sibling file written by the
+          # `Stage resource baselines` step in preview-baselines/action.yml.
+          # First-ever resource render on a project doesn't have it yet —
+          # `git show` returns non-zero, the file stays absent, and the
+          # compare-resources call below treats every resource as new.
+          git show "origin/${BASE_BRANCH}:resource-baselines.json" \
+            > _baselines/resource-baselines.json 2>/dev/null || true
         else
           echo "No $BASE_BRANCH branch yet — treating all previews as new."
         fi
@@ -101,6 +120,13 @@ runs:
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed _previews.json \
           --baselines _baselines/baselines.json \
           --output-dir _pr_renders
+        # Resource captures land alongside under _pr_renders/renders/<module>/
+        # resources/<...>. The script silently no-ops on workspaces without
+        # any resources.json, so this is safe to run unconditionally.
+        python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
+          --baselines _baselines/resource-baselines.json \
+          --output-dir _pr_renders \
+          --workspace-root .
 
     - name: Push PR renders
       shell: bash
@@ -196,6 +222,17 @@ runs:
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
           > _comment_body.md
+        # Append the resource diff section. Empty stdout when nothing
+        # changed (or no resources.json on the workspace), so the
+        # composable comment stays unaffected on projects without XML
+        # drawables.
+        python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
+          --baselines _baselines/resource-baselines.json \
+          --repo "$REPO" \
+          --base-ref "$BASE_REF" \
+          --head-ref "$HEAD_REF" \
+          --workspace-root . \
+          >> _comment_body.md
 
     - name: Post or update PR comment
       shell: bash

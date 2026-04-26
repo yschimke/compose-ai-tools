@@ -582,6 +582,188 @@ def cmd_generate_resources(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# copy-changed-resources mode
+# ---------------------------------------------------------------------------
+
+def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
+    """Sibling of [cmd_copy_changed]. Globs every
+    `<workspace>/<module>/build/compose-previews/resources.json`, compares the
+    rendered PNGs / GIFs against `resource-baselines.json`, and copies new or
+    changed ones into `<output>/renders/<module>/resources/<...>`.
+
+    Output layout matches [cmd_generate_resources] so the push to `preview_pr`
+    lands these PNGs at paths the comment markdown can `_render_url` to.
+    Modules without `resources.json` are skipped silently — same behaviour as
+    `cmd_generate_resources`.
+    """
+    workspace_root = Path(args.workspace_root).resolve()
+    baselines_path = Path(args.baselines)
+    out_dir = Path(args.output_dir)
+
+    entries = load_resource_manifests(workspace_root)
+    if not entries:
+        return 0
+    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+
+    copied = 0
+    for key, info in entries.items():
+        if not info["sha256"]:
+            continue
+        is_new = key not in baselines
+        is_changed = not is_new and info["sha256"] != baselines[key]["sha256"]
+        if not (is_new or is_changed):
+            continue
+        dest = out_dir / "renders" / info["module"] / info["destRelative"]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(info["pngPath"], dest)
+        copied += 1
+
+    print(f"Copied {copied} changed/new resource preview(s) to {out_dir}", file=sys.stderr)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# compare-resources mode
+# ---------------------------------------------------------------------------
+
+def _resource_url(repo: str, ref: str, module: str, basename: str) -> str:
+    """Same shape as [_render_url] but the resource basenames carry their own
+    `resources/<type>/...` prefix, so the URL encodes
+    `renders/<module>/resources/...`."""
+    return (
+        f"https://raw.githubusercontent.com/{repo}/{ref}"
+        f"/renders/{module}/{basename}"
+    )
+
+
+def _resource_label(info: dict) -> str:
+    """Human-readable label for one resource capture: `xhdpi`, `night-xhdpi`,
+    `xhdpi · CIRCLE`, or `default` when no qualifiers / shape are set. Mirrors
+    [_entry_label]'s role for composables."""
+    parts: list[str] = []
+    qualifiers = info.get("qualifiers")
+    shape = info.get("shape")
+    if qualifiers:
+        parts.append(qualifiers)
+    if shape:
+        parts.append(shape)
+    return " · ".join(parts) if parts else "default"
+
+
+def cmd_compare_resources(args: argparse.Namespace) -> int:
+    """Sibling of [cmd_compare] that emits a "Resource changes" markdown
+    section against `resource-baselines.json`. No leading marker — the
+    composable comment owns the marker, and this output is concatenated by
+    `preview-comment/action.yml` after [cmd_compare]'s body. Emits an empty
+    string when no resource manifests exist or no diff is detected, so the
+    action can append unconditionally without polluting the comment.
+    """
+    workspace_root = Path(args.workspace_root).resolve()
+    baselines_path = Path(args.baselines)
+    repo = args.repo
+    base_ref = args.base_ref
+    head_ref = args.head_ref
+
+    current = load_resource_manifests(workspace_root)
+    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+
+    new: list[tuple[str, dict]] = []
+    changed: list[tuple[str, dict, dict]] = []
+    removed: list[tuple[str, dict]] = []
+    unchanged: list[tuple[str, dict]] = []
+
+    for key, info in sorted(current.items()):
+        if not info["sha256"]:
+            continue
+        if key not in baselines:
+            new.append((key, info))
+        elif info["sha256"] != baselines[key]["sha256"]:
+            changed.append((key, info, baselines[key]))
+        else:
+            unchanged.append((key, info))
+    for key, bl_info in sorted(baselines.items()):
+        if key not in current:
+            removed.append((key, bl_info))
+
+    if not (new or changed or removed):
+        return 0  # nothing to append
+
+    lines: list[str] = ["## Resource Changes", ""]
+
+    if changed:
+        # Group by (module, resourceId) so all captures of the same resource
+        # land under one heading — adaptive icons fan out to 4 shape masks
+        # per icon and the per-capture rows would otherwise drown the diff.
+        groups: dict[tuple[str, str], list[tuple[str, dict, dict]]] = {}
+        for key, cur, bl in changed:
+            groups.setdefault((cur["module"], cur["resourceId"]), []).append((key, cur, bl))
+        lines.append(
+            f"### Changed ({len(changed)} variant(s) across {len(groups)} resource(s))"
+        )
+        lines.append("")
+        for (module, resource_id), entries in sorted(groups.items()):
+            hero_key, hero_cur, hero_bl = entries[0]
+            before = _resource_url(repo, base_ref, module, hero_cur["destRelative"])
+            after = _resource_url(repo, head_ref, module, hero_cur["destRelative"])
+            lines.append(f"**`{resource_id}`** ({module}, {hero_cur['resourceType']})")
+            lines.append("")
+            lines.append("| Before | After |")
+            lines.append("|--------|-------|")
+            lines.append(
+                f"| <img src=\"{before}\" width=\"200\" /> "
+                f"| <img src=\"{after}\" width=\"200\" /> |"
+            )
+            if len(entries) > 1:
+                variant_links = []
+                for _okey, ocur, _obl in entries[1:]:
+                    label = _resource_label(ocur)
+                    link = _resource_url(repo, head_ref, module, ocur["destRelative"])
+                    variant_links.append(f"[{label}]({link})")
+                lines.append("")
+                lines.append(f"Other variants: {', '.join(variant_links)}")
+            lines.append("")
+
+    if new:
+        groups_new: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+        for key, info in new:
+            groups_new.setdefault((info["module"], info["resourceId"]), []).append((key, info))
+        lines.append(
+            f"### New ({len(new)} variant(s) across {len(groups_new)} resource(s))"
+        )
+        lines.append("")
+        for (module, resource_id), entries in sorted(groups_new.items()):
+            hero_key, hero_info = entries[0]
+            after = _resource_url(repo, head_ref, module, hero_info["destRelative"])
+            lines.append(
+                f"**`{resource_id}`** ({module}, {hero_info['resourceType']}) "
+                f"<img src=\"{after}\" width=\"200\" />"
+            )
+            if len(entries) > 1:
+                variant_links = []
+                for _okey, oinfo in entries[1:]:
+                    label = _resource_label(oinfo)
+                    link = _resource_url(repo, head_ref, module, oinfo["destRelative"])
+                    variant_links.append(f"[{label}]({link})")
+                lines.append(f"Variants: {', '.join(variant_links)}")
+            lines.append("")
+
+    if removed:
+        # Group by (module, resourceId) — a resource being deleted typically
+        # removes all its captures at once, surfacing them as N rows would be
+        # noise.
+        rm_resources = sorted({(bl_info.get("module", "?"), bl_info.get("resourceId", "?"))
+                               for _, bl_info in removed})
+        lines.append(f"### Removed ({len(removed)} variant(s) across {len(rm_resources)} resource(s))")
+        lines.append("")
+        for module, resource_id in rm_resources:
+            lines.append(f"- ~`{resource_id}`~ ({module})")
+        lines.append("")
+
+    print("\n".join(lines))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -625,12 +807,35 @@ def main() -> int:
     gen_res.add_argument("--workspace-root", default=".",
                          help="Root to glob for <module>/build/compose-previews/resources.json")
 
+    cp_res = sub.add_parser(
+        "copy-changed-resources",
+        help="Sibling of `copy-changed` for resource captures.",
+    )
+    cp_res.add_argument("--baselines", required=True,
+                        help="Path to resource-baselines.json (fetched from preview_main)")
+    cp_res.add_argument("--output-dir", required=True)
+    cp_res.add_argument("--workspace-root", default=".")
+
+    cmp_res = sub.add_parser(
+        "compare-resources",
+        help="Sibling of `compare` for resource captures. Emits the markdown section "
+             "to append after the composable diff. Empty stdout when nothing changed.",
+    )
+    cmp_res.add_argument("--baselines", required=True,
+                         help="Path to resource-baselines.json (fetched from preview_main)")
+    cmp_res.add_argument("--repo", required=True)
+    cmp_res.add_argument("--base-ref", default="preview_main")
+    cmp_res.add_argument("--head-ref", required=True)
+    cmp_res.add_argument("--workspace-root", default=".")
+
     args = ap.parse_args()
     handlers = {
         "generate": cmd_generate,
         "compare": cmd_compare,
         "copy-changed": cmd_copy_changed,
         "generate-resources": cmd_generate_resources,
+        "copy-changed-resources": cmd_copy_changed_resources,
+        "compare-resources": cmd_compare_resources,
     }
     return handlers[args.command](args)
 
