@@ -86,9 +86,26 @@ runs:
           # compare-resources call below treats every resource as new.
           git show "origin/${BASE_BRANCH}:resource-baselines.json" \
             > _baselines/resource-baselines.json 2>/dev/null || true
+          # Extract the baseline renders/ tree alongside baselines.json so
+          # the pixelmatch-based perceptual filter in compare-previews.py
+          # has both PNGs to diff. `git archive` writes to stdout so the
+          # working tree is left untouched; failures (e.g. preview_main
+          # has no renders/ tree yet) fall back to the strict-bytes path.
+          git archive "origin/${BASE_BRANCH}" renders 2>/dev/null \
+            | tar -x -C _baselines/ 2>/dev/null || true
         else
           echo "No $BASE_BRANCH branch yet — treating all previews as new."
         fi
+
+    - name: Install perceptual-diff dependencies
+      shell: bash
+      run: |
+        # pixelmatch (Mapbox's algorithm, AA-aware) collapses sub-pixel
+        # rounded-corner noise that the Compose stitched-LONG renderer can
+        # emit between runs (issue #190). If install fails, the script
+        # falls back to the strict sha-only comparison.
+        python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
+          || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
     - name: Resolve Before ref
       shell: bash
@@ -119,6 +136,7 @@ runs:
       run: |
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed _previews.json \
           --baselines _baselines/baselines.json \
+          --baseline-renders _baselines/renders \
           --output-dir _pr_renders
         # Resource captures land alongside under _pr_renders/renders/<module>/
         # resources/<...>. The script silently no-ops on workspaces without
@@ -218,6 +236,7 @@ runs:
 
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
+          --baseline-renders _baselines/renders \
           --repo "$REPO" \
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
