@@ -55,12 +55,11 @@ wear-tooling-preview = "1.0.0"
 #    sample doesn't depend on compose-bom.
 compose-remote = "1.0.0-alpha09"
 wear-compose-remote = "1.0.0-alpha02"
-# Pre-release compose-ui artifacts (1.11.x line) used by `:samples:remotecompose`,
-# which deliberately diverges from `compose-bom-stable` (1.10.x) to track what
-# wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0-beta+
-# is the first release that ships `PreviewWrapper`. Renovate is constrained to
-# /^1\.11\./ in `.github/renovate.json` so jumps to the next minor are a manual
-# decision (alpha lines have historically tightened minSdk between releases).
+# Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
+# deliberately diverges from `compose-bom-stable` (1.10.x) to track what
+# wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
+# is the first release that ships `PreviewWrapper`. Renovate updates this
+# freely; the sample is meant to ride the latest prerelease compose.
 compose-ui-prerelease = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"

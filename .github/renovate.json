@@ -47,18 +47,6 @@
       "allowedVersions": "/^2026\\./"
     },
     {
-      "description": "compose-ui-prerelease: hold the :samples:remotecompose ui-tooling artifacts on the 1.11.x line — the wear-compose-remote alpha line that ships PreviewWrapper. Manual bumps only since alpha minSdk has historically tightened between releases.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "androidx.compose.ui:ui-tooling",
-        "androidx.compose.ui:ui-tooling-preview"
-      ],
-      "matchCurrentValue": "/^1\\.11\\./",
-      "allowedVersions": "/^1\\.11\\./"
-    },
-    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"
