@@ -1,0 +1,77 @@
+{
+    "module": "sample-android",
+    "variant": "debug",
+    "resources": [
+        {
+            "id": "drawable/ic_compose_logo",
+            "type": "VECTOR",
+            "sourceFiles": {
+                "": "src/main/res/drawable/ic_compose_logo.xml",
+                "night": "src/main/res/drawable-night/ic_compose_logo.xml"
+            },
+            "captures": [
+                {
+                    "variant": { "qualifiers": "xhdpi", "shape": null },
+                    "renderOutput": "renders/resources/drawable/ic_compose_logo_xhdpi.png",
+                    "cost": 1.0
+                },
+                {
+                    "variant": { "qualifiers": "night-xhdpi", "shape": null },
+                    "renderOutput": "renders/resources/drawable/ic_compose_logo_night-xhdpi.png",
+                    "cost": 1.0
+                }
+            ]
+        },
+        {
+            "id": "mipmap/ic_launcher",
+            "type": "ADAPTIVE_ICON",
+            "sourceFiles": {
+                "anydpi-v26": "src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+            },
+            "captures": [
+                {
+                    "variant": { "qualifiers": "xhdpi", "shape": "CIRCLE" },
+                    "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+                    "cost": 4.0
+                },
+                {
+                    "variant": { "qualifiers": "xhdpi", "shape": "LEGACY" },
+                    "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+                    "cost": 4.0
+                }
+            ]
+        },
+        {
+            "id": "drawable/avd_pulse",
+            "type": "ANIMATED_VECTOR",
+            "sourceFiles": {
+                "": "src/main/res/drawable/avd_pulse.xml"
+            },
+            "captures": [
+                {
+                    "variant": { "qualifiers": "xhdpi", "shape": null },
+                    "renderOutput": "renders/resources/drawable/avd_pulse_xhdpi.gif",
+                    "cost": 35.0
+                }
+            ]
+        }
+    ],
+    "manifestReferences": [
+        {
+            "source": "src/main/AndroidManifest.xml",
+            "componentKind": "application",
+            "componentName": null,
+            "attributeName": "android:icon",
+            "resourceType": "mipmap",
+            "resourceName": "ic_launcher"
+        },
+        {
+            "source": "src/main/AndroidManifest.xml",
+            "componentKind": "activity",
+            "componentName": "com.example.sampleandroid.MainActivity",
+            "attributeName": "android:icon",
+            "resourceType": "drawable",
+            "resourceName": "ic_settings"
+        }
+    ]
+}

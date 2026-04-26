@@ -13,6 +13,10 @@ composePreview {
     // byte-identical to the non-a11y baseline.
     enabled = false
   }
+  // resourcePreviews { ... } is on by default — the sample exercises the
+  // Android XML resource preview pipeline (vector / animated-vector /
+  // adaptive-icon) without any extra config. See
+  // docs/ANDROID_RESOURCE_PREVIEWS.md.
 }
 
 android {

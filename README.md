@@ -10,6 +10,11 @@ Renders include
 [ATF accessibility checks](skills/compose-preview/SKILL.md#accessibility-a11y)
 with annotated overlays.
 
+Also renders [Android XML resources](skills/compose-preview/SKILL.md#android-xml-resource-previews) —
+vector drawables, adaptive launcher icons, animated-vector drawables — and indexes the icon
+attributes in `AndroidManifest.xml` so tooling can link manifest lines to the same rendered PNG.
+Modules without any matching resources self-no-op, so this comes along for free with the plugin.
+
 ## What it ships
 
 - **Agent skill** — [`skills/compose-preview/SKILL.md`](skills/compose-preview/SKILL.md).

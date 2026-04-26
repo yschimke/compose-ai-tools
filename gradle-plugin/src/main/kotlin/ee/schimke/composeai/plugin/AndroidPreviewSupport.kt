@@ -1,7 +1,9 @@
 package ee.schimke.composeai.plugin
 
+import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.Variant
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
@@ -88,6 +90,41 @@ internal object AndroidPreviewSupport {
         variant.name,
         androidComponents.sdkComponents.bootClasspath,
       )
+      registerAndroidResourcePreviewTasks(project, extension, variant)
+    }
+  }
+
+  /**
+   * Registers `discoverAndroidResources` for the targeted [variant], gated on
+   * `composePreview.resourcePreviews.enabled`. Wires the task's inputs from the variant's lazy
+   * `sources.res.all` and `artifacts.get(MERGED_MANIFEST)` providers so the task picks up flavour
+   * overrides + manifest-merger output without duplicating AGP's resolution logic. Renderer wiring
+   * lands in a follow-up commit; until then the task writes `resources.json` only.
+   */
+  private fun registerAndroidResourcePreviewTasks(
+    project: Project,
+    extension: PreviewExtension,
+    variant: Variant,
+  ) {
+    if (!extension.resourcePreviews.enabled.get()) return
+    val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
+    val projectRoot = project.layout.projectDirectory.asFile.absolutePath
+    val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+    val resSources = variant.sources.res?.all
+
+    project.tasks.register("discoverAndroidResources", DiscoverAndroidResourcesTask::class.java) {
+      group = "compose preview"
+      description =
+        "Walk res/drawable* and res/mipmap*, parse AndroidManifest.xml, " +
+          "write build/compose-previews/resources.json"
+      resSources?.let { this.resSourceRoots.from(it) }
+      this.mergedManifest.set(mergedManifest)
+      moduleName.set(project.name)
+      variantName.set(variant.name)
+      densities.set(extension.resourcePreviews.densities)
+      shapes.set(extension.resourcePreviews.shapes)
+      projectDirectory.set(projectRoot)
+      outputFile.set(previewOutputDir.map { it.file("resources.json") })
     }
   }
 
@@ -963,6 +1000,64 @@ internal object AndroidPreviewSupport {
           dependsOn(compileShardsTask)
         }
       }
+
+    if (extension.resourcePreviews.enabled.get()) {
+      // Resource render task — same Robolectric harness as `renderPreviews`, different test
+      // class + manifest sysprops. Reuses the renderer/test/runtime classpaths computed above.
+      // Kept as a sibling task (not folded into renderPreviews) so consumers can run resource
+      // discovery + render without paying for composable rendering, and vice versa.
+      // Output dir is the shared `renders/` parent (same as `composeai.render.outputDir`),
+      // NOT the `renders/resources/` subtree — the manifest's `renderOutput` paths are already
+      // module-relative starting `renders/resources/...` and the renderer strips the leading
+      // `renders/` segment when resolving. The Gradle `outputs.dir` declaration below scopes
+      // the cache key to the narrower `renders/resources/` subtree this task actually writes.
+      val resourcesManifestPath = previewOutputDir.map {
+        it.file("resources.json").asFile.absolutePath
+      }
+      val resourcesRendersOutputDir = rendersDir
+      val resourcesRendersSubtree = previewOutputDir.map { it.dir("renders/resources") }
+
+      project.tasks.register("renderAndroidResources", Test::class.java) {
+        group = "compose preview"
+        description = "Render Android XML resource previews via Robolectric"
+        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        testClassesDirs = rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        classpath =
+          resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
+        include("**/ResourcePreviewRenderTest.class")
+        useJUnit()
+
+        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
+        jvmArgs(
+          "--add-opens=java.base/java.lang=ALL-UNNAMED",
+          "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+          "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        )
+        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+
+        systemProperty("robolectric.graphicsMode", "NATIVE")
+        systemProperty("robolectric.looperMode", "PAUSED")
+        systemProperty("robolectric.conscryptMode", "OFF")
+        systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
+        systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
+
+        outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
+
+        dependsOn("discoverAndroidResources")
+        dependsOn(generateRobolectricPropertiesTask)
+        if (useLocalRenderer) {
+          dependsOn(":renderer-android:compile${capVariant}Kotlin")
+        }
+        listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig").forEach {
+          taskName ->
+          if (project.tasks.findByName(taskName) != null) {
+            dependsOn(taskName)
+          }
+        }
+      }
+    }
 
     // `verifyAccessibility` is ALWAYS registered so toggling
     // `-PcomposePreview.accessibilityChecks.enabled` doesn't change the

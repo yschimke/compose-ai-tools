@@ -122,6 +122,82 @@ export interface AccessibilityReport {
     }[];
 }
 
+// -------------------------------------------------------------------------
+// Android XML resource previews — mirrors of the Kotlin types in
+// `gradle-plugin/.../PreviewData.kt` / `renderer-android/.../RenderResourceManifest.kt`.
+// See `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model.
+// -------------------------------------------------------------------------
+
+export type ResourceType = 'VECTOR' | 'ANIMATED_VECTOR' | 'ADAPTIVE_ICON' | string;
+
+export type AdaptiveShape = 'CIRCLE' | 'ROUNDED_SQUARE' | 'SQUARE' | 'LEGACY' | string;
+
+export interface ResourceVariant {
+    /**
+     * Resource qualifier suffix as written in the AAPT directory name, sans the leading dash —
+     * e.g. `'xhdpi'`, `'night-xhdpi'`, `'ldrtl-xhdpi-v26'`. `null` for the default-qualifier
+     * configuration. This is the runtime configuration the capture was rendered under, not the
+     * qualifier of any particular source file (AAPT picks whichever matches at render time).
+     */
+    qualifiers: string | null;
+    /** Adaptive-icon shape mask. `null` for non-adaptive resources. */
+    shape: AdaptiveShape | null;
+}
+
+export interface ResourceCapture {
+    variant: ResourceVariant | null;
+    /** Module-relative PNG / GIF path, e.g. `renders/resources/drawable/ic_compose_logo_xhdpi.png`. */
+    renderOutput: string;
+    /**
+     * Estimated render cost — same scale as `Capture.cost`. `RESOURCE_STATIC_COST=1`,
+     * `RESOURCE_ADAPTIVE_COST=4`, `RESOURCE_ANIMATED_COST=35`. Adaptive + animated land above
+     * `HEAVY_COST_THRESHOLD` so they're treated as heavy captures by the same tier filter that
+     * skips composable LONG / GIF / animation captures.
+     */
+    cost?: number;
+}
+
+export interface ResourcePreview {
+    /** `<base>/<name>` — `'drawable/ic_compose_logo'`, `'mipmap/ic_launcher'`. */
+    id: string;
+    type: ResourceType;
+    /**
+     * Every contributing source file keyed by qualifier suffix. Empty string `''` for the
+     * default-qualifier file, the verbatim qualifier suffix otherwise (`'night'`,
+     * `'anydpi-v26'`, …). The empty-string convention keeps the JSON valid: nullable map keys
+     * would serialise as bare `null:` literals which standard JSON parsers reject.
+     */
+    sourceFiles: Record<string, string>;
+    captures: ResourceCapture[];
+}
+
+/**
+ * One drawable / mipmap reference observed in `AndroidManifest.xml`. References don't trigger
+ * captures — they're an index that lets tooling link manifest lines to the already-rendered
+ * resource preview by `(resourceType, resourceName)`.
+ */
+export interface ManifestReference {
+    /** Module-relative path of the manifest file the reference came from. */
+    source: string;
+    /** Tag name of the component the attribute lives on: `application`, `activity`, … */
+    componentKind: string;
+    /** FQN of the activity / service / receiver / provider; `null` for `<application>`. */
+    componentName: string | null;
+    /** Attribute name including namespace prefix, e.g. `'android:icon'`. */
+    attributeName: string;
+    /** `'drawable'` or `'mipmap'`. */
+    resourceType: string;
+    /** Resource name without the `@type/` prefix, e.g. `'ic_launcher'`. */
+    resourceName: string;
+}
+
+export interface ResourceManifest {
+    module: string;
+    variant: string;
+    resources: ResourcePreview[];
+    manifestReferences: ManifestReference[];
+}
+
 /**
  * Output of `:<module>:composePreviewDoctor`. Matches the serialization in
  * `gradle-plugin/.../ComposePreviewDoctorTask.kt` and the per-module shape

@@ -79,14 +79,29 @@ jobs:
       # invocation both renders and asserts.
       - name: Render + pixel-test Wear sample previews
         run: ./gradlew :samples:wear:testDebugUnitTest
+      # Exercise the Android XML resource preview pipeline against
+      # samples/android. Discovery + renderer together; the rendered set
+      # (6 vector PNGs + 8 adaptive-icon PNGs + 1 AVD GIF, see
+      # docs/ANDROID_RESOURCE_PREVIEWS.md) and the AndroidManifest
+      # icon-reference index land under
+      # `build/compose-previews/{resources.json,renders/resources/}`.
+      - name: Render Android resource previews
+        run: ./gradlew :samples:android:renderAndroidResources
       - name: Upload preview manifests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preview-manifests
           path: |
             samples/android/build/compose-previews/previews.json
+            samples/android/build/compose-previews/resources.json
             samples/android-screenshot-test/build/compose-previews/previews.json
             samples/cmp/build/compose-previews/previews.json
+      - name: Upload Android resource renders
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: samples-android-resource-renders
+          path: samples/android/build/compose-previews/renders/resources/
       - name: Upload screenshot-test renders
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

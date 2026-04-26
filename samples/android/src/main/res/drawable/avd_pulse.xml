@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="48dp"
+            android:height="48dp"
+            android:viewportWidth="48"
+            android:viewportHeight="48">
+            <group
+                android:name="dot"
+                android:pivotX="24"
+                android:pivotY="24"
+                android:scaleX="1"
+                android:scaleY="1">
+                <path
+                    android:fillColor="#FF5252"
+                    android:pathData="M24,12 a12,12 0 1,0 0.001,0 z" />
+            </group>
+        </vector>
+    </aapt:attr>
+
+    <target android:name="dot">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.6"
+                    android:valueTo="1.2"
+                    android:valueType="floatType"
+                    android:duration="600"
+                    android:repeatCount="-1"
+                    android:repeatMode="reverse" />
+                <objectAnimator
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.6"
+                    android:valueTo="1.2"
+                    android:valueType="floatType"
+                    android:duration="600"
+                    android:repeatCount="-1"
+                    android:repeatMode="reverse" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

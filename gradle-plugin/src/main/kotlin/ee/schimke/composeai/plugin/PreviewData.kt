@@ -221,3 +221,104 @@ data class PreviewManifest(
    */
   val accessibilityReport: String? = null,
 )
+
+// ---------------------------------------------------------------------------
+// Android XML resource previews — see docs/ANDROID_RESOURCE_PREVIEWS.md
+// ---------------------------------------------------------------------------
+
+/** Cost catalogue extension for resource previews; same scale as the composable cost figures. */
+const val RESOURCE_STATIC_COST: Float = 1.0f
+
+const val RESOURCE_ADAPTIVE_COST: Float = 4.0f
+
+const val RESOURCE_ANIMATED_COST: Float = 35.0f
+
+/** Subset of XML drawable / mipmap resources the renderer knows how to handle. */
+@Serializable
+enum class ResourceType {
+  VECTOR,
+  ANIMATED_VECTOR,
+  ADAPTIVE_ICON,
+}
+
+/**
+ * Adaptive-icon shape mask. Applied at render time as a canvas clip path — not a resource
+ * qualifier. `LEGACY` falls back to the `<adaptive-icon android:icon=…>` slot when present, or to
+ * the foreground rendered against a transparent background otherwise.
+ */
+@Serializable
+enum class AdaptiveShape {
+  CIRCLE,
+  ROUNDED_SQUARE,
+  SQUARE,
+  LEGACY,
+}
+
+/**
+ * Coordinates of a single resource capture. [qualifiers] is the runtime configuration the capture
+ * was rendered under (see [ResourceQualifierParser]) — *not* the qualifier of any particular source
+ * file: when a resource has both a default-qualifier file and qualified variants, AAPT picks
+ * whichever matches the active configuration, and we record what we asked for.
+ */
+@Serializable
+data class ResourceVariant(val qualifiers: String? = null, val shape: AdaptiveShape? = null)
+
+@Serializable
+data class ResourceCapture(
+  val variant: ResourceVariant? = null,
+  val renderOutput: String = "",
+  val cost: Float = RESOURCE_STATIC_COST,
+)
+
+/**
+ * One previewable resource. [id] is `<base>/<name>` (e.g. `drawable/ic_compose_logo`,
+ * `mipmap/ic_launcher`). [sourceFiles] enumerates every contributing source file keyed by its
+ * qualifier suffix — empty string `""` for the default-qualifier file, the verbatim qualifier
+ * suffix otherwise (`"night"`, `"xhdpi"`, `"night-xhdpi-v26"`, …). The empty-string convention
+ * keeps the JSON portable: nullable map keys would serialise as bare `null` literals which standard
+ * JSON parsers reject.
+ */
+@Serializable
+data class ResourcePreview(
+  val id: String,
+  val type: ResourceType,
+  val sourceFiles: Map<String, String> = emptyMap(),
+  val captures: List<ResourceCapture> = emptyList(),
+)
+
+/**
+ * One drawable / mipmap reference observed in `AndroidManifest.xml`. References don't trigger
+ * captures — they're an index that lets tooling link manifest lines to the already-rendered
+ * resource preview by `(resourceType, resourceName)`.
+ */
+@Serializable
+data class ManifestReference(
+  /** Module-relative path of the manifest file the reference came from. */
+  val source: String,
+  /** Tag name of the component the attribute lives on: `application`, `activity`, … */
+  val componentKind: String,
+  /**
+   * Fully qualified class name for activity / service / receiver / provider; `null` for
+   * `application`.
+   */
+  val componentName: String? = null,
+  /** Attribute name including namespace prefix, e.g. `android:icon`. */
+  val attributeName: String,
+  /** `drawable` or `mipmap`. */
+  val resourceType: String,
+  /** Resource name without the `@type/` prefix, e.g. `ic_launcher`. */
+  val resourceName: String,
+)
+
+/**
+ * Sibling of [PreviewManifest] for XML-resource previews. Composable manifests key on FQN; resource
+ * manifests key on `(resourceType, resourceName)` — different lookup shapes, different consumers,
+ * separate JSON files (`previews.json` vs `resources.json`).
+ */
+@Serializable
+data class ResourceManifest(
+  val module: String,
+  val variant: String,
+  val resources: List<ResourcePreview> = emptyList(),
+  val manifestReferences: List<ManifestReference> = emptyList(),
+)
