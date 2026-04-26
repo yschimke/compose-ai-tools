@@ -11,8 +11,17 @@ fun main(args: Array<String>) {
   // Find the command — first non-flag argument that isn't a flag's value.
   // Flags that take values: --module, --filter, --id, --output, --timeout, --plugin-version
   val valuedFlags =
-    setOf("--module", "--filter", "--id", "--output", "--timeout", "--plugin-version", "--fail-on")
-  val commands = setOf("show", "list", "render", "a11y", "doctor", "help")
+    setOf(
+      "--module",
+      "--filter",
+      "--id",
+      "--output",
+      "--timeout",
+      "--plugin-version",
+      "--fail-on",
+      "--desc",
+    )
+  val commands = setOf("show", "list", "render", "a11y", "doctor", "share-gist", "help")
 
   var commandIndex = -1
   var i = 0
@@ -49,6 +58,7 @@ fun main(args: Array<String>) {
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
+    "share-gist" -> ShareGistCommand(allArgs).run()
     "help" -> printUsage()
     else -> {
       System.err.println("Unknown command: $command")
@@ -66,12 +76,13 @@ private fun printUsage() {
     Usage: compose-preview [options] <command> [options]
 
     Commands:
-      show    Discover and render previews; print id, path, sha256, changed flag
-      list    List discovered previews
-      render  Render previews; with --output copies a single match to disk
-      a11y    Render previews and print ATF accessibility findings
-      doctor  Verify Java 17 + Compose/AGP environment before editing Gradle files
-      help    Show this help message
+      show         Discover and render previews; print id, path, sha256, changed flag
+      list         List discovered previews
+      render       Render previews; with --output copies a single match to disk
+      a11y         Render previews and print ATF accessibility findings
+      doctor       Verify Java 17 + Compose/AGP environment before editing Gradle files
+      share-gist   Create a gist from a markdown file plus image attachments
+      help         Show this help message
 
     Options:
       --module <name>      Target module (default: auto-detect all)

@@ -110,8 +110,20 @@ Without pre-existing image hosting, the simplest flow is:
 If the human asks for images in the comment, pick **one** and confirm the
 destination before acting:
 
-- **Gist** (`gh gist create <png> --public`) — quick, one image per file,
-  public by default. Ask before posting anything public.
+- **Gist with markdown + images** (`compose-preview share-gist <md>
+  [--public|--secret] [--desc TEXT] [--json] <png>...`). Default is
+  `--secret` — even secret gist URLs are shareable, so still ask before
+  posting one in a public PR comment, and only use `--public` on
+  explicit request. Wraps the gist-as-git-repo dance: `gh gist create`
+  rejects binary files, so the CLI seeds a text-only gist with the
+  markdown then pushes the images into the gist's git repo. Output is
+  the gist URL plus stable raw URLs you can drop into the PR comment;
+  `--json` emits a `compose-preview-share-gist/v1` envelope. The
+  markdown should reference images by basename
+  (`![](before.png)`) — the command does not rewrite paths. Requires
+  `gh` and `git` on PATH and a `git config user.name|user.email` set
+  somewhere in the global/local chain (used only as the commit
+  identity in the throwaway clone).
 - **Dedicated branch in the repo** (the CI integration appends to a
   shared `preview_pr` branch, pinning URLs to commit SHAs) — clean raw
   URLs but creates a branch the user may not want; get confirmation.
