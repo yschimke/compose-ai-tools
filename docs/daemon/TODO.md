@@ -109,9 +109,35 @@ Duplicate the relevant parts of `RobolectricRenderTest`'s render body into `Rend
 - **Depends on:** B1.3
 - **DoD:** rendered PNG of one `samples/android` preview via `RenderEngine` is byte-identical (or pixel-identical with no AA drift) to the same preview rendered via `RobolectricRenderTest`.
 
-#### B1.5 — `JsonRpcServer` over stdio
+#### B1.5 — `JsonRpcServer` over stdio ✅
 
-Read line-delimited JSON from stdin, dispatch to handlers, write replies/notifications to stdout. Single-threaded dispatch onto the host's render queue.
+Read framed JSON-RPC 2.0 from stdin (LSP-style `Content-Length`), dispatch
+to handlers, write replies and notifications back to stdout. Render requests
+queue onto [`DaemonHost`](../../renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/DaemonHost.kt);
+inline handlers cover `initialize`, `setVisible`, `setFocus`, `fileChanged`,
+`shutdown`, and `exit`. The server enforces the no-mid-render-cancellation
+invariant (DESIGN § 9): `shutdown` drains the in-flight queue before
+resolving and the daemon never calls `Thread.interrupt()` on the render
+thread. See [`JsonRpcServer.kt`](../../renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/JsonRpcServer.kt).
+
+DoD verified by [`JsonRpcServerIntegrationTest`](../../renderer-android-daemon/src/test/kotlin/ee/schimke/composeai/daemon/JsonRpcServerIntegrationTest.kt),
+which drives `initialize → initialized → renderNow → renderStarted →
+renderFinished → shutdown → exit` end-to-end against the real `DaemonHost`
+over piped streams. The full subprocess variant (`ProcessBuilder` against
+the descriptor from A1.1) is deferred to Stream C's
+[C1.3](#c13--daemonclientts-json-rpc-client) integration test, since it
+requires the consumer-module classpath that lives outside the
+`:renderer-android-daemon` Gradle scope; the spawn harness will be shared
+with B1.5a's drain-on-shutdown regression test. The framing layer is
+covered by [`JsonRpcFramingTest`](../../renderer-android-daemon/src/test/kotlin/ee/schimke/composeai/daemon/JsonRpcFramingTest.kt)
+(8 cases: well-formed, multi-frame, ignored Content-Type, missing/non-int
+length, bare `\n`, EOF at boundary, EOF mid-payload).
+
+The `pngPath` field on `renderFinished` is currently a deterministic
+placeholder string (`${historyDir}/daemon-stub-${id}.png`); B1.4
+(`RenderEngine`) replaces the body of
+`JsonRpcServer.renderFinishedFromResult` with the real Compose render and
+makes the path point at actual PNG bytes.
 
 - **Depends on:** B1.2, B1.3
 - **DoD:** integration test: spawn the daemon JVM as a subprocess, send `renderNow` for one preview, assert the PNG appears and a `renderFinished` notification is read back.

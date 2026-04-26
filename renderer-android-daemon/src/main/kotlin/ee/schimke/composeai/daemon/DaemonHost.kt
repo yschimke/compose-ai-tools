@@ -43,7 +43,7 @@ import org.robolectric.annotation.Config
  * track", if this pattern fails for any reason we escalate rather than
  * silently switching to Robolectric's lower-level `Sandbox` API.
  */
-class DaemonHost {
+open class DaemonHost {
 
   private val workerThread =
     Thread({ runJUnit() }, "compose-ai-daemon-host").apply { isDaemon = false }
@@ -55,7 +55,7 @@ class DaemonHost {
    * (~5–15s on a typical dev machine), but subsequent submits hit a hot
    * sandbox and return in stub-render time.
    */
-  fun start() {
+  open fun start() {
     DaemonHostBridge.reset()
     workerThread.start()
   }
@@ -67,7 +67,7 @@ class DaemonHost {
    *   generous for the first call (sandbox cold-boot dominates) and still
    *   well under any reasonable "sandbox failed to bootstrap" timeout.
    */
-  fun submit(request: RenderRequest, timeoutMs: Long = 60_000): RenderResult {
+  open fun submit(request: RenderRequest, timeoutMs: Long = 60_000): RenderResult {
     require(request !is RenderRequest.Shutdown) {
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
@@ -96,7 +96,7 @@ class DaemonHost {
    * Sends the poison pill, waits up to [timeoutMs] for the worker thread to
    * exit. Idempotent.
    */
-  fun shutdown(timeoutMs: Long = 30_000) {
+  open fun shutdown(timeoutMs: Long = 30_000) {
     DaemonHostBridge.shutdown.set(true)
     // Belt-and-braces: also enqueue a Shutdown so the worker wakes from
     // poll() promptly rather than waiting out the 100ms cycle.
