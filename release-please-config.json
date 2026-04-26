@@ -12,6 +12,7 @@
       "bump-patch-for-minor-pre-major": true,
       "extra-files": [
         "README.md",
+        ".github/actions/install/README.md",
         "vscode-extension/README.md",
         "skills/compose-preview/SKILL.md",
         "skills/compose-preview/design/CI_PREVIEWS.md",
