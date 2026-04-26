@@ -12,22 +12,22 @@ import org.gradle.api.provider.Provider
  * Pure-data builders for the renderer test JVM's classpath, JVM args, and system properties.
  *
  * Extracted out of [AndroidPreviewSupport.registerAndroidTasks] so the upcoming "preview daemon"
- * (see `docs/daemon/DESIGN.md`) can reuse the exact same construction logic to launch its own JVM
- * — instead of duplicating the inline Test-task DSL block. Each helper returns a value
+ * (see `docs/daemon/DESIGN.md`) can reuse the exact same construction logic to launch its own JVM —
+ * instead of duplicating the inline Test-task DSL block. Each helper returns a value
  * (FileCollection / List / Map). None of them touches the Test task DSL directly. The Test task
  * lambda still composes the final classpath (it appends the AGP unit-test classes / classpath,
  * which can only be resolved late via `project.tasks.findByName("test${Cap}UnitTest")`) and still
- * registers the dynamic argument providers (a11y / tier) which need lazy `Provider<>` evaluation
- * at execution time.
+ * registers the dynamic argument providers (a11y / tier) which need lazy `Provider<>` evaluation at
+ * execution time.
  *
  * Ordering invariants (load-bearing — see callers' comments and `AndroidPreviewSupport.kt`):
- *  - Robolectric properties dir BEFORE consumer test resources, so the renderer's
- *    `robolectric.properties` wins classloader lookup.
- *  - Renderer artifacts BEFORE consumer test runtime, so the renderer's pinned
- *    kotlinx-serialization / Roborazzi versions win on classload conflicts.
- *  - SDK boot classpath LAST in the outer FileCollection, since it's only there to satisfy
- *    JUnit's introspection of the test class signatures (the sandbox supplies its own
- *    `android-all` framework jars).
+ * - Robolectric properties dir BEFORE consumer test resources, so the renderer's
+ *   `robolectric.properties` wins classloader lookup.
+ * - Renderer artifacts BEFORE consumer test runtime, so the renderer's pinned kotlinx-serialization
+ *   / Roborazzi versions win on classload conflicts.
+ * - SDK boot classpath LAST in the outer FileCollection, since it's only there to satisfy JUnit's
+ *   introspection of the test class signatures (the sandbox supplies its own `android-all`
+ *   framework jars).
  *
  * Behaviour must match the inline construction byte-for-byte; this file is a refactor with no
  * semantic change.
@@ -130,9 +130,9 @@ internal object AndroidPreviewClasspath {
    * `Provider<>` evaluation at task execution time.
    *
    * The returned map preserves insertion order — callers iterate it to call `systemProperty(...)`
-   * on the Test task and the order is irrelevant to the JVM (system properties are an unordered
-   * map on the receiving side), but keeping it stable simplifies golden-output comparisons in
-   * future tests.
+   * on the Test task and the order is irrelevant to the JVM (system properties are an unordered map
+   * on the receiving side), but keeping it stable simplifies golden-output comparisons in future
+   * tests.
    */
   fun buildSystemProperties(
     manifestPath: String,

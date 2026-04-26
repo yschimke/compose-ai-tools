@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
 import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.file.DirectoryProperty
@@ -107,6 +108,18 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
 
   fun accessibilityChecks(action: Action<AccessibilityChecksExtension>) {
     action.execute(accessibilityChecks)
+  }
+
+  /**
+   * Namespace for in-progress / experimental features whose DSL shape may change. Today: just the
+   * preview-daemon block (`experimental.daemon { … }` — see `docs/daemon/CONFIG.md`). Kept as a
+   * nested block so consumers see "this is experimental" both in the build script and in IDE
+   * autocomplete.
+   */
+  val experimental: ExperimentalExtension = objects.newInstance(ExperimentalExtension::class.java)
+
+  fun experimental(action: Action<ExperimentalExtension>) {
+    action.execute(experimental)
   }
 }
 

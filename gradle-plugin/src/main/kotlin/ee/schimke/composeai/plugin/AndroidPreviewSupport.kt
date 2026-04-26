@@ -938,6 +938,115 @@ internal object AndroidPreviewSupport {
       previewOutputDir,
       verifyA11yTask,
     )
+
+    // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
+    // unconditionally so the VS Code extension can sniff the output file
+    // even when `experimental.daemon.enabled = false` (it then refuses to
+    // launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
+    // renderPreviews task's so the spawned daemon JVM is byte-for-byte
+    // equivalent. See `docs/daemon/DESIGN.md` § 4 / § 6.
+    //
+    // Built lazily via providers so the AGP unit-test task's javaLauncher
+    // resolves at execution time (same reason renderPreviews above defers it).
+    val daemonAgpTestTask = project.provider {
+      project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
+    }
+    val daemonFontsCacheDir =
+      extension.historyDir
+        .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
+        .map { it.dir("fonts").asFile.absolutePath }
+    val daemonFontsOffline =
+      project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+    project.tasks.register(
+      "composePreviewDaemonStart",
+      ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
+    ) {
+      this.modulePath.set(project.path)
+      this.variant.set(variantName)
+      this.daemonEnabled.set(extension.experimental.daemon.enabled)
+      this.maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
+      this.maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
+      this.warmSpare.set(extension.experimental.daemon.warmSpare)
+      // Conventional entry-point name — `renderer-android-daemon` / Stream B
+      // (task B1.1) will provide the implementation. Surfacing it as a
+      // Property leaves room for future variants (foreground / debug) without
+      // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
+      this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+      // Inherit AGP's unit-test javaLauncher exactly the way renderPreviews
+      // does (see line ~802 above) so the daemon runs on the project's
+      // configured toolchain rather than the first `java` on PATH.
+      this.javaLauncher.set(
+        project.provider {
+          daemonAgpTestTask.orNull?.javaLauncher?.orNull?.executablePath?.asFile?.absolutePath
+        }
+      )
+      // Same FileCollection the renderPreviews `Test` task assembles, plus
+      // the AGP unit-test task's classpath (R.jar etc.) appended at the
+      // tail — see line ~764 for the rationale. Composed lazily to defer
+      // `findByName("test${capVariant}UnitTest")` resolution.
+      //
+      // TODO (Stream B / task B1.1): prepend `renderer-android-daemon`'s
+      // configuration here once the module exists, so [mainClass] is
+      // loadable. Until then, the descriptor's `enabled: false` default
+      // gates the VS Code extension from spawning a JVM that would fail
+      // with ClassNotFoundException.
+      this.classpath.from(resolvedClasspath)
+      this.classpath.from(
+        project.provider { daemonAgpTestTask.orNull?.testClassesDirs ?: project.files() }
+      )
+      this.classpath.from(
+        project.provider { daemonAgpTestTask.orNull?.classpath ?: project.files() }
+      )
+      // Static JVM open flags from the shared helper, plus the
+      // daemon-specific heap ceiling. AGP test task's own jvmArgs are
+      // intentionally NOT inherited here — they're test-runner specific
+      // (e.g. `-ea` and JUnit-internal opens) and may collide with the
+      // daemon's own runner. Stream B can opt back in if needed.
+      this.jvmArgs.set(
+        project.provider {
+          AndroidPreviewClasspath.buildJvmArgs() +
+            "-Xmx${extension.experimental.daemon.maxHeapMb.get()}m"
+        }
+      )
+      // Same path-bearing system properties the renderPreviews Test task
+      // uses, plus daemon-specific keys for [DaemonExtension] config the
+      // daemon reads at startup. Built eagerly here (no
+      // CommandLineArgumentProvider equivalent for descriptor JSON) — VS
+      // Code-driven flips of `composePreview.tier` / a11y don't apply to
+      // the daemon yet (it runs the focused-render path), so config-cache
+      // invalidation isn't a concern in this task the way it is for
+      // renderPreviews.
+      //
+      // TODO (Stream B): wire `composeai.daemon.protocolVersion`,
+      // `composeai.daemon.idleTimeoutMs`, and any other daemon-runtime
+      // sysprops once the daemon module is on the classpath. Until then
+      // the four extension-derived keys below are the contract.
+      this.systemProperties.set(
+        project.provider {
+          val base =
+            AndroidPreviewClasspath.buildSystemProperties(
+              manifestPath = manifestFile.get(),
+              rendersDir = rendersDir.get(),
+              fontsCacheDir = daemonFontsCacheDir.get(),
+              fontsOffline = daemonFontsOffline.get(),
+            )
+          val daemonProps =
+            linkedMapOf(
+              "composeai.daemon.maxHeapMb" to
+                extension.experimental.daemon.maxHeapMb.get().toString(),
+              "composeai.daemon.maxRendersPerSandbox" to
+                extension.experimental.daemon.maxRendersPerSandbox.get().toString(),
+              "composeai.daemon.warmSpare" to
+                extension.experimental.daemon.warmSpare.get().toString(),
+              "composeai.daemon.modulePath" to project.path,
+            )
+          LinkedHashMap(base).apply { putAll(daemonProps) }
+        }
+      )
+      this.workingDirectory.set(project.projectDir.absolutePath)
+      this.manifestPath.set(manifestFile)
+      this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
+    }
   }
 
   /**

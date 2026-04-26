@@ -64,19 +64,19 @@ Goal: a daemon JVM that can be spawned by VS Code and render a single preview to
 
 ### Stream A — Gradle bootstrap
 
-#### A1.1 — `composePreviewDaemonStart` task
+#### A1.1 — `composePreviewDaemonStart` task ✅
 
 New `DaemonBootstrapTask` that, given a variant, emits `build/compose-previews/daemon-launch.json` containing: classpath JARs, JVM args, system properties, java launcher path. Uses helpers from P0.3.
 
 - **Depends on:** P0.3
-- **DoD:** running `./gradlew :samples:android:composePreviewDaemonStart` writes a valid descriptor that, when manually exec'd as `java @args`, starts a JVM that loads `RobolectricHost.main()`.
+- **DoD:** running `./gradlew :samples:android:composePreviewDaemonStart` writes a valid descriptor. Manual JVM exec deferred until Stream B's `renderer-android-daemon` module exists; until then the descriptor's `enabled` flag defaults to `false` and VS Code is contracted not to launch (see `DaemonClasspathDescriptor` KDoc + the in-code TODO in `AndroidPreviewSupport.registerAndroidTasks`). Validated by `DaemonBootstrapTaskTest` plus a manual `samples:android` smoke test.
 
-#### A1.2 — `DaemonExtension` DSL
+#### A1.2 — `DaemonExtension` DSL ✅
 
 Add `composePreview.experimental.daemon { … }` extension with `enabled`, `maxHeapMb`, `maxRendersPerSandbox`, `warmSpare` fields. No-op when disabled. Documented in `docs/daemon/CONFIG.md` (new).
 
 - **Depends on:** A1.1
-- **DoD:** unit test on the extension's defaults. README of daemon docs links to config doc.
+- **DoD:** unit test on the extension's defaults (`DaemonExtensionTest`). README of daemon docs links to [CONFIG.md](CONFIG.md).
 
 ### Stream B — daemon core
 

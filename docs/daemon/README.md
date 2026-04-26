@@ -14,6 +14,7 @@ The daemon keeps the Robolectric sandbox alive between saves so the per-save hot
 
 - **[DESIGN.md](DESIGN.md)** — the full architecture: scope, module layout, staleness cascade, lifecycle, leak defense, validation strategy, decisions log.
 - **[PROTOCOL.md](PROTOCOL.md)** — locked JSON-RPC wire-format contract between the VS Code extension and the daemon. Stream B (daemon) and Stream C (extension) implement against this in parallel.
+- **[CONFIG.md](CONFIG.md)** — `composePreview.experimental.daemon { … }` DSL reference: defaults, ranges, and effects for `enabled` / `maxHeapMb` / `maxRendersPerSandbox` / `warmSpare`.
 - **[TODO.md](TODO.md)** — work breakdown with parallelisation guidance: which streams can run in parallel, which agents own what, definition-of-done per chunk.
 
 ## Non-goals (v1)
