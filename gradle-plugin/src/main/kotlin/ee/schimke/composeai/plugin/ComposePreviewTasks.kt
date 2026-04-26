@@ -21,17 +21,39 @@ internal object ComposePreviewTasks {
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
 
+    // `classes/kotlin/android/main` (issue #248): the
+    // `com.android.kotlin.multiplatform.library` plugin (AGP 9's replacement
+    // for nesting `com.android.library` inside KMP) compiles its single
+    // `android` target into the canonical KMP layout
+    // `build/classes/kotlin/<targetName>/<compilationName>` — same convention
+    // as `kotlin/jvm/main` and `kotlin/desktop/main` for those targets — so
+    // adding it to the candidate list lets the desktop renderer pick up
+    // `@Preview` functions in `androidMain` without any classic-AGP wiring.
+    // [DiscoverPreviewsTask] silently skips dirs that don't exist, so listing
+    // it on JVM-only consumers is harmless.
     val sourceClassDirs =
       project.files(
         project.layout.buildDirectory.dir("classes/kotlin/main"),
         project.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
         project.layout.buildDirectory.dir("classes/kotlin/desktop/main"),
+        project.layout.buildDirectory.dir("classes/kotlin/android/main"),
       )
 
+    // Same single-variant story for the runtime classpath: KMP-Android
+    // exposes `androidRuntimeClasspath` (no `debug` / `release` prefix —
+    // confirmed against AGP 9's KMP migration guide). Listed BEFORE
+    // `runtimeClasspath` so a project applying both kotlin("multiplatform")
+    // *and* the KMP-Android plugin resolves AAR deps via the Android
+    // resolvable, where AGP's artifact transforms hand back the extracted
+    // `classes.jar` (dependencyJars's `android-classes` artifact view).
     val dependencyConfigName =
-      listOf("jvmRuntimeClasspath", "desktopRuntimeClasspath", "runtimeClasspath").firstOrNull {
-        project.configurations.findByName(it) != null
-      } ?: "runtimeClasspath"
+      listOf(
+          "jvmRuntimeClasspath",
+          "desktopRuntimeClasspath",
+          "androidRuntimeClasspath",
+          "runtimeClasspath",
+        )
+        .firstOrNull { project.configurations.findByName(it) != null } ?: "runtimeClasspath"
 
     val discoverTask =
       registerDiscoverTask(
@@ -42,7 +64,18 @@ internal object ComposePreviewTasks {
         extension,
       ) {
         onlyIf { extension.enabled.get() }
-        for (name in listOf("compileKotlinJvm", "compileKotlinDesktop", "compileKotlin")) {
+        // `compileAndroidMain` is the lifecycle task for the KMP-Android
+        // target's `main` compilation (which depends on the underlying
+        // `compileAndroidMainKotlin`-shaped Kotlin compile under the hood).
+        // Listed alongside the JVM/Desktop siblings so we wire up exactly
+        // one — whichever the consumer's applied plugins actually register.
+        for (name in
+          listOf(
+            "compileKotlinJvm",
+            "compileKotlinDesktop",
+            "compileAndroidMain",
+            "compileKotlin",
+          )) {
           if (project.tasks.findByName(name) != null) {
             dependsOn(name)
             break

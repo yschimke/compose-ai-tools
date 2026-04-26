@@ -402,6 +402,15 @@ and `a11yAnnotatedPath`. Read the annotated PNG to map numbered badges back
 to findings. Trade-off: a11y mode disables the paused clock, so infinite
 animations tick during capture — toggle it off for animation-heavy previews.
 
+## Compose Multiplatform shared modules
+
+For KMP `:shared` modules (`com.android.kotlin.multiplatform.library` +
+Compose Multiplatform), the plugin renders previews through the Desktop
+pipeline. Keep `@Preview` in `commonMain` over stateless composables and
+declare a `jvm("desktop")` target. See
+**[design/CMP_SHARED.md](./design/CMP_SHARED.md)** for the full setup,
+limitations, and rationale.
+
 ## Wear design guidance
 
 When creating or iterating on Wear OS designs, refer to the
