@@ -162,11 +162,11 @@ class CompatRulesTest {
       CompatRules.evaluate(
         mainWithBom(),
         mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
-        gradleVersion = "9.2.1",
+        gradleVersion = "8.13",
       )
     val f = findings.single { it.id == "gradle-too-old" }
     assertEquals("error", f.severity)
-    assertTrue("9.2.1" in f.message)
+    assertTrue("8.13" in f.message)
     assertTrue(f.remediationCommands.any { "gradle-version" in it })
   }
 

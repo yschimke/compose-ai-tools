@@ -16,18 +16,16 @@ internal object CompatRules {
   /**
    * Effective minimum Gradle version for consumers applying the plugin.
    *
-   * The binding constraint is **AGP's own floor**, not any API we use: AGP 9.1.x requires Gradle
-   * 9.3.1+ (per the AGP release notes), and AGP itself rejects older Gradle at its own version
-   * check — long before our `apply()` runs. The plugin's own code only reaches Gradle APIs that
-   * have been stable since the 8.x line, so there's no floor we set independently of AGP.
-   *
-   * Keep this in lockstep with AGP's documented minimum when bumping `libs.versions.toml`: AGP
-   * 9.0.x → Gradle 9.1.0 AGP 9.1.x → Gradle 9.3.1
+   * Set to the lowest Gradle line our integration matrix routinely exercises (9.0.x). The plugin's
+   * own code only reaches Gradle APIs that have been stable since the 8.x line, so this floor is a
+   * coverage statement, not a hard API requirement. Most Android consumers are gated more strictly
+   * by AGP's own floor anyway — AGP 9.0.x needs Gradle 9.1.0+, AGP 9.1.x needs 9.3.1+ — and AGP
+   * rejects older Gradle at its own version check long before our `apply()` runs.
    *
    * The repo wrapper (currently 9.4.1) is the dev/test toolchain — not a floor we impose on
    * consumers. Don't conflate the two.
    */
-  internal val GRADLE_MIN = Semver(9, 3, 1)
+  internal val GRADLE_MIN = Semver(9, 0, 0)
 
   /**
    * activity 1.11+ transitively brought `androidx.navigationevent:1.0.0`. Consumers whose main
@@ -101,14 +99,15 @@ internal object CompatRules {
     return ModuleFindingData(
       id = "gradle-too-old",
       severity = "error",
-      message = "Gradle $raw is below AGP 9.1.x's minimum ($GRADLE_MIN)",
+      message = "Gradle $raw is below the supported floor ($GRADLE_MIN)",
       detail =
-        "AGP 9.1.x requires Gradle >= $GRADLE_MIN. The plugin itself only uses APIs " +
-          "stable since Gradle 8.x, so the floor comes from AGP — on an Android build AGP's " +
-          "own compat check fails before this rule even fires. The finding is still emitted " +
-          "for CMP Desktop projects (no AGP gate) and to give a clear remediation when the " +
-          "Tooling API wraps the real cause in a generic `Could not execute build using " +
-          "connection to Gradle distribution …` message.",
+        "compose-preview is integration-tested against Gradle $GRADLE_MIN and newer. The plugin " +
+          "itself only uses APIs stable since the 8.x line, so older Gradle may happen to work, " +
+          "but isn't covered by CI. On Android builds AGP's own check usually rejects too-old " +
+          "Gradle before our `apply()` runs (AGP 9.0.x needs 9.1.0+, AGP 9.1.x needs 9.3.1+); " +
+          "this finding is still emitted for CMP Desktop projects (no AGP gate) and to give a " +
+          "clear remediation when the Tooling API wraps the real cause in a generic `Could not " +
+          "execute build using connection to Gradle distribution …` message.",
       remediationSummary = "Upgrade the project's Gradle wrapper to >= $GRADLE_MIN.",
       remediationCommands = listOf("./gradlew wrapper --gradle-version $GRADLE_MIN"),
       docsUrl = null,
