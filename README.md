@@ -25,6 +25,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `GreetingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.GreetingPreview_Default.png" width="150" /> |
 | `LoadingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.LoadingPreview_Loading_Spinner.png" width="150" /> |
 | `PhoneGreetingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.PhoneGreetingPreview_Phone.png" width="150" /> |
+| `Pixel8SystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.Pixel8SystemUiPreview_Pixel_8.png" width="150" /> |
+| `Pixel8SystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.Pixel8SystemUiPreview_Pixel_8_-_Night.png" width="150" /> |
 | `RedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.RedBoxPreview_Red_Box.png" width="150" /> |
 | `SpinnerTimelinePreview · 0ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png" width="150" /> |
 | `SpinnerTimelinePreview · 500ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/preview_main/renders/samples:android/PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_500ms.png" width="150" /> |

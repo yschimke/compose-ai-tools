@@ -171,7 +171,21 @@
     "captureLabel": "",
     "functionName": "PhoneGreetingPreview",
     "renderBasename": "PreviewsKt.PhoneGreetingPreview_Phone.png",
-    "sha256": "adedee722a7c22d0499be2eef7a43d92391073e4b040d13d07985b2669e18bc4",
+    "sha256": "cb7fe7f7c1709385cf6bde982efb498b0ded6a59c0b6a5aca36f110552f5cb5b",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8": {
+    "captureLabel": "",
+    "functionName": "Pixel8SystemUiPreview",
+    "renderBasename": "PreviewsKt.Pixel8SystemUiPreview_Pixel_8.png",
+    "sha256": "387c0c71e6a664173018b4ce35c898a1e2d25530ae815edbed36a1d45b91c210",
+    "sourceFile": "com/example/sampleandroid/Previews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8 - Night": {
+    "captureLabel": "",
+    "functionName": "Pixel8SystemUiPreview",
+    "renderBasename": "PreviewsKt.Pixel8SystemUiPreview_Pixel_8_-_Night.png",
+    "sha256": "e8251b7cd476b11280f58882a0f6449e9eed47d1ab8d45cf9220f8c49be4d625",
     "sourceFile": "com/example/sampleandroid/Previews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box": {
@@ -381,7 +395,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
