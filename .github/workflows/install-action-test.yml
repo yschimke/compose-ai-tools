@@ -1,0 +1,109 @@
+name: Install Action Smoke Test
+
+# Exercises the consumer-facing install composite. The action's contract
+# is "give me a release tarball name and a $GITHUB_PATH entry that
+# resolves to a runnable launcher" — so the test is a matrix that
+# covers each version-resolution mode against ubuntu-latest and
+# macos-latest, plus a catalog-fixture job that asserts the
+# tomllib-based parser pulls the right key.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/install/**'
+      - '.github/workflows/install-action-test.yml'
+  pull_request:
+    paths:
+      - '.github/actions/install/**'
+      - '.github/workflows/install-action-test.yml'
+  # Manual dispatch for ad-hoc verification (e.g. after a release that
+  # changes the asset naming).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: install ${{ matrix.version }} on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        version: ['latest', '0.8.1']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      # The CLI launcher needs Java 17+ on PATH at run time. Ubuntu and
+      # macOS images both ship a JDK by default, but the version varies
+      # — pin Temurin 17 so --help is a real smoke test, not a
+      # JAVA_HOME-resolution assertion.
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: ./.github/actions/install
+        id: install
+        with:
+          version: ${{ matrix.version }}
+      - name: Verify launcher on PATH
+        shell: bash
+        env:
+          RESOLVED: ${{ steps.install.outputs.version }}
+        run: |
+          set -euo pipefail
+          which compose-preview
+          compose-preview --help >/dev/null
+          # Resolved output should look like a semver-ish string with no
+          # leading "v". Belt-and-braces — the action strips it, but a
+          # regression here would be silent otherwise.
+          case "$RESOLVED" in
+            v*|'') echo "::error::resolved version looks wrong: $RESOLVED"; exit 1 ;;
+          esac
+
+  install-from-catalog:
+    name: install via catalog fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+      # Synthesize a minimal version catalog. The repo's own
+      # gradle/libs.versions.toml deliberately doesn't define
+      # composePreviewCli (we don't dogfood the install action against
+      # ourselves at HEAD — see install-cli/ for the source-build path).
+      - name: Write catalog fixture
+        shell: bash
+        run: |
+          mkdir -p tmp/gradle
+          cat > tmp/gradle/libs.versions.toml <<'EOF'
+          [versions]
+          composePreviewCli = "0.8.1"
+          EOF
+      - uses: ./.github/actions/install
+        id: install
+        with:
+          version: catalog
+          catalog-path: tmp/gradle/libs.versions.toml
+      - name: Assert resolved version
+        shell: bash
+        env:
+          RESOLVED: ${{ steps.install.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ "$RESOLVED" = "0.8.1" ] || {
+            echo "::error::expected 0.8.1, got '$RESOLVED'"
+            exit 1
+          }
+          compose-preview --help >/dev/null

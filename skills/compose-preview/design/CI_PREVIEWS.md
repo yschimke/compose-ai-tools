@@ -31,68 +31,59 @@ Or via raw URL:
 https://raw.githubusercontent.com/<owner>/<repo>/preview_main/renders/<module>/<preview-id>.png
 ```
 
-## Adding preview CI to your project
+## Installing the CLI in your workflow
 
-The actions are published as composite GitHub Actions. Add two workflow files
-to your project:
+Use the [`install` composite action](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install)
+to put the `compose-preview` CLI on `$PATH`. Pin to a tagged version of
+this repo so consumer CI isn't exposed to changes on `main`:
 
-**`.github/workflows/preview-baselines.yml`** — updates `preview_main` on push
-to main:
-
+<!-- x-release-please-start-version -->
 ```yaml
-name: Preview Baselines
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: write
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@main
+- uses: actions/setup-java@v5
+  with:
+    distribution: temurin
+    java-version: 17
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.1
+  with:
+    version: catalog   # or "latest", or a literal "0.8.1"
+```
+<!-- x-release-please-end -->
+
+`version: catalog` reads the `composePreviewCli` key from
+`gradle/libs.versions.toml`; pair it with the Renovate `customManager`
+snippet in the [README](../../../README.md#on-github-actions) to keep
+the CLI version in lockstep with the rest of the project's toolchain.
+
+After this step the `compose-preview` binary is on `$PATH` for the
+remainder of the job. Render previews with:
+
+```bash
+compose-preview show --json --timeout 600 > _previews.json
 ```
 
-**`.github/workflows/preview-comment.yml`** — posts before/after comments on
-PRs:
+## Wiring up the full pipeline
 
-```yaml
-name: Preview Comment
-on:
-  pull_request:
-    types: [opened, synchronize]
-permissions:
-  contents: write
-  pull-requests: write
-jobs:
-  compare:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@main
-```
+Two workflows do the work — render and push baselines on `main`,
+render and post a comment on PRs. The reference implementations live
+in this repo's own `.github/workflows/preview-baselines.yml` and
+`.github/workflows/preview-comment.yml`; the post-render bookkeeping
+(baselines layout, PR-comment generation, fast-forward push to
+`preview_main` / `preview_pr`) currently lives as Python in
+[`.github/actions/lib/compare-previews.py`](https://github.com/yschimke/compose-ai-tools/blob/main/.github/actions/lib/compare-previews.py).
 
-The actions download the `compose-preview` CLI from the latest release,
-auto-discover all modules that apply the plugin, and handle the baselines
-branch and PR comment lifecycle. Gradle build caching via `setup-gradle`
-keeps subsequent renders fast.
+Until that bookkeeping ships as a consumer-callable composite or as
+`compose-preview baselines …` CLI subcommands (sketched in the
+"Follow-up" section of
+[#227](https://github.com/yschimke/compose-ai-tools/issues/227)),
+copy those reference workflows into your project as the starting
+point and adapt to taste.
 
 ## Branch durability
 
-The `preview-comment` action appends a commit to a shared `preview_pr`
-branch (one commit per PR push, tree = that PR's changed PNGs). The PR
-comment pins Before/After `<img>` URLs to commit SHAs on `preview_main`
-and `preview_pr`, not branch names — so images keep resolving after the
-PR merges and after later PRs advance either branch. Neither branch is
-ever force-pushed; old commits stay reachable via branch history.
+The `preview-comment` workflow appends a commit to a shared
+`preview_pr` branch (one commit per PR push, tree = that PR's changed
+PNGs). The PR comment pins Before/After `<img>` URLs to commit SHAs
+on `preview_main` and `preview_pr`, not branch names — so images keep
+resolving after the PR merges and after later PRs advance either
+branch. Neither branch is ever force-pushed; old commits stay
+reachable via branch history.

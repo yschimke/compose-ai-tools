@@ -1,0 +1,137 @@
+name: 'Install compose-preview CLI'
+description: >
+  Download a release of the compose-preview CLI and add its bin/ to
+  $GITHUB_PATH. The version is a literal string (e.g. "0.8.1"), the
+  word "latest" (resolved via the GitHub releases API), or the word
+  "catalog" (read from a Gradle version catalog).
+
+  This is the consumer-facing install action. The sibling install-cli
+  action — which builds the CLI from source — is internal to this
+  repo's CI (see preview-baselines / preview-comment) and exists so
+  PRs that change the CLI/plugin schema don't break against a stale
+  released CLI. External consumers should use this action.
+
+  Scope cuts vs. scripts/install.sh: no skill bundle, no JDK install,
+  no Android SDK. CI consumers compose actions/setup-java and
+  android-actions/setup-android themselves.
+
+inputs:
+  version:
+    description: >
+      Literal version (e.g. "0.8.1"), "latest", or "catalog". A leading
+      "v" is stripped.
+    default: 'latest'
+  catalog-path:
+    description: >
+      Path to the Gradle version catalog, used when version=catalog.
+    default: 'gradle/libs.versions.toml'
+  catalog-key:
+    description: >
+      [versions] key to read, used when version=catalog. Consumers
+      pick their own key — the default matches the convention in the
+      README's Renovate snippet.
+    default: 'composePreviewCli'
+  github-token:
+    description: >
+      Token used to authenticate the releases API call (avoids the
+      unauthenticated rate limit on shared GHA runners). Defaults to
+      ${{ github.token }} via the runs.steps env block below.
+    default: ''
+
+outputs:
+  version:
+    description: 'Resolved version, no leading "v" (e.g. "0.8.1").'
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve version
+      id: resolve
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        CATALOG_PATH: ${{ inputs.catalog-path }}
+        CATALOG_KEY: ${{ inputs.catalog-key }}
+        # github-token override falls back to the workflow token so the
+        # default path is "authenticated" without consumer ceremony.
+        GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        ver=$(python3 "$ACTION_PATH/resolve-version.py")
+        printf 'version=%s\n' "$ver" >> "$GITHUB_OUTPUT"
+        printf '::notice::Resolved compose-preview version: %s\n' "$ver"
+
+    - name: Download CLI
+      shell: bash
+      env:
+        VER: ${{ steps.resolve.outputs.version }}
+        GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
+      run: |
+        set -euo pipefail
+        # Repo is hardcoded — the action ships from this repo and
+        # downloads its own releases. Don't expose it as an input
+        # (would invite use against forks with no integrity story).
+        repo='yschimke/compose-ai-tools'
+        asset="compose-preview-${VER}.tar.gz"
+        url="https://github.com/${repo}/releases/download/v${VER}/${asset}"
+
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+
+        printf 'Downloading %s\n' "$url"
+        curl -fL --retry 3 --retry-connrefused -o "$tmp/$asset" "$url"
+
+        # Best-effort sha256 verification via the releases API. The
+        # asset's `digest` field is "sha256:<hex>". On failure (network,
+        # rate limit, missing digest) we warn and continue — same
+        # posture as scripts/install.sh, since the curl above already
+        # rode HTTPS to github.com.
+        api="https://api.github.com/repos/${repo}/releases/tags/v${VER}"
+        if meta=$(curl -fsSL \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api" 2>/dev/null); then
+          # awk-parse to mirror scripts/install.sh:357-366 (no jq on
+          # macos-latest by default; avoids inline-Python heredoc
+          # gymnastics inside command substitution).
+          want=$(printf '%s' "$meta" | awk -v asset="$asset" '
+            /"name":/ { in_asset = ($0 ~ asset) }
+            in_asset && /"digest":/ {
+              sub(/.*"digest":[[:space:]]*"sha256:/, "")
+              sub(/".*/, "")
+              print
+              exit
+            }
+          ')
+          if [ -n "${want:-}" ]; then
+            if command -v sha256sum >/dev/null 2>&1; then
+              got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+            else
+              got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+            fi
+            if [ "$got" != "$want" ]; then
+              printf '::error::sha256 mismatch for %s: expected %s, got %s\n' "$asset" "$want" "$got"
+              exit 1
+            fi
+            printf 'Verified sha256: %s\n' "$got"
+          else
+            printf '::warning::No sha256 digest in release metadata for %s; skipping verification\n' "$asset"
+          fi
+        else
+          printf '::warning::Could not fetch release metadata for v%s; skipping sha256 verification\n' "$VER"
+        fi
+
+        # Hardcoded install dir keeps the $GITHUB_PATH literal in the
+        # next step a fixed string — zizmor's `github-env` rule rejects
+        # expansion-backed values written to $GITHUB_PATH because any
+        # attacker-influence over the expansion becomes attacker
+        # influence over every later step's $PATH.
+        sudo mkdir -p /opt/compose-preview
+        sudo tar -xzf "$tmp/$asset" -C /opt/compose-preview --strip-components=1
+
+    - name: Add CLI to PATH
+      shell: bash
+      run: echo '/opt/compose-preview/bin' >> "$GITHUB_PATH"
