@@ -20,10 +20,26 @@ runs:
     - uses: ./.github/actions/install-cli
 
     - name: Render previews
+      id: render
       shell: bash
       env:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
       run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+
+    # When `renderPreviews` fails the actual stack traces only live in
+    # samples/*/build/reports/tests/renderPreviews/ and test-results/.
+    # Upload them so the failure is debuggable from the run page.
+    - name: Upload renderPreviews reports
+      if: failure() && steps.render.outcome == 'failure'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: renderPreviews-reports
+        path: |
+          **/build/reports/tests/renderPreviews/
+          **/build/test-results/renderPreviews/
+          _previews.json
+        if-no-files-found: ignore
+        retention-days: 14
 
     - name: Generate baselines
       shell: bash
