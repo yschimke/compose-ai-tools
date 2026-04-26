@@ -42,7 +42,14 @@ wear-tooling-preview = "1.0.0"
 #    contains `PreviewWrapper` / `PreviewWrapperProvider` — 1.10.x (the
 #    current BOM) doesn't have them. Declared explicitly because the
 #    sample doesn't depend on compose-bom.
-compose-remote = "1.0.0-alpha09"
+#  * compose-remote is held at alpha08 because alpha09 dropped
+#    `androidx.compose.remote.creation.compose.modifier.ClickActionModifierKt`,
+#    which `wear-compose-remote:remote-material3:alpha02` was built against
+#    and still calls into. Bumping the pair together (e.g. once a newer
+#    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
+#    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
+#    inside `RemoteButtonImpl` at preview render time.
+compose-remote = "1.0.0-alpha08"
 wear-compose-remote = "1.0.0-alpha02"
 compose-ui-tooling-preview-wrapper = "1.11.0"
 kotlinx-coroutines = "1.10.2"
