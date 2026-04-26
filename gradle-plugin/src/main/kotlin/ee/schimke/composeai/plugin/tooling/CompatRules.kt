@@ -77,8 +77,67 @@ internal object CompatRules {
     checkNavigationEvent(mainV, testV, main)?.let(findings::add)
     checkComposeUiVsCore(mainV, testV, main)?.let(findings::add)
     checkComposeBom(main)?.let(findings::add)
+    checkHamcrestSkew(test)?.let(findings::add)
     findings += checkOldDeps(mainV, testV, main, test)
     return findings
+  }
+
+  /**
+   * Hamcrest 2.x's merged `org.hamcrest:hamcrest` artifact removed the explicit
+   * `AllOf.allOf(Matcher, Matcher)` overload (varargs replaced it). Espresso 3.5/3.6 compiled
+   * against Hamcrest 1.3 calls into that 2-arg method via `Matchers.java:33`, so when a consumer's
+   * classpath has both:
+   *
+   * - `org.hamcrest:hamcrest:2.x` (often pulled by `junit-jupiter:5.x` or direct test asserts), and
+   * - `org.hamcrest:hamcrest-library:1.3` (transitive of `androidx.test.espresso:espresso-core`),
+   *
+   * the JVM classloader picks `Matchers` from one jar and `AllOf` from the other — boom,
+   * `NoSuchMethodError` at `Espresso.<clinit>` the first time
+   * `RobolectricIdlingStrategy.runUntilIdle` walks through `EspressoLink`.
+   *
+   * The plugin already substitutes `hamcrest:*` → `hamcrest-core:1.3` on its own
+   * `composePreviewAndroidRenderer<Variant>` configuration so the renderPreviews task's classpath
+   * stays clean. This finding still surfaces the latent skew so consumers know to align their own
+   * AGP unit-test runs (which use the unfiltered `${variant}UnitTestRuntimeClasspath`).
+   */
+  private fun checkHamcrestSkew(test: Map<String, String>): ModuleFindingData? {
+    val merged = test["org.hamcrest:hamcrest"] ?: return null
+    val library13 = test["org.hamcrest:hamcrest-library"]
+    val core13 = test["org.hamcrest:hamcrest-core"]
+    if (library13 == null && core13 == null) return null
+    val mergedSemver = Semver.parseOrNull(merged) ?: return null
+    if (mergedSemver < Semver(2, 0, 0)) return null
+    val legacy =
+      listOfNotNull(library13?.let { "hamcrest-library:$it" }, core13?.let { "hamcrest-core:$it" })
+        .joinToString(", ")
+    return ModuleFindingData(
+      id = "hamcrest-skew",
+      severity = "error",
+      message = "mixed Hamcrest versions on the unit-test classpath (hamcrest:$merged + $legacy)",
+      detail =
+        "Espresso (transitively via androidx.compose.ui:ui-test-junit4) was compiled against " +
+          "Hamcrest 1.3 and calls `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — a 2-arg " +
+          "overload removed in Hamcrest 2.x. With both `org.hamcrest:hamcrest:$merged` and the " +
+          "legacy split `org.hamcrest:hamcrest-library` / `:hamcrest-core` jars on the classpath, " +
+          "class lookup is order-dependent: when `Matchers` resolves to 1.3 but `AllOf` resolves " +
+          "to 2.x, `Espresso.<clinit>` fails with `NoSuchMethodError` the first time " +
+          "`RobolectricIdlingStrategy.runUntilIdle` walks through `EspressoLink`. The renderer's " +
+          "own classpath has the merged jar substituted out, but AGP-driven test tasks still see " +
+          "the skew.",
+      remediationSummary =
+        "Force-align hamcrest on the unit-test runtime classpath, or exclude `org.hamcrest:hamcrest` from whichever transitive pulls 2.x.",
+      remediationCommands =
+        listOf(
+          "configurations.matching { it.name.endsWith(\"UnitTestRuntimeClasspath\") }.configureEach {",
+          "  resolutionStrategy.eachDependency {",
+          "    if (requested.group == \"org.hamcrest\" && requested.name == \"hamcrest\") {",
+          "      useTarget(\"org.hamcrest:hamcrest-core:1.3\")",
+          "    }",
+          "  }",
+          "}",
+        ),
+      docsUrl = DOCS_HAMCREST_SKEW,
+    )
   }
 
   /**
@@ -253,6 +312,7 @@ internal object CompatRules {
     "$DOCS_ROOT#activity-compose-111-on-a-consumer-with-an-older-activity"
   private const val DOCS_COMPOSE_UI_VS_CORE =
     "$DOCS_ROOT#compose-ui-110-on-a-consumer-with-older-androidxcore"
+  private const val DOCS_HAMCREST_SKEW = "$DOCS_ROOT#hamcrest-2x-on-the-unit-test-classpath"
 }
 
 /**

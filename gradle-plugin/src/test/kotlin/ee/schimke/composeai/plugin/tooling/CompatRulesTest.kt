@@ -206,6 +206,43 @@ class CompatRulesTest {
   }
 
   @Test
+  fun `hamcrest 2x with legacy 1_3 fires error`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("org.hamcrest:hamcrest" to "2.2") +
+        ("org.hamcrest:hamcrest-library" to "1.3") +
+        ("org.hamcrest:hamcrest-core" to "1.3")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    val f = findings.single { it.id == "hamcrest-skew" }
+    assertEquals("error", f.severity)
+    assertTrue("hamcrest:2.2" in f.message)
+    assertTrue("hamcrest-library:1.3" in f.message)
+    assertTrue(f.remediationCommands.any { "useTarget" in it })
+  }
+
+  @Test
+  fun `hamcrest 2x alone is quiet`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("org.hamcrest:hamcrest" to "2.2")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    assertNull(findings.firstOrNull { it.id == "hamcrest-skew" })
+  }
+
+  @Test
+  fun `hamcrest 1_3 alone is quiet`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("org.hamcrest:hamcrest-library" to "1.3") +
+        ("org.hamcrest:hamcrest-core" to "1.3")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    assertNull(findings.firstOrNull { it.id == "hamcrest-skew" })
+  }
+
+  @Test
   fun `semver parses and compares`() {
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))
