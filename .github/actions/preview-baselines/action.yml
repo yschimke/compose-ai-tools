@@ -34,13 +34,21 @@ runs:
     # would 'version-skew' against the new previews.json shape. External
     # consumers never need this; their CLI/plugin pair always matches a
     # released tag.
+    #
+    # Both nested `uses:` references resolve as full `org/repo/path@ref`
+    # forms rather than `./.github/actions/...`. Inside a composite action,
+    # relative `./` paths resolve against the *consumer's* $GITHUB_WORKSPACE
+    # (not this action's own checkout), so external consumers of
+    # preview-baselines@vX.Y.Z would otherwise hit "Can't find action.yml
+    # under .github/actions/install". The pinned tag is bumped on every
+    # release by release-please (see release-please-config.json).
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
-      uses: ./.github/actions/install-cli
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.8.3 # x-release-please-version
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
-      uses: ./.github/actions/install
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.8.3 # x-release-please-version
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
