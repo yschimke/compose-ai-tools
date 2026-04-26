@@ -273,14 +273,16 @@ data class ResourceCapture(
 /**
  * One previewable resource. [id] is `<base>/<name>` (e.g. `drawable/ic_compose_logo`,
  * `mipmap/ic_launcher`). [sourceFiles] enumerates every contributing source file keyed by its
- * qualifier suffix — `null` for the default-qualifier file, the verbatim qualifier suffix otherwise
- * (`"night"`, `"xhdpi"`, `"night-xhdpi-v26"`, …).
+ * qualifier suffix — empty string `""` for the default-qualifier file, the verbatim qualifier
+ * suffix otherwise (`"night"`, `"xhdpi"`, `"night-xhdpi-v26"`, …). The empty-string convention
+ * keeps the JSON portable: nullable map keys would serialise as bare `null` literals which standard
+ * JSON parsers reject.
  */
 @Serializable
 data class ResourcePreview(
   val id: String,
   val type: ResourceType,
-  val sourceFiles: Map<String?, String> = emptyMap(),
+  val sourceFiles: Map<String, String> = emptyMap(),
   val captures: List<ResourceCapture> = emptyList(),
 )
 

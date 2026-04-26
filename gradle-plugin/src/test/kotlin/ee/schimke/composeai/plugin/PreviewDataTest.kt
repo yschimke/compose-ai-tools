@@ -70,7 +70,7 @@ class PreviewDataTest {
               type = ResourceType.VECTOR,
               sourceFiles =
                 mapOf(
-                  null to "src/main/res/drawable/ic_compose_logo.xml",
+                  "" to "src/main/res/drawable/ic_compose_logo.xml",
                   "night" to "src/main/res/drawable-night/ic_compose_logo.xml",
                 ),
               captures =
@@ -126,6 +126,10 @@ class PreviewDataTest {
     assertThat(deserialized).isEqualTo(manifest)
     assertThat(deserialized.resources).hasSize(2)
     assertThat(deserialized.manifestReferences).hasSize(2)
-    assertThat(deserialized.resources[0].sourceFiles.keys).containsExactly(null, "night")
+    assertThat(deserialized.resources[0].sourceFiles.keys).containsExactly("", "night")
+    // Guard against the previous Map<String?, String> shape, which encodes default-qualifier
+    // entries as bare `null:` literals — invalid per the JSON spec and rejected by every
+    // non-Kotlin reader of resources.json.
+    assertThat(serialized).doesNotContain("null:")
   }
 }

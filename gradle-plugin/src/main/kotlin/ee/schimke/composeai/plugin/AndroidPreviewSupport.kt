@@ -1,7 +1,9 @@
 package ee.schimke.composeai.plugin
 
+import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.Variant
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
@@ -88,6 +90,41 @@ internal object AndroidPreviewSupport {
         variant.name,
         androidComponents.sdkComponents.bootClasspath,
       )
+      registerAndroidResourcePreviewTasks(project, extension, variant)
+    }
+  }
+
+  /**
+   * Registers `discoverAndroidResources` for the targeted [variant], gated on
+   * `composePreview.resourcePreviews.enabled`. Wires the task's inputs from the variant's lazy
+   * `sources.res.all` and `artifacts.get(MERGED_MANIFEST)` providers so the task picks up flavour
+   * overrides + manifest-merger output without duplicating AGP's resolution logic. Renderer wiring
+   * lands in a follow-up commit; until then the task writes `resources.json` only.
+   */
+  private fun registerAndroidResourcePreviewTasks(
+    project: Project,
+    extension: PreviewExtension,
+    variant: Variant,
+  ) {
+    if (!extension.resourcePreviews.enabled.get()) return
+    val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
+    val projectRoot = project.layout.projectDirectory.asFile.absolutePath
+    val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+    val resSources = variant.sources.res?.all
+
+    project.tasks.register("discoverAndroidResources", DiscoverAndroidResourcesTask::class.java) {
+      group = "compose preview"
+      description =
+        "Walk res/drawable* and res/mipmap*, parse AndroidManifest.xml, " +
+          "write build/compose-previews/resources.json"
+      resSources?.let { this.resSourceRoots.from(it) }
+      this.mergedManifest.set(mergedManifest)
+      moduleName.set(project.name)
+      variantName.set(variant.name)
+      densities.set(extension.resourcePreviews.densities)
+      shapes.set(extension.resourcePreviews.shapes)
+      projectDirectory.set(projectRoot)
+      outputFile.set(previewOutputDir.map { it.file("resources.json") })
     }
   }
 

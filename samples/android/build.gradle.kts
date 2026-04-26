@@ -13,6 +13,13 @@ composePreview {
     // byte-identical to the non-a11y baseline.
     enabled = false
   }
+  resourcePreviews {
+    // Exercise the Android XML resource preview pipeline (vector /
+    // animated-vector / adaptive-icon). For now this just writes
+    // build/compose-previews/resources.json — renderer wiring lands in
+    // a follow-up commit. See docs/ANDROID_RESOURCE_PREVIEWS.md.
+    enabled = true
+  }
 }
 
 android {
