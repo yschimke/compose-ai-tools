@@ -116,6 +116,21 @@ Read line-delimited JSON from stdin, dispatch to handlers, write replies/notific
 - **Depends on:** B1.2, B1.3
 - **DoD:** integration test: spawn the daemon JVM as a subprocess, send `renderNow` for one preview, assert the PNG appears and a `renderFinished` notification is read back.
 
+#### B1.5a — Enforce no-mid-render-cancellation invariant [Stream B]
+
+Wire the enforcement points listed in [DESIGN.md § 9 "No mid-render cancellation"](DESIGN.md#no-mid-render-cancellation--invariant--enforcement) and [PREDICTIVE.md § 9](PREDICTIVE.md#9-decisions-made):
+
+- Render thread does not poll `Thread.interrupted()`.
+- Daemon code never calls `interrupt()` on the render thread.
+- `JsonRpcServer.shutdown` drains the in-flight queue before resolving, per PROTOCOL.md § 3.
+- JVM SIGTERM handler waits for the drain before exit.
+- Regression test: submit a render, immediately invoke `shutdown`, assert the render still completes and the result is observable.
+
+Small but load-bearing — silent visual drift from a half-aborted `HardwareRenderer` is the worst-case CI failure shape (colour-bleed across previews).
+
+- **Depends on:** B1.5
+- **DoD:** the regression test above passes; static check (or a code-review checklist note in `renderer-android-daemon/CONTRIBUTING.md` if no automated lint exists) flags any `interrupt()` / `Thread.interrupted()` introduced under `renderer-android-daemon/src/main/`.
+
 #### B1.6 — `SandboxScope` + `ProcessCache` helpers
 
 Implement the helpers from `DESIGN.md` § 11. Add the lint check (script under `gradle-plugin/build-logic/`) that fails the daemon module's build if `companion object` / `object` declarations hold Compose/AndroidX/Android-typed fields.
@@ -255,6 +270,40 @@ Runs nightly. 1000 renders in a single sandbox on `samples/android`. Asserts: no
 
 - **Depends on:** B2.5, B2.6
 - **DoD:** workflow green; metrics summary posted as workflow output.
+
+---
+
+## Phase 2.5 — predictive prefetch (optional, ladder)
+
+Layered on top of Phase 2's reactive visibility/focus signals. Each rung is independently shippable behind `daemon.predictive.enabled`; do **not** pre-commit to later rungs before earlier rungs have hit-rate data on real workloads. Full design: [PREDICTIVE.md](PREDICTIVE.md).
+
+### P2.5.1 — Multi-tier render queue [Stream B]
+
+Replace the single-priority FIFO render queue with the five-tier model from [PREDICTIVE.md § 2](PREDICTIVE.md#2-render-queue-model). Pre-emption at queue-pull time only — in-flight renders always complete (DESIGN § 9). No new IPC; the new tiers are populated only by reactive signals (focus / visible) until P2.5.2 lands.
+
+- **Depends on:** B1.5, C2.2
+- **DoD:** unit test asserting tier ordering on a synthetic queue with all five tiers populated. Existing reactive behaviour unchanged when no speculative entries are queued (regression test against the Phase 2 bench).
+
+### P2.5.2 — `setPredicted` IPC + scroll-ahead prefetch (v1.1) [Streams B + C, joint]
+
+Adds the `setPredicted({ ids, confidence, reason })` notification (PREDICTIVE.md § 3 Option A) and the daemon-side `capabilities.prediction` capability bit. Webview computes scroll velocity + viewport size and emits `setPredicted` for the next page of card IDs with `reason: "scrollAhead"`, `confidence: "high"`. No telemetry beyond `renderFinished.metrics.speculation.tier`. Fixed queue cap of 4 (`daemon.maxQueuedSpeculative`). No backpressure yet.
+
+- **Depends on:** P2.5.1, C2.1
+- **DoD:** integration test: scroll a 50-card panel; assert ≥1 `setPredicted` arrives at the daemon and ≥1 render is tagged `speculation.tier = speculative-high` in `renderFinished.metrics`. No `protocolVersion` bump (additive). Hit-rate measurement captured in a follow-up bench task before recommending v1.2.
+
+### P2.5.3 — Filter-dropdown speculation (v1.2) [Streams B + C, joint]
+
+Adds `reason: "filterCandidate"` for dropdown opens / highlights, with the 150ms debounce from PREDICTIVE.md § 6. Adds `renderUtilized` / `renderExpired` daemon → client notifications and the periodic `predictionStats` rollup. First introduces backpressure (PREDICTIVE.md § 4): tiers with sustained < 40% hit rate auto-disable for the session. Adds the suppress-failure-until-visible logic for speculative `renderFailed` (PREDICTIVE.md § 6).
+
+- **Depends on:** P2.5.2
+- **DoD:** unit test on the backpressure state machine (low hit rate → tier disables; resets per session). Manual verification: open the source-file filter, hover an option for >150ms, observe the corresponding render queued speculatively. CI bench dashboard plots per-tier hit rate.
+
+### P2.5.4 — Multi-signal predictive engine (v2) [Streams B + C, joint]
+
+Adds dwell-hover, file-explorer-click, recently-focused-history reasons. Persists per-project hit rates to `.compose-preview-history/predictive-stats.json`. Auto-disable on battery (extension queries OS power state; manual override setting). Tier weights tunable from telemetry. Soak gate (DESIGN § 15) re-run with prediction enabled is **mandatory** before this rung un-flags.
+
+- **Depends on:** P2.5.3, D2.3
+- **DoD:** soak run with prediction on for 1000 renders shows no `sandboxLeaked` events and ≤ 3 `sandboxRecycle` (i.e., one extra over the no-prediction baseline). Persisted stats survive a daemon restart and re-tune the per-project weights. Battery-detection auto-disable verified manually on a laptop.
 
 ---
 
