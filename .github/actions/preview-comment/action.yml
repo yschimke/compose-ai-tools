@@ -137,12 +137,28 @@ runs:
         # `preview_resources_main`) — disjoint workflow from the composable
         # `preview_main`. First-ever resource render on a project hasn't
         # populated it yet; absent branch falls back to "treat every
-        # resource as new".
+        # resource as new". Resource renders extract to a sibling directory
+        # so the two trees can't shadow each other (preview_main and
+        # preview_resources_main both lay PNGs out as `renders/<module>/...`,
+        # and even though resource paths carry a `resources/` segment after
+        # the module, keeping the staging dirs separate avoids any chance
+        # of cross-branch tar extraction stomping on a composable render).
+        mkdir -p _resource_baselines
         if [ -n "$RESOURCE_BASE_BRANCH" ] && \
            git ls-remote --exit-code origin "$RESOURCE_BASE_BRANCH" >/dev/null 2>&1; then
           git fetch origin "$RESOURCE_BASE_BRANCH"
           git show "origin/${RESOURCE_BASE_BRANCH}:resource-baselines.json" \
             > _baselines/resource-baselines.json 2>/dev/null || true
+          # Extract the baseline renders/ tree so the perceptual filter has
+          # prior PNGs to diff. Adaptive-icon composite renders are sha-noisy
+          # between Robolectric runs (the AA mask + PorterDuff.SRC_IN composite
+          # produces sub-pixel jitter), so without this every adaptive icon
+          # surfaces as a false diff — same failure mode as composable
+          # issue #190 / PR #270 fixed for the @Preview side. Failures
+          # (first run, no renders/ tree yet) fall back to the strict-bytes
+          # path inside compare-previews.
+          git archive "origin/${RESOURCE_BASE_BRANCH}" renders 2>/dev/null \
+            | tar -x -C _resource_baselines/ 2>/dev/null || true
         fi
 
     - name: Install perceptual-diff dependencies
@@ -212,6 +228,7 @@ runs:
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
           _resources.json \
           --baselines _baselines/resource-baselines.json \
+          --baseline-renders _resource_baselines/renders \
           --output-dir _pr_resource_renders
 
     - name: Push PR renders
@@ -399,6 +416,7 @@ runs:
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
           _resources.json \
           --baselines _baselines/resource-baselines.json \
+          --baseline-renders _resource_baselines/renders \
           --repo "$REPO" \
           --base-ref "$RESOURCE_BASE_REF" \
           --head-ref "$RESOURCE_HEAD_REF" \

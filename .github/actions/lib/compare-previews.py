@@ -721,10 +721,22 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
     `preview_resources_pr` lands these PNGs at paths the comment markdown
     can `_resource_url` to. Empty CLI envelope (no Android modules) is a
     silent no-op — same behaviour as `cmd_generate_resources`.
+
+    When ``--baseline-renders`` points at the extracted
+    `preview_resources_main/renders/` tree, sha-mismatched pairs run through
+    the same pixelmatch-based perceptual filter as the composable side
+    (issue #190 / PR #270). Adaptive icons are particularly susceptible to
+    sub-pixel jitter from the AA mask + ``PorterDuff.SRC_IN`` composite, so
+    skipping the filter for resources made every adaptive-icon capture a
+    likely false positive. Falls back to strict-bytes when the flag isn't
+    passed (e.g. first-ever PR before `preview_resources_main` exists).
     """
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     out_dir = Path(args.output_dir)
+    baseline_renders = (
+        Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
+    )
 
     entries = load_resource_results(cli_json)
     if not entries:
@@ -736,7 +748,7 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
         if not info["sha256"]:
             continue
         is_new = key not in baselines
-        is_changed = not is_new and info["sha256"] != baselines[key]["sha256"]
+        is_changed = not is_new and _is_changed(info, baselines[key], baseline_renders)
         if not (is_new or is_changed):
             continue
         dest = out_dir / "renders" / info["module"] / info["destRelative"]
@@ -783,12 +795,22 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
     `preview-comment/action.yml` after [cmd_compare]'s body. Emits an empty
     string when no resource manifests exist or no diff is detected, so the
     action can append unconditionally without polluting the comment.
+
+    Uses the same `_is_changed` perceptual filter as the composable side
+    when `--baseline-renders` is provided — adaptive icons composite
+    foreground+background through an AA mask with `PorterDuff.SRC_IN`,
+    which produces sha-different-but-perceptually-identical PNGs across
+    Robolectric runs, so a strict-bytes compare flagged every adaptive icon
+    on every PR (issue #190 redux for resources).
     """
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
     repo = args.repo
     base_ref = args.base_ref
     head_ref = args.head_ref
+    baseline_renders = (
+        Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
+    )
 
     current = load_resource_results(cli_json)
     baselines = _load_baselines(baselines_path)
@@ -803,7 +825,7 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
             continue
         if key not in baselines:
             new.append((key, info))
-        elif info["sha256"] != baselines[key]["sha256"]:
+        elif _is_changed(info, baselines[key], baseline_renders):
             changed.append((key, info, baselines[key]))
         else:
             unchanged.append((key, info))
@@ -954,6 +976,13 @@ def main() -> int:
     cp_res.add_argument("--baselines", required=True,
                         help="Path to resource-baselines.json (fetched from preview_resources_main)")
     cp_res.add_argument("--output-dir", required=True)
+    # Same perceptual-filter knob as `copy-changed` — when provided,
+    # sha-mismatched pairs run through pixelmatch before being copied as
+    # changed. Filters AA jitter that adaptive-icon mask compositing
+    # produces between Robolectric runs (issue #190).
+    cp_res.add_argument("--baseline-renders",
+                        help="Directory containing baseline resource PNGs "
+                             "(renders/<module>/resources/...)")
 
     cmp_res = sub.add_parser(
         "compare-resources",
@@ -967,6 +996,9 @@ def main() -> int:
     cmp_res.add_argument("--repo", required=True)
     cmp_res.add_argument("--base-ref", default="preview_resources_main")
     cmp_res.add_argument("--head-ref", required=True)
+    cmp_res.add_argument("--baseline-renders",
+                         help="Directory containing baseline resource PNGs "
+                              "(renders/<module>/resources/...)")
 
     args = ap.parse_args()
     handlers = {
