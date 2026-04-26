@@ -27,6 +27,9 @@ import kotlinx.serialization.json.Json
  *     - `deps.<module>.activity-vs-navigationevent` — navigationevent on test, older activity on
  *       main
  *     - `deps.<module>.compose-ui-vs-core` — compose-ui 1.10+ on test, older androidx.core on main
+ *     - `deps.<module>.hamcrest-skew` — `org.hamcrest:hamcrest:2.x` and the legacy split
+ *       `:hamcrest-library` / `:hamcrest-core` 1.3 jars both on the test classpath; mixed `AllOf` /
+ *       `Matchers` classes break Espresso's `<clinit>` with `NoSuchMethodError`
  *     - `deps.<module>.compose-bom` (warning) — no Compose BOM declared
  *
  * Output modes:
