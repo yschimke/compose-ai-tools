@@ -30,8 +30,8 @@ Build / test everything:
 
 Render the sample previews (end-to-end smoke test of the full pipeline):
 ```
-./gradlew :sample-cmp:renderAllPreviews
-./gradlew :sample-android:renderAllPreviews
+./gradlew :samples:cmp:renderAllPreviews
+./gradlew :samples:android:renderAllPreviews
 ```
 
 The samples consume the plugin through `includeBuild("gradle-plugin")` in [settings.gradle.kts](settings.gradle.kts), so any plugin edit is picked up automatically — no publish step.
@@ -106,10 +106,10 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
     "platforms;android-36" "platform-tools" "build-tools;36.0.0"
   echo "sdk.dir=/opt/android-sdk" > local.properties
   ```
-  `local.properties` is `.gitignore`d; CI uses `ANDROID_HOME` instead. Re-running `:sample-wear:renderAllPreviews` after this end-to-end takes ~3 min cold. Or run [`scripts/install.sh --android-sdk`](../scripts/install.sh), which automates the same steps idempotently — see [skills/compose-preview/design/CLAUDE_CLOUD.md](../skills/compose-preview/design/CLAUDE_CLOUD.md#custom-mode-android-consumers) for the consumer-facing cloud Setup-script recipe.
+  `local.properties` is `.gitignore`d; CI uses `ANDROID_HOME` instead. Re-running `:samples:wear:renderAllPreviews` after this end-to-end takes ~3 min cold. Or run [`scripts/install.sh --android-sdk`](../scripts/install.sh), which automates the same steps idempotently — see [skills/compose-preview/design/CLAUDE_CLOUD.md](../skills/compose-preview/design/CLAUDE_CLOUD.md#custom-mode-android-consumers) for the consumer-facing cloud Setup-script recipe.
 - **Do not run `collectPreviewInfo` / other internal plugin tasks by hand** — the plugin wires them as dependencies of `renderAllPreviews`.
 - **Plugin version** is driven by `.release-please-manifest.json` at the repo root (single source of truth, maintained by release-please). The three `build.gradle.kts` files read that manifest and compute next-patch `-SNAPSHOT` for local builds; CI overrides with the `PLUGIN_VERSION` env var from the git tag or `snapshot.yml`. See [docs/RELEASING.md](RELEASING.md).
-- **Android renderer is pinned to Robolectric SDK 35** via `@Config(sdk = [35])` in [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) (`renderer-android` itself is on `compileSdk = 36`). Capture depends on Robolectric's shadowed `ImageReader` / `PixelCopy` path, historically fragile across SDK × Robolectric combinations (e.g. `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is `maxSdk`-gated). Re-run `:sample-android:renderAllPreviews` end-to-end when bumping either the SDK level or Robolectric.
+- **Android renderer is pinned to Robolectric SDK 35** via `@Config(sdk = [35])` in [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) (`renderer-android` itself is on `compileSdk = 36`). Capture depends on Robolectric's shadowed `ImageReader` / `PixelCopy` path, historically fragile across SDK × Robolectric combinations (e.g. `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is `maxSdk`-gated). Re-run `:samples:android:renderAllPreviews` end-to-end when bumping either the SDK level or Robolectric.
 - **Renderer-vs-consumer AndroidX version alignment is load-bearing.** The renderer AAR goes out of its way to avoid dragging newer Compose / Activity / Core versions onto the consumer's unit-test classpath (since AGP builds `apk-for-local-test.ap_` from the consumer's own deps, classes-vs-resources mismatches are easy to introduce). Known failure signatures, current mitigations (`compileOnly` + `extendsFrom(testConfig)` + `ui-test-manifest` injection), follow-ups for `compose-preview doctor`, and tile-rendering gaps are catalogued in [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) — consult it before bumping `libs.versions.toml` or changing how `AndroidPreviewSupport` wires the test classpath.
 
 ## Tests

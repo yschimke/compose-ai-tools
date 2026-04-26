@@ -29,7 +29,7 @@ cd "$(dirname "$0")/.."
 
 ITERATIONS="${1:-${N:-20}}"
 OUTDIR="${OUTDIR:-/tmp/compose-long-stress}"
-PREVIEW_REL="sample-wear/build/compose-previews/renders/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png"
+PREVIEW_REL="samples/wear/build/compose-previews/renders/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png"
 
 rm -rf "$OUTDIR"
 mkdir -p "$OUTDIR"
@@ -41,7 +41,7 @@ echo "[stress] running $ITERATIONS iterations → $OUTDIR"
 # rather than pulled from the up-to-date cache.
 for i in $(seq 1 "$ITERATIONS"); do
     printf '\r[stress] iteration %d/%d ...' "$i" "$ITERATIONS"
-    ./gradlew :sample-wear:renderAllPreviews --rerun-tasks -q \
+    ./gradlew :samples:wear:renderAllPreviews --rerun-tasks -q \
         --no-configuration-cache >"$OUTDIR/gradle_$i.log" 2>&1 || {
         echo ""
         echo "[stress] gradle failed on iteration $i — log tail:"

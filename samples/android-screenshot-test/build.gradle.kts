@@ -5,7 +5,7 @@
 // plugin has to discover + render the `@Preview` functions consumers put
 // there (the idiomatic place to keep preview-only code under Google's docs).
 //
-// Kept as its own module so `:sample-android` stays a minimal Robolectric-only
+// Kept as its own module so `:samples:android` stays a minimal Robolectric-only
 // baseline — a regression in the screenshotTest discovery / instance-method
 // receiver resolution doesn't hide behind the larger sample's render output.
 @file:Suppress("UnstableApiUsage")
@@ -40,7 +40,7 @@ android {
   // plugin registers no tasks and the `screenshotTest` source set never
   // appears on disk — at which point we'd only discover `main` previews
   // and this sample would degenerate into a carbon copy of
-  // `:sample-android`.
+  // `:samples:android`.
   experimentalProperties["android.experimental.enableScreenshotTest"] = true
 }
 

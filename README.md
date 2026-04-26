@@ -7,7 +7,7 @@ Desktop projects.
 See [SKILL.md](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/SKILL.md)
 
 ```
-$ compose-preview list --module sample-wear
+$ compose-preview list --module samples:wear
 com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round  (com/example/samplewear/Previews.kt)
 com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round  (com/example/samplewear/Previews.kt)
 com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large  (com/example/samplewear/Previews.kt)
@@ -260,10 +260,15 @@ composePreview {
 | `gradle-plugin/` | Gradle plugin — discovery, rendering task orchestration |
 | `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
 | `renderer-android/` | Android renderer — Robolectric harness |
+| `preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
 | `cli/` | CLI — Tooling-API driver over `discoverPreviews` / `renderAllPreviews` |
-| `sample-android/` | Android sample with colored box `@Preview` composables |
-| `sample-cmp/` | CMP Desktop sample with colored box `@Preview` composables |
-| `sample-remotecompose/` | Remote Compose sample — wrapper-inside-Composable vs. `@PreviewWrapper(RemotePreviewWrapper::class)` against `wear-compose-remote-material3` |
+| `vscode-extension/` | VS Code extension that surfaces rendered previews in the editor |
+| `samples/android/` | Android sample with colored box `@Preview` composables |
+| `samples/android-library/` | Android library variant — exercises AAR class-jar discovery |
+| `samples/android-screenshot-test/` | Co-existence with `com.android.compose.screenshot` |
+| `samples/wear/` | Wear OS sample — Material 3 Expressive, `EdgeButton`, tile previews |
+| `samples/cmp/` | CMP Desktop sample with colored box `@Preview` composables |
+| `samples/remotecompose/` | Remote Compose sample — wrapper-inside-Composable vs. `@PreviewWrapper(RemotePreviewWrapper::class)` against `wear-compose-remote-material3` |
 
 ## Requirements
 

@@ -19,7 +19,7 @@ import java.io.File
  * No network access: the download path is stubbed with a canned byte array
  * so the test is deterministic. No Robolectric runner either — these are
  * pure JVM helpers, and the shadow is exercised end-to-end via
- * `:sample-android:renderAllPreviews`.
+ * `:samples:android:renderAllPreviews`.
  */
 class GoogleFontInterceptorTest {
 

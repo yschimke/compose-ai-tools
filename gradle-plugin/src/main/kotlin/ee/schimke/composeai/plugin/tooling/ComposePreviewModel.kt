@@ -23,7 +23,7 @@ interface ComposePreviewModel {
 
   /**
    * Every project where the compose-preview plugin was applied. Key is the Gradle project path
-   * (starts with `:`, e.g. `:app`, `:sample-wear`). Empty if no project applied the plugin — the
+   * (starts with `:`, e.g. `:app`, `:samples:wear`). Empty if no project applied the plugin — the
    * CLI treats that case specially (it surfaces an actionable "apply the plugin" remediation).
    */
   val modules: Map<String, ModuleInfo>

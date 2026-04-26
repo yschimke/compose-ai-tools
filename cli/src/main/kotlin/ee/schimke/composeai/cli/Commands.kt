@@ -269,7 +269,7 @@ abstract class Command(protected val args: List<String>) {
       // Resolve via the Tooling API so --module works with nested
       // Gradle paths (e.g. `--module auth:composables`) and reflects
       // any custom `project.projectDir` override.
-      val one = gradle.findPreviewModule(explicitModule!!)
+      val one = gradle.findPreviewModule(explicitModule)
       if (one == null) {
         System.err.println(
           "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin."
@@ -578,7 +578,7 @@ abstract class Command(protected val args: List<String>) {
 
   protected fun matchesRequest(result: PreviewResult): Boolean {
     if (exactId != null && result.id != exactId) return false
-    if (filter != null && !result.id.contains(filter!!, ignoreCase = true)) return false
+    if (filter != null && !result.id.contains(filter, ignoreCase = true)) return false
     return true
   }
 

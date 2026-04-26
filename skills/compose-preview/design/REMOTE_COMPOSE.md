@@ -146,7 +146,7 @@ fun Container(content: @Composable @RemoteComposable () -> Unit) {
 
 ## Reference sample
 
-A working end-to-end example lives in [`sample-remotecompose/`](../../../sample-remotecompose/):
+A working end-to-end example lives in [`samples/remotecompose/`](../../../samples/remotecompose/):
 
 - `RemoteComponents.kt` — three `@RemoteComposable` button variants + the
   `Container` helper.
@@ -158,7 +158,7 @@ A working end-to-end example lives in [`sample-remotecompose/`](../../../sample-
   BOM (Remote Compose alphas pull in a newer Compose runtime than the BOM
   currently pins).
 
-`./gradlew :sample-remotecompose:renderAllPreviews` produces PNGs for both
+`./gradlew :samples:remotecompose:renderAllPreviews` produces PNGs for both
 shapes, so you can see that the capture-and-replay path works end-to-end in
 the plugin's renderer.
 

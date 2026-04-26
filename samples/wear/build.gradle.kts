@@ -64,7 +64,7 @@ dependencies {
 }
 
 // `LongScrollPreviewPixelTest` reads PNGs produced by `renderAllPreviews`.
-// Same dependency wiring as sample-android's pixel tests; targets the AGP
+// Same dependency wiring as samples/android's pixel tests; targets the AGP
 // unit-test tasks by name so we don't include the plugin's own `renderPreviews`
 // Test task (which would create a circular dep).
 //

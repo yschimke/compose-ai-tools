@@ -13,8 +13,8 @@ inputs:
     description: "'baseline' (push to `a11y_main`) or 'comment' (push to `a11y_pr` + upsert PR comment)"
     required: true
   module:
-    description: 'Gradle module path to render (e.g. `sample-wear`)'
-    default: 'sample-wear'
+    description: 'Gradle module path to render (e.g. `samples:wear`)'
+    default: 'samples:wear'
   baseline-branch:
     description: 'Long-lived branch holding the baseline a11y report'
     default: 'a11y_main'
@@ -49,8 +49,12 @@ runs:
         MODULE: ${{ inputs.module }}
       run: |
         set -euo pipefail
+        # Translate the Gradle module path (`samples:wear`) into its on-disk
+        # project directory (`samples/wear`) so the python helper can find the
+        # rendered artefacts under `<projectDir>/build/compose-previews`.
+        MODULE_DIR="${MODULE//://}"
         python3 "$ACTION_PATH/../lib/a11y-report.py" copy-annotated \
-          --build-dir "${MODULE}/build/compose-previews" \
+          --build-dir "${MODULE_DIR}/build/compose-previews" \
           --output-dir _a11y_renders
 
     - name: Fetch baseline findings

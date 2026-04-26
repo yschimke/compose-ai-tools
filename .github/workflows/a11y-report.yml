@@ -1,10 +1,10 @@
 name: A11y Report
 
-# Demo of the accessibility-checking pipeline on `sample-wear`. Mirrors the
+# Demo of the accessibility-checking pipeline on `samples:wear`. Mirrors the
 # preview-baselines / preview-comment split: pushes to `main` refresh the
 # `a11y_main` baseline branch; PRs render their own report on the shared
 # `a11y_pr` branch and post a comment with the findings table. Wired only
-# for `sample-wear` for now — the deliberately-broken `BadWearButtonPreview`
+# for `samples:wear` for now — the deliberately-broken `BadWearButtonPreview`
 # is what makes the annotated overlay non-empty.
 
 on:

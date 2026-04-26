@@ -39,7 +39,7 @@ android {
 
 // `ScrollPreviewPixelTest` reads PNGs under `build/compose-previews/renders/`
 // produced by `renderAllPreviews`. Wire the AGP unit-test tasks to depend on
-// it so `./gradlew :sample-android:check` renders the PNGs first then
+// it so `./gradlew :samples:android:check` renders the PNGs first then
 // pixel-asserts against them. Targeting the `test{Debug,Release}UnitTest`
 // tasks by name — `tasks.withType<Test>()` would also grab the plugin's own
 // `renderPreviews` Test task and create a circular dependency.

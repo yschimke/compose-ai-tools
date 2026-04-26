@@ -34,7 +34,7 @@ wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
-# Remote Compose — alpha artifacts, used only by `:sample-remotecompose` to
+# Remote Compose — alpha artifacts, used only by `:samples:remotecompose` to
 # demonstrate `RemotePreview` + `@PreviewWrapper(RemotePreviewWrapper::class)`.
 # Re-check minCompileSdk / AGP requirements when bumping these — the alpha
 # line has historically tightened them between releases.
@@ -51,7 +51,7 @@ junit = "4.13.2"
 truth = "1.4.5"
 maven-publish = "0.36.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
-# by `:sample-android-screenshot-test`, which exercises our co-existence
+# by `:samples:android-screenshot-test`, which exercises our co-existence
 # path: our renderer discovers previews in the `screenshotTest` source set
 # that Google's plugin creates, and renders them via Robolectric without
 # driving Google's own `validate*ScreenshotTest` tasks. Still alpha —

@@ -19,8 +19,8 @@ There are three shipping artifacts, each with its own local install story:
 - Node 20+ and `npm` (for the VS Code extension)
 - VS Code 1.85+ (only if working on the extension)
 
-The bundled samples ([sample-android/](../sample-android/),
-[sample-cmp/](../sample-cmp/)) depend on the `gradle-plugin` module via
+The bundled samples ([samples/android/](../samples/android/),
+[samples/cmp/](../samples/cmp/)) depend on the `gradle-plugin` module via
 [`includeBuild`](../settings.gradle.kts#L20), so running `./gradlew` at the repo
 root always picks up local plugin changes without any publishing step.
 
@@ -98,8 +98,8 @@ upcoming release (e.g. after tagging `v0.3.3`, the fallback is
 ### Smoke test
 
 ```
-./gradlew :sample-cmp:renderAllPreviews
-open sample-cmp/build/compose-previews/renders/
+./gradlew :samples:cmp:renderAllPreviews
+open samples/cmp/build/compose-previews/renders/
 ```
 
 ## CLI
@@ -123,7 +123,7 @@ ln -sf "$PWD/cli/build/install/compose-preview/bin/compose-preview" ~/.local/bin
 Verify against a sample:
 
 ```
-cd sample-cmp
+cd samples/cmp
 compose-preview list
 compose-preview show --filter RedBox
 ```
@@ -149,14 +149,14 @@ work:
 1. Open [vscode-extension/](../vscode-extension/) as its own VS Code window.
 2. Press `F5` (or Run → Start Debugging).
 3. A second VS Code window opens with the extension loaded against the
-   **repo root** — both [sample-android/](../sample-android/) and
-   [sample-cmp/](../sample-cmp/) are visible, and the module picker at the
+   **repo root** — both [samples/android/](../samples/android/) and
+   [samples/cmp/](../samples/cmp/) are visible, and the module picker at the
    top of the Compose Preview panel lets you switch between them. Edit
    TypeScript, press `Ctrl+Shift+F5` to reload.
 
 The launch config lives at
 [vscode-extension/.vscode/launch.json](../vscode-extension/.vscode/launch.json)
-with four variants: repo root (default), sample-cmp only, sample-android only,
+with four variants: repo root (default), samples/cmp only, samples/android only,
 and an empty host. Pick from the Run & Debug dropdown before pressing F5.
 
 For a tighter edit/reload cycle, run `npm run watch` in a terminal — the
@@ -212,7 +212,7 @@ method un-shadowed, so `acquireNextImage().getPlanes()[0]` comes back null.
 
 The renderer pins itself to SDK 34 via `@Config(sdk = [34])` on
 `RobolectricRenderTest`. When upgrading Robolectric, re-run
-`./gradlew :sample-android:renderPreviews` with the pin removed (or bumped); if
+`./gradlew :samples:android:renderPreviews` with the pin removed (or bumped); if
 it passes, drop the pin. Tracking issues: robolectric/robolectric#9595, #9745,
 #9971.
 
