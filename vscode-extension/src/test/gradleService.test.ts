@@ -91,6 +91,65 @@ describe('GradleService', () => {
         }));
     });
 
+    describe('readResourceManifest', () => {
+        it('reads and parses a valid resource manifest', withTempDir((dir, api) => {
+            const manifestDir = path.join(dir, 'testmodule', 'build', 'compose-previews');
+            fs.mkdirSync(manifestDir, { recursive: true });
+            fs.copyFileSync(
+                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'resources.json'),
+                path.join(manifestDir, 'resources.json'),
+            );
+
+            const service = new GradleService(dir, api);
+            const manifest = service.readResourceManifest('testmodule');
+
+            assert.notStrictEqual(manifest, null);
+            assert.strictEqual(manifest!.module, 'sample-android');
+            assert.strictEqual(manifest!.resources.length, 3);
+            assert.strictEqual(manifest!.manifestReferences.length, 2);
+
+            // The empty-string convention for default-qualifier source files should round-trip
+            // through JSON.parse — guards the regression where `Map<String?, String>` emitted
+            // bare `null:` keys.
+            const compose = manifest!.resources.find((r) => r.id === 'drawable/ic_compose_logo')!;
+            assert.deepStrictEqual(Object.keys(compose.sourceFiles).sort(), ['', 'night']);
+
+            // Adaptive-icon captures should carry their shape; vector captures should not.
+            const launcher = manifest!.resources.find((r) => r.id === 'mipmap/ic_launcher')!;
+            assert.strictEqual(launcher.captures[0].variant?.shape, 'CIRCLE');
+            assert.strictEqual(compose.captures[0].variant?.shape, null);
+
+            // Manifest references resolve activity short-form names against the package.
+            const activityRef = manifest!.manifestReferences.find((r) => r.componentKind === 'activity')!;
+            assert.strictEqual(activityRef.componentName, 'com.example.sampleandroid.MainActivity');
+            assert.strictEqual(activityRef.resourceType, 'drawable');
+            assert.strictEqual(activityRef.resourceName, 'ic_settings');
+        }));
+
+        it('returns null when resources.json is missing', withTempDir((dir, api) => {
+            const service = new GradleService(dir, api);
+            assert.strictEqual(service.readResourceManifest('nonexistent'), null);
+        }));
+
+        it('returns null for malformed JSON', withTempDir((dir, api) => {
+            const manifestDir = path.join(dir, 'bad', 'build', 'compose-previews');
+            fs.mkdirSync(manifestDir, { recursive: true });
+            fs.writeFileSync(path.join(manifestDir, 'resources.json'), '{ broken');
+
+            const service = new GradleService(dir, api);
+            assert.strictEqual(service.readResourceManifest('bad'), null);
+        }));
+
+        it('returns null when resources / manifestReferences arrays are missing', withTempDir((dir, api) => {
+            const manifestDir = path.join(dir, 'empty', 'build', 'compose-previews');
+            fs.mkdirSync(manifestDir, { recursive: true });
+            fs.writeFileSync(path.join(manifestDir, 'resources.json'), '{"module":"x","variant":"debug"}');
+
+            const service = new GradleService(dir, api);
+            assert.strictEqual(service.readResourceManifest('empty'), null);
+        }));
+    });
+
     describe('readPreviewImage', () => {
         it('reads a PNG as base64', withTempDir(async (dir, api) => {
             const renderDir = path.join(dir, 'mod', 'build', 'compose-previews', 'renders');

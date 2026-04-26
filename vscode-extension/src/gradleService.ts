@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest } from './types';
+import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest, ResourceManifest } from './types';
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 
@@ -203,6 +203,34 @@ export class GradleService {
     invalidateCache(module?: string): void {
         if (module) { this.manifestCache.delete(module); }
         else { this.manifestCache.clear(); }
+    }
+
+    /**
+     * Loads `<module>/build/compose-previews/resources.json` — the sidecar manifest written by
+     * `:<module>:discoverAndroidResources`. Returns `null` if the file doesn't exist (consumers
+     * who applied the plugin but disabled `composePreview.resourcePreviews` will hit this path)
+     * or if its shape is malformed.
+     *
+     * Unlike [readManifest], this does no enrichment — resource captures don't have a
+     * fan-out-after-discovery story (no `@PreviewParameter` equivalent), and there's no a11y
+     * sidecar to merge in. Downstream consumers (CodeLens, the upcoming resource webview tab)
+     * use the raw shape directly.
+     */
+    readResourceManifest(module: string): ResourceManifest | null {
+        const manifestPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'resources.json');
+        if (!fs.existsSync(manifestPath)) { return null; }
+        try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as ResourceManifest;
+            if (!Array.isArray(manifest.resources) || !Array.isArray(manifest.manifestReferences)) {
+                this.logger.appendLine(`Malformed resource manifest at ${manifestPath}`);
+                return null;
+            }
+            return manifest;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            this.logger.appendLine(`Failed to parse ${manifestPath}: ${message}`);
+            return null;
+        }
     }
 
     readManifest(module: string): PreviewManifest | null {

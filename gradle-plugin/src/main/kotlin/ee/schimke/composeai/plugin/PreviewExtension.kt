@@ -4,6 +4,7 @@ import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 
 abstract class PreviewExtension @Inject constructor(private val objects: ObjectFactory) {
@@ -108,6 +109,21 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   fun accessibilityChecks(action: Action<AccessibilityChecksExtension>) {
     action.execute(accessibilityChecks)
   }
+
+  /**
+   * Android XML resource previews — `vector`, `animated-vector`, `adaptive-icon` drawables and
+   * mipmaps, plus an `AndroidManifest.xml` icon-attribute reference index. On by default; the tasks
+   * self-no-op when the consumer's `res/` tree has no matching XML, so the cost of being
+   * always-registered is a single empty `resources.json` write. See
+   * `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model and [ResourcePreviewsExtension] for the
+   * per-axis tuning knobs.
+   */
+  val resourcePreviews: ResourcePreviewsExtension =
+    objects.newInstance(ResourcePreviewsExtension::class.java)
+
+  fun resourcePreviews(action: Action<ResourcePreviewsExtension>) {
+    action.execute(resourcePreviews)
+  }
 }
 
 abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectFactory) {
@@ -136,4 +152,38 @@ abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectF
    */
   val annotateScreenshots: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
+}
+
+abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFactory) {
+  /**
+   * Default: `true`. The discovery + render tasks self-no-op on modules with no `<vector>` /
+   * `<animated-vector>` / `<adaptive-icon>` files (a single empty `resources.json` write), so the
+   * cost of being always-registered is negligible. Set `false` to skip task registration outright —
+   * useful for modules that explicitly don't want `resources.json` produced or
+   * `renderAndroidResources` showing up in `gradle tasks` listings.
+   */
+  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Density buckets to fan out implicit captures over. Applied to every resource that doesn't
+   * already have a density qualifier on its source-file directory; when a consumer has explicit
+   * `drawable-xhdpi/foo.xml` etc., that variant uses the consumer's source file directly and isn't
+   * multiplied through [densities] again.
+   *
+   * Default: `["xhdpi"]` — single bucket so the JSON manifest stays small in the common case.
+   * Override to `["mdpi", "xhdpi", "xxxhdpi"]` for thorough density sweeps.
+   */
+  val densities: ListProperty<String> =
+    objects.listProperty(String::class.java).convention(listOf("xhdpi"))
+
+  /**
+   * Adaptive-icon shape masks to render. Each shape is applied as a canvas clip on top of the
+   * composed foreground+background. `LEGACY` falls back to the `<adaptive-icon android:icon=…>`
+   * slot or to the foreground rendered against a transparent background.
+   *
+   * Default: every shape — `CIRCLE`, `ROUNDED_SQUARE`, `SQUARE`, `LEGACY`. Restrict the list to
+   * trim down rendering cost on modules with many adaptive icons.
+   */
+  val shapes: ListProperty<AdaptiveShape> =
+    objects.listProperty(AdaptiveShape::class.java).convention(AdaptiveShape.entries.toList())
 }
