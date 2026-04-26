@@ -100,6 +100,11 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Run ATF accessibility checks on every rendered preview. When on, the extension passes `-PcomposePreview.accessibilityChecks.enabled=true` to each Gradle task; findings surface as diagnostics in the Problems panel and on the `@Preview` line. Overrides the `accessibilityChecks { enabled = ... }` block in build.gradle.kts for this session only."
+                },
+                "composePreview.experimental.streamingPreviews": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Experimental. Stream rendered PNGs into the panel as the Gradle render task produces them, rather than waiting for the whole task to finish. Cards appear as skeletons the moment previews.json lands and fill in as each PNG is written. @PreviewParameter fan-out captures still appear at the end of the render."
                 }
             }
         }
