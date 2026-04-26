@@ -43,6 +43,13 @@ internal object AndroidPreviewSupport {
       "androidx.wear.tiles" to "tiles-tooling-preview",
       // CMP-only; AGP consumers never declare it but the helper is shared.
       "org.jetbrains.compose.components" to "components-ui-tooling-preview",
+      // CMP relocates `androidx.compose.ui:ui-tooling-preview` under its own
+      // group when `compose.ui` is consumed via the JetBrains BOM. Same FQN
+      // for `@Preview` at runtime — see DiscoverPreviewsTask comments — so
+      // accept it as a valid signal too. Without this, CMP-on-Android
+      // consumers hit the "no known @Preview dependency" gate and the
+      // plugin silently skips task registration.
+      "org.jetbrains.compose.ui" to "ui-tooling-preview",
     )
 
   fun configure(project: Project, extension: PreviewExtension) {
