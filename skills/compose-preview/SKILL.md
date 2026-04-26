@@ -415,63 +415,7 @@ limitations, and rationale.
 
 ## Android XML resource previews
 
-`@Preview` composables are the headline use case, but Android apps also ship
-XML drawables and mipmaps that change between releases — vector logos,
-adaptive launcher icons, animated splash transitions. The plugin renders
-those too, alongside your composables, with no extra config:
-`:<module>:discoverAndroidResources` walks every `res/drawable*/` and
-`res/mipmap*/` directory in your variant's source set, classifies each XML
-by root tag, and emits `build/compose-previews/resources.json` next to the
-existing `previews.json`. `:<module>:renderAndroidResources` then renders
-each capture to PNG / GIF under `build/compose-previews/renders/resources/`.
-
-Modules with no matching XML resources self-no-op (a single empty
-`resources.json` write), so consumers don't pay for what they don't use.
-Tune the per-axis fan-out — or kill the feature entirely on a module that
-shouldn't write `resources.json` — through the DSL:
-
-```kotlin
-composePreview {
-    resourcePreviews {
-        // Defaults shown — every knob is optional.
-        enabled = true                              // set false to skip task registration
-        densities = listOf("xhdpi")                 // implicit density fan-out
-        shapes = listOf(                            // adaptive-icon mask set
-            AdaptiveShape.CIRCLE,
-            AdaptiveShape.ROUNDED_SQUARE,
-            AdaptiveShape.SQUARE,
-            AdaptiveShape.LEGACY,
-        )
-    }
-}
-```
-
-| Resource kind | Output | Variant axes |
-|---|---|---|
-| `<vector>` | PNG at intrinsic size × density | `densities`; explicit qualifier dirs (`drawable-night/`, `drawable-ldrtl/`, …) automatically picked up |
-| `<adaptive-icon>` (mipmap-anydpi-v26) | PNG per shape mask, composited fg+bg | `densities` × `shapes` (`CIRCLE`, `ROUNDED_SQUARE`, `SQUARE`, `LEGACY`) |
-| `<animated-vector>` | GIF | `densities` |
-
-Manifest references — `android:icon`, `android:roundIcon`, `android:logo`,
-`android:banner` on `<application>` / `<activity>` / `<activity-alias>` /
-`<service>` / `<receiver>` / `<provider>` — are recorded in
-`resources.json#manifestReferences` as an *index* into the rendered files,
-not as separate captures. Tooling (CodeLens, doc generators, the upcoming
-VS Code resource grid) links the manifest line to the same PNG that resource
-discovery already rendered — no double rendering.
-
-Out of scope today: `<animation-list>`, `<shape>`, `<selector>`,
-`<layer-list>`, `<level-list>`, `<ripple>`, raster `<bitmap>`. Adding a new
-type is a localised change — extend the `ResourceType` enum + add a renderer
-branch — but the default catalogue is the three above.
-
-**Known limitation:** animated vector drawables currently render as
-single-frame GIFs. Robolectric's `looperMode=PAUSED` (pinned for the Compose
-render path) blocks the `Choreographer` callbacks an
-`AnimatedVectorDrawable`'s `ObjectAnimator` needs to advance. The `.gif`
-filename is preserved so a future animator-stepping shim can upgrade the
-same path to multi-frame output. See `docs/ANDROID_RESOURCE_PREVIEWS.md` for
-the full design.
+The plugin also renders `<vector>`, `<animated-vector>`, and `<adaptive-icon>` XML resources alongside `@Preview` composables, and indexes the icon attributes in `AndroidManifest.xml` so tooling can link manifest lines to the rendered PNG. See **[design/RESOURCE_PREVIEWS.md](./design/RESOURCE_PREVIEWS.md)**.
 
 ## Wear design guidance
 
