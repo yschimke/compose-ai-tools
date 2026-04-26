@@ -543,19 +543,39 @@ abstract class RobolectricRenderTestBase(
                         add(reduceMotionLocal provides true)
                     }
                 }.toTypedArray()
+                // `showSystemUi = true` on a phone-shape preview wraps the
+                // composition in [SystemBarsFrame] so the captured PNG carries
+                // synthetic status + gesture-pill nav bars. Robolectric has no
+                // SystemUI process to draw real bars; without the wrapper the
+                // canvas comes back at the right device size but with no chrome
+                // (issue #256). Conceptually the same as `@PreviewWrapper`,
+                // applied automatically here for the system-UI case. Skipped
+                // for round Wear devices (circular clip already brands the
+                // capture) and for tile previews (tiles fill the whole watch
+                // face — bars don't apply).
+                val applySystemBars = params.showSystemUi &&
+                    params.kind != PreviewKind.TILE &&
+                    !isRoundDevice(params.device)
                 rule.setContent {
                     CompositionLocalProvider(values = providedValues) {
                         val previewBody: @Composable () -> Unit = {
-                            if (wrapWidth || wrapHeight) {
-                                MeasuredWrapBox(
-                                    wrapWidth = wrapWidth,
-                                    wrapHeight = wrapHeight,
-                                    onMeasured = { measured = it },
-                                ) {
+                            val core: @Composable () -> Unit = {
+                                if (wrapWidth || wrapHeight) {
+                                    MeasuredWrapBox(
+                                        wrapWidth = wrapWidth,
+                                        wrapHeight = wrapHeight,
+                                        onMeasured = { measured = it },
+                                    ) {
+                                        strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                                    }
+                                } else {
                                     strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
                                 }
+                            }
+                            if (applySystemBars) {
+                                SystemBarsFrame(uiMode = params.uiMode) { core() }
                             } else {
-                                strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                                core()
                             }
                         }
                         if (animationCurveCapture != null) {
