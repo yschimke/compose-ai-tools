@@ -1,7 +1,13 @@
 [versions]
 kotlin = "2.3.21"
+# Kotlin language/api floor for published modules. Set lower than `kotlin`
+# so consumers on an older Kotlin can still link against our artifacts —
+# tapmoc enforces this and fails the build if a transitive API dep raises
+# the floor. Bump only when the published surface needs a newer feature.
+kotlinCoreLibraries = "2.1.21"
 agp = "9.2.0"
 ktfmt = "0.26.0"
+tapmoc = "0.4.0"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
 compose-bom = "2026.04.01"
@@ -94,3 +100,4 @@ compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-m
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
 android-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "android-compose-screenshot" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
+tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }

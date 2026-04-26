@@ -1,8 +1,20 @@
+import tapmoc.TapmocExtension
+import tapmoc.configureKotlinCompatibility
+
 plugins {
   alias(libs.plugins.kotlin.jvm)
   `maven-publish`
   alias(libs.plugins.maven.publish)
+  alias(libs.plugins.tapmoc)
 }
+
+// Pin the Kotlin language/api surface to `kotlinCoreLibraries` (lower than
+// the compiler `kotlin` version) so consumers on older Kotlin can still link
+// against this artifact. `checkDependencies()` fails the build if a
+// transitive API dep raises the floor.
+configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+extensions.configure<TapmocExtension> { checkDependencies() }
 
 group = "ee.schimke.composeai"
 
