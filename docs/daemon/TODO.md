@@ -22,7 +22,11 @@
 
 These must land first because every other stream consumes them. Single agent or pair-coordinated; small but load-bearing.
 
-### P0.1 — Capture latency baseline [Stream D]
+### P0.1 — Capture latency baseline [Stream D] ✅
+
+Built [`:samples:android-daemon-bench`](../../samples/android-daemon-bench/) with a `benchPreviewLatency` task. Baseline lives at [`baseline-latency.csv`](baseline-latency.csv) + [`baseline-latency.md`](baseline-latency.md) sidecar. DESIGN § 13 now carries a "Measured baseline" sub-section with the corrected numbers.
+
+Original task description:
 
 Build `:samples:android-daemon-bench` (skeleton sample module) with a `benchPreviewLatency` task that times the existing Gradle `renderPreviews` path: cold, warm-no-edit, warm-after-1-line-edit. Output CSV with phase breakdown (config, compile, discovery, fork, render).
 

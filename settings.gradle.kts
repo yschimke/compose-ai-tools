@@ -29,6 +29,8 @@ include(":samples:android-library")
 
 include(":samples:android-screenshot-test")
 
+include(":samples:android-daemon-bench")
+
 include(":samples:wear")
 
 include(":samples:cmp")
