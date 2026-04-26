@@ -72,7 +72,7 @@ internal object AndroidPreviewSupport {
       if (registered) return@onVariants
       if (!extension.enabled.get()) return@onVariants
       if (variant.name != extension.variant.get()) return@onVariants
-      if (!hasPreviewDependency(project)) {
+      if (!hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
             "'${project.path}'; skipping task registration. " +
@@ -93,11 +93,17 @@ internal object AndroidPreviewSupport {
 
   /**
    * True when any declarative dep bucket (`implementation` / `api` / `runtimeOnly`, including their
-   * `<name>Implementation` variants) declares a coord in [previewArtifactSignals]. Read at
-   * onVariants time, after the consumer's `dependencies { }` block has populated configurations;
-   * avoids resolution and stays Isolated-Projects safe.
+   * `<name>Implementation` variants) declares a coord in [previewArtifactSignals], OR when the
+   * resolved runtime classpath transitively includes one. The CMP-Android canonical layout has
+   * Compose UI behind a `project(":shared")` reference and only surfaces preview tooling
+   * transitively — see issue #241 — so direct-only inspection wrongly rejects `:composeApp`-style
+   * shells. Direct check first (cheap, no resolution); the transitive walk only fires when the
+   * cheap check fails.
    */
-  private fun hasPreviewDependency(project: Project): Boolean =
+  internal fun hasPreviewDependency(project: Project, variantName: String): Boolean =
+    hasDirectPreviewDependency(project) || hasTransitivePreviewDependency(project, variantName)
+
+  private fun hasDirectPreviewDependency(project: Project): Boolean =
     project.configurations
       .asSequence()
       .filter { c ->
@@ -115,6 +121,64 @@ internal object AndroidPreviewSupport {
           previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }
         }
       }
+
+  /**
+   * Walks the resolved `${variantName}RuntimeClasspath` dep graph looking for any
+   * [previewArtifactSignals] match. Resolves the dependency *graph* (no artifact downloads), and is
+   * Isolated-Projects safe — the resolution result is the consumer module's own view of its
+   * classpath, not a reach into another project's model.
+   *
+   * Walks both selected components ([ResolvedDependencyResult]) and unresolved-but-requested
+   * coords. Treating a requested-but-unresolved signal as "yes, this module wants the preview
+   * tooling" matches the doctor task's "declared intent" semantics — an offline cache miss or a
+   * one-time metadata 503 shouldn't push the user back into the "no @Preview dependency declared"
+   * skip-and-confuse path.
+   *
+   * Returns false when the variant runtime classpath isn't present (non-Android modules / variants
+   * that don't synthesise one) or when traversing the resolution result throws (corrupt graph
+   * during early configuration). The caller treats both as "no signal found" and logs the standard
+   * "no known @Preview dependency declared" message.
+   */
+  private fun hasTransitivePreviewDependency(project: Project, variantName: String): Boolean {
+    val runtime =
+      project.configurations.findByName("${variantName}RuntimeClasspath") ?: return false
+    val root = runCatching { runtime.incoming.resolutionResult.root }.getOrNull() ?: return false
+    val seen = HashSet<org.gradle.api.artifacts.result.ResolvedComponentResult>()
+    val stack = ArrayDeque<org.gradle.api.artifacts.result.ResolvedComponentResult>()
+    stack.addLast(root)
+    while (stack.isNotEmpty()) {
+      val node = stack.removeLast()
+      if (!seen.add(node)) continue
+      val id = node.id
+      if (id is org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
+        if (previewArtifactSignals.any { (g, n) -> id.group == g && id.module == n }) return true
+      }
+      for (dep in node.dependencies) {
+        // ResolvedDependencyResult — the happy path. Walk the selected component.
+        // UnresolvedDependencyResult — resolution failed (offline, missing
+        // artifact, etc.) but the consumer DID request a coord; check that
+        // `requested` selector against the signal list so a missing transitive
+        // doesn't mask the intent. Same reasoning the doctor task uses for
+        // its dep audit: declared intent counts even when resolution slipped.
+        when (dep) {
+          is org.gradle.api.artifacts.result.ResolvedDependencyResult -> stack.addLast(dep.selected)
+          else -> {
+            val requested = dep.requested
+            if (requested is org.gradle.api.artifacts.component.ModuleComponentSelector) {
+              if (
+                previewArtifactSignals.any { (g, n) ->
+                  requested.group == g && requested.module == n
+                }
+              ) {
+                return true
+              }
+            }
+          }
+        }
+      }
+    }
+    return false
+  }
 
   private fun registerAndroidTasks(
     project: Project,
