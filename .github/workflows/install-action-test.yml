@@ -11,14 +11,26 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/actions/install/**'
+      - '.github/actions/install/action.yml'
+      - '.github/actions/install/resolve-version.py'
       - '.github/workflows/install-action-test.yml'
   pull_request:
     paths:
-      - '.github/actions/install/**'
+      - '.github/actions/install/action.yml'
+      - '.github/actions/install/resolve-version.py'
       - '.github/workflows/install-action-test.yml'
   # Manual dispatch for ad-hoc verification (e.g. after a release that
   # changes the asset naming).
+  #
+  # Path filter intentionally lists action.yml + resolve-version.py rather
+  # than the directory glob: release-please version-bumps the install
+  # README on every release (it's listed in release-please-config.json's
+  # extra-files), and a directory glob would co-trigger this workflow on
+  # the release-please merge commit. The `latest` matrix entry would then
+  # race the release.yml upload step — the empty Release exists once the
+  # tag lands but assets aren't uploaded until release.yml's `release`
+  # job finishes — and 404 trying to download the not-yet-uploaded
+  # tarball.
   workflow_dispatch:
 
 permissions:
