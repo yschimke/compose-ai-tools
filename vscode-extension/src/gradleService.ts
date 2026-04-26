@@ -99,7 +99,10 @@ export interface GradleApi {
 }
 
 export class GradleService {
-    private workspaceRoot: string;
+    /** Absolute path to the workspace root. Read-only — exposed for callers that need to resolve
+     *  module-relative artifact paths (e.g. the Android manifest CodeLens, which jumps to a
+     *  rendered PNG given a `<module>/build/compose-previews/...` relative path). */
+    public readonly workspaceRoot: string;
     private logger: Logger;
     private gradleApi: GradleApi;
     private argsProvider: () => string[];
