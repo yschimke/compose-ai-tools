@@ -169,6 +169,33 @@ export class GradleService {
     }
 
     /**
+     * Runs `:<module>:renderAndroidResources` and returns the parsed
+     * `resources.json`. Gradle's up-to-date check makes this cheap on warm
+     * runs (sub-second when no source XML or AndroidManifest changed); the
+     * first invocation pays the Robolectric sandbox cold-start cost
+     * (~3–5s).
+     *
+     * Returns `null` when the consumer is on an older plugin that hasn't
+     * registered the task yet, when the gradle invocation itself fails,
+     * or when the manifest is malformed. Callers should treat null as
+     * "skip the resources view for this module" rather than an error
+     * state.
+     */
+    async renderAndroidResources(module: string): Promise<ResourceManifest | null> {
+        try {
+            await this.runTask(`:${module}:renderAndroidResources`);
+        } catch (e) {
+            this.logger.appendLine(
+                `:${module}:renderAndroidResources failed: ${
+                    e instanceof Error ? e.message : String(e)
+                }`,
+            );
+            return null;
+        }
+        return this.readResourceManifest(module);
+    }
+
+    /**
      * Runs `:<module>:composePreviewDoctor` and returns the parsed sidecar
      * report. Same JSON schema as `compose-preview doctor --json`'s per-
      * module shape — see `ComposePreviewDoctorTask.kt` in `gradle-plugin`.
