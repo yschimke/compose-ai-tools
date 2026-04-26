@@ -429,6 +429,183 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             return card;
         }
 
+        // Variant label for one ResourceCapture: 'xhdpi · CIRCLE', 'night-xhdpi',
+        // or '' when both qualifiers and shape are absent. Built client-side so
+        // ResourceCapture's wire shape stays untouched (composables lean on a
+        // pre-baked .label, but the resource path isn't worth threading the
+        // same metadata through extension.ts for what amounts to a string
+        // concat).
+        function resourceCaptureLabel(capture) {
+            const v = capture.variant || {};
+            const parts = [];
+            if (v.qualifiers) parts.push(v.qualifiers);
+            if (v.shape) parts.push(v.shape);
+            return parts.join(' · ');
+        }
+
+        // Build one card for a ResourcePreview. Mirrors createCard's shape so
+        // the carousel / skeleton / frame-controls plumbing stays shared, but
+        // diverges on:
+        //   - title click → opens the resource's source XML, not a Kotlin file.
+        //   - subtitle (variant-badge slot) → resource type + optional
+        //     'used by …' summary derived from manifest references.
+        //   - no a11y findings, no group filter, no history drawer (resources
+        //     don't carry those today).
+        function createResourceCard(r, refsByResource, module) {
+            const captures = (r.captures && r.captures.length > 0)
+                ? r.captures
+                : [{ variant: null, renderOutput: '' }];
+            const animated = captures.length > 1;
+
+            const card = document.createElement('div');
+            card.className = 'preview-card resource-card' + (animated ? ' animated-card' : '');
+            card.id = 'resource-' + sanitizeId(r.id);
+            card.setAttribute('role', 'listitem');
+            card.dataset.previewId = r.id;
+            card.dataset.resourceType = r.type || '';
+            card.dataset.currentIndex = '0';
+
+            cardCaptures.set(r.id, captures.map(c => ({
+                label: resourceCaptureLabel(c),
+                renderOutput: c.renderOutput || '',
+                imageData: null,
+                errorMessage: null,
+            })));
+
+            const header = document.createElement('div');
+            header.className = 'card-header';
+
+            const titleRow = document.createElement('div');
+            titleRow.className = 'card-title-row';
+
+            const title = document.createElement('button');
+            title.className = 'card-title';
+            title.textContent = r.id;
+            // Pick the default-qualifier source file (key '') if present;
+            // otherwise the first qualified entry. anydpi-v26 adaptive icons
+            // typically only have an 'anydpi-v26' key, so this falls back to
+            // it without special-casing the type.
+            const sources = r.sourceFiles || {};
+            const defaultSource = sources[''];
+            const firstSource = defaultSource || Object.values(sources)[0] || null;
+            if (firstSource) {
+                title.title = 'Open ' + firstSource;
+                title.addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'openResourceSource',
+                        module,
+                        sourceFile: firstSource,
+                    });
+                });
+            } else {
+                title.disabled = true;
+                title.title = 'No source file for this resource';
+            }
+            titleRow.appendChild(title);
+
+            if (animated) {
+                const icon = document.createElement('i');
+                icon.className = 'codicon codicon-play-circle animation-icon';
+                icon.title = captures.length + ' captures';
+                icon.setAttribute('aria-label',
+                    'Resource with ' + captures.length + ' captures');
+                titleRow.appendChild(icon);
+            }
+            header.appendChild(titleRow);
+            card.appendChild(header);
+
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'image-container';
+            const skeleton = document.createElement('div');
+            skeleton.className = 'skeleton';
+            skeleton.setAttribute('aria-label', 'Loading resource preview');
+            imgContainer.appendChild(skeleton);
+            card.appendChild(imgContainer);
+
+            const subtitleParts = [r.type];
+            const refs = refsByResource.get(r.id) || [];
+            if (refs.length > 0) {
+                // Compact summary — e.g. 'used by application@icon, MainActivity@icon'.
+                const refSummary = refs.map(ref => {
+                    const owner = ref.componentName
+                        ? ref.componentName.substring(ref.componentName.lastIndexOf('.') + 1)
+                        : ref.componentKind;
+                    const attr = (ref.attributeName || '').replace(/^android:/, '');
+                    return owner + '@' + attr;
+                }).join(', ');
+                subtitleParts.push('used by ' + refSummary);
+            }
+            const badge = document.createElement('div');
+            badge.className = 'variant-badge';
+            badge.textContent = subtitleParts.join(' · ');
+            card.appendChild(badge);
+
+            if (animated) {
+                card.appendChild(buildFrameControls(card));
+            }
+            return card;
+        }
+
+        // Two stacked sections in the grid:
+        //   1. 'Declared in AndroidManifest.xml' — resources with at least one
+        //      manifestReferences row pointing at them.
+        //   2. 'Other resources' — everything else.
+        // When section 1 is empty (manifest references nothing the renderer
+        // produced — possible if the consumer's manifest references a raster
+        // mipmap we don't render), the section header is omitted and only
+        // section 2 shows.
+        function renderResources(resources, references) {
+            grid.innerHTML = '';
+            grid.classList.add('resources-mode');
+
+            // Index references by "<resourceType>/<resourceName>" so the card
+            // builder can attach a 'used by …' summary in O(1).
+            const refsByResource = new Map();
+            for (const ref of references) {
+                const id = (ref.resourceType || '') + '/' + (ref.resourceName || '');
+                if (!refsByResource.has(id)) refsByResource.set(id, []);
+                refsByResource.get(id).push(ref);
+            }
+
+            const declared = [];
+            const other = [];
+            for (const r of resources) {
+                if (refsByResource.has(r.id)) declared.push(r);
+                else other.push(r);
+            }
+            // Within each section, sort by id so the order is stable across
+            // discovery-task runs (which use a LinkedHashMap but the order
+            // shifts when a new resource is added mid-list).
+            declared.sort((a, b) => a.id.localeCompare(b.id));
+            other.sort((a, b) => a.id.localeCompare(b.id));
+
+            if (declared.length > 0) {
+                const heading = document.createElement('h3');
+                heading.className = 'resources-section-heading';
+                heading.textContent = 'Declared in AndroidManifest.xml';
+                grid.appendChild(heading);
+                for (const r of declared) {
+                    grid.appendChild(createResourceCard(r, refsByResource, currentResourceModule));
+                }
+            }
+            if (other.length > 0) {
+                if (declared.length > 0) {
+                    const heading = document.createElement('h3');
+                    heading.className = 'resources-section-heading';
+                    heading.textContent = 'Other resources';
+                    grid.appendChild(heading);
+                }
+                for (const r of other) {
+                    grid.appendChild(createResourceCard(r, refsByResource, currentResourceModule));
+                }
+            }
+        }
+        // Module name supplied alongside the resources payload — used by card
+        // titles to resolve their click target. Held in a webview-scope 'let'
+        // (rather than threaded through every render call) so updateImage and
+        // similar follow-up messages don't need to know about it.
+        let currentResourceModule = '';
+
         function buildFrameControls(card) {
             const bar = document.createElement('div');
             bar.className = 'frame-controls';
@@ -1109,7 +1286,26 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         window.addEventListener('message', event => {
             const msg = event.data;
             switch (msg.command) {
+                case 'setResources': {
+                    // Resources mode is fully orthogonal to the composable
+                    // preview state — clear the latter so a previous
+                    // setPreviews payload doesn't leak into the resources
+                    // view's filter dropdowns or relative-sizing pass.
+                    allPreviews = [];
+                    currentResourceModule = msg.module;
+                    moduleDir = msg.module;
+                    renderResources(msg.resources, msg.references);
+                    // Function / group filters are composable concepts;
+                    // hide the toolbar entries by populating them empty so
+                    // the dropdowns don't dangle stale options.
+                    populateFilter(filterFunction, [], 'functions');
+                    populateFilter(filterGroup, [], 'groups');
+                    setMessage('', 'extension');
+                    break;
+                }
+
                 case 'setPreviews': {
+                    grid.classList.remove('resources-mode');
                     allPreviews = msg.previews;
                     moduleDir = msg.moduleDir;
                     renderPreviews(msg.previews);

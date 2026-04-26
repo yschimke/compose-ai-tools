@@ -308,6 +308,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
+            // AndroidManifest.xml swaps the panel into resources mode —
+            // the icon attributes the user is editing become a section of
+            // cards above the rest of the resources catalogue. Match by
+            // basename (not language id) since xml extensions vary by
+            // user setup.
+            if (editor && path.basename(editor.document.uri.fsPath) === 'AndroidManifest.xml') {
+                const filePath = editor.document.uri.fsPath;
+                if (filePath === currentScopeFile) { return; }
+                currentScopeFile = filePath;
+                void refreshForManifest(filePath);
+                return;
+            }
             if (editor?.document.languageId === 'kotlin') {
                 const filePath = editor.document.uri.fsPath;
                 // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
@@ -576,6 +588,100 @@ const fastTierModules = new Set<string>();
  *                     overrides to `'fast'` (see {@link runRefreshExclusive}).
  *                     Ignored when `forceRender` is false (discover-only).
  */
+/**
+ * Loads `<module>/build/compose-previews/resources.json` for the module that owns the open
+ * `AndroidManifest.xml` and posts a [setResources] payload to the webview. Falls back to a
+ * sensible empty-state message when the manifest belongs to an older-plugin module that hasn't
+ * written `resources.json` (CodeLens provider's same defensive shape — see the comment in
+ * `androidManifestCodeLensProvider.ts`).
+ *
+ * Image loading mirrors the composable refresh path: post `setResources` first so the webview
+ * can paint card skeletons, then stream `updateImage` per capture so each card paints as soon
+ * as its bytes arrive.
+ */
+async function refreshForManifest(filePath: string): Promise<void> {
+    if (!gradleService || !panel) { return; }
+    pendingRefresh?.abort();
+    const abort = new AbortController();
+    pendingRefresh = abort;
+
+    const module = gradleService.resolveModule(filePath);
+    if (!module) {
+        logLine(`manifest no module — file=${filePath}`);
+        panel.postMessage({ command: 'clearAll' });
+        panel.postMessage({
+            command: 'showMessage',
+            text: `Couldn't resolve a Compose module for ${path.basename(filePath)}.`,
+        });
+        return;
+    }
+    const manifest = gradleService.readResourceManifest(module);
+    if (!manifest) {
+        logLine(`manifest no resources.json — module=${module}`);
+        panel.postMessage({ command: 'clearAll' });
+        panel.postMessage({
+            command: 'showMessage',
+            text:
+                `No resources.json for ${module}. Run \`:${module}:renderAndroidResources\` ` +
+                `or upgrade the plugin to a version that emits the manifest.`,
+        });
+        return;
+    }
+
+    // The reference index records the merged manifest path under `build/`.
+    // Filter to references whose resourceType+resourceName actually has a
+    // matching ResourcePreview — the source field comparison would miss
+    // PRs where the merged-manifest path differs from the open file.
+    const knownIds = new Set(manifest.resources.map(r => r.id));
+    const references = manifest.manifestReferences.filter(ref =>
+        knownIds.has(`${ref.resourceType}/${ref.resourceName}`),
+    );
+
+    panel.postMessage({
+        command: 'setResources',
+        resources: manifest.resources,
+        references,
+        module,
+    });
+    logLine(
+        `rendered ${manifest.resources.length} resource preview(s) for ${path.basename(filePath)} ` +
+            `(${references.length} manifest reference(s))`,
+    );
+
+    // Stream PNG/GIF bytes per capture, same shape as the composable refresh.
+    const imageJobs: Promise<void>[] = [];
+    for (const resource of manifest.resources) {
+        for (let captureIndex = 0; captureIndex < resource.captures.length; captureIndex++) {
+            const capture = resource.captures[captureIndex];
+            if (!capture.renderOutput) { continue; }
+            const idx = captureIndex;
+            imageJobs.push((async () => {
+                if (abort.signal.aborted) { return; }
+                const imageData = await gradleService!.readPreviewImage(module, capture.renderOutput);
+                if (abort.signal.aborted || !panel) { return; }
+                if (imageData) {
+                    panel.postMessage({
+                        command: 'updateImage',
+                        previewId: resource.id,
+                        captureIndex: idx,
+                        imageData,
+                    });
+                } else {
+                    panel.postMessage({
+                        command: 'setImageError',
+                        previewId: resource.id,
+                        captureIndex: idx,
+                        message:
+                            `Render not on disk: ${capture.renderOutput}. ` +
+                            `Run \`:${module}:renderAndroidResources\`.`,
+                    });
+                }
+            })());
+        }
+    }
+    await Promise.allSettled(imageJobs);
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
@@ -824,6 +930,21 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 openPreviewSource(msg.className, msg.functionName);
             }
             break;
+        case 'openResourceSource':
+            // Resource card title click — open the source XML in a sibling
+            // editor. `sourceFile` is module-relative (e.g.
+            // `src/main/res/drawable/foo.xml`); resolve against the
+            // workspace root + module path, same shape the CodeLens uses
+            // for the rendered PNG.
+            if (msg.module && msg.sourceFile && gradleService) {
+                const absPath = path.join(
+                    gradleService.workspaceRoot,
+                    msg.module,
+                    msg.sourceFile,
+                );
+                void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(absPath));
+            }
+            break;
         case 'selectModule':
             selectedModule = msg.value || null;
             sendModuleList();
@@ -862,6 +983,10 @@ interface WebviewToExtensionMessage {
     value?: string;
     previewId?: string;
     filename?: string;
+    /** From the resource card title click — see `openResourceSource` in types.ts. */
+    module?: string;
+    /** Module-relative path of a resource source XML, e.g. `src/main/res/drawable/foo.xml`. */
+    sourceFile?: string;
 }
 
 function sendHistoryList(previewId: string) {

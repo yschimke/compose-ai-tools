@@ -248,6 +248,19 @@ export type ExtensionToWebview =
            */
           heavyStaleIds?: string[];
       }
+    /**
+     * Resources view, posted when the active editor is `AndroidManifest.xml`.
+     * Renders [ResourcePreview] cards in two stacked sections — the ones
+     * referenced from the open manifest first, the rest below.
+     */
+    | {
+          command: 'setResources';
+          resources: ResourcePreview[];
+          /** Manifest references whose `source` matches the open manifest file (module-relative). */
+          references: ManifestReference[];
+          /** Module name used to resolve source-file open clicks back to absolute paths. */
+          module: string;
+      }
     /** `captureIndex` addresses which capture within an animated preview the
      *  image belongs to. Static previews have a single capture at index 0. */
     | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
@@ -274,4 +287,11 @@ export type WebviewToExtension =
      * re-rendered. (A future per-preview filter would scope this to the
      * single previewId; today it falls back to a full-module render.)
      */
-    | { command: 'refreshHeavy'; previewId: string };
+    | { command: 'refreshHeavy'; previewId: string }
+    /**
+     * User clicked a resource card's title in the resources view. Opens the
+     * resource's source XML file in a sibling editor — `module` is the
+     * Gradle module the resource belongs to, `sourceFile` is the
+     * module-relative path the manifest carries (`src/main/res/drawable/foo.xml`).
+     */
+    | { command: 'openResourceSource'; module: string; sourceFile: string };
