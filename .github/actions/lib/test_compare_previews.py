@@ -1212,6 +1212,129 @@ class LoadBaselinesTest(unittest.TestCase):
         self.assertEqual(cp._load_baselines(p), {"app/Foo": {"sha256": "abc"}})
 
 
+class ResourcePerceptualFilterTest(unittest.TestCase):
+    """Mirrors `PerceptualFilterTest` for the resource path: sha-different
+    but pixelmatch-clean resource captures (typical of `AdaptiveIconDrawable`
+    composite renders, where the AA mask + `PorterDuff.SRC_IN` step produces
+    sub-pixel jitter between Robolectric runs) must read as ``unchanged`` in
+    both `cmd_compare_resources` and `cmd_copy_changed_resources`.
+
+    The strict-bytes fallback path (no `--baseline-renders`) is exercised by
+    the existing `CompareResourcesTests` / `CopyChangedResourcesTests`."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        # Filename convention: PNGs whose name contains "noise" model the
+        # adaptive-icon AA flake (sha-different, pixelmatch-clean), anything
+        # else is a genuine pixel diff.
+        self._real = cp._perceptually_changed
+        cp._perceptually_changed = lambda prior, current: "noise" not in current.name
+        self.addCleanup(setattr, cp, "_perceptually_changed", self._real)
+
+        # Resource baseline tree mimics what the action's
+        # `git archive preview_resources_main renders | tar -x` produces.
+        baseline_root = self.tmp / "_resource_baselines" / "renders" / "app" / "resources" / "mipmap"
+        baseline_root.mkdir(parents=True)
+        (baseline_root / "ic_launcher_xhdpi_SHAPE_circle_noise.png").write_bytes(b"baseline-noise")
+        (baseline_root / "ic_launcher_xhdpi_SHAPE_square.png").write_bytes(b"baseline-real")
+        self.baseline_renders = self.tmp / "_resource_baselines" / "renders"
+
+        # Current renders the CLI just produced — same filenames, "new" bytes.
+        self.noise_png = self.tmp / "ic_launcher_xhdpi_SHAPE_circle_noise.png"
+        self.noise_png.write_bytes(b"current-noise")
+        self.real_png = self.tmp / "ic_launcher_xhdpi_SHAPE_square.png"
+        self.real_png.write_bytes(b"current-real")
+
+        self.cli_json = self.tmp / "_resources.json"
+        self.cli_json.write_text(json.dumps(_resource_envelope(_resource_entry(
+            id="mipmap/ic_launcher", module="app", type="ADAPTIVE_ICON",
+            captures=[
+                _resource_capture(
+                    render_output="renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_noise.png",
+                    png_path=str(self.noise_png), sha256="new-noise",
+                    qualifiers="xhdpi", shape="CIRCLE",
+                ),
+                _resource_capture(
+                    render_output="renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png",
+                    png_path=str(self.real_png), sha256="new-real",
+                    qualifiers="xhdpi", shape="SQUARE",
+                ),
+            ],
+        ))))
+        self.baselines = self.tmp / "resource-baselines.json"
+        self.baselines.write_text(json.dumps({
+            "app::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_noise.png": {
+                "sha256": "old-noise",
+                "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_noise.png",
+            },
+            "app::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png": {
+                "sha256": "old-real",
+                "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png",
+            },
+        }))
+
+    def test_compare_resources_filters_perceptual_noise(self) -> None:
+        from types import SimpleNamespace
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cp.cmd_compare_resources(SimpleNamespace(
+                cli_json=str(self.cli_json),
+                baselines=str(self.baselines),
+                repo="owner/repo",
+                base_ref="bef0",
+                head_ref="aft0",
+                baseline_renders=str(self.baseline_renders),
+            ))
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        # Real change still surfaces; the noise capture is filtered out so
+        # the Changed section reports 1 variant, not 2.
+        self.assertIn("### Changed (1 variant(s)", out)
+        self.assertIn("`mipmap/ic_launcher`", out)
+        # The noise capture was the CIRCLE shape — it must NOT appear as a
+        # variant link in the comment body.
+        self.assertNotIn("ic_launcher_xhdpi_SHAPE_circle_noise.png", out)
+
+    def test_copy_changed_resources_filters_perceptual_noise(self) -> None:
+        from types import SimpleNamespace
+        out_dir = self.tmp / "out"
+        rc = cp.cmd_copy_changed_resources(SimpleNamespace(
+            cli_json=str(self.cli_json),
+            baselines=str(self.baselines),
+            output_dir=str(out_dir),
+            baseline_renders=str(self.baseline_renders),
+        ))
+        self.assertEqual(rc, 0)
+        # Only the real-diff PNG should be copied; the AA-noise capture is
+        # filtered before it gets staged for the preview_resources_pr push.
+        copied = sorted(p.name for p in
+                        (out_dir / "renders" / "app" / "resources" / "mipmap").iterdir())
+        self.assertEqual(copied, ["ic_launcher_xhdpi_SHAPE_square.png"])
+
+    def test_strict_bytes_fallback_when_baseline_renders_omitted(self) -> None:
+        # No `baseline_renders` argument → falls back to strict-sha behaviour
+        # (the first-ever-PR shape, when preview_resources_main has no
+        # renders/ tree to extract). Both captures are sha-different so both
+        # should surface as Changed.
+        from types import SimpleNamespace
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare_resources(SimpleNamespace(
+                cli_json=str(self.cli_json),
+                baselines=str(self.baselines),
+                repo="owner/repo",
+                base_ref="bef0",
+                head_ref="aft0",
+                # No baseline_renders → getattr returns None → strict path.
+            ))
+        self.assertIn("### Changed (2 variant(s)", buf.getvalue())
+
+
 class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
     """End-to-end regression for the failure mode that broke PR comments
     after #269 landed: `git show … > resource-baselines.json` truncated the
