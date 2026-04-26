@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "clientVersion": "0.8.6",
+  "workspaceRoot": "/home/dev/projects/my-app",
+  "moduleId": ":samples:android",
+  "moduleProjectDir": "/home/dev/projects/my-app/samples/android",
+  "capabilities": {
+    "visibility": true,
+    "metrics": true
+  },
+  "options": {
+    "maxHeapMb": 1024,
+    "warmSpare": true,
+    "detectLeaks": "light",
+    "foreground": false
+  }
+}
