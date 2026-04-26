@@ -112,15 +112,11 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
 
   /**
    * Android XML resource previews — `vector`, `animated-vector`, `adaptive-icon` drawables and
-   * mipmaps, plus an `AndroidManifest.xml` icon-attribute reference index. Off by default; turning
-   * it on registers the `discoverAndroidResources` task and the upcoming `renderAndroidResources`
-   * companion. See `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model.
-   *
-   *     composePreview {
-   *         resourcePreviews {
-   *             enabled = true
-   *         }
-   *     }
+   * mipmaps, plus an `AndroidManifest.xml` icon-attribute reference index. On by default; the tasks
+   * self-no-op when the consumer's `res/` tree has no matching XML, so the cost of being
+   * always-registered is a single empty `resources.json` write. See
+   * `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model and [ResourcePreviewsExtension] for the
+   * per-axis tuning knobs.
    */
   val resourcePreviews: ResourcePreviewsExtension =
     objects.newInstance(ResourcePreviewsExtension::class.java)
@@ -159,8 +155,14 @@ abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectF
 }
 
 abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFactory) {
-  /** Default: `false`. Turning on registers `discoverAndroidResources`. */
-  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+  /**
+   * Default: `true`. The discovery + render tasks self-no-op on modules with no `<vector>` /
+   * `<animated-vector>` / `<adaptive-icon>` files (a single empty `resources.json` write), so the
+   * cost of being always-registered is negligible. Set `false` to skip task registration outright —
+   * useful for modules that explicitly don't want `resources.json` produced or
+   * `renderAndroidResources` showing up in `gradle tasks` listings.
+   */
+  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
    * Density buckets to fan out implicit captures over. Applied to every resource that doesn't

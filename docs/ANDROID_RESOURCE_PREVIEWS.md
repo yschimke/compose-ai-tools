@@ -197,7 +197,7 @@ When a resource referenced from the manifest does *not* appear in `resources` (e
 ```kotlin
 composePreview {
   resourcePreviews {
-    enabled = true                          // off by default
+    enabled = true                          // on by default; set false to skip task registration
     densities = listOf("mdpi", "xhdpi")     // implicit density fan-out
     shapes = listOf(                        // restrict adaptive-icon shapes
       AdaptiveShape.CIRCLE,
@@ -213,7 +213,7 @@ composePreview {
 }
 ```
 
-Defaults match the precedent set by `accessibilityChecks` — opt-in, no behavioural change for existing consumers, byte-identical render output until flipped.
+Default-on, in contrast to `accessibilityChecks`: the discovery walk is a cheap filesystem scan and the render task no-ops on modules with no matching XML, so the cost of registration is a single empty `resources.json` write. The flag exists for consumers who explicitly don't want `resources.json` produced (e.g. modules where the artifact would clutter their build output), not as a feature gate.
 
 ## Phasing
 
