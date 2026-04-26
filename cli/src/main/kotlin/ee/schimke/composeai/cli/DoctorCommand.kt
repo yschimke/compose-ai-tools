@@ -851,7 +851,10 @@ class DoctorCommand(args: List<String>) {
     }
   }
 
-  /** Sanitise a module path (e.g. `:app` → `app`, `:samples:wear` → `samples:wear`) for use in check ids. */
+  /**
+   * Sanitise a module path (e.g. `:app` → `app`, `:samples:wear` → `samples:wear`) for use in check
+   * ids.
+   */
   private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }
 
   /**
