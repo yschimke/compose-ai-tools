@@ -75,15 +75,33 @@ runs:
 
     # Render Android XML resource previews (vector / animated-vector /
     # adaptive-icon) so the comment can include before/after for resource
-    # changes. The CLI's `show` command runs `:<module>:renderAllPreviews`
-    # which doesn't yet depend on `:<module>:renderAndroidResources`, so we
-    # invoke the resource render explicitly. `|| true` keeps the action
-    # forgiving on consumers who haven't applied the plugin to any module
-    # with resources — `compare-resources` no-ops on an empty workspace
-    # anyway.
+    # changes. Mirrors the composable shape above: the CLI drives the
+    # gradle render and emits a canonical JSON envelope. `show-resources`
+    # exits 0 when the workspace has no `resources.json` (no-XML projects
+    # are a legitimate state, not an error), so the subsequent
+    # `compare-resources` and `copy-changed-resources` calls naturally
+    # short-circuit on empty input.
     - name: Render Android resource previews
+      id: render-resources
       shell: bash
-      run: ./gradlew renderAndroidResources --quiet 2>/dev/null || true
+      env:
+        RENDER_TIMEOUT: ${{ inputs.timeout }}
+      run: compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+
+    # Same artifact-on-failure shape as `renderPreviews-reports` for the
+    # composable side — surfaces the actual stack trace from the
+    # Robolectric run when it fails.
+    - name: Upload renderAndroidResources reports
+      if: failure() && steps.render-resources.outcome == 'failure'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: renderAndroidResources-reports
+        path: |
+          **/build/reports/tests/renderAndroidResources/
+          **/build/test-results/renderAndroidResources/
+          _resources.json
+        if-no-files-found: ignore
+        retention-days: 14
 
     - name: Fetch baselines
       shell: bash
