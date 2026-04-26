@@ -658,56 +658,25 @@ internal object AndroidPreviewSupport {
     // doesn't do conflict resolution, so whichever JAR comes first wins at
     // classload time. Putting the renderer's dependencies first ensures the
     // test code gets the versions it was compiled against.
+    //
+    // Construction is delegated to [AndroidPreviewClasspath.buildTestClasspath] so
+    // the upcoming preview daemon (see docs/daemon/DESIGN.md) can build the same
+    // classpath without re-implementing the inline DSL. The trailing AGP test
+    // classes / classpath additions are still composed in the Test lambda below
+    // (they need `findByName("test${capVariant}UnitTest")` which only resolves
+    // late).
     val resolvedClasspath =
-      project.files().apply {
-        // Robolectric properties dir BEFORE consumer test resources so our
-        // Application override wins when classloader.getResource walks the
-        // classpath. Consumers with their own `robolectric.properties` at
-        // the same package path are unusual — they'd need it specifically
-        // for this renderer's test class.
-        from(generateRobolectricPropertiesTask.flatMap { it.outputDir })
-        from(
-          rendererConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
-        )
-        from(rendererClassDirs)
-        if (testConfig != null) {
-          from(testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-          from(
-            testConfig.incoming
-              .artifactView { attributes.attribute(artifactType, "android-classes") }
-              .files
-          )
-        }
-        // screenshotTest source set has its own runtime config — any
-        // `screenshotTestImplementation(...)` dep the consumer declared is
-        // only visible here, not via `testConfig`. Include it so previews
-        // under `src/screenshotTest/` can reference those classes at
-        // render time. No-op when the screenshot plugin isn't applied.
-        screenshotTestRuntimeConfig?.let { stConfig ->
-          from(stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-          from(
-            stConfig.incoming
-              .artifactView { attributes.attribute(artifactType, "android-classes") }
-              .files
-          )
-        }
-        from(sourceClassDirs)
-        from(unitTestConfigDir)
-        // SDK stub android.jar on the OUTER classpath so JUnit can introspect
-        // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
-        // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
-        // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
-        // before Robolectric's sandbox classloader is even created.
-        //
-        // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
-        // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
-        // resolution to its own `android-all` artifact (real framework classes, with
-        // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
-        //
-        // Sourced from AGP's SdkComponents so we don't have to parse local.properties
-        // or read rootProject.file(...).
-        from(project.files(bootClasspath))
-      }
+      AndroidPreviewClasspath.buildTestClasspath(
+        project = project,
+        bootClasspath = bootClasspath,
+        rendererConfig = rendererConfig,
+        rendererClassDirs = rendererClassDirs,
+        sourceClassDirs = sourceClassDirs,
+        testConfig = testConfig,
+        screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
+        unitTestConfigDir = unitTestConfigDir,
+        robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
+      )
 
     val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirectory = previewOutputDir.map { it.dir("renders") }
@@ -814,16 +783,9 @@ internal object AndroidPreviewSupport {
         // a chance to register `test${capVariant}UnitTest` by the time this
         // runs — onVariants fires before unit-test tasks are wired.
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
-        jvmArgs(
-          "--add-opens=java.base/java.lang=ALL-UNNAMED",
-          "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-          // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
-          // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
-          // module rules this fails with IllegalAccessException without this
-          // opens. Reached via `PathIterator` — triggered here by Wear Compose's
-          // curved text renderer.
-          "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        )
+        // Static JVM open flags live in [AndroidPreviewClasspath.buildJvmArgs] so the
+        // preview daemon can reuse the same set when launching its own JVM.
+        jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
 
         // Inherit AGP's unit-test javaLauncher so the forked test worker
         // runs on the same JDK as `test${capVariant}UnitTest` — which
@@ -839,33 +801,6 @@ internal object AndroidPreviewSupport {
         // discovery on some JVM/classloader combinations. See #142.
         agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
 
-        // Belt-and-braces for the graphics/looper modes. Config now
-        // lives in `ee/schimke/composeai/renderer/robolectric.properties`
-        // (see `RobolectricRenderTestBase` KDoc for why we can't use
-        // `@GraphicsMode` directly). These system properties are a third
-        // independent Robolectric config channel and cost nothing to
-        // keep — survive both annotation and properties paths regressing.
-        systemProperty("robolectric.graphicsMode", "NATIVE")
-        systemProperty("robolectric.looperMode", "PAUSED")
-        // Conscrypt isn't needed for preview rendering (no TLS/HTTP paths
-        // execute) and its native library is flaky on some Linux sandboxes
-        // — e.g. missing/ABI-mismatched `libstdc++.so.6`. Telling Robolectric
-        // to skip the install avoids those failures without shipping our
-        // own Conscrypt stubs. See `ConscryptMode` /
-        // `ConscryptModeConfigurer` in Robolectric.
-        systemProperty("robolectric.conscryptMode", "OFF")
-        // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
-        // ImageReader + HardwareRenderer.syncAndDraw, the only path that
-        // replays Compose's RenderNodes correctly.
-        systemProperty("robolectric.pixelCopyRenderMode", "hardware")
-        // Roborazzi defaults to "compare" mode (which doesn't write pixels
-        // unless the expected baseline exists). Force "record" so every run
-        // writes fresh PNGs.
-        systemProperty("roborazzi.test.record", "true")
-
-        systemProperty("composeai.render.manifest", manifestFile.get())
-        systemProperty("composeai.render.outputDir", rendersDir.get())
-
         // GoogleFont interceptor cache — defaults to
         // `<project>/.compose-preview-history/fonts/`, same root the
         // history task uses, so committed TTFs sit beside committed PNGs.
@@ -875,14 +810,24 @@ internal object AndroidPreviewSupport {
           extension.historyDir
             .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
             .map { it.dir("fonts").asFile.absolutePath }
-        systemProperty("composeai.fonts.cacheDir", fontsCacheDir.get())
         // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
         // on a CI profile) skips network on cache miss so the render
         // shows the fallback font rather than silently fetching from
         // `fonts.googleapis.com`.
         val fontsOffline =
           project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
-        systemProperty("composeai.fonts.offline", fontsOffline.get())
+        // Static system properties (Robolectric modes + the path-bearing composeai.*
+        // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
+        // preview daemon can replay the same set when launching its own JVM. The
+        // dynamic per-task ArgumentProviders (a11y, tier) stay below — they need
+        // lazy `Provider<>` evaluation at task-execution time.
+        AndroidPreviewClasspath.buildSystemProperties(
+            manifestPath = manifestFile.get(),
+            rendersDir = rendersDir.get(),
+            fontsCacheDir = fontsCacheDir.get(),
+            fontsOffline = fontsOffline.get(),
+          )
+          .forEach { (k, v) -> systemProperty(k, v) }
 
         // ATF flags are routed through a CommandLineArgumentProvider
         // rather than `systemProperty(...)` so toggling the `-P` override
