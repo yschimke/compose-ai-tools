@@ -26,14 +26,7 @@ replay_pid*
 Thumbs.db
 
 # AI
-# Ignore local .claude/ scratch (sessions, projects, shell-snapshots, etc.)
-# but track the shared SessionStart hook + settings so every clone gets the
-# same agent setup wiring.
-.claude/*
-!.claude/hooks/
-!.claude/settings.json
-.claude/hooks/*
-!.claude/hooks/*.sh
+.claude/
 .gemini/
 
 # Local properties
