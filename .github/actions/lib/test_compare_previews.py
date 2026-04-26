@@ -1134,5 +1134,102 @@ class CompareResourcesTests(unittest.TestCase):
                          "Comment should append nothing when no diff was detected.")
 
 
+class LoadBaselinesTest(unittest.TestCase):
+    """Pins `_load_baselines`'s permissive shape against everything the
+    `git show … > file 2>/dev/null || true` redirect in
+    `preview-comment/action.yml` can produce."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_missing_file_is_empty_dict(self):
+        self.assertEqual(cp._load_baselines(self.tmp / "nope.json"), {})
+
+    def test_empty_file_is_empty_dict(self):
+        # The original failure mode: bash `> file 2>/dev/null || true`
+        # truncates `file` to 0 bytes before git show runs; the file is
+        # then `exists() == True` but contents = "".
+        p = self.tmp / "empty.json"
+        p.write_text("")
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_whitespace_only_file_is_empty_dict(self):
+        # Defensive — strip-then-test rather than literal "" check, in case
+        # a future redirect path leaves a stray newline.
+        p = self.tmp / "ws.json"
+        p.write_text("   \n\t  \n")
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_malformed_json_is_empty_dict(self):
+        p = self.tmp / "bad.json"
+        p.write_text('{"oops')
+        self.assertEqual(cp._load_baselines(p), {})
+
+    def test_non_dict_payload_is_empty_dict(self):
+        # baselines.json is supposed to be an object; treat anything else
+        # as no baselines rather than letting downstream `key in baselines`
+        # blow up on a list/string/null.
+        for payload in ('[]', '"oops"', '42', 'null'):
+            p = self.tmp / "shape.json"
+            p.write_text(payload)
+            self.assertEqual(cp._load_baselines(p), {}, f"{payload} should normalise to {{}}")
+
+    def test_valid_dict_payload_returns_parsed(self):
+        p = self.tmp / "ok.json"
+        p.write_text(json.dumps({"app/Foo": {"sha256": "abc"}}))
+        self.assertEqual(cp._load_baselines(p), {"app/Foo": {"sha256": "abc"}})
+
+
+class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
+    """End-to-end regression for the failure mode that broke PR comments
+    after #269 landed: `git show … > resource-baselines.json` truncated the
+    file to zero bytes when `preview_main` didn't yet have a
+    `resource-baselines.json`, and `cmd_compare_resources` blew up with
+    `JSONDecodeError`."""
+
+    def test_empty_baselines_file_treats_every_resource_as_new(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        workspace = tmp / "ws"
+        workspace.mkdir()
+        # Empty baseline file — the exact shape the action's truncating
+        # redirect produces on first run.
+        baselines = tmp / "resource-baselines.json"
+        baselines.write_text("")
+
+        manifest_dir = workspace / "app" / "build" / "compose-previews"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "resources.json").write_text(json.dumps({
+            "module": "app", "variant": "debug",
+            "resources": [{"id": "drawable/foo", "type": "VECTOR",
+                           "sourceFiles": {"": "src/main/res/drawable/foo.xml"},
+                           "captures": [{"variant": {"qualifiers": "xhdpi", "shape": None},
+                                         "renderOutput": "renders/resources/drawable/foo_xhdpi.png"}]}],
+            "manifestReferences": [],
+        }))
+        png = manifest_dir / "renders/resources/drawable/foo_xhdpi.png"
+        png.parent.mkdir(parents=True)
+        png.write_bytes(b"contents")
+
+        # Capture stdout; the run must succeed (no JSONDecodeError) AND emit
+        # markdown listing the resource as new.
+        import io, contextlib
+        from types import SimpleNamespace
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cp.cmd_compare_resources(SimpleNamespace(
+                workspace_root=str(workspace),
+                baselines=str(baselines),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+            ))
+        self.assertEqual(rc, 0)
+        self.assertIn("## Resource Changes", buf.getvalue())
+        self.assertIn("### New", buf.getvalue())
+        self.assertIn("`drawable/foo`", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

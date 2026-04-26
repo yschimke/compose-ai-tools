@@ -37,6 +37,40 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _load_baselines(path: Path) -> dict:
+    """Read a baselines JSON file, treating missing / empty / malformed input as `{}`.
+
+    The fetch step in `preview-comment/action.yml` runs
+    `git show "$REF:baselines.json" > path 2>/dev/null || true`. Bash's `>`
+    truncates `path` to zero bytes BEFORE the command runs — so when the
+    target file doesn't exist on the base branch (the typical case for the
+    first run after a new baseline file is added, e.g. `resource-baselines.json`
+    landing on `preview_main`), the action ends up with an existing-but-empty
+    file. `json.loads("")` then raises `JSONDecodeError`, breaking the
+    diff-on-PR comment for everyone — including the composable side, which
+    has historically dodged this only because the composable `baselines.json`
+    has been on `preview_main` for so long that nobody re-runs the
+    bootstrap path.
+
+    Treat any of (missing path, empty file, unparseable JSON, non-dict
+    payload) as "no baselines to compare against" — strictly more permissive
+    than the previous behaviour, never less.
+    """
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text()
+    except OSError:
+        return {}
+    if not text.strip():
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 # Pixel count above pixelmatch's per-pixel threshold that we still treat as
 # perceptually unchanged. The Compose stitched-LONG renderer (issue #190) can
 # emit a handful of sub-pixel-AA-different rounded-corner pixels between runs
@@ -346,7 +380,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     )
 
     current = load_cli_output(cli_json)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
@@ -479,7 +513,7 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
     )
 
     current = load_cli_output(cli_json)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     copied = 0
     for key, info in current.items():
@@ -675,7 +709,7 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
     entries = load_resource_manifests(workspace_root)
     if not entries:
         return 0
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     copied = 0
     for key, info in entries.items():
@@ -737,7 +771,7 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
     head_ref = args.head_ref
 
     current = load_resource_manifests(workspace_root)
-    baselines = json.loads(baselines_path.read_text()) if baselines_path.exists() else {}
+    baselines = _load_baselines(baselines_path)
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
