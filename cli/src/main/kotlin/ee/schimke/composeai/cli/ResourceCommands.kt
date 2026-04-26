@@ -161,9 +161,24 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
   override fun run() {
     withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:renderAndroidResources" }.toTypedArray()
+      // Auto-detect picks up every plugin-applied module — including CMP-only
+      // ones that never get `:<module>:renderAndroidResources` (the resource
+      // pipeline is gated on the Android-side `AndroidPreviewSupport` path,
+      // which CMP modules don't go through). Filter to modules that have
+      // an `AndroidManifest.xml` on disk: cheap, accurate, and the same
+      // signal the resource discovery task itself uses upstream.
+      //
+      // When the user passes an explicit `--module samples:cmp`, the filter
+      // still applies — we'd rather print a friendly "no Android modules"
+      // message than surface a gradle "task not found" stack trace.
+      val modules = resolveModules(gradle).filter { isAndroidModule(it) }
+      if (modules.isEmpty()) {
+        if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
+        else println("No Android modules with the resource preview pipeline found.")
+        exitProcess(0)
+      }
 
+      val tasks = modules.map { ":${it.gradlePath}:renderAndroidResources" }.toTypedArray()
       if (!runGradle(gradle, *tasks)) {
         reportRenderFailures(gradle)
         System.err.println("Resource render failed")
@@ -212,6 +227,23 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   // helpers. Lives on this subclass rather than the base because none
   // of the other commands consume them.
   // -------------------------------------------------------------------
+
+  /**
+   * `true` when [module] has an `AndroidManifest.xml` on disk under any of the standard locations.
+   * Coarse but reliable signal that the module participates in the Android resource preview
+   * pipeline — CMP-Desktop / pure-JVM modules don't produce a manifest, and the gradle
+   * `renderAndroidResources` task is registered exclusively from `AndroidPreviewSupport`. Uses a
+   * filesystem check rather than a Tooling-API task enumeration so the per-module overhead stays at
+   * a single `File.exists()` call.
+   */
+  private fun isAndroidModule(module: PreviewModule): Boolean =
+    sequenceOf(
+        "src/main/AndroidManifest.xml",
+        "src/AndroidManifest.xml",
+        "src/debug/AndroidManifest.xml",
+      )
+      .map { module.projectDir.resolve(it) }
+      .any { it.exists() }
 
   private fun readResourceManifest(module: PreviewModule): ResourceManifest? {
     val manifestFile = module.projectDir.resolve("build/compose-previews/resources.json")
