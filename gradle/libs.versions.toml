@@ -18,7 +18,11 @@ ktfmt = "0.26.0"
 tapmoc = "0.4.0"
 robolectric = "4.16.1"
 classgraph = "4.8.184"
-compose-bom = "2026.04.01"
+# Stable BOM line — what samples use and what `renderPreviews` /
+# `Compare previews` is exercised against. Renovate updates this freely;
+# the variant below (`compose-bom-compat`) is the older line that
+# renderer-android compiles its public API against.
+compose-bom-stable = "2026.04.01"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -27,9 +31,14 @@ compose-bom = "2026.04.01"
 # check `./gradlew :renderer-android:compileKotlin` against the new floor.
 # 2025.11.01 pins compose-ui AND compose-runtime to 1.9.5 — latest 1.9.x
 # release line. See https://developer.android.com/develop/ui/compose/bom/bom-mapping
-# Renovate is constrained to the 2025.x line for this key in `.github/renovate.json` —
-# the whole point of the floor is that bumps must be manual.
-compose-bom-compat = "2025.11.01"
+# Currently held on the 2026.x line (Renovate constrained it in
+# `.github/renovate.json`) — the 1.9.x intent above was already broken by the
+# time `@AnimatedPreview(showCurves=true)` shipped in #183 (the reflective
+# AnimationInspector probes APIs only present in compose-ui >= 1.10), so a
+# revert to 2025.11.01 fails `:samples:android:renderPreviews`. Bumps must be
+# manual until renderer-android either restores 1.9.x compatibility or the
+# floor is officially raised.
+compose-bom-compat = "2026.04.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
 wear-compose = "1.6.1"
@@ -46,12 +55,13 @@ wear-tooling-preview = "1.0.0"
 #    sample doesn't depend on compose-bom.
 compose-remote = "1.0.0-alpha09"
 wear-compose-remote = "1.0.0-alpha02"
-# Compose UI artifacts on the 1.11.x line — used by `:samples:remotecompose`,
-# which deliberately diverges from `compose-bom` (1.10.x) to track what
-# wear-compose-remote-material3 pulls in transitively (compose 1.11.0-beta+
-# for `PreviewWrapper` and friends). Renovate is constrained to /^1\.11\./
-# in `.github/renovate.json` so minor bumps are a manual decision.
-compose-bom-stable = "1.11.0"
+# Pre-release compose-ui artifacts (1.11.x line) used by `:samples:remotecompose`,
+# which deliberately diverges from `compose-bom-stable` (1.10.x) to track what
+# wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0-beta+
+# is the first release that ships `PreviewWrapper`. Renovate is constrained to
+# /^1\.11\./ in `.github/renovate.json` so jumps to the next minor are a manual
+# decision (alpha lines have historically tightened minSdk between releases).
+compose-ui-prerelease = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 junit = "4.13.2"
@@ -68,7 +78,7 @@ android-compose-screenshot = "0.0.1-alpha14"
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }
 compose-bom-compat = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-compat" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
@@ -88,8 +98,8 @@ compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tool
 compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
 compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }
 wear-compose-remote-material3 = { module = "androidx.wear.compose.remote:remote-material3", version.ref = "wear-compose-remote" }
-compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-bom-stable" }
-compose-ui-tooling-stable = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose-bom-stable" }
+compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-ui-prerelease" }
+compose-ui-tooling-prerelease = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose-ui-prerelease" }
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
 wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }

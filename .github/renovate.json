@@ -36,18 +36,18 @@
       "enabled": false
     },
     {
-      "description": "compose-bom-compat: hold on the 2025.x line so renderer-android keeps emitting Compose 1.9.x bytecode.",
+      "description": "compose-bom-compat: freeze on the 2026.x line. The original intent was a 1.9.x floor (2025.11.01) so renderer-android could emit Compose 1.9.x bytecode, but @AnimatedPreview's reflective AnimationInspector grew a hard dependency on >= 1.10 — see comment in libs.versions.toml. Bumps must be manual.",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "androidx.compose:compose-bom"
       ],
-      "matchCurrentValue": "/^2025\\./",
-      "allowedVersions": "/^2025\\./"
+      "matchCurrentValue": "/^2026\\./",
+      "allowedVersions": "/^2026\\./"
     },
     {
-      "description": "compose-bom-stable: hold the :samples:remotecompose ui-tooling artifacts on the 1.11.x line.",
+      "description": "compose-ui-prerelease: hold the :samples:remotecompose ui-tooling artifacts on the 1.11.x line — the wear-compose-remote alpha line that ships PreviewWrapper. Manual bumps only since alpha minSdk has historically tightened between releases.",
       "matchManagers": [
         "gradle"
       ],
