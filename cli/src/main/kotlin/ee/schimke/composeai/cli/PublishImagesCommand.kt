@@ -27,12 +27,30 @@ class PublishImagesCommand(args: List<String>) {
   private val remote: String = args.flagValue("--remote") ?: "origin"
   private val prNumber: String? = args.flagValue("--pr-number")
   private val customMessage: String? = args.flagValue("--message")
+  /**
+   * Opt-in escape hatch for branch names outside the `preview_*` allowlist. Hard-blocked names
+   * ([HARD_BLOCKED_BRANCHES]) stay rejected even with this flag — pushing rendered PNGs onto
+   * `main`/`master`/etc. is never the intended use of this command.
+   */
+  private val allowNonPreviewBranch = "--allow-non-preview-branch" in args
   private val positional: List<String> = parsePositional(args)
 
   fun run() {
     if (positional.size != 1) {
       System.err.println(USAGE)
       exitProcess(64) // EX_USAGE
+    }
+
+    validateBranch(branch, allowNonPreviewBranch)?.let { message ->
+      System.err.println(message)
+      exitProcess(64)
+    }
+
+    if (remote.startsWith("-")) {
+      // `git push -<flag>` would be interpreted as a flag, not a remote. Defensive even though
+      // git remote names with leading dashes are unusual in practice.
+      System.err.println("invalid --remote: $remote (must not start with '-')")
+      exitProcess(64)
     }
 
     val source = File(positional[0])
@@ -285,7 +303,7 @@ class PublishImagesCommand(args: List<String>) {
 
   companion object {
     private const val USAGE =
-      "usage: compose-preview publish-images DIR [--branch BRANCH] [--remote REMOTE] [--pr-number N] [--message MSG] [--json]"
+      "usage: compose-preview publish-images DIR [--branch BRANCH] [--remote REMOTE] [--pr-number N] [--message MSG] [--allow-non-preview-branch] [--json]"
 
     private const val MAX_PUSH_ATTEMPTS = 5
 
@@ -295,7 +313,23 @@ class PublishImagesCommand(args: List<String>) {
     }
 
     private val FLAGS_TAKING_VALUE = setOf("--branch", "--remote", "--pr-number", "--message")
-    private val FLAGS_NO_VALUE = setOf("--json")
+    private val FLAGS_NO_VALUE = setOf("--json", "--allow-non-preview-branch")
+
+    /**
+     * Branches `publish-images` will never push to, regardless of `--allow-non-preview-branch`.
+     * This is policy on top of the allowlist: pushing rendered PNGs onto a project's mainline or
+     * release branches is never the intended use of this command, so we hard-block even with the
+     * escape hatch. Anything else outside the `preview_*` allowlist requires the flag.
+     */
+    private val HARD_BLOCKED_BRANCHES = setOf("main", "master", "develop", "trunk", "HEAD")
+    private val HARD_BLOCKED_PREFIXES = listOf("release/", "releases/")
+
+    /**
+     * Conservative subset of `git check-ref-format`. Real refnames allow more, but for this
+     * command's scope (push to a named branch the user controls) we want a tight surface that
+     * rejects path-injection (`../`), refspec syntax (`:`), and flag-injection (`-`).
+     */
+    private val SAFE_REFNAME = Regex("""^[A-Za-z0-9][A-Za-z0-9._/-]*$""")
 
     internal fun parsePositional(args: List<String>): List<String> {
       val out = mutableListOf<String>()
@@ -313,6 +347,36 @@ class PublishImagesCommand(args: List<String>) {
         }
       }
       return out
+    }
+
+    /**
+     * Branch-name safety check, layered. Returns null when the branch is acceptable; otherwise the
+     * error message a caller should print.
+     *
+     * 1. Refname must match [SAFE_REFNAME] — catches `--branch ../foo`, `:bar`, `-flag`, etc.
+     *    before they reach `git push`.
+     * 2. Refname must not be in [HARD_BLOCKED_BRANCHES] or under [HARD_BLOCKED_PREFIXES] — pushing
+     *    rendered PNGs onto mainline / release branches is never the intended use, even with the
+     *    escape hatch.
+     * 3. Refname must match the `preview_` prefix, OR `--allow-non-preview-branch` must be set.
+     *
+     * The first failing rule wins so error messages stay focused.
+     */
+    internal fun validateBranch(branch: String, allowNonPreview: Boolean): String? {
+      if (!SAFE_REFNAME.matches(branch) || ".." in branch || "@{" in branch) {
+        return "invalid --branch '$branch': must start with a letter or digit and use only " +
+          "[A-Za-z0-9._/-]; refspec/path-injection patterns rejected."
+      }
+      if (branch in HARD_BLOCKED_BRANCHES || HARD_BLOCKED_PREFIXES.any { branch.startsWith(it) }) {
+        return "refusing to push to '$branch': mainline / release branches are never a valid " +
+          "destination for publish-images, even with --allow-non-preview-branch."
+      }
+      if (!branch.startsWith("preview_") && !allowNonPreview) {
+        return "branch '$branch' is outside the preview_* allowlist. Pass " +
+          "--allow-non-preview-branch to push to a custom branch (mainline branches stay " +
+          "blocked regardless)."
+      }
+      return null
     }
 
     /** Default commit message format mirrors the GHA's: `Preview renders for PR #N (sha::8)`. */

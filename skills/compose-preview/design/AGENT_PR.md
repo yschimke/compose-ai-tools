@@ -135,7 +135,10 @@ destination before acting:
   `compose-preview-publish-images/v1` envelope. Prefer this over the
   gist when you want clean GitHub-hosted URLs and the user's confirmed
   they want a branch created — the CLI does NOT auto-detect prior
-  consent; it just runs the push.
+  consent; it just runs the push. Branch names must match `preview_*`
+  by default; `--allow-non-preview-branch` opts into a custom name.
+  Mainline / release branches (`main`, `master`, `develop`, `trunk`,
+  `HEAD`, `release/*`) are hard-blocked regardless of the flag.
 - **Issue/PR attachment upload** — not reliably available via `gh`; skip.
 
 Never use inline base64 or data URIs — GitHub strips them. Never push images

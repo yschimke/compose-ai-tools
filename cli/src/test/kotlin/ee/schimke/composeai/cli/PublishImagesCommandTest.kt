@@ -2,7 +2,9 @@ package ee.schimke.composeai.cli
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PublishImagesArgParsingTest {
   @Test
@@ -59,6 +61,80 @@ class PublishImagesMessageTest {
   @Test
   fun `message with neither falls back to bare`() {
     assertEquals("Preview renders", PublishImagesCommand.defaultMessage(null, null))
+  }
+}
+
+class PublishImagesBranchValidationTest {
+  @Test
+  fun `preview_pr passes by default`() {
+    assertNull(PublishImagesCommand.validateBranch("preview_pr", allowNonPreview = false))
+  }
+
+  @Test
+  fun `preview_main passes by default`() {
+    assertNull(PublishImagesCommand.validateBranch("preview_main", allowNonPreview = false))
+  }
+
+  @Test
+  fun `non-preview branch rejected without escape hatch`() {
+    val message = PublishImagesCommand.validateBranch("screenshots", allowNonPreview = false)
+    assertTrue(
+      message != null && "preview_*" in message && "--allow-non-preview-branch" in message,
+      "expected reject mentioning the allowlist and escape flag, got $message",
+    )
+  }
+
+  @Test
+  fun `non-preview branch passes with escape hatch`() {
+    assertNull(PublishImagesCommand.validateBranch("screenshots", allowNonPreview = true))
+  }
+
+  @Test
+  fun `main is hard-blocked even with escape hatch`() {
+    val message = PublishImagesCommand.validateBranch("main", allowNonPreview = true)
+    assertTrue(
+      message != null && "mainline" in message,
+      "expected hard-block on main, got $message",
+    )
+  }
+
+  @Test
+  fun `master develop trunk HEAD all hard-blocked`() {
+    for (b in listOf("master", "develop", "trunk", "HEAD")) {
+      val message = PublishImagesCommand.validateBranch(b, allowNonPreview = true)
+      assertTrue(message != null, "expected hard-block on '$b', got null")
+    }
+  }
+
+  @Test
+  fun `release prefix hard-blocked even with escape hatch`() {
+    assertNotNull(PublishImagesCommand.validateBranch("release/v1.0", allowNonPreview = true))
+  }
+
+  @Test
+  fun `path traversal rejected`() {
+    val message = PublishImagesCommand.validateBranch("../etc", allowNonPreview = true)
+    assertTrue(
+      message != null && "path-injection" in message,
+      "expected refname rejection, got $message",
+    )
+  }
+
+  @Test
+  fun `refspec colon rejected`() {
+    assertNotNull(PublishImagesCommand.validateBranch("preview_pr:main", allowNonPreview = false))
+  }
+
+  @Test
+  fun `leading dash rejected to prevent flag injection`() {
+    assertNotNull(PublishImagesCommand.validateBranch("-force", allowNonPreview = true))
+  }
+
+  @Test
+  fun `at-brace rejected`() {
+    // `branch@{1}` is a reflog selector; pushing to it is meaningless and we don't want exotic
+    // git syntax leaking through.
+    assertNotNull(PublishImagesCommand.validateBranch("preview_pr@{1}", allowNonPreview = false))
   }
 }
 
