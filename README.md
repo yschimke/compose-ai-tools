@@ -10,9 +10,12 @@ via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
   Point any agent that can fetch a URL at it; the skill is a complete
   install-and-iterate playbook. Bootstrap a host machine with
   [`scripts/install.sh`](scripts/install.sh).
-- **VS Code extension** — [Compose Preview on the Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
-  (`code --install-extension yuri-schimke.compose-preview`). Source in
-  [`vscode-extension/`](vscode-extension/).
+- **VS Code extension** — published to the
+  [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
+  and [Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)
+  (for VSCodium / Cursor / Windsurf). Install from inside the IDE: open
+  the Extensions view (⇧⌘X / Ctrl+Shift+X), search **Compose Preview**,
+  click *Install*. Source in [`vscode-extension/`](vscode-extension/).
 - **GitHub Actions** — composite actions for CI:
   [`install`](.github/actions/install/) (CLI on `$PATH`),
   [`preview-baselines`](.github/actions/preview-baselines/) (push baselines),
