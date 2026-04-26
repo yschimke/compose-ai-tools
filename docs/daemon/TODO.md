@@ -29,14 +29,16 @@ Build `:samples:android-daemon-bench` (skeleton sample module) with a `benchPrev
 - **Depends on:** none
 - **DoD:** CSV checked into `docs/daemon/baseline-latency.csv` for the reference dev machine. Numbers referenced from `DESIGN.md` § 13 are validated or corrected.
 
-### P0.2 — Add `sourceFile` to `PreviewInfo` [Stream A] [shared seam]
+### P0.2 — Add `sourceFile` to `PreviewInfo` [Stream A] [shared seam] ✅
 
 Extend `PreviewInfo` (in `gradle-plugin/.../PreviewData.kt`) with `sourceFile: String?` populated from `ClassInfo.sourceFile` (ClassGraph exposes the bytecode `SourceFile` attribute). Wire through `DiscoverPreviewsTask`. Update `previews.json` schema.
+
+The field was already shipped before this breakdown was written — see [`PreviewData.kt:202`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/PreviewData.kt#L202) and [`DiscoverPreviewsTask.kt:805`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/DiscoverPreviewsTask.kt#L805) (populated with the package-qualified path). The remaining outstanding work was a functional-test guard asserting non-null, which is now inlined into `DiscoveryFunctionalTest.discoverPreviews finds annotated composables`.
 
 - **Depends on:** none
 - **DoD:** existing `:samples:android:renderAllPreviews` still passes. New field present in generated `previews.json` and surfaced in `PreviewInfo` consumers. Functional test asserts non-null for at least one preview in `samples/android`.
 
-### P0.3 — Hoist classpath/JVM-args helpers [Stream A] [shared seam]
+### P0.3 — Hoist classpath/JVM-args helpers [Stream A] [shared seam] ✅
 
 Extract `buildTestClasspath(variant)` and `buildJvmArgs(variant)` from `AndroidPreviewSupport.kt` into a package-private `AndroidPreviewClasspath.kt`. Existing `registerAndroidTasks` calls the helpers instead of inlining. Behaviour must be byte-identical.
 
