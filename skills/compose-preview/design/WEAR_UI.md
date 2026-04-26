@@ -216,8 +216,15 @@ Implications when designing previews:
 
 - Don't waste effort styling the corners of a round preview — they'll be
   clipped away.
-- Place primary content within the inscribed circle. The corners of the
-  preview canvas are *not* a usable design area.
+- On **fixed (non-scrolling) screens**, place primary content within the
+  inscribed circle. The corners of the preview canvas are *not* a usable
+  design area, so content must stay inside the inner safe rectangle.
+- On **scrolling screens** (`TransformingLazyColumn` / `ScalingLazyColumn`),
+  content is *expected* to be cropped at the top and bottom of the visible
+  area by the round face — the column's `contentPadding` plus user scrolling
+  handles edge access. Don't try to inset every item to fully avoid the
+  round face on these screens; only fixed screens need to keep all content
+  within the inner safe rectangle.
 - Stitched `@ScrollingPreview(modes = [LONG])` round captures use a capsule
   mask (top half-circle + rectangle + bottom half-circle), not per-slice
   circles, so vertical content in the middle remains visible.
