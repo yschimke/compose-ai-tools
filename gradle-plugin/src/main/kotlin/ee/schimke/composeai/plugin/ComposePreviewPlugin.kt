@@ -76,11 +76,27 @@ constructor(
     project.pluginManager.withPlugin("com.android.application") { androidHandler() }
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
 
+    // The new `com.android.kotlin.multiplatform.library` plugin (the recommended
+    // replacement for nesting `com.android.library` inside KMP) doesn't expose
+    // classic AGP `debug`/`release` build variants — only an `androidMain`
+    // variant via `KotlinMultiplatformAndroidComponentsExtension` — so the
+    // `AndroidComponentsExtension`-based path in [AndroidPreviewSupport] can't
+    // be reused as-is. Until that path lands (issue #241), we still treat the
+    // KMP-Android plugin as "the project applies an Android plugin" so the
+    // desktop-tasks branch below doesn't fire on a CMP-Android `:shared`
+    // module and produce confusing errors. The `composePreviewApplied` marker
+    // task (registered above, plugin-id agnostic) still publishes from these
+    // modules so the CLI / VS Code extension can discover them.
+    project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
+      androidConfigured = true
+    }
+
     project.pluginManager.withPlugin("org.jetbrains.compose") {
       if (androidConfigured) return@withPlugin
       if (
         project.plugins.hasPlugin("com.android.application") ||
-          project.plugins.hasPlugin("com.android.library")
+          project.plugins.hasPlugin("com.android.library") ||
+          project.plugins.hasPlugin("com.android.kotlin.multiplatform.library")
       ) {
         return@withPlugin
       }
