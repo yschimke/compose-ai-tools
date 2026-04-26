@@ -296,14 +296,13 @@ abstract class Command(protected val args: List<String>) {
   }
 
   /**
-   * Reads each module's JUnit XML report under `build/test-results/renderPreviews/` and prints any
-   * `<failure>`/`<error>` entries to stderr. Called on Gradle build failure so users see the actual
-   * test exception in the CLI log instead of just Gradle's "There were failing tests. See the
-   * report at file:///…/index.html" pointer (which is unreachable from CI runner logs).
+   * Prints failing tests captured live during the build by [GradleConnection]'s Tooling API
+   * listener. Called on Gradle build failure so users see the actual test exception in the CLI log
+   * instead of just Gradle's "There were failing tests. See the report at file:///…/index.html"
+   * pointer (which is unreachable from CI runner logs).
    */
-  protected fun reportRenderFailures(modules: List<PreviewModule>) {
-    val failures = collectRenderTestFailures(modules)
-    printRenderTestFailures(failures)
+  protected fun reportRenderFailures(gradle: GradleConnection) {
+    printCapturedTestFailures(gradle.lastTestFailures())
   }
 
   protected fun readManifest(module: PreviewModule): PreviewManifest? {
@@ -633,7 +632,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
 
       if (!runGradle(gradle, *tasks)) {
-        reportRenderFailures(modules)
+        reportRenderFailures(gradle)
         System.err.println("Render failed")
         exitProcess(2)
       }
@@ -756,7 +755,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
 
       if (!runGradle(gradle, *tasks)) {
-        reportRenderFailures(modules)
+        reportRenderFailures(gradle)
         exitProcess(2)
       }
 
@@ -822,7 +821,7 @@ class A11yCommand(args: List<String>) : Command(args) {
       val modules = resolveModules(gradle)
       val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
       val buildOk = runGradle(gradle, *tasks)
-      if (!buildOk) reportRenderFailures(modules)
+      if (!buildOk) reportRenderFailures(gradle)
 
       val manifests = readAllManifests(modules)
       val enabledModules = manifests.filter { it.second.accessibilityReport != null }
