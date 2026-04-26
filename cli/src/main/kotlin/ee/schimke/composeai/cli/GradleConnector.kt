@@ -6,10 +6,15 @@ import java.io.OutputStream
 import java.util.Collections
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
+import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.OperationDescriptor
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.StartEvent
+import org.gradle.tooling.events.task.TaskOperationDescriptor
+import org.gradle.tooling.events.test.JvmTestOperationDescriptor
+import org.gradle.tooling.events.test.TestOperationDescriptor
 
 /**
  * Handle for a subproject that applies `ee.schimke.composeai.preview`.
@@ -31,10 +36,22 @@ class GradleConnection(
   private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
   private val connection = connector.connect()
 
+  private val capturedTestFailures =
+    Collections.synchronizedList(mutableListOf<CapturedTestFailure>())
+
+  /**
+   * Test failures captured during the most recent [runTasks] call. Populated live from the Tooling
+   * API's progress events — no need to walk JUnit XML reports after the build. Empty until the
+   * first failing test finishes; cleared at the start of each [runTasks].
+   */
+  fun lastTestFailures(): List<CapturedTestFailure> =
+    synchronized(capturedTestFailures) { capturedTestFailures.toList() }
+
   fun runTasks(vararg tasks: String, timeoutSeconds: Long = 300): Boolean {
     val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
     val startTime = System.currentTimeMillis()
     val runningTasks = Collections.synchronizedSet(linkedSetOf<String>())
+    capturedTestFailures.clear()
 
     // Ctrl+C otherwise kills the CLI without going through the cancellation
     // token — leaving the Gradle daemon still executing and any forked Test
@@ -101,39 +118,48 @@ class GradleConnection(
         launcher.setStandardError(errorCapture)
       }
 
-      val listenerTypes =
-        if (verbose) {
-          setOf(OperationType.TASK, OperationType.TEST)
-        } else {
-          setOf(OperationType.TASK)
-        }
+      // TEST events are always on so we can capture failing-test details
+      // for `printBuildFailure`. Discriminate by descriptor type in the
+      // listener so test events don't pollute the task-progress counters
+      // or the heartbeat's "running:" list (a single render run can fire
+      // hundreds of test events).
+      val listenerTypes = setOf(OperationType.TASK, OperationType.TEST)
 
       launcher.addProgressListener(
         { event: ProgressEvent ->
-          val desc = event.descriptor.name
-          when (event) {
-            is StartEvent -> {
-              taskCount++
-              runningTasks.add(desc)
-            }
-            is FinishEvent -> {
-              runningTasks.remove(desc)
-              tasksFinished++
-              if (taskCount > 0) {
-                TerminalProgress.show((tasksFinished * 100) / taskCount)
+          val descriptor = event.descriptor
+          when {
+            descriptor is TaskOperationDescriptor -> {
+              val desc = descriptor.name
+              when (event) {
+                is StartEvent -> {
+                  taskCount++
+                  runningTasks.add(desc)
+                }
+                is FinishEvent -> {
+                  runningTasks.remove(desc)
+                  tasksFinished++
+                  if (taskCount > 0) {
+                    TerminalProgress.show((tasksFinished * 100) / taskCount)
+                  }
+                  if (
+                    progress &&
+                      !verbose &&
+                      (desc.contains("discoverPreviews") ||
+                        desc.contains("renderPreviews") ||
+                        desc.contains("renderAllPreviews"))
+                  ) {
+                    val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                    System.err.println("  [${elapsed}s] $desc")
+                  }
+                }
+                else -> {}
               }
-              if (
-                progress &&
-                  !verbose &&
-                  (desc.contains("discoverPreviews") ||
-                    desc.contains("renderPreviews") ||
-                    desc.contains("renderAllPreviews"))
-              ) {
-                val elapsed = (System.currentTimeMillis() - startTime) / 1000
-                System.err.println("  [${elapsed}s] $desc")
-              }
             }
-            else -> {}
+            descriptor is TestOperationDescriptor && event is FinishEvent -> {
+              val result = event.result
+              if (result is FailureResult) collectTestFailures(descriptor, result.failures)
+            }
           }
         },
         listenerTypes,
@@ -209,6 +235,39 @@ class GradleConnection(
 
     System.err.println()
     System.err.println("Run with --verbose for full build output.")
+  }
+
+  private fun collectTestFailures(
+    descriptor: TestOperationDescriptor,
+    failures: List<org.gradle.tooling.Failure>,
+  ) {
+    val taskPath = findTaskPath(descriptor) ?: "(unknown task)"
+    val (className, methodName) =
+      when (descriptor) {
+        is JvmTestOperationDescriptor -> descriptor.className to descriptor.methodName
+        else -> null to null
+      }
+    val displayName = descriptor.displayName
+    for (failure in failures) {
+      capturedTestFailures +=
+        CapturedTestFailure(
+          taskPath = taskPath,
+          className = className,
+          methodName = methodName,
+          displayName = displayName,
+          message = failure.message,
+          description = failure.description,
+        )
+    }
+  }
+
+  private fun findTaskPath(descriptor: OperationDescriptor): String? {
+    var d: OperationDescriptor? = descriptor
+    while (d != null) {
+      if (d is TaskOperationDescriptor) return d.taskPath
+      d = d.parent
+    }
+    return null
   }
 
   /**
