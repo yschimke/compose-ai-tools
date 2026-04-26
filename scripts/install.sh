@@ -197,8 +197,34 @@ install_android_sdk() {
 
   local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
+  # Pre-write the license-hash files instead of piping `yes` into
+  # `sdkmanager --licenses`. The pipe approach exits 141 (SIGPIPE) under
+  # `set -o pipefail` whenever sdkmanager closes stdin before `yes` is done
+  # writing. These hashes are the same ones android-actions/setup-android
+  # writes on GitHub Actions; sdkmanager treats a license as accepted as
+  # soon as the hash is on disk.
   log "accepting Android SDK licenses"
-  yes | $sudo "$sdkmanager" --licenses >/dev/null
+  $sudo mkdir -p "$ANDROID_HOME/licenses"
+  $sudo tee "$ANDROID_HOME/licenses/android-sdk-license" >/dev/null <<'LIC'
+8933bad161af4178b1185d1a37fbf41ea5269c55
+d56f5187479451eabf01fb78af6dfcb131a6481e
+24333f8a63b6825ea9c5514f83c2829b004d1fee
+LIC
+  $sudo tee "$ANDROID_HOME/licenses/android-sdk-preview-license" >/dev/null <<'LIC'
+84831b9409646a918e30573bab4c9c91346d8abd
+LIC
+  $sudo tee "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license" >/dev/null <<'LIC'
+859f317696f67ef3d7f30a50a5560e7834b43903
+LIC
+  $sudo tee "$ANDROID_HOME/licenses/google-gdk-license" >/dev/null <<'LIC'
+33b6a2b64607f11b759f320ef9dff4ae5c47d97a
+LIC
+  $sudo tee "$ANDROID_HOME/licenses/intel-android-extra-license" >/dev/null <<'LIC'
+d975f751698a77b662f1254ddbeed3901e976f5a
+LIC
+  $sudo tee "$ANDROID_HOME/licenses/mips-android-sysimage-license" >/dev/null <<'LIC'
+e9acab5b5fbb560a72cfaecce8946896ff6aab9d
+LIC
 
   log "installing Android platforms;android-36, platform-tools, build-tools;36.0.0"
   $sudo "$sdkmanager" \
