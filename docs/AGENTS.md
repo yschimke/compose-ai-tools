@@ -15,6 +15,7 @@ Two audiences, two doc trees. Don't conflate them:
   - [`CLAUDE_CLOUD.md`](../skills/compose-preview/design/CLAUDE_CLOUD.md) — running in Claude Code on the web (network allowlist, Setup script with `install.sh --android-sdk`, JVM-proxy gotcha)
   - [`CI_PREVIEWS.md`](../skills/compose-preview/design/CI_PREVIEWS.md) — maintaining a `preview_main` branch with rendered PNGs and a `baselines.json` for diff-on-PR workflows
   - [`AGENT_PR.md`](../skills/compose-preview/design/AGENT_PR.md) — authoring agent-opened PRs and reviewing PRs opened by other agents
+  - [`CMP_SHARED.md`](../skills/compose-preview/design/CMP_SHARED.md) — applying the plugin to a CMP `:shared` (`com.android.kotlin.multiplatform.library`) module: previews go in `commonMain`, JVM target gives the Desktop renderer something to attach to (issue #248)
   - [`WEAR_UI.md`](../skills/compose-preview/design/WEAR_UI.md) — Material 3 Expressive design language for Wear OS
   - [`WEAR_TILES.md`](../skills/compose-preview/design/WEAR_TILES.md) — Wear Tiles (protolayout-based, not Compose)
   - [`REMOTE_COMPOSE.md`](../skills/compose-preview/design/REMOTE_COMPOSE.md) — Remote Compose (RemoteDocument byte stream for watch faces, tiles, widgets)

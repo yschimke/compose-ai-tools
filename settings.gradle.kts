@@ -33,6 +33,8 @@ include(":samples:wear")
 
 include(":samples:cmp")
 
+include(":samples:cmp-shared")
+
 include(":samples:remotecompose")
 
 include(":renderer-desktop")

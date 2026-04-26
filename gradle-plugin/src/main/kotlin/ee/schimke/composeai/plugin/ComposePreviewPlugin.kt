@@ -76,31 +76,52 @@ constructor(
     project.pluginManager.withPlugin("com.android.application") { androidHandler() }
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
 
-    // The new `com.android.kotlin.multiplatform.library` plugin (the recommended
-    // replacement for nesting `com.android.library` inside KMP) doesn't expose
-    // classic AGP `debug`/`release` build variants — only an `androidMain`
-    // variant via `KotlinMultiplatformAndroidComponentsExtension` — so the
-    // `AndroidComponentsExtension`-based path in [AndroidPreviewSupport] can't
-    // be reused as-is. Until that path lands (issue #241), we still treat the
-    // KMP-Android plugin as "the project applies an Android plugin" so the
-    // desktop-tasks branch below doesn't fire on a CMP-Android `:shared`
-    // module and produce confusing errors. The `composePreviewApplied` marker
-    // task (registered above, plugin-id agnostic) still publishes from these
-    // modules so the CLI / VS Code extension can discover them.
+    // `com.android.kotlin.multiplatform.library` (the AGP 9 replacement for
+    // nesting `com.android.library` inside KMP) ships a single `android`
+    // variant via `KotlinMultiplatformAndroidComponentsExtension` — there are
+    // no classic `debug`/`release` build types and no AGP unit-test pipeline
+    // unless the consumer opts in via `withHostTest { … }`. Wiring the
+    // Robolectric renderer through that path would mean replicating most of
+    // [AndroidPreviewSupport] for a different DSL surface (issue #248).
+    //
+    // The simpler answer for the canonical CMP-on-Android layout (UI under
+    // `:shared/src/androidMain/kotlin/...`) is to render through the Compose
+    // Multiplatform Desktop renderer instead: `androidMain` previews are
+    // pure-Compose composables that `ImageComposeScene` can capture once we
+    // point discovery at the KMP-Android compile output and runtime
+    // classpath. Done in [ComposePreviewTasks.registerDesktopTasks], gated on
+    // `org.jetbrains.compose` actually being applied (which the standard CMP
+    // sample plugin block — `composeMultiplatform` — applies).
+    //
+    // We deliberately do NOT set `androidConfigured = true` here: that flag
+    // exists to suppress the desktop branch on classic Android modules where
+    // the AGP path owns task registration. KMP-Android wants the desktop
+    // branch.
+    var desktopRegistered = false
+    val desktopHandler: () -> Unit = {
+      if (!androidConfigured && !desktopRegistered) {
+        desktopRegistered = true
+        ComposePreviewTasks.registerDesktopTasks(project, extension)
+      }
+    }
+    // Apply order isn't guaranteed: a downstream `:shared` build may declare
+    // `androidKotlinMultiplatformLibrary` before `composeMultiplatform` or
+    // vice-versa. Both withPlugin hooks fire when their plugin lands, and
+    // the idempotent `desktopHandler` only runs once — whichever fires
+    // second is a no-op.
     project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
-      androidConfigured = true
+      desktopHandler()
     }
 
     project.pluginManager.withPlugin("org.jetbrains.compose") {
       if (androidConfigured) return@withPlugin
       if (
         project.plugins.hasPlugin("com.android.application") ||
-          project.plugins.hasPlugin("com.android.library") ||
-          project.plugins.hasPlugin("com.android.kotlin.multiplatform.library")
+          project.plugins.hasPlugin("com.android.library")
       ) {
         return@withPlugin
       }
-      ComposePreviewTasks.registerDesktopTasks(project, extension)
+      desktopHandler()
     }
   }
 }
