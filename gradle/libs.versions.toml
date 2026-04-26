@@ -31,14 +31,9 @@ compose-bom-stable = "2026.04.01"
 # check `./gradlew :renderer-android:compileKotlin` against the new floor.
 # 2025.11.01 pins compose-ui AND compose-runtime to 1.9.5 — latest 1.9.x
 # release line. See https://developer.android.com/develop/ui/compose/bom/bom-mapping
-# Currently held on the 2026.x line (Renovate constrained it in
-# `.github/renovate.json`) — the 1.9.x intent above was already broken by the
-# time `@AnimatedPreview(showCurves=true)` shipped in #183 (the reflective
-# AnimationInspector probes APIs only present in compose-ui >= 1.10), so a
-# revert to 2025.11.01 fails `:samples:android:renderPreviews`. Bumps must be
-# manual until renderer-android either restores 1.9.x compatibility or the
-# floor is officially raised.
-compose-bom-compat = "2026.04.01"
+# Renovate is constrained to the 2025.11.x line in `.github/renovate.json` —
+# raising the supported-Compose-minimum is a manual decision.
+compose-bom-compat = "2025.11.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
 wear-compose = "1.6.1"

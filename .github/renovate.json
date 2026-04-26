@@ -36,15 +36,15 @@
       "enabled": false
     },
     {
-      "description": "compose-bom-compat: freeze on the 2026.x line. The original intent was a 1.9.x floor (2025.11.01) so renderer-android could emit Compose 1.9.x bytecode, but @AnimatedPreview's reflective AnimationInspector grew a hard dependency on >= 1.10 — see comment in libs.versions.toml. Bumps must be manual.",
+      "description": "compose-bom-compat: pin to the 2025.11.x line (compose-ui 1.9.5) — renderer-android's published bytecode targets the oldest supported Compose. Renovate must not drift this floor higher; bumping the supported-Compose-minimum is a manual decision.",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "androidx.compose:compose-bom"
       ],
-      "matchCurrentValue": "/^2026\\./",
-      "allowedVersions": "/^2026\\./"
+      "matchCurrentValue": "/^2025\\.11\\./",
+      "allowedVersions": "/^2025\\.11\\./"
     },
     {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
