@@ -207,12 +207,12 @@ runs:
         # default). Same disjoint-workflow rationale as the
         # `preview_main` / `preview_resources_main` baseline split: each
         # kind of preview gets its own per-PR After-URL history, separate
-        # bisect lineage, separate sticky comment. Silent no-op on
-        # workspaces without any resources.json.
+        # bisect lineage, separate sticky comment. Silent no-op when the
+        # `_resources.json` envelope has no Android modules.
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
+          _resources.json \
           --baselines _baselines/resource-baselines.json \
-          --output-dir _pr_resource_renders \
-          --workspace-root .
+          --output-dir _pr_resource_renders
 
     - name: Push PR renders
       shell: bash
@@ -397,11 +397,11 @@ runs:
           RESOURCE_HEAD_REF="${RESOURCE_HEAD_BRANCH:-$HEAD_REF}"
         fi
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
+          _resources.json \
           --baselines _baselines/resource-baselines.json \
           --repo "$REPO" \
           --base-ref "$RESOURCE_BASE_REF" \
           --head-ref "$RESOURCE_HEAD_REF" \
-          --workspace-root . \
           > _comment_body_resources.md
 
     - name: Post or update PR comment
