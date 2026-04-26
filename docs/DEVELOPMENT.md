@@ -251,3 +251,36 @@ Adjust the path for your OS (`/Library/Java/JavaVirtualMachines/…/Contents/Hom
 on macOS, `C:\\Program Files\\Java\\jdk-17` on Windows). Reload the
 window after changing. Verify with `ls $JDK_PATH/bin/jlink` — it must
 exist.
+
+## Testing a downstream project against a `-SNAPSHOT`
+
+Every push to `main` publishes a `-SNAPSHOT` build to the Central
+snapshots repository, so a downstream project can try an unreleased
+change without going through `includeBuild` or `mavenLocal`. Add the
+snapshots repo to `pluginManagement` and bump the plugin version to the
+next patch `-SNAPSHOT`:
+
+```kotlin
+// settings.gradle.kts
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven("https://central.sonatype.com/repository/maven-snapshots/") {
+            mavenContent { snapshotsOnly() }
+        }
+    }
+}
+```
+
+```kotlin
+// <module>/build.gradle.kts
+plugins {
+    id("ee.schimke.composeai.preview") version "0.3.5-SNAPSHOT"
+}
+```
+
+The snapshot version is the next patch ahead of the latest release
+(e.g. last tag `v0.3.4` → `0.3.5-SNAPSHOT`). Snapshots are unsigned.
+See [RELEASING.md](RELEASING.md) for more detail.
