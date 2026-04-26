@@ -16,17 +16,23 @@
 # with the same version is a no-op.
 #
 # Usage:
-#   scripts/install.sh               # install latest release
-#   scripts/install.sh 0.3.2         # install a specific version
-#   VERSION=0.3.2 scripts/install.sh # same, via env
+#   scripts/install.sh                 # install latest release
+#   scripts/install.sh 0.3.2           # install a specific version
+#   VERSION=0.3.2 scripts/install.sh   # same, via env
+#   scripts/install.sh --android-sdk   # also install the Android SDK
+#                                      # (cmdline-tools + platforms;android-36 +
+#                                      # platform-tools + build-tools;36.0.0)
 #
 # Override locations:
 #   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh
 #   PREFIX=$HOME/.local scripts/install.sh    # for the ~/.local/bin symlink
 #   REPO=yschimke/compose-ai-tools scripts/install.sh
+#   ANDROID_HOME=/opt/android-sdk scripts/install.sh --android-sdk
+#   INSTALL_ANDROID_SDK=1 scripts/install.sh  # same as --android-sdk
 #
 # Requires: bash, curl, tar, sha256sum (or shasum), and Java 17+ on PATH at
-# run time (not install time).
+# run time (not install time). The --android-sdk path additionally needs
+# unzip and write access to $ANDROID_HOME (sudo when not root).
 #
 # Claude Code cloud-sandbox mode (auto-detected via $CLAUDE_ENV_FILE or
 # $CLAUDE_CODE_SESSION_ID):
@@ -38,13 +44,19 @@
 #   - Skips api.github.com lookups (they 403 on shared sandbox IPs due to
 #     unauthenticated rate limiting) and resolves versions via the public
 #     github.com HTML redirect instead. Sha256 verification is best-effort.
-#   - Appends JAVA_HOME and PATH to $CLAUDE_ENV_FILE so subsequent tool
-#     invocations see them.
+#   - Appends JAVA_HOME, ANDROID_HOME, and PATH to $CLAUDE_ENV_FILE so
+#     subsequent tool invocations see them.
 #   - If $https_proxy / $http_proxy is set, translates it into
 #     JAVA_TOOL_OPTIONS (-Dhttps.proxyHost / -Dhttp.proxyHost) and writes
 #     that to $CLAUDE_ENV_FILE too. The JVM's HttpURLConnection ignores the
 #     shell proxy env vars, so the Gradle wrapper download otherwise fails
 #     with UnknownHostException (anthropics/claude-code#16222).
+#   - --android-sdk plays well with the cloud's filesystem snapshot cache: the
+#     SDK is written to disk once during the cloud environment's Setup script
+#     and reused for every later session. Note that sdkmanager downloads from
+#     dl.google.com, which is NOT on the default Trusted network allowlist;
+#     the environment must use Custom access with dl.google.com added (or
+#     Full).
 # Force on/off explicitly with CLAUDE_CLOUD=1 / CLAUDE_CLOUD=0.
 
 set -euo pipefail
@@ -52,9 +64,24 @@ set -euo pipefail
 REPO="${REPO:-yschimke/compose-ai-tools}"
 SKILL_DIR="${SKILL_DIR:-$HOME/.claude/skills/compose-preview}"
 PREFIX="${PREFIX:-$HOME/.local}"
+INSTALL_ANDROID_SDK="${INSTALL_ANDROID_SDK:-0}"
+
+# Argument parsing — flags first, then positional VERSION. Flags can appear in
+# any order. Unknown flags are an error so typos don't get silently swallowed.
+positional=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --android-sdk) INSTALL_ANDROID_SDK=1; shift ;;
+    --) shift; positional+=("$@"); break ;;
+    -*) echo "error: unknown flag: $1" >&2; exit 1 ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+set -- "${positional[@]+"${positional[@]}"}"
 VERSION="${1:-${VERSION:-}}"
 
 BIN_DIR="$PREFIX/bin"
+ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 
 # Claude Code cloud sandbox auto-detection ---------------------------------
 if [[ -z "${CLAUDE_CLOUD:-}" ]]; then
@@ -120,6 +147,74 @@ if [[ "$CLAUDE_CLOUD" == 1 ]]; then
   fi
 fi
 
+# ---- Optional: install Android SDK ---------------------------------------
+#
+# Mirrors the manual procedure in docs/AGENTS.md ("Bringing up a fresh
+# sandbox"). Idempotent — checks for $ANDROID_HOME/platforms/android-36 and
+# bails out early if present, so re-runs (and the warm-cache path on Claude
+# Cloud) are cheap.
+#
+# Network note: sdkmanager pulls from dl.google.com, which is not on the
+# Claude Cloud Trusted allowlist by default (developer.android.com is, but
+# that's the docs domain). The reachability probe below fails fast with a
+# clear remediation hint when the host is blocked.
+
+install_android_sdk() {
+  if [[ -d "$ANDROID_HOME/platforms/android-36" ]]; then
+    log "android sdk already present at $ANDROID_HOME (platforms/android-36 found); skipping"
+    return 0
+  fi
+
+  require curl
+  require unzip
+
+  local sudo=""
+  if [[ $EUID -ne 0 ]]; then
+    command -v sudo >/dev/null 2>&1 || die "need root or sudo to write to $ANDROID_HOME"
+    sudo="sudo"
+  fi
+
+  local cmdline_zip_url="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+
+  if ! curl -fsI -o /dev/null --max-time 10 "$cmdline_zip_url" 2>/dev/null; then
+    die "cannot reach dl.google.com (Android SDK CDN). On Claude Code on the web, set the environment's network access to Custom and add 'dl.google.com' (the default Trusted list only includes developer.android.com, which doesn't serve the SDK)."
+  fi
+
+  log "installing Android command-line tools to $ANDROID_HOME"
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+  local zip="$tmp/cmdline-tools.zip"
+  local extract="$tmp/cmdline-tools-extract"
+  curl -fsSL -o "$zip" "$cmdline_zip_url" \
+    || die "failed to download Android command-line tools"
+  mkdir -p "$extract"
+  unzip -q "$zip" -d "$extract"
+  $sudo mkdir -p "$ANDROID_HOME/cmdline-tools"
+  $sudo rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+  $sudo mv "$extract/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+
+  local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+  log "accepting Android SDK licenses"
+  yes | $sudo "$sdkmanager" --licenses >/dev/null
+
+  log "installing Android platforms;android-36, platform-tools, build-tools;36.0.0"
+  $sudo "$sdkmanager" \
+    "platforms;android-36" \
+    "platform-tools" \
+    "build-tools;36.0.0" >/dev/null
+
+  log "android sdk installed at $ANDROID_HOME"
+}
+
+if [[ "$INSTALL_ANDROID_SDK" == 1 ]]; then
+  install_android_sdk
+  export ANDROID_HOME
+  export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+fi
+
 # ---- Resolve version ------------------------------------------------------
 
 if [[ -z "$VERSION" ]]; then
@@ -168,11 +263,15 @@ proxy_java_tool_options() {
 
 maybe_write_env_file() {
   if [[ "$CLAUDE_CLOUD" == 1 && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
-    local jto
+    local jto sdk_path=""
     jto="$(proxy_java_tool_options)"
+    if [[ "$INSTALL_ANDROID_SDK" == 1 ]]; then
+      sdk_path="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:"
+    fi
     {
       [[ -n "${JAVA_HOME:-}" ]] && echo "JAVA_HOME=$JAVA_HOME"
-      echo "PATH=$BIN_DIR:${JAVA_HOME:+$JAVA_HOME/bin:}\$PATH"
+      [[ "$INSTALL_ANDROID_SDK" == 1 ]] && echo "ANDROID_HOME=$ANDROID_HOME"
+      echo "PATH=$BIN_DIR:${JAVA_HOME:+$JAVA_HOME/bin:}${sdk_path}\$PATH"
       [[ -n "$jto" ]] && echo "JAVA_TOOL_OPTIONS=$jto"
     } >> "$CLAUDE_ENV_FILE"
     log "wrote env vars to \$CLAUDE_ENV_FILE"
