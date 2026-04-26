@@ -238,26 +238,26 @@ Trusted defaults" on, and add:
 - `fonts.googleapis.com` + `fonts.gstatic.com` — only if you use
   `androidx.compose.ui:ui-text-google-fonts` at render time
 
-The same `curl … install.sh | bash` bootstrap applies. For actual Android
-rendering you also need an Android SDK in the env setup script:
+The same `curl … install.sh | bash` bootstrap applies, with `--android-sdk`
+appended to also install the Android SDK (cmdline-tools +
+`platforms;android-36` + `platform-tools` + `build-tools;36.0.0`) into
+`/opt/android-sdk` and append `ANDROID_HOME` to `$CLAUDE_ENV_FILE`:
 
 ```bash
-# After the install.sh curl, still in the setup script:
-sudo apt-get install -y unzip
-export ANDROID_HOME="$HOME/android-sdk"
-mkdir -p "$ANDROID_HOME/cmdline-tools"
-curl -fsSL -o /tmp/cmdline-tools.zip \
-  https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-  "platforms;android-36" "build-tools;36.0.0" "platform-tools" >/dev/null
-echo "ANDROID_HOME=$ANDROID_HOME"        >> "$CLAUDE_ENV_FILE"
-echo "ANDROID_SDK_ROOT=$ANDROID_HOME"    >> "$CLAUDE_ENV_FILE"
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
+  | bash -s -- --android-sdk
 
+# Optional: pre-warm the Android render path so AGP / Robolectric jars get
+# baked into the env snapshot. `|| true` so a partial render still populates
+# the cache.
 ./gradlew --no-daemon :sample-android:renderAllPreviews || true
 ```
+
+Override the install location with `ANDROID_HOME=…` before the curl if you
+want it somewhere other than `/opt/android-sdk` (e.g. `$HOME/android-sdk`
+to avoid the sudo path). Idempotent — re-running with the SDK already
+present at `$ANDROID_HOME/platforms/android-36` is a fast no-op, which
+matches how the Cloud snapshot caches it across sessions.
 
 ## Two known gotchas
 
