@@ -7,6 +7,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -142,6 +143,49 @@ fun PhoneGreetingPreview() {
         Surface {
             Column(modifier = Modifier.padding(16.dp)) {
                 Greeting("Phone")
+            }
+        }
+    }
+}
+
+/**
+ * Issue #256: rendering a known phone (Pixel 8) with `showSystemUi = true`
+ * should produce a PNG that *looks* like a phone screenshot — full device
+ * canvas plus the system bars (status bar at the top, gesture-pill nav at the
+ * bottom). Robolectric has no SystemUI process to draw real bars, so the
+ * renderer paints a synthetic overlay onto the captured PNG to bridge the gap
+ * (see [ee.schimke.composeai.renderer.SystemBarsOverlay] in renderer-android).
+ *
+ * Two variants — light and dark — exercise the `uiMode`-aware tint branches
+ * of the overlay so reviewers can confirm the bars adapt to the theme rather
+ * than always rendering as light chrome on a dark surface.
+ */
+@Preview(name = "Pixel 8", device = "id:pixel_8", showSystemUi = true)
+@Preview(
+    name = "Pixel 8 - Night",
+    device = "id:pixel_8",
+    showSystemUi = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+fun Pixel8SystemUiPreview() {
+    val scheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    MaterialTheme(colorScheme = scheme) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = "Pixel 8",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 28.sp,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "showSystemUi = true",
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
             }
         }
     }

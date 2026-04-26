@@ -95,7 +95,16 @@ dependencies {
   compileOnly(libs.compose.foundation)
   compileOnly(libs.compose.material3)
   compileOnly(libs.compose.runtime)
-  compileOnly(libs.compose.ui.tooling.preview)
+  // `compose.ui.tooling.preview` from `compose-bom-compat` (1.9.x) doesn't
+  // ship `PreviewWrapper` / `PreviewWrapperProvider` — those landed in
+  // ui-tooling-preview 1.11.0. We pin the 1.11+ variant here so
+  // [SystemBarsPreviewWrapper] can extend `PreviewWrapperProvider` at compile
+  // time. Consumers on Compose 1.11+ get the symbol from their own runtime;
+  // consumers on 1.10 and below can still use the rest of the renderer
+  // (loading [SystemBarsPreviewWrapper] is the only path that requires the
+  // 1.11 symbol, and that only fires when a consumer explicitly references
+  // it via `@PreviewWrapper(SystemBarsPreviewWrapper::class)`).
+  compileOnly(libs.compose.ui.tooling.preview.wrapper)
   compileOnly(libs.activity.compose)
   compileOnly("androidx.compose.ui:ui-test-junit4")
   compileOnly("androidx.compose.ui:ui-test-manifest")
