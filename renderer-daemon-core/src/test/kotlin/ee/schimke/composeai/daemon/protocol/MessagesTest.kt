@@ -6,21 +6,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Round-trips each protocol message through kotlinx.serialization and asserts
- * structural equality with the on-disk fixture under
+ * Round-trips each protocol message through kotlinx.serialization and asserts structural equality
+ * with the on-disk fixture under
  * [docs/daemon/protocol-fixtures/](../../../../../../../docs/daemon/protocol-fixtures/).
  *
- * The same fixtures are consumed by Stream C's TypeScript test suite — they
- * are the cross-language source of truth for the wire format. A round-trip
- * here protects against three regressions:
+ * The same fixtures are consumed by Stream C's TypeScript test suite — they are the cross-language
+ * source of truth for the wire format. A round-trip here protects against three regressions:
  *
- *   1. Field rename without updating the fixture.
- *   2. Missing `@SerialName` on an enum value the JSON spells differently.
- *   3. Required field becoming optional or vice-versa silently.
+ * 1. Field rename without updating the fixture.
+ * 2. Missing `@SerialName` on an enum value the JSON spells differently.
+ * 3. Required field becoming optional or vice-versa silently.
  *
- * Comparison is done at the [JsonElement] level (not raw text) so whitespace,
- * key ordering, and trailing-newline differences in the fixtures don't make
- * the test brittle.
+ * Comparison is done at the [JsonElement] level (not raw text) so whitespace, key ordering, and
+ * trailing-newline differences in the fixtures don't make the test brittle.
  */
 class MessagesTest {
 
@@ -31,8 +29,8 @@ class MessagesTest {
 
   @Test fun roundTripInitializeParams() = roundTrip<InitializeParams>("client-initialize.json")
 
-  @Test fun roundTripInitializeResult() =
-    roundTrip<InitializeResult>("daemon-initializeResult.json")
+  @Test
+  fun roundTripInitializeResult() = roundTrip<InitializeResult>("daemon-initializeResult.json")
 
   @Test fun roundTripSetVisibleParams() = roundTrip<SetVisibleParams>("client-setVisible.json")
 
@@ -44,26 +42,30 @@ class MessagesTest {
 
   @Test fun roundTripRenderNowResult() = roundTrip<RenderNowResult>("daemon-renderNowResult.json")
 
-  @Test fun roundTripDiscoveryUpdatedParams() =
+  @Test
+  fun roundTripDiscoveryUpdatedParams() =
     roundTrip<DiscoveryUpdatedParams>("daemon-discoveryUpdated.json")
 
-  @Test fun roundTripRenderStartedParams() =
-    roundTrip<RenderStartedParams>("daemon-renderStarted.json")
+  @Test
+  fun roundTripRenderStartedParams() = roundTrip<RenderStartedParams>("daemon-renderStarted.json")
 
-  @Test fun roundTripRenderFinishedParams() =
+  @Test
+  fun roundTripRenderFinishedParams() =
     roundTrip<RenderFinishedParams>("daemon-renderFinished.json")
 
-  @Test fun roundTripRenderFailedParams() =
-    roundTrip<RenderFailedParams>("daemon-renderFailed.json")
+  @Test
+  fun roundTripRenderFailedParams() = roundTrip<RenderFailedParams>("daemon-renderFailed.json")
 
-  @Test fun roundTripClasspathDirtyParams() =
+  @Test
+  fun roundTripClasspathDirtyParams() =
     roundTrip<ClasspathDirtyParams>("daemon-classpathDirty.json")
 
-  @Test fun roundTripSandboxRecycleParams() =
+  @Test
+  fun roundTripSandboxRecycleParams() =
     roundTrip<SandboxRecycleParams>("daemon-sandboxRecycle.json")
 
-  @Test fun roundTripDaemonWarmingParams() =
-    roundTrip<DaemonWarmingParams>("daemon-daemonWarming.json")
+  @Test
+  fun roundTripDaemonWarmingParams() = roundTrip<DaemonWarmingParams>("daemon-daemonWarming.json")
 
   @Test
   fun roundTripDaemonReadyParams() {
@@ -80,8 +82,8 @@ class MessagesTest {
 
   @Test fun roundTripJsonRpcResponse() = roundTrip<JsonRpcResponse>("envelope-response.json")
 
-  @Test fun roundTripJsonRpcNotification() =
-    roundTrip<JsonRpcNotification>("envelope-notification.json")
+  @Test
+  fun roundTripJsonRpcNotification() = roundTrip<JsonRpcNotification>("envelope-notification.json")
 
   @Test
   fun roundTripJsonRpcErrorResponse() {
@@ -93,34 +95,35 @@ class MessagesTest {
 
   /**
    * Smoke-test that fixture coverage is at least as broad as the inventory in
-   * [docs/daemon/protocol-fixtures/README.md]. This catches a "we added a new
-   * message but forgot the fixture" regression in PR review.
+   * [docs/daemon/protocol-fixtures/README.md]. This catches a "we added a new message but forgot
+   * the fixture" regression in PR review.
    */
   @Test
   fun fixtureInventoryMatchesExpected() {
     val present = fixturesDir().list()?.filter { it.endsWith(".json") }?.toSet().orEmpty()
-    val expected = setOf(
-      "client-initialize.json",
-      "daemon-initializeResult.json",
-      "client-setVisible.json",
-      "client-setFocus.json",
-      "client-fileChanged.json",
-      "client-renderNow.json",
-      "daemon-renderNowResult.json",
-      "daemon-discoveryUpdated.json",
-      "daemon-renderStarted.json",
-      "daemon-renderFinished.json",
-      "daemon-renderFailed.json",
-      "daemon-classpathDirty.json",
-      "daemon-sandboxRecycle.json",
-      "daemon-daemonWarming.json",
-      "daemon-daemonReady.json",
-      "daemon-log.json",
-      "envelope-request.json",
-      "envelope-response.json",
-      "envelope-notification.json",
-      "envelope-errorResponse.json",
-    )
+    val expected =
+      setOf(
+        "client-initialize.json",
+        "daemon-initializeResult.json",
+        "client-setVisible.json",
+        "client-setFocus.json",
+        "client-fileChanged.json",
+        "client-renderNow.json",
+        "daemon-renderNowResult.json",
+        "daemon-discoveryUpdated.json",
+        "daemon-renderStarted.json",
+        "daemon-renderFinished.json",
+        "daemon-renderFailed.json",
+        "daemon-classpathDirty.json",
+        "daemon-sandboxRecycle.json",
+        "daemon-daemonWarming.json",
+        "daemon-daemonReady.json",
+        "daemon-log.json",
+        "envelope-request.json",
+        "envelope-response.json",
+        "envelope-notification.json",
+        "envelope-errorResponse.json",
+      )
     val missing = expected - present
     assertEquals("missing protocol fixtures: $missing", emptySet<String>(), missing)
   }

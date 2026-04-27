@@ -16,11 +16,11 @@ import org.junit.Test
  * § 13). If this test ever flips and starts seeing distinct classloader
  * hash codes per render, escalate per TODO.md "Risks to track" → B1.3.
  */
-class DaemonHostTest {
+class RobolectricHostTest {
 
   @Test
   fun tenRendersShareOneSandboxClassloader() {
-    val host = DaemonHost()
+    val host = RobolectricHost()
     host.start()
     try {
       val results = (1..10).map { i -> host.submit(RenderRequest.Render(payload = "render-$i")) }
@@ -44,7 +44,7 @@ class DaemonHostTest {
       // Also assert the sandbox classloader is *not* the host classloader —
       // proves we are running inside Robolectric's instrumenting loader,
       // not just on the test JVM's app classloader.
-      val hostClHash = System.identityHashCode(DaemonHost::class.java.classLoader)
+      val hostClHash = System.identityHashCode(RobolectricHost::class.java.classLoader)
       val sandboxClHash = classLoaderHashes.single()
       assertNotEquals(
         "sandbox classloader equals host classloader — Robolectric did not bootstrap a sandbox",

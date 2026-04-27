@@ -8,8 +8,8 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * Unit tests for [ContentLengthFramer] — covers the framing rules of
- * PROTOCOL.md § 1 (LSP-style `Content-Length` headers).
+ * Unit tests for [ContentLengthFramer] — covers the framing rules of PROTOCOL.md § 1 (LSP-style
+ * `Content-Length` headers).
  *
  * Specifically asserts:
  * 1. A single well-formed message round-trips.
@@ -17,9 +17,9 @@ import org.junit.Test
  * 3. A `Content-Type` header is accepted and ignored.
  * 4. Missing `Content-Length` is a [FramingException], not a silent skip.
  * 5. Non-integer `Content-Length` is a [FramingException].
- * 6. Bare `\n` (no `\r`) line endings are accepted — the spec mandates
- *    `\r\n`, but the canonical JSON-RPC LSP framer is lenient and we follow
- *    suit so a hand-typed test fixture doesn't need carriage returns.
+ * 6. Bare `\n` (no `\r`) line endings are accepted — the spec mandates `\r\n`, but the canonical
+ *    JSON-RPC LSP framer is lenient and we follow suit so a hand-typed test fixture doesn't need
+ *    carriage returns.
  * 7. Clean EOF (no bytes at all) returns null.
  * 8. Mid-payload EOF is a [FramingException], not a silent truncation.
  */
@@ -38,8 +38,7 @@ class JsonRpcFramingTest {
     val a = """{"a":1}"""
     val b = """{"b":2}"""
     val bytes =
-      ("Content-Length: ${a.length}\r\n\r\n$a" +
-          "Content-Length: ${b.length}\r\n\r\n$b")
+      ("Content-Length: ${a.length}\r\n\r\n$a" + "Content-Length: ${b.length}\r\n\r\n$b")
         .toByteArray(Charsets.UTF_8)
     val framer = ContentLengthFramer(ByteArrayInputStream(bytes))
     assertEquals(a, framer.readFrame()!!.toString(Charsets.UTF_8))

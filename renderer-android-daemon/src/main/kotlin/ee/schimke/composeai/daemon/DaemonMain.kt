@@ -13,10 +13,12 @@ package ee.schimke.composeai.daemon
  * Lifecycle:
  *
  * 1. Print a hello banner to stderr (free-form log per PROTOCOL.md § 1).
- * 2. Build a [DaemonHost] (B1.3 — holds the Robolectric sandbox open across
- *    renders).
+ * 2. Build a [RobolectricHost] (B1.3 — holds the Robolectric sandbox open
+ *    across renders). Implements the renderer-agnostic [RenderHost] from
+ *    `:renderer-daemon-core`.
  * 3. Build a [JsonRpcServer] (B1.5 — JSON-RPC 2.0 over stdio with LSP-style
- *    Content-Length framing).
+ *    Content-Length framing). Lives in `:renderer-daemon-core`; binds to any
+ *    [RenderHost] implementation.
  * 4. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit`
  *    or stdin closes; it calls `System.exit` itself.
  *
@@ -25,7 +27,7 @@ package ee.schimke.composeai.daemon
  */
 fun main(args: Array<String>) {
   System.err.println("compose-ai-tools daemon: hello (args=${args.toList()})")
-  val host = DaemonHost()
+  val host: RenderHost = RobolectricHost()
   val server = JsonRpcServer(input = System.`in`, output = System.out, host = host)
   server.run()
 }

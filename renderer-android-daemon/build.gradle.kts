@@ -14,7 +14,6 @@
 plugins {
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.kotlin.serialization)
 }
 
 // The daemon is launched as a local JVM process by the Gradle plugin, never
@@ -48,14 +47,17 @@ android {
 }
 
 dependencies {
+  // Renderer-agnostic protocol types, JsonRpcServer, RenderHost interface,
+  // and RenderRequest/RenderResult data classes — see DESIGN.md § 4. The
+  // core module re-exposes kotlinx-serialization-json as `api`, so we don't
+  // re-declare it here.
+  implementation(project(":renderer-daemon-core"))
+
   // Inherit the renderer's Compose/Roborazzi helpers (AccessibilityChecker,
   // GoogleFontInterceptor, AnimationInspector, ScrollDriver,
   // PixelSystemFontAliases, RenderManifest, PreviewRenderStrategy, etc.) —
   // see DESIGN.md § 7.
   implementation(project(":renderer-android"))
-
-  // Protocol message types are @Serializable.
-  implementation(libs.kotlinx.serialization.json)
 
   // The daemon process holds a Robolectric sandbox open via a dummy @Test
   // (DESIGN.md § 9), so JUnit + Robolectric must be on the *main* classpath,
@@ -76,8 +78,9 @@ dependencies {
   compileOnly("androidx.compose.ui:ui-test-junit4")
   compileOnly("androidx.compose.ui:ui-test-manifest")
 
-  // Test classpath: real runtime versions for the DaemonHost sandbox-reuse
-  // assertion and the protocol round-trip tests.
+  // Test classpath: real runtime versions for the RobolectricHost
+  // sandbox-reuse assertion. Protocol round-trip and JsonRpcServer
+  // framing/integration tests now live in :renderer-daemon-core.
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.ui)
   testImplementation(libs.compose.foundation)
@@ -89,5 +92,4 @@ dependencies {
   testImplementation("androidx.compose.ui:ui-test-manifest")
   testImplementation(libs.robolectric)
   testImplementation(libs.junit)
-  testImplementation(libs.kotlinx.serialization.json)
 }

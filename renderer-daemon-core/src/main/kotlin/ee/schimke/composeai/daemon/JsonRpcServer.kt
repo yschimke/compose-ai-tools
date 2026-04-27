@@ -40,43 +40,37 @@ import kotlinx.serialization.json.long
  * Wire format and dispatch semantics: docs/daemon/PROTOCOL.md (v1, locked).
  *
  * **Threading model.**
- * - One **read thread** (the thread that calls [run]) drains [input], parses
- *   envelopes, and dispatches them. Inline handlers (initialize, setVisible,
- *   setFocus, fileChanged, shutdown, exit) execute on this thread.
- * - One **write thread** (named `compose-ai-daemon-writer`) consumes a single
- *   outbound queue and writes framed bytes to [output]. This serialises every
- *   reply and notification so framing on the wire is always well-formed even
- *   when notifications race with responses.
- * - The **DaemonHost render thread** (B1.3) is the only place renders execute.
- *   `renderNow` enqueues `RenderRequest.Render` items onto [host]; per-render
- *   notifications (`renderStarted`, `renderFinished`) are emitted from a
- *   dedicated **render-watcher thread** that polls completed results and
- *   forwards them to the writer queue.
+ * - One **read thread** (the thread that calls [run]) drains [input], parses envelopes, and
+ *   dispatches them. Inline handlers (initialize, setVisible, setFocus, fileChanged, shutdown,
+ *   exit) execute on this thread.
+ * - One **write thread** (named `compose-ai-daemon-writer`) consumes a single outbound queue and
+ *   writes framed bytes to [output]. This serialises every reply and notification so framing on the
+ *   wire is always well-formed even when notifications race with responses.
+ * - The **[RenderHost] render thread** (B1.3) is the only place renders execute. `renderNow`
+ *   enqueues `RenderRequest.Render` items onto [host]; per-render notifications (`renderStarted`,
+ *   `renderFinished`) are emitted from a dedicated **render-watcher thread** that polls completed
+ *   results and forwards them to the writer queue.
  *
- * **No mid-render cancellation invariant** (DESIGN.md § 9, PROTOCOL.md § 3).
- * Shutdown stops accepting new `renderNow` work, then waits for every
- * already-accepted render to complete before responding. We never call
- * `Thread.interrupt()` on the render thread; the host's poison-pill `Shutdown`
- * is enqueued only after the in-flight queue has drained.
+ * **No mid-render cancellation invariant** (DESIGN.md § 9, PROTOCOL.md § 3). Shutdown stops
+ * accepting new `renderNow` work, then waits for every already-accepted render to complete before
+ * responding. We never call `Thread.interrupt()` on the render thread; the host's poison-pill
+ * `Shutdown` is enqueued only after the in-flight queue has drained.
  *
- * **Stub render bodies.** B1.4 (RenderEngine) replaces the body of
- * [renderFinishedFromResult] with the real Compose/Robolectric render. For
- * B1.5 the host returns a synthetic [RenderResult] and we materialise it as
- * a placeholder PNG path of `${historyDir}/daemon-stub-${id}.png`. The
- * placeholder file is **not** written to disk — `pngPath` is a string
- * field, not a postcondition that the file must exist. B1.4 will both
- * produce real bytes and make the path point at them.
+ * **Stub render bodies.** B1.4 (RenderEngine) replaces the body of [renderFinishedFromResult] with
+ * the real Compose/Robolectric render. For B1.5 the host returns a synthetic [RenderResult] and we
+ * materialise it as a placeholder PNG path of `${historyDir}/daemon-stub-${id}.png`. The
+ * placeholder file is **not** written to disk — `pngPath` is a string field, not a postcondition
+ * that the file must exist. B1.4 will both produce real bytes and make the path point at them.
  *
- * **B1.4 hook point.** When B1.4 introduces `RenderEngine`, the wiring change
- * is: replace the body of [renderFinishedFromResult] with a call into
- * `RenderEngine.renderTookMs(result)` (or similar) that materialises the PNG
- * and returns timing/metrics. The render queue plumbing (submit → poll →
+ * **B1.4 hook point.** When B1.4 introduces `RenderEngine`, the wiring change is: replace the body
+ * of [renderFinishedFromResult] with a call into `RenderEngine.renderTookMs(result)` (or similar)
+ * that materialises the PNG and returns timing/metrics. The render queue plumbing (submit → poll →
  * notify) does not need to change.
  */
 class JsonRpcServer(
   private val input: InputStream,
   private val output: OutputStream,
-  private val host: DaemonHost,
+  private val host: RenderHost,
   private val daemonVersion: String = DEFAULT_DAEMON_VERSION,
   private val historyDir: String = DEFAULT_HISTORY_DIR,
   private val idleTimeoutMs: Long =
@@ -110,17 +104,15 @@ class JsonRpcServer(
     Thread({ writerLoop() }, "compose-ai-daemon-writer").apply { isDaemon = false }
 
   private val renderWatcherThread =
-    Thread({ renderWatcherLoop() }, "compose-ai-daemon-render-watcher")
-      .apply { isDaemon = false }
+    Thread({ renderWatcherLoop() }, "compose-ai-daemon-render-watcher").apply { isDaemon = false }
 
   /**
-   * Reads from [input] until EOF, dispatches messages inline (or onto the
-   * host), and writes replies via the writer thread. Blocks until either:
+   * Reads from [input] until EOF, dispatches messages inline (or onto the host), and writes replies
+   * via the writer thread. Blocks until either:
    *
-   *   1. `exit` notification arrives → returns and calls [onExit] (0 if
-   *      `shutdown` preceded it, else 1).
-   *   2. stdin EOF without `shutdown`+`exit` → waits up to [idleTimeoutMs],
-   *      then exits with code 1.
+   * 1. `exit` notification arrives → returns and calls [onExit] (0 if `shutdown` preceded it, else
+   *    1).
+   * 2. stdin EOF without `shutdown`+`exit` → waits up to [idleTimeoutMs], then exits with code 1.
    */
   fun run() {
     host.start()
@@ -329,7 +321,7 @@ class JsonRpcServer(
         rejected.add(RejectedRender(id = previewId, reason = "blank preview id"))
         continue
       }
-      val hostId = DaemonHost.nextRequestId()
+      val hostId = RenderHost.nextRequestId()
       hostIdToPreviewId[hostId] = previewId
       acceptedAtMs[hostId] = now
       inFlightRenders.add(hostId)
@@ -416,24 +408,22 @@ class JsonRpcServer(
     acceptedAtMs.remove(failure.hostId)
     inFlightRenders.remove(failure.hostId)
     // Minimal renderFailed; B1.4 widens this to the real RenderError shape.
-    val payload =
-      buildJsonObject {
-        put("id", JsonPrimitive(previewId))
-        put(
-          "error",
-          buildJsonObject {
-            put("kind", JsonPrimitive("internal"))
-            put("message", JsonPrimitive(failure.cause.message ?: failure.cause.javaClass.name))
-          },
-        )
-      }
+    val payload = buildJsonObject {
+      put("id", JsonPrimitive(previewId))
+      put(
+        "error",
+        buildJsonObject {
+          put("kind", JsonPrimitive("internal"))
+          put("message", JsonPrimitive(failure.cause.message ?: failure.cause.javaClass.name))
+        },
+      )
+    }
     sendNotification("renderFailed", payload)
   }
 
   /**
-   * B1.4 hook: replace this body with the real RenderEngine call. For now we
-   * emit a deterministic placeholder PNG path; the file is **not** written to
-   * disk in B1.5.
+   * B1.4 hook: replace this body with the real RenderEngine call. For now we emit a deterministic
+   * placeholder PNG path; the file is **not** written to disk in B1.5.
    */
   private fun renderFinishedFromResult(
     previewId: String,
@@ -623,7 +613,10 @@ class JsonRpcServer(
     const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
     const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L
 
-    /** Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish — but the shutdown response will be sent. */
+    /**
+     * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —
+     * but the shutdown response will be sent.
+     */
     private const val DRAIN_TIMEOUT_MS: Long = 60_000L
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
@@ -650,23 +643,24 @@ internal class FramingException(message: String) : IOException(message)
 internal class ContentLengthFramer(private val input: InputStream) {
 
   /**
-   * Reads one framed message, returning its UTF-8 payload bytes. Returns null
-   * on clean EOF (i.e. end-of-stream observed at a frame boundary).
+   * Reads one framed message, returning its UTF-8 payload bytes. Returns null on clean EOF (i.e.
+   * end-of-stream observed at a frame boundary).
    *
-   * Header parsing tolerates `\r\n` or `\n` line endings, ignores
-   * `Content-Type` and any other headers, and treats a missing
-   * `Content-Length` as a [FramingException].
+   * Header parsing tolerates `\r\n` or `\n` line endings, ignores `Content-Type` and any other
+   * headers, and treats a missing `Content-Length` as a [FramingException].
    */
   fun readFrame(): ByteArray? {
     var contentLength = -1
     val headerBuf = ByteArrayOutputStream(64)
     var sawAny = false
     while (true) {
-      val line = readHeaderLine(headerBuf) ?: return if (sawAny) {
-        throw FramingException("EOF in headers")
-      } else {
-        null
-      }
+      val line =
+        readHeaderLine(headerBuf)
+          ?: return if (sawAny) {
+            throw FramingException("EOF in headers")
+          } else {
+            null
+          }
       sawAny = true
       if (line.isEmpty()) break
       val colon = line.indexOf(':')
@@ -702,8 +696,9 @@ internal class ContentLengthFramer(private val input: InputStream) {
       if (b == '\n'.code) {
         // Strip trailing \r if present.
         val bytes = buf.toByteArray()
-        val end = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1
-                  else bytes.size
+        val end =
+          if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1
+          else bytes.size
         return String(bytes, 0, end, Charsets.US_ASCII)
       }
       buf.write(b)

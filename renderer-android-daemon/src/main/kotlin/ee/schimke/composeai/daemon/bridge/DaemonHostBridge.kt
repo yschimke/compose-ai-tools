@@ -4,7 +4,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Cross-classloader handoff for the Robolectric-sandboxed [DaemonHost].
@@ -45,16 +44,14 @@ object DaemonHostBridge {
    */
   @JvmField val shutdown: AtomicBoolean = AtomicBoolean(false)
 
-  /** Monotonic id source shared across submitter and worker. */
-  @JvmField val nextId: AtomicLong = AtomicLong(1)
-
-  /** Reset to a clean state — call before each [DaemonHost.start]. */
+  /** Reset to a clean state — call before each [RobolectricHost.start]. */
   @JvmStatic
   fun reset() {
     requests.clear()
     results.clear()
     shutdown.set(false)
-    // Don't reset nextId — render IDs should remain monotonic across host
-    // restarts within a single process. Helps log correlation.
+    // Render IDs (RenderHost.nextRequestId) deliberately stay monotonic
+    // across host restarts within a single JVM — keeps log correlation
+    // unambiguous. They live in the core module's RenderHost companion now.
   }
 }
