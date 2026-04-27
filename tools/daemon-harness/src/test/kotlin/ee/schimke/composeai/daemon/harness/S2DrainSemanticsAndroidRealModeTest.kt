@@ -13,41 +13,35 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S2DrainSemanticsTest] — verifies the daemon's drain semantics
- * (`shutdown` does not resolve until the in-flight `renderFinished` arrives, per
- * [PROTOCOL.md § 3](../../../../docs/daemon/PROTOCOL.md#3-lifecycle) and
- * [DESIGN § 9](../../../../docs/daemon/DESIGN.md#no-mid-render-cancellation--invariant--enforcement))
- * against the real `:renderer-desktop-daemon` rather than `FakeHost`.
+ * D-harness.v2 Android counterpart of [S2DrainSemanticsRealModeTest] — verifies the daemon's drain
+ * semantics (`shutdown` does not resolve until the in-flight `renderFinished` arrives) against the
+ * real `:renderer-android-daemon` rather than `:renderer-desktop-daemon`.
  *
- * Uses [`SlowSquare`][ee.schimke.composeai.daemon.SlowSquare] from the desktop daemon's
- * testFixtures source set: the composable calls `Thread.sleep(500)` *inside* the composition
- * (matching B-desktop.1.6's cancellation-invariant regression test). The real renderer's
- * `RenderEngine` will block on that sleep, so the harness can race `shutdown` against the in-flight
- * render and assert the response arrives only after `renderFinished`.
+ * Uses [`SlowSquare`][ee.schimke.composeai.daemon.SlowSquare] from the android testFixtures source
+ * set (D-harness.v2 promoted them from `src/test/...`); the composable calls `Thread.sleep(500)`
+ * inside the composition so the harness can race `shutdown` against the in-flight render.
  *
- * **Skipped under fake mode.** Real-mode wall-clock for the slow render is bounded below by the
- * 500ms sleep + scene init + PNG encode; expect 700-1500ms on the dev box. The pixel-diff baseline
- * lands at `tools/daemon-harness/baselines/desktop/s2/slow-square.png` (looks like a teal square —
- * [`SlowSquare`][ee.schimke.composeai.daemon.SlowSquare] paints `Color(0xFF80FFAA)` after
- * sleeping).
+ * Real-mode wall-clock is bounded below by the 500ms sleep + Robolectric sandbox bootstrap on cold
+ * + capture pipeline; expect 4-12s on the dev box. Pixel-diff baseline lands at
+ *   `tools/daemon-harness/baselines/android/s2/slow-square.png`.
  */
-class S2DrainSemanticsRealModeTest {
+class S2DrainSemanticsAndroidRealModeTest {
 
   @Test
-  fun s2_drain_semantics_real_mode() {
+  fun s2_drain_semantics_real_mode_android() {
     Assume.assumeTrue(
-      "Skipping S2DrainSemanticsRealModeTest — set -Pharness.host=real to enable.",
+      "Skipping S2DrainSemanticsAndroidRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
     Assume.assumeTrue(
-      "Skipping S2DrainSemanticsRealModeTest — desktop variant; set -Ptarget=desktop (default).",
-      HarnessTestSupport.harnessTarget() == "desktop",
+      "Skipping S2DrainSemanticsAndroidRealModeTest — android variant; set -Ptarget=android.",
+      HarnessTestSupport.harnessTarget() == "android",
     )
 
     val previewId = "slow-square"
     val paths =
-      realModeScenario(
-        name = "s2-real",
+      realAndroidModeScenario(
+        name = "s2-android",
         previews =
           listOf(
             RealModePreview(
@@ -71,13 +65,13 @@ class S2DrainSemanticsRealModeTest {
       // 2. Send shutdown without waiting — the whole point of the scenario.
       val shutdownId = client.sendShutdownAsync()
 
-      // 3. renderFinished must arrive *before* the shutdown response. Generous timeout — the
-      //    real renderer pays JVM cold-start + Compose/Skiko bootstrap on top of the 500ms sleep.
-      val finished = client.pollRenderFinishedFor(previewId, timeout = 60.seconds)
+      // 3. renderFinished must arrive *before* the shutdown response. 120s timeout for cold-start
+      //    + 500ms sleep + capture.
+      val finished = client.pollRenderFinishedFor(previewId, timeout = 120.seconds)
       val finishedReceivedAtMs = System.currentTimeMillis()
 
       // 4. Now the shutdown response is allowed to arrive — and must.
-      val shutdownResponse = client.awaitResponse(shutdownId, timeout = 30.seconds)
+      val shutdownResponse = client.awaitResponse(shutdownId, timeout = 60.seconds)
       val shutdownReceivedAtMs = System.currentTimeMillis()
       assertNotNull("shutdown must return a response object", shutdownResponse)
       assertTrue(
@@ -98,26 +92,28 @@ class S2DrainSemanticsRealModeTest {
         actualBytes = reportedPng.readBytes(),
         baseline = HarnessTestSupport.baselineFile("s2", "slow-square.png"),
         reportsDir = paths.reportsDir,
-        scenario = "S2DrainSemanticsRealModeTest",
+        scenario = "S2DrainSemanticsAndroidRealModeTest",
         stderrSupplier = { client.dumpStderr() },
       )
 
       // 6. exit + clean process exit.
-      val exitCode = client.sendExitAndWait()
+      val exitCode = client.sendExitAndWait(timeout = 60.seconds)
       assertEquals("Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
 
       val tookMs = finishedReceivedAtMs - renderNowStartMs
-      System.err.println("S2DrainSemanticsRealModeTest: renderNow → renderFinished in ${tookMs}ms")
+      System.err.println(
+        "S2DrainSemanticsAndroidRealModeTest: renderNow → renderFinished in ${tookMs}ms"
+      )
       val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
       recorder.record(
-        scenario = "s2-real",
+        scenario = "s2-android",
         preview = previewId,
         actualMs = tookMs,
-        notes = "S2 real: includes 500ms SlowSquare sleep + scene init + PNG encode",
+        notes = "S2 android: includes 500ms SlowSquare sleep + Robolectric sandbox bootstrap",
       )
     } catch (t: Throwable) {
       System.err.println(
-        "S2DrainSemanticsRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
+        "S2DrainSemanticsAndroidRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
       )
       throw t
     } finally {

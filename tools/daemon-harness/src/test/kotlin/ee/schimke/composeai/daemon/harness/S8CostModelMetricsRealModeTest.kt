@@ -36,6 +36,10 @@ class S8CostModelMetricsRealModeTest {
       "Skipping S8CostModelMetricsRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
+    Assume.assumeTrue(
+      "Skipping S8CostModelMetricsRealModeTest — desktop variant; set -Ptarget=desktop (default).",
+      HarnessTestSupport.harnessTarget() == "desktop",
+    )
 
     val previewId = "red-square"
     val paths =

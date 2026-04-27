@@ -76,6 +76,18 @@ object HarnessTestSupport {
   fun harnessHost(): String = System.getProperty("composeai.harness.host") ?: "fake"
 
   /**
+   * Returns the configured harness target — `"desktop"` (default) or `"android"`. Driven by
+   * `-Ptarget=…` (see `tools/daemon-harness/build.gradle.kts`). D-harness.v2 added the parallel
+   * `*AndroidRealModeTest.kt` test classes; both target sets coexist in the same JUnit suite and
+   * skip via `Assume.assumeTrue(target == "<expected>")` when the requested target doesn't match.
+   *
+   * The renderer-agnostic claim from
+   * [DESIGN § 4](../../../docs/daemon/DESIGN.md#renderer-agnostic-surface) is enforced at the
+   * harness level once both targets pass the same scenarios.
+   */
+  fun harnessTarget(): String = System.getProperty("composeai.harness.target") ?: "desktop"
+
+  /**
    * Whether the `regenerateBaselines` Gradle task is driving this run. Set via
    * `-Dcomposeai.harness.regenerate=true` on the spawning JVM. When `true`, real-mode tests skip
    * the pixel-diff against the in-repo baseline and overwrite the baseline file with the freshly
@@ -91,12 +103,14 @@ object HarnessTestSupport {
 
   /**
    * Resolves a real-mode baseline PNG path under
-   * `tools/daemon-harness/baselines/desktop/<scenario>` relative to the harness module's working
+   * `tools/daemon-harness/baselines/<target>/<scenario>` relative to the harness module's working
    * directory. The path is materialised lazily by [diffOrCaptureBaseline] — callers don't need to
-   * mkdir.
+   * mkdir. Defaults to the current `-Ptarget=` (desktop unless overridden); D-harness.v2 added the
+   * per-target split so Robolectric's bitmap output and Skiko's bitmap output (which won't be
+   * byte-identical for "the same composable") have separate baselines per target.
    */
-  fun baselineFile(scenario: String, name: String): File {
-    val rel = File("baselines/desktop/$scenario/$name")
+  fun baselineFile(scenario: String, name: String, target: String = harnessTarget()): File {
+    val rel = File("baselines/$target/$scenario/$name")
     return if (rel.isAbsolute) rel else File(System.getProperty("user.dir"), rel.path)
   }
 }
@@ -183,10 +197,85 @@ data class RealModeScenarioPaths(
   val reportsDir: File,
   val manifestFile: File,
   val classpath: List<File>,
-  val launcher: RealDesktopHarnessLauncher,
+  /**
+   * Either [RealDesktopHarnessLauncher] (constructed by [realModeScenario]) or
+   * [RealAndroidHarnessLauncher] (constructed by [realAndroidModeScenario], D-harness.v2). Tests
+   * that need to introspect launcher-specific state should downcast — the existing seven desktop
+   * tests only call `HarnessClient.start(launcher)` with no further use of the field.
+   */
+  val launcher: HarnessLauncher,
 )
 
 fun realModeScenario(name: String, previews: List<RealModePreview>): RealModeScenarioPaths {
+  val (rendersDir, reportsDir, manifestFile, classpath) =
+    prepareRealModeScenarioPaths(name, previews)
+  val launcher =
+    RealDesktopHarnessLauncher(
+      rendersDir = rendersDir,
+      previewsManifest = manifestFile,
+      classpath = classpath,
+    )
+  return RealModeScenarioPaths(
+    name = name,
+    rendersDir = rendersDir,
+    reportsDir = reportsDir,
+    manifestFile = manifestFile,
+    classpath = classpath,
+    launcher = launcher,
+  )
+}
+
+/**
+ * Android counterpart of [realModeScenario] — D-harness.v2. Same setup (clears `rendersDir`, writes
+ * a `previewsManifest` JSON, captures the test JVM's classpath) but constructs a
+ * [RealAndroidHarnessLauncher] instead of [RealDesktopHarnessLauncher]. Used by the parallel
+ * `*AndroidRealModeTest.kt` scenario classes.
+ *
+ * The returned [RealModeScenarioPaths.launcher] is the Android variant; its `name` field is
+ * `"real-android"` (vs `"real"` for desktop) so failure diagnostics in [HarnessClient]'s reader
+ * threads make obvious which target produced the failure.
+ */
+fun realAndroidModeScenario(name: String, previews: List<RealModePreview>): RealModeScenarioPaths {
+  val (rendersDir, reportsDir, manifestFile, _) = prepareRealModeScenarioPaths(name, previews)
+  // The Android daemon needs its runtime classpath resolved through AGP's variant model — the
+  // harness's plain JVM `java.class.path` doesn't include AAR-derived JARs (e.g. roborazzi,
+  // androidx.compose.foundation). D-harness.v2's harness build wires
+  // `composeai.harness.androidDaemonClasspath` to a file listing the resolved JARs. Use that.
+  val androidClasspath =
+    RealAndroidHarnessLauncher.classpathFromProperty()
+      ?: error(
+        "realAndroidModeScenario requires `composeai.harness.androidDaemonClasspath` to be set " +
+          "by the harness Gradle build (writeAndroidDaemonClasspath task). The system property " +
+          "carries the file listing :renderer-android-daemon's runtime + testFixtures classpath; " +
+          "without it the spawned daemon can't load Robolectric / Compose / RedFixturePreviews."
+      )
+  val launcher =
+    RealAndroidHarnessLauncher(
+      rendersDir = rendersDir,
+      previewsManifest = manifestFile,
+      classpath = androidClasspath,
+    )
+  return RealModeScenarioPaths(
+    name = name,
+    rendersDir = rendersDir,
+    reportsDir = reportsDir,
+    manifestFile = manifestFile,
+    classpath = androidClasspath,
+    launcher = launcher,
+  )
+}
+
+private data class RealModeScenarioFiles(
+  val rendersDir: File,
+  val reportsDir: File,
+  val manifestFile: File,
+  val classpath: List<File>,
+)
+
+private fun prepareRealModeScenarioPaths(
+  name: String,
+  previews: List<RealModePreview>,
+): RealModeScenarioFiles {
   val moduleBuildDir = File("build")
   val rendersDir =
     File(moduleBuildDir, "daemon-harness/renders/$name").apply {
@@ -224,20 +313,7 @@ fun realModeScenario(name: String, previews: List<RealModePreview>): RealModeSce
       .split(File.pathSeparator)
       .filter { it.isNotBlank() }
       .map { File(it) }
-  val launcher =
-    RealDesktopHarnessLauncher(
-      rendersDir = rendersDir,
-      previewsManifest = manifestFile,
-      classpath = classpath,
-    )
-  return RealModeScenarioPaths(
-    name = name,
-    rendersDir = rendersDir,
-    reportsDir = reportsDir,
-    manifestFile = manifestFile,
-    classpath = classpath,
-    launcher = launcher,
-  )
+  return RealModeScenarioFiles(rendersDir, reportsDir, manifestFile, classpath)
 }
 
 /**

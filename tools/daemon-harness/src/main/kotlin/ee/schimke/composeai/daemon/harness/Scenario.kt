@@ -131,7 +131,11 @@ fun editSource(target: File, newText: String, block: () -> Unit) {
  */
 class LatencyRecorder(
   private val csvFile: File,
-  private val target: String = "desktop",
+  // D-harness.v2 — default to whatever -Ptarget=… set in the Gradle build, so Android rows are
+  // tagged correctly without each test having to pass it explicitly. Fake-mode tests run under
+  // -Ptarget=desktop (the default) so their rows stay tagged "desktop" — accurate, since fake
+  // mode doesn't drive a real Android renderer.
+  private val target: String = HarnessTestSupport.harnessTarget(),
   private val baselineMsPerPreview: Long = DEFAULT_DESKTOP_BASELINE_MS,
 ) {
 

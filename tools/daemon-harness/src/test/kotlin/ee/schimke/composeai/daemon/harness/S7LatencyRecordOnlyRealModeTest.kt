@@ -30,6 +30,10 @@ class S7LatencyRecordOnlyRealModeTest {
       "Skipping S7LatencyRecordOnlyRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
+    Assume.assumeTrue(
+      "Skipping S7LatencyRecordOnlyRealModeTest — desktop variant; set -Ptarget=desktop (default).",
+      HarnessTestSupport.harnessTarget() == "desktop",
+    )
 
     val previewId = "red-square"
     val paths =

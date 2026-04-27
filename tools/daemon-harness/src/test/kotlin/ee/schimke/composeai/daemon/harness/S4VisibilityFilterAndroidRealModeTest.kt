@@ -11,31 +11,26 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S4VisibilityFilterTest] — drives `setVisible([a,b,c]) → setFocus([b]) →
- * renderNow([a,b,c])` against the real desktop daemon and asserts all three `renderFinished`
- * notifications arrive.
+ * D-harness.v2 Android counterpart of [S4VisibilityFilterRealModeTest] — drives
+ * `setVisible([a,b,c]) → setFocus([b]) → renderNow([a,b,c])` against the real Android daemon and
+ * asserts all three `renderFinished` notifications arrive.
  *
- * **Gap parity with fake mode (TEST-HARNESS § 3 / DESIGN § 8 multi-tier queue is P2.5.1,
- * unimplemented).** The v1 daemon is single-threaded FIFO with concurrent submission threads, so
- * notification arrival order is non-deterministic and `setVisible` / `setFocus` are no-ops. This
- * test asserts arrival completeness only, not order — observed order is logged for human readers
- * and the latency CSV.
+ * Same gap with v1 daemon's lack of focus prioritisation as the desktop S4 (see
+ * [S4VisibilityFilterRealModeTest] KDoc); arrival order is logged, not asserted.
  *
- * Three preview composables — `RedSquare`, `BlueSquare`, `GreenSquare` — and three baselines under
- * `tools/daemon-harness/baselines/desktop/s4/`. The diff catches a wire-level mix-up (e.g. the
- * daemon dispatching the wrong composable for a previewId).
+ * Three baselines under `tools/daemon-harness/baselines/android/s4/`.
  */
-class S4VisibilityFilterRealModeTest {
+class S4VisibilityFilterAndroidRealModeTest {
 
   @Test
-  fun s4_visibility_filter_real_mode() {
+  fun s4_visibility_filter_real_mode_android() {
     Assume.assumeTrue(
-      "Skipping S4VisibilityFilterRealModeTest — set -Pharness.host=real to enable.",
+      "Skipping S4VisibilityFilterAndroidRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
     Assume.assumeTrue(
-      "Skipping S4VisibilityFilterRealModeTest — desktop variant; set -Ptarget=desktop (default).",
-      HarnessTestSupport.harnessTarget() == "desktop",
+      "Skipping S4VisibilityFilterAndroidRealModeTest — android variant; set -Ptarget=android.",
+      HarnessTestSupport.harnessTarget() == "android",
     )
 
     val previews =
@@ -57,7 +52,7 @@ class S4VisibilityFilterRealModeTest {
         ),
       )
     val ids = previews.map { it.id }
-    val paths = realModeScenario(name = "s4-real", previews = previews)
+    val paths = realAndroidModeScenario(name = "s4-android", previews = previews)
 
     val client = HarnessClient.start(paths.launcher)
     try {
@@ -74,15 +69,14 @@ class S4VisibilityFilterRealModeTest {
       assertEquals(ids, rn.queued)
       assertTrue("rejected must be empty: ${rn.rejected}", rn.rejected.isEmpty())
 
-      // 3. Collect each renderFinished by id with a generous deadline. Real-mode pays Compose +
-      //    Skiko cold-start; the first render typically dominates (~2-3s) and the rest land
-      //    inside ~200-400ms each.
+      // 3. Collect each renderFinished by id with a generous deadline. First render carries
+      //    Robolectric bootstrap (~3-10s); the subsequent two land much faster.
       val seen = mutableMapOf<String, JsonObject>()
       val arrivalOrder = mutableListOf<String>()
       val arrivalLatencyMs = mutableMapOf<String, Long>()
-      val deadline = System.currentTimeMillis() + 90_000L
+      val deadline = System.currentTimeMillis() + 240_000L
       while (seen.size < ids.size && System.currentTimeMillis() < deadline) {
-        val msg = client.pollNotification("renderFinished", 30.seconds)
+        val msg = client.pollNotification("renderFinished", 120.seconds)
         val params = msg["params"] as? JsonObject ?: error("renderFinished missing params: $msg")
         val id =
           (params["id"] as? JsonPrimitive)?.content ?: error("renderFinished missing id: $msg")
@@ -103,32 +97,33 @@ class S4VisibilityFilterRealModeTest {
           actualBytes = pngFile.readBytes(),
           baseline = HarnessTestSupport.baselineFile("s4", "$id.png"),
           reportsDir = paths.reportsDir,
-          scenario = "S4VisibilityFilterRealModeTest[$id]",
+          scenario = "S4VisibilityFilterAndroidRealModeTest[$id]",
           stderrSupplier = { client.dumpStderr() },
         )
       }
 
       // 5. Order: documented as non-deterministic. Log + record; do not assert.
       System.err.println(
-        "S4VisibilityFilterRealModeTest observed renderFinished arrival order " +
+        "S4VisibilityFilterAndroidRealModeTest observed renderFinished arrival order " +
           "(v1 daemon, focus-not-honoured): $arrivalOrder"
       )
 
       val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
       for (id in ids) {
         recorder.record(
-          scenario = "s4-real",
+          scenario = "s4-android",
           preview = id,
           actualMs = arrivalLatencyMs.getValue(id),
-          notes = "S4 real: setFocus=blue-square; observed-order=${arrivalOrder.joinToString("|")}",
+          notes =
+            "S4 android: setFocus=blue-square; observed-order=${arrivalOrder.joinToString("|")}",
         )
       }
 
-      val exitCode = client.shutdownAndExit(timeout = 30.seconds)
+      val exitCode = client.shutdownAndExit(timeout = 60.seconds)
       assertEquals("Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
     } catch (t: Throwable) {
       System.err.println(
-        "S4VisibilityFilterRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
+        "S4VisibilityFilterAndroidRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
       )
       throw t
     } finally {

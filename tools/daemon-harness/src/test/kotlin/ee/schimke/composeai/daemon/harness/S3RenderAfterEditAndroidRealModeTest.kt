@@ -12,44 +12,31 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S3RenderAfterEditTest] — verifies the daemon serves the *new* preview
- * source after an "edit" of which composable is bound to the protocol-level previewId.
+ * D-harness.v2 Android counterpart of [S3RenderAfterEditRealModeTest] — verifies the daemon serves
+ * the *new* preview source after an "edit" (in real mode: a previewId swap; see
+ * [ S3RenderAfterEditRealModeTest] for the full mode-divergence story).
  *
- * **Mode divergence (load-bearing).** Real mode cannot deterministically swap source code without a
- * recompile. So instead of editing a `.kt` file inside the test (the v1 fake-mode pattern: swap
- * `<previewId>.png` bytes), we pre-build two composables — `RedSquare` and `BlueSquare` — and the
- * "edit" maps to swapping which preview the *render request* references. Two separate
- * `renderNow(["red-square"])` and `renderNow(["blue-square"])` calls; assert the second renders
- * blue.
- *
- * **Gap parity with fake mode.** v1 daemon does not emit `discoveryUpdated` on `fileChanged` (B2.2
- * unimplemented — see [S3RenderAfterEditTest]'s KDoc). Real-mode S3 doesn't bother sending a
- * `fileChanged` notification because the render bypasses any file-watching path entirely; instead
- * the assertion is purely "second renderNow with a different previewId returns different bytes".
- * Once B2.2 lands, this test should add a fileChanged + assert `discoveryUpdated` — same shape as
- * the fake-mode one will need.
- *
- * Captured baselines: reuses `red-square.png` from v1.5a's S1 (no duplication) and adds
- * `blue-square.png`. Both live under `tools/daemon-harness/baselines/desktop/s3/`.
+ * Reuses `red-square.png` and `blue-square.png` baselines under
+ * `tools/daemon-harness/baselines/android/s3/`.
  */
-class S3RenderAfterEditRealModeTest {
+class S3RenderAfterEditAndroidRealModeTest {
 
   @Test
-  fun s3_render_after_edit_real_mode() {
+  fun s3_render_after_edit_real_mode_android() {
     Assume.assumeTrue(
-      "Skipping S3RenderAfterEditRealModeTest — set -Pharness.host=real to enable.",
+      "Skipping S3RenderAfterEditAndroidRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
     Assume.assumeTrue(
-      "Skipping S3RenderAfterEditRealModeTest — desktop variant; set -Ptarget=desktop (default).",
-      HarnessTestSupport.harnessTarget() == "desktop",
+      "Skipping S3RenderAfterEditAndroidRealModeTest — android variant; set -Ptarget=android.",
+      HarnessTestSupport.harnessTarget() == "android",
     )
 
     val redId = "red-square"
     val blueId = "blue-square"
     val paths =
-      realModeScenario(
-        name = "s3-real",
+      realAndroidModeScenario(
+        name = "s3-android",
         previews =
           listOf(
             RealModePreview(
@@ -70,11 +57,12 @@ class S3RenderAfterEditRealModeTest {
       assertEquals(1, client.initialize().protocolVersion)
       client.sendInitialized()
 
-      // 1. First render — RedSquare. The "edit" hasn't happened yet.
+      // 1. First render — RedSquare. The "edit" hasn't happened yet. 120s timeout for the cold
+      //    sandbox bootstrap.
       val redStart = System.currentTimeMillis()
       val rnRed = client.renderNow(previews = listOf(redId), tier = RenderTier.FAST)
       assertEquals(listOf(redId), rnRed.queued)
-      val finishedRed = client.pollRenderFinishedFor(redId, timeout = 60.seconds)
+      val finishedRed = client.pollRenderFinishedFor(redId, timeout = 120.seconds)
       val redFinishedAt = System.currentTimeMillis()
       val redPath =
         finishedRed["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
@@ -84,14 +72,11 @@ class S3RenderAfterEditRealModeTest {
         actualBytes = redBytes,
         baseline = HarnessTestSupport.baselineFile("s3", "red-square.png"),
         reportsDir = paths.reportsDir,
-        scenario = "S3RenderAfterEditRealModeTest[red]",
+        scenario = "S3RenderAfterEditAndroidRealModeTest[red]",
         stderrSupplier = { client.dumpStderr() },
       )
 
       // 2. "Edit" — issue renderNow against a *different* previewId resolving to BlueSquare.
-      //    Real-mode mode divergence: in fake mode S3 swaps the bytes of <previewId>.png on disk;
-      //    here we swap the previewId itself. Both forms verify the same end-to-end shape: the
-      //    second render produces different pixels than the first.
       val blueStart = System.currentTimeMillis()
       val rnBlue = client.renderNow(previews = listOf(blueId), tier = RenderTier.FAST)
       assertEquals(listOf(blueId), rnBlue.queued)
@@ -105,7 +90,7 @@ class S3RenderAfterEditRealModeTest {
         actualBytes = blueBytes,
         baseline = HarnessTestSupport.baselineFile("s3", "blue-square.png"),
         reportsDir = paths.reportsDir,
-        scenario = "S3RenderAfterEditRealModeTest[blue]",
+        scenario = "S3RenderAfterEditAndroidRealModeTest[blue]",
         stderrSupplier = { client.dumpStderr() },
       )
 
@@ -118,25 +103,25 @@ class S3RenderAfterEditRealModeTest {
       )
 
       // 4. Clean shutdown.
-      val exitCode = client.shutdownAndExit(timeout = 30.seconds)
+      val exitCode = client.shutdownAndExit(timeout = 60.seconds)
       assertEquals("Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
 
       val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
       recorder.record(
-        scenario = "s3-real",
+        scenario = "s3-android",
         preview = "$redId@v1",
         actualMs = redFinishedAt - redStart,
-        notes = "S3 real: pre-edit render",
+        notes = "S3 android: pre-edit render (cold; includes Robolectric bootstrap)",
       )
       recorder.record(
-        scenario = "s3-real",
+        scenario = "s3-android",
         preview = "$blueId@v2",
         actualMs = blueFinishedAt - blueStart,
-        notes = "S3 real: post-edit render (previewId swap)",
+        notes = "S3 android: post-edit render (warm sandbox)",
       )
     } catch (t: Throwable) {
       System.err.println(
-        "S3RenderAfterEditRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
+        "S3RenderAfterEditAndroidRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
       )
       throw t
     } finally {

@@ -44,6 +44,10 @@ class S5RenderFailedRealModeTest {
       "Skipping S5RenderFailedRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
+    Assume.assumeTrue(
+      "Skipping S5RenderFailedRealModeTest — desktop variant; set -Ptarget=desktop (default).",
+      HarnessTestSupport.harnessTarget() == "desktop",
+    )
 
     val brokenId = "boom"
     val goodId = "red-square"

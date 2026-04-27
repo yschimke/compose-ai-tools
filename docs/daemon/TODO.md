@@ -433,12 +433,58 @@ The remainder of v1.5 — convert S2-S8 to real-mode, add a `regenerateBaselines
 - **S5 / `renderFailed` not emitted for in-composition exceptions** — `DesktopHost.runRenderLoop` catches the exception from `RenderEngine.render`, prints to stderr, and falls back to `renderStubFallback` which returns a *successful* `RenderResult` with no `pngPath`. `JsonRpcServer` sees the success path and emits `renderFinished` carrying the `daemon-stub-<id>.png` placeholder, so the client never observes a `renderFailed` notification. Fake mode lets `FakeHost.submit` throw, which `JsonRpcServer.runHostSubmitter` catches and surfaces as `renderFailed`. `S5RenderFailedRealModeTest` pins the real-mode behaviour (asserts the stub path appears) so the test flips when `DesktopHost` is taught to propagate composition exceptions or translate them into a structured `RenderFailed` shape.
 - **S8 / wire-level `tookMs` hardcoded to 0** — `JsonRpcServer.emitRenderFinished` passes `tookMs = 0` to `renderFinishedFromResult` regardless of host-supplied timing. The test asserts `tookMs in 0..300_000` so the gap closes as soon as real timing flows through the wire.
 
-#### D-harness.v2 — Android target
+#### D-harness.v2 — Android target ✅
 
 Adds `-Ptarget=android` parameter. `:samples:android-daemon-bench` already exists; the harness wires its descriptor as the alternate spawn target. Real-mode usable immediately (B1.5 already shipped). Android image baselines captured under `tools/daemon-harness/baselines/android/`. New CI job `daemon-harness-android` (slower than desktop — Robolectric + Android sandbox bootstrap dominate). Resource-edit scenario variant for S3 (`res/**` change) lands here, since desktop has no `res/**`.
 
 - **Depends on:** D-harness.v1.5, B1.5 (Android `JsonRpcServer` wiring already shipped)
 - **DoD:** `./gradlew :tools:daemon-harness:test -Ptarget=android` runs the v1 catalogue green. Renderer-agnostic claim of [DESIGN § 4](DESIGN.md#renderer-agnostic-surface) enforced at the harness level: the same scenario class drives both targets with only the descriptor + baselines differing. CI job added.
+
+Done. Went with **Option A (parallel test classes)** — the seven existing desktop real-mode tests (`*RealModeTest.kt`) gained an `Assume.assumeTrue(target == "desktop")` guard, and seven new `*AndroidRealModeTest.kt` classes mirror them. Trade-off: ~7 new test files (a few hundred lines of mostly-mechanical KDoc + setup boilerplate) vs Option B's parameterization. Pragmatic decision: the Android side has two real divergences (S5's `renderFailed` gap because `RobolectricHost.SandboxRunner` still catches in-composition Throwables, see test KDoc; and S2/S3/S4's much higher `pollNotification` timeouts to absorb Robolectric sandbox bootstrap), so a parameterized class would have ended up with `if (target == "android") …` branches in the timeouts and assertion. Two parallel classes are clearer.
+
+**Files created:**
+- `renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/PreviewManifestRouter.kt` — Android counterpart of desktop's router; wraps `RobolectricHost` with previewId→RenderSpec lookup gated on `composeai.harness.previewsManifest`.
+- `renderer-android-daemon/src/testFixtures/kotlin/ee/schimke/composeai/daemon/RedFixturePreviews.kt` — promoted from `src/test/...`. Adds `GreenSquare` (S4), `SlowSquare` (S2), `BoomComposable` (S5) so the Android testFixtures expose the same composable surface as the desktop testFixtures. Same FQN (`ee.schimke.composeai.daemon.RedFixturePreviewsKt`) so a single `RealModePreview(className=…)` row resolves on either target.
+- `tools/daemon-harness/src/test/kotlin/.../S{1..8}*AndroidRealModeTest.kt` — seven new test classes mirroring the desktop counterparts. Each gates on `Assume.assumeTrue(harnessTarget() == "android")`.
+- `.github/workflows/daemon-harness.yml` — renamed from `daemon-harness-desktop.yml`; adds `android-real` job alongside the existing `desktop-fake` + `desktop-real` jobs. Old workflow file removed.
+
+**Files modified:**
+- `renderer-android-daemon/build.gradle.kts` — `android.testFixtures.enable = true`; adds `kotlin-serialization` plugin (for `PreviewManifestRouter`); adds `daemonHarnessClasspathFile` consumable configuration + `writeDaemonClasspath` task that resolves the daemon's debug-unit-test runtime classpath (which AGP fully wires up for the standalone JUnit/Robolectric path) into a text file the harness reads at test time.
+- `renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt` — captures real stdout into `realOut` before swapping `System.out` to `System.err`, mirroring desktop's `DaemonMain`. Without this, Robolectric's "This workaround is used when an ActionBar is present and the SDK version is 35 or higher." diagnostic line corrupts the JSON-RPC channel. Wires `PreviewManifestRouter` when `composeai.harness.previewsManifest` is set.
+- `tools/daemon-harness/build.gradle.kts` — adds `-Ptarget=desktop|android` system property; defines `androidDaemonClasspath` consumer configuration matching the daemon module's text-file artifact attribute; wires every `Test` task with `composeai.harness.androidDaemonClasspath` system property pointing at the resolved file.
+- `tools/daemon-harness/src/main/kotlin/.../HarnessLauncher.kt` — adds `RealAndroidHarnessLauncher` (spawns the Android `DaemonMain` with the same package's entry point + Robolectric system properties + `--add-opens` JVM args from `AndroidPreviewClasspath.buildJvmArgs`) and `RealAndroidHarnessLauncher.classpathFromProperty()` which reads the path-listing file written by `:renderer-android-daemon:writeDaemonClasspath`.
+- `tools/daemon-harness/src/main/kotlin/.../HarnessTestSupport.kt` — adds `harnessTarget()`; `baselineFile()` is target-aware (`baselines/<target>/<scenario>/<id>.png`); adds `realAndroidModeScenario(...)` factory parallel to the existing `realModeScenario(...)`; existing `RealModeScenarioPaths.launcher` widened to `HarnessLauncher` interface so both target variants flow through the same `HarnessClient.start(...)`.
+- `tools/daemon-harness/src/main/kotlin/.../Scenario.kt` — `LatencyRecorder.target` defaults to `harnessTarget()` so Android rows get tagged `android` rather than `desktop` in the shared latency CSV.
+- All seven existing `*RealModeTest.kt` desktop tests gained an `Assume.assumeTrue(harnessTarget() == "desktop")` skip so they don't run twice when `-Ptarget=android` is set.
+
+**Per-scenario Android real-mode wall-clock (cold + warm-median, dev box):**
+
+| Scenario | Cold (ms) | Warm-median (ms) | Notes |
+|---------|-----------|------------------|-------|
+| S1 (red-square) | 4844 | n/a (1 render) | Cold-spawn → renderFinished |
+| S2 (slow-square) | ~4500 | n/a | Includes 500ms Thread.sleep in composition |
+| S3 (red-square @v1) | 4621 | (blue-square @v2) 71 | Warm sandbox, second render is fast |
+| S4 (3 previews FIFO) | 4622 / 4700 / 4765 | n/a | All three sequential, focus-not-honoured |
+| S5 (boom + red-square) | 4304 / 339 | n/a | Broken render hits stub-fallback path |
+| S7 (5 sequential renders) | 4598 | warm: 50-68ms across 4 warm | First dominates by ~70× |
+| S8 (red-square + tookMs) | 4601 | n/a | wire tookMs=1733 (engine measured) |
+
+Compare desktop: S1 cold ~600-1500ms, warm-median ~14-50ms. Android cold is roughly 5-10× higher; warm renders are comparable (50-70ms vs desktop's 14ms). Robolectric sandbox bootstrap (~3s) + first Compose render + Roborazzi/HardwareRenderer init dominate the cold delta.
+
+**Android baseline PNGs.** 7 files under `tools/daemon-harness/baselines/android/` totalling 28KB:
+- `s1/red-square.png`, `s2/slow-square.png`, `s3/{red,blue}-square.png`, `s4/{red,blue,green}-square.png`. Captured at 64×64 px @ density 1.0.
+- **Determinism verified.** Two consecutive `regenerateBaselines -Pharness.target=android` runs produce byte-identical SHA256 hashes for every PNG. Robolectric on JDK 17 + SDK 35 + Roborazzi's NATIVE graphics mode is reproducible at the byte level for these solid-colour fixtures; AA differences across runs of font-rendering content might still surface noise in future fixtures, but for the v2 catalogue we get clean determinism.
+
+**CI workflow shape.** Renamed `.github/workflows/daemon-harness-desktop.yml` → `daemon-harness.yml` with three jobs: `desktop-fake`, `desktop-real`, `android-real`. The Android job has a 15-minute timeout (vs no explicit timeout on desktop jobs) to absorb noisier CI runners. All three are required for the workflow to succeed; failures upload the same `actual.png` / `expected.png` / `diff.png` artefacts as before.
+
+**Daemon behaviour divergences surfaced beyond the documented gaps:**
+
+1. **`DaemonMain` stdout pollution (fixed in v2).** The Android `DaemonMain` previously did not redirect `System.out` to `System.err` before constructing `JsonRpcServer`. Robolectric and Roborazzi write diagnostic lines (e.g. "This workaround is used when an ActionBar is present and the SDK version is 35 or higher.") to `System.out` during sandbox bootstrap and `HardwareRenderer` init, and those lines corrupt the LSP-framed JSON-RPC channel. The desktop `DaemonMain` has done this since B-desktop.1.5; v2 ports the same pattern to Android. Lines now routed to stderr where the harness's stderr ring-buffer captures them.
+2. **Android daemon classpath is non-trivial to consume from a plain JVM module.** The `:tools:daemon-harness` is plain `org.jetbrains.kotlin.jvm` and AGP 9 exposes `:renderer-android-daemon` as an AAR with AAR-shaped transitive deps (roborazzi, androidx.compose.* are AAR-only). The standard `testImplementation(project(":renderer-android-daemon"))` pattern desktop uses cannot be repeated; the harness instead consumes a text-file artefact produced inside the daemon module (which IS Android-aware) listing the resolved JAR paths — those JARs already include AGP-generated R.jars for transitive AARs and the right Android-multiplatform variant of `androidx.compose.ui:ui-test-junit4` etc. Documented inline.
+
+**Renderer-agnostic claim (DESIGN § 4) end-to-end.** The same scenario shapes (S1-S5, S7-S8) now drive both backends with only `RealAndroidHarnessLauncher` vs `RealDesktopHarnessLauncher` and per-target baseline directories differing. The two real divergences worth surfacing in DESIGN itself are: (a) the Android side has not yet caught up with desktop's S5 fix (`DesktopHost` propagates in-composition Throwables; `RobolectricHost` still catches and stubs) — this is a `:renderer-android-daemon` work item, not a protocol-level divergence; and (b) Android's cold-render budget is ~5-10× desktop's, so the harness's per-target timeout knobs are not interchangeable. Both are renderer-implementation differences, not surface-level differences — the renderer-agnostic claim holds at the wire-protocol layer end-to-end.
+
+**Subprocess timeout / Robolectric bootstrap experience.** The first iteration's 60s `renderStarted` timeout was insufficient on a contended dev box (test was hitting the timeout while Robolectric was still bootstrapping). Bumped to 180s on the cold S1 path and 120s on subsequent renderFinished polls; observed actual cold ~5s, so headroom is adequate. The S4 deadline (3 sequential renders, 240s total) absorbed cold + 2 warm cleanly. The most likely flake risk is GitHub Actions runner contention pushing cold past the existing 60s `pollRenderFinishedFor` budget on tests other than S1 — the 15-minute job-level timeout absorbs this without flapping. No actual stalls observed; the daemon's drain semantics worked correctly across all seven Android scenarios.
 
 #### D-harness.v3 — Future-feature scenarios + soak + drift report
 

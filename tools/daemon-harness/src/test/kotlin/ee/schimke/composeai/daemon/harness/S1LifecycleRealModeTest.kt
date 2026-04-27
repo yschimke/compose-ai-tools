@@ -47,6 +47,13 @@ class S1LifecycleRealModeTest {
       "Skipping S1LifecycleRealModeTest — set -Pharness.host=real to enable.",
       HarnessTestSupport.harnessHost() == "real",
     )
+    // D-harness.v2 — this class is the desktop variant; the Android variant lives in
+    // S1LifecycleAndroidRealModeTest. Skip when `-Ptarget=android` so both target classes can
+    // co-exist in the same JUnit suite without fighting over the daemon spawn.
+    Assume.assumeTrue(
+      "Skipping S1LifecycleRealModeTest — desktop variant; set -Ptarget=desktop (default).",
+      HarnessTestSupport.harnessTarget() == "desktop",
+    )
 
     val moduleBuildDir = File("build")
     val rendersDir =
