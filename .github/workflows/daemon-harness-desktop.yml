@@ -1,0 +1,47 @@
+name: Daemon Harness (desktop)
+
+# v0 of the end-to-end test harness for the preview daemon — see
+# docs/daemon/TEST-HARNESS.md and docs/daemon/TODO.md § D-harness.v0.
+# Currently only ships the S1 lifecycle-happy-path scenario against
+# `FakeHost`; v1+ scenarios layer on without changing this workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  daemon-harness-desktop:
+    name: Daemon Harness (desktop, fake host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run harness scenarios
+        run: ./gradlew :tools:daemon-harness:test
+      - name: Upload harness test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-test-results
+          path: tools/daemon-harness/build/reports/tests/
+      # On pixel-diff failure the test writes actual.png / expected.png /
+      # diff.png under build/reports/daemon-harness/<scenario>/. Surface
+      # them as a separate artefact so reviewers don't have to dig through
+      # the test-results bundle.
+      - name: Upload pixel-diff artefacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-diffs
+          path: tools/daemon-harness/build/reports/daemon-harness/

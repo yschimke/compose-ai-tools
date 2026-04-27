@@ -86,5 +86,20 @@ sealed interface RenderRequest {
  * The `classLoaderHashCode`/`classLoaderName` pair lets host-internal tests verify that long-lived
  * backends genuinely reuse a single sandbox / classloader across renders (DESIGN.md § 9 — the
  * load-bearing daemon invariant).
+ *
+ * `pngPath` and `metrics` are populated by hosts that actually render bytes (`FakeHost` in
+ * `:tools:daemon-harness`, `DesktopHost`/`RobolectricHost` once their B1.4 render-engine bodies
+ * land). They map directly onto the
+ * [`renderFinished`](../../docs/daemon/PROTOCOL.md#renderfinished) wire shape: `pngPath` becomes
+ * `renderFinished.pngPath`; `metrics` becomes a flat `renderFinished.metrics` (numeric counters;
+ * the structured `RenderMetrics` shape is filled in by B2.3 once the daemon tracks heap /
+ * sandbox-age etc.). Both default to `null` so the B1.5-era stub paths in
+ * `JsonRpcServer.renderFinishedFromResult` keep emitting the placeholder `daemon-stub-${id}.png`.
  */
-data class RenderResult(val id: Long, val classLoaderHashCode: Int, val classLoaderName: String)
+data class RenderResult(
+  val id: Long,
+  val classLoaderHashCode: Int,
+  val classLoaderName: String,
+  val pngPath: String? = null,
+  val metrics: Map<String, Long>? = null,
+)
