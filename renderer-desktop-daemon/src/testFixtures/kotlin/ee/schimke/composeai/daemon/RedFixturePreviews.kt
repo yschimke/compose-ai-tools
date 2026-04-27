@@ -41,3 +41,27 @@ fun SlowSquare() {
   Thread.sleep(500)
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFF80FFAA.toInt())))
 }
+
+/**
+ * Third solid-colour fixture used by D-harness.v1.5b's S4 real-mode test (visibility filter). Same
+ * shape as [RedSquare] / [BlueSquare]; distinct hue so a wire-level mix-up between the three
+ * preview ids would surface as a pixel-diff failure against the per-id baseline PNG.
+ */
+@Composable
+fun GreenSquare() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF66BB6A)))
+}
+
+/**
+ * Fixture for D-harness.v1.5b's S5 real-mode test (renderFailed surfacing). Throws unconditionally
+ * inside the composition body so [RenderEngine] propagates the exception out of `scene.render()`
+ * and `JsonRpcServer.emitRenderFailed` emits a `renderFailed` notification.
+ *
+ * The thrown message is matched literally by the test's assertion on
+ * `renderFailed.params.error.message`. Kept short and obviously-test-only ("boom") to avoid being
+ * mistaken for a real render error in stderr scrollback.
+ */
+@Composable
+fun BoomComposable() {
+  error("boom")
+}

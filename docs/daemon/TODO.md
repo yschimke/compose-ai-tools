@@ -407,24 +407,31 @@ Wire-layer change to `:renderer-daemon-core/JsonRpcServer.submitRenderAsync`: th
 
 `./gradlew :tools:daemon-harness:check` green; all seven scenarios pass (S1 0.28s + S2 0.72s + S3 0.43s + S4 0.18s + S5 0.17s + S7 0.17s + S8 0.17s; S2 includes 500ms FakeHost delay; S7 records 5 cold-warm renders). `:renderer-daemon-core:check`, `:renderer-android-daemon:check`, `:renderer-desktop-daemon:check` unchanged. Latency CSV at `tools/daemon-harness/build/reports/daemon-harness/latency.csv` populated for every scenario × preview pair. Manual deliberate-corruption sanity check on S3 (substituted v1 bytes for the v2 swap in `editSource`) verified — test failed and `actual.png`/`expected.png`/`diff.png` written under `build/reports/daemon-harness/s3/`.
 
-#### D-harness.v1.5 — Flip to real renderer once B-desktop.1.5 lands
+#### D-harness.v1.5 — Flip to real renderer once B-desktop.1.5 lands ✅
 
 Same scenarios, `-Pharness.host=real`. Captures actual Compose-rendered PNGs as in-repo image baselines under `tools/daemon-harness/baselines/desktop/<scenario>/<id>.png`. `FakeHost` stays available behind `-Pharness.host=fake` for deterministic failure-mode coverage and as the v0 architecture preservation. Both modes run on every PR.
 
 - **Depends on:** D-harness.v1, B-desktop.1.5 (real `DaemonMain` wiring), B-desktop.1.6 (drain semantics for S2 against the real cancellation enforcement)
 - **DoD:** real-mode S1–S8 pass; fake-mode regression set still passes; the captured baselines are reviewed visually in the merging PR.
 
-##### D-harness.v1.5a — `HarnessLauncher` abstraction + real-mode S1 only — **in progress**
+##### D-harness.v1.5a — `HarnessLauncher` abstraction + real-mode S1 only ✅
 
 Splits the v1.5 brief into a thin first slice. Refactors `HarnessClient.start(...)` to delegate the spawn step to a `HarnessLauncher` (`fake` vs `real`), adds the `-Pharness.host=fake|real` Gradle parameter (default `fake`), and adds **one** real-mode S1 test (`S1LifecycleRealModeTest`) that spawns `:renderer-desktop-daemon`'s `DaemonMain`, drives the full lifecycle, and auto-captures a `red-square.png` baseline on first run.
 
 - **Depends on:** D-harness.v1, B-desktop.1.5, B-desktop.1.6.
-- **In progress.** Done: `HarnessLauncher` interface + `FakeHarnessLauncher` + `RealDesktopHarnessLauncher`; `HarnessClient.start(launcher)` overload (existing `start(fixtureDir, ...)` becomes shorthand); `harness.host` Gradle property → `composeai.harness.host` sysprop; `testImplementation(project(":renderer-desktop-daemon"))` + `compose.desktop.currentOs` on the harness's *test* classpath only (Option A from the v1.5a brief — production classpath unaffected; renderer-agnostic invariant unchanged where it matters); `PreviewManifestRouter` in `:renderer-desktop-daemon` main code (gated on `composeai.harness.previewsManifest` sysprop, no-op when unset) so `JsonRpcServer.handleRenderNow`'s `payload="previewId=<id>"` resolves to a real `RenderSpec`; auto-capture-on-first-run baseline + pixel-diff thereafter.
 - **DoD:** all 7 fake-mode scenarios still pass under `-Pharness.host=fake`; `S1LifecycleRealModeTest` skips by `Assume.assumeTrue` under fake mode; runs end-to-end against the real desktop daemon under `-Pharness.host=real`; baseline PNG captured at `tools/daemon-harness/baselines/desktop/s1/red-square.png`.
 
-##### D-harness.v1.5b — Convert remaining scenarios + `regenerateBaselines` task + CI
+##### D-harness.v1.5b — Convert remaining scenarios + `regenerateBaselines` task + CI ✅
 
-The remainder of v1.5 — convert S2-S8 to real-mode, add a `regenerateBaselines` Gradle task, update the CI workflow to run both modes. Out of scope for v1.5a. Tracked here so that "D-harness.v1.5 done" remains a single milestone.
+The remainder of v1.5 — convert S2-S8 to real-mode, add a `regenerateBaselines` Gradle task, update the CI workflow to run both modes.
+
+- **Depends on:** D-harness.v1.5a (launcher abstraction + `PreviewManifestRouter` + `diffOrCaptureBaseline` helper).
+- **DoD:** `S2DrainSemanticsRealModeTest`, `S3RenderAfterEditRealModeTest`, `S4VisibilityFilterRealModeTest`, `S5RenderFailedRealModeTest`, `S7LatencyRecordOnlyRealModeTest`, `S8CostModelMetricsRealModeTest` all pass under `-Pharness.host=real`; all skip by `Assume.assumeTrue` under fake mode; baselines captured under `tools/daemon-harness/baselines/desktop/{s2,s3,s4}/`; `:tools:daemon-harness:regenerateBaselines` task overwrites baselines deterministically (verified byte-identical across two runs); `.github/workflows/daemon-harness-desktop.yml` split into `fake` + `real` jobs both required for the workflow to succeed.
+
+**Real-mode-specific gaps surfaced (not present in fake mode):**
+
+- **S5 / `renderFailed` not emitted for in-composition exceptions** — `DesktopHost.runRenderLoop` catches the exception from `RenderEngine.render`, prints to stderr, and falls back to `renderStubFallback` which returns a *successful* `RenderResult` with no `pngPath`. `JsonRpcServer` sees the success path and emits `renderFinished` carrying the `daemon-stub-<id>.png` placeholder, so the client never observes a `renderFailed` notification. Fake mode lets `FakeHost.submit` throw, which `JsonRpcServer.runHostSubmitter` catches and surfaces as `renderFailed`. `S5RenderFailedRealModeTest` pins the real-mode behaviour (asserts the stub path appears) so the test flips when `DesktopHost` is taught to propagate composition exceptions or translate them into a structured `RenderFailed` shape.
+- **S8 / wire-level `tookMs` hardcoded to 0** — `JsonRpcServer.emitRenderFinished` passes `tookMs = 0` to `renderFinishedFromResult` regardless of host-supplied timing. The test asserts `tookMs in 0..300_000` so the gap closes as soon as real timing flows through the wire.
 
 #### D-harness.v2 — Android target
 

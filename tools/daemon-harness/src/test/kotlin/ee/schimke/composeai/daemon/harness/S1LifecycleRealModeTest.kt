@@ -150,35 +150,16 @@ class S1LifecycleRealModeTest {
         dominantRedFraction(img) > 0.9,
       )
 
-      // 7. Auto-capture-on-first-run baseline diff.
-      val baselineFile =
-        File("baselines/desktop/s1/red-square.png").let { rel ->
-          if (rel.isAbsolute) rel else File(System.getProperty("user.dir"), rel.path)
-        }
-      val actualBytes = reportedPng.readBytes()
-      if (!baselineFile.exists()) {
-        baselineFile.parentFile.mkdirs()
-        baselineFile.writeBytes(actualBytes)
-        System.err.println(
-          "S1LifecycleRealModeTest: captured baseline at ${baselineFile.absolutePath} " +
-            "(first run; subsequent runs will pixel-diff against it)"
-        )
-      } else {
-        val expectedBytes = baselineFile.readBytes()
-        val diff = PixelDiff.compare(actual = actualBytes, expected = expectedBytes)
-        if (!diff.ok) {
-          PixelDiff.writeDiffArtefacts(
-            actual = actualBytes,
-            expected = expectedBytes,
-            outDir = reportsDir,
-          )
-          throw AssertionError(
-            "S1 real-mode pixel diff failed: ${diff.message} " +
-              "(maxDelta=${diff.maxDelta}, offending=${diff.offendingPixelCount}). " +
-              "Artefacts under ${reportsDir.absolutePath}. Stderr=\n${client.dumpStderr()}"
-          )
-        }
-      }
+      // 7. Auto-capture-on-first-run baseline diff (v1.5a) + regenerate-overwrite (v1.5b).
+      //    Centralised in [diffOrCaptureBaseline]: respects `composeai.harness.regenerate=true` to
+      //    always overwrite, falls back to capture-on-first-run otherwise.
+      diffOrCaptureBaseline(
+        actualBytes = reportedPng.readBytes(),
+        baseline = HarnessTestSupport.baselineFile("s1", "red-square.png"),
+        reportsDir = reportsDir,
+        scenario = "S1LifecycleRealModeTest",
+        stderrSupplier = { client.dumpStderr() },
+      )
 
       // 8. shutdown + exit.
       val exitCode = client.shutdownAndExit(timeout = 30.seconds)

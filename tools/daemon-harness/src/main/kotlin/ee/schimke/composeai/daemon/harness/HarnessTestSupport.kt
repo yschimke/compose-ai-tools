@@ -74,6 +74,165 @@ object HarnessTestSupport {
    * themselves with `JUnit Assume.assumeTrue(host == "real")` rather than failing under fake mode.
    */
   fun harnessHost(): String = System.getProperty("composeai.harness.host") ?: "fake"
+
+  /**
+   * Whether the `regenerateBaselines` Gradle task is driving this run. Set via
+   * `-Dcomposeai.harness.regenerate=true` on the spawning JVM. When `true`, real-mode tests skip
+   * the pixel-diff against the in-repo baseline and overwrite the baseline file with the freshly
+   * captured PNG instead — see `tools/daemon-harness/CONTRIBUTING.md`.
+   *
+   * The default `false` keeps the existing v1.5a auto-capture-on-first-run flow intact: the first
+   * run after deleting a baseline captures, and subsequent runs pixel-diff. `regenerate=true`
+   * promotes that to "always overwrite", so a deliberate regen produces deterministic output even
+   * when a baseline already exists.
+   */
+  fun regenerateBaselines(): Boolean =
+    System.getProperty("composeai.harness.regenerate")?.equals("true", ignoreCase = true) == true
+
+  /**
+   * Resolves a real-mode baseline PNG path under `tools/daemon-harness/baselines/desktop/<scenario>`
+   * relative to the harness module's working directory. The path is materialised lazily by
+   * [diffOrCaptureBaseline] — callers don't need to mkdir.
+   */
+  fun baselineFile(scenario: String, name: String): File {
+    val rel = File("baselines/desktop/$scenario/$name")
+    return if (rel.isAbsolute) rel else File(System.getProperty("user.dir"), rel.path)
+  }
+}
+
+/**
+ * Shared "diff against in-repo baseline; capture if missing or `regenerate=true`" flow used by the
+ * D-harness.v1.5b real-mode tests. Centralises the capture-vs-diff branching so each scenario test
+ * stays focused on its wire-level assertions.
+ *
+ * - If [HarnessTestSupport.regenerateBaselines] is `true`, **always** writes [actualBytes] to
+ *   [baseline] (overwrites if present) and returns. The pixel-diff is skipped — a deliberate
+ *   regeneration run is treated as the new ground truth.
+ * - Else if [baseline] does not exist yet, captures [actualBytes] into it (mirrors the v1.5a
+ *   auto-capture-on-first-run behaviour from `S1LifecycleRealModeTest`).
+ * - Else compares [actualBytes] against the baseline bytes via [PixelDiff]. On failure writes
+ *   `actual.png` / `expected.png` / `diff.png` artefacts under [reportsDir] and throws an
+ *   [AssertionError] including [stderrSupplier]'s output for diagnostic context.
+ */
+fun diffOrCaptureBaseline(
+  actualBytes: ByteArray,
+  baseline: File,
+  reportsDir: File,
+  scenario: String,
+  stderrSupplier: () -> String = { "" },
+) {
+  if (HarnessTestSupport.regenerateBaselines()) {
+    baseline.parentFile.mkdirs()
+    baseline.writeBytes(actualBytes)
+    System.err.println(
+      "$scenario: regenerate=true — overwrote baseline at ${baseline.absolutePath}"
+    )
+    return
+  }
+  if (!baseline.exists()) {
+    baseline.parentFile.mkdirs()
+    baseline.writeBytes(actualBytes)
+    System.err.println(
+      "$scenario: captured baseline at ${baseline.absolutePath} (first run; subsequent runs " +
+        "will pixel-diff against it)"
+    )
+    return
+  }
+  val expectedBytes = baseline.readBytes()
+  val diff = PixelDiff.compare(actual = actualBytes, expected = expectedBytes)
+  if (!diff.ok) {
+    PixelDiff.writeDiffArtefacts(actual = actualBytes, expected = expectedBytes, outDir = reportsDir)
+    throw AssertionError(
+      "$scenario real-mode pixel diff failed: ${diff.message} " +
+        "(maxDelta=${diff.maxDelta}, offending=${diff.offendingPixelCount}). " +
+        "Baseline=${baseline.absolutePath}. Artefacts under ${reportsDir.absolutePath}. " +
+        "Stderr=\n${stderrSupplier()}"
+    )
+  }
+}
+
+/**
+ * Builds the launcher payload-side bits of a real-mode scenario: a freshly-cleared `rendersDir` and
+ * a `manifestFile` pre-populated with [previews] entries. The `manifestFile` already conforms to
+ * [PreviewManifestRouter][ee.schimke.composeai.daemon.PreviewManifestRouter]'s schema; pass it to
+ * [RealDesktopHarnessLauncher] verbatim. [previews] are serialised in the order supplied; the
+ * `outputBaseName` for each entry defaults to its `id` so the resulting PNGs land at
+ * `<rendersDir>/<id>.png`.
+ *
+ * Used by every D-harness.v1.5b real-mode test except S1 (which inlines the manifest for KDoc
+ * provenance).
+ */
+data class RealModePreview(
+  val id: String,
+  val className: String,
+  val functionName: String,
+  val widthPx: Int = 64,
+  val heightPx: Int = 64,
+  val density: Double = 1.0,
+  val showBackground: Boolean = true,
+)
+
+data class RealModeScenarioPaths(
+  val name: String,
+  val rendersDir: File,
+  val reportsDir: File,
+  val manifestFile: File,
+  val classpath: List<File>,
+  val launcher: RealDesktopHarnessLauncher,
+)
+
+fun realModeScenario(name: String, previews: List<RealModePreview>): RealModeScenarioPaths {
+  val moduleBuildDir = File("build")
+  val rendersDir =
+    File(moduleBuildDir, "daemon-harness/renders/$name").apply {
+      deleteRecursively()
+      mkdirs()
+    }
+  val reportsDir =
+    File(moduleBuildDir, "reports/daemon-harness/$name").apply {
+      deleteRecursively()
+      mkdirs()
+    }
+  val manifestFile =
+    File(moduleBuildDir, "daemon-harness/manifests/$name-previews.json").apply {
+      parentFile.mkdirs()
+    }
+  val previewsJson =
+    previews.joinToString(",") { p ->
+      """
+      {
+        "id": "${p.id}",
+        "className": "${p.className}",
+        "functionName": "${p.functionName}",
+        "widthPx": ${p.widthPx},
+        "heightPx": ${p.heightPx},
+        "density": ${p.density},
+        "showBackground": ${p.showBackground},
+        "outputBaseName": "${p.id}"
+      }
+      """
+        .trimIndent()
+    }
+  manifestFile.writeText("""{"previews":[$previewsJson]}""")
+  val classpath =
+    System.getProperty("java.class.path")
+      .split(File.pathSeparator)
+      .filter { it.isNotBlank() }
+      .map { File(it) }
+  val launcher =
+    RealDesktopHarnessLauncher(
+      rendersDir = rendersDir,
+      previewsManifest = manifestFile,
+      classpath = classpath,
+    )
+  return RealModeScenarioPaths(
+    name = name,
+    rendersDir = rendersDir,
+    reportsDir = reportsDir,
+    manifestFile = manifestFile,
+    classpath = classpath,
+    launcher = launcher,
+  )
 }
 
 /**

@@ -83,3 +83,26 @@ tasks.register<JavaExec>("runFakeDaemonMain") {
   classpath = sourceSets["main"].runtimeClasspath
   mainClass.set("ee.schimke.composeai.daemon.harness.FakeDaemonMain")
 }
+
+// D-harness.v1.5b — regenerate the in-repo PNG baselines under
+// `tools/daemon-harness/baselines/desktop/<scenario>/`. Runs every real-mode scenario in
+// "capture" mode: pixel-diffs are skipped and the captured PNG always overwrites the baseline.
+// See `tools/daemon-harness/CONTRIBUTING.md` for when to run this. Two runs in a row should
+// produce byte-identical PNGs; if they don't, the renderer has a non-determinism worth chasing.
+val regenerateBaselines by
+  tasks.registering(Test::class) {
+    description =
+      "Run every harness scenario in capture mode; overwrites in-repo baseline PNGs " +
+        "(D-harness.v1.5b)."
+    group = "verification"
+    systemProperty("composeai.harness.host", "real")
+    systemProperty("composeai.harness.regenerate", "true")
+    useJUnit()
+    val baseTest = tasks.test.get()
+    classpath = baseTest.classpath
+    testClassesDirs = baseTest.testClassesDirs
+    // Real-mode-only — fake-mode tests don't drive baselines (they pixel-diff against in-fixture
+    // PNGs, not the in-repo ones).
+    filter { includeTestsMatching("*RealModeTest") }
+    outputs.upToDateWhen { false }
+  }
