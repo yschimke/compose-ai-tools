@@ -372,27 +372,34 @@ Full design: [TEST-HARNESS.md](TEST-HARNESS.md). The harness plays the role of V
 
 Scoped under Stream D because it is shaped like the bench harnesses (subprocess management + assertions on real daemon output) and shares CI surface with D2.1/D2.2/D2.3.
 
-#### D-harness.v0 — Single happy-path scenario, desktop only
+#### D-harness.v0 — Single happy-path scenario, desktop, against `FakeHost`
 
-New module `:tools:daemon-harness` (plain `org.jetbrains.kotlin.jvm`; depends only on `:renderer-daemon-core` for the protocol types). One scenario (S1 lifecycle happy path) against the desktop daemon. Subprocess plumbing (`ProcessBuilder` against the `composePreviewDaemonStart` descriptor, `Content-Length`-framed stdio, stderr buffering, shutdown sequencing). One baseline PNG checked in under `tools/daemon-harness/baselines/desktop/s1-lifecycle/`. Pixel-diff helper (`PixelDiff.kt`) — first shared in-tree implementation; previously each pixel-test rolled its own. CI workflow `daemon-harness-desktop`.
+New module `:tools:daemon-harness` (plain `org.jetbrains.kotlin.jvm`; depends only on `:renderer-daemon-core` for the protocol types). One scenario (S1 lifecycle happy path). Subprocess plumbing (`ProcessBuilder` against a tiny `FakeDaemonMain`, `Content-Length`-framed stdio, stderr buffering, shutdown sequencing). The harness ships a `FakeHost` (TEST-HARNESS § 8a) that implements `RenderHost` and serves PNGs from `build/daemon-harness/test-patterns/`, generated deterministically by a new `TestPatterns.kt` (solid colours, text boxes, gradient strips — TV-test-signal aesthetics). Pixel-diff helper (`PixelDiff.kt`) — first shared in-tree implementation; previously each pixel-test rolled its own. CI workflow `daemon-harness-desktop`.
 
-May ship before B-desktop.1.5 against a stub `DesktopHost` returning a fixture PNG (TEST-HARNESS § 10 Q5 — gated on human decision).
+**Independent of B-desktop.1.5** thanks to `FakeHost` — proves the architecture without depending on the real renderer wiring. No image baselines checked in (generated test patterns are the baseline; same generator produces fixture and expected output).
 
-- **Depends on:** P0.5 (for `:renderer-daemon-core` protocol types). For the *real* daemon variant: B-desktop.1.5. For the stub variant: none beyond P0.5.
-- **DoD:** `./gradlew :tools:daemon-harness:test -Ptarget=desktop` runs S1 green. Deliberately corrupt the baseline PNG → test fails; `actual.png`, `expected.png`, `diff.png` written under `build/reports/daemon-harness/`. CI workflow added and green on this branch.
+- **Depends on:** P0.5 (for `:renderer-daemon-core` protocol types).
+- **DoD:** `./gradlew :tools:daemon-harness:test` runs S1 green. Deliberately corrupt the wire path (e.g. bit-flip in the daemon's PNG-write) → test fails; `actual.png`, `expected.png`, `diff.png` written under `build/reports/daemon-harness/`. CI workflow added and green on this branch.
 
-#### D-harness.v1 — Full reactive scenario catalogue (desktop)
+#### D-harness.v1 — Full reactive scenario catalogue, desktop, fake-mode
 
-Adds S2 (drain semantics), S3 (render-after-edit; gated on B2.2 — ships placeholder until then), S4 (visibility filter), S5 (renderFailed surfacing), S7 (latency budget against `baseline-latency.csv` ±25%), S8 (cost-model parity within ±50% of catalogue ratios). File-edit simulation primitive (`editSource` with auto-revert in `finally` + bytecode-visibility validation). Per-scenario timeouts. Baseline regeneration task (`:tools:daemon-harness:regenerateBaselines`). Per-target preview-ID alias map.
+Adds S2 (drain semantics), S3 (render-after-edit — for fake mode the "edit" maps to swapping which fixture variant `FakeHost` serves for that preview ID), S4 (visibility filter), S5 (renderFailed — configured via fixture `<previewId>.error` rather than a sentinel composable), S7 (latency — **recorded only, not asserted**: per-scenario `actual ms / baseline ms / delta%` written to `build/reports/daemon-harness/latency.csv` and surfaced as a CI artefact; humans read trends, no test fails on perf), S8 (cost-model parity — fake-mode metrics configured via fixture `<previewId>.metrics.json`). File-edit simulation primitive (`editSource` with auto-revert in `finally` + bytecode-visibility validation). Per-scenario timeouts.
 
-- **Depends on:** D-harness.v0, P0.6 (for desktop latency baseline rows in `baseline-latency.csv`), B-desktop.1.6 (so the drain test can run against the real cancellation enforcement)
-- **DoD:** all six scenarios pass on every PR via the existing `daemon-harness-desktop` job. S5's broken preview lives in a dedicated `:samples:desktop-daemon-bench` source variant with a sentinel `error("boom")` composable. Latency band failures attach `actual ms / baseline ms / band` to the workflow log.
+- **Depends on:** D-harness.v0, P0.6 (so latency-record-only has desktop baseline rows to delta against)
+- **DoD:** all six scenarios pass on every PR via the existing `daemon-harness-desktop` job. Fake-mode failure-mode coverage (S5 + slow renders + specific metrics) verified by configuring fixtures, no sample-module changes. Latency CSV artefact uploaded by CI; weekly drift report consumes it later (v3).
+
+#### D-harness.v1.5 — Flip to real renderer once B-desktop.1.5 lands
+
+Same scenarios, `-Pharness.host=real`. Captures actual Compose-rendered PNGs as in-repo image baselines under `tools/daemon-harness/baselines/desktop/<scenario>/<id>.png`. `FakeHost` stays available behind `-Pharness.host=fake` for deterministic failure-mode coverage and as the v0 architecture preservation. Both modes run on every PR.
+
+- **Depends on:** D-harness.v1, B-desktop.1.5 (real `DaemonMain` wiring), B-desktop.1.6 (drain semantics for S2 against the real cancellation enforcement)
+- **DoD:** real-mode S1–S8 pass; fake-mode regression set still passes; the captured baselines are reviewed visually in the merging PR.
 
 #### D-harness.v2 — Android target
 
-Adds `-Ptarget=android` parameter. `:samples:android-daemon-bench` already exists; the harness wires its descriptor as the alternate spawn target. Android baseline PNGs captured for every scenario in `tools/daemon-harness/baselines/android/`. New CI job `daemon-harness-android` (slower than desktop — Robolectric + Android sandbox bootstrap dominate). Resource-edit scenario variant for S3 (`res/**` change) lands here, since desktop has no `res/**`.
+Adds `-Ptarget=android` parameter. `:samples:android-daemon-bench` already exists; the harness wires its descriptor as the alternate spawn target. Real-mode usable immediately (B1.5 already shipped). Android image baselines captured under `tools/daemon-harness/baselines/android/`. New CI job `daemon-harness-android` (slower than desktop — Robolectric + Android sandbox bootstrap dominate). Resource-edit scenario variant for S3 (`res/**` change) lands here, since desktop has no `res/**`.
 
-- **Depends on:** D-harness.v1, B1.5 (Android `JsonRpcServer` wiring already shipped)
+- **Depends on:** D-harness.v1.5, B1.5 (Android `JsonRpcServer` wiring already shipped)
 - **DoD:** `./gradlew :tools:daemon-harness:test -Ptarget=android` runs the v1 catalogue green. Renderer-agnostic claim of [DESIGN § 4](DESIGN.md#renderer-agnostic-surface) enforced at the harness level: the same scenario class drives both targets with only the descriptor + baselines differing. CI job added.
 
 #### D-harness.v3 — Future-feature scenarios + soak + drift report
