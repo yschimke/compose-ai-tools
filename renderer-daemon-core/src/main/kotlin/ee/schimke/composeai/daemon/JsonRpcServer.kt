@@ -340,6 +340,17 @@ class JsonRpcServer(
     // notification. We use a fresh thread (cheap; we expect O(visible) renders
     // queued at a time) rather than a pool to keep wiring trivial — B1.4 will
     // revisit when it introduces a real RenderEngine.
+    //
+    // We propagate the protocol-level previewId via the existing
+    // `RenderRequest.Render.payload` "previewId=<id>" channel (see
+    // RenderHost.kt's KDoc on RenderRequest.payload, and FakeHost's
+    // resolvePreviewId which reads the same convention). This lets fake-mode
+    // harness backends — and any future host that needs to disambiguate
+    // concurrent renders — recover the caller's preview id without widening
+    // the RenderRequest shape. B-desktop.1.4 will replace this with a typed
+    // field; until then this is the documented workaround.
+    val previewId = hostIdToPreviewId[hostId] ?: ""
+    val payload = if (previewId.isNotEmpty()) "previewId=$previewId" else ""
     Thread(
         {
           try {
@@ -349,7 +360,11 @@ class JsonRpcServer(
             // default for direct callers; we override here because the
             // first render in a daemon's life sits behind the sandbox cold
             // boot.
-            val raw = host.submit(RenderRequest.Render(id = hostId), timeoutMs = 5 * 60_000)
+            val raw =
+              host.submit(
+                RenderRequest.Render(id = hostId, payload = payload),
+                timeoutMs = 5 * 60_000,
+              )
             renderResultsQueue.put(raw)
           } catch (e: Throwable) {
             System.err.println("compose-ai-daemon: host.submit($hostId) failed: ${e.message}")

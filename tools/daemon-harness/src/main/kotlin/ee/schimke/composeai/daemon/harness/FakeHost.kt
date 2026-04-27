@@ -8,6 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Renderer-agnostic [RenderHost] that serves PNGs from a local fixture directory keyed by preview
@@ -45,6 +49,13 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
   /**
    * Cache of decoded `<previewId>.error` / `<previewId>.delay-ms` / `<previewId>.metrics.json`
    * sidecar files. Lazy because most fixtures only set one or two of them.
+   *
+   * **Sidecar lookup is intentionally re-resolved on each render** by clearing the entry before
+   * each read — see the v1 S3 (render-after-edit) scenario which swaps which `<previewId>.png`
+   * variant the host serves between two `renderNow` calls. Caching the path resolution is fine;
+   * caching the decoded contents would make the fixture-swap invisible to the host. We keep the
+   * sidecar cache (errors / delays / metrics rarely change mid-scenario) but the PNG file itself is
+   * always read fresh below.
    */
   private val sidecarCache = ConcurrentHashMap<String, ResolvedSidecars>()
 
@@ -73,8 +84,13 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
         )
     val sidecars = sidecarCache.computeIfAbsent(previewId) { loadSidecars(it) }
     sidecars.delayMs?.let { Thread.sleep(it.coerceAtLeast(0L)) }
-    if (sidecars.errorMessage != null) {
-      throw RuntimeException("FakeHost configured error for '$previewId': ${sidecars.errorMessage}")
+    sidecars.error?.let { err ->
+      // Throw the configured exception. JsonRpcServer's emitRenderFailed catches Throwable and
+      // wires it into a `renderFailed` notification with `kind=internal` (the v1 server doesn't yet
+      // surface the structured `kind` field from the fixture; it stuffs it into the message instead
+      // — that's a downstream gap, not a FakeHost concern). The exception message starts with the
+      // configured `kind` so test scenarios can pattern-match.
+      throw RuntimeException("[${err.kind}] ${err.message}")
     }
     val pngFile = File(fixtureDir, "$previewId.png")
     require(pngFile.exists()) {
@@ -114,17 +130,40 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
     val errorFile = File(fixtureDir, "$previewId.error")
     val delayFile = File(fixtureDir, "$previewId.delay-ms")
     val metricsFile = File(fixtureDir, "$previewId.metrics.json")
-    val errorMessage = errorFile.takeIf { it.exists() }?.readText()?.trim()
+    val error = errorFile.takeIf { it.exists() }?.let { parseErrorSidecar(it) }
     val delayMs = delayFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
     val metrics: Map<String, Long>? =
       metricsFile
         .takeIf { it.exists() }
         ?.let { f -> JSON.decodeFromString<Map<String, Long>>(f.readText()) }
-    return ResolvedSidecars(errorMessage = errorMessage, delayMs = delayMs, metrics = metrics)
+    return ResolvedSidecars(error = error, delayMs = delayMs, metrics = metrics)
   }
 
+  /**
+   * Parses a `<previewId>.error` sidecar. Two accepted shapes:
+   * 1. JSON object `{"kind": "runtime"|"compile"|"capture"|"internal", "message": "...",
+   *    "stackTrace": "..."}` — the v1 D-harness format from TEST-HARNESS § 3 / S5. `kind` and
+   *    `message` are required; `stackTrace` is optional and unused today (the v1 server's
+   *    `renderFailed` payload doesn't carry through fixture-supplied stack traces).
+   * 2. Plain text — legacy v0 path; treated as a message with `kind="runtime"`.
+   */
+  private fun parseErrorSidecar(file: File): ErrorSpec {
+    val raw = file.readText().trim()
+    return if (raw.startsWith("{")) {
+      val obj: JsonObject = JSON.parseToJsonElement(raw).jsonObject
+      val kind = obj["kind"]?.jsonPrimitive?.contentOrNull ?: "runtime"
+      val message = obj["message"]?.jsonPrimitive?.contentOrNull ?: "(no message)"
+      val stackTrace = obj["stackTrace"]?.jsonPrimitive?.contentOrNull
+      ErrorSpec(kind = kind, message = message, stackTrace = stackTrace)
+    } else {
+      ErrorSpec(kind = "runtime", message = raw, stackTrace = null)
+    }
+  }
+
+  private data class ErrorSpec(val kind: String, val message: String, val stackTrace: String?)
+
   private data class ResolvedSidecars(
-    val errorMessage: String?,
+    val error: ErrorSpec?,
     val delayMs: Long?,
     val metrics: Map<String, Long>?,
   )
