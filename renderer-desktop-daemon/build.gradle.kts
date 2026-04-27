@@ -65,8 +65,7 @@ tasks.register<JavaExec>("runDaemonMain") {
   group = "application"
   description = "Runs the placeholder DaemonMain (B-desktop.1.1 skeleton)."
   classpath =
-    sourceSets["main"].runtimeClasspath +
-      files(tasks.named("jar").map { (it as Jar).archiveFile })
+    sourceSets["main"].runtimeClasspath + files(tasks.named("jar").map { (it as Jar).archiveFile })
   mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
   dependsOn("jar")
 }

@@ -201,12 +201,14 @@ Create `renderer-desktop-daemon/` module. Plain `org.jetbrains.kotlin.jvm` (no A
 - **DoD:** `./gradlew :renderer-desktop-daemon:assemble` succeeds. `java -cp ... DaemonMain` prints "hello".
 - **Landed:** `renderer-desktop-daemon/build.gradle.kts` (plain Kotlin JVM, no `kotlin-serialization` plugin — `:renderer-daemon-core` re-exposes the dep transitively); `renderer-desktop-daemon/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt` with `@file:JvmName("DaemonMain")` matching B1.5's convention; `settings.gradle.kts` includes `:renderer-desktop-daemon` immediately after `:renderer-desktop`. Also registered a tiny `JavaExec` task `runDaemonMain` in lieu of the `application` plugin (avoids the `distZip`/`distTar`/etc. churn for a skeleton). Compose Desktop's per-platform Skiko native bundle is contributed transitively via `:renderer-desktop` (`compose.desktop.currentOs`) — no extra config needed in this module.
 
-#### B-desktop.1.3 — `DesktopHost` (sandbox holder)
+#### B-desktop.1.3 — `DesktopHost` (sandbox holder) ✅
 
 Implement `RenderHost` (from P0.5's core) for the desktop backend. Holds a long-lived `Recomposer` + Skiko `Surface` + worker thread; submits `RenderRequest`s; returns `RenderResult { id, classloaderHash }` for parity with B1.3. Much simpler than `RobolectricHost` — no classloader bridge, no `@Test` runner trick, no shadow registrations to drain. Just a coroutine scope holding Compose runtime warm.
 
 - **Depends on:** B-desktop.1.1
 - **DoD:** unit test: submit 10 dummy renders to a single host instance; all complete; classloader is identical across all 10 (in this case, the JVM's own classloader — there's no sandbox classloader to verify against, but the test still asserts invariance).
+
+Done. Landed [`DesktopHost`](../../renderer-desktop-daemon/src/main/kotlin/ee/schimke/composeai/daemon/DesktopHost.kt) as a plain `RenderHost` implementation: a single `compose-ai-daemon-host` worker thread driven by a `LinkedBlockingQueue<RenderRequest>` + `ConcurrentHashMap<Long, LinkedBlockingQueue<Any>>` results map, mirroring `RobolectricHost`'s drain shape minus the Robolectric `@Test`-runner / classloader-bridge complexity. `start()` starts the thread; `submit(...)` enqueues + awaits; `shutdown(...)` enqueues a `RenderRequest.Shutdown` poison pill and joins. The render thread does not poll `Thread.interrupted()` and the host never calls `interrupt()` on it (DESIGN § 9). For B-desktop.1.3 the render body is a stub — captures `Thread.currentThread().contextClassLoader` identity into a `RenderResult` after a 1ms sleep, exactly parallel to `RobolectricHost.renderStub`. No `Recomposer` / `ImageComposeScene` / `setContent` in this task — that's B-desktop.1.4. The KDoc is explicit about where the warm Compose runtime will plug in. DoD verified by [`DesktopHostTest`](../../renderer-desktop-daemon/src/test/kotlin/ee/schimke/composeai/daemon/DesktopHostTest.kt) (10 renders → 1 classloader, no `InterruptedException` on the render thread); test runtime ~26ms.
 
 #### B-desktop.1.4 — `RenderEngine` (per-preview body)
 
