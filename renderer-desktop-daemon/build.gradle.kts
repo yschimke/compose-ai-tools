@@ -8,20 +8,26 @@
 //
 //  - `:renderer-android-daemon` → `RobolectricHost` (Robolectric sandbox + the
 //    dummy-`@Test` runner trick from DESIGN.md § 9).
-//  - `:renderer-desktop-daemon` → `DesktopHost` (long-lived `Recomposer` +
-//    Skiko `Surface`). Lands in B-desktop.1.3; this module currently only
-//    holds the skeleton + a placeholder `DaemonMain` that prints "hello".
-//    B-desktop.1.5 wires `DaemonMain` to the existing `JsonRpcServer` from
-//    core.
+//  - `:renderer-desktop-daemon` → `DesktopHost` (long-lived JVM + render
+//    thread; per-render `ImageComposeScene`). B-desktop.1.4 lands the real
+//    render body in `RenderEngine.kt`; B-desktop.1.5 wires `DaemonMain` to
+//    `JsonRpcServer` from core.
 //
-// Plain JVM module (no Android plugins) — Compose Desktop's Skiko native
-// bundle is contributed transitively via `:renderer-desktop`.
+// Compose Multiplatform module (Kotlin JVM + compose plugins). The compose
+// plugins are required so B-desktop.1.4's `RenderEngine` can compile against
+// `androidx.compose.runtime.Composable` / `androidx.compose.ui.ImageComposeScene`,
+// and so the test source set can declare `@Preview` / `@Composable` fixtures.
+// The same plugin set is used by `:renderer-desktop`.
 //
 // NOT published to Maven. Consumed only by the Gradle plugin's daemon launch
 // descriptor (Stream A); classpath wireup for the desktop target lands in a
 // later Stream A task.
 
-plugins { alias(libs.plugins.kotlin.jvm) }
+plugins {
+  alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
+  alias(libs.plugins.compose.compiler)
+}
 
 group = "ee.schimke.composeai"
 
@@ -49,7 +55,26 @@ dependencies {
   // into this module on top of that classpath.
   implementation(project(":renderer-desktop"))
 
+  // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
+  // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
+  // `getDeclaredComposableMethod`, and a few Modifier / layout helpers. These
+  // are runtime-transitive through `:renderer-desktop` but not compile-visible
+  // here; declare them explicitly so the duplicated render body compiles
+  // against the same coordinates `:renderer-desktop` resolves.
+  implementation(compose.runtime)
+  implementation(compose.foundation)
+  implementation(compose.ui)
+  implementation(compose.components.uiToolingPreview)
+
   testImplementation(libs.junit)
+  // Tests declare a small fixture composable + drive RenderEngine against it,
+  // so the test classpath needs the same Compose Multiplatform stack.
+  testImplementation(compose.desktop.currentOs)
+  testImplementation(compose.runtime)
+  testImplementation(compose.foundation)
+  testImplementation(compose.ui)
+  testImplementation(compose.material3)
+  testImplementation(compose.components.uiToolingPreview)
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
@@ -57,15 +82,18 @@ java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 tasks.withType<Test>().configureEach { useJUnit() }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
-// .DaemonMain`. Lets local verification of the placeholder `main` happen without applying the
+// .DaemonMain`. Lets local verification of the daemon happen without applying the
 // `application` plugin (which would add `distZip`/`distTar`/etc. tasks we don't need yet). Wire-up
-// to the Gradle plugin's daemon launch descriptor lands in a later Stream A task; this task is
-// purely for local "does the JAR run?" sanity checks.
+// to the Gradle plugin's daemon launch descriptor lands in a later Stream A task; this task is a
+// debug entry point — `runDaemonMain` blocks waiting for stdin (the JSON-RPC channel) and exits
+// when the client sends `shutdown` + `exit` (or stdin closes).
 tasks.register<JavaExec>("runDaemonMain") {
   group = "application"
-  description = "Runs the placeholder DaemonMain (B-desktop.1.1 skeleton)."
+  description =
+    "Runs DaemonMain (B-desktop.1.5: JsonRpcServer + DesktopHost). Blocks waiting for stdin."
   classpath =
     sourceSets["main"].runtimeClasspath + files(tasks.named("jar").map { (it as Jar).archiveFile })
   mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+  standardInput = System.`in`
   dependsOn("jar")
 }

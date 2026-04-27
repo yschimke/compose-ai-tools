@@ -11,17 +11,16 @@ import java.util.concurrent.TimeUnit
  *
  * Pattern: [start] starts a single render thread that polls [requests] for a [RenderRequest.Render]
  * (or [RenderRequest.Shutdown] poison pill); for every render request it hands control to a render
- * function (a stub for B-desktop.1.3, the real engine for B-desktop.1.4) and posts the result onto
- * the matching per-id queue in [results].
+ * function (a stub before B-desktop.1.4, [RenderEngine.render] from B-desktop.1.4 onwards) and
+ * posts the result onto the matching per-id queue in [results].
  *
  * **Where the warm Compose runtime lives.** On desktop the canonical render primitive is
- * `ImageComposeScene` (see `:renderer-desktop`'s `DesktopRendererMain`), which manages its own
- * `Recomposer` + Skiko `Surface` internally. B-desktop.1.4 decides whether to instantiate one
- * `ImageComposeScene` per render or hold one open across renders; either way it lives behind
- * [renderStub] / its successor and runs on this host's render thread. For B-desktop.1.3 the "warm
- * runtime" is just the JVM + render thread + queue infrastructure — the Compose runtime is a no-op
- * until B-desktop.1.4 lands. The 10-render reuse test still proves the thread-and-classloader
- * invariance that the warm-runtime case will inherit.
+ * `ImageComposeScene` (see `:renderer-desktop`'s `DesktopRendererMain` and the duplicated body in
+ * [RenderEngine]). The scene is constructed and disposed *per render* — the runtime amortisation
+ * the daemon delivers is at the JVM + JIT + Skiko-native-bundle level, not the scene level.
+ * B-desktop.1.4 deliberately doesn't hold one scene across renders; doing so would require tearing
+ * down the previous content tree between previews, which is roughly the same wall-clock as just
+ * constructing a fresh scene against the warm Compose/Skiko native code.
  *
  * **Why much simpler than Android.** No Robolectric `InstrumentingClassLoader`, no dummy-`@Test`
  * runner trick, no `bridge` package. Compose Desktop runs in plain JVM classloaders, so the
@@ -38,13 +37,26 @@ import java.util.concurrent.TimeUnit
  * - The only `Thread.currentThread().interrupt()` calls in this file are the standard "restore
  *   interrupt status after a caught [InterruptedException]" pattern on the *current* thread — never
  *   on the render thread from outside.
+ * - [RenderEngine] takes the same invariant inwards: every `ImageComposeScene` is closed in a
+ *   `try/finally`, even if the render body throws.
  *
- * For B-desktop.1.3 the render body is intentionally a stub — it does not touch `ImageComposeScene`
- * or `setContent`. B-desktop.1.4 (separate task) duplicates the real render body in here; this task
- * only proves the queue + worker-thread plumbing actually works and that submissions reuse the same
- * render thread.
+ * **Payload format.** `RenderRequest.Render.payload` is parsed via [RenderSpec.parseFromPayload]: a
+ * `;`-delimited `key=value` string carrying at minimum `className=...` and `functionName=...`. When
+ * [RenderRequest] grows a typed `previewId: String?` field, [DesktopHost] will look the spec up in
+ * `previews.json` instead. Until then, callers — `JsonRpcServer` (forwarding from the
+ * `renderNow.previews[i]` ID), the harness's `HarnessClient`, and direct unit tests — encode the
+ * spec into `payload`. A blank or non-spec payload falls back to a deterministic stub render
+ * ([renderStubFallback]) so the legacy [DesktopHostTest] (which submits `payload="render-N"`) keeps
+ * working through the B-desktop.1.4 transition.
  */
-open class DesktopHost : RenderHost {
+open class DesktopHost(
+  /**
+   * The render engine bound to this host. Visible as a constructor parameter so tests can swap in a
+   * stub or a fixture-pinned variant; production code uses the default zero-arg [RenderEngine]
+   * which honours the `composeai.render.outputDir` system property.
+   */
+  private val engine: RenderEngine = RenderEngine()
+) : RenderHost {
 
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
@@ -116,7 +128,21 @@ open class DesktopHost : RenderHost {
       when (request) {
         is RenderRequest.Shutdown -> return
         is RenderRequest.Render -> {
-          val result = renderStub(request.id)
+          val result =
+            try {
+              dispatchRender(request)
+            } catch (t: Throwable) {
+              // Surface to stderr so the failure is observable in CI logs; still post a result so
+              // the caller's poll() doesn't time out. The result encodes "no PNG, no metrics" via
+              // null fields — JsonRpcServer will treat that as the stub-path placeholder, and the
+              // caller can decide whether to fail the test from there.
+              System.err.println(
+                "DesktopHost: render dispatch failed for id=${request.id} " +
+                  "(payload='${request.payload}'): ${t.message}"
+              )
+              t.printStackTrace(System.err)
+              renderStubFallback(request.id)
+            }
           results.computeIfAbsent(request.id) { LinkedBlockingQueue() }.put(result)
         }
       }
@@ -124,16 +150,31 @@ open class DesktopHost : RenderHost {
   }
 
   /**
-   * Stub render for B-desktop.1.3 — returns a [RenderResult] capturing the render-thread
-   * classloader identity so the test can verify reuse across many submissions. B-desktop.1.4
-   * replaces the body of this function with the real Compose / `ImageComposeScene` render path.
+   * Dispatches a render to [engine], or to [renderStubFallback] when the request payload is empty
+   * or doesn't look like a spec.
    *
-   * The 1ms sleep keeps the latency shape recognisable as "did some work" without inflating test
-   * wall-clock; mirrors the placeholder shape `RobolectricHost.renderStub` adopted before B1.4
-   * landed.
+   * The non-spec escape hatch keeps the B-desktop.1.3 [DesktopHostTest] (which submits
+   * `payload="render-N"` strings) working through the B-desktop.1.4 transition — it doesn't carry a
+   * `className=`/`functionName=` pair, so we recognise it as "no spec; just verify the queue
+   * plumbing" and fall back to the classloader-stamped result. Real callers (JsonRpcServer + the
+   * harness) always encode a parseable payload.
    */
-  private fun renderStub(id: Long): RenderResult {
-    Thread.sleep(1)
+  private fun dispatchRender(request: RenderRequest.Render): RenderResult {
+    val parseable = request.payload.contains("className=")
+    return if (!parseable) {
+      renderStubFallback(request.id)
+    } else {
+      val spec = RenderSpec.parseFromPayload(request.payload)
+      engine.render(spec, request.id)
+    }
+  }
+
+  /**
+   * Fallback render for non-spec payloads — returns a [RenderResult] capturing the render-thread
+   * classloader identity. Used by [DesktopHostTest]'s 10-render reuse assertion (which submits
+   * payloads of the form `render-N`) and as the catch-all when the real engine throws.
+   */
+  private fun renderStubFallback(id: Long): RenderResult {
     val cl = Thread.currentThread().contextClassLoader ?: DesktopHost::class.java.classLoader
     return RenderResult(
       id = id,

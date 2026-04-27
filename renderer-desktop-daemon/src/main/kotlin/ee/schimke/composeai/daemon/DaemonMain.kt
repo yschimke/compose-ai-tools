@@ -3,27 +3,54 @@
 package ee.schimke.composeai.daemon
 
 /**
- * Placeholder entry point for the desktop preview daemon JVM — see docs/daemon/DESIGN.md § 4
- * ("Renderer-agnostic surface").
+ * Entry point for the desktop preview daemon JVM — see docs/daemon/DESIGN.md § 4
+ * ("Renderer-agnostic surface"). Mirrors `:renderer-android-daemon`'s [DaemonMain][
+ * ee.schimke.composeai.daemon.DaemonMain] (B1.5) so a future `composePreviewDaemonStart` task that
+ * picks the right `mainClass` per target doesn't have to special-case anything.
  *
- * **Status: skeleton only (B-desktop.1.1).** This `main` currently just prints a hello banner and
- * exits. The full lifecycle lands in subsequent Stream B-desktop tasks:
+ * Lifecycle (B-desktop.1.5):
+ * 1. **Stdout reroute.** Stdout is the JSON-RPC channel — every byte is a framed message. Some
+ *    libraries we don't fully control (kotlinx-coroutines bootstrap, Skiko native init, occasional
+ *    `println` left over in third-party code) will write to `System.out` by default and corrupt the
+ *    wire. Capture the real stdout into a local before swapping `System.out` to `System.err`, then
+ *    hand the captured stream to [JsonRpcServer]. After this point any `System.out.println` lands
+ *    on stderr (free-form log per [PROTOCOL.md § 1](../../../../../../docs/daemon/PROTOCOL.md)).
+ * 2. **Print a hello banner to stderr** so `runDaemonMain` debugging ("did the JVM boot?") is
+ *    obvious without sending bytes down the wire.
+ * 3. Build a [DesktopHost] (B-desktop.1.3 + B-desktop.1.4 — holds the warm render thread + Compose
+ *    runtime open across renders). Implements the renderer-agnostic [RenderHost] from
+ *    `:renderer-daemon-core`.
+ * 4. Build a [JsonRpcServer] (B1.5 — JSON-RPC 2.0 over stdio with LSP-style Content-Length
+ *    framing). Lives in `:renderer-daemon-core`; binds to any [RenderHost] implementation.
+ * 5. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit` or stdin closes; it
+ *    calls `System.exit` itself.
+ * 6. Defensive `host.shutdown(...)` in `finally` — `JsonRpcServer.run` already calls
+ *    `host.shutdown()` on its `cleanShutdown` path, but if `run()` itself throws (e.g. an
+ *    unrecoverable IO error) before reaching that, the host's render thread is still alive and a
+ *    bare `System.exit` would skip its `try/finally` discipline. Calling `shutdown(timeoutMs =
+ *    30_000)` here is idempotent and matches the renderer-android side.
  *
- * 1. B-desktop.1.3 introduces `DesktopHost` — the desktop-side [RenderHost] implementation that
- *    holds a long-lived `Recomposer` + Skiko `Surface` warm across renders, mirroring the role
- *    `RobolectricHost` plays in `:renderer-android-daemon`.
- * 2. B-desktop.1.4 duplicates the desktop renderer's per-preview body into a `RenderEngine` here,
- *    invoked by `DesktopHost`.
- * 3. B-desktop.1.5 wires this `main` to the existing `JsonRpcServer` from `:renderer-daemon-core`,
- *    bound to a `DesktopHost`. After that point this file's body becomes structurally identical to
- *    `:renderer-android-daemon`'s `DaemonMain.kt`, with only the concrete `RenderHost` differing —
- *    the renderer-agnostic-surface payoff.
- *
- * The file-level [JvmName] mirrors the convention `:renderer-android-daemon`'s `DaemonMain.kt`
- * adopted in B1.5 so the daemon launch descriptor's `mainClass = "ee.schimke.composeai.daemon
- * .DaemonMain"` resolves cleanly without a `Kt` suffix when the Gradle plugin learns about this
- * target.
+ * `args` is currently unused; future flags (e.g. `--detect-leaks=heavy`, `--foreground`) will be
+ * parsed here.
  */
 fun main(args: Array<String>) {
-  println("compose-ai-tools desktop daemon: hello")
+  // Capture the real stdout *before* swapping. Whatever uses `System.out` after this line lands on
+  // stderr; the JSON-RPC channel is the captured `realOut`.
+  val realOut = System.out
+  System.setOut(System.err)
+
+  System.err.println("compose-ai-tools desktop daemon: hello (args=${args.toList()})")
+
+  val host: RenderHost = DesktopHost()
+  val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)
+  try {
+    server.run() // blocks until the client closes the wire
+  } finally {
+    // Idempotent — JsonRpcServer.cleanShutdown already calls this on the happy path.
+    try {
+      host.shutdown(timeoutMs = 30_000)
+    } catch (t: Throwable) {
+      System.err.println("compose-ai-tools desktop daemon: host.shutdown failed: ${t.message}")
+    }
+  }
 }
