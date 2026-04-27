@@ -283,13 +283,41 @@ but not a general-purpose diff. The harness ships a small in-tree
 third-party dependency) that the D2.2 pixel-diff CI gate also consumes.
 Consolidation is a side-effect of this work.
 
-### Baselines
+### Image baselines
 
-Live in-repo at `tools/daemon-harness/baselines/<target>/<scenario>/<id>.png`.
-Desktop set is small (~10 PNGs at ~100KB) and updates are rare. If volume
-becomes painful (Android adds device qualifiers), git LFS is the escape
-hatch — but **not** a remote artefact store, because "fresh checkout
-works" is load-bearing for the contributor experience.
+Distinct from the **latency baselines** in
+[`baseline-latency.csv`](baseline-latency.csv) (timing data, P0.1/P0.6).
+This section is about the per-scenario *expected* PNGs the harness
+pixel-diffs against; "image baseline" is used unambiguously below.
+
+Two storage strategies, picked per scenario based on what's actually
+being rendered:
+
+- **Generated test patterns** — for fake-mode scenarios (§ 8a) the
+  harness's "renders" are PNGs the harness itself produced from a small
+  `TestPatterns.kt` generator. Solid-colour boxes, text-on-box, gradient
+  strips, alignment grids — old TV test-signal aesthetics, plus a tiny
+  amount of UTF-8 text so the comparison covers font rendering. These
+  live in `build/daemon-harness/test-patterns/` and are regenerated
+  deterministically on every run; nothing baseline-related is checked in
+  for fake-mode scenarios. Same generator produces the fixture (what
+  `FakeHost` serves) and the expected baseline (what the harness diffs
+  against), so the diff is a wire-layer sanity check (no
+  corruption-in-flight) plus a regression test on `PixelDiff.kt` itself.
+  This is what removes the in-repo / LFS / artefact-store decision for
+  v0+v1 entirely.
+- **Captured real-render baselines** — for real-mode scenarios (v1.5+)
+  the baseline is whatever the real Compose renderer produces for a
+  given `@Preview`. These *do* go in-repo at
+  `tools/daemon-harness/baselines/<target>/<scenario>/<id>.png`. The
+  desktop set is small (~10 PNGs at ~100KB total); Android may
+  eventually grow. Git LFS stays an escape hatch only if on-disk volume
+  becomes painful — not pre-emptively wired. Decision deferred until
+  v1.5 actually has captured PNGs to size up.
+
+The pixel-diff thresholds, regeneration task, and per-scenario tolerance
+overrides apply to both storage strategies — the only thing that
+differs is where the bytes live.
 
 ### Regenerating baselines
 
@@ -421,60 +449,125 @@ to "the harness's S1 must pass" — the harness *is* the pixel-diff CI
 gate. D2.3 (1000-render soak) belongs in the harness as a session-mode
 scenario; port it once the harness exists.
 
+## 8a. The `FakeHost` test fixture
+
+The harness ships a `FakeHost` that implements [`RenderHost`](../../renderer-daemon-core/src/main/kotlin/ee/schimke/composeai/daemon/RenderHost.kt). It runs in the same JVM as the real daemon (it *is* the daemon's `RenderHost` for fake-mode runs), serves PNGs from a local fixture directory keyed by preview ID, and reads pre-cooked metadata from a small JSON manifest.
+
+Lives under `tools/daemon-harness/src/main/kotlin/.../FakeHost.kt` with fixtures in `tools/daemon-harness/fixtures/<scenario>/`. Each scenario's fixture directory contains:
+
+- `previews.json` — the same shape as a real `composePreviewDaemonStart` manifest, listing the previews this scenario expects to render.
+- `<previewId>.png` — the PNG the fake "renders" when asked for that preview.
+- Optional per-preview overrides: `<previewId>.delay-ms` to simulate a slow render, `<previewId>.error` to simulate `renderFailed`, `<previewId>.metrics.json` to override `renderFinished.metrics`.
+
+### Why this matters
+
+- **Decouples harness work from real-renderer work.** The harness can land its full v1 scenario catalogue without B-desktop.1.5 / B1.4 ever being merged. Once those land, the harness picks up real-renderer mode behind `-Pharness.host=real|fake` (default `real` when a working renderer exists for the target).
+- **Deterministic failure-mode coverage.** S5 (`renderFailed` surfacing) becomes "configure the fake to throw on this preview"; no need to maintain an `error("boom")` composable in a sample module. Same for slow renders (latency-band tests), specific metric values (cost-model parity), recycle-trigger sequences (S9).
+- **Permanent fixture, not throwaway scaffolding.** Unlike the agent's original "stub `DesktopHost`" suggestion, `FakeHost` doesn't get deleted once the real renderer ships. It stays as the way harness scenarios drive specific behaviours that would be impractical to coax out of a real renderer (e.g. "render took exactly 2.7 seconds and reported metrics X").
+- **Renderer-agnostic by construction.** Same `FakeHost` serves desktop and Android scenarios — it never touches Skiko, Robolectric, or Compose. Strengthens the [DESIGN § 4](DESIGN.md#renderer-agnostic-surface) invariant: nothing in the protocol or the harness depends on which renderer produced the PNG.
+
+### Wiring
+
+The harness's launch path is parameterised:
+
+- `-Pharness.host=fake` — harness spawns a daemon JVM whose entry point is a tiny `FakeDaemonMain` that wires `JsonRpcServer` → `FakeHost`. No `:renderer-android-daemon` or `:renderer-desktop-daemon` on the classpath at all.
+- `-Pharness.host=real` — harness spawns the real `composePreviewDaemonStart` descriptor, same as a VS Code launch.
+
+Default is `fake` until the matching real renderer's Stream B / B-desktop work has landed for the chosen `target`; flips to `real` once it has.
+
+### What's *not* in `FakeHost`
+
+It is **not** a substitute for the real-renderer integration tests (B1.5's `JsonRpcServerIntegrationTest`, B-desktop.1.5's equivalent). Those exercise the actual sandbox lifecycle, classloader behaviour, and Compose render path. `FakeHost` exercises everything *above* the host: protocol dispatch, lifecycle, scenario sequencing, image diff, file-edit primitives, latency recording, CI wiring. The two layers complement each other.
+
 ## 9. Phasing
 
 Each rung independently shippable; each gated on the previous rung
 working in CI for ~a week.
 
-**v0 — single happy-path scenario, desktop only.** Module
-`:tools:daemon-harness` exists. S1 only. `PixelDiff.kt` shipped; one
-baseline PNG. Subprocess plumbing works end-to-end. CI workflow runs S1
-on every PR. **May ship before B-desktop.1.5** against a stub
-`DesktopHost` returning a fixture PNG — proves the architecture early
-while Stream B-desktop is still wiring `DaemonMain` →`JsonRpcServer` →
-`DesktopHost`. Decision in § 10 Q5.
+**v0 — single happy-path scenario, desktop only, against `FakeHost`.**
+Module `:tools:daemon-harness` exists. S1 only. `PixelDiff.kt` shipped;
+one baseline PNG; one fixture directory under `tools/daemon-harness/fixtures/s1/`.
+Subprocess plumbing works end-to-end against a `FakeDaemonMain`. CI
+workflow runs S1 on every PR. **Independent of B-desktop.1.5** thanks to
+`FakeHost` (§ 8a) — proves the architecture without depending on the
+real renderer wiring.
 
-**v1 — full reactive scenario catalogue, desktop only.** S2 (drain),
-S3 (render-after-edit, gated on B2.2), S4 (visibility), S5
-(renderFailed), S7 (latency), S8 (cost-model parity). File-edit
-primitive with auto-revert + bytecode-visibility check. Per-scenario
-timeouts, stderr buffering, baseline regeneration task. Latency
-assertions against desktop rows in `baseline-latency.csv`.
+**v1 — full reactive scenario catalogue, desktop only, against `FakeHost`.**
+S2 (drain), S3 (render-after-edit; for fake mode the "edit" maps to
+swapping which fixture the host serves for that preview ID), S4
+(visibility), S5 (renderFailed; configured via fixture
+`<previewId>.error`), S7 (latency; **recorded only, not asserted** —
+see § 10 Q4), S8 (cost-model parity; configured via fixture
+`<previewId>.metrics.json`). File-edit primitive with auto-revert +
+bytecode-visibility check. Per-scenario timeouts, stderr buffering,
+baseline regeneration task. Latency CSV deltas surfaced as CI
+artefacts; humans read trends, no test fails on perf.
+
+**v1.5 — flip to real renderer once B-desktop.1.5 lands.** Same
+scenarios, `-Pharness.host=real`. The same scenario classes run with
+zero source change. Existing baselines re-captured against the real
+renderer (tightens the visual contract); FakeHost stays available for
+deterministic failure-mode coverage.
 
 **v2 — Android target.** `-Ptarget=android` wired in. Android baselines
-captured. Same scenarios run against `:samples:android-daemon-bench`.
+captured (real renderer mode immediately viable since B1.5 is already
+shipped). Same scenarios run against `:samples:android-daemon-bench`.
 New CI job `daemon-harness-android`. First time the renderer-agnostic
 claim in [DESIGN § 4](DESIGN.md#renderer-agnostic-surface) is *enforced*
 at the harness level.
 
 **v3 — predictive prefetch + recycle + soak.** S6 (classpathDirty,
-gated on B2.1), S9 (sandbox recycle, gated on B2.5), S10 (predictive
-prefetch, gated on P2.5.2), session-mode 1000-render soak (replaces
-D2.3), weekly drift-report workflow. Every daemon feature has an
-end-to-end harness scenario before un-flag review.
+gated on B2.1; for fake mode, the harness sends a synthetic
+`classpathDirty` notification directly), S9 (sandbox recycle, gated on
+B2.5), S10 (predictive prefetch, gated on P2.5.2), session-mode
+1000-render soak (replaces D2.3), weekly drift-report workflow. Every
+daemon feature has an end-to-end harness scenario before un-flag review.
 
-## 10. Decisions required
+## 10. Decisions still open
 
-These need a human answer before any of v0 ships.
+None as of this writing. New questions surfaced during implementation
+move here first; they migrate to § 11 once resolved.
 
-1. **Module location.** Recommend `:tools:daemon-harness` (new
-   top-level `tools/` directory). Acceptable, or prefer co-locating
-   under an existing module (e.g. extending `:samples:android-daemon-bench`
-   or adding an `integrationTest` source set on
-   `:renderer-desktop-daemon`)?
-2. **Pixel-diff defaults.** Recommend per-pixel ≤ 3 LSB (sum of channel
-   deltas), aggregate ≤ 0.5% pixels exceeding, absolute cap ≤ 50 LSB.
-   Aligned with what feels right, or do we want a stricter / looser
-   starting point?
-3. **Baselines in repo vs LFS vs separate artefact store.** Recommend
-   in-repo until it hurts (desktop set is small). Acceptable, or pre-emptively
-   wire LFS / a separate fixtures repo?
-4. **Latency-assertion tolerance.** Recommend ±25% of the
-   `baseline-latency.csv` median. Tighter (catches regressions earlier
-   but flaps on noisy CI) or looser (less flap, catches less)?
-5. **v0 before B-desktop.1.5.** Recommend yes — ship v0 against a stub
-   `DesktopHost` that returns a fixture PNG, so the harness architecture
-   is proven before the real renderer wiring lands. Trade-off: ~50 LOC
-   of throwaway scaffolding (the stub). Worth it, or wait for
-   B-desktop.1.5?
+## 11. Decisions made
+
+- **Module location:** new top-level module `:tools:daemon-harness`
+  (plain `org.jetbrains.kotlin.jvm`, depends only on
+  `:renderer-daemon-core`). Co-locating under `:renderer-desktop-daemon`'s
+  integrationTest source set or extending
+  `:samples:android-daemon-bench` were both ruled out because they
+  couple the harness to a per-target module and pollute the classpath.
+  The harness is conceptually a fourth client of the protocol
+  (alongside VS Code, in-process unit tests, and the bench harness)
+  and that role is clearest at the top level.
+- **Pixel-diff defaults:** per-pixel ≤ 3 LSB (sum of channel deltas),
+  aggregate ≤ 0.5% pixels exceeding, absolute cap ≤ 50 LSB. Adjustable
+  per-scenario; tighten or loosen against real PRs once we have data.
+- **Image baselines:** two-strategy split. **Fake-mode scenarios use
+  deterministically-generated test patterns** (`TestPatterns.kt`
+  → `build/daemon-harness/test-patterns/`) — solid colours, text
+  boxes, gradients; same generator produces both fixture and baseline
+  so nothing is checked in for v0+v1. **Real-mode scenarios** (v1.5+)
+  capture actual Compose-rendered PNGs to in-repo
+  `tools/daemon-harness/baselines/<target>/<scenario>/<id>.png`. Git
+  LFS stays an escape hatch only if real-mode on-disk volume becomes
+  painful; not pre-emptively wired. Always disambiguated from the
+  latency baselines in `baseline-latency.csv`.
+- **Latency assertions: record-only, not gating.** v1 captures
+  per-scenario latency, writes a delta-vs-baseline row to a CSV
+  artefact, and surfaces trends; the harness does *not* fail a CI run
+  on a latency miss. Reasoning: CI machine noise across hosts and
+  cold-vs-warm states would flap perf gates without telling us
+  anything actionable; we want the data more than we want a red
+  build. A weekly drift-report workflow (v3) reads the artefacts and
+  posts deltas exceeding 50% as an issue.
+- **v0 before B-desktop.1.5: yes, via `FakeHost` (§ 8a).** Instead of
+  a throwaway stub `DesktopHost`, the harness ships a permanent
+  `FakeHost` that implements `RenderHost` and serves PNGs from local
+  fixture directories with optional per-preview metadata overrides.
+  Decouples harness work from real-renderer work entirely; stays
+  useful afterwards as the way harness scenarios drive deterministic
+  failure modes (slow render, render error, specific metrics).
+  `-Pharness.host=fake|real` switches between the two; default flips
+  to `real` per target once that target's real renderer wiring has
+  landed.
 
