@@ -173,30 +173,108 @@ In the daemon module, add wrappers that delegate to the existing `renderer-andro
 
 ### Stream C — VS Code client
 
-#### C1.1 — `daemonProtocol.ts` types
+#### C1.1 — `daemonProtocol.ts` types ✅
 
-TypeScript types mirroring P0.4. Match field names exactly.
+TypeScript types mirroring P0.4. Match field names exactly. Lives at
+[`vscode-extension/src/daemon/daemonProtocol.ts`](../../vscode-extension/src/daemon/daemonProtocol.ts) and is exercised by
+[`vscode-extension/src/test/daemon/daemonProtocol.test.ts`](../../vscode-extension/src/test/daemon/daemonProtocol.test.ts), which loads every
+fixture under [`docs/daemon/protocol-fixtures/`](protocol-fixtures/) — the
+same shared corpus the Kotlin daemon test suite consumes (PROTOCOL.md § 9).
+Enums use string literal unions instead of TypeScript `enum` declarations so
+no runtime objects are emitted.
 
 - **Depends on:** P0.4
 - **DoD:** lint passes. Unit test serialises one of each message and validates against the JSON-shape definitions in P0.4.
 
-#### C1.2 — `daemonProcess.ts` lifecycle
+#### C1.2 — `daemonProcess.ts` lifecycle ✅
 
-Spawn the daemon JVM (using the descriptor from A1.1), monitor process health, watchdog on parent-PID exit, restart on `classpathDirty`, idle timeout shutdown.
+Reads `daemon-launch.json` (verifies `schemaVersion === 1`, refuses on
+`enabled = false` or schema mismatch), spawns the daemon JVM with the
+classpath / JVM args / system properties / java launcher from the
+descriptor, owns the process handle. The spawn is `detached: false` so the
+daemon dies with the extension host. Idle-timeout shutdown closes stdin
+first (the daemon's own idle exit path drains in flight) then escalates
+to SIGTERM only if the grace expires. `restart()` re-runs the supplied
+`rebootstrap` callback (wired to `composePreviewDaemonStart` by the
+gate) after the existing process exits.
+
+Lives at
+[`vscode-extension/src/daemon/daemonProcess.ts`](../../vscode-extension/src/daemon/daemonProcess.ts), unit-tested by
+[`vscode-extension/src/test/daemon/daemonProcess.test.ts`](../../vscode-extension/src/test/daemon/daemonProcess.test.ts) with a hand-rolled
+`FakeChildProcess` (sinon isn't a dep — matches the existing
+`gradleService.test.ts` style). Tests cover spawn args, descriptor
+validation paths, `dispose` clean exit + SIGTERM escalation, idle-timer
+cancellation via `bumpActivity()`, and restart on simulated
+`classpathDirty`.
 
 - **Depends on:** A1.1, C1.1
 - **DoD:** unit test (mocked child process): spawn, send shutdown, child exits cleanly. Restart on simulated `classpathDirty` notification.
 
-#### C1.3 — `daemonClient.ts` JSON-RPC client
+#### C1.3 — `daemonClient.ts` JSON-RPC client ✅
 
-Stdio JSON-RPC over the spawned process. Methods mirror those used by `gradleService.ts` (specifically `renderPreviews`, `discoverPreviews`).
+Hand-rolled JSON-RPC 2.0 client with LSP-style `Content-Length` framing
+(symmetric with `JsonRpcServer.kt`'s `ContentLengthFramer`; no
+`vscode-jsonrpc` dep added). Drives the lifecycle handshake (`initialize`
+→ `initialized` → ... → `shutdown` → `exit`), maps every PROTOCOL.md § 6
+notification onto a typed event emitter (`renderStarted`, `renderFinished`,
+`classpathDirty`, …), and surfaces JSON-RPC errors as the `DaemonRpcError`
+subclass. The disconnect path honours the no-mid-render-cancellation
+invariant: `dispose()` sends `shutdown` (a request), waits for the reply
+(which the daemon resolves only after draining), and only then sends `exit`.
+
+Lives at
+[`vscode-extension/src/daemon/daemonClient.ts`](../../vscode-extension/src/daemon/daemonClient.ts) and is tested in-process via
+piped streams by
+[`vscode-extension/src/test/daemon/daemonClient.test.ts`](../../vscode-extension/src/test/daemon/daemonClient.test.ts).
+
+**Real-subprocess vs in-process trade-off.** The DoD allows an in-process
+fallback when the real `:renderer-android-daemon` JAR isn't available in the
+test runtime; we took that fallback. The Kotlin
+`JsonRpcServerIntegrationTest` already drives `initialize → initialized →
+renderNow → renderStarted → renderFinished → shutdown → exit` end-to-end
+against the real `DaemonHost` (B1.5, commit 7436b98), so what remains for
+the TS side is verifying our framer / dispatch / lifecycle speak the same
+protocol — which is exactly what the in-process tests do, by playing the
+daemon role over piped streams against the real `DaemonClient`. Reasoning
+recorded inline in the test file's header comment.
 
 - **Depends on:** B1.5, C1.2
 - **DoD:** integration test against the real daemon JAR: spawn, render one preview from `samples/android`, PNG appears, returned manifest matches expected shape.
 
-#### C1.4 — `daemonGate.ts` router shim
+#### C1.4 — `daemonGate.ts` router shim ✅
 
-Read `composePreview.experimental.daemon` setting. If enabled and daemon healthy → use `daemonClient`; else fall back to `gradleService`. One call site in `extension.ts`. On daemon failure, log + notification + auto-fallback for the remainder of the session.
+A small `Renderer` interface
+(`renderPreviews(module, tier) | discoverPreviews(module)`) is implemented
+by both `GradleService` and `DaemonClient`; the gate routes per call based
+on the `composePreview.experimental.daemon.enabled` VS Code setting and
+the per-module daemon's health. Spawns lazily on first call, falls back
+to `gradleService` permanently for the session on spawn failure or
+`classpathDirty`, and de-dupes the user-facing notification so users see
+one warning per session, not one per render.
+
+The single call site lives at the top of the per-module loop in
+[`extension.ts:refresh`](../../vscode-extension/src/extension.ts) — the previous
+`gradleService.renderPreviews` / `gradleService.discoverPreviews` pair is
+now `(daemonGate ?? gradleService).renderPreviews/discoverPreviews`. The
+`composePreview.experimental.daemon.enabled` configuration property is
+declared in [`vscode-extension/package.json`](../../vscode-extension/package.json) so the VS Code settings UI
+exposes it.
+
+Source: [`vscode-extension/src/daemon/daemonGate.ts`](../../vscode-extension/src/daemon/daemonGate.ts);
+unit test:
+[`vscode-extension/src/test/daemon/daemonGate.test.ts`](../../vscode-extension/src/test/daemon/daemonGate.test.ts).
+
+**Manual smoke test (deferred).** The DoD's manual smoke test against a
+real Compose project requires the daemon JAR to be reachable
+end-to-end (Stream B's B1.4 RenderEngine isn't done yet, so renders
+return the placeholder `daemon-stub-${id}.png` path). Once B1.4 lands
+the smoke test runs as: flip
+`composePreview.experimental.daemon.enabled = true` in VS Code settings,
+flip the build.gradle.kts mirror to true too, save a `.kt` file in
+`samples/android`, observe (a) a single daemon JVM spawn in `Output ▸
+Compose Preview`, (b) `renderStarted` / `renderFinished` notifications
+in the same channel, (c) the rendered PNG appearing in the preview
+panel. Disable either flag → next save goes back through Gradle.
 
 - **Depends on:** C1.3
 - **DoD:** manual smoke test in VS Code: enable flag, observe daemon spawn on first preview action, render works. Disable flag, observe normal Gradle path.
