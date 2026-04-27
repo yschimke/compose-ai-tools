@@ -1,6 +1,9 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
+import ee.schimke.composeai.daemon.protocol.FileChangedParams
+import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -8,6 +11,8 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.SetFocusParams
+import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
@@ -98,6 +103,44 @@ private constructor(
     sendFrame(json.encodeToString(JsonRpcNotification.serializer(), notification))
   }
 
+  /** Sends a `setVisible` notification — the daemon's input for visibility filtering. */
+  fun setVisible(ids: List<String>) {
+    val params = SetVisibleParams(ids = ids)
+    sendNotificationFrame(
+      "setVisible",
+      json.encodeToJsonElement(SetVisibleParams.serializer(), params),
+    )
+  }
+
+  /** Sends a `setFocus` notification — the daemon prioritises these IDs in its render queue. */
+  fun setFocus(ids: List<String>) {
+    val params = SetFocusParams(ids = ids)
+    sendNotificationFrame("setFocus", json.encodeToJsonElement(SetFocusParams.serializer(), params))
+  }
+
+  /**
+   * Sends a `fileChanged` notification. The kind / changeType drive the daemon's classification.
+   */
+  fun fileChanged(
+    path: String,
+    kind: FileKind = FileKind.SOURCE,
+    changeType: ChangeType = ChangeType.MODIFIED,
+  ) {
+    val params = FileChangedParams(path = path, kind = kind, changeType = changeType)
+    sendNotificationFrame(
+      "fileChanged",
+      json.encodeToJsonElement(FileChangedParams.serializer(), params),
+    )
+  }
+
+  private fun sendNotificationFrame(
+    method: String,
+    params: kotlinx.serialization.json.JsonElement,
+  ) {
+    val n = JsonRpcNotification(method = method, params = params)
+    sendFrame(json.encodeToString(JsonRpcNotification.serializer(), n))
+  }
+
   /** Drives `renderNow` for the given preview ids at the given [tier]. */
   fun renderNow(previews: List<String>, tier: RenderTier = RenderTier.FAST): RenderNowResult {
     val id = nextId.getAndIncrement()
@@ -120,7 +163,20 @@ private constructor(
    * other methods (FIFO-but-filtered semantics — matches what a VS Code client would do when it
    * pumps the read loop and dispatches by method). Throws when [timeout] elapses.
    */
-  fun pollNotification(method: String, timeout: Duration): JsonObject {
+  fun pollNotification(method: String, timeout: Duration): JsonObject =
+    pollNotificationMatching(method, timeout) { true }
+
+  /**
+   * Like [pollNotification] but with a per-frame [predicate] over the parsed notification — used by
+   * v1 scenarios that need to wait for a specific preview id's `renderFinished` (or
+   * `renderStarted`) when multiple are in-flight simultaneously. Frames whose method matches but
+   * predicate doesn't are dropped, same as method-mismatch frames.
+   */
+  fun pollNotificationMatching(
+    method: String,
+    timeout: Duration,
+    predicate: (JsonObject) -> Boolean,
+  ): JsonObject {
     val deadline = System.currentTimeMillis() + timeout.inWholeMilliseconds
     while (System.currentTimeMillis() < deadline) {
       val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
@@ -135,10 +191,67 @@ private constructor(
         continue
       }
       val seenMethod = msg["method"]?.jsonPrimitive?.contentOrNull
-      if (seenMethod == method) return msg
+      if (seenMethod == method && predicate(msg)) return msg
       // Otherwise drop — interleaved notifications for other matchers don't block us.
     }
     error("pollNotification($method) timed out after $timeout. Stderr=\n${dumpStderr()}")
+  }
+
+  /** Polls a `renderFinished` notification whose `params.id == previewId`. */
+  fun pollRenderFinishedFor(previewId: String, timeout: Duration): JsonObject =
+    pollNotificationMatching("renderFinished", timeout) { msg ->
+      msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == previewId
+    }
+
+  /** Polls a `renderStarted` notification whose `params.id == previewId`. */
+  fun pollRenderStartedFor(previewId: String, timeout: Duration): JsonObject =
+    pollNotificationMatching("renderStarted", timeout) { msg ->
+      msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == previewId
+    }
+
+  /**
+   * Sends a `shutdown` request **without blocking** for the response. Returns the request id; the
+   * caller drives [awaitResponse] when ready to assert the response's arrival ordering. This is the
+   * primitive S2 (drain semantics) needs to verify that `shutdown` does not resolve until the
+   * in-flight `renderFinished` arrived.
+   */
+  fun sendShutdownAsync(): Long {
+    val id = nextId.getAndIncrement()
+    val request = JsonRpcRequest(id = id, method = "shutdown", params = JsonNull)
+    responseSlots.computeIfAbsent(id) { LinkedBlockingQueue() }
+    sendFrame(json.encodeToString(JsonRpcRequest.serializer(), request))
+    return id
+  }
+
+  /** Polls the response slot for [id]. Throws on timeout. */
+  fun awaitResponse(id: Long, timeout: Duration): JsonObject {
+    val slot = responseSlots[id] ?: error("awaitResponse: no slot for id=$id")
+    val response = slot.poll(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+    responseSlots.remove(id)
+    if (response == null) {
+      val alive = process.isAlive
+      val exitDetail = if (alive) "still alive" else "exited code=${process.exitValue()}"
+      error(
+        "awaitResponse(id=$id) timed out after $timeout (subprocess $exitDetail). Stderr=\n${dumpStderr()}"
+      )
+    }
+    return response
+  }
+
+  /** Sends `exit` and waits for the subprocess to terminate. Returns the exit code. */
+  fun sendExitAndWait(timeout: Duration = 15.seconds): Int {
+    val exitNotification = JsonRpcNotification(method = "exit", params = JsonNull)
+    sendFrame(json.encodeToString(JsonRpcNotification.serializer(), exitNotification))
+    val exited = process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+    if (!exited) {
+      System.err.println("HarnessClient: subprocess did not exit in $timeout, sending destroy()")
+      process.destroy()
+      process.waitFor(2, TimeUnit.SECONDS)
+      if (process.isAlive) process.destroyForcibly()
+    }
+    stdoutReader.join(2_000)
+    stderrReader.join(2_000)
+    return process.exitValue()
   }
 
   /**
