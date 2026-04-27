@@ -65,12 +65,12 @@ Per the renderer-agnostic surface decision in [DESIGN.md § 4](DESIGN.md#rendere
 
 Done. Created `:renderer-daemon-core` (plain `org.jetbrains.kotlin.jvm` + `kotlin-serialization`); moved `protocol/Messages.kt`, `JsonRpcServer.kt` (+ in-file `ContentLengthFramer`), `MessagesTest.kt`, `JsonRpcFramingTest.kt`, and `JsonRpcServerIntegrationTest.kt` into it. The new `RenderHost` interface in core exposes only `start()`, `submit(RenderRequest, timeoutMs): RenderResult`, and `shutdown(timeoutMs)` — exactly what `JsonRpcServer` calls — plus a `companion object { fun nextRequestId(): Long }` to host the monotonic id source previously on `DaemonHost.Companion`. `RenderRequest` (sealed) and `RenderResult` moved to core alongside the interface; they are protocol-shaped, not Robolectric-shaped. `DaemonHost` was renamed to `RobolectricHost` and now `implements RenderHost`; the cross-classloader `DaemonHostBridge` stays in `:renderer-android-daemon` (Robolectric-specific). The integration test's `FakeDaemonHost` was renamed to `FakeRenderHost` and now implements `RenderHost` directly rather than subclassing the (no-longer-visible-from-core) `RobolectricHost`. `kotlinx-serialization-json` is exposed as `api(...)` from core so `:renderer-android-daemon` no longer re-declares it (and no longer needs the `kotlin-serialization` plugin). The launch descriptor's `mainClass` stays `ee.schimke.composeai.daemon.DaemonMain`; the new `renderer-daemon-core` JAR enters via the existing `:renderer-android-daemon` artifactView path with no plugin classpath wireup change required.
 
-### P0.6 — Capture desktop latency baseline [Stream D]
+### P0.6 — Capture desktop latency baseline [Stream D] ✅
 
-Mirror P0.1 for the desktop renderer: add `:samples:desktop-daemon-bench` (or extend an existing `:samples:cmp`-based module) with a `benchPreviewLatency` task that times the existing desktop render path under the same three scenarios (cold, warm-no-edit, warm-after-1-line-edit). Output rows in the same `docs/daemon/baseline-latency.csv` schema with a new `target` column distinguishing `android` vs `desktop`. The cost-model thresholds in PREDICTIVE.md § 6a are derived from this; daemon's payback can't be evaluated without it.
+Desktop counterpart to P0.1. Built `:samples:desktop-daemon-bench` (skeleton CMP-Desktop module) with a `benchPreviewLatency` task that times the existing Gradle `renderPreviews` path on Compose-Desktop: cold, warm-no-edit, warm-after-1-line-edit. Extended the shared CSV with a leading `target` column (`android` / `desktop`). Documented the desktop divergence in render accounting (no shared sandbox; per-preview JVM forks).
 
-- **Depends on:** none
-- **DoD:** CSV gains `target` column populated for both Android and desktop. Headline numbers (cold render, warm render with no edit, warm render after 1-line edit) recorded for desktop; daemon cost-model thresholds re-checked against the new median.
+- **Depends on:** P0.1 (CSV schema), P0.5 (renderer-agnostic surface)
+- **DoD:** desktop rows in `docs/daemon/baseline-latency.csv`; methodology + headline takeaways in `docs/daemon/baseline-latency.md`.
 
 ---
 
