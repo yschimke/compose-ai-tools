@@ -9,8 +9,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * Holds a single Robolectric sandbox open for the lifetime of the daemon — see
- * docs/daemon/DESIGN.md § 9 ("Bootstrap").
+ * Robolectric-backed [RenderHost]. Holds a single Robolectric sandbox open
+ * for the lifetime of the daemon — see docs/daemon/DESIGN.md § 9
+ * ("Bootstrap").
  *
  * Pattern: [start] launches a worker thread that runs JUnit against the
  * [SandboxRunner] inner class. [SandboxHoldingRunner] (a custom
@@ -43,7 +44,7 @@ import org.robolectric.annotation.Config
  * track", if this pattern fails for any reason we escalate rather than
  * silently switching to Robolectric's lower-level `Sandbox` API.
  */
-open class DaemonHost {
+open class RobolectricHost : RenderHost {
 
   private val workerThread =
     Thread({ runJUnit() }, "compose-ai-daemon-host").apply { isDaemon = false }
@@ -55,7 +56,7 @@ open class DaemonHost {
    * (~5–15s on a typical dev machine), but subsequent submits hit a hot
    * sandbox and return in stub-render time.
    */
-  open fun start() {
+  override fun start() {
     DaemonHostBridge.reset()
     workerThread.start()
   }
@@ -67,7 +68,7 @@ open class DaemonHost {
    *   generous for the first call (sandbox cold-boot dominates) and still
    *   well under any reasonable "sandbox failed to bootstrap" timeout.
    */
-  open fun submit(request: RenderRequest, timeoutMs: Long = 60_000): RenderResult {
+  override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
     require(request !is RenderRequest.Shutdown) {
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
@@ -76,7 +77,7 @@ open class DaemonHost {
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
     val raw =
       resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
-        ?: error("DaemonHost.submit($typed) timed out after ${timeoutMs}ms")
+        ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
     DaemonHostBridge.results.remove(typed.id)
     // Result instances are constructed inside the sandbox classloader; copy
     // their fields out via reflection so the host-side caller gets an
@@ -96,14 +97,14 @@ open class DaemonHost {
    * Sends the poison pill, waits up to [timeoutMs] for the worker thread to
    * exit. Idempotent.
    */
-  open fun shutdown(timeoutMs: Long = 30_000) {
+  override fun shutdown(timeoutMs: Long) {
     DaemonHostBridge.shutdown.set(true)
     // Belt-and-braces: also enqueue a Shutdown so the worker wakes from
     // poll() promptly rather than waiting out the 100ms cycle.
     DaemonHostBridge.requests.put(RenderRequest.Shutdown)
     workerThread.join(timeoutMs)
     if (workerThread.isAlive) {
-      error("DaemonHost worker did not exit within ${timeoutMs}ms after shutdown")
+      error("RobolectricHost worker did not exit within ${timeoutMs}ms after shutdown")
     }
   }
 
@@ -113,7 +114,7 @@ open class DaemonHost {
       // Surface to stderr; the caller's shutdown() join will time out and
       // explicit logging helps diagnostics.
       for (failure in result.failures) {
-        System.err.println("DaemonHost SandboxRunner failed: ${failure.message}")
+        System.err.println("RobolectricHost SandboxRunner failed: ${failure.message}")
         failure.exception?.printStackTrace()
       }
     }
@@ -171,39 +172,4 @@ open class DaemonHost {
       )
     }
   }
-
-  companion object {
-    /** Monotonic ID source; callers may use it to label requests. */
-    fun nextRequestId(): Long = DaemonHostBridge.nextId.getAndIncrement()
-  }
 }
-
-/** Request envelope. [Shutdown] is the poison pill; everything else is a [Render]. */
-sealed interface RenderRequest {
-
-  data class Render(
-    val id: Long = DaemonHost.nextRequestId(),
-    /**
-     * Free-form payload the stub doesn't read. B1.4 will replace this with
-     * the typed `PreviewInfo` / output-dir tuple.
-     */
-    val payload: String = "",
-  ) : RenderRequest
-
-  /** Singleton poison pill. */
-  data object Shutdown : RenderRequest
-}
-
-/**
- * Result of a single render. For B1.3 the body is a stub; the only field
- * that matters is [classLoaderHashCode], which `DaemonHostTest` uses to
- * verify the sandbox classloader is reused across submissions.
- *
- * Constructed inside the sandbox; copied across the classloader boundary
- * by [DaemonHost.submit] before being handed to the caller.
- */
-data class RenderResult(
-  val id: Long,
-  val classLoaderHashCode: Int,
-  val classLoaderName: String,
-)

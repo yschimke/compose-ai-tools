@@ -41,4 +41,6 @@ include(":renderer-desktop")
 
 include(":renderer-android")
 
+include(":renderer-daemon-core")
+
 include(":renderer-android-daemon")

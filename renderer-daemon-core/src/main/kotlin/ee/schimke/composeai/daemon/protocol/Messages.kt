@@ -58,11 +58,7 @@ data class JsonRpcNotification(
 )
 
 @Serializable
-data class JsonRpcError(
-  val code: Int,
-  val message: String,
-  val data: JsonElement? = null,
-)
+data class JsonRpcError(val code: Int, val message: String, val data: JsonElement? = null)
 
 // =====================================================================
 // 2. initialize (PROTOCOL.md § 3)
@@ -79,11 +75,7 @@ data class InitializeParams(
   val options: Options? = null,
 )
 
-@Serializable
-data class ClientCapabilities(
-  val visibility: Boolean,
-  val metrics: Boolean,
-)
+@Serializable data class ClientCapabilities(val visibility: Boolean, val metrics: Boolean)
 
 @Serializable
 data class Options(
@@ -124,28 +116,18 @@ enum class LeakDetectionMode {
   @SerialName("heavy") HEAVY,
 }
 
-@Serializable
-data class Manifest(
-  val path: String,
-  val previewCount: Int,
-)
+@Serializable data class Manifest(val path: String, val previewCount: Int)
 
 // =====================================================================
 // 3. Client → daemon notifications (PROTOCOL.md § 4)
 // =====================================================================
 
-@Serializable
-data class SetVisibleParams(val ids: List<String>)
+@Serializable data class SetVisibleParams(val ids: List<String>)
+
+@Serializable data class SetFocusParams(val ids: List<String>)
 
 @Serializable
-data class SetFocusParams(val ids: List<String>)
-
-@Serializable
-data class FileChangedParams(
-  val path: String,
-  val kind: FileKind,
-  val changeType: ChangeType,
-)
+data class FileChangedParams(val path: String, val kind: FileKind, val changeType: ChangeType)
 
 @Serializable
 enum class FileKind {
@@ -179,16 +161,9 @@ enum class RenderTier {
 }
 
 @Serializable
-data class RenderNowResult(
-  val queued: List<String>,
-  val rejected: List<RejectedRender>,
-)
+data class RenderNowResult(val queued: List<String>, val rejected: List<RejectedRender>)
 
-@Serializable
-data class RejectedRender(
-  val id: String,
-  val reason: String,
-)
+@Serializable data class RejectedRender(val id: String, val reason: String)
 
 // =====================================================================
 // 5. Daemon → client notifications (PROTOCOL.md § 6)
@@ -207,11 +182,7 @@ data class DiscoveryUpdatedParams(
   val totalPreviews: Int,
 )
 
-@Serializable
-data class RenderStartedParams(
-  val id: String,
-  val queuedMs: Long,
-)
+@Serializable data class RenderStartedParams(val id: String, val queuedMs: Long)
 
 @Serializable
 data class RenderFinishedParams(
@@ -229,11 +200,7 @@ data class RenderMetrics(
   val sandboxAgeMs: Long,
 )
 
-@Serializable
-data class RenderFailedParams(
-  val id: String,
-  val error: RenderError,
-)
+@Serializable data class RenderFailedParams(val id: String, val error: RenderError)
 
 @Serializable
 data class RenderError(
@@ -284,15 +251,16 @@ enum class SandboxRecycleReason {
   @SerialName("manual") MANUAL,
 }
 
-@Serializable
-data class DaemonWarmingParams(val etaMs: Long)
+@Serializable data class DaemonWarmingParams(val etaMs: Long)
 
 @Serializable
 class DaemonReadyParams {
   // Empty-object payload per PROTOCOL.md § 6 ("daemonReady"). Modelled as a
   // class with no fields so kotlinx-serialization emits/accepts {}.
   override fun equals(other: Any?): Boolean = other is DaemonReadyParams
+
   override fun hashCode(): Int = 0
+
   override fun toString(): String = "DaemonReadyParams()"
 }
 
