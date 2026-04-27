@@ -24,3 +24,20 @@ fun RedSquare() {
 fun BlueSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFF42A5F5)))
 }
+
+/**
+ * Fixture for the B-desktop.1.6 cancellation-invariant regression test. Sleeps for ~500ms inside
+ * the composition body so the test can race a `host.shutdown(...)` call against an in-flight render
+ * and assert the render still completes (per
+ * [DESIGN.md § 9](../../../../../../docs/daemon/DESIGN.md#no-mid-render-cancellation--invariant--enforcement)).
+ *
+ * The sleep is deliberately *inside* the composition rather than around `scene.render()` because we
+ * want to exercise the very window that's most dangerous to cancel — a partly-built Compose graph
+ * is the worst leak shape per
+ * [PREDICTIVE.md § 9](../../../../../../docs/daemon/PREDICTIVE.md#9-decisions-made).
+ */
+@Composable
+fun SlowSquare() {
+  Thread.sleep(500)
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF80FFAA.toInt())))
+}
