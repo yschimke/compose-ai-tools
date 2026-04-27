@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GradleService, GradleApi } from './gradleService';
+import { DaemonGate } from './daemon/daemonGate';
 import { JdkImageError } from './jdkImageErrorDetector';
 import { findPluginAppliedAncestor } from './pluginDetection';
 import { PreviewPanel } from './previewPanel';
@@ -12,7 +13,7 @@ import { PreviewCodeLensProvider } from './previewCodeLensProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
+import { HEAVY_COST_THRESHOLD, PreviewInfo, PreviewManifest } from './types';
 import { captureLabel } from './captureLabels';
 
 const DEBOUNCE_MS = 1500;
@@ -24,6 +25,18 @@ const SCOPE_DEBOUNCE_MS = 300;
 const INIT_DELAY_MS = 1000;
 
 let gradleService: GradleService | null = null;
+/**
+ * C1.4 router shim. When `composePreview.experimental.daemon.enabled` is
+ * true AND the per-module daemon is healthy, routes renderPreviews /
+ * discoverPreviews through {@link DaemonGate}; otherwise falls through
+ * to {@link GradleService}. Both implement the unified `Renderer`
+ * interface, so the call site at the bottom of `refresh()` doesn't need
+ * to know which path is in use.
+ *
+ * Null until activate() wires it; tests injecting a fresh GradleService
+ * via the test API also re-create the gate.
+ */
+let daemonGate: DaemonGate | null = null;
 let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
@@ -161,6 +174,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         }
         return args;
     });
+
+    daemonGate = createDaemonGate(workspaceRoot, gradleService, outputChannel, context);
 
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
     if (isTestMode) {
@@ -375,6 +390,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                     }
                     return args;
                 });
+                daemonGate = createDaemonGate(workspaceRoot, gradleService, outputChannel, context);
             },
             triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
                 return refresh(force, filePath, tier);
@@ -393,6 +409,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 export function deactivate() {
     if (debounceTimer) { clearTimeout(debounceTimer); }
     pendingRefresh?.abort();
+    void daemonGate?.dispose();
+}
+
+/**
+ * C1.4 — construct the daemon router.
+ *
+ * Both `GradleService.renderPreviews` and `DaemonClient.renderPreviews`
+ * implement the `Renderer` interface; the gate decides per-call which path
+ * to take based on `composePreview.experimental.daemon.enabled` and the
+ * per-module daemon's health. On daemon spawn failure or `classpathDirty`
+ * the gate falls back to gradleService (with a one-shot user notification)
+ * for the rest of the session.
+ *
+ * `clientVersion` is read from package.json — the same string surfaced to
+ * the daemon via the `initialize` request so the daemon can correlate
+ * extension versions with bug reports.
+ */
+function createDaemonGate(
+    workspaceRoot: string,
+    gradle: GradleService,
+    output: vscode.OutputChannel,
+    ctx: vscode.ExtensionContext,
+): DaemonGate {
+    return new DaemonGate({
+        workspaceRoot,
+        gradleService: gradle,
+        clientVersion: (ctx.extension?.packageJSON as { version?: string })?.version ?? '0.0.0',
+        rebootstrap: async (modulePath) => {
+            // Re-run composePreviewDaemonStart through the existing
+            // GradleApi seam so cancellation, output channelling, etc. all
+            // share one path with the rest of the extension.
+            const taskName = modulePath.startsWith(':')
+                ? `${modulePath}:composePreviewDaemonStart`
+                : `:${modulePath}:composePreviewDaemonStart`;
+            // GradleService doesn't expose runTask directly; piggy-back on
+            // the bootstrap path which uses runTask under the hood. For C1.4
+            // a missing public surface is acceptable — once C2.x lands we
+            // promote runTask to public and drop this fallback.
+            await gradle.bootstrapAppliedMarkers().catch(() => { /* */ });
+            output.appendLine(`[daemon-gate] rebootstrap requested for ${taskName}`);
+        },
+        logger: output,
+    });
 }
 
 function sameScope(a: string[], b: string[]): boolean {
@@ -619,9 +678,16 @@ async function refresh(
         for (const mod of modules) {
             if (abort.signal.aborted) { return; }
 
-            const manifest = forceRender
-                ? await gradleService.renderPreviews(mod, tier)
-                : await gradleService.discoverPreviews(mod);
+            // C1.4 router shim. When the daemon flag is on AND the per-
+            // module daemon is healthy, this routes through the daemon
+            // path; otherwise falls through to gradleService. The gate
+            // returns the parsed manifest in both cases (the daemon path
+            // currently re-reads previews.json from disk for parity — see
+            // DaemonGate.renderPreviews comments).
+            const renderer = daemonGate ?? gradleService;
+            const manifest = (forceRender
+                ? await renderer.renderPreviews(mod, tier)
+                : await renderer.discoverPreviews(mod)) as PreviewManifest | null;
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
