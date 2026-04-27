@@ -414,6 +414,18 @@ Same scenarios, `-Pharness.host=real`. Captures actual Compose-rendered PNGs as 
 - **Depends on:** D-harness.v1, B-desktop.1.5 (real `DaemonMain` wiring), B-desktop.1.6 (drain semantics for S2 against the real cancellation enforcement)
 - **DoD:** real-mode S1–S8 pass; fake-mode regression set still passes; the captured baselines are reviewed visually in the merging PR.
 
+##### D-harness.v1.5a — `HarnessLauncher` abstraction + real-mode S1 only — **in progress**
+
+Splits the v1.5 brief into a thin first slice. Refactors `HarnessClient.start(...)` to delegate the spawn step to a `HarnessLauncher` (`fake` vs `real`), adds the `-Pharness.host=fake|real` Gradle parameter (default `fake`), and adds **one** real-mode S1 test (`S1LifecycleRealModeTest`) that spawns `:renderer-desktop-daemon`'s `DaemonMain`, drives the full lifecycle, and auto-captures a `red-square.png` baseline on first run.
+
+- **Depends on:** D-harness.v1, B-desktop.1.5, B-desktop.1.6.
+- **In progress.** Done: `HarnessLauncher` interface + `FakeHarnessLauncher` + `RealDesktopHarnessLauncher`; `HarnessClient.start(launcher)` overload (existing `start(fixtureDir, ...)` becomes shorthand); `harness.host` Gradle property → `composeai.harness.host` sysprop; `testImplementation(project(":renderer-desktop-daemon"))` + `compose.desktop.currentOs` on the harness's *test* classpath only (Option A from the v1.5a brief — production classpath unaffected; renderer-agnostic invariant unchanged where it matters); `PreviewManifestRouter` in `:renderer-desktop-daemon` main code (gated on `composeai.harness.previewsManifest` sysprop, no-op when unset) so `JsonRpcServer.handleRenderNow`'s `payload="previewId=<id>"` resolves to a real `RenderSpec`; auto-capture-on-first-run baseline + pixel-diff thereafter.
+- **DoD:** all 7 fake-mode scenarios still pass under `-Pharness.host=fake`; `S1LifecycleRealModeTest` skips by `Assume.assumeTrue` under fake mode; runs end-to-end against the real desktop daemon under `-Pharness.host=real`; baseline PNG captured at `tools/daemon-harness/baselines/desktop/s1/red-square.png`.
+
+##### D-harness.v1.5b — Convert remaining scenarios + `regenerateBaselines` task + CI
+
+The remainder of v1.5 — convert S2-S8 to real-mode, add a `regenerateBaselines` Gradle task, update the CI workflow to run both modes. Out of scope for v1.5a. Tracked here so that "D-harness.v1.5 done" remains a single milestone.
+
 #### D-harness.v2 — Android target
 
 Adds `-Ptarget=android` parameter. `:samples:android-daemon-bench` already exists; the harness wires its descriptor as the alternate spawn target. Real-mode usable immediately (B1.5 already shipped). Android image baselines captured under `tools/daemon-harness/baselines/android/`. New CI job `daemon-harness-android` (slower than desktop — Robolectric + Android sandbox bootstrap dominate). Resource-edit scenario variant for S3 (`res/**` change) lands here, since desktop has no `res/**`.

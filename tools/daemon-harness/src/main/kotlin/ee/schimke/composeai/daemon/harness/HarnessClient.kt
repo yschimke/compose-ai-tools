@@ -321,54 +321,26 @@ private constructor(
   companion object {
 
     /**
-     * Spawns a JVM running [FakeDaemonMain] with [fixtureDir] as the `composeai.harness.fixtureDir`
-     * system property.
-     *
-     * The classpath is taken from [classpath] (the test caller passes its own `runtimeClasspath`);
-     * the JVM is selected via the running JVM's `java.home` so the harness inherits the toolchain
-     * configured by Gradle for the surrounding test run.
+     * D-harness.v1.5a-and-later overload — delegates the spawn step to [launcher]. Picks
+     * [FakeHarnessLauncher] vs [RealDesktopHarnessLauncher] based on `-Pharness.host` (see
+     * `HarnessTestSupport.launcherFor`).
      */
-    fun start(
-      fixtureDir: File,
-      classpath: List<File>,
-      mainClass: String = "ee.schimke.composeai.daemon.harness.FakeDaemonMain",
-      extraJvmArgs: List<String> = emptyList(),
-    ): HarnessClient {
-      require(fixtureDir.isDirectory) {
-        "HarnessClient.start: fixtureDir '${fixtureDir.absolutePath}' is not a directory"
-      }
-      val javaBin = File(System.getProperty("java.home"), "bin/java")
-      val cpString = classpath.joinToString(File.pathSeparator) { it.absolutePath }
-      val command =
-        buildList<String> {
-          add(javaBin.absolutePath)
-          add("-Dcomposeai.harness.fixtureDir=${fixtureDir.absolutePath}")
-          // Match the in-process integration test's idle timeout — keeps harness scenarios snappy
-          // when a misbehaving test forgets to send `exit`.
-          add("-Dcomposeai.daemon.idleTimeoutMs=2000")
-          addAll(extraJvmArgs)
-          add("-cp")
-          add(cpString)
-          add(mainClass)
-        }
-      val pb =
-        ProcessBuilder(command)
-          .redirectErrorStream(false)
-          .redirectInput(ProcessBuilder.Redirect.PIPE)
-          .redirectOutput(ProcessBuilder.Redirect.PIPE)
-          .redirectError(ProcessBuilder.Redirect.PIPE)
-      val process = pb.start()
+    fun start(launcher: HarnessLauncher): HarnessClient {
+      val process = launcher.spawn()
       val stderrBuffer = StringBuffer()
       val responseSlots = ConcurrentHashMap<Long, LinkedBlockingQueue<JsonObject>>()
       val notifications = LinkedBlockingQueue<JsonObject>()
       val stdoutThread =
         Thread(
             { runStdoutReader(process.inputStream, responseSlots, notifications) },
-            "harness-client-stdout",
+            "harness-client-stdout-${launcher.name}",
           )
           .apply { isDaemon = true }
       val stderrThread =
-        Thread({ runStderrReader(process.errorStream, stderrBuffer) }, "harness-client-stderr")
+        Thread(
+            { runStderrReader(process.errorStream, stderrBuffer) },
+            "harness-client-stderr-${launcher.name}",
+          )
           .apply { isDaemon = true }
       stdoutThread.start()
       stderrThread.start()
@@ -381,6 +353,30 @@ private constructor(
         notifications = notifications,
       )
     }
+
+    /**
+     * Pre-D-harness.v1.5a shorthand kept so the existing 7 fake-mode scenario tests compile
+     * unchanged. Equivalent to `start(FakeHarnessLauncher(fixtureDir, classpath, mainClass,
+     * extraJvmArgs))`.
+     *
+     * The classpath is passed in (the test caller usually parses it from `java.class.path`); the
+     * JVM is selected via the running JVM's `java.home` inside [FakeHarnessLauncher.spawn] so the
+     * harness inherits the toolchain configured by Gradle for the surrounding test run.
+     */
+    fun start(
+      fixtureDir: File,
+      classpath: List<File>,
+      mainClass: String = "ee.schimke.composeai.daemon.harness.FakeDaemonMain",
+      extraJvmArgs: List<String> = emptyList(),
+    ): HarnessClient =
+      start(
+        FakeHarnessLauncher(
+          fixtureDir = fixtureDir,
+          classpath = classpath,
+          mainClass = mainClass,
+          extraJvmArgs = extraJvmArgs,
+        )
+      )
 
     private fun runStdoutReader(
       input: InputStream,

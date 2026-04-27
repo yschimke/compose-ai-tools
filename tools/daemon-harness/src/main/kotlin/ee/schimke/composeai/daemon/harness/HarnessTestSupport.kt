@@ -67,6 +67,13 @@ object HarnessTestSupport {
       latency = recorder,
     )
   }
+
+  /**
+   * Returns the configured harness host — `"fake"` (default) or `"real"`. Driven by
+   * `-Pharness.host=…` (see `tools/daemon-harness/build.gradle.kts`). Real-mode-only tests gate
+   * themselves with `JUnit Assume.assumeTrue(host == "real")` rather than failing under fake mode.
+   */
+  fun harnessHost(): String = System.getProperty("composeai.harness.host") ?: "fake"
 }
 
 /**

@@ -27,6 +27,17 @@ plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
+  // D-harness.v1.5a — `PreviewManifestRouter` reads a JSON manifest mapping previewId to
+  // RenderSpec for harness-driven real-mode runs. Plugin only adds the @Serializable processor;
+  // kotlinx-serialization-json is already on the classpath via `:renderer-daemon-core`'s
+  // `api(libs.kotlinx.serialization.json)`.
+  alias(libs.plugins.kotlin.serialization)
+  // D-harness.v1.5a — exposes the `RedSquare` fixture composable to `:tools:daemon-harness`'s
+  // test classpath via `testFixtures(project(":renderer-desktop-daemon"))`, so the real-mode
+  // S1 doesn't need its own Compose plugin / fixture duplication. Test source set's
+  // `RedFixturePreviews` is unchanged; the testFixtures source set re-exports `RedSquare` for
+  // cross-module consumers.
+  `java-test-fixtures`
 }
 
 group = "ee.schimke.composeai"
@@ -75,6 +86,15 @@ dependencies {
   testImplementation(compose.ui)
   testImplementation(compose.material3)
   testImplementation(compose.components.uiToolingPreview)
+
+  // testFixtures source set holds `RedFixturePreviews.kt` so its `RedSquare` composable can be
+  // consumed by `:tools:daemon-harness`'s real-mode S1 (D-harness.v1.5a) without requiring that
+  // module to apply Compose plugins. The Compose runtime/ui deps below mirror the test
+  // declarations above; only the foundation + runtime + ui surface area the fixtures actually
+  // touch is needed here.
+  "testFixturesImplementation"(compose.runtime)
+  "testFixturesImplementation"(compose.foundation)
+  "testFixturesImplementation"(compose.ui)
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }

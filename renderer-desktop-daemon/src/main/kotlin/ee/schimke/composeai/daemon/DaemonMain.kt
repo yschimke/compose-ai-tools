@@ -2,6 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
+import java.io.File
+
 /**
  * Entry point for the desktop preview daemon JVM — see docs/daemon/DESIGN.md § 4
  * ("Renderer-agnostic surface"). Mirrors `:renderer-android-daemon`'s [DaemonMain][
@@ -45,7 +47,23 @@ fun main(args: Array<String>) {
 
   System.err.println("compose-ai-tools desktop daemon: hello (args=${args.toList()})")
 
-  val host: RenderHost = DesktopHost()
+  // D-harness.v1.5a — when the harness drives real-mode runs it sets
+  // `composeai.harness.previewsManifest=<json>` so the daemon can resolve the protocol-level
+  // previewId (forwarded by JsonRpcServer as `payload="previewId=<id>"`) into a parseable
+  // RenderSpec via `PreviewManifestRouter`. Production launches don't set this sysprop, so the
+  // plain DesktopHost path is unchanged.
+  val manifestPath = System.getProperty("composeai.harness.previewsManifest")
+  val host: RenderHost =
+    if (manifestPath != null && manifestPath.isNotBlank()) {
+      val manifest = PreviewManifestRouter.loadManifest(File(manifestPath))
+      System.err.println(
+        "compose-ai-tools desktop daemon: PreviewManifestRouter active " +
+          "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
+      )
+      PreviewManifestRouter(manifest)
+    } else {
+      DesktopHost()
+    }
   val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)
