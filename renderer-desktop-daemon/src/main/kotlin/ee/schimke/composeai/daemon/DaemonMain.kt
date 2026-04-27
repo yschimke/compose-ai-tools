@@ -3,8 +3,8 @@
 package ee.schimke.composeai.daemon
 
 /**
- * Placeholder entry point for the desktop preview daemon JVM — see
- * docs/daemon/DESIGN.md § 4 ("Renderer-agnostic surface").
+ * Placeholder entry point for the desktop preview daemon JVM — see docs/daemon/DESIGN.md § 4
+ * ("Renderer-agnostic surface").
  *
  * **Status: skeleton only (B-desktop.1.1).** This `main` currently just prints a hello banner and
  * exits. The full lifecycle lands in subsequent Stream B-desktop tasks:
