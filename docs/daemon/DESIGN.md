@@ -262,6 +262,7 @@ Enforced in code (so accidental cancellation can't sneak in):
 - `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue before resolving the response.
 - JVM SIGTERM handler waits for the drain before exit. SIGKILL is the only way to force termination mid-render — it leaks the sandbox classloader, but nothing we can defend against at that point.
 - A regression test submits a render, immediately invokes shutdown, and asserts the render still completes and the result is observable.
+- End-to-end coverage: scenario S2 in [TEST-HARNESS.md § 3](TEST-HARNESS.md#3-scenarios-catalogue) regression-tests this invariant against a real daemon subprocess.
 
 ### Recycle policy
 

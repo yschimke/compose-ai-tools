@@ -356,6 +356,7 @@ CI job that runs `samples:android-daemon-bench:renderAll` (daemon path) and pixe
 
 - **Depends on:** B1.7, D2.1
 - **DoD:** GitHub Actions workflow added; job green on this branch; deliberately introduce a render bug → job fails with diff image artifact.
+- **See also:** `:tools:daemon-harness`'s S1 PNG verification (D-harness.v0) is the long-term home for this gate. Once the harness lands, D2.2 reduces to "the harness's S1 must pass on every PR."
 
 #### D2.3 — Soak test in CI
 
@@ -363,6 +364,49 @@ Runs nightly. 1000 renders in a single sandbox on `samples/android`. Asserts: no
 
 - **Depends on:** B2.5, B2.6
 - **DoD:** workflow green; metrics summary posted as workflow output.
+- **See also:** D-harness.v3's session-mode soak scenario subsumes this once `:tools:daemon-harness` exists; D2.3 can be re-implemented as a harness session and reused on the same nightly schedule.
+
+### Stream D-harness — end-to-end test harness
+
+Full design: [TEST-HARNESS.md](TEST-HARNESS.md). The harness plays the role of VS Code against a real daemon JVM over JSON-RPC: drives scenarios, edits source files, asserts notifications + rendered PNGs + latency budgets. Desktop-first; Android picks up in v2.
+
+Scoped under Stream D because it is shaped like the bench harnesses (subprocess management + assertions on real daemon output) and shares CI surface with D2.1/D2.2/D2.3.
+
+#### D-harness.v0 — Single happy-path scenario, desktop only
+
+New module `:tools:daemon-harness` (plain `org.jetbrains.kotlin.jvm`; depends only on `:renderer-daemon-core` for the protocol types). One scenario (S1 lifecycle happy path) against the desktop daemon. Subprocess plumbing (`ProcessBuilder` against the `composePreviewDaemonStart` descriptor, `Content-Length`-framed stdio, stderr buffering, shutdown sequencing). One baseline PNG checked in under `tools/daemon-harness/baselines/desktop/s1-lifecycle/`. Pixel-diff helper (`PixelDiff.kt`) — first shared in-tree implementation; previously each pixel-test rolled its own. CI workflow `daemon-harness-desktop`.
+
+May ship before B-desktop.1.5 against a stub `DesktopHost` returning a fixture PNG (TEST-HARNESS § 10 Q5 — gated on human decision).
+
+- **Depends on:** P0.5 (for `:renderer-daemon-core` protocol types). For the *real* daemon variant: B-desktop.1.5. For the stub variant: none beyond P0.5.
+- **DoD:** `./gradlew :tools:daemon-harness:test -Ptarget=desktop` runs S1 green. Deliberately corrupt the baseline PNG → test fails; `actual.png`, `expected.png`, `diff.png` written under `build/reports/daemon-harness/`. CI workflow added and green on this branch.
+
+#### D-harness.v1 — Full reactive scenario catalogue (desktop)
+
+Adds S2 (drain semantics), S3 (render-after-edit; gated on B2.2 — ships placeholder until then), S4 (visibility filter), S5 (renderFailed surfacing), S7 (latency budget against `baseline-latency.csv` ±25%), S8 (cost-model parity within ±50% of catalogue ratios). File-edit simulation primitive (`editSource` with auto-revert in `finally` + bytecode-visibility validation). Per-scenario timeouts. Baseline regeneration task (`:tools:daemon-harness:regenerateBaselines`). Per-target preview-ID alias map.
+
+- **Depends on:** D-harness.v0, P0.6 (for desktop latency baseline rows in `baseline-latency.csv`), B-desktop.1.6 (so the drain test can run against the real cancellation enforcement)
+- **DoD:** all six scenarios pass on every PR via the existing `daemon-harness-desktop` job. S5's broken preview lives in a dedicated `:samples:desktop-daemon-bench` source variant with a sentinel `error("boom")` composable. Latency band failures attach `actual ms / baseline ms / band` to the workflow log.
+
+#### D-harness.v2 — Android target
+
+Adds `-Ptarget=android` parameter. `:samples:android-daemon-bench` already exists; the harness wires its descriptor as the alternate spawn target. Android baseline PNGs captured for every scenario in `tools/daemon-harness/baselines/android/`. New CI job `daemon-harness-android` (slower than desktop — Robolectric + Android sandbox bootstrap dominate). Resource-edit scenario variant for S3 (`res/**` change) lands here, since desktop has no `res/**`.
+
+- **Depends on:** D-harness.v1, B1.5 (Android `JsonRpcServer` wiring already shipped)
+- **DoD:** `./gradlew :tools:daemon-harness:test -Ptarget=android` runs the v1 catalogue green. Renderer-agnostic claim of [DESIGN § 4](DESIGN.md#renderer-agnostic-surface) enforced at the harness level: the same scenario class drives both targets with only the descriptor + baselines differing. CI job added.
+
+#### D-harness.v3 — Future-feature scenarios + soak + drift report
+
+Adds:
+
+- S6 classpathDirty (gated on B2.1 — Tier-1 fingerprint detection).
+- S9 sandbox-recycle behaviour (gated on B2.5 — recycle policy + warm spare).
+- S10 predictive prefetch hit (gated on P2.5.2 — `setPredicted` IPC + scroll-ahead).
+- Session-mode 1000-render soak scenario (replaces D2.3 as a standalone task).
+- Weekly drift-report workflow that runs both bench tasks + the harness's latency scenarios and posts deltas exceeding 50% as an issue.
+
+- **Depends on:** B2.1 (S6), B2.5 (S9), P2.5.2 (S10), D2.1
+- **DoD:** each scenario lands as its gating feature lands; harness's session-mode soak runs nightly; drift report posted weekly.
 
 ---
 
