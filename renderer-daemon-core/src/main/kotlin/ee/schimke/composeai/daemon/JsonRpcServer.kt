@@ -422,20 +422,26 @@ class JsonRpcServer(
   }
 
   /**
-   * B1.4 hook: replace this body with the real RenderEngine call. For now we emit a deterministic
-   * placeholder PNG path; the file is **not** written to disk in B1.5.
+   * B1.4 hook: replace this body with the real RenderEngine call. For B1.5-era stub hosts (no
+   * `pngPath` on [RenderResult]) we emit a deterministic placeholder PNG path; the file is **not**
+   * written to disk by the server. Hosts that actually produce bytes (e.g. `FakeHost` from
+   * `:tools:daemon-harness`, or `DesktopHost`/`RobolectricHost` once their real-render bodies land)
+   * populate `pngPath` on the [RenderResult] and we forward that string verbatim.
    */
   private fun renderFinishedFromResult(
     previewId: String,
     result: RenderResult,
     tookMs: Long,
   ): RenderFinishedParams {
-    val placeholderPath = "$historyDir/daemon-stub-${result.id}.png"
+    val pngPath = result.pngPath ?: "$historyDir/daemon-stub-${result.id}.png"
     return RenderFinishedParams(
       id = previewId,
-      pngPath = placeholderPath,
+      pngPath = pngPath,
       tookMs = tookMs,
-      metrics = null, // populated by B2.3 when client requests metrics.
+      // Structured RenderMetrics (heap/native/sandbox) lands in B2.3. Until then we leave this null
+      // even when the host supplied free-form Map<String, Long> metrics; the harness's S1 verifies
+      // pngPath, not metrics. B2.3's hook point is here.
+      metrics = null,
     )
   }
 
