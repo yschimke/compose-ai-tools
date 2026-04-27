@@ -66,8 +66,11 @@ dependencies {
   implementation(libs.junit)
 
   // Compose UI test deps — needed by the per-preview render body that B1.4
-  // will copy in. Listed compileOnly to mirror :renderer-android's contract
-  // (consumer module supplies the actual runtime versions).
+  // copied in. Listed compileOnly to mirror :renderer-android's contract
+  // (consumer module supplies the actual runtime versions). Roborazzi is
+  // declared compileOnly here because B1.4's RenderEngine references
+  // `captureRoboImage` / `RoborazziOptions` directly; runtime resolution
+  // comes via :renderer-android's `implementation(libs.roborazzi.compose)`.
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.ui)
   compileOnly(libs.compose.foundation)
@@ -77,6 +80,8 @@ dependencies {
   compileOnly(libs.activity.compose)
   compileOnly("androidx.compose.ui:ui-test-junit4")
   compileOnly("androidx.compose.ui:ui-test-manifest")
+  compileOnly(libs.roborazzi)
+  compileOnly(libs.roborazzi.compose)
 
   // Test classpath: real runtime versions for the RobolectricHost
   // sandbox-reuse assertion. Protocol round-trip and JsonRpcServer

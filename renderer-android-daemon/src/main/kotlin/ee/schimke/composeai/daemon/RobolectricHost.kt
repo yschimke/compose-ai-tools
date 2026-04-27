@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.runner.JUnitCore
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Robolectric-backed [RenderHost]. Holds a single Robolectric sandbox open
@@ -90,7 +91,22 @@ open class RobolectricHost : RenderHost {
     val id = cls.getMethod("getId").invoke(raw) as Long
     val hash = cls.getMethod("getClassLoaderHashCode").invoke(raw) as Int
     val name = cls.getMethod("getClassLoaderName").invoke(raw) as String
-    return RenderResult(id = id, classLoaderHashCode = hash, classLoaderName = name)
+    // pngPath / metrics fields landed in B1.4. Read them reflectively too so a sandbox-side
+    // RenderResult instance carries its real-render payload back to the host caller.
+    val pngPath = cls.getMethod("getPngPath").invoke(raw) as String?
+    @Suppress("UNCHECKED_CAST")
+    val metrics = cls.getMethod("getMetrics").invoke(raw) as Map<String, Long>?
+    return RenderResult(
+      id = id,
+      classLoaderHashCode = hash,
+      classLoaderName = name,
+      pngPath = pngPath,
+      // Re-wrap into the host-classloader's Map type — the sandbox-side instance is a
+      // java.util.LinkedHashMap whose generic params survive the bridge unchanged (java.util.* is
+      // a do-not-acquire boundary by default), so this is effectively a no-op copy. Done
+      // explicitly so a future change to the metrics type is observable here.
+      metrics = metrics?.let { LinkedHashMap(it) },
+    )
   }
 
   /**
@@ -129,10 +145,24 @@ open class RobolectricHost : RenderHost {
    * generated `robolectric.properties`. We declare it here directly because
    * the daemon module doesn't generate that file (the consumer module does
    * for the existing JUnit path).
+   *
+   * `@GraphicsMode(NATIVE)` is required by B1.4's real render body — Roborazzi's
+   * `captureRoboImage` walks `HardwareRenderer` to materialise the bitmap, which
+   * is only available under NATIVE graphics mode. The B1.3-era stub render
+   * didn't need it but the annotation is harmless when the body is a stub.
    */
   @RunWith(SandboxHoldingRunner::class)
   @Config(sdk = [35])
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
   class SandboxRunner {
+
+    /**
+     * Lazily-constructed [RenderEngine] — created inside the sandbox so its companion-object
+     * default `outputDir` (which reads `composeai.render.outputDir`) resolves against the
+     * sandbox JVM, not the test thread's. One engine per sandbox per host lifetime; no
+     * per-render reconstruction.
+     */
+    private val engine: RenderEngine by lazy { RenderEngine() }
 
     @Test
     fun holdSandboxOpen() {
@@ -147,7 +177,20 @@ open class RobolectricHost : RenderHost {
           "Shutdown" -> return
           "Render" -> {
             val id = request.javaClass.getMethod("getId").invoke(request) as Long
-            val result = renderStub(id)
+            val payload = request.javaClass.getMethod("getPayload").invoke(request) as String
+            val result =
+              try {
+                dispatchRender(id, payload)
+              } catch (t: Throwable) {
+                // B1.4: surface render failures to stderr but still post a stub-shape result so
+                // the caller's poll() doesn't time out. Mirrors :renderer-desktop-daemon's
+                // DesktopHost.runRenderLoop catch path.
+                System.err.println(
+                  "RobolectricHost: render dispatch failed for id=$id (payload='$payload'): ${t.message}"
+                )
+                t.printStackTrace(System.err)
+                renderStub(id)
+              }
             DaemonHostBridge.results
               .computeIfAbsent(id) { LinkedBlockingQueue() }
               .put(result)
@@ -158,10 +201,21 @@ open class RobolectricHost : RenderHost {
     }
 
     /**
-     * Stub render for B1.3 — returns a [RenderResult] capturing the
-     * sandbox classloader identity so the test can verify reuse across
-     * many submissions. B1.4 replaces the body of this function with the
-     * real Compose/Robolectric render path.
+     * Routes one render request to either [RenderEngine.render] (if the payload parses as a
+     * [RenderSpec]) or to the legacy classloader-identity stub. Same discriminator pattern
+     * `:renderer-desktop-daemon`'s [DesktopHost.dispatchRender] uses — payloads that don't carry
+     * `className=` (B1.3-era unit-test payloads of the form `render-N`) take the stub path so
+     * `RobolectricHostTest`'s sandbox-reuse assertion keeps working through B1.4.
+     */
+    private fun dispatchRender(id: Long, payload: String): RenderResult {
+      val spec = RenderSpec.parseFromPayloadOrNull(payload) ?: return renderStub(id)
+      return engine.render(spec, id)
+    }
+
+    /**
+     * Stub render — returns a [RenderResult] capturing the sandbox classloader identity. Used by
+     * the B1.3-era sandbox-reuse test (which submits `payload="render-N"` strings without a
+     * spec) and as the catch-all when the real engine throws.
      */
     private fun renderStub(id: Long): RenderResult {
       val cl = Thread.currentThread().contextClassLoader
