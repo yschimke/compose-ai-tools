@@ -413,7 +413,13 @@ class JsonRpcServer(
         RenderStartedParams(id = previewId, queuedMs = (now - acceptedAt).coerceAtLeast(0)),
       ),
     )
-    val finished = renderFinishedFromResult(previewId, result, tookMs = 0)
+    // Pull `tookMs` from the host-supplied free-form metrics map. Hosts that actually time their
+    // render bodies (DesktopHost via RenderEngine; the harness's FakeHost when its
+    // `<previewId>.metrics.json` carries a `tookMs` entry) populate this; stub hosts return null
+    // and we emit `tookMs = 0`. Other RenderMetrics fields (heap / native / sandbox-age) stay
+    // null until B2.3 wires the cost-model collection path.
+    val tookMs = result.metrics?.get("tookMs") ?: 0L
+    val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), finished))
     inFlightRenders.remove(result.id)
   }
@@ -437,11 +443,14 @@ class JsonRpcServer(
   }
 
   /**
-   * B1.4 hook: replace this body with the real RenderEngine call. For B1.5-era stub hosts (no
-   * `pngPath` on [RenderResult]) we emit a deterministic placeholder PNG path; the file is **not**
-   * written to disk by the server. Hosts that actually produce bytes (e.g. `FakeHost` from
+   * Builds the `renderFinished` payload from a host-returned [RenderResult]. For B1.5-era stub
+   * hosts (no `pngPath` on the result) we emit a deterministic placeholder PNG path; the file is
+   * **not** written to disk by the server. Hosts that actually produce bytes (e.g. `FakeHost` from
    * `:tools:daemon-harness`, or `DesktopHost`/`RobolectricHost` once their real-render bodies land)
-   * populate `pngPath` on the [RenderResult] and we forward that string verbatim.
+   * populate `pngPath` and we forward that string verbatim.
+   *
+   * `tookMs` is sourced from `result.metrics["tookMs"]` upstream by [emitRenderFinished]; stub
+   * hosts that don't time their bodies pass `0L`.
    */
   private fun renderFinishedFromResult(
     previewId: String,
@@ -453,9 +462,11 @@ class JsonRpcServer(
       id = previewId,
       pngPath = pngPath,
       tookMs = tookMs,
-      // Structured RenderMetrics (heap/native/sandbox) lands in B2.3. Until then we leave this null
-      // even when the host supplied free-form Map<String, Long> metrics; the harness's S1 verifies
-      // pngPath, not metrics. B2.3's hook point is here.
+      // Structured RenderMetrics (heap/native/sandbox-age) lands in B2.3. Until then we leave this
+      // null even when the host supplied free-form `Map<String, Long>` metrics — the only field
+      // we currently extract is `tookMs`, which already lives on the wire as a top-level
+      // RenderFinishedParams field. B2.3's hook point is here: read the relevant keys out of
+      // `result.metrics` and populate a [RenderMetrics] object.
       metrics = null,
     )
   }

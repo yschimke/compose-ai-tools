@@ -11,8 +11,8 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S4VisibilityFilterTest] — drives `setVisible([a,b,c]) → setFocus([b])
- * → renderNow([a,b,c])` against the real desktop daemon and asserts all three `renderFinished`
+ * Real-mode counterpart to [S4VisibilityFilterTest] — drives `setVisible([a,b,c]) → setFocus([b]) →
+ * renderNow([a,b,c])` against the real desktop daemon and asserts all three `renderFinished`
  * notifications arrive.
  *
  * **Gap parity with fake mode (TEST-HARNESS § 3 / DESIGN § 8 multi-tier queue is P2.5.1,
@@ -80,7 +80,8 @@ class S4VisibilityFilterRealModeTest {
       while (seen.size < ids.size && System.currentTimeMillis() < deadline) {
         val msg = client.pollNotification("renderFinished", 30.seconds)
         val params = msg["params"] as? JsonObject ?: error("renderFinished missing params: $msg")
-        val id = (params["id"] as? JsonPrimitive)?.content ?: error("renderFinished missing id: $msg")
+        val id =
+          (params["id"] as? JsonPrimitive)?.content ?: error("renderFinished missing id: $msg")
         if (seen.put(id, msg) == null) {
           arrivalOrder.add(id)
           arrivalLatencyMs[id] = System.currentTimeMillis() - renderNowStart

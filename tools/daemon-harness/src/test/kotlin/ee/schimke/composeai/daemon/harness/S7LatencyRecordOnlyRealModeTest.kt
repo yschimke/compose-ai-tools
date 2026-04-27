@@ -64,8 +64,12 @@ class S7LatencyRecordOnlyRealModeTest {
         // hardcoded to 0 in JsonRpcServer.emitRenderFinished — gap with PROTOCOL.md). The notes
         // column documents the difference for human readers.
         val daemonTookMs =
-          finished["params"]?.jsonObject?.get("tookMs")?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-            ?: -1L
+          finished["params"]
+            ?.jsonObject
+            ?.get("tookMs")
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?.toLongOrNull() ?: -1L
         recorder.record(
           scenario = "s7-real",
           preview = "$previewId@$tag",

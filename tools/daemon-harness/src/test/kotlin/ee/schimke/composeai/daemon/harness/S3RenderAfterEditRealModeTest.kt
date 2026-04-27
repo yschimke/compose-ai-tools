@@ -22,8 +22,8 @@ import org.junit.Test
  * `renderNow(["red-square"])` and `renderNow(["blue-square"])` calls; assert the second renders
  * blue.
  *
- * **Gap parity with fake mode.** v1 daemon does not emit `discoveryUpdated` on `fileChanged`
- * (B2.2 unimplemented — see [S3RenderAfterEditTest]'s KDoc). Real-mode S3 doesn't bother sending a
+ * **Gap parity with fake mode.** v1 daemon does not emit `discoveryUpdated` on `fileChanged` (B2.2
+ * unimplemented — see [S3RenderAfterEditTest]'s KDoc). Real-mode S3 doesn't bother sending a
  * `fileChanged` notification because the render bypasses any file-watching path entirely; instead
  * the assertion is purely "second renderNow with a different previewId returns different bytes".
  * Once B2.2 lands, this test should add a fileChanged + assert `discoveryUpdated` — same shape as

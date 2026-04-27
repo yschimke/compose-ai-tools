@@ -13,30 +13,24 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S5RenderFailedTest] — pins the desktop daemon's actual
- * exception-in-composition behaviour today, which **diverges from fake mode in a load-bearing way**.
+ * Real-mode counterpart to [S5RenderFailedTest] — verifies that the desktop daemon surfaces
+ * in-composition throws as `renderFailed` notifications, matching fake mode S5 and the TEST-HARNESS
+ * § 3 expectation.
  *
- * **Real-mode-only quirk surfaced by writing this test (gap with TEST-HARNESS § 3 + with fake mode
- * S5).** When [`BoomComposable`][ee.schimke.composeai.daemon.BoomComposable] throws inside the
- * Compose composition, [`DesktopHost.runRenderLoop`][ee.schimke.composeai.daemon.DesktopHost]
- * catches the exception (`DesktopHost.kt` line ~134), prints the stack to stderr, and falls back
- * to [`renderStubFallback`][ee.schimke.composeai.daemon.DesktopHost] which returns a *successful*
- * `RenderResult` (no `pngPath`, no `metrics`). `JsonRpcServer.emitRenderFinished` then forwards
- * that as a `renderFinished` notification carrying the daemon-stub placeholder pngPath — so the
- * client never sees `renderFailed` for an in-composition throw. Fake mode's S5 surfaces
- * `renderFailed` because `FakeHost` propagates the exception out of `submit()` and
- * `JsonRpcServer.runHostSubmitter` catches it on the JsonRpc side (line ~371). The real desktop
- * host catches it one layer too early.
+ * **Fix landed in:** D-harness.v1.5b follow-up — `DesktopHost.runRenderLoop` no longer catches
+ * render-body exceptions on the render thread. When
+ * [`BoomComposable`][ee.schimke.composeai.daemon.BoomComposable] throws inside the Compose
+ * composition, `RenderEngine.render` propagates the Throwable; the host routes it through the
+ * per-id result queue and `submit()` re-throws it on the `JsonRpcServer.submitRenderAsync` worker
+ * thread. That worker's existing Throwable catch turns it into a `renderFailed` notification via
+ * the watcher loop. The legacy stub-fallback path (non-spec `payload="render-N"` from
+ * `DesktopHostTest`) is unchanged — that's the discriminator test for the only remaining stub
+ * usage.
  *
- * Once `DesktopHost` is taught to propagate composition exceptions (or to translate them into a
- * structured `RenderFailed` shape — likely as part of B1.4 timing / B2.3 metrics work), this test
- * should flip and assert the `renderFailed` shape directly. Until then the assertions pin **what
- * actually happens**:
+ * Asserts:
  *
- * 1. The broken render produces a `renderFinished` notification (not `renderFailed`).
- * 2. The `pngPath` it reports points to a placeholder that may or may not exist on disk —
- *    `renderStubFallback` does not write a PNG and `JsonRpcServer` doesn't materialise the stub
- *    file either.
+ * 1. The broken render produces a `renderFailed` notification (not `renderFinished`).
+ * 2. The error's `kind` is one of the daemon's emitted values and `message` contains "boom".
  * 3. The daemon survives — a follow-up `renderNow([RedSquare])` returns a real PNG.
  * 4. `shutdown` + `exit` complete cleanly.
  *
@@ -76,25 +70,32 @@ class S5RenderFailedRealModeTest {
       assertEquals(1, client.initialize().protocolVersion)
       client.sendInitialized()
 
-      // 1. Broken render — today's daemon swallows the exception in DesktopHost and emits
-      //    renderFinished with a stub pngPath rather than renderFailed (see KDoc gap). Assert that
-      //    real-mode behaviour explicitly so the test flips when the gap closes.
+      // 1. Broken render — DesktopHost now propagates in-composition Throwables through the
+      //    result queue, JsonRpcServer's submitRenderAsync re-raises them, and the watcher loop
+      //    emits `renderFailed`. Assert the wire shape directly (kind + message substring).
       val brokenStart = System.currentTimeMillis()
       val rn1 = client.renderNow(previews = listOf(brokenId), tier = RenderTier.FAST)
       assertEquals(listOf(brokenId), rn1.queued)
-      val finishedBroken = client.pollRenderFinishedFor(brokenId, timeout = 60.seconds)
+      val failed =
+        client.pollNotificationMatching("renderFailed", 60.seconds) { msg ->
+          msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == brokenId
+        }
       val brokenFinishedAt = System.currentTimeMillis()
-      val brokenParams =
-        finishedBroken["params"]?.jsonObject ?: error("renderFinished missing params: $finishedBroken")
-      val brokenPngPath = brokenParams["pngPath"]?.jsonPrimitive?.contentOrNull
-      assertNotNull("renderFinished.pngPath must be present even for the broken render", brokenPngPath)
+      val errorObj =
+        failed["params"]?.jsonObject?.get("error")?.jsonObject
+          ?: error("renderFailed.params.error must be present: $failed")
+      val errKind = errorObj["kind"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("renderFailed.params.error.kind must be present", errKind)
       assertTrue(
-        "v1 daemon reality: a thrown @Composable surfaces as renderFinished with the stub " +
-          "placeholder pngPath ('daemon-stub-<id>.png'), not renderFailed (gap with TEST-HARNESS " +
-          "§ 3 + fake-mode S5). pngPath=$brokenPngPath. If this assertion ever flips green, " +
-          "DesktopHost has been taught to propagate composition exceptions and this test should " +
-          "tighten to assert the renderFailed shape directly.",
-        brokenPngPath!!.contains("daemon-stub-"),
+        "renderFailed.params.error.kind must be one of the v1 RenderErrorKind values " +
+          "(PROTOCOL.md § 6); was $errKind",
+        errKind in setOf("internal", "runtime", "compile", "capture", "timeout"),
+      )
+      val errMsg = errorObj["message"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("renderFailed.params.error.message must be present", errMsg)
+      assertTrue(
+        "renderFailed.params.error.message should mention the thrown 'boom': $errMsg",
+        errMsg!!.contains("boom"),
       )
 
       // 2. Healthy render — daemon stayed up after the failure.
@@ -115,7 +116,7 @@ class S5RenderFailedRealModeTest {
         scenario = "s5-real",
         preview = brokenId,
         actualMs = brokenFinishedAt - brokenStart,
-        notes = "S5 real: broken render — surfaces as renderFinished w/ stub pngPath (gap)",
+        notes = "S5 real: broken render — surfaces as renderFailed w/ kind+message",
       )
       recorder.record(
         scenario = "s5-real",

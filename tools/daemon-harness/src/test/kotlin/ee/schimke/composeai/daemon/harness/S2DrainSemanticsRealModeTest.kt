@@ -28,7 +28,8 @@ import org.junit.Test
  * **Skipped under fake mode.** Real-mode wall-clock for the slow render is bounded below by the
  * 500ms sleep + scene init + PNG encode; expect 700-1500ms on the dev box. The pixel-diff baseline
  * lands at `tools/daemon-harness/baselines/desktop/s2/slow-square.png` (looks like a teal square —
- * [`SlowSquare`][ee.schimke.composeai.daemon.SlowSquare] paints `Color(0xFF80FFAA)` after sleeping).
+ * [`SlowSquare`][ee.schimke.composeai.daemon.SlowSquare] paints `Color(0xFF80FFAA)` after
+ * sleeping).
  */
 class S2DrainSemanticsRealModeTest {
 
@@ -111,7 +112,9 @@ class S2DrainSemanticsRealModeTest {
         notes = "S2 real: includes 500ms SlowSquare sleep + scene init + PNG encode",
       )
     } catch (t: Throwable) {
-      System.err.println("S2DrainSemanticsRealModeTest failed; daemon stderr:\n${client.dumpStderr()}")
+      System.err.println(
+        "S2DrainSemanticsRealModeTest failed; daemon stderr:\n${client.dumpStderr()}"
+      )
       throw t
     } finally {
       try {

@@ -13,21 +13,18 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Real-mode counterpart to [S8CostModelMetricsTest] — verifies what the real `:renderer-desktop-daemon`
- * actually surfaces in `renderFinished.metrics` today, and pins the gap with TEST-HARNESS § 3's
- * cost-model expectation (B2.3 unimplemented).
+ * Real-mode counterpart to [S8CostModelMetricsTest] — verifies that the wire-level
+ * `renderFinished.tookMs` carries the timing the engine measured, and pins the remaining
+ * structured-metrics gap with TEST-HARNESS § 3's cost-model expectation (B2.3 unimplemented).
  *
- * **What's actually present today:**
- * - `renderFinished.tookMs` is non-null (typed as `Long` in `RenderFinishedParams`). However
- *   `JsonRpcServer.emitRenderFinished` currently passes `tookMs = 0` (line ~416) — the structured
- *   timing flow lives in `B-desktop.1.4`'s `RenderResult.metrics["tookMs"]`, not in the wire-level
- *   `tookMs`. This test asserts the wire field is present and is `0L` today; once the gap closes
- *   (`renderFinishedFromResult` is updated to pass through real timing), the `>= 0L` assertion
- *   tightens to `> 0L`.
- * - `renderFinished.metrics` (typed as `RenderMetrics?`) is `null` today (`renderFinishedFromResult`
- *   sets it to null even when the host returns timing data — same gap as fake-mode S8). B2.3 is
- *   unimplemented; cost-model fields (heap, native heap, sandbox-age, render count) don't exist on
- *   the wire yet.
+ * **What's present today:**
+ * - `renderFinished.tookMs` reflects the wall-clock the engine spent in `RenderEngine.render` (B-
+ *   desktop.1.4 populates `RenderResult.metrics["tookMs"]`; D-harness.v1.5b follow-up plumbs that
+ *   value through `JsonRpcServer.emitRenderFinished` rather than hardcoding `0`). The fix landed
+ *   alongside this test KDoc — assertion below tightens to `tookMs in 1..30_000`.
+ * - `renderFinished.metrics` (typed as `RenderMetrics?`) is `null` today
+ *   (`renderFinishedFromResult` sets it to null — same gap as fake-mode S8). B2.3 is unimplemented;
+ *   cost-model fields (heap, native heap, sandbox-age, render count) don't exist on the wire yet.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -67,18 +64,20 @@ class S8CostModelMetricsRealModeTest {
       val params =
         finished["params"]?.jsonObject ?: error("renderFinished missing params: $finished")
 
-      // 1. Wire-level tookMs must be present + non-null. The numeric value is hardcoded to 0L by
-      //    `JsonRpcServer.emitRenderFinished` today (gap; see KDoc) — assert >= 0 to allow the gap
-      //    to close without flipping this test red. Sanity-cap the upper bound at 5 minutes so a
-      //    wildly-broken value (e.g. negative-as-unsigned) is still caught.
+      // 1. Wire-level tookMs must be present + non-null + reflect the engine's measured render
+      //    body wall-clock. JsonRpcServer.emitRenderFinished pulls `tookMs` out of
+      //    `RenderResult.metrics["tookMs"]`, which RenderEngine populates from
+      //    `System.nanoTime()` deltas around its `scene.render()` calls. A real desktop render
+      //    of a single solid-colour Box takes >0ms and well under 30s; the upper bound is
+      //    generous to absorb cold-start jitter on slow CI machines.
       val tookMsField = params["tookMs"]
       assertNotNull("renderFinished.tookMs must be present", tookMsField)
       val tookMs = tookMsField!!.jsonPrimitive.contentOrNull?.toLongOrNull()
       assertNotNull("renderFinished.tookMs must parse as Long: $tookMsField", tookMs)
       assertTrue(
-        "renderFinished.tookMs must be in a sane range [0, 300000]: got $tookMs " +
-          "(wall-clock the harness measured: $wallClockMs ms)",
-        tookMs!! in 0L..300_000L,
+        "renderFinished.tookMs must be in [1, 30000] now that the wire path is plumbed: " +
+          "got $tookMs (wall-clock the harness measured: $wallClockMs ms)",
+        tookMs!! in 1L..30_000L,
       )
 
       // 2. Wire-level metrics: B2.3 unimplemented → null today. Documented gap; same as fake-mode
@@ -99,7 +98,7 @@ class S8CostModelMetricsRealModeTest {
         scenario = "s8-real",
         preview = previewId,
         actualMs = wallClockMs,
-        notes = "S8 real: wire tookMs=$tookMs (hardcoded 0 today); structured metrics=null (B2.3 gap)",
+        notes = "S8 real: wire tookMs=$tookMs (engine-measured); structured metrics=null (B2.3 gap)",
       )
 
       val exitCode = client.shutdownAndExit(timeout = 30.seconds)

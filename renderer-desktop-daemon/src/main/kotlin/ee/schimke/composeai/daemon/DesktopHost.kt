@@ -48,6 +48,13 @@ import java.util.concurrent.TimeUnit
  * spec into `payload`. A blank or non-spec payload falls back to a deterministic stub render
  * ([renderStubFallback]) so the legacy [DesktopHostTest] (which submits `payload="render-N"`) keeps
  * working through the B-desktop.1.4 transition.
+ *
+ * **Render-body exceptions propagate** — when [RenderEngine.render] throws (e.g. `BoomComposable`'s
+ * `error("boom")` inside the composition), the loop posts the Throwable onto the per-id result
+ * queue and [submit] re-throws on the caller's thread. The Throwable then surfaces upstream as a
+ * `renderFailed` notification (see `JsonRpcServer.submitRenderAsync`'s Throwable catch). Earlier
+ * versions caught the exception on the render thread and returned a misleading "successful" stub
+ * render — the bug `S5RenderFailedRealModeTest` was written to pin and is now closed.
  */
 open class DesktopHost(
   /**
@@ -94,6 +101,10 @@ open class DesktopHost(
       resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
         ?: error("DesktopHost.submit($typed) timed out after ${timeoutMs}ms")
     results.remove(typed.id)
+    // The render loop posts either a [RenderResult] (success / stub) or a [Throwable] (engine
+    // body threw). Re-throw the Throwable so `JsonRpcServer.submitRenderAsync`'s catch surfaces
+    // it as a `renderFailed` notification — the path the v1 `S5RenderFailedRealModeTest` covers.
+    if (raw is Throwable) throw raw
     return raw as RenderResult
   }
 
@@ -128,20 +139,34 @@ open class DesktopHost(
       when (request) {
         is RenderRequest.Shutdown -> return
         is RenderRequest.Render -> {
-          val result =
+          // Two failure modes are routed differently:
+          //   1. Spec-payload-not-recognised (legacy `payload="render-N"` from DesktopHostTest):
+          //      `dispatchRender` selects [renderStubFallback], which never throws — the result is
+          //      a successful stub-path RenderResult.
+          //   2. Render-body exception (e.g. `BoomComposable` calling `error("boom")` inside the
+          //      composition): `dispatchRender` calls into [RenderEngine.render], which propagates
+          //      Throwables. We must NOT swallow them here — `submit()`'s caller is
+          //      `JsonRpcServer.submitRenderAsync`, which already catches Throwable and emits
+          //      `renderFailed` via the watcher loop. Catching here and falling back to
+          //      [renderStubFallback] would suppress the failure into a misleading "successful"
+          //      stub render — the bug surfaced by `S5RenderFailedRealModeTest`.
+          //
+          // We do still catch the throwable on this thread — propagating it out of the loop would
+          // kill the render worker, which would in turn make every subsequent `submit()` time out
+          // (the daemon's whole value proposition is one long-lived render thread). Instead we
+          // post the Throwable onto the per-id result queue; [submit] re-throws it on the caller's
+          // thread, which surfaces it as `renderFailed` upstream.
+          val result: Any =
             try {
               dispatchRender(request)
             } catch (t: Throwable) {
-              // Surface to stderr so the failure is observable in CI logs; still post a result so
-              // the caller's poll() doesn't time out. The result encodes "no PNG, no metrics" via
-              // null fields — JsonRpcServer will treat that as the stub-path placeholder, and the
-              // caller can decide whether to fail the test from there.
-              System.err.println(
-                "DesktopHost: render dispatch failed for id=${request.id} " +
-                  "(payload='${request.payload}'): ${t.message}"
-              )
-              t.printStackTrace(System.err)
-              renderStubFallback(request.id)
+              // [RenderEngine] dispatches the @Composable via `Method.invoke`, which wraps
+              // user-thrown exceptions in [java.lang.reflect.InvocationTargetException]. Unwrap
+              // here so the upstream `renderFailed.error.message` carries the original message
+              // (e.g. "java.lang.IllegalStateException: boom" instead of the opaque
+              // "InvocationTargetException"). Keeps the wire-level error informative without
+              // leaking reflection details into S5RenderFailedRealModeTest's assertions.
+              unwrapInvocationTarget(t)
             }
           results.computeIfAbsent(request.id) { LinkedBlockingQueue() }.put(result)
         }
@@ -172,7 +197,11 @@ open class DesktopHost(
   /**
    * Fallback render for non-spec payloads — returns a [RenderResult] capturing the render-thread
    * classloader identity. Used by [DesktopHostTest]'s 10-render reuse assertion (which submits
-   * payloads of the form `render-N`) and as the catch-all when the real engine throws.
+   * payloads of the form `render-N`).
+   *
+   * **Not** invoked when the real engine throws — that case propagates the Throwable through the
+   * result queue so [submit] can re-raise it (see the comment in [runRenderLoop]). Falling back to
+   * a successful stub here would suppress real render failures.
    */
   private fun renderStubFallback(id: Long): RenderResult {
     val cl = Thread.currentThread().contextClassLoader ?: DesktopHost::class.java.classLoader
@@ -181,5 +210,18 @@ open class DesktopHost(
       classLoaderHashCode = System.identityHashCode(cl),
       classLoaderName = cl?.javaClass?.name ?: "<null>",
     )
+  }
+
+  /**
+   * If [t] is a [java.lang.reflect.InvocationTargetException] (or has one in its cause chain),
+   * return its underlying cause; otherwise return [t]. Used to surface the original user-thrown
+   * exception across [RenderEngine]'s reflective composable dispatch.
+   */
+  private fun unwrapInvocationTarget(t: Throwable): Throwable {
+    var current: Throwable = t
+    while (current is java.lang.reflect.InvocationTargetException) {
+      current = current.targetException ?: return current
+    }
+    return current
   }
 }

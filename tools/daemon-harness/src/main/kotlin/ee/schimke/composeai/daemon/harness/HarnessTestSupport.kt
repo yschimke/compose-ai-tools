@@ -90,9 +90,10 @@ object HarnessTestSupport {
     System.getProperty("composeai.harness.regenerate")?.equals("true", ignoreCase = true) == true
 
   /**
-   * Resolves a real-mode baseline PNG path under `tools/daemon-harness/baselines/desktop/<scenario>`
-   * relative to the harness module's working directory. The path is materialised lazily by
-   * [diffOrCaptureBaseline] — callers don't need to mkdir.
+   * Resolves a real-mode baseline PNG path under
+   * `tools/daemon-harness/baselines/desktop/<scenario>` relative to the harness module's working
+   * directory. The path is materialised lazily by [diffOrCaptureBaseline] — callers don't need to
+   * mkdir.
    */
   fun baselineFile(scenario: String, name: String): File {
     val rel = File("baselines/desktop/$scenario/$name")
@@ -141,7 +142,11 @@ fun diffOrCaptureBaseline(
   val expectedBytes = baseline.readBytes()
   val diff = PixelDiff.compare(actual = actualBytes, expected = expectedBytes)
   if (!diff.ok) {
-    PixelDiff.writeDiffArtefacts(actual = actualBytes, expected = expectedBytes, outDir = reportsDir)
+    PixelDiff.writeDiffArtefacts(
+      actual = actualBytes,
+      expected = expectedBytes,
+      outDir = reportsDir,
+    )
     throw AssertionError(
       "$scenario real-mode pixel diff failed: ${diff.message} " +
         "(maxDelta=${diff.maxDelta}, offending=${diff.offendingPixelCount}). " +
