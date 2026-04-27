@@ -193,12 +193,13 @@ In the daemon module, add wrappers that delegate to the existing `renderer-andro
 
 > **Why this exists in parallel.** Per [DESIGN.md § 4 "Renderer-agnostic surface"](DESIGN.md#renderer-agnostic-surface): desktop is the simpler implementation surface (no Robolectric `InstrumentingClassLoader`, no `bridge` package, no `HardwareRenderer` native-buffer leak shapes, sub-second cold init). UX-iteration features — predictive prefetch, the cost model, `MetricsSink`, multi-tier render queue — get a much shorter feedback loop here. Once a feature is proven on desktop the Android backend picks it up via `:renderer-daemon-core`.
 
-#### B-desktop.1.1 — Module skeleton
+#### B-desktop.1.1 — Module skeleton ✅
 
 Create `renderer-desktop-daemon/` module. Plain `org.jetbrains.kotlin.jvm` (no Android plugins). Depends on `:renderer-desktop` + `:renderer-daemon-core` (P0.5). Empty `DaemonMain.kt` that prints "hello" and exits.
 
 - **Depends on:** P0.5
 - **DoD:** `./gradlew :renderer-desktop-daemon:assemble` succeeds. `java -cp ... DaemonMain` prints "hello".
+- **Landed:** `renderer-desktop-daemon/build.gradle.kts` (plain Kotlin JVM, no `kotlin-serialization` plugin — `:renderer-daemon-core` re-exposes the dep transitively); `renderer-desktop-daemon/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt` with `@file:JvmName("DaemonMain")` matching B1.5's convention; `settings.gradle.kts` includes `:renderer-desktop-daemon` immediately after `:renderer-desktop`. Also registered a tiny `JavaExec` task `runDaemonMain` in lieu of the `application` plugin (avoids the `distZip`/`distTar`/etc. churn for a skeleton). Compose Desktop's per-platform Skiko native bundle is contributed transitively via `:renderer-desktop` (`compose.desktop.currentOs`) — no extra config needed in this module.
 
 #### B-desktop.1.3 — `DesktopHost` (sandbox holder)
 

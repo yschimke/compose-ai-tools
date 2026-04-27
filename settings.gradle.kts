@@ -39,6 +39,8 @@ include(":samples:remotecompose")
 
 include(":renderer-desktop")
 
+include(":renderer-desktop-daemon")
+
 include(":renderer-android")
 
 include(":renderer-daemon-core")
