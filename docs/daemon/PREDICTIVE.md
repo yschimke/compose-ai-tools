@@ -240,6 +240,88 @@ every option highlighted in 100ms. Mitigations:
 - Daemon coalesces back-to-back `setPredicted` calls within a 100ms window
   — last-wins for the same `reason`.
 
+## 6a. UX response — predicted vs measured cost model
+
+Independent of *when* a render is queued, the panel needs a policy for
+*how* a pending render is surfaced. The pathological cases:
+
+- **Spinner thrash on cheap renders.** A 50ms render that flashes a
+  spinner before swapping the image is worse than no indicator at all
+  — the spinner appears, the eye registers it, then it's gone. Reads
+  as "something glitched."
+- **No feedback on slow renders.** A 3s render with no indicator reads
+  as "panel is broken" or "the click didn't register."
+
+The threshold between these two failure modes isn't fixed. It depends on
+the specific preview (an animation GIF is slow by design; a static
+preview should be near-instant), and it drifts with sandbox warmth and
+machine load.
+
+### Two inputs
+
+- **Predicted cost** — the existing `Capture.cost` field on every
+  preview manifest entry (see [`PreviewData.kt`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/PreviewData.kt#L102),
+  cost catalogue: STATIC=1, SCROLL_END=3, SCROLL_LONG=20, SCROLL_GIF=40,
+  ANIMATION=50). Available before any render — the manifest already
+  carries it. Multiplied by a per-machine baseline (median wall-time of
+  a STATIC=1 render, learned over the session) gives a reasonable
+  predicted ms.
+- **Measured wall time** — `renderFinished.metrics.tookMs` per preview
+  ID, smoothed over the last N renders for that ID (small N — 3–5 —
+  so the model adapts when sandbox state changes). Falls back to the
+  predicted-cost model when no measurement exists yet.
+
+The "predicted cost × baseline" gives us a first guess on cold previews;
+once we have any measurement for a preview ID, that wins. Cost catalogue
+mismatches surface as predicted/measured drift on the existing dev
+observability channel (PREDICTIVE.md § 9 telemetry).
+
+### Three indicator tiers
+
+| Estimated ms | Indicator | Rationale |
+|--------------|-----------|-----------|
+| **< 150ms**  | None — swap when ready | Below the threshold the eye registers as "instant"; spinner would flash and disappear before the user reads it. |
+| **150ms–1s** | Subtle — faded card / shimmer overlay, no spinner | Enough feedback that the user sees something is happening; not so much that fast renders feel slow. |
+| **> 1s**     | Explicit — spinner + label ("rendering…") | User needs to know the click registered and the wait is normal, not broken. |
+
+The thresholds are starting values, not gospel — they're tunable from
+the same telemetry channel as everything else. A user staring at a
+panel of GIFs all day might want the > 1s threshold pushed up so the
+spinner only fires for genuinely slow renders.
+
+### Loop
+
+- Webview reads `Capture.cost` from the manifest at panel-load time.
+- On `renderStarted`, webview decides the indicator tier from
+  `cost × baseline-ms-per-cost-unit`.
+- On `renderFinished`, webview swaps the image (regardless of indicator
+  state) and updates the rolling per-ID measurement; baseline-ms-per-cost
+  is recomputed from the median of recent STATIC=1 renders.
+- Initial baseline (no measurements yet): use the bench's measured
+  per-preview floor (~1100ms per render, see baseline-latency.csv). The
+  daemon path's measured baseline replaces this within the first
+  handful of renders.
+
+### Why this isn't its own protocol message
+
+All of the inputs already exist on PROTOCOL.md v1: `Capture.cost` in
+the manifest, `tookMs` on `renderFinished`. The cost-model policy is
+purely client-side; no daemon-side state. If the daemon ever wants to
+weigh in (e.g. "I think this render will be slow because the sandbox
+just recycled"), that's an additive `renderStarted.metrics.estimatedMs`
+field — not a new message.
+
+### Race with predictive prefetch
+
+When v1.1 lands (scroll-ahead speculation, § 7), the cost-model
+threshold also feeds the speculation budget heuristic: speculatively
+pre-warming a STATIC=1 preview is cheap enough that high-budget makes
+sense; speculatively pre-warming an ANIMATION=50 preview probably
+isn't worth the heap pressure on the warm sandbox unless the user is
+genuinely about to focus it. Concretely: cap speculative renders at
+`cost ≤ HEAVY_COST_THRESHOLD` (existing constant from PreviewData.kt,
+currently 5) until v1.2's backpressure has data to override.
+
 ## 7. Phasing — what lands when
 
 Three phases. Each is independently shippable; each is gated on the

@@ -56,6 +56,20 @@ Define the JSON-RPC protocol in [PROTOCOL.md](PROTOCOL.md). Locked message shape
 - **Depends on:** none
 - **DoD:** doc merged. Both Kotlin (`Messages.kt`) and TypeScript (`daemonProtocol.ts`) types in later phases reference it as the source of truth. Shared golden-message corpus lives in [protocol-fixtures/](protocol-fixtures/) (populated by B1.2 and C1.1).
 
+### P0.5 — Extract `:renderer-daemon-core` shared module [Stream B] [shared seam]
+
+Per the renderer-agnostic surface decision in [DESIGN.md § 4](DESIGN.md#renderer-agnostic-surface): create a new `:renderer-daemon-core` module (plain `org.jetbrains.kotlin.jvm`, no Android plugins). Move `protocol/Messages.kt` and `JsonRpcServer.kt` from `:renderer-android-daemon` into core; introduce an abstract `RenderHost` interface; rename the existing concrete class to `RobolectricHost` and have it `implements RenderHost`. `:renderer-android-daemon` keeps its build.gradle.kts and its Android-specific files but now `implementation(project(":renderer-daemon-core"))`. Existing tests in `:renderer-android-daemon` keep passing unchanged.
+
+- **Depends on:** Stream B's existing B1.5 commit (`agent/preview-daemon-streamB`)
+- **DoD:** `:renderer-android-daemon:check` passes byte-identically to before. `:renderer-daemon-core:check` builds and runs Messages round-trip + JsonRpcServer framing tests (moved from the android module). The classpath descriptor emitted by `composePreviewDaemonStart` for `:samples:android` is unchanged in field shape (it gains a daemon-core jar at the head of the classpath; everything else identical).
+
+### P0.6 — Capture desktop latency baseline [Stream D]
+
+Mirror P0.1 for the desktop renderer: add `:samples:desktop-daemon-bench` (or extend an existing `:samples:cmp`-based module) with a `benchPreviewLatency` task that times the existing desktop render path under the same three scenarios (cold, warm-no-edit, warm-after-1-line-edit). Output rows in the same `docs/daemon/baseline-latency.csv` schema with a new `target` column distinguishing `android` vs `desktop`. The cost-model thresholds in PREDICTIVE.md § 6a are derived from this; daemon's payback can't be evaluated without it.
+
+- **Depends on:** none
+- **DoD:** CSV gains `target` column populated for both Android and desktop. Headline numbers (cold render, warm render with no edit, warm render after 1-line edit) recorded for desktop; daemon cost-model thresholds re-checked against the new median.
+
 ---
 
 ## Phase 1 — first end-to-end render (parallel)
@@ -78,7 +92,9 @@ Add `composePreview.experimental.daemon { … }` extension with `enabled`, `maxH
 - **Depends on:** A1.1
 - **DoD:** unit test on the extension's defaults (`DaemonExtensionTest`). README of daemon docs links to [CONFIG.md](CONFIG.md).
 
-### Stream B — daemon core
+### Stream B-android — Robolectric daemon backend
+
+> **Stream split (post-renderer-agnostic decision).** The original Stream B is now Stream B-android — the Robolectric backend. Stream B-desktop runs in parallel on `:renderer-desktop-daemon`. Both consume the shared `:renderer-daemon-core` module from P0.5.
 
 #### B1.1 — Module skeleton ✅
 
@@ -170,6 +186,45 @@ In the daemon module, add wrappers that delegate to the existing `renderer-andro
 
 - **Depends on:** B1.4, B1.6
 - **DoD:** integration test: render preview A (which adds activity X to the package manager), then preview B. Assert preview B's `PackageManager` does **not** contain activity X.
+
+### Stream B-desktop — Skiko daemon backend
+
+> **Why this exists in parallel.** Per [DESIGN.md § 4 "Renderer-agnostic surface"](DESIGN.md#renderer-agnostic-surface): desktop is the simpler implementation surface (no Robolectric `InstrumentingClassLoader`, no `bridge` package, no `HardwareRenderer` native-buffer leak shapes, sub-second cold init). UX-iteration features — predictive prefetch, the cost model, `MetricsSink`, multi-tier render queue — get a much shorter feedback loop here. Once a feature is proven on desktop the Android backend picks it up via `:renderer-daemon-core`.
+
+#### B-desktop.1.1 — Module skeleton
+
+Create `renderer-desktop-daemon/` module. Plain `org.jetbrains.kotlin.jvm` (no Android plugins). Depends on `:renderer-desktop` + `:renderer-daemon-core` (P0.5). Empty `DaemonMain.kt` that prints "hello" and exits.
+
+- **Depends on:** P0.5
+- **DoD:** `./gradlew :renderer-desktop-daemon:assemble` succeeds. `java -cp ... DaemonMain` prints "hello".
+
+#### B-desktop.1.3 — `DesktopHost` (sandbox holder)
+
+Implement `RenderHost` (from P0.5's core) for the desktop backend. Holds a long-lived `Recomposer` + Skiko `Surface` + worker thread; submits `RenderRequest`s; returns `RenderResult { id, classloaderHash }` for parity with B1.3. Much simpler than `RobolectricHost` — no classloader bridge, no `@Test` runner trick, no shadow registrations to drain. Just a coroutine scope holding Compose runtime warm.
+
+- **Depends on:** B-desktop.1.1
+- **DoD:** unit test: submit 10 dummy renders to a single host instance; all complete; classloader is identical across all 10 (in this case, the JVM's own classloader — there's no sandbox classloader to verify against, but the test still asserts invariance).
+
+#### B-desktop.1.4 — `RenderEngine` (per-preview body)
+
+Duplicate the relevant parts of the desktop renderer's render loop into `RenderEngine.kt`. Inputs: `PreviewInfo`, output dir. Output: `RenderResult { pngPath, tookMs }`. Same duplication-and-reconcile-later note as the Android B1.4 (the desktop's existing render path is `:renderer-desktop`'s standalone harness; the daemon module duplicates the inner loop and reconciles in v2).
+
+- **Depends on:** B-desktop.1.3
+- **DoD:** rendered PNG of one Compose-Multiplatform desktop preview via the daemon's `RenderEngine` is byte-identical (or pixel-identical with no AA drift) to the same preview rendered via the existing `:renderer-desktop` path.
+
+#### B-desktop.1.5 — Wire `DaemonMain` to `JsonRpcServer`
+
+Wires the existing `JsonRpcServer` (from `:renderer-daemon-core`) onto `DesktopHost`. Same lifecycle as B1.5's Android wiring: `initialize` → `initialized` → `renderNow` → … → `shutdown` → `exit`. Honours the same no-mid-render-cancellation invariant.
+
+- **Depends on:** B-desktop.1.3, P0.5
+- **DoD:** integration test: spawn the desktop daemon JVM as a subprocess, send `renderNow` for one preview, assert the PNG appears and a `renderFinished` notification is read back. Subprocess test is genuinely viable here (no Robolectric bootstrap to coordinate), so this DoD is stricter than B1.5's (which fell back to in-process).
+
+#### B-desktop.1.6 — Cancellation enforcement (mirrors B1.5a)
+
+Same enforcement points as B1.5a — never poll `Thread.interrupted()` on the render thread, drain-not-abort shutdown, regression test. Simpler on desktop (no native `HardwareRenderer` buffers to corrupt) but still load-bearing for the Compose runtime: half-disposed `LaunchedEffect` instances retain references through the `Recomposer`.
+
+- **Depends on:** B-desktop.1.5
+- **DoD:** regression test passes; no `interrupt()` calls on the render thread in `:renderer-desktop-daemon/src/main/`.
 
 ### Stream C — VS Code client
 
@@ -273,6 +328,15 @@ Render `daemonWarming` and `sandboxRecycle` notifications as a non-blocking stat
 
 - **Depends on:** B2.5, C1.4
 - **DoD:** visual review of status indicator during a forced recycle.
+
+#### C2.4 — Per-render UX cost model [Stream C]
+
+Implement the predicted-vs-measured cost model from [PREDICTIVE.md § 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model). Webview decides on `renderStarted` whether to show no indicator (< 150ms estimated), a subtle shimmer (150ms–1s), or an explicit spinner (> 1s). Inputs: existing `Capture.cost` from the manifest + rolling per-preview-ID `tookMs` from `renderFinished.metrics`. Per-machine baseline-ms-per-cost-unit learned from the median of recent STATIC=1 renders, seeded from `baseline-latency.csv` until the daemon path produces real measurements.
+
+Pure client-side; no PROTOCOL.md change. Thresholds are configurable in case a user wants different defaults.
+
+- **Depends on:** C1.4
+- **DoD:** unit test for the tier classifier (predicted-only path; measured-overrides-predicted path; baseline-update path). Manual visual review on `samples/android` showing fast renders skip the spinner, slow renders show one. Telemetry surfaces predicted/measured drift on the dev observability channel (PREDICTIVE.md § 9 sinks).
 
 ### Stream D — bench & CI
 
