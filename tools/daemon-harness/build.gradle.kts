@@ -37,11 +37,41 @@ dependencies {
   implementation(project(":renderer-daemon-core"))
 
   testImplementation(libs.junit)
+
+  // D-harness.v1.5a — real-mode (`-Pharness.host=real`) S1 needs the desktop daemon's main classes
+  // (`DaemonMain`, `DesktopHost`, `RenderEngine`, `RenderSpec`, `PreviewManifestRouter`) plus the
+  // `RedSquare` fixture composable on the *test* classpath so the harness's
+  // `RealDesktopHarnessLauncher` can spawn them. Option A from the v1.5a task brief: adding the
+  // deps as `testImplementation` does NOT widen the harness's production classpath, so the
+  // renderer-agnostic invariant ([DESIGN § 4](docs/daemon/DESIGN.md#renderer-agnostic-surface))
+  // continues to hold where it matters. The simpler alternative (Option B — a Gradle task that
+  // resolves `:renderer-desktop-daemon`'s `runtimeClasspath` and writes it to a file the test
+  // reads) was rejected for boilerplate without a concrete benefit at v1.5a scope.
+  //
+  // We deliberately do NOT apply Compose plugins here — that would force every `.kt` in the
+  // harness's production source set to live on a Compose runtime classpath. Instead the harness
+  // pulls in the `tests` configuration of `:renderer-desktop-daemon` (java-test-fixtures-style)
+  // so the `RedFixturePreviews.RedSquare` composable already compiled by the desktop daemon's
+  // test source set is on this module's test runtime classpath.
+  testImplementation(project(":renderer-desktop-daemon"))
+  testImplementation(testFixtures(project(":renderer-desktop-daemon")))
+  // Skiko native bundle. Compose runtime/foundation/ui propagate transitively via
+  // `:renderer-desktop-daemon` (its own runtime classpath), so we don't re-declare them here.
+  // `:renderer-desktop` already brings `compose.desktop.currentOs` for the production renderer,
+  // so the harness's test classpath inherits the per-OS Skiko bundle automatically.
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 
-tasks.withType<Test>().configureEach { useJUnit() }
+tasks.withType<Test>().configureEach {
+  useJUnit()
+  // D-harness.v1.5a — `-Pharness.host=fake|real` flag. Default `fake` keeps the existing 7
+  // scenarios self-contained (no Compose Desktop spawn cost when verifying scenario logic).
+  // Real-mode flips the launcher in `HarnessTestSupport.launcherFor(...)` and unblocks
+  // `S1LifecycleRealModeTest`, which asserts a real Compose render's PNG against an in-repo
+  // baseline.
+  systemProperty("composeai.harness.host", findProperty("harness.host") ?: "fake")
+}
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
 // .harness.FakeDaemonMain`. Mirrors `:renderer-desktop-daemon`'s `runDaemonMain` so the
