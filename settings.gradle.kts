@@ -35,6 +35,8 @@ include(":samples:wear")
 
 include(":samples:cmp")
 
+include(":samples:desktop-daemon-bench")
+
 include(":samples:remotecompose")
 
 include(":renderer-desktop")
