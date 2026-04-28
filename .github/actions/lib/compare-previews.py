@@ -192,7 +192,26 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     Rows carry the render PNG basename (``_SCROLL_end.png`` etc.) and a
     ``captureLabel`` for downstream markdown / filename handling.
     """
-    raw = json.loads(cli_json_path.read_text())
+    text = cli_json_path.read_text()
+    if not text.strip():
+        # `compose-preview show --json` always emits an envelope — even the
+        # no-previews case prints `{"schema": …, "previews": []}`. An empty
+        # file means the upstream "Render previews" step lost its stdout
+        # (e.g. unflushed buffer before `System.exit`). Surface that directly
+        # instead of letting json.loads die with `Expecting value: line 1
+        # column 1` (issue #292).
+        raise SystemExit(
+            f"{cli_json_path} is empty — the upstream `compose-preview show "
+            f"--json` step produced no output. Check that step's log."
+        )
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise SystemExit(
+            f"{cli_json_path} is not valid JSON ({e.msg} at line {e.lineno} "
+            f"col {e.colno}). Check the upstream `compose-preview show --json` "
+            f"step's log for non-JSON output bleeding into stdout."
+        ) from None
     if isinstance(raw, dict) and "previews" in raw:
         entries = raw["previews"]
     elif isinstance(raw, list):

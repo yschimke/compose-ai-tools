@@ -644,7 +644,15 @@ class ShowCommand(args: List<String>) : Command(args) {
       if (manifests.isEmpty() || manifests.all { it.second.previews.isEmpty() }) {
         if (jsonOutput) println(encodeResponse(emptyList(), countsScope = emptyList()))
         else println("No previews found.")
-        exitProcess(3)
+        // Mirror ShowResourcesCommand: a workspace with the plugin applied
+        // but no @Preview functions is a legitimate state (mid-adoption,
+        // first-ever render in CI), not a CLI error. Returning non-zero
+        // here trips `bash -e` in preview-comment.yml on the first run.
+        // Flush before exit because System.exit doesn't flush stdout, and
+        // the redirected file would otherwise lose this println (issue
+        // #292).
+        System.out.flush()
+        exitProcess(0)
       }
 
       val all = buildResults(manifests)
@@ -656,6 +664,7 @@ class ShowCommand(args: List<String>) : Command(args) {
         // and skip a follow-up query.
         if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
         else println("No previews matched.")
+        System.out.flush()
         exitProcess(3)
       }
 
@@ -710,8 +719,10 @@ class ShowCommand(args: List<String>) : Command(args) {
             "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
             "testClassesDirs."
         )
+        System.out.flush()
         exitProcess(2)
       }
+      System.out.flush()
     }
   }
 }
