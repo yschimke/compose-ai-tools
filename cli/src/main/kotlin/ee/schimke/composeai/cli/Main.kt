@@ -8,6 +8,14 @@ fun main(args: Array<String>) {
     exitProcess(0)
   }
 
+  // `--version` / `-V` short-circuit ahead of command parsing — works alongside any other flags
+  // so `compose-preview --version --json` still answers the version question. Mirror Unix
+  // convention (`-V` not `-v`, since `-v` is `--verbose` everywhere else in this CLI).
+  if (args.any { it == "--version" || it == "-V" }) {
+    println("compose-preview $BUNDLE_VERSION")
+    exitProcess(0)
+  }
+
   // Find the command — first non-flag argument that isn't a flag's value.
   // Flags that take values: --module, --filter, --id, --output, --timeout, --plugin-version
   val valuedFlags =
@@ -35,6 +43,8 @@ fun main(args: Array<String>) {
       "doctor",
       "share-gist",
       "publish-images",
+      "update",
+      "version",
       "help",
     )
 
@@ -76,6 +86,8 @@ fun main(args: Array<String>) {
     "doctor" -> DoctorCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
     "publish-images" -> PublishImagesCommand(allArgs).run()
+    "update" -> UpdateCommand(allArgs).run()
+    "version" -> println("compose-preview $BUNDLE_VERSION")
     "help" -> printUsage()
     else -> {
       System.err.println("Unknown command: $command")
@@ -104,6 +116,8 @@ private fun printUsage() {
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       share-gist       Create a gist from a markdown file plus image attachments
       publish-images   Push a directory of rendered PNGs to a shared branch (default preview_pr)
+      update           Re-run the bootstrap installer to pull the latest release
+      version          Print the installed bundle version and exit
       help             Show this help message
 
     Options:
