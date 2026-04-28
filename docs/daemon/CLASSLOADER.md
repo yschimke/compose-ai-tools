@@ -186,31 +186,42 @@ paid **once at daemon spawn** and never again per save-loop iteration.
 
 ## Risks
 
-### 1. Cross-classloader Compose state retention
+### 1. Cross-classloader Compose state retention — verified mostly OK
 
-Compose's `Recomposer` keeps strong references to composition slots
-that hold function references. After a child-loader swap, those slots
-reference the **old** classloader's class objects. Until the
-`Recomposer` is told to drop those slots, the old classloader can't
-GC, and we leak one classloader's worth of bytecode + metadata per
-recompile.
+**Verified.** Both backends construct Compose state **per-render**, so
+cross-render `Recomposer` retention is not a problem in the current
+design:
 
-**Mitigations to evaluate:**
-- Per-render **fresh `Recomposer`** — both backends already construct
-  per-render Compose state (`createAndroidComposeRule` for Android,
-  `ImageComposeScene` for desktop). If neither retains a `Recomposer`
-  beyond a single render, the issue is moot. **Verify by reading the
-  current `RenderEngine` impls before locking the design.**
-- If a `Recomposer` *is* retained: lift Compose Hot Reload's
-  `transformForStaticsInitialization` pattern (their `compose.kt` in
-  `hot-reload-agent`) — invalidate the `Composer`'s applier slots
-  whose owning class is loaded by the to-be-disposed child. Heavier
-  work; only justified if measurement shows leaks.
-- **Forced GC + WeakReference probe** after each recycle (DESIGN § 9
+- Desktop's [`RenderEngine`](../../renderer-desktop-daemon/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
+  allocates `ImageComposeScene(width, height, density)` inside `render`
+  and `try/finally`-closes it. `ImageComposeScene.close()` disposes the
+  scene's internal `Recomposer` + `Composition`.
+- Android's [`RenderEngine`](../../renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
+  builds a `createAndroidComposeRule<ComponentActivity>()` inside the
+  per-render `Statement`. The rule's outer wrapper closes the
+  `ActivityScenario` on `evaluate()` return; `Activity.onDestroy()`
+  triggers `ComposeView` composition disposal which drops the
+  composition's `Recomposer`.
+
+Each render's `Recomposer` is scoped to that render. After the render
+returns, no live `Recomposer` retains a strong reference to user-class
+objects from the disposed child classloader. The classloader becomes
+GC-able as soon as the next major collection runs.
+
+**Remaining belt-and-braces:**
+- **Forced GC + `WeakReference` probe** after each recycle (DESIGN § 9
   has this for sandbox-leak detection; B2.0 reuses the pattern for
   child-classloader-leak detection). If a recycled loader doesn't
   collect within 2 GCs, log `userClassloaderLeaked`. After N events,
   recycle the whole sandbox (the existing escape valve).
+- Verify empirically as part of B2.0's DoD — a soak loop with N
+  recompile-cycles asserting that the active-child-classloader count
+  is bounded and old loaders collect.
+
+The Compose-Hot-Reload-style "invalidate `Composer`'s applier slots
+whose owning class is loaded by the to-be-disposed child" approach is
+**not needed** given the per-render scoping — flagged for re-evaluation
+only if a future change introduces cross-render Compose state.
 
 ### 2. `@PreviewParameter` provider classes
 
@@ -299,43 +310,112 @@ A scenario that uses a `PreviewParameterProvider` defined in the user
 module. Verifies § 2 + § 5 mitigations work end-to-end. Skipped today
 because the harness fixtures don't exercise this; lands alongside B2.0.
 
-## Decisions required
+## Decisions still open
 
-Surface these to the user before any implementation lands:
+None as of this writing. New questions surfaced during implementation
+move here first; they migrate to the "Decisions made" section once
+resolved.
 
-1. **Per-render fresh `Recomposer`?** Need to verify whether the
-   current `RenderEngine` impls already construct one per render
-   (suspected yes, both backends). If yes, § Risks 1 collapses to
-   "verify and document". If no, the recompose-graph invalidation path
-   is non-trivial and B2.0 grows considerably.
+## Decisions made
 
-2. **`UserClassLoaderHolder` in `:renderer-daemon-core`** — or in each
-   per-target module separately. DESIGN § 4's renderer-agnostic
-   surface invariant says core hosts the protocol + `RenderHost` and
-   nothing renderer-specific. A `UserClassLoaderHolder` is technically
-   renderer-agnostic (it's just `URLClassLoader` lifecycle), so it
-   belongs in core. But desktop's child-loader story is simpler than
-   Android's; promoting forces the simpler path to carry Android's
-   complexity in its public surface.
+1. **Per-render fresh `Recomposer`?** ✅ **Verified.** Both backends
+   construct Compose state per-render — desktop's `ImageComposeScene`
+   inside `render` (closed in `try/finally`); Android's
+   `createAndroidComposeRule<ComponentActivity>()` inside the per-render
+   `Statement` (disposed when `ActivityScenario` closes). No
+   cross-render `Recomposer` retention. The `Composer`-slot
+   invalidation work is not needed; B2.0 ships without it. See § Risks
+   1 above for the verification details. Belt-and-braces: a soak
+   `WeakReference` probe is still part of B2.0's DoD.
 
-3. **`fileChanged` semantics for non-source changes.** The current
-   `S3` gap flag is "fileChanged is a no-op". B2.0 wires
-   `fileChanged({ kind: "source" })` to recycle. What about `kind:
-   "resource"` (resources changed) or `kind: "classpath"` (deps
-   changed)? Resources probably also need a child-loader recycle (or
-   re-bake the resource APK — out of scope here). Classpath dirties
-   the parent, requiring a full sandbox recycle (Tier 1, B2.1).
-   Confirm or adjust.
+2. **`UserClassLoaderHolder` in `:renderer-daemon-core` first.** Land
+   it in core; refactor per-target only if Android's child-loader
+   complexity (the Robolectric `doNotAcquirePackage` + bridge
+   discipline) leaks into core's API surface in a way that
+   compromises desktop's simpler path. The principle stays "core hosts
+   only renderer-agnostic things"; a `URLClassLoader` lifecycle holder
+   is genuinely renderer-agnostic. If implementation reveals that
+   cleanly factoring requires polluting core, retreat to
+   per-target — captured as a B2.0 implementation guideline rather
+   than a blocking decision.
 
-4. **Hot-reload-equivalent for Android UI development?** This doc is
-   scoped to the daemon's *render-to-PNG* workflow. A future
-   consideration: could the same parent/child machinery be the basis
-   for a Compose Hot Reload-style live-UI mode for Android, given that
-   Compose Hot Reload itself is desktop-only? Probably yes, but
-   genuinely out of scope for the daemon and explicitly noted as
-   future work, not part of this design.
+3. **`fileChanged` semantics for non-source changes — distinct events
+   per kind.** B2.0 wires `fileChanged({ kind: "source" })` to
+   child-loader recycle. `kind: "classpath"` triggers a full sandbox
+   recycle (Tier 1, B2.1 territory). `kind: "resource"` is its own
+   event with its own handling — see § Resource changes below for the
+   conservative v1 plan and the smarter v2 follow-up the user
+   surfaced. Future contributors who add new `fileChanged` kinds
+   should add a section here documenting the semantics.
 
-5. **Mandate JBR/DCEVM?** Compose Hot Reload requires it; B2.0 does
-   not. Confirm we want to stay on stock HotSpot (Temurin / Corretto /
-   AGP's default toolchain) so the daemon remains a drop-in for
-   any Android project.
+4. **Mandate JBR/DCEVM?** ✅ **No.** B2.0 stays on stock HotSpot
+   (Temurin / Corretto / AGP's default toolchain). Compose Hot
+   Reload's `Instrumentation.redefineClasses` approach requires JBR's
+   enhanced redefinition for non-trivial reloads; B2.0's classloader
+   split needs no JVM-specific support and works on any HotSpot-derived
+   runtime. Keeps the daemon a drop-in for any Android project's
+   existing toolchain.
+
+## Resource changes — conservative v1 + smart v2
+
+### v1 (lands with B2.0 if scope permits, otherwise a B2.0c follow-up)
+
+A `fileChanged({ kind: "resource", path: "res/values/colors.xml" })`
+notification triggers **all previews in the module marked stale** (the
+Tier-3 conservative fallback from DESIGN § 8). Combined with the Tier
+4 visibility filter, the user only ever pays for re-rendering what
+they're looking at, so the waste is bounded. No per-resource
+invalidation precision; resources are re-baked into the merged
+resource APK by AGP on the next build, which our daemon picks up on
+the next render.
+
+### v2 follow-up — per-preview resource-read tracking
+
+User surfaced this idea: instead of the broad-stroke "any resource
+changed → all previews stale", instrument the Resources lookup path
+during a render to record which resource IDs the composition actually
+read. Then a `fileChanged({ kind: "resource" })` event resolves the
+changed file's resource IDs and looks them up in a reverse index
+"which previews read these IDs" — only those previews are marked
+stale.
+
+Conceptually similar to the Tier-3 dependency-graph reachability index
+in DESIGN.md, but for resources rather than classes.
+
+Sketch:
+
+- **Android**: Robolectric already routes `android.content.res.Resources`
+  lookups through shadows. Add a `ShadowResources`-style instrumentation
+  layer (or hook via the existing renderer helpers) that records
+  per-render which resource IDs were `getColor` / `getDimensionPixelSize`
+  / etc. Persist alongside `previews.json`.
+- **Desktop**: Compose Multiplatform's `compose.resources.*` API is the
+  equivalent. Same pattern — intercept the lookup path during render,
+  record per-preview reads.
+- **Reverse index**: rebuilt on first read after each `discoveryUpdated`
+  notification. Cheap; a few hundred entries even on large modules.
+- **Resource-file → resource-id resolution**: parse the changed XML,
+  pull out the `@+id` / `<color name="...">` / `<string name="...">`
+  declarations, map to the integer IDs via the merged `R.txt`. Already
+  available at AGP build time; needs to be exposed to the daemon via
+  the launch descriptor.
+
+Tracked as **B2.0c — Per-preview resource-read tracking** in
+[TODO.md](TODO.md). Lands after B2.0's classloader split is stable;
+not blocking.
+
+## Future work
+
+- **Compose Hot Reload-style live-UI mode for Android.** Compose Hot
+  Reload itself is desktop-only. The same parent/child machinery from
+  this design could be the basis for a live-UI Android dev mode that
+  doesn't require JBR — render once, keep the activity alive, swap
+  the user classloader on save, and inject a recomposition trigger
+  rather than tearing down the activity. Genuinely out of scope for
+  the daemon's render-to-PNG workflow; flagged here so the design
+  doesn't accidentally box out that future. Tracked as a long-term
+  speculative item, not a near-term task.
+
+- **Promotion of `unwrapInvocationTarget` to core**, if a third
+  backend ever materialises (web? K/N?) — covered in commit `e7a0ee8`'s
+  message.

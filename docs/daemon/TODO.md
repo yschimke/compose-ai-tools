@@ -291,7 +291,16 @@ Risks captured for design:
 Both backends benefit; the implementation should be unified at the `RenderHost` interface layer where possible.
 
 - **Depends on:** B1.4 + B-desktop.1.4 (real `RenderEngine` on both backends).
-- **DoD:** `:tools:daemon-harness:test -Pharness.host=real -Ptarget=desktop --tests "*S3_5*"` and the Android counterpart un-`@Ignore`d and passing — render preview, recompile bytecode of the same FQN to a different colour, send `fileChanged`, re-render, assert the colour changed. Today both tests live in the harness as `@Ignore`d placeholders capturing the intended assertion shape.
+- **DoD:** `:tools:daemon-harness:test -Pharness.host=real -Ptarget=desktop --tests "*S3_5*"` and the Android counterpart un-`@Ignore`d and passing — render preview, recompile bytecode of the same FQN to a different colour, send `fileChanged`, re-render, assert the colour changed. Today both tests live in the harness as `@Ignore`d placeholders capturing the intended assertion shape. Per-render fresh `Recomposer` verified in both backends (CLASSLOADER.md § Risks 1), so cross-classloader Compose-state retention is bounded; soak `WeakReference` probe is part of the DoD.
+
+#### B2.0c — Per-preview resource-read tracking
+
+Smart-invalidation follow-up to B2.0. The B2.0 v1 plan handles `fileChanged({ kind: "resource" })` by marking **all previews in the module stale** — broad strokes, bounded by the Tier 4 visibility filter. B2.0c instruments the Resources lookup path during render to record per-preview which resource IDs were read; a reverse index lets `fileChanged` mark only the affected previews stale. See [CLASSLOADER.md § Resource changes](CLASSLOADER.md#resource-changes--conservative-v1--smart-v2).
+
+Android implementation: extend Robolectric's existing Resources shadows to capture per-render resource-ID reads. Desktop implementation: intercept `compose.resources.*` lookups. Reverse index rebuilt on `discoveryUpdated`. Resource-file → resource-ID resolution comes from the merged `R.txt` (AGP-generated; exposed via the launch descriptor).
+
+- **Depends on:** B2.0
+- **DoD:** harness scenario asserts editing one `<color name="primary">` invalidates only previews that read it; other previews stay cached. Reverse index size + lookup time bounded on a 100-preview module.
 
 #### B2.1 — `ClasspathFingerprint` (Tier 1)
 
