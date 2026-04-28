@@ -271,6 +271,28 @@ Goal: the daemon is fast enough and stable enough to be the recommended path for
 
 ### Stream B — daemon hardening
 
+#### B2.0 — Disposable user classloader [shared seam]
+
+The actual save-loop blocker. Today both `RobolectricHost` and `DesktopHost` cache user-module bytecode at the daemon's lifetime classloader: a user edits `Foo.kt`, kotlinc recompiles, the daemon renders the same preview again — and gets the **old** colour because `Class.forName` returns the cached `Class<?>`. The harness's existing S3 scenarios are misleading: they swap *which* preview the spec points at (red → blue) but both classes are loaded once at daemon spawn; neither swap exercises the recompile-then-rerender path.
+
+Architectural fix: parent/child classloader split.
+
+- **Parent** (long-lived, expensive to bootstrap): the existing classloader (`InstrumentingClassLoader` for Android, the JVM app classloader for desktop) loads only stable artefacts — framework + AndroidX + Compose runtime/foundation/ui/tooling + kotlinx-* + Roborazzi + the daemon module's helpers. **User module's `build/intermediates/built_in_kotlinc/<variant>/...` is excluded from this classpath.**
+- **Child** (disposable, per-recompile): a fresh `URLClassLoader` whose parent is the long-lived classloader and whose URLs point at the user's compiled-class directories. `RenderEngine` resolves `Class.forName(spec.className, true, currentChildLoader)`.
+- **On `fileChanged({ kind: "source" })`** with a kotlinc-output mtime change: drop the strong reference to the current child loader, allocate a new one. New loader reads fresh bytecode on demand. Cost: tens of ms.
+
+Risks captured for design:
+
+1. Cross-classloader Compose state — `LaunchedEffect` instances, `Recomposer.knownCompositions`, etc. The parent's Compose runtime may hold strong refs to user-class-loaded objects, blocking child GC. Per-render disposal step required; lift the pattern from JetBrains' experimental `compose-hot-reload` (desktop-focused but the cross-classloader Compose state issue is identical).
+2. `@PreviewParameter` provider classes — Compose runtime sometimes reflects on user code. Install the child as the context classloader for the render thread during dispatch.
+3. `DaemonHostBridge` package discipline — already excluded via `doNotAcquirePackage`; that pattern extends naturally to child-loader handoff because it's parent-first.
+4. Robolectric classloader-config seam — `RobolectricTestRunner.createClassLoaderConfig()` is the override point; `SandboxHoldingRunner` already overrides it for the bridge package, and excluding the user `build/intermediates/...` is one more line. `RenderEngine`'s `Class.forName` then needs to use the child loader instead of the current default.
+
+Both backends benefit; the implementation should be unified at the `RenderHost` interface layer where possible.
+
+- **Depends on:** B1.4 + B-desktop.1.4 (real `RenderEngine` on both backends).
+- **DoD:** `:tools:daemon-harness:test -Pharness.host=real -Ptarget=desktop --tests "*S3_5*"` and the Android counterpart un-`@Ignore`d and passing — render preview, recompile bytecode of the same FQN to a different colour, send `fileChanged`, re-render, assert the colour changed. Today both tests live in the harness as `@Ignore`d placeholders capturing the intended assertion shape.
+
 #### B2.1 — `ClasspathFingerprint` (Tier 1)
 
 SHA over `libs.versions.toml`, all `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `local.properties`. Re-check on file change in those paths. Authoritative SHA over resolved classpath JAR list at startup. On hit: emit `classpathDirty`, exit cleanly.

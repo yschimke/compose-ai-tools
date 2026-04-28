@@ -171,6 +171,8 @@ samples/
 
 A four-tier cascade. Each tier is cheaper than the next; stop at the cheapest "no work" answer.
 
+> **Implementation note (post-v2):** Tier 2's "preview source changed" trigger is necessary but not sufficient on its own. Once discovery has identified a stale preview, the daemon still needs to *load fresh bytecode for that preview's class* — Robolectric's `InstrumentingClassLoader` and the desktop daemon's app classloader both cache by class name and silently return stale bytes after a recompile. The fix is the parent/child classloader split spec'd in [CLASSLOADER.md](CLASSLOADER.md) (B2.0 in TODO.md). Until B2.0 lands, the daemon's "warm render" numbers in [§ 13](#13-latency-budget) and [`baseline-latency.csv`](baseline-latency.csv) only describe rendering the *same* preview repeatedly against an unchanged classpath — not the actual edit-then-render save loop.
+
 ### Tier 1 — project fundamentally changed
 
 **Trigger:** classpath JAR list, Compose/AndroidX versions, `compileSdk`, Robolectric config, or `robolectric.properties` content changed.
