@@ -49,6 +49,22 @@ fun main(args: Array<String>) {
   // previewId (forwarded by JsonRpcServer as `payload="previewId=<id>"`) into a parseable
   // RenderSpec via `PreviewManifestRouter`. Production launches don't set this sysprop, so the
   // plain RobolectricHost path is unchanged.
+  // B2.0 — build the disposable user-class holder from `composeai.daemon.userClassDirs` (set by
+  // the gradle plugin's daemon launch descriptor). The holder's child URLClassLoader is mirrored
+  // into `DaemonHostBridge.childLoaderRef` so the sandbox-side `RenderEngine.render` resolves
+  // preview classes against the recompiled bytecode after every `fileChanged({ kind: "source" })`
+  // swap. When the sysprop is unset (legacy/in-process tests), the holder is null and the legacy
+  // sandbox-classpath path stays — pre-B2.0 behaviour.
+  val userClassUrls = UserClassLoaderHolder.urlsFromSysprop()
+  val userClassloaderHolder: UserClassLoaderHolder? =
+    if (userClassUrls.isNotEmpty()) {
+      System.err.println(
+        "compose-ai-tools daemon: UserClassLoaderHolder active " +
+          "(urls=${userClassUrls.size}, dirs=${userClassUrls.map { it.path }})"
+      )
+      UserClassLoaderHolder(urls = userClassUrls)
+    } else null
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -57,9 +73,9 @@ fun main(args: Array<String>) {
         "compose-ai-tools daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
       )
-      PreviewManifestRouter(manifest)
+      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
     } else {
-      RobolectricHost()
+      RobolectricHost(userClassloaderHolder = userClassloaderHolder)
     }
 
   val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)

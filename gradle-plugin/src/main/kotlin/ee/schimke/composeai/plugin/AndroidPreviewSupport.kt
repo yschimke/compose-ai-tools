@@ -1271,6 +1271,25 @@ internal object AndroidPreviewSupport {
               fontsCacheDir = daemonFontsCacheDir.get(),
               fontsOffline = daemonFontsOffline.get(),
             )
+          // B2.0 — emit `composeai.daemon.userClassDirs` so the daemon can construct a disposable
+          // child URLClassLoader for the user's compiled-class output. Heuristic: any classpath
+          // entry under the consumer module's `build/intermediates/` or `build/tmp/kotlin-classes/`
+          // tree (kotlinc's standard outputs for AGP variants). The file paths are realised lazily
+          // here — the FileCollection has been resolved by the time `systemProperties.get()`
+          // executes at task-action time. Colon-delimited (`File.pathSeparator`); empty when no
+          // user-class-dirs are found (then the daemon falls back to the legacy single-classloader
+          // path — pre-B2.0 behaviour).
+          val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
+          val userClassMarkers =
+            listOf(
+              "$consumerBuildDir/intermediates/",
+              "$consumerBuildDir/tmp/kotlin-classes/",
+              "$consumerBuildDir/classes/",
+            )
+          val classpathEntries = this.classpath.files.map { it.absolutePath }
+          val userClassDirs = classpathEntries.filter { entry ->
+            userClassMarkers.any { marker -> entry.startsWith(marker) }
+          }
           val daemonProps =
             linkedMapOf(
               "composeai.daemon.protocolVersion" to "1",
@@ -1282,6 +1301,8 @@ internal object AndroidPreviewSupport {
               "composeai.daemon.warmSpare" to
                 extension.experimental.daemon.warmSpare.get().toString(),
               "composeai.daemon.modulePath" to project.path,
+              "composeai.daemon.userClassDirs" to
+                userClassDirs.joinToString(java.io.File.pathSeparator),
             )
           LinkedHashMap(base).apply { putAll(daemonProps) }
         }

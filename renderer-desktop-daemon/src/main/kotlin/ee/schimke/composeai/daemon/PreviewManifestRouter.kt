@@ -39,7 +39,8 @@ import kotlinx.serialization.json.Json
 class PreviewManifestRouter(
   private val manifest: PreviewManifest,
   engine: RenderEngine = RenderEngine(),
-) : DesktopHost(engine = engine) {
+  userClassloaderHolder: UserClassLoaderHolder? = null,
+) : DesktopHost(engine = engine, userClassloaderHolder = userClassloaderHolder) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 

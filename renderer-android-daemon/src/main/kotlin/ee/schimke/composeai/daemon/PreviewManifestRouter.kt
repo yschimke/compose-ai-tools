@@ -43,7 +43,10 @@ import kotlinx.serialization.json.Json
  * `id` and `className`/`functionName` are required; everything else falls back to [RenderSpec]'s
  * defaults.
  */
-class PreviewManifestRouter(private val manifest: PreviewManifest) : RobolectricHost() {
+class PreviewManifestRouter(
+  private val manifest: PreviewManifest,
+  userClassloaderHolder: UserClassLoaderHolder? = null,
+) : RobolectricHost(userClassloaderHolder = userClassloaderHolder) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 

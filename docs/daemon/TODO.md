@@ -271,7 +271,25 @@ Goal: the daemon is fast enough and stable enough to be the recommended path for
 
 ### Stream B — daemon hardening
 
-#### B2.0 — Disposable user classloader [shared seam]
+#### B2.0 — Disposable user classloader [shared seam] ✅ DONE
+
+**Landed.** Implementation:
+- `:renderer-daemon-core/src/main/kotlin/.../UserClassLoaderHolder.kt` — child-first
+  `URLClassLoader` lifecycle, `swap()` on `fileChanged({ kind: "source" })`,
+  `liveLoaderCount()` for soak detection.
+- `RenderHost.userClassloaderHolder` getter (default null).
+- `JsonRpcServer.handleFileChanged` routes `kind: "source"` → swap;
+  `kind: "classpath"` left for B2.1; `kind: "resource"` no-op (B2.0c).
+- Desktop: `DesktopHost(userClassloaderHolder = …)` ctor; `RenderEngine.render` takes
+  a `classLoader` arg; `DaemonMain` constructs from `composeai.daemon.userClassDirs` sysprop.
+- Android: same shape; `RobolectricHost` mirrors the loader through
+  `DaemonHostBridge.childLoaderRef` so the sandbox-side `RenderEngine.render` reads it.
+- Gradle plugin: `composeai.daemon.userClassDirs` sysprop emitted by the
+  `composePreviewDaemonStart` task (heuristic over `build/intermediates/`,
+  `build/tmp/kotlin-classes/`, `build/classes/`).
+- `S3_5RecompileSaveLoopRealModeTest` un-`@Ignore`d, ASM option (option 2 from the
+  placeholder KDoc) for desktop; `Assume.assumeTrue` skip on android pending
+  follow-up to handle Compose-Android compiler-mangled method-name bytecode.
 
 The actual save-loop blocker. Today both `RobolectricHost` and `DesktopHost` cache user-module bytecode at the daemon's lifetime classloader: a user edits `Foo.kt`, kotlinc recompiles, the daemon renders the same preview again — and gets the **old** colour because `Class.forName` returns the cached `Class<?>`. The harness's existing S3 scenarios are misleading: they swap *which* preview the spec points at (red → blue) but both classes are loaded once at daemon spawn; neither swap exercises the recompile-then-rerender path.
 

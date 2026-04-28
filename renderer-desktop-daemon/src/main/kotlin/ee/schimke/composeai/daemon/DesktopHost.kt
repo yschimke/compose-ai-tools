@@ -62,7 +62,20 @@ open class DesktopHost(
    * stub or a fixture-pinned variant; production code uses the default zero-arg [RenderEngine]
    * which honours the `composeai.render.outputDir` system property.
    */
-  private val engine: RenderEngine = RenderEngine()
+  private val engine: RenderEngine = RenderEngine(),
+  /**
+   * Disposable user-class loader holder (B2.0 — see
+   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). When non-null, every
+   * [RenderEngine.render] dispatch resolves preview classes via the holder's
+   * [UserClassLoaderHolder.currentChildLoader] rather than the host's own classloader; the
+   * `JsonRpcServer.handleFileChanged` path swaps it on `kind: "source"` so the next render reads
+   * recompiled bytecode.
+   *
+   * `null` keeps the legacy "user classes are on the host classpath" behaviour, preserving existing
+   * unit tests that rely on `RedSquare` / `BlueSquare` being loaded by the host classloader
+   * (testFixtures live on `java.class.path`).
+   */
+  override val userClassloaderHolder: UserClassLoaderHolder? = null,
 ) : RenderHost {
 
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
@@ -190,7 +203,16 @@ open class DesktopHost(
       renderStubFallback(request.id)
     } else {
       val spec = RenderSpec.parseFromPayload(request.payload)
-      engine.render(spec, request.id)
+      // B2.0 — resolve preview classes via the disposable child loader when the holder is wired
+      // (production path; the Gradle plugin's daemon launch descriptor sets
+      // `composeai.daemon.userClassDirs` and DaemonMain mounts the holder). Falls back to the
+      // engine's default classloader when the holder is null (the in-process unit-test path,
+      // where testFixtures live on `java.class.path`).
+      val classLoader: ClassLoader =
+        userClassloaderHolder?.currentChildLoader()
+          ?: RenderEngine::class.java.classLoader
+          ?: ClassLoader.getSystemClassLoader()
+      engine.render(spec, request.id, classLoader)
     }
   }
 

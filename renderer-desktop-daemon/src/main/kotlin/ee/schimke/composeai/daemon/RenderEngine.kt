@@ -69,14 +69,32 @@ class RenderEngine(
    *
    * @param spec what to render — class FQN, method name, sandbox dimensions.
    * @param requestId opaque id forwarded to the [RenderResult] so [DesktopHost]'s queue can demux.
+   * @param classLoader classloader used to resolve [spec]'s class. B2.0 — see
+   *   [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md). Pass the disposable child
+   *   loader from [UserClassLoaderHolder.currentChildLoader] so a recompiled `Foo.kt`'s fresh
+   *   bytecode is read on the next render. Defaults to the engine's own classloader for
+   *   backward-compatible callers (unit tests that pre-load fixtures into the host classloader).
    */
-  fun render(spec: RenderSpec, requestId: Long): RenderResult {
+  fun render(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader =
+      RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+  ): RenderResult {
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     val startNs = System.nanoTime()
 
-    val clazz = Class.forName(spec.className)
+    val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+
+    // Install the child classloader as the context classloader for the duration of the render
+    // dispatch. Compose's reflection paths (notably PreviewParameter providers — see
+    // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
+    // miss user classes that aren't on the parent's classpath. Restored in `finally` so the host
+    // render-thread invariants outside the render are unaffected.
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
 
     val scene =
       ImageComposeScene(
@@ -116,15 +134,19 @@ class RenderEngine(
       // DESIGN § 9: always close the scene, even on render-body exceptions. Without this, a thrown
       // render leaks one Skia `Surface` per submission until JVM exit. The desktop counterpart of
       // Android's bitmap.recycle() discipline.
-      scene.close()
+      try {
+        scene.close()
+      } finally {
+        // Restore the pre-render context classloader regardless of how the body completed.
+        Thread.currentThread().contextClassLoader = previousContext
+      }
     }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
-    val cl = Thread.currentThread().contextClassLoader ?: RenderEngine::class.java.classLoader
     return RenderResult(
       id = requestId,
-      classLoaderHashCode = System.identityHashCode(cl),
-      classLoaderName = cl?.javaClass?.name ?: "<null>",
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
       pngPath = outputFile.absolutePath,
       metrics = mapOf("tookMs" to tookMs),
     )

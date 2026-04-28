@@ -51,6 +51,20 @@ interface RenderHost {
    */
   fun shutdown(timeoutMs: Long = 30_000)
 
+  /**
+   * The disposable user-class [UserClassLoaderHolder] this host renders against (B2.0 — see
+   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). The
+   * [JsonRpcServer.handleFileChanged] path mutates it (`swap()` on `kind: "source"`); the host's
+   * render path reads `currentChildLoader()` to resolve preview classes via `Class.forName`.
+   *
+   * Returns `null` when the host doesn't participate in the parent/child split (the harness's
+   * `FakeHost`, the Stream A B1.3 stub-render hosts, etc.) — those hosts don't load user classes,
+   * so `JsonRpcServer.handleFileChanged` simply skips the swap and the existing v1 fake-mode
+   * scenarios stay unchanged. Real backends (`DesktopHost`, `RobolectricHost`) override.
+   */
+  val userClassloaderHolder: UserClassLoaderHolder?
+    get() = null
+
   companion object {
     /**
      * Monotonic id source shared across [JsonRpcServer] (which assigns ids to incoming render

@@ -1,9 +1,11 @@
 package ee.schimke.composeai.daemon.bridge
 
+import java.net.URLClassLoader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Cross-classloader handoff for the Robolectric-sandboxed [DaemonHost].
@@ -44,12 +46,39 @@ object DaemonHostBridge {
    */
   @JvmField val shutdown: AtomicBoolean = AtomicBoolean(false)
 
+  /**
+   * Disposable user-class child classloader (B2.0 — see
+   * docs/daemon/CLASSLOADER.md). Mirrored from `UserClassLoaderHolder` on the host thread so the
+   * sandbox-side `RenderEngine.render` reads the current loader without holding a reference to the
+   * core-side holder (which itself is double-loaded across the sandbox boundary, like every other
+   * `ee.schimke.composeai.daemon.*` class).
+   *
+   * Set via [setCurrentChildLoader] from the host thread (host-side `RobolectricHost` calls it
+   * after every `UserClassLoaderHolder.swap()`); read via [currentChildLoader] from the
+   * sandbox-side render thread. `URLClassLoader` is a `java.net.*` type so the do-not-acquire
+   * default boundary keeps it from being re-loaded inside the sandbox — the same
+   * `URLClassLoader.class` object is visible from both sides.
+   */
+  @JvmField
+  val childLoaderRef: AtomicReference<URLClassLoader?> = AtomicReference(null)
+
+  /** Sets the current child classloader (host-thread side). */
+  @JvmStatic
+  fun setCurrentChildLoader(loader: URLClassLoader?) {
+    childLoaderRef.set(loader)
+  }
+
+  /** Reads the current child classloader (sandbox-thread side). */
+  @JvmStatic
+  fun currentChildLoader(): URLClassLoader? = childLoaderRef.get()
+
   /** Reset to a clean state — call before each [RobolectricHost.start]. */
   @JvmStatic
   fun reset() {
     requests.clear()
     results.clear()
     shutdown.set(false)
+    childLoaderRef.set(null)
     // Render IDs (RenderHost.nextRequestId) deliberately stay monotonic
     // across host restarts within a single JVM — keeps log correlation
     // unambiguous. They live in the core module's RenderHost companion now.

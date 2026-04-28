@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
+import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -493,8 +494,44 @@ class JsonRpcServer(
       "exit" -> handleExit()
       "setVisible" -> tryDecode(SetVisibleParams.serializer(), n) { /* no-op for B1.5 */ }
       "setFocus" -> tryDecode(SetFocusParams.serializer(), n) { /* no-op for B1.5 */ }
-      "fileChanged" -> tryDecode(FileChangedParams.serializer(), n) { /* no-op for B1.5 */ }
+      "fileChanged" -> tryDecode(FileChangedParams.serializer(), n) { handleFileChanged(it) }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
+    }
+  }
+
+  /**
+   * Routes a `fileChanged` notification — B2.0 wires this to the disposable user classloader (see
+   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
+   *
+   * - **`kind: "source"`** → drops the strong reference to the host's current child classloader so
+   *   the next render lazily allocates a fresh [java.net.URLClassLoader] reading the recompiled
+   *   bytecode off disk. Honours the no-mid-render-cancellation invariant: this is a queue-time
+   *   event, not preemption, so any in-flight render keeps using its already-resolved `Class<?>`.
+   * - **`kind: "classpath"`** → existing classpathDirty path (B2.1, not yet implemented). No-op
+   *   here; left to B2.1.
+   * - **`kind: "resource"`** → conservative v1: would mark all previews stale, but the daemon does
+   *   not yet own its own preview index, so this is a no-op for now. B2.0c lands the smart variant
+   *   (per-preview resource-read tracking).
+   *
+   * Hosts that don't participate in the parent/child split (the harness's `FakeHost`, the B1.3
+   * stub) return `null` from [RenderHost.userClassloaderHolder]; the swap is then skipped and the
+   * v1 fake-mode behaviour ("fileChanged is a no-op") still holds.
+   */
+  private fun handleFileChanged(params: FileChangedParams) {
+    when (params.kind) {
+      FileKind.SOURCE -> {
+        host.userClassloaderHolder?.swap()
+      }
+      FileKind.CLASSPATH -> {
+        // Existing classpathDirty path lands with B2.1 (`ClasspathFingerprint`). Until then a
+        // classpath change is observed only via daemon respawn.
+      }
+      FileKind.RESOURCE -> {
+        // B2.0 v1 conservative: mark all previews stale. The daemon does not yet own its preview
+        // index (B2.2), so there's nothing to mark; smart per-preview invalidation lands with
+        // B2.0c. Left as a no-op deliberately so the harness's existing
+        // `S3RenderAfterEdit*Test` (fake-mode) "fileChanged is a no-op" assertion still holds.
+      }
     }
   }
 

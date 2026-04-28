@@ -37,6 +37,12 @@ dependencies {
   implementation(project(":renderer-daemon-core"))
 
   testImplementation(libs.junit)
+  // B2.0 — ASM is used only by `S3_5RecompileSaveLoopRealModeTest` to mint two `.class` files
+  // with the same FQN (`ee.schimke.composeai.daemon.MutableSquare`) but different colour
+  // constants. Lets the test exercise the daemon's disposable user-classloader without a
+  // dual-sourceset Gradle plumbing detour. See CLASSLOADER.md § Implementation seams.
+  testImplementation(libs.asm)
+  testImplementation(libs.asm.commons)
 
   // D-harness.v1.5a — real-mode (`-Pharness.host=real`) S1 needs the desktop daemon's main classes
   // (`DaemonMain`, `DesktopHost`, `RenderEngine`, `RenderSpec`, `PreviewManifestRouter`) plus the

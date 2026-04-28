@@ -60,7 +60,24 @@ import org.robolectric.annotation.GraphicsMode
  * [SandboxRunner.renderStub] without ever entering the engine. The discriminator stays "did
  * `parseFromPayloadOrNull` return a usable spec".
  */
-open class RobolectricHost : RenderHost {
+open class RobolectricHost(
+  /**
+   * Disposable user-class loader holder (B2.0 — see
+   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). When non-null, every
+   * sandbox-side [RenderEngine.render] dispatch resolves preview classes via the holder's
+   * [UserClassLoaderHolder.currentChildLoader] rather than the sandbox classloader; the
+   * `JsonRpcServer.handleFileChanged` path swaps it on `kind: "source"`. The host thread mirrors
+   * the current loader into [DaemonHostBridge.childLoaderRef] so the sandbox-side render reads it
+   * via the bridge (the holder itself is in `:renderer-daemon-core`'s package which Robolectric
+   * re-loads inside the sandbox; the bridge package is do-not-acquire so its static state is
+   * shared).
+   *
+   * `null` keeps the legacy "user classes are on the sandbox classpath" behaviour, preserving
+   * existing unit tests where testFixtures live on `java.class.path` and Robolectric's
+   * InstrumentingClassLoader resolves them.
+   */
+  override val userClassloaderHolder: UserClassLoaderHolder? = null,
+) : RenderHost {
 
   private val workerThread =
     Thread({ runJUnit() }, "compose-ai-daemon-host").apply { isDaemon = false }
@@ -74,7 +91,20 @@ open class RobolectricHost : RenderHost {
    */
   override fun start() {
     DaemonHostBridge.reset()
+    publishChildLoader()
     workerThread.start()
+  }
+
+  /**
+   * Mirrors the holder's current child classloader into [DaemonHostBridge.childLoaderRef] so the
+   * sandbox-side render thread can read it (the host-side holder lives in a package Robolectric
+   * re-loads inside the sandbox; the bridge package is do-not-acquire). Called from [start] and
+   * before every [submit] so a fileChanged-driven swap on the JSON-RPC thread is visible to the
+   * next render — see B2.0's no-mid-render-cancellation discipline.
+   */
+  private fun publishChildLoader() {
+    val holder = userClassloaderHolder ?: return
+    DaemonHostBridge.setCurrentChildLoader(holder.currentChildLoader())
   }
 
   /**
@@ -89,6 +119,11 @@ open class RobolectricHost : RenderHost {
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
+    // B2.0 — publish the (possibly-just-swapped) child classloader to the bridge so the
+    // sandbox-side render dispatch picks it up. `holder.currentChildLoader()` is lazily allocated
+    // on first read after a swap, so this also amortises the allocation onto the host thread
+    // rather than the render thread.
+    publishChildLoader()
     DaemonHostBridge.requests.put(typed)
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
     val raw =
@@ -251,7 +286,15 @@ open class RobolectricHost : RenderHost {
      */
     private fun dispatchRender(id: Long, payload: String): RenderResult {
       val spec = RenderSpec.parseFromPayloadOrNull(payload) ?: return renderStub(id)
-      return engine.render(spec, id)
+      // B2.0 — pick up the disposable child classloader that the host thread has published into
+      // the bridge. When no holder is wired (legacy in-process tests where the testFixtures live
+      // on the sandbox classpath), the bridge returns null and we fall through to the sandbox's
+      // own context classloader — the pre-B2.0 behaviour.
+      val classLoader: ClassLoader =
+        DaemonHostBridge.currentChildLoader()
+          ?: Thread.currentThread().contextClassLoader
+          ?: RenderEngine::class.java.classLoader
+      return engine.render(spec, id, classLoader)
     }
 
     /**

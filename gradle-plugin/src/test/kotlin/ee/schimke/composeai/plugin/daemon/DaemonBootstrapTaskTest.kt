@@ -71,6 +71,45 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
+  fun `descriptor encodes B2_0 userClassDirs sysprop verbatim`() {
+    // B2.0 — the disposable user-classloader design (CLASSLOADER.md) requires the gradle plugin
+    // to surface user-class-dirs to the daemon JVM. The plugin computes the value upstream
+    // (heuristic over the resolved classpath in `AndroidPreviewSupport.kt`); this test pins the
+    // contract that whatever value is set propagates verbatim through the descriptor.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val task =
+      project.tasks.register("composePreviewDaemonStart", DaemonBootstrapTask::class.java) {
+        modulePath.set(":x")
+        variant.set("debug")
+        daemonEnabled.set(true)
+        maxHeapMb.set(512)
+        maxRendersPerSandbox.set(50)
+        warmSpare.set(true)
+        mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        jvmArgs.set(emptyList())
+        systemProperties.set(
+          mapOf(
+            "composeai.daemon.userClassDirs" to
+              "/abs/build/intermediates/built_in_kotlinc/debug/classes:/abs/build/tmp/kotlin-classes/debug"
+          )
+        )
+        workingDirectory.set(tempDir.root.absolutePath)
+        manifestPath.set("/abs/previews.json")
+        outputFile.set(outFile)
+      }
+
+    task.get().emit()
+
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.systemProperties).containsKey("composeai.daemon.userClassDirs")
+    assertThat(descriptor.systemProperties["composeai.daemon.userClassDirs"])
+      .contains("/abs/build/intermediates/built_in_kotlinc/debug/classes")
+    assertThat(descriptor.systemProperties["composeai.daemon.userClassDirs"])
+      .contains("/abs/build/tmp/kotlin-classes/debug")
+  }
+
+  @Test
   fun `descriptor honours enabled flag from extension wiring`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")

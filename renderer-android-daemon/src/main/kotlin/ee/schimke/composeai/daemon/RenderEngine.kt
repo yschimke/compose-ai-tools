@@ -85,7 +85,12 @@ class RenderEngine(
    *   demux.
    */
   @OptIn(ExperimentalRoborazziApi::class)
-  fun render(spec: RenderSpec, requestId: Long): RenderResult {
+  fun render(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader =
+      RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+  ): RenderResult {
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
     // so force record mode if the surrounding JVM didn't set it. Idempotent across renders;
@@ -99,7 +104,7 @@ class RenderEngine(
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     val startNs = System.nanoTime()
 
-    val clazz = Class.forName(spec.className)
+    val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
 
     // Per-preview Robolectric configuration — qualifiers re-applied so a previous render's size /
@@ -179,14 +184,24 @@ class RenderEngine(
           }
         }
       }
-    rule.apply(statement, description).evaluate()
+    // B2.0 — install the child classloader as the context classloader for the duration of the
+    // render dispatch. Compose's reflection paths (notably PreviewParameter providers — see
+    // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
+    // miss user classes that aren't on the parent's (sandbox) classpath. Restored in `finally` so
+    // the surrounding sandbox bootstrap path is unaffected.
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
+    try {
+      rule.apply(statement, description).evaluate()
+    } finally {
+      Thread.currentThread().contextClassLoader = previousContext
+    }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
-    val cl = Thread.currentThread().contextClassLoader ?: RenderEngine::class.java.classLoader
     return RenderResult(
       id = requestId,
-      classLoaderHashCode = System.identityHashCode(cl),
-      classLoaderName = cl?.javaClass?.name ?: "<null>",
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
       pngPath = outputFile.absolutePath,
       metrics = mapOf("tookMs" to tookMs),
     )

@@ -52,6 +52,21 @@ fun main(args: Array<String>) {
   // previewId (forwarded by JsonRpcServer as `payload="previewId=<id>"`) into a parseable
   // RenderSpec via `PreviewManifestRouter`. Production launches don't set this sysprop, so the
   // plain DesktopHost path is unchanged.
+  // B2.0 — build the disposable user-class holder from `composeai.daemon.userClassDirs` (set by
+  // the gradle plugin's daemon launch descriptor). When the sysprop is unset (legacy harness paths
+  // that don't yet emit it), the holder is null and the host falls back to the JVM app
+  // classloader — the pre-B2.0 behaviour. Per CLASSLOADER.md: parent classloader is the JVM app
+  // classloader; URLs come from the sysprop.
+  val userClassUrls = UserClassLoaderHolder.urlsFromSysprop()
+  val userClassloaderHolder: UserClassLoaderHolder? =
+    if (userClassUrls.isNotEmpty()) {
+      System.err.println(
+        "compose-ai-tools desktop daemon: UserClassLoaderHolder active " +
+          "(urls=${userClassUrls.size}, dirs=${userClassUrls.map { it.path }})"
+      )
+      UserClassLoaderHolder(urls = userClassUrls)
+    } else null
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -60,9 +75,9 @@ fun main(args: Array<String>) {
         "compose-ai-tools desktop daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
       )
-      PreviewManifestRouter(manifest)
+      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
     } else {
-      DesktopHost()
+      DesktopHost(userClassloaderHolder = userClassloaderHolder)
     }
   val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)
 
