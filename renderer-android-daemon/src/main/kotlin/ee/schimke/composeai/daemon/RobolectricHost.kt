@@ -91,19 +91,35 @@ open class RobolectricHost(
    */
   override fun start() {
     DaemonHostBridge.reset()
-    publishChildLoader()
+    // B2.0-followup — do NOT pre-publish the child loader here. The holder's `parentSupplier`
+    // resolves to the sandbox classloader via `DaemonHostBridge.sandboxClassLoaderRef`, which is
+    // set inside `SandboxRunner.holdSandboxOpen` once the sandbox boots. Calling
+    // `holder.currentChildLoader()` here would race the sandbox boot and throw — or worse, allocate
+    // with a fallback parent. We defer publishing to `submit()`, which awaits the sandbox-ready
+    // latch first.
     workerThread.start()
   }
 
   /**
    * Mirrors the holder's current child classloader into [DaemonHostBridge.childLoaderRef] so the
    * sandbox-side render thread can read it (the host-side holder lives in a package Robolectric
-   * re-loads inside the sandbox; the bridge package is do-not-acquire). Called from [start] and
-   * before every [submit] so a fileChanged-driven swap on the JSON-RPC thread is visible to the
-   * next render — see B2.0's no-mid-render-cancellation discipline.
+   * re-loads inside the sandbox; the bridge package is do-not-acquire). Called before every
+   * [submit] so a fileChanged-driven swap on the JSON-RPC thread is visible to the next render —
+   * see B2.0's no-mid-render-cancellation discipline.
+   *
+   * Awaits the sandbox-ready latch (via [DaemonHostBridge.awaitSandboxReady]) before allocating, so
+   * the holder's `parentSupplier` (which reads `DaemonHostBridge.sandboxClassLoaderRef`) sees the
+   * sandbox loader, not null. The 60-second timeout is generous for a cold Robolectric sandbox
+   * boot (~5–15s in practice) and well under any realistic "the sandbox failed to bootstrap"
+   * threshold.
    */
   private fun publishChildLoader() {
     val holder = userClassloaderHolder ?: return
+    val sandboxReady = DaemonHostBridge.awaitSandboxReady(timeoutMs = 60_000)
+    check(sandboxReady) {
+      "sandbox didn't initialise within 60s — holdSandboxOpen never set sandboxClassLoaderRef. " +
+        "Check the SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
+    }
     DaemonHostBridge.setCurrentChildLoader(holder.currentChildLoader())
   }
 
@@ -242,6 +258,15 @@ open class RobolectricHost(
 
     @Test
     fun holdSandboxOpen() {
+      // B2.0-followup — register the sandbox classloader on the bridge as the very first
+      // prologue line, BEFORE we start polling for requests. The host's `UserClassLoaderHolder`'s
+      // `parentSupplier` reads this ref to allocate the child URLClassLoader with the sandbox
+      // loader as parent (not the host thread's app loader). Forensics-confirmed root cause for
+      // the Android save-loop's classloader-identity skew. See
+      // `docs/daemon/classloader-forensics-diff.md` and the `sandboxClassLoaderRef` KDoc on
+      // `DaemonHostBridge`.
+      DaemonHostBridge.setSandboxClassLoader(this.javaClass.classLoader)
+
       while (!DaemonHostBridge.shutdown.get()) {
         val request =
           DaemonHostBridge.requests.poll(100, TimeUnit.MILLISECONDS) ?: continue

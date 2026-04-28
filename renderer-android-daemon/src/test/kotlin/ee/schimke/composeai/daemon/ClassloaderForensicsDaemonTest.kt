@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertTrue
@@ -47,10 +48,19 @@ class ClassloaderForensicsDaemonTest {
     val holder =
       UserClassLoaderHolder(
         urls = listOf(fixtureDir.toURI().toURL()),
-        // Default parent = current thread's contextClassLoader (= the test JVM's app loader); when
-        // the host worker thread starts, its sandbox classloader will become the effective parent
-        // via `Thread.currentThread().contextClassLoader = classLoader` inside the engine. For
-        // the forensic dump we follow the same discipline in `RobolectricHost.runForensicDump`.
+        // B2.0-followup — the child URLClassLoader's parent must be the **sandbox** classloader,
+        // not the test thread's app loader. Without this, the v0 forensics dump showed 18 of 31
+        // shared classes (Compose runtime, Robolectric internals, etc.) loaded via the app loader
+        // in the daemon path while Configuration A loaded them via the SandboxClassLoader —
+        // classloader-identity skew that breaks getDeclaredComposableMethod's parameter-type match.
+        // The supplier reads `DaemonHostBridge.sandboxClassLoaderRef`, set inside the sandbox by
+        // `SandboxHoldingRunner.holdSandboxOpen` before any render request is dispatched.
+        parentSupplier = {
+          DaemonHostBridge.currentSandboxClassLoader()
+            ?: error(
+              "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run."
+            )
+        },
       )
 
     val survey = (COMMON_SURVEY_SET + DAEMON_ONLY_SURVEY + DAEMON_USER_PREVIEW)

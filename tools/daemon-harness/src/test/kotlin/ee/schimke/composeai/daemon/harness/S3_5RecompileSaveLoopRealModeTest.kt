@@ -63,18 +63,16 @@ class S3_5RecompileSaveLoopRealModeTest {
     )
 
     val target = HarnessTestSupport.harnessTarget()
-    // B2.0 known gap on Android — `getDeclaredComposableMethod` rejects the ASM-cloned
-    // `MutableSquare` because Compose compiler emits a hashed/mangled name into the bytecode-level
-    // method descriptor (`RedSquare-COMPOSABLE_HASH`), which ASM's `Remapper` doesn't rewrite.
-    // The fix is option 1 (dual-sourceset pre-compile) — track in a follow-up. The desktop target
-    // demonstrates the B2.0 wire mechanism works end-to-end, which is the load-bearing assertion;
-    // adding a separate android fixture is plumbing-only.
-    Assume.assumeTrue(
-      "Skipping S3_5RecompileSaveLoopRealModeTest android — Compose-Android compiler-mangled " +
-        "method names confuse ASM-based bytecode cloning. Tracked as a B2.0 follow-up; desktop " +
-        "covers the disposable-loader contract end-to-end.",
-      target != "android",
-    )
+    // B2.0-followup — the Android-skip was originally diagnosed as
+    // ASM-bytecode-clone-vs-Compose-compiler-method-mangling. The classloader forensics dump
+    // (CLASSLOADER-FORENSICS.md, the diff at docs/daemon/classloader-forensics-diff.md)
+    // surfaced the actual root cause as classloader-identity skew: UserClassLoaderHolder's
+    // child URLClassLoader had been inheriting the host thread's app loader as parent rather
+    // than the Robolectric sandbox loader, so framework classes (Composer, Activity, etc.)
+    // resolved via two distinct Class<?> instances and getDeclaredComposableMethod's
+    // parameter-type comparison failed. The fix wires a parent supplier that reads
+    // DaemonHostBridge.sandboxClassLoaderRef (set inside SandboxHoldingRunner.holdSandboxOpen
+    // before any render). Android S3.5 is now expected to pass; un-skipped here.
     val mutableFqn = "ee.schimke.composeai.daemon.MutableSquare"
     val mutableInternalName = "ee/schimke/composeai/daemon/MutableSquare"
     val mutableClassFile = "$mutableInternalName.class"

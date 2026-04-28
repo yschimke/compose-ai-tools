@@ -41,16 +41,26 @@ import java.net.URLClassLoader
  *
  * @param urls user-class directories the child loader exposes. Mutating the list after construction
  *   has no effect; [swap] re-reads the same URLs every time.
- * @param parent parent classloader the child delegates to. Defaults to the calling thread's context
- *   classloader at construction time, which is what both backends want today.
+ * @param parentSupplier function returning the parent classloader the child delegates to. **Evaluated
+ *   lazily at allocation time**, not at construction. This is load-bearing for the Android backend:
+ *   the holder is constructed on the host thread (where `Thread.currentThread().contextClassLoader`
+ *   is the JVM app loader), but the URLClassLoader must inherit the **sandbox classloader** as its
+ *   parent — otherwise framework classes (Compose runtime, Robolectric internals) load via the app
+ *   loader instead of the instrumented sandbox loader, and `getDeclaredComposableMethod` fails on
+ *   classloader-identity skew (forensics-confirmed, see
+ *   [`docs/daemon/classloader-forensics-diff.md`](../../../../../../docs/daemon/classloader-forensics-diff.md)).
+ *   Android's `DaemonMain` passes a supplier that reads `DaemonHostBridge.sandboxClassLoaderRef`,
+ *   set inside the sandbox by `SandboxHoldingRunner.holdSandboxOpen`. Desktop's default supplier
+ *   resolves to the JVM app loader, which is the right parent there.
  * @param onSwap optional callback invoked synchronously after [swap] (and the initial allocation)
  *   with the new loader. The Android backend uses it to mirror the loader into
  *   `DaemonHostBridge.currentChildLoader` so the sandbox-side render thread sees the swap.
  */
 class UserClassLoaderHolder(
   private val urls: List<URL>,
-  private val parent: ClassLoader =
-    Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader(),
+  private val parentSupplier: () -> ClassLoader = {
+    Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
+  },
   private val onSwap: ((URLClassLoader) -> Unit)? = null,
 ) {
 
@@ -116,7 +126,8 @@ class UserClassLoaderHolder(
   }
 
   private fun allocateLocked(): URLClassLoader {
-    val fresh = ChildFirstURLClassLoader(urls.toTypedArray(), parent)
+    val resolvedParent = parentSupplier()
+    val fresh = ChildFirstURLClassLoader(urls.toTypedArray(), resolvedParent)
     current = fresh
     trackedLoaders.add(WeakReference(fresh))
     onSwap?.invoke(fresh)

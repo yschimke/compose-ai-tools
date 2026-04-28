@@ -3,7 +3,9 @@ package ee.schimke.composeai.daemon.bridge
 import java.net.URLClassLoader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -72,6 +74,49 @@ object DaemonHostBridge {
   @JvmStatic
   fun currentChildLoader(): URLClassLoader? = childLoaderRef.get()
 
+  /**
+   * Sandbox classloader, set by [SandboxHoldingRunner.holdSandboxOpen]'s prologue inside the
+   * Robolectric sandbox so the host can build user-class child loaders whose **parent is the
+   * sandbox loader**, not the host's app loader. Forensics-confirmed root cause for the B2.0
+   * Android failure: without this wiring, every framework class (Compose runtime, Robolectric
+   * internals, Android APIs) loads via the JVM app loader instead of the instrumented sandbox
+   * loader. See [`docs/daemon/classloader-forensics-diff.md`](../../../../../../../docs/daemon/classloader-forensics-diff.md).
+   *
+   * The [sandboxReadyLatch] counts down once the ref is set, so the host can block until the
+   * sandbox is initialised before calling `holder.currentChildLoader()` (which would otherwise
+   * race against sandbox boot and throw).
+   */
+  @JvmField val sandboxClassLoaderRef: AtomicReference<ClassLoader?> = AtomicReference(null)
+
+  /** Counts down once [setSandboxClassLoader] runs; host-side `awaitSandboxReady` blocks on it. */
+  @Volatile @JvmField var sandboxReadyLatch: CountDownLatch = CountDownLatch(1)
+
+  /**
+   * Sets [sandboxClassLoaderRef] and counts down [sandboxReadyLatch]. Called from
+   * [SandboxHoldingRunner.holdSandboxOpen] as the very first prologue line, **before** entering the
+   * polling loop. Must be called from inside the sandbox so `this.javaClass.classLoader` resolves
+   * to the sandbox's `SandboxClassLoader`.
+   */
+  @JvmStatic
+  fun setSandboxClassLoader(loader: ClassLoader) {
+    sandboxClassLoaderRef.set(loader)
+    sandboxReadyLatch.countDown()
+  }
+
+  /** Reads the current sandbox classloader. Null until [setSandboxClassLoader] runs. */
+  @JvmStatic
+  fun currentSandboxClassLoader(): ClassLoader? = sandboxClassLoaderRef.get()
+
+  /**
+   * Blocks until the sandbox has registered itself via [setSandboxClassLoader], or until [timeoutMs]
+   * elapses. Returns true if the sandbox is ready, false on timeout. Host-side code that needs to
+   * allocate a child URLClassLoader with the sandbox loader as parent calls this before evaluating
+   * the holder's `parentSupplier`.
+   */
+  @JvmStatic
+  fun awaitSandboxReady(timeoutMs: Long): Boolean =
+    sandboxReadyLatch.await(timeoutMs, TimeUnit.MILLISECONDS)
+
   /** Reset to a clean state — call before each [RobolectricHost.start]. */
   @JvmStatic
   fun reset() {
@@ -79,6 +124,8 @@ object DaemonHostBridge {
     results.clear()
     shutdown.set(false)
     childLoaderRef.set(null)
+    sandboxClassLoaderRef.set(null)
+    sandboxReadyLatch = CountDownLatch(1)
     // Render IDs (RenderHost.nextRequestId) deliberately stay monotonic
     // across host restarts within a single JVM — keeps log correlation
     // unambiguous. They live in the core module's RenderHost companion now.

@@ -2,6 +2,7 @@
 
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import java.io.File
 
 /**
@@ -62,7 +63,23 @@ fun main(args: Array<String>) {
         "compose-ai-tools daemon: UserClassLoaderHolder active " +
           "(urls=${userClassUrls.size}, dirs=${userClassUrls.map { it.path }})"
       )
-      UserClassLoaderHolder(urls = userClassUrls)
+      // B2.0-followup — the child URLClassLoader's parent must be the **sandbox** classloader
+      // (not the host thread's app loader). DaemonHostBridge.sandboxClassLoaderRef is set inside
+      // SandboxHoldingRunner.holdSandboxOpen once the sandbox boots; the supplier here is
+      // evaluated lazily on first allocation, by which time the bridge ref is non-null because
+      // RobolectricHost.publishChildLoader awaits sandbox-ready before invoking the supplier.
+      // Forensics-confirmed root cause for the previous Android save-loop failure.
+      UserClassLoaderHolder(
+        urls = userClassUrls,
+        parentSupplier = {
+          DaemonHostBridge.currentSandboxClassLoader()
+            ?: error(
+              "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run. " +
+                "Did SandboxHoldingRunner.holdSandboxOpen execute setSandboxClassLoader before " +
+                "the host called publishChildLoader?"
+            )
+        },
+      )
     } else null
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
