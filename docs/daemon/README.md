@@ -16,6 +16,7 @@ The daemon keeps the Robolectric sandbox alive between saves so the per-save hot
 - **[PROTOCOL.md](PROTOCOL.md)** — locked JSON-RPC wire-format contract between the VS Code extension and the daemon. Stream B (daemon) and Stream C (extension) implement against this in parallel.
 - **[CONFIG.md](CONFIG.md)** — `composePreview.experimental.daemon { … }` DSL reference: defaults, ranges, and effects for `enabled` / `maxHeapMb` / `maxRendersPerSandbox` / `warmSpare`.
 - **[CLASSLOADER.md](CLASSLOADER.md)** — design for the disposable user classloader (B2.0). The save-loop blocker; without it the daemon's "warm render" numbers don't apply across recompiles. Compose Hot Reload prior-art analysis included.
+- **[CLASSLOADER-FORENSICS.md](CLASSLOADER-FORENSICS.md)** — design for the classloader / Robolectric-config dump tool that produces a diffable manifest of the working standalone vs broken daemon path. Empirical diagnostic for the Android S3.5 mystery — until we run the dumps we're guessing about which classloader skew is the actual blocker.
 - **[PREDICTIVE.md](PREDICTIVE.md)** — predictive prefetch design (v1.1+). Adds a multi-tier render queue + speculative renders on scroll-ahead / dropdown signals; observability built in.
 - **[TEST-HARNESS.md](TEST-HARNESS.md)** — the harness's design: what scenarios it covers, FakeHost vs real-mode, image-baseline strategy, CI workflow.
 - **[TODO.md](TODO.md)** — work breakdown with parallelisation guidance: which streams can run in parallel, which agents own what, definition-of-done per chunk.
