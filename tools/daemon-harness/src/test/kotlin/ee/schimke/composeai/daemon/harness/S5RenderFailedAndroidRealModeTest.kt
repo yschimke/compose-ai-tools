@@ -17,24 +17,24 @@ import org.junit.Test
  * in-composition throw from [`BoomComposable`][ee.schimke.composeai.daemon.BoomComposable] does not
  * crash the Android daemon and that a follow-up healthy render still works.
  *
- * **Real-mode-specific gap (Android-only — desktop fixed it post-D-harness.v1.5b).**
- * `RobolectricHost.SandboxRunner.holdSandboxOpen` catches the in-composition Throwable and falls
- * back to [`renderStub`][ee.schimke.composeai.daemon.RobolectricHost.SandboxRunner.renderStub],
- * returning a *successful* [`RenderResult`][ee.schimke.composeai.daemon.RenderResult] with no
- * `pngPath`. The wire surfaces this as `renderFinished` carrying the daemon's
- * `daemon-stub-<id>.png` placeholder rather than `renderFailed`. This is the exact same gap that
- * `:renderer-desktop-daemon`'s `DesktopHost.runRenderLoop` had before the D-harness.v1.5b
- * follow-up; the fix is mechanical (post the Throwable onto the result queue instead of swallowing
- * it; `JsonRpcServer.submitRenderAsync` already does the rest), but porting it to Robolectric
- * requires routing the Throwable across the sandbox classloader bridge — out of scope for v2.
+ * **Fix landed in:** post-D-harness.v2 follow-up (mirrors the post-D-harness.v1.5b desktop fix
+ * `95f0111`) — `RobolectricHost.SandboxRunner.holdSandboxOpen` no longer catches render-body
+ * exceptions and falls back to `renderStub`. When
+ * [`BoomComposable`][ee.schimke.composeai.daemon.BoomComposable] throws inside the Compose
+ * composition, `RenderEngine.render` propagates the Throwable; the host posts it onto the per-id
+ * result queue (typed `LinkedBlockingQueue<Any>` in `DaemonHostBridge`, so the Throwable rides the
+ * cross-classloader bridge unchanged — `java.lang.*` is not instrumented by Robolectric's
+ * `InstrumentingClassLoader`); `submit()` re-throws on the `JsonRpcServer.submitRenderAsync` worker
+ * thread, whose existing Throwable catch turns it into a `renderFailed` notification via the
+ * watcher loop. The legacy stub-fallback path (non-spec `payload="render-N"` from `DaemonHostTest`)
+ * is unchanged — that's the discriminator test for the only remaining stub usage.
  *
- * The test pins the current behaviour:
- * 1. The broken render produces a `renderFinished` notification with the stub PNG path (gap).
- * 2. The daemon survives — a follow-up `renderNow([RedSquare])` returns a real PNG.
+ * Asserts (matching `S5RenderFailedRealModeTest`'s desktop shape):
  *
- * When the Android RobolectricHost is taught to propagate composition exceptions, this test should
- * be tightened to assert `renderFailed.params.error.kind` and `error.message contains "boom"` —
- * same shape as the desktop S5 test.
+ * 1. The broken render produces a `renderFailed` notification (not `renderFinished`).
+ * 2. The error's `kind` is one of the daemon's emitted values and `message` contains "boom".
+ * 3. The daemon survives — a follow-up `renderNow([RedSquare])` returns a real PNG.
+ * 4. `shutdown` + `exit` complete cleanly.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -76,26 +76,34 @@ class S5RenderFailedAndroidRealModeTest {
       assertEquals(1, client.initialize().protocolVersion)
       client.sendInitialized()
 
-      // 1. Broken render — RobolectricHost catches the Throwable and stubs out, so the wire sees
-      //    `renderFinished` not `renderFailed`. Pin the current behaviour and document the gap so
-      //    the assertion flips green when the Android side is taught to propagate.
+      // 1. Broken render — RobolectricHost now propagates in-composition Throwables through the
+      //    sandbox-bridge result queue, JsonRpcServer's submitRenderAsync re-raises them, and the
+      //    watcher loop emits `renderFailed`. Assert the wire shape directly (kind + message
+      //    substring), matching the desktop S5 test. Cold timeout is generous (Robolectric
+      //    sandbox bootstrap dominates).
       val brokenStart = System.currentTimeMillis()
       val rn1 = client.renderNow(previews = listOf(brokenId), tier = RenderTier.FAST)
       assertEquals(listOf(brokenId), rn1.queued)
-      val finished = client.pollRenderFinishedFor(brokenId, timeout = 120.seconds)
+      val failed =
+        client.pollNotificationMatching("renderFailed", 180.seconds) { msg ->
+          msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == brokenId
+        }
       val brokenFinishedAt = System.currentTimeMillis()
-      val brokenPath = finished["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
-      assertNotNull("renderFinished.pngPath must be present (stub path)", brokenPath)
-      // The stub path doesn't include the previewId; sanity-check it's the daemon-stub form.
-      // This assertion is the gap-flagged regression test — when the Android side propagates
-      // exceptions, the stub path will disappear and this assertion will need updating to assert
-      // a `renderFailed` notification was received instead.
+      val errorObj =
+        failed["params"]?.jsonObject?.get("error")?.jsonObject
+          ?: error("renderFailed.params.error must be present: $failed")
+      val errKind = errorObj["kind"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("renderFailed.params.error.kind must be present", errKind)
       assertTrue(
-        "Android v2 reality: broken render returns the daemon-stub PNG path because " +
-          "RobolectricHost.SandboxRunner catches the in-composition Throwable and falls back " +
-          "to renderStub. When that's fixed (mirror DesktopHost.runRenderLoop's post-Throwable " +
-          "behaviour), this assertion needs to flip to a renderFailed assertion. Got: $brokenPath",
-        brokenPath!!.contains("daemon-stub"),
+        "renderFailed.params.error.kind must be one of the v1 RenderErrorKind values " +
+          "(PROTOCOL.md § 6); was $errKind",
+        errKind in setOf("internal", "runtime", "compile", "capture", "timeout"),
+      )
+      val errMsg = errorObj["message"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("renderFailed.params.error.message must be present", errMsg)
+      assertTrue(
+        "renderFailed.params.error.message should mention the thrown 'boom': $errMsg",
+        errMsg!!.contains("boom"),
       )
 
       // 2. Healthy render — daemon stayed up after the failure.
@@ -116,9 +124,7 @@ class S5RenderFailedAndroidRealModeTest {
         scenario = "s5-android",
         preview = brokenId,
         actualMs = brokenFinishedAt - brokenStart,
-        notes =
-          "S5 android: broken render — surfaces as renderFinished with daemon-stub path " +
-            "(GAP: RobolectricHost catches Throwable; mirrors pre-fix DesktopHost behaviour)",
+        notes = "S5 android: broken render — surfaces as renderFailed w/ kind+message",
       )
       recorder.record(
         scenario = "s5-android",

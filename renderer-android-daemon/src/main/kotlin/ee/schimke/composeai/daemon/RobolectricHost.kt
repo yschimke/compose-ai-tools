@@ -44,6 +44,21 @@ import org.robolectric.annotation.GraphicsMode
  * holding-the-sandbox-open pattern actually works. Per TODO.md "Risks to
  * track", if this pattern fails for any reason we escalate rather than
  * silently switching to Robolectric's lower-level `Sandbox` API.
+ *
+ * **Render-body exceptions propagate** — when [RenderEngine.render] throws (e.g.
+ * `BoomComposable`'s `error("boom")` inside the composition), the loop posts the Throwable onto
+ * the per-id result queue (typed `LinkedBlockingQueue<Any>` in [DaemonHostBridge], so the
+ * Throwable rides through unchanged) and [submit] re-throws on the caller's thread. The Throwable
+ * then surfaces upstream as a `renderFailed` notification (see `JsonRpcServer.submitRenderAsync`'s
+ * Throwable catch). Earlier versions caught the exception inside [SandboxRunner.holdSandboxOpen]
+ * and fell back to [SandboxRunner.renderStub], returning a misleading "successful" stub — the bug
+ * `S5RenderFailedAndroidRealModeTest` was written to pin (matching the same pre-fix shape
+ * `:renderer-desktop-daemon`'s `DesktopHost` had before the post-D-harness.v1.5b fix).
+ *
+ * The legacy stub-payload path (B1.3-era `payload="render-N"` that `DaemonHostTest` submits) is
+ * unchanged — `dispatchRender`'s `parseFromPayloadOrNull` returns `null` and the call resolves to
+ * [SandboxRunner.renderStub] without ever entering the engine. The discriminator stays "did
+ * `parseFromPayloadOrNull` return a usable spec".
  */
 open class RobolectricHost : RenderHost {
 
@@ -80,6 +95,13 @@ open class RobolectricHost : RenderHost {
       resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
         ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
     DaemonHostBridge.results.remove(typed.id)
+    // The sandbox-side loop posts either a [RenderResult] (success / stub) or a [Throwable]
+    // (engine body threw). Re-throw the Throwable so `JsonRpcServer.submitRenderAsync`'s catch
+    // surfaces it as a `renderFailed` notification — the path `S5RenderFailedAndroidRealModeTest`
+    // covers. Throwables ride the bridge's `LinkedBlockingQueue<Any>` cleanly: `java.lang.*` is
+    // not instrumented by Robolectric's `InstrumentingClassLoader`, so a sandbox-thrown
+    // `IllegalStateException` is the same class object the host-thread `is`-check sees.
+    if (raw is Throwable) throw raw
     // Result instances are constructed inside the sandbox classloader; copy
     // their fields out via reflection so the host-side caller gets an
     // instance of the host-side RenderResult class.
@@ -178,18 +200,38 @@ open class RobolectricHost : RenderHost {
           "Render" -> {
             val id = request.javaClass.getMethod("getId").invoke(request) as Long
             val payload = request.javaClass.getMethod("getPayload").invoke(request) as String
-            val result =
+            // Two failure modes are routed differently — same shape as
+            // `:renderer-desktop-daemon`'s `DesktopHost.runRenderLoop`:
+            //   1. Spec-payload-not-recognised (legacy `payload="render-N"` from
+            //      `DaemonHostTest`'s 10-render reuse assertion): `dispatchRender` selects
+            //      [renderStub], which never throws — the result is a successful stub-path
+            //      [RenderResult].
+            //   2. Render-body exception (e.g. `BoomComposable` calling `error("boom")` inside
+            //      the composition): `dispatchRender` calls into [RenderEngine.render], which
+            //      propagates Throwables. We must NOT swallow them here — `submit()`'s caller
+            //      is `JsonRpcServer.submitRenderAsync`, which already catches Throwable and
+            //      emits `renderFailed` via the watcher loop. Catching here and falling back to
+            //      [renderStub] would suppress the failure into a misleading "successful" stub
+            //      render — the bug surfaced by `S5RenderFailedAndroidRealModeTest`.
+            //
+            // We do still catch the throwable on this thread — propagating it out of the
+            // `@Test` body would make JUnit fail the dummy test and tear the sandbox down,
+            // which would in turn make every subsequent `submit()` time out (the daemon's
+            // whole value proposition is one long-lived sandbox). Instead we post the Throwable
+            // onto the per-id result queue; [submit] re-throws it on the caller's thread, which
+            // surfaces it as `renderFailed` upstream.
+            val result: Any =
               try {
                 dispatchRender(id, payload)
               } catch (t: Throwable) {
-                // B1.4: surface render failures to stderr but still post a stub-shape result so
-                // the caller's poll() doesn't time out. Mirrors :renderer-desktop-daemon's
-                // DesktopHost.runRenderLoop catch path.
-                System.err.println(
-                  "RobolectricHost: render dispatch failed for id=$id (payload='$payload'): ${t.message}"
-                )
-                t.printStackTrace(System.err)
-                renderStub(id)
+                // [RenderEngine] dispatches the @Composable via `Method.invoke`, which wraps
+                // user-thrown exceptions in [java.lang.reflect.InvocationTargetException].
+                // Unwrap here so the upstream `renderFailed.error.message` carries the original
+                // message (e.g. "java.lang.IllegalStateException: boom" instead of the opaque
+                // "InvocationTargetException"). Keeps the wire-level error informative without
+                // leaking reflection details into S5RenderFailedAndroidRealModeTest's
+                // assertions.
+                unwrapInvocationTarget(t)
               }
             DaemonHostBridge.results
               .computeIfAbsent(id) { LinkedBlockingQueue() }
@@ -215,7 +257,11 @@ open class RobolectricHost : RenderHost {
     /**
      * Stub render — returns a [RenderResult] capturing the sandbox classloader identity. Used by
      * the B1.3-era sandbox-reuse test (which submits `payload="render-N"` strings without a
-     * spec) and as the catch-all when the real engine throws.
+     * spec) so the `DaemonHostTest` 10-render classloader-reuse assertion keeps working.
+     *
+     * **Not** invoked when the real engine throws — that case propagates the Throwable through
+     * the result queue so [submit] can re-raise it (see the comment in [holdSandboxOpen]).
+     * Falling back to a successful stub here would suppress real render failures.
      */
     private fun renderStub(id: Long): RenderResult {
       val cl = Thread.currentThread().contextClassLoader
@@ -224,6 +270,26 @@ open class RobolectricHost : RenderHost {
         classLoaderHashCode = System.identityHashCode(cl),
         classLoaderName = cl?.javaClass?.name ?: "<null>",
       )
+    }
+
+    /**
+     * If [t] is a [java.lang.reflect.InvocationTargetException] (or chain thereof), return its
+     * underlying cause; otherwise return [t]. Used to surface the original user-thrown
+     * exception across [RenderEngine]'s reflective composable dispatch.
+     *
+     * Mirrors the same-named helper in `:renderer-desktop-daemon`'s `DesktopHost`. Duplicated
+     * rather than promoted to `:renderer-daemon-core` because the renderer-agnostic-surface
+     * invariant says "no compose/renderer types in core"; while `InvocationTargetException` is
+     * fully renderer-agnostic (`java.lang.reflect.*`), promoting a single helper for two
+     * call-sites isn't worth widening the core surface for. Re-evaluate when a third backend
+     * materialises.
+     */
+    private fun unwrapInvocationTarget(t: Throwable): Throwable {
+      var current: Throwable = t
+      while (current is java.lang.reflect.InvocationTargetException) {
+        current = current.targetException ?: return current
+      }
+      return current
     }
   }
 }
