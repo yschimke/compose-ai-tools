@@ -178,12 +178,35 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
 
   /**
    * Adaptive-icon shape masks to render. Each shape is applied as a canvas clip on top of the
-   * composed foreground+background. `LEGACY` falls back to the `<adaptive-icon android:icon=…>`
-   * slot or to the foreground rendered against a transparent background.
+   * style-specific contents (full-colour composite, or tinted monochrome).
    *
-   * Default: every shape — `CIRCLE`, `ROUNDED_SQUARE`, `SQUARE`, `LEGACY`. Restrict the list to
-   * trim down rendering cost on modules with many adaptive icons.
+   * Default: every mask — `CIRCLE`, `SQUIRCLE`, `ROUNDED_SQUARE`, `SQUARE`. Restrict to trim
+   * rendering cost on modules with many adaptive icons. The [styles] axis multiplies onto this
+   * list; one capture is emitted per `(shape × style)` combination, plus one bare `LEGACY` capture
+   * per qualifier when [styles] contains [AdaptiveStyle.LEGACY].
    */
   val shapes: ListProperty<AdaptiveShape> =
-    objects.listProperty(AdaptiveShape::class.java).convention(AdaptiveShape.entries.toList())
+    objects
+      .listProperty(AdaptiveShape::class.java)
+      .convention(
+        listOf(
+          AdaptiveShape.CIRCLE,
+          AdaptiveShape.SQUIRCLE,
+          AdaptiveShape.ROUNDED_SQUARE,
+          AdaptiveShape.SQUARE,
+        )
+      )
+
+  /**
+   * Adaptive-icon style variants to render. [AdaptiveStyle.FULL_COLOR] is the App Search appearance
+   * (colour composite); [AdaptiveStyle.THEMED_LIGHT] / [AdaptiveStyle.THEMED_DARK] are the
+   * home-screen "Themed icons" appearance (monochrome layer tinted with a 2-tone Material 3
+   * baseline palette); [AdaptiveStyle.LEGACY] is the pre-O fallback.
+   *
+   * Default: every style. Drop [AdaptiveStyle.THEMED_LIGHT] / [AdaptiveStyle.THEMED_DARK] from the
+   * list when your icons don't ship a `<monochrome>` layer — captures for those styles are skipped
+   * at render time with a warning, but listing them still costs a manifest row each.
+   */
+  val styles: ListProperty<AdaptiveStyle> =
+    objects.listProperty(AdaptiveStyle::class.java).convention(AdaptiveStyle.entries.toList())
 }

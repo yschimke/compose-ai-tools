@@ -22,12 +22,14 @@ class ResourceDiscoveryTest {
   private fun discover(
     densities: List<String> = listOf("xhdpi"),
     shapes: List<AdaptiveShape> = listOf(AdaptiveShape.CIRCLE, AdaptiveShape.SQUARE),
+    styles: List<AdaptiveStyle> = listOf(AdaptiveStyle.FULL_COLOR),
   ): List<ResourcePreview> =
     ResourceDiscovery.discover(
       ResourceDiscovery.Config(
         resSourceRoots = listOf(File(temp.root, "res")),
         densities = densities,
         shapes = shapes,
+        styles = styles,
         sourceRootRelativePath = { "res" },
       )
     )
@@ -62,19 +64,59 @@ class ResourceDiscoveryTest {
   }
 
   @Test
-  fun `adaptive icon fans out across shapes for each density`() {
+  fun `adaptive icon fans out shape x style and emits a single LEGACY capture`() {
     writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
-    val preview = discover(shapes = listOf(AdaptiveShape.CIRCLE, AdaptiveShape.LEGACY)).single()
+    val preview =
+      discover(
+          shapes = listOf(AdaptiveShape.CIRCLE),
+          styles =
+            listOf(AdaptiveStyle.FULL_COLOR, AdaptiveStyle.THEMED_LIGHT, AdaptiveStyle.LEGACY),
+        )
+        .single()
     assertThat(preview.id).isEqualTo("mipmap/ic_launcher")
     assertThat(preview.type).isEqualTo(ResourceType.ADAPTIVE_ICON)
     assertThat(preview.captures.map { it.renderOutput })
       .containsExactly(
         "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-light.png",
         "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
       )
       .inOrder()
+    assertThat(preview.captures.last().variant?.shape).isNull()
+    assertThat(preview.captures.last().variant?.style).isEqualTo(AdaptiveStyle.LEGACY)
     assertThat(preview.captures.map { it.cost })
-      .containsExactly(RESOURCE_ADAPTIVE_COST, RESOURCE_ADAPTIVE_COST)
+      .containsExactly(RESOURCE_ADAPTIVE_COST, RESOURCE_ADAPTIVE_COST, RESOURCE_ADAPTIVE_COST)
+  }
+
+  @Test
+  fun `adaptive icon LEGACY appears once per qualifier regardless of shape count`() {
+    writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
+    val preview =
+      discover(
+          shapes =
+            listOf(AdaptiveShape.CIRCLE, AdaptiveShape.SQUIRCLE, AdaptiveShape.ROUNDED_SQUARE),
+          styles = listOf(AdaptiveStyle.FULL_COLOR, AdaptiveStyle.LEGACY),
+        )
+        .single()
+    val legacyCaptures = preview.captures.filter { it.variant?.style == AdaptiveStyle.LEGACY }
+    assertThat(legacyCaptures).hasSize(1)
+  }
+
+  @Test
+  fun `themed styles produce themed-light and themed-dark filename suffixes`() {
+    writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
+    val preview =
+      discover(
+          shapes = listOf(AdaptiveShape.SQUIRCLE),
+          styles = listOf(AdaptiveStyle.THEMED_LIGHT, AdaptiveStyle.THEMED_DARK),
+        )
+        .single()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png",
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png",
+      )
+      .inOrder()
   }
 
   @Test
@@ -119,6 +161,7 @@ class ResourceDiscoveryTest {
         resourceId = "drawable/foo bar",
         qualifier = "night-xhdpi",
         shape = null,
+        style = null,
         extension = "png",
       )
     assertThat(path).isEqualTo("renders/resources/drawable/foo_bar_night-xhdpi.png")

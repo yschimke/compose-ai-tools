@@ -21,8 +21,16 @@ enum class RenderResourceType {
 @Serializable
 enum class RenderAdaptiveShape {
   CIRCLE,
+  SQUIRCLE,
   ROUNDED_SQUARE,
   SQUARE,
+}
+
+@Serializable
+enum class RenderAdaptiveStyle {
+  FULL_COLOR,
+  THEMED_LIGHT,
+  THEMED_DARK,
   LEGACY,
 }
 
@@ -30,6 +38,7 @@ enum class RenderAdaptiveShape {
 data class RenderResourceVariant(
   val qualifiers: String? = null,
   val shape: RenderAdaptiveShape? = null,
+  val style: RenderAdaptiveStyle? = null,
 )
 
 @Serializable

@@ -97,9 +97,11 @@ class ResourcePreviewRenderTest {
           }
           RenderResourceType.ADAPTIVE_ICON -> {
             val shape = capture.variant?.shape
-            if (shape == null) {
+            val style = capture.variant?.style ?: RenderAdaptiveStyle.FULL_COLOR
+            if (style != RenderAdaptiveStyle.LEGACY && shape == null) {
               System.err.println(
-                "compose-preview: adaptive icon ${preview.id} capture has no shape; skipping"
+                "compose-preview: adaptive icon ${preview.id} ${style.name} capture has no " +
+                  "shape; skipping"
               )
               missing++
               continue
@@ -108,12 +110,16 @@ class ResourcePreviewRenderTest {
             if (adaptive == null) {
               System.err.println(
                 "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-                  "not AdaptiveIconDrawable; skipping ${shape.name} capture"
+                  "not AdaptiveIconDrawable; skipping ${shape?.name ?: style.name} capture"
               )
               missing++
               continue
             }
-            val bitmap = renderAdaptiveIcon(adaptive, shape)
+            val bitmap = renderAdaptiveIcon(adaptive, shape, style, preview.id)
+            if (bitmap == null) {
+              missing++
+              continue
+            }
             try {
               outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             } finally {
@@ -152,24 +158,36 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Composites foreground + background into a 108dp canvas, then masks to [shape]. The mask path
-   * uses [PorterDuff.Mode.SRC_IN] so anti-aliased edges come through cleanly — `Canvas.clipPath` is
-   * documented as not anti-aliased, which produces visible jaggies on circular masks at the
-   * densities we render at.
+   * Renders one adaptive-icon capture. Two surfaces, picked by [style]:
+   * - [RenderAdaptiveStyle.FULL_COLOR] composites the consumer's `<background>` + `<foreground>`
+   *   into an offscreen bitmap, then masks with [shape]. This is the appearance launchers show
+   *   in app drawers / search.
+   * - [RenderAdaptiveStyle.THEMED_LIGHT] / [RenderAdaptiveStyle.THEMED_DARK] take the
+   *   `<monochrome>` layer (Android 13+ only — `getMonochrome()` returns null when absent),
+   *   tint it with a Material 3 baseline 2-tone pair against a flat surface-container
+   *   background, then mask with [shape]. This is the home-screen "Themed icons" appearance.
+   *   Returns null with a warning when there's no `<monochrome>` layer to render — caller
+   *   skips the capture.
+   * - [RenderAdaptiveStyle.LEGACY] ignores the mask and draws the foreground against
+   *   transparent. Approximates the pre-O fallback; real legacy raster mipmaps
+   *   (`mipmap-mdpi/ic_launcher.png` etc.) aren't surfaced through
+   *   `AdaptiveIconDrawable.foreground`, and parsing the consumer's mipmap directory ourselves
+   *   is out of scope.
    *
-   * `LEGACY` skips the mask and renders just the foreground against transparent, approximating the
-   * pre-API-26 fallback. Real legacy mipmap files (`mipmap-mdpi/ic_launcher.png` etc.) aren't
-   * surfaced through `AdaptiveIconDrawable.foreground`, so this is the closest approximation
-   * without parsing the consumer's mipmap directory ourselves.
+   * The mask path uses [PorterDuff.Mode.SRC_IN] so anti-aliased edges come through cleanly —
+   * `Canvas.clipPath` is documented as not anti-aliased, which produces visible jaggies on
+   * circular masks at the densities we render at.
    */
   private fun renderAdaptiveIcon(
     drawable: AdaptiveIconDrawable,
-    shape: RenderAdaptiveShape,
-  ): Bitmap {
+    shape: RenderAdaptiveShape?,
+    style: RenderAdaptiveStyle,
+    resourceId: String,
+  ): Bitmap? {
     val width = drawable.intrinsicWidth.coerceAtLeast(1)
     val height = drawable.intrinsicHeight.coerceAtLeast(1)
 
-    if (shape == RenderAdaptiveShape.LEGACY) {
+    if (style == RenderAdaptiveStyle.LEGACY) {
       val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
       val canvas = Canvas(bitmap)
       drawable.foreground?.also {
@@ -179,18 +197,48 @@ class ResourcePreviewRenderTest {
       return bitmap
     }
 
-    // 1. Compose fg+bg into an offscreen bitmap so the SRC_IN compositor below has a single
-    //    layer to mask.
+    requireNotNull(shape) { "non-LEGACY style $style requires a shape" }
+
+    // 1. Compose the style's contents into an offscreen bitmap so the SRC_IN compositor below
+    //    has a single layer to mask.
     val composed = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    try {
+    return try {
       val composedCanvas = Canvas(composed)
-      drawable.background?.also {
-        it.setBounds(0, 0, width, height)
-        it.draw(composedCanvas)
-      }
-      drawable.foreground?.also {
-        it.setBounds(0, 0, width, height)
-        it.draw(composedCanvas)
+      when (style) {
+        RenderAdaptiveStyle.FULL_COLOR -> {
+          drawable.background?.also {
+            it.setBounds(0, 0, width, height)
+            it.draw(composedCanvas)
+          }
+          drawable.foreground?.also {
+            it.setBounds(0, 0, width, height)
+            it.draw(composedCanvas)
+          }
+        }
+        RenderAdaptiveStyle.THEMED_LIGHT,
+        RenderAdaptiveStyle.THEMED_DARK -> {
+          val monochrome = drawable.monochrome
+          if (monochrome == null) {
+            System.err.println(
+              "compose-preview: $resourceId has no <monochrome> layer; skipping " +
+                "${style.name} capture"
+            )
+            composed.recycle()
+            return null
+          }
+          val (bgColor, fgColor) = themedColors(style)
+          composedCanvas.drawColor(bgColor)
+          // mutate(): decouple from any shared constant state before mutating the tint —
+          // cached drawables are reused by the platform across resolutions, and we don't want
+          // a tint applied here to leak into a later FULL_COLOR / LEGACY capture of a sibling
+          // resource that happens to share state.
+          val tintable = monochrome.mutate()
+          tintable.setBounds(0, 0, width, height)
+          tintable.setTintMode(PorterDuff.Mode.SRC_IN)
+          tintable.setTint(fgColor)
+          tintable.draw(composedCanvas)
+        }
+        RenderAdaptiveStyle.LEGACY -> error("unreachable") // handled above
       }
 
       // 2. Draw the mask shape into the output bitmap, then composite the icon with SRC_IN so
@@ -202,20 +250,40 @@ class ResourcePreviewRenderTest {
       when (shape) {
         RenderAdaptiveShape.CIRCLE ->
           outputCanvas.drawCircle(width / 2f, height / 2f, width / 2f, paint)
+        RenderAdaptiveShape.SQUIRCLE -> {
+          // Pixel-ish squircle approximation. A real superellipse needs Path + cubic Béziers;
+          // a rounded rect with r ≈ 40% of the side is visually close at preview densities.
+          val r = width * 0.40f
+          outputCanvas.drawRoundRect(rect, r, r, paint)
+        }
         RenderAdaptiveShape.ROUNDED_SQUARE -> {
-          val r = width * 0.22f
+          // Aligned with AndroidX IconShape's rounded-square (~25% corner radius).
+          val r = width * 0.25f
           outputCanvas.drawRoundRect(rect, r, r, paint)
         }
         RenderAdaptiveShape.SQUARE -> outputCanvas.drawRect(rect, paint)
-        RenderAdaptiveShape.LEGACY -> error("unreachable") // handled above
       }
       paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
       outputCanvas.drawBitmap(composed, 0f, 0f, paint)
-      return output
+      output
     } finally {
-      composed.recycle()
+      if (!composed.isRecycled) composed.recycle()
     }
   }
+
+  /**
+   * Material 3 baseline neutrals used to fake "Themed icons" without a live wallpaper-derived
+   * palette. Pair = (surface-container background, on-surface foreground tint). Reproducible
+   * across runs since they don't depend on the wallpaper / system theme.
+   */
+  private fun themedColors(style: RenderAdaptiveStyle): Pair<Int, Int> =
+    when (style) {
+      // light: surfaceContainerHigh, onSurfaceVariant
+      RenderAdaptiveStyle.THEMED_LIGHT -> 0xFFECE6F0.toInt() to 0xFF49454F.toInt()
+      // dark: surfaceContainerHigh, onSurfaceVariant
+      RenderAdaptiveStyle.THEMED_DARK -> 0xFF2B2930.toInt() to 0xFFCAC4D0.toInt()
+      else -> error("themed colours requested for non-themed style $style")
+    }
 
   /**
    * Renders [drawable] (an `AnimatedVectorDrawable` / `AnimatedVectorDrawableCompat`) into a
