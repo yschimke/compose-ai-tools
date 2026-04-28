@@ -170,6 +170,25 @@ open class RobolectricHost(
    * Sends the poison pill, waits up to [timeoutMs] for the worker thread to
    * exit. Idempotent.
    */
+  companion object {
+    /**
+     * Forensic-dump payload prefix — see docs/daemon/CLASSLOADER-FORENSICS.md § Implementation
+     * seam. Routed through the existing `RenderRequest.Render.payload` field rather than a new
+     * sealed-hierarchy variant so `:renderer-daemon-core`'s public surface stays unchanged.
+     *
+     * Wire format: `forensic-dump=<absolute-path>;survey=<csv-of-fqns>`. Recognised by
+     * [SandboxRunner.dispatchRender] which dispatches to `ClassloaderForensics.capture(...)`
+     * inside the sandbox.
+     */
+    const val FORENSIC_DUMP_PREFIX: String = "forensic-dump="
+
+    /** Output-path key inside the forensic payload (see [FORENSIC_DUMP_PREFIX]). */
+    const val FORENSIC_DUMP_KEY: String = "forensic-dump"
+
+    /** Survey-set key inside the forensic payload — comma-separated FQNs. */
+    const val FORENSIC_SURVEY_KEY: String = "survey"
+  }
+
   override fun shutdown(timeoutMs: Long) {
     DaemonHostBridge.shutdown.set(true)
     // Belt-and-braces: also enqueue a Shutdown so the worker wakes from
@@ -285,6 +304,19 @@ open class RobolectricHost(
      * `RobolectricHostTest`'s sandbox-reuse assertion keeps working through B1.4.
      */
     private fun dispatchRender(id: Long, payload: String): RenderResult {
+      // Forensic-dump branch — see docs/daemon/CLASSLOADER-FORENSICS.md § Implementation seam.
+      // Routed through the existing `RenderRequest.Render.payload` free-form field rather than a
+      // new `RenderRequest` variant, per CLASSLOADER-FORENSICS.md's "don't widen the core's
+      // sealed hierarchy" constraint. The payload format is
+      // `forensic-dump=<absolute-path>;survey=<comma-separated-fqns>` — `;`-delimited like
+      // `RenderSpec.parseFromPayloadOrNull` so a future merge into a single dispatch table is a
+      // small refactor rather than a redesign. The dump runs *here*, inside the sandbox
+      // classloader (Robolectric's `InstrumentingClassLoader`), with the child `URLClassLoader`
+      // active via `Thread.currentThread().contextClassLoader` — exactly the state a real render
+      // sees, which is the whole point of the daemon-path dump.
+      if (payload.startsWith(FORENSIC_DUMP_PREFIX)) {
+        return runForensicDump(id, payload)
+      }
       val spec = RenderSpec.parseFromPayloadOrNull(payload) ?: return renderStub(id)
       // B2.0 — pick up the disposable child classloader that the host thread has published into
       // the bridge. When no holder is wired (legacy in-process tests where the testFixtures live
@@ -295,6 +327,88 @@ open class RobolectricHost(
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
       return engine.render(spec, id, classLoader)
+    }
+
+    /**
+     * Forensic-dump dispatch — mirrors the design's Configuration B requirement: the dump call
+     * must run inside the sandbox classloader with the child `URLClassLoader` active so the survey
+     * reflects what the daemon actually sees during a render. We install the child loader as the
+     * context classloader for the duration of the capture (same discipline [RenderEngine.render]
+     * uses), then restore.
+     *
+     * Loaded reflectively because `:renderer-android-daemon`'s main classpath doesn't include the
+     * forensics library at compile time — it's a `:renderer-daemon-core` library and the dispatch
+     * decision lives in `:renderer-android-daemon`. The reflective call surface is tiny (one
+     * static `capture(List, Object?, String, File)` method) so dropping the compile-time link is
+     * cheap relative to the dependency-cycle risk of pulling forensics into the host's main code.
+     */
+    private fun runForensicDump(id: Long, payload: String): RenderResult {
+      val parsed = parseForensicPayload(payload)
+      val outFile = java.io.File(parsed.outPath)
+      val survey = parsed.survey
+
+      val previousContext = Thread.currentThread().contextClassLoader
+      val effectiveLoader: ClassLoader =
+        DaemonHostBridge.currentChildLoader()
+          ?: previousContext
+          ?: RenderEngine::class.java.classLoader
+      Thread.currentThread().contextClassLoader = effectiveLoader
+      try {
+        // Resolve `ClassloaderForensics` and `RobolectricConfigSnapshot` reflectively against the
+        // sandbox loader so we don't pull `:renderer-daemon-core` onto the host module's main
+        // compile classpath. The forensics library lives on the sandbox runtime classpath via
+        // the daemon's normal :renderer-daemon-core dep.
+        val forensicsClass =
+          Class.forName(
+            "ee.schimke.composeai.daemon.forensics.ClassloaderForensics",
+            true,
+            effectiveLoader,
+          )
+        // The library is `object ClassloaderForensics` — its singleton instance is reachable via
+        // the synthetic `INSTANCE` field that Kotlin emits.
+        val instance = forensicsClass.getField("INSTANCE").get(null)
+        val captureMethod =
+          forensicsClass.getMethod(
+            "capture",
+            java.util.List::class.java,
+            Class.forName(
+              "ee.schimke.composeai.daemon.forensics.RobolectricConfigSnapshot",
+              true,
+              effectiveLoader,
+            ),
+            String::class.java,
+            java.io.File::class.java,
+          )
+        captureMethod.invoke(instance, survey, /*robolectricConfig=*/ null, "daemon-subject", outFile)
+      } finally {
+        Thread.currentThread().contextClassLoader = previousContext
+      }
+
+      val cl = Thread.currentThread().contextClassLoader
+      return RenderResult(
+        id = id,
+        classLoaderHashCode = System.identityHashCode(cl),
+        classLoaderName = cl?.javaClass?.name ?: "<null>",
+        pngPath = outFile.absolutePath,
+        metrics = null,
+      )
+    }
+
+    private data class ForensicPayload(val outPath: String, val survey: List<String>)
+
+    private fun parseForensicPayload(payload: String): ForensicPayload {
+      val map = mutableMapOf<String, String>()
+      for (entry in payload.split(';')) {
+        val trimmed = entry.trim()
+        if (trimmed.isEmpty()) continue
+        val eq = trimmed.indexOf('=')
+        if (eq <= 0) continue
+        map[trimmed.substring(0, eq).trim()] = trimmed.substring(eq + 1).trim()
+      }
+      val outPath = map[FORENSIC_DUMP_KEY] ?: error("forensic-dump payload missing $FORENSIC_DUMP_KEY=")
+      val survey = map[FORENSIC_SURVEY_KEY]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+        ?: emptyList()
+      return ForensicPayload(outPath = outPath, survey = survey)
     }
 
     /**

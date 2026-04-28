@@ -223,6 +223,35 @@ configuration drift between the in-test-JVM daemon and the actually-
 spawned daemon. **Skip for v1**; add only if A/B diff doesn't surface
 the answer.
 
+## Invocation (v0)
+
+End-to-end:
+
+```
+./gradlew :renderer-android:test \
+          --tests "ee.schimke.composeai.renderer.ClassloaderForensicsTest" \
+          :renderer-android-daemon:test \
+          --tests "ee.schimke.composeai.daemon.ClassloaderForensicsDaemonTest" \
+          :tools:daemon-harness:dumpClassloaderDiff
+```
+
+(`:renderer-android` and `:renderer-android-daemon` are AGP `library` modules
+whose top-level `:test` lifecycle delegates to `:testDebugUnitTest`.)
+
+The diff task lives in `:tools:daemon-harness:dumpClassloaderDiff` and writes
+`docs/daemon/classloader-forensics-diff.{md,json}`. Per Decision 5 below, v0
+is a developer-invoked diagnostic, not a CI gate.
+
+**Forensic-dump payload routing.** Per the "don't widen the core's sealed
+hierarchy" constraint, the daemon-side test routes its forensic-dump request
+through the existing `RenderRequest.Render.payload` field with a sentinel
+prefix (`forensic-dump=…;survey=…`). `RobolectricHost.SandboxRunner.dispatchRender`
+detects the prefix and dispatches to a dedicated `runForensicDump` branch
+that calls `ClassloaderForensics.capture(...)` reflectively (so the host
+module's main classpath doesn't need a compile-time link to the forensics
+library). Constants on `RobolectricHost`'s companion (`FORENSIC_DUMP_PREFIX`,
+`FORENSIC_DUMP_KEY`, `FORENSIC_SURVEY_KEY`) define the wire shape.
+
 ## Output format
 
 JSON, both for human readability and for `jq`-able diffing.

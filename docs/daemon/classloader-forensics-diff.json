@@ -1,0 +1,367 @@
+{
+  "aContextHint": "standalone-control",
+  "bContextHint": "daemon-subject",
+  "smokingGuns": [
+    {
+      "fqn": "androidx.compose.runtime.Composer",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/fcfe0ff72fd54060cdb1183b3d1cfc27/transformed/runtime-runtime.jar",
+      "aModuleHash": "sha256:6283e672769ca8fff56c538be314d81f0b2cbdae71f23e71b5c1feecf8d01a3d",
+      "bModuleHash": "sha256:6283e672769ca8fff56c538be314d81f0b2cbdae71f23e71b5c1feecf8d01a3d",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.runtime.Composition",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/fcfe0ff72fd54060cdb1183b3d1cfc27/transformed/runtime-runtime.jar",
+      "aModuleHash": "sha256:2989f7cfcfaedd75bda834521cdf2f36268e46df89fde680f35b8b2f3bcc6f6c",
+      "bModuleHash": "sha256:2989f7cfcfaedd75bda834521cdf2f36268e46df89fde680f35b8b2f3bcc6f6c",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.runtime.Recomposer",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/fcfe0ff72fd54060cdb1183b3d1cfc27/transformed/runtime-runtime.jar",
+      "aModuleHash": "sha256:720595431d6e12e4ed60e4cc51738de7e8263a8c8efdf8c7de9aa116b4929185",
+      "bModuleHash": "sha256:720595431d6e12e4ed60e4cc51738de7e8263a8c8efdf8c7de9aa116b4929185",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.ui.test.junit4.AndroidComposeTestRule",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/5287109edf5d482f08f2c54bf405e3b4/transformed/ui-test-junit4-runtime.jar",
+      "aModuleHash": "sha256:649b3900416fd75bac71d18fc118ec2c7d04a06c9b0e0cbb49016931fe391dae",
+      "bModuleHash": "sha256:649b3900416fd75bac71d18fc118ec2c7d04a06c9b0e0cbb49016931fe391dae",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.ui.test.junit4.ComposeTestRule",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/5287109edf5d482f08f2c54bf405e3b4/transformed/ui-test-junit4-runtime.jar",
+      "aModuleHash": "sha256:95de2d6c5cc3a54509d83fabebf115c6491ec3da84fe0ef8158c939090d22e1d",
+      "bModuleHash": "sha256:95de2d6c5cc3a54509d83fabebf115c6491ec3da84fe0ef8158c939090d22e1d",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.runtime.reflect.ComposableMethod",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/fcfe0ff72fd54060cdb1183b3d1cfc27/transformed/runtime-runtime.jar",
+      "aModuleHash": "sha256:284c37a281b1e0919671a63610be65bb3800bcead39f2e0b78530d01fd2d908e",
+      "bModuleHash": "sha256:284c37a281b1e0919671a63610be65bb3800bcead39f2e0b78530d01fd2d908e",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "com.github.takahirom.roborazzi.RoborazziKt",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/20af49082130378f1c306a7ca28b4bbc/transformed/roborazzi-1.59.0-runtime.jar",
+      "aModuleHash": "sha256:198f1b02583fe6fdd4c93e9fb895ba6d5ea3b6f28685644311a1d7a4877c9e0b",
+      "bModuleHash": "sha256:198f1b02583fe6fdd4c93e9fb895ba6d5ea3b6f28685644311a1d7a4877c9e0b",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "com.github.takahirom.roborazzi.RoborazziOptions",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/9849346679fc9cde6e1a812e03dbf9f7/transformed/roborazzi-core-release-runtime.jar",
+      "aModuleHash": "sha256:c6e7e592e223b93c85793b524c4a70b93300ef8306d5f0ae78e0f897508fa6d9",
+      "bModuleHash": "sha256:c6e7e592e223b93c85793b524c4a70b93300ef8306d5f0ae78e0f897508fa6d9",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "org.robolectric.RuntimeEnvironment",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/modules-2/files-2.1/org.robolectric/shadows-framework/4.16.1/8de8daee97c18b7cb305df2155e09352c3f4784b/shadows-framework-4.16.1.jar",
+      "aModuleHash": "sha256:8cb0ae6ec22d2c22d24044fde48a2b46cf596406ddd2d1c56d272220ad2a8102",
+      "bModuleHash": "sha256:8cb0ae6ec22d2c22d24044fde48a2b46cf596406ddd2d1c56d272220ad2a8102",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "org.robolectric.shadows.ShadowApplication",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/modules-2/files-2.1/org.robolectric/shadows-framework/4.16.1/8de8daee97c18b7cb305df2155e09352c3f4784b/shadows-framework-4.16.1.jar",
+      "aModuleHash": "sha256:5f66fdabcd4d8ee1b25aba7777b8ee4e965ba15d74c604934570f33d1eca7733",
+      "bModuleHash": "sha256:5f66fdabcd4d8ee1b25aba7777b8ee4e965ba15d74c604934570f33d1eca7733",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "org.robolectric.shadows.ShadowResources",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/modules-2/files-2.1/org.robolectric/shadows-framework/4.16.1/8de8daee97c18b7cb305df2155e09352c3f4784b/shadows-framework-4.16.1.jar",
+      "aModuleHash": "sha256:4db6888347120ecb2d52f2d4b469e5190c92da1116a0dcbd5929e9efd6ac84f7",
+      "bModuleHash": "sha256:4db6888347120ecb2d52f2d4b469e5190c92da1116a0dcbd5929e9efd6ac84f7",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "android.app.Activity",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/199f495ef1444c8713e32147b60768b1/transformed/android.jar",
+      "aModuleHash": "sha256:d576e7cd48982d53bd7dd4b615768c49ab67bc0a73349bdb67abf08625258c49",
+      "bModuleHash": "sha256:d576e7cd48982d53bd7dd4b615768c49ab67bc0a73349bdb67abf08625258c49",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "android.content.res.Resources",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/199f495ef1444c8713e32147b60768b1/transformed/android.jar",
+      "aModuleHash": "sha256:44219991ed9336d3df4e1d2fbe9c45ca20a9212fcc0d01c526a346023b3dd586",
+      "bModuleHash": "sha256:44219991ed9336d3df4e1d2fbe9c45ca20a9212fcc0d01c526a346023b3dd586",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.activity.ComponentActivity",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/9c837d7c54a66b7946d5f2ead68274f7/transformed/activity-1.13.0-runtime.jar",
+      "aModuleHash": "sha256:f51ab7a3930e7c936e6bcbaef7ed56ce73dcc403e07d4faa5680e81abd5cbf37",
+      "bModuleHash": "sha256:f51ab7a3930e7c936e6bcbaef7ed56ce73dcc403e07d4faa5680e81abd5cbf37",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "android.os.Looper",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/199f495ef1444c8713e32147b60768b1/transformed/android.jar",
+      "aModuleHash": "sha256:05060f311d6f7ec44bd38ed97878c9eaf3d7eec4612d009601fd06e1f0f8cd5f",
+      "bModuleHash": "sha256:05060f311d6f7ec44bd38ed97878c9eaf3d7eec4612d009601fd06e1f0f8cd5f",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "kotlinx.coroutines.CoroutineDispatcher",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.9.0/9beade4c1c1569e4f36cbd2c37e02e3e41502601/kotlinx-coroutines-core-jvm-1.9.0.jar",
+      "aModuleHash": "sha256:a714eb03052f6c8f7955de7954151ef7f082be659b2c89a0cfaec55841d73e61",
+      "bModuleHash": "sha256:a714eb03052f6c8f7955de7954151ef7f082be659b2c89a0cfaec55841d73e61",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.lifecycle.ViewModel",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/3b2b84af129cb44ebfc032d959dd9ce1/transformed/lifecycle-viewmodel-release-runtime.jar",
+      "aModuleHash": "sha256:58a53d550a8cc68dd3b19827928c640f447caa3a576f824a7643591c13f90c96",
+      "bModuleHash": "sha256:58a53d550a8cc68dd3b19827928c640f447caa3a576f824a7643591c13f90c96",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    },
+    {
+      "fqn": "androidx.compose.runtime.internal.ComposableLambdaImpl",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27",
+      "aLocation": "",
+      "bLocation": "file:/home/yuri/.gradle/caches/9.4.1/transforms/fcfe0ff72fd54060cdb1183b3d1cfc27/transformed/runtime-runtime.jar",
+      "aModuleHash": "sha256:ef1a58aaf92607721b58c2925e863581128015d1c29338285646bbab8ed23ec6",
+      "bModuleHash": "sha256:ef1a58aaf92607721b58c2925e863581128015d1c29338285646bbab8ed23ec6",
+      "classloaderIdentityChanged": true,
+      "codeSourceChanged": true,
+      "moduleHashChanged": false
+    }
+  ],
+  "instrumentationDiffs": [
+    {
+      "fqn": "androidx.compose.runtime.Composer",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.runtime.Composition",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.runtime.Recomposer",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.ui.test.junit4.AndroidComposeTestRule",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.ui.test.junit4.ComposeTestRule",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.runtime.reflect.ComposableMethod",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "com.github.takahirom.roborazzi.RoborazziKt",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "com.github.takahirom.roborazzi.RoborazziOptions",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "org.robolectric.RuntimeEnvironment",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "org.robolectric.shadows.ShadowApplication",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "org.robolectric.shadows.ShadowResources",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "android.app.Activity",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "android.content.res.Resources",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.activity.ComponentActivity",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "android.os.Looper",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "kotlinx.coroutines.CoroutineDispatcher",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.lifecycle.ViewModel",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    },
+    {
+      "fqn": "androidx.compose.runtime.internal.ComposableLambdaImpl",
+      "aInstrumented": "true",
+      "bInstrumented": "false",
+      "aLoader": "org.robolectric.internal.AndroidSandbox$SdkSandboxClassLoader@0x65a15628",
+      "bLoader": "jdk.internal.loader.ClassLoaders$AppClassLoader@0x5ffd2b27"
+    }
+  ],
+  "onlyInA": [
+    "ee.schimke.composeai.renderer.ClassloaderForensicsFixturesKt"
+  ],
+  "onlyInB": [
+    "ee.schimke.composeai.daemon.bridge.DaemonHostBridge",
+    "ee.schimke.composeai.daemon.RobolectricHost",
+    "ee.schimke.composeai.daemon.RenderEngine",
+    "ee.schimke.composeai.daemon.SandboxHoldingRunner",
+    "ee.schimke.composeai.daemon.UserClassLoaderHolder",
+    "java.net.URLClassLoader",
+    "ee.schimke.composeai.daemon.RedFixturePreviewsKt"
+  ],
+  "robolectricConfigDiffs": [],
+  "otherChanges": [],
+  "unchangedCount": 13,
+  "totalA": 32,
+  "totalB": 38
+}

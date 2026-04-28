@@ -14,6 +14,8 @@
 // Plain `org.jetbrains.kotlin.jvm` — no Android plugins, no Compose. NOT
 // published to Maven.
 
+import java.net.URLClassLoader
+
 plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
@@ -149,6 +151,87 @@ tasks.register<JavaExec>("runFakeDaemonMain") {
   description = "Runs FakeDaemonMain against a fixture directory (-Dcomposeai.harness.fixtureDir)."
   classpath = sourceSets["main"].runtimeClasspath
   mainClass.set("ee.schimke.composeai.daemon.harness.FakeDaemonMain")
+}
+
+// Classloader-forensics diff invocation — see docs/daemon/CLASSLOADER-FORENSICS.md.
+//
+// Reads the two configuration dumps (Configuration A from `:renderer-android`'s
+// `ClassloaderForensicsTest`; Configuration B from `:renderer-android-daemon`'s
+// `ClassloaderForensicsDaemonTest`) and produces a diff (Markdown + JSON) under
+// `docs/daemon/classloader-forensics-diff.{md,json}` for human review.
+//
+// Wired here (in :tools:daemon-harness) rather than in either daemon module because the diff
+// is a developer-invoked diagnostic that crosses both modules' boundaries — putting it in either
+// individual module would imply a one-way dependency that doesn't reflect what the diff is for.
+//
+// Reflective into `:renderer-daemon-core` to avoid widening the harness's main classpath; the
+// forensics library is already on the harness's `testRuntimeClasspath` via :renderer-daemon-core.
+//
+// Configuration-cache discipline: a dedicated `classloaderForensicsLib` configuration captures the
+// `:renderer-daemon-core` jars at configuration time so the doLast lambda doesn't reach through
+// `project(...)` at execution time (cross-project task references aren't config-cache-safe).
+val classloaderForensicsLib: Configuration by configurations.creating {
+  isCanBeConsumed = false
+  isCanBeResolved = true
+  description = "Resolved JARs for the ClassloaderForensics library (used by dumpClassloaderDiff)."
+}
+
+dependencies { classloaderForensicsLib(project(":renderer-daemon-core")) }
+
+val dumpClassloaderDiff by tasks.registering {
+  description =
+    "Diff the standalone (:renderer-android) and daemon (:renderer-android-daemon) classloader " +
+      "forensics dumps. Writes docs/daemon/classloader-forensics-diff.{md,json}. v1 — " +
+      "developer-invoked diagnostic, not a CI gate."
+  group = "verification"
+  val standaloneJsonProvider =
+    project(":renderer-android")
+      .layout
+      .buildDirectory
+      .file("reports/classloader-forensics/standalone.json")
+  val daemonJsonProvider =
+    project(":renderer-android-daemon")
+      .layout
+      .buildDirectory
+      .file("reports/classloader-forensics/daemon.json")
+  val diffMdFile =
+    rootProject.layout.projectDirectory.file("docs/daemon/classloader-forensics-diff.md")
+  val diffJsonFile =
+    rootProject.layout.projectDirectory.file("docs/daemon/classloader-forensics-diff.json")
+  inputs.file(standaloneJsonProvider)
+  inputs.file(daemonJsonProvider)
+  outputs.file(diffMdFile)
+  outputs.file(diffJsonFile)
+
+  // Snapshot the resolved JAR list at configuration time — Provider<Set<FileSystemLocation>> is
+  // configuration-cache-safe; cross-project task references aren't.
+  val libFiles = classloaderForensicsLib.elements
+
+  doLast {
+    val standalone = standaloneJsonProvider.get().asFile
+    val daemon = daemonJsonProvider.get().asFile
+    require(standalone.exists()) {
+      "Configuration A dump missing — run :renderer-android:test --tests \"*ClassloaderForensicsTest\" first.\n" +
+        "Expected: ${standalone.absolutePath}"
+    }
+    require(daemon.exists()) {
+      "Configuration B dump missing — run :renderer-android-daemon:test --tests \"*ClassloaderForensicsDaemonTest\" first.\n" +
+        "Expected: ${daemon.absolutePath}"
+    }
+    val urls = libFiles.get().map { it.asFile.toURI().toURL() }.toTypedArray()
+    val parentLoader: ClassLoader =
+      Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
+    val cl: ClassLoader = URLClassLoader(urls, parentLoader)
+    val forensics =
+      Class.forName("ee.schimke.composeai.daemon.forensics.ClassloaderForensics", true, cl)
+    val instance = forensics.getField("INSTANCE").get(null)
+    val fileClass = File::class.java
+    val diffMethod = forensics.getMethod("diff", fileClass, fileClass, fileClass, fileClass)
+    diffMdFile.asFile.parentFile.mkdirs()
+    diffMethod.invoke(instance, standalone, daemon, diffMdFile.asFile, diffJsonFile.asFile)
+    logger.lifecycle("Classloader forensics diff written to: ${diffMdFile.asFile.absolutePath}")
+    logger.lifecycle("                                  + : ${diffJsonFile.asFile.absolutePath}")
+  }
 }
 
 // D-harness.v1.5b — regenerate the in-repo PNG baselines under
