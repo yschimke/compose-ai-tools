@@ -9,6 +9,7 @@ import { PreviewRegistry } from './previewRegistry';
 import { PreviewGutterDecorations } from './previewGutterDecorations';
 import { PreviewHoverProvider } from './previewHoverProvider';
 import { PreviewCodeLensProvider } from './previewCodeLensProvider';
+import { AndroidManifestCodeLensProvider } from './androidManifestCodeLensProvider';
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
@@ -236,14 +237,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         (msg) => outputChannel.appendLine(`[doctor] ${msg}`),
     );
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
+    // AndroidManifest.xml lives at module-root, not under res/, so the existing
+    // `**/res/**/*.xml` watcher misses it. Match files by name rather than
+    // language id — the language id depends on the user's xml extension setup
+    // and isn't a load-bearing signal.
+    const androidManifestFiles: vscode.DocumentSelector = {
+        scheme: 'file',
+        pattern: '**/AndroidManifest.xml',
+    };
+    const androidManifestCodeLensProvider = new AndroidManifestCodeLensProvider(gradleService);
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
         vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
+        vscode.languages.registerCodeLensProvider(
+            androidManifestFiles,
+            androidManifestCodeLensProvider,
+        ),
         codeLensProvider,
+        androidManifestCodeLensProvider,
         gutterDecorations,
         a11yDiagnostics,
         doctorDiagnostics,
         { dispose: () => registry.dispose() },
+    );
+
+    // Open the rendered PNG / GIF in VS Code's default editor. `vscode.open`
+    // routes PNGs to the built-in image viewer and GIFs to the same viewer
+    // (animated playback included). Non-existent paths surface as a standard
+    // "Unable to open file" error — useful signal that the consumer hasn't
+    // run `:<module>:renderAndroidResources` yet.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'composePreview.previewResource',
+            (pngPath: string, _resourceId: string) => {
+                void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pngPath));
+            },
+        ),
     );
 
     // Refresh doctor diagnostics on first load, on-demand from the command,
