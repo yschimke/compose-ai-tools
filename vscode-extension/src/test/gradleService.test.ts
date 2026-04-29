@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { GradleService, GradleApi } from '../gradleService';
+import { GradleService, GradleApi, TaskCancelledError } from '../gradleService';
 import { JdkImageError } from '../jdkImageErrorDetector';
 
 /** Stub GradleApi that records invocations and allows test control. */
@@ -258,6 +258,26 @@ describe('GradleService', () => {
             const service = new GradleService(dir, api);
             assert.deepStrictEqual(service.findPreviewModules(), ['app', 'lib']);
         }));
+
+        it('finds nested modules (e.g. samples/wear)', withTempDir((dir, api) => {
+            // Multi-project layouts where modules live under an organising
+            // parent directory (`samples/wear`, `features/login`) — the
+            // parent itself has no build file.
+            fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
+                'plugins { id("ee.schimke.composeai.preview") }');
+            fs.mkdirSync(path.join(dir, 'samples', 'cmp'));
+            const markerDir = path.join(dir, 'samples', 'cmp', 'build', 'compose-previews');
+            fs.mkdirSync(markerDir, { recursive: true });
+            fs.writeFileSync(path.join(markerDir, 'applied.json'),
+                '{"schema":"compose-preview-applied/v1","modulePath":":samples:cmp","moduleName":"cmp","pluginVersion":"0.8.0"}');
+
+            const service = new GradleService(dir, api);
+            assert.deepStrictEqual(
+                service.findPreviewModules(),
+                ['samples/cmp', 'samples/wear'],
+            );
+        }));
     });
 
     describe('resolveModule', () => {
@@ -276,6 +296,41 @@ describe('GradleService', () => {
         it('returns null for file outside any module', withTempDir((dir, api) => {
             const service = new GradleService(dir, api);
             assert.strictEqual(service.resolveModule(path.join(dir, 'unknown', 'Foo.kt')), null);
+        }));
+
+        it('resolves nested module paths', withTempDir((dir, api) => {
+            fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
+                'plugins { id("ee.schimke.composeai.preview") }');
+
+            const service = new GradleService(dir, api);
+            assert.strictEqual(
+                service.resolveModule(path.join(
+                    dir, 'samples', 'wear',
+                    'src', 'main', 'kotlin', 'com', 'example', 'Foo.kt',
+                )),
+                'samples/wear',
+            );
+        }));
+
+        it('prefers the deepest matching module (longest-prefix match)', withTempDir((dir, api) => {
+            // Gradle allows `:foo:bar` to nest inside `:foo`. A file under
+            // `foo/bar/...` belongs to `foo/bar`, not `foo`.
+            fs.mkdirSync(path.join(dir, 'foo', 'bar'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'foo', 'build.gradle.kts'),
+                'plugins { id("ee.schimke.composeai.preview") }');
+            fs.writeFileSync(path.join(dir, 'foo', 'bar', 'build.gradle.kts'),
+                'plugins { id("ee.schimke.composeai.preview") }');
+
+            const service = new GradleService(dir, api);
+            assert.strictEqual(
+                service.resolveModule(path.join(dir, 'foo', 'bar', 'src', 'Foo.kt')),
+                'foo/bar',
+            );
+            assert.strictEqual(
+                service.resolveModule(path.join(dir, 'foo', 'src', 'Foo.kt')),
+                'foo',
+            );
         }));
     });
 
@@ -298,6 +353,30 @@ describe('GradleService', () => {
             assert.strictEqual(api.runCalls.length, 1);
             assert.strictEqual(api.runCalls[0].taskName, ':mod:discoverPreviews');
         }));
+
+        it('translates nested module path to colon-separated Gradle task name',
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
+                fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
+                    'plugins { id("ee.schimke.composeai.preview") }');
+                const manifestDir = path.join(
+                    dir, 'samples', 'wear', 'build', 'compose-previews',
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
+                    path.join(manifestDir, 'previews.json'),
+                );
+
+                const service = new GradleService(dir, api);
+                await service.discoverPreviews('samples/wear');
+
+                assert.strictEqual(api.runCalls.length, 1);
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ':samples:wear:discoverPreviews',
+                );
+            }));
 
         it('uses cache for repeated calls within TTL', withTempDir(async (dir, api) => {
             fs.mkdirSync(path.join(dir, 'mod'));
@@ -342,6 +421,24 @@ describe('GradleService', () => {
                 /Gradle task .* failed/,
             );
         }));
+
+        it('throws TaskCancelledError (not generic failure) when vscode-gradle reports a cancelled task',
+            withTempDir(async (dir, api) => {
+                // vscode-gradle's gRPC layer rejects superseded tasks with
+                // a Status.CANCELLED error. That's a normal lifecycle event
+                // (a follow-up refresh replaced this one), not a build
+                // failure — callers need to be able to drop it silently.
+                api.nextRunResult = new Error('1 CANCELLED: Call cancelled');
+
+                const service = new GradleService(dir, api);
+                await assert.rejects(
+                    service.discoverPreviews('mod'),
+                    (err: unknown) => {
+                        assert.ok(err instanceof TaskCancelledError, 'expected TaskCancelledError');
+                        return true;
+                    },
+                );
+            }));
 
         it('throws JdkImageError when the failure output contains the jlink signature',
             withTempDir(async (dir, api) => {

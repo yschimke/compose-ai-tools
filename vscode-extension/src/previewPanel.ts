@@ -848,16 +848,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 setMessage('No @Preview functions found', 'empty');
                 return;
             }
-            // Clear transient owner messages now that we have cards. The
-            // 'loading' Building… banner gets clobbered here so cards aren't
-            // hidden under it while images stream in. 'extension'-owned
-            // messages (build errors, empty-state notices) are left alone —
-            // those are terminal states the extension is asserting and the
-            // caller wouldn't be sending setPreviews alongside them anyway.
-            if (message.dataset.owner && message.dataset.owner !== 'extension') {
-                setMessage('', message.dataset.owner);
-            }
-
             const newIds = new Set(previews.map(p => p.id));
             const existingCards = new Map();
             grid.querySelectorAll('.preview-card').forEach(card => {
@@ -907,6 +897,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     }
                     lastInsertedCard = card;
                 }
+            }
+
+            // Clear transient owner messages now that cards are in the DOM.
+            // The 'loading' Building… banner and the 'fallback' "Preparing
+            // previews…" placeholder both get cleared here. 'extension'-owned
+            // messages (build errors, empty-state notices) are left alone —
+            // those are terminal states the extension is asserting and the
+            // caller wouldn't be sending setPreviews alongside them anyway.
+            //
+            // Must run *after* cards are inserted: setMessage('', …) calls
+            // ensureNotBlank, which would re-set "Preparing previews…" if
+            // the grid still looked empty when the message was cleared.
+            if (message.dataset.owner && message.dataset.owner !== 'extension') {
+                setMessage('', message.dataset.owner);
             }
         }
 
