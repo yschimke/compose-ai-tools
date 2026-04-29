@@ -7,9 +7,12 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-mapfile -d '' staged < <(
-  git diff --cached --name-only --diff-filter=ACMR -z -- '*.kt' '*.kts'
-)
+# Portable replacement for `mapfile -d ''` — bash 3.2 (macOS system bash)
+# doesn't have mapfile.
+staged=()
+while IFS= read -r -d '' file; do
+  staged+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.kt' '*.kts')
 
 if [ ${#staged[@]} -eq 0 ]; then
   exit 0
