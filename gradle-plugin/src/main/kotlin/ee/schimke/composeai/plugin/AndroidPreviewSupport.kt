@@ -604,6 +604,72 @@ internal object AndroidPreviewSupport {
           copyAttributes(attributes, testConfig.attributes)
           extendsFrom(testConfig)
         }
+        // Force AndroidX KMP-published modules (lifecycle 2.8+, savedstate
+        // 1.3+, activity 1.10+ ship `-android` / `-desktop` / `-jvmstubs`
+        // siblings of the same coordinate) to their Android sibling on the
+        // renderer test JVM. Kotlin's `org.jetbrains.kotlin.platform.type`
+        // attribute (`androidJvm` vs `jvm`) is the official disambiguator,
+        // but its compatibility/disambiguation rules are only registered when
+        // the Kotlin plugin is applied — consumers that build Kotlin via AGP
+        // alone (e.g. WearTilesKotlin: tile-only app, only `kotlin.compose`
+        // applied through `compose-compiler`, no `kotlin.android` anywhere)
+        // never pick `androidJvm` and Gradle then selects the desktop variant.
+        // The desktop `ViewModelProvider` is the KMP rewrite (only
+        // `<init>(ViewModelProviderImpl)` survives — the legacy
+        // `(ViewModelStoreOwner, Factory)` constructor is gone), while
+        // `lifecycle-viewmodel-savedstate-android:2.8.7`'s
+        // `getSavedStateHandlesVM` bytecode at line 107 still calls that
+        // legacy constructor. Result: `NoSuchMethodError: 'void
+        // ViewModelProvider.<init>(ViewModelStoreOwner, ViewModelProvider$Factory)'`
+        // the first time `createAndroidComposeRule<ComponentActivity>()`
+        // launches the host activity, in the
+        // `ReportFragment` → `LifecycleRegistry` →
+        // `SavedStateHandleAttacher.onStateChanged` chain.
+        //
+        // Substitute by coordinate rather than attribute: setting
+        // `platform.type=androidJvm` on the config breaks resolution of
+        // pure-jvm artifacts like `kotlin-stdlib` (no `androidJvm` variant)
+        // because the compat rule isn't installed. Substitution is scoped to
+        // the rendererConfig only — consumer test runs are untouched. Re-using
+        // `requested.version` keeps us future-proof: any version Gradle picks
+        // for the `-desktop`/`-jvmstubs` sibling is what we re-route to the
+        // `-android` sibling, so this rule doesn't pin AndroidX to a stale
+        // floor.
+        //
+        // Scoped to `androidx.*` because every AndroidX KMP module that
+        // publishes a `-desktop` or `-jvmstubs` sibling also publishes an
+        // `-android` sibling at the same version — the convention is enforced
+        // upstream. Non-AndroidX `-jvm` artifacts (kotlinx-coroutines, okio,
+        // kotlin-stdlib) are genuinely JVM-only at the published name and
+        // must not be rewritten.
+        resolutionStrategy.eachDependency {
+          val req = requested
+          if (req.group.startsWith("androidx.")) {
+            val replacementSuffix =
+              when {
+                req.name.endsWith("-desktop") -> "-desktop"
+                req.name.endsWith("-jvmstubs") -> "-jvmstubs"
+                else -> null
+              }
+            if (replacementSuffix != null) {
+              useTarget(
+                mapOf(
+                  "group" to req.group,
+                  "name" to req.name.removeSuffix(replacementSuffix) + "-android",
+                  "version" to req.version,
+                )
+              )
+              because(
+                "Gradle resolved the `$replacementSuffix` KMP sibling on a config without the " +
+                  "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
+                  "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
+                  "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
+                  "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
+                  "removed in the KMP rewrite)."
+              )
+            }
+          }
+        }
         // Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
         // compiled against Hamcrest 1.3, whose `Matchers.java:33` invokes
         // `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — an explicit 2-arg
