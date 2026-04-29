@@ -41,11 +41,11 @@ Ktor specifically because:
 
 ## Module structure
 
-New top-level module `:tools:daemon-mcp` (mirroring the existing
+New top-level module `:daemon:mcp` (mirroring the existing
 `:daemon:harness` pattern):
 
 ```
-tools/daemon-mcp/
+daemon/mcp/
   build.gradle.kts
   src/main/kotlin/ee/schimke/composeai/daemon/mcp/
     DaemonMcpMain.kt          ← entry point: stdio by default, --http for HTTP server
@@ -311,7 +311,7 @@ provider) is JSON-RPC-over-stdio against an opaque `DaemonClient`.
 ### Stdio — the default for local agents
 
 ```bash
-$ claude mcp add compose-preview ./gradlew :tools:daemon-mcp:run
+$ claude mcp add compose-preview ./gradlew :daemon:mcp:run
 ```
 
 `StdioServerTransport()` from the SDK. Server's stdin/stdout speaks
@@ -322,7 +322,7 @@ visible in the parent's stderr without corrupting the wire.
 ### Streamable-HTTP — for remote / multi-agent setups
 
 ```bash
-$ ./gradlew :tools:daemon-mcp:run --args='--http=8080'
+$ ./gradlew :daemon:mcp:run --args='--http=8080'
 ```
 
 Ktor `embeddedServer(CIO, port = 8080) { mcp { server } }`. The MCP
@@ -474,9 +474,9 @@ priority" heuristic may be enough.
 
 ## Decisions to surface
 
-1. **Module name**: `:tools:daemon-mcp` (recommended; mirrors
+1. **Module name**: `:daemon:mcp` (recommended; mirrors
    `:daemon:harness`) vs `:tools:mcp-server` (less specific but
-   future-proofs for non-daemon MCP needs). Recommend `:tools:daemon-mcp`.
+   future-proofs for non-daemon MCP needs). Recommend `:daemon:mcp`.
 2. **Ktor engine**: CIO (smaller, coroutine-native) vs Netty (more
    mature). Recommend CIO; daemon-side traffic is tiny.
 3. **Tool naming**: `render_preview` (snake_case, MCP convention) vs
