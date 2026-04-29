@@ -20,6 +20,7 @@ object ResourceDiscovery {
     val resSourceRoots: List<File>,
     val densities: List<String>,
     val shapes: List<AdaptiveShape>,
+    val styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     /** Module-relative path to use as the [ManifestReference.source] root, e.g. `src/main`. */
     val sourceRootRelativePath: (File) -> String = { it.path },
   )
@@ -75,6 +76,7 @@ object ResourceDiscovery {
     densities: List<String>,
     shapes: List<AdaptiveShape>,
     resourceId: String,
+    styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
   ): List<ResourceCapture> {
     val out = linkedSetOf<ResourceCapture>()
     val baseQualifierSets =
@@ -87,15 +89,41 @@ object ResourceDiscovery {
         val combined = combineQualifiers(cleaned, density)
         when (type) {
           ResourceType.ADAPTIVE_ICON -> {
+            // Two-axis fan-out: every (shape × non-LEGACY style) plus one bare LEGACY capture
+            // (mask-independent — pre-O fallback ignores the system mask).
+            val maskedStyles = styles.filter { it != AdaptiveStyle.LEGACY }
             for (shape in shapes) {
+              for (style in maskedStyles) {
+                out +=
+                  ResourceCapture(
+                    variant = ResourceVariant(qualifiers = combined, shape = shape, style = style),
+                    renderOutput =
+                      renderOutputPath(
+                        resourceId = resourceId,
+                        qualifier = combined,
+                        shape = shape,
+                        style = style,
+                        extension = "png",
+                      ),
+                    cost = RESOURCE_ADAPTIVE_COST,
+                  )
+              }
+            }
+            if (AdaptiveStyle.LEGACY in styles) {
               out +=
                 ResourceCapture(
-                  variant = ResourceVariant(qualifiers = combined, shape = shape),
+                  variant =
+                    ResourceVariant(
+                      qualifiers = combined,
+                      shape = null,
+                      style = AdaptiveStyle.LEGACY,
+                    ),
                   renderOutput =
                     renderOutputPath(
                       resourceId = resourceId,
                       qualifier = combined,
-                      shape = shape,
+                      shape = null,
+                      style = AdaptiveStyle.LEGACY,
                       extension = "png",
                     ),
                   cost = RESOURCE_ADAPTIVE_COST,
@@ -111,6 +139,7 @@ object ResourceDiscovery {
                     resourceId = resourceId,
                     qualifier = combined,
                     shape = null,
+                    style = null,
                     extension = "gif",
                   ),
                 cost = RESOURCE_ANIMATED_COST,
@@ -125,6 +154,7 @@ object ResourceDiscovery {
                     resourceId = resourceId,
                     qualifier = combined,
                     shape = null,
+                    style = null,
                     extension = "png",
                   ),
                 cost = RESOURCE_STATIC_COST,
@@ -166,6 +196,7 @@ object ResourceDiscovery {
     resourceId: String,
     qualifier: String?,
     shape: AdaptiveShape?,
+    style: AdaptiveStyle?,
     extension: String,
   ): String {
     val (base, name) = resourceId.split('/', limit = 2).let { it[0] to it[1] }
@@ -174,8 +205,13 @@ object ResourceDiscovery {
     val parts = buildList {
       add(safeName)
       if (!safeQualifier.isNullOrEmpty()) add(safeQualifier)
-      if (shape != null) {
-        if (shape == AdaptiveShape.LEGACY) add("LEGACY") else add("SHAPE_${shape.name.lowercase()}")
+      if (shape != null) add("SHAPE_${shape.name.lowercase()}")
+      when (style) {
+        null,
+        AdaptiveStyle.FULL_COLOR -> Unit
+        AdaptiveStyle.THEMED_LIGHT -> add("themed-light")
+        AdaptiveStyle.THEMED_DARK -> add("themed-dark")
+        AdaptiveStyle.LEGACY -> add("LEGACY")
       }
     }
     return "renders/resources/$base/${parts.joinToString("_")}.$extension"
@@ -204,6 +240,7 @@ object ResourceDiscovery {
           densities = config.densities,
           shapes = config.shapes,
           resourceId = id,
+          styles = config.styles,
         )
       return ResourcePreview(
         id = id,

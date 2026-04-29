@@ -123,6 +123,7 @@ internal object AndroidPreviewSupport {
       variantName.set(variant.name)
       densities.set(extension.resourcePreviews.densities)
       shapes.set(extension.resourcePreviews.shapes)
+      styles.set(extension.resourcePreviews.styles)
       projectDirectory.set(projectRoot)
       outputFile.set(previewOutputDir.map { it.file("resources.json") })
     }

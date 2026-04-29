@@ -243,14 +243,41 @@ enum class ResourceType {
 
 /**
  * Adaptive-icon shape mask. Applied at render time as a canvas clip path — not a resource
- * qualifier. `LEGACY` falls back to the `<adaptive-icon android:icon=…>` slot when present, or to
- * the foreground rendered against a transparent background otherwise.
+ * qualifier. The mask only describes *what shape* the launcher would clip the icon to; the
+ * *contents* inside the mask (full-color foreground+background, or 2-tone themed monochrome) are a
+ * separate axis — see [AdaptiveStyle].
  */
 @Serializable
 enum class AdaptiveShape {
   CIRCLE,
+  /**
+   * Pixel / Material You default mask. Approximated with a superellipse-ish path (rounded rectangle
+   * with corner radius ≈ 50% of the half-width); good enough at preview densities without requiring
+   * a `Path` per-render.
+   */
+  SQUIRCLE,
   ROUNDED_SQUARE,
   SQUARE,
+}
+
+/**
+ * What goes inside the [AdaptiveShape] mask. Mirrors the two surfaces a launcher renders an
+ * adaptive icon at:
+ * - [FULL_COLOR] — composited foreground + background, the colour appearance you see in App Search
+ *   / app drawer.
+ * - [THEMED_LIGHT] / [THEMED_DARK] — the `<monochrome>` layer (Android 13+) tinted with a
+ *   wallpaper-derived 2-tone palette, the appearance launchers use on the home screen when "Themed
+ *   icons" is enabled. Tints come from the Material 3 baseline neutral scheme so the preview is
+ *   reproducible without a live wallpaper.
+ * - [LEGACY] — the pre-O fallback. Renders the `<adaptive-icon android:icon=…>` slot when the
+ *   consumer supplied one; otherwise the foreground against a transparent background. Single
+ *   capture per qualifier — [LEGACY] doesn't fan out across [AdaptiveShape].
+ */
+@Serializable
+enum class AdaptiveStyle {
+  FULL_COLOR,
+  THEMED_LIGHT,
+  THEMED_DARK,
   LEGACY,
 }
 
@@ -259,9 +286,17 @@ enum class AdaptiveShape {
  * was rendered under (see [ResourceQualifierParser]) — *not* the qualifier of any particular source
  * file: when a resource has both a default-qualifier file and qualified variants, AAPT picks
  * whichever matches the active configuration, and we record what we asked for.
+ *
+ * [shape] and [style] are independent axes for adaptive-icon captures. [style] =
+ * [AdaptiveStyle.LEGACY] always pairs with `shape = null` (legacy fallback ignores the mask); other
+ * styles always carry a shape. Both fields are `null` for non-adaptive resources.
  */
 @Serializable
-data class ResourceVariant(val qualifiers: String? = null, val shape: AdaptiveShape? = null)
+data class ResourceVariant(
+  val qualifiers: String? = null,
+  val shape: AdaptiveShape? = null,
+  val style: AdaptiveStyle? = null,
+)
 
 @Serializable
 data class ResourceCapture(

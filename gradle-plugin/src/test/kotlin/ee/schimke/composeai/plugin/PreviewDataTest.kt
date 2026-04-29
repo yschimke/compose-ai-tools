@@ -92,10 +92,36 @@ class PreviewDataTest {
               captures =
                 listOf(
                   ResourceCapture(
-                    variant = ResourceVariant(qualifiers = "xhdpi", shape = AdaptiveShape.CIRCLE),
+                    variant =
+                      ResourceVariant(
+                        qualifiers = "xhdpi",
+                        shape = AdaptiveShape.CIRCLE,
+                        style = AdaptiveStyle.FULL_COLOR,
+                      ),
                     renderOutput = "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
                     cost = RESOURCE_ADAPTIVE_COST,
-                  )
+                  ),
+                  ResourceCapture(
+                    variant =
+                      ResourceVariant(
+                        qualifiers = "xhdpi",
+                        shape = AdaptiveShape.SQUIRCLE,
+                        style = AdaptiveStyle.THEMED_LIGHT,
+                      ),
+                    renderOutput =
+                      "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png",
+                    cost = RESOURCE_ADAPTIVE_COST,
+                  ),
+                  ResourceCapture(
+                    variant =
+                      ResourceVariant(
+                        qualifiers = "xhdpi",
+                        shape = null,
+                        style = AdaptiveStyle.LEGACY,
+                      ),
+                    renderOutput = "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+                    cost = RESOURCE_ADAPTIVE_COST,
+                  ),
                 ),
             ),
           ),
