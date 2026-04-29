@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 #
-# Bootstrap installer for the compose-preview skill bundle.
+# Bootstrap installer for the compose-preview skill bundles.
 #
-# Installs into ~/.claude/skills/compose-preview/ so Claude Code's skill
-# discovery finds it. Layout:
+# Installs two sibling skills under ~/.claude/skills/ so Claude Code's
+# skill discovery finds them:
 #
-#   ~/.claude/skills/compose-preview/
+#   ~/.claude/skills/compose-preview/                  (renderer + CLI)
 #   |-- SKILL.md                                       (from skill tarball)
 #   |-- design/...                                     (from skill tarball)
 #   |-- cli/compose-preview-<ver>/bin/compose-preview  (from CLI tarball)
 #   `-- bin/compose-preview -> ../cli/.../compose-preview
+#
+#   ~/.claude/skills/compose-preview-review/           (PR-review workflows)
+#   |-- SKILL.md                                       (from skill tarball)
+#   `-- design/...                                     (from skill tarball)
 #
 # Also symlinks ~/.local/bin/compose-preview so the CLI is on PATH without
 # the consumer having to know the skill-bundle layout. Idempotent: rerunning
@@ -257,14 +261,18 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 CLI_ASSET="compose-preview-${VERSION}.tar.gz"
-SKILL_ASSET="compose-preview-skill-${VERSION}.tar.gz"
 CLI_URL="https://github.com/$REPO/releases/download/v${VERSION}/${CLI_ASSET}"
-SKILL_URL="https://github.com/$REPO/releases/download/v${VERSION}/${SKILL_ASSET}"
 
 CLI_DEST="$SKILL_DIR/cli"
 LAUNCHER="$CLI_DEST/compose-preview-${VERSION}/bin/compose-preview"
 SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
 SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
+
+# Sibling skill — same parent dir as $SKILL_DIR. Bundle covers PR-review
+# workflows; pairs with compose-preview but ships separately so an agent
+# loading just one of them doesn't pull in the other's content.
+REVIEW_SKILL_DIR="$(dirname "$SKILL_DIR")/compose-preview-review"
+REVIEW_SKILL_VERSION_FILE="$REVIEW_SKILL_DIR/.skill-version"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -304,42 +312,59 @@ maybe_write_env_file() {
   fi
 }
 
+# Install one skill tarball into a target dir. Best-effort: older releases
+# may not ship every skill bundle, so a missing asset only logs a warning.
+# Skip re-download when the marker matches. Otherwise wipe the specific
+# top-level paths carried by the new tarball (so stale files from an older
+# version's skill bundle don't linger) before extracting. Anything the
+# user has added outside those paths is preserved.
+install_skill_bundle() {
+  local name="$1" dir="$2"
+  local asset="${name}-skill-${VERSION}.tar.gz"
+  local url="https://github.com/$REPO/releases/download/v${VERSION}/${asset}"
+  local marker="$dir/.skill-version"
+  local tmpfile="$TMP/${name}-skill.tar.gz"
+
+  mkdir -p "$dir"
+
+  if [[ "$(cat "$marker" 2>/dev/null || true)" == "$VERSION" ]]; then
+    log "skill bundle $name@$VERSION already extracted — skipping download"
+    return 0
+  fi
+  if ! curl -fL --progress-bar -o "$tmpfile" "$url" 2>/dev/null; then
+    log "warning: $asset not found on the release; skipping"
+    return 1
+  fi
+  log "refreshing skill bundle $name in $dir"
+  while IFS= read -r entry; do
+    [[ -n "$entry" && "$entry" != "." && "$entry" != ".." ]] || continue
+    rm -rf "$dir/$entry"
+  done < <(tar -tzf "$tmpfile" | sed -e 's|^\./||' -e 's|/.*||' | awk 'NF' | sort -u)
+  tar -xzf "$tmpfile" -C "$dir"
+  printf '%s\n' "$VERSION" > "$marker"
+}
+
 # ---- Everything-already-installed short-circuit --------------------------
-# Skill version marker + CLI launcher + both symlinks all line up -> done.
+# Both skill markers + CLI launcher + both symlinks all line up -> done.
 
 if [[ -x "$LAUNCHER" \
    && "$(readlink "$SKILL_LAUNCHER" 2>/dev/null || true)" == *"compose-preview-${VERSION}"* \
    && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" \
-   && "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
+   && "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" \
+   && "$(cat "$REVIEW_SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
   log "compose-preview $VERSION already installed and linked"
   "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
   maybe_write_env_file
   exit 0
 fi
 
-mkdir -p "$SKILL_DIR"
+# ---- Skill tarballs ------------------------------------------------------
+# compose-preview is the primary skill (also hosts the CLI launcher).
+# compose-preview-review is the sibling skill for PR-review workflows.
 
-# ---- Skill tarball (best-effort: older releases don't ship one) ----------
-# Skip re-download when the marker matches. Otherwise wipe the specific
-# top-level paths carried by the new tarball (so stale files from an older
-# version's skill bundle don't linger) before extracting. Anything the
-# user has added outside those paths is preserved.
-
-if [[ "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
-  log "skill bundle $VERSION already extracted — skipping download"
-elif curl -fL --progress-bar -o "$TMP/skill.tar.gz" "$SKILL_URL" 2>/dev/null; then
-  log "refreshing skill bundle in $SKILL_DIR"
-  # Prune only the top-level entries the new tarball actually carries.
-  while IFS= read -r entry; do
-    [[ -n "$entry" && "$entry" != "." && "$entry" != ".." ]] || continue
-    rm -rf "$SKILL_DIR/$entry"
-  done < <(tar -tzf "$TMP/skill.tar.gz" | sed -e 's|^\./||' -e 's|/.*||' | awk 'NF' | sort -u)
-  tar -xzf "$TMP/skill.tar.gz" -C "$SKILL_DIR"
-  printf '%s\n' "$VERSION" > "$SKILL_VERSION_FILE"
-else
-  log "warning: $SKILL_ASSET not found on the release; skipping skill files"
-  log "         (CLI still installs; release predates skill packaging)"
-fi
+install_skill_bundle "compose-preview" "$SKILL_DIR" \
+  || log "         (CLI still installs; release predates skill packaging)"
+install_skill_bundle "compose-preview-review" "$REVIEW_SKILL_DIR" || true
 
 # ---- CLI tarball ---------------------------------------------------------
 

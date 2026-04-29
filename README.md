@@ -5,12 +5,12 @@ agents can see what they're changing. Works with Jetpack Compose (Android,
 via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
 
 Renders include
-[paused-clock animation captures](skills/compose-preview/SKILL.md#animations-and-the-paused-frame-clock-android-only)
+[paused-clock animation captures](skills/compose-preview/design/CAPTURE_MODES.md#animations-and-the-paused-frame-clock-android-only)
 (GIF or single frame) and opt-in
-[ATF accessibility checks](skills/compose-preview/SKILL.md#accessibility-a11y)
+[ATF accessibility checks](skills/compose-preview/design/A11Y.md)
 with annotated overlays.
 
-Also renders [Android XML resources](skills/compose-preview/SKILL.md#android-xml-resource-previews) —
+Also renders [Android XML resources](skills/compose-preview/design/RESOURCE_PREVIEWS.md) —
 vector drawables, adaptive launcher icons, animated-vector drawables — and indexes the icon
 attributes in `AndroidManifest.xml` so tooling can link manifest lines to the same rendered PNG.
 Modules without any matching resources self-no-op, so this comes along for free with the plugin.
@@ -94,7 +94,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure, plugin configuration.
 - [CI install action](.github/actions/install/README.md) — pin the CLI on `$PATH` in any GitHub Actions job, with version-catalog + Renovate recipes.
 - [Cloud sandbox setup](skills/compose-preview/design/CLAUDE_CLOUD.md) — Claude Code on the web, network allowlist.
-- [CI workflows](skills/compose-preview/design/CI_PREVIEWS.md) — `preview_main` baselines, PR diff comments.
+- [CI workflows](skills/compose-preview-review/design/CI_PREVIEWS.md) — `preview_main` baselines, PR diff comments.
 - [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; consuming `-SNAPSHOT` builds.
 - [Architecture (contributor)](docs/AGENTS.md) — class-by-class map of the four-stage pipeline.
 - [Releases](https://github.com/yschimke/compose-ai-tools/releases) ·
