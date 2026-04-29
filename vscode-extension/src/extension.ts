@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { GradleService, GradleApi } from './gradleService';
+import { GradleService, GradleApi, TaskCancelledError } from './gradleService';
 import { JdkImageError } from './jdkImageErrorDetector';
 import { findPluginAppliedAncestor } from './pluginDetection';
 import { PreviewPanel } from './previewPanel';
@@ -797,6 +797,13 @@ async function refresh(
         // "populate then go blank" regression.
     } catch (err: unknown) {
         if (abort.signal.aborted) { return; }
+        // Cancellation = a follow-up refresh superseded this one. The new
+        // refresh owns the panel state from here; surfacing a "FAILED" toast
+        // would be misleading and noisy.
+        if (err instanceof TaskCancelledError) {
+            logLine(`cancelled — superseded by a newer refresh`);
+            return;
+        }
         if (err instanceof JdkImageError) {
             logLine(`FAILED (jlink missing): ${err.finding.jlinkPath}`);
             panel.postMessage({

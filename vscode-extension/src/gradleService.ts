@@ -67,6 +67,39 @@ function expandParamCaptures(
 const TASK_TIMEOUT_MS = 5 * 60 * 1000;
 const MANIFEST_CACHE_TTL_MS = 30_000;
 
+/**
+ * Distinguishes cancellation (a normal lifecycle event when a new refresh
+ * supersedes an in-flight one) from real build failures, so callers can
+ * silently drop cancellation without surfacing a misleading "FAILED" toast.
+ *
+ * vscode-gradle's gRPC layer rejects with a `Status.CANCELLED` error whose
+ * `.message` looks like `"1 CANCELLED: Call cancelled"` — match on that,
+ * not on a less stable substring.
+ */
+export class TaskCancelledError extends Error {
+    constructor(public readonly task: string) {
+        super(`Gradle task ${task} was cancelled.`);
+        this.name = 'TaskCancelledError';
+    }
+}
+
+const CANCELLED_RE = /\bCANCELLED\b/i;
+
+// Module identifiers are stored as forward-slash relative paths from the
+// workspace root (e.g. `samples/wear`) so the same string serves both as a
+// Gradle project segment and a filesystem path through `path.join`. Gradle
+// task names take the colon-separated form (`:samples:wear:foo`) — convert
+// at task-name construction sites only.
+function gradleProjectPath(module: string): string {
+    return ':' + module.split('/').join(':');
+}
+
+const SCAN_SKIP_DIRS = new Set([
+    'node_modules', 'build', 'gradle', 'src', 'out', 'dist',
+    '.compose-preview-history',
+]);
+const SCAN_MAX_DEPTH = 4;
+
 export interface Logger {
     appendLine(value: string): void;
     append(value: string): void;
@@ -127,7 +160,7 @@ export class GradleService {
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
             return cached.manifest;
         }
-        await this.runTask(`:${module}:discoverPreviews`);
+        await this.runTask(`${gradleProjectPath(module)}:discoverPreviews`);
         const manifest = this.readManifest(module);
         if (manifest) {
             this.manifestCache.set(module, { manifest, timestamp: Date.now() });
@@ -158,7 +191,7 @@ export class GradleService {
     ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module);
         await this.runTask(
-            `:${module}:renderAllPreviews`,
+            `${gradleProjectPath(module)}:renderAllPreviews`,
             [`-PcomposePreview.tier=${tier}`],
         );
         const manifest = this.readManifest(module);
@@ -179,10 +212,11 @@ export class GradleService {
      * diagnostics for this module", not as an empty finding set.
      */
     async runDoctor(module: string): Promise<DoctorModuleReport | null> {
+        const task = `${gradleProjectPath(module)}:composePreviewDoctor`;
         try {
-            await this.runTask(`:${module}:composePreviewDoctor`);
+            await this.runTask(task);
         } catch (e) {
-            this.logger.appendLine(`[doctor] :${module}:composePreviewDoctor failed: ${(e as Error).message}`);
+            this.logger.appendLine(`[doctor] ${task} failed: ${(e as Error).message}`);
             return null;
         }
         const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'doctor.json');
@@ -402,8 +436,13 @@ export class GradleService {
     }
 
     /**
-     * Returns the names of direct-child subdirectories whose module applies
-     * the Compose Preview plugin. Merges two signals:
+     * Returns module identifiers — forward-slash relative paths from the
+     * workspace root, e.g. `samples/wear` — for every Gradle subproject that
+     * applies the Compose Preview plugin. Walks the directory tree up to
+     * [SCAN_MAX_DEPTH] so nested modules (`:samples:wear`) are reachable, not
+     * just direct children.
+     *
+     * Two signals are merged at every level:
      *
      *   1. `<module>/build/compose-previews/applied.json` — authoritative
      *      marker written by the `composePreviewApplied` Gradle task. Covers
@@ -417,28 +456,43 @@ export class GradleService {
      * others (applied but not yet built) to disappear from the list.
      * Projects that only apply via a catalog alias show up as empty until
      * the bootstrap marker run completes — see [bootstrapAppliedMarkers].
+     *
+     * Recursion continues past a matched directory because Gradle allows
+     * modules to nest (`:foo:bar` inside `:foo`). [SCAN_SKIP_DIRS] prunes
+     * source / output trees that can't contain a module root.
      */
     findPreviewModules(): string[] {
         const found = new Set<string>();
-        let entries: fs.Dirent[];
-        try {
-            entries = fs.readdirSync(this.workspaceRoot, { withFileTypes: true });
-        } catch {
-            return [];
-        }
-        for (const entry of entries) {
-            if (!entry.isDirectory()) { continue; }
-            const dir = entry.name;
-            const marker = path.join(
-                this.workspaceRoot, dir, 'build', 'compose-previews', 'applied.json',
-            );
-            if (fs.existsSync(marker)) { found.add(dir); continue; }
-            const buildFile = path.join(this.workspaceRoot, dir, 'build.gradle.kts');
+        const walk = (relDir: string, depth: number): void => {
+            if (depth > SCAN_MAX_DEPTH) { return; }
+            const absDir = relDir ? path.join(this.workspaceRoot, relDir) : this.workspaceRoot;
+            let entries: fs.Dirent[];
             try {
-                const content = fs.readFileSync(buildFile, 'utf-8');
-                if (appliesPlugin(content)) { found.add(dir); }
-            } catch { /* skip */ }
-        }
+                entries = fs.readdirSync(absDir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+            for (const entry of entries) {
+                if (!entry.isDirectory()) { continue; }
+                if (entry.name.startsWith('.')) { continue; }
+                if (SCAN_SKIP_DIRS.has(entry.name)) { continue; }
+                const childRel = relDir ? `${relDir}/${entry.name}` : entry.name;
+                const marker = path.join(
+                    this.workspaceRoot, childRel, 'build', 'compose-previews', 'applied.json',
+                );
+                if (fs.existsSync(marker)) {
+                    found.add(childRel);
+                } else {
+                    const buildFile = path.join(this.workspaceRoot, childRel, 'build.gradle.kts');
+                    try {
+                        const content = fs.readFileSync(buildFile, 'utf-8');
+                        if (appliesPlugin(content)) { found.add(childRel); }
+                    } catch { /* skip */ }
+                }
+                walk(childRel, depth + 1);
+            }
+        };
+        walk('', 0);
         return [...found].sort();
     }
 
@@ -467,9 +521,19 @@ export class GradleService {
 
     resolveModule(filePath: string): string | null {
         const relative = path.relative(this.workspaceRoot, filePath);
-        const topDir = relative.split(path.sep)[0];
-        if (topDir && this.findPreviewModules().includes(topDir)) {
-            return topDir;
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+            return null;
+        }
+        // Split on either separator so the same path works on Windows and POSIX.
+        const segments = relative.split(/[\\/]+/).filter((s: string) => s.length > 0);
+        if (segments.length < 2) { return null; }
+        const modules = new Set(this.findPreviewModules());
+        // Longest-prefix match: walk from deepest possible module path to
+        // shallowest. With nested modules (e.g. `:foo:bar` inside `:foo`)
+        // we prefer the more specific match.
+        for (let n = segments.length - 1; n >= 1; n--) {
+            const candidate = segments.slice(0, n).join('/');
+            if (modules.has(candidate)) { return candidate; }
         }
         return null;
     }
@@ -512,7 +576,16 @@ export class GradleService {
         }).then(
             () => { this.logger.appendLine(`> ${task} completed`); },
             (err) => {
-                this.logger.appendLine(`> ${task} FAILED: ${err?.message ?? err}`);
+                const message = err?.message ?? String(err);
+                // vscode-gradle reports a superseded task as a gRPC CANCELLED
+                // error — that's the normal "new refresh replaced this one"
+                // path, not a build failure. Log it differently and throw a
+                // typed error so callers can drop it silently.
+                if (CANCELLED_RE.test(message)) {
+                    this.logger.appendLine(`> ${task} cancelled`);
+                    throw new TaskCancelledError(task);
+                }
+                this.logger.appendLine(`> ${task} FAILED: ${message}`);
                 detector.end();
                 const finding = detector.getFinding();
                 if (finding) {
