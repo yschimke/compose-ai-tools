@@ -79,7 +79,34 @@ fun main(args: Array<String>) {
     } else {
       DesktopHost(userClassloaderHolder = userClassloaderHolder)
     }
-  val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)
+  // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
+  // `composeai.daemon.cheapSignalFiles` (set by the gradle plugin's composePreviewDaemonStart).
+  // Authoritative classpath comes from this JVM's own `java.class.path`. When the cheap-signal
+  // sysprop is unset (in-process tests, ad-hoc launches), the fingerprint is null and the
+  // pre-B2.1 no-op behaviour holds.
+  val classpathFingerprint: ClasspathFingerprint? =
+    ClasspathFingerprint.parseCheapSignalFilesSysprop()
+      .takeIf { it.isNotEmpty() }
+      ?.let { cheap ->
+        val classpath =
+          (System.getProperty("java.class.path") ?: "")
+            .split(File.pathSeparator)
+            .filter { it.isNotBlank() }
+            .map { File(it) }
+        System.err.println(
+          "compose-ai-tools desktop daemon: ClasspathFingerprint active " +
+            "(cheap=${cheap.size}, classpath=${classpath.size})"
+        )
+        ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
+      }
+
+  val server =
+    JsonRpcServer(
+      input = System.`in`,
+      output = realOut,
+      host = host,
+      classpathFingerprint = classpathFingerprint,
+    )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)
 

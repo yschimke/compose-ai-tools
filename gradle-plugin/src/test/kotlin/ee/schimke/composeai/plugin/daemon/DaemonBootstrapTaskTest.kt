@@ -110,6 +110,46 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
+  fun `descriptor encodes B2_1 cheapSignalFiles sysprop verbatim`() {
+    // B2.1 — the Tier-1 ClasspathFingerprint design (DESIGN § 8) requires the gradle plugin to
+    // surface the cheap-signal file set to the daemon JVM. This test pins the contract that
+    // whatever value is set propagates verbatim through the descriptor.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val cheapPaths =
+      listOf(
+        "/abs/gradle/libs.versions.toml",
+        "/abs/build.gradle.kts",
+        "/abs/settings.gradle.kts",
+        "/abs/gradle.properties",
+      )
+    val task =
+      project.tasks.register("composePreviewDaemonStart", DaemonBootstrapTask::class.java) {
+        modulePath.set(":x")
+        variant.set("debug")
+        daemonEnabled.set(true)
+        maxHeapMb.set(512)
+        maxRendersPerSandbox.set(50)
+        warmSpare.set(true)
+        mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        jvmArgs.set(emptyList())
+        systemProperties.set(
+          mapOf("composeai.daemon.cheapSignalFiles" to cheapPaths.joinToString(File.pathSeparator))
+        )
+        workingDirectory.set(tempDir.root.absolutePath)
+        manifestPath.set("/abs/previews.json")
+        outputFile.set(outFile)
+      }
+
+    task.get().emit()
+
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.systemProperties).containsKey("composeai.daemon.cheapSignalFiles")
+    val emitted = descriptor.systemProperties["composeai.daemon.cheapSignalFiles"] ?: ""
+    cheapPaths.forEach { assertThat(emitted).contains(it) }
+  }
+
+  @Test
   fun `descriptor honours enabled flag from extension wiring`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")

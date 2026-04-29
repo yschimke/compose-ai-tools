@@ -1290,6 +1290,15 @@ internal object AndroidPreviewSupport {
           val userClassDirs = classpathEntries.filter { entry ->
             userClassMarkers.any { marker -> entry.startsWith(marker) }
           }
+          // B2.1 — emit `composeai.daemon.cheapSignalFiles` so the daemon can build a Tier-1
+          // ClasspathFingerprint at startup. Set per DESIGN § 8: `libs.versions.toml`, every
+          // `build.gradle.kts` / `build.gradle` reachable from the root project's allprojects,
+          // `settings.gradle.kts` / `settings.gradle`, `gradle.properties`, `local.properties`.
+          // The list is built at task-action time (so newly-added subproject scripts since
+          // configuration are seen) — see the `cheap-signal evolution` paragraph in the B2.1
+          // KDoc. Colon-delimited; empty when none of the canonical files exist on disk (rare;
+          // most real Android projects have at least `build.gradle.kts` + `settings.gradle.kts`).
+          val cheapSignalFiles = collectCheapSignalFiles(project)
           val daemonProps =
             linkedMapOf(
               "composeai.daemon.protocolVersion" to "1",
@@ -1303,6 +1312,8 @@ internal object AndroidPreviewSupport {
               "composeai.daemon.modulePath" to project.path,
               "composeai.daemon.userClassDirs" to
                 userClassDirs.joinToString(java.io.File.pathSeparator),
+              "composeai.daemon.cheapSignalFiles" to
+                cheapSignalFiles.joinToString(java.io.File.pathSeparator) { it.absolutePath },
             )
           LinkedHashMap(base).apply { putAll(daemonProps) }
         }
@@ -1539,5 +1550,40 @@ internal object AndroidPreviewSupport {
           "to let the plugin add them automatically."
       )
     }
+  }
+
+  /**
+   * B2.1 — collects the cheap-signal file set per
+   * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
+   * `gradle/libs.versions.toml`, every `build.gradle.kts` / `build.gradle` reachable from the root
+   * project's allprojects, `settings.gradle.kts` / `settings.gradle`, `gradle.properties`,
+   * `local.properties`. Only files that exist on disk are returned (a missing `local.properties` is
+   * the common case in CI; we don't want a ghost path in the daemon's hash baseline).
+   *
+   * **Cheap-signal evolution.** The set is computed at task-action time, not at configuration time,
+   * so a `build.gradle.kts` added under a freshly-included subproject *before* the next
+   * `composePreviewDaemonStart` re-run is picked up. Subprojects added *after* the daemon already
+   * spawned with the previous list won't be in the daemon's baseline — but adding a subproject is
+   * itself a `settings.gradle.kts` edit, which IS in the cheap-signal set, so the very edit that
+   * adds it triggers the Tier-1 dirty path. Net: no missed-dirty case under realistic editor
+   * workflows; the only edge case is hand-creating a `subproject/build.gradle.kts` without touching
+   * `settings.gradle.kts`, which would require manual Gradle re-run anyway.
+   */
+  private fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> {
+    val out = LinkedHashSet<java.io.File>()
+    val rootProject = project.rootProject
+    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
+    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
+      .forEach { out += rootProject.file(it) }
+    rootProject.allprojects.forEach { sub ->
+      out += sub.file("build.gradle.kts")
+      out += sub.file("build.gradle")
+    }
+    // Only emit paths that actually exist — missing files contribute their absolute path string
+    // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
+    // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
+    // daemon's [ClasspathFingerprint] handles missing files defensively even when they are in
+    // its list, but the gradle plugin's role is to feed it real paths only.
+    return out.filter { it.isFile }
   }
 }

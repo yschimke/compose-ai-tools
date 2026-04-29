@@ -208,17 +208,17 @@ object ClassloaderForensics {
     // different moduleHash (same JAR path, different bytes — instrumentation drift, version
     // skew). Identity-hash-only differences within the same loader type are routed to
     // [identityNoise] for visibility without being flagged as a problem.
-    val smokingGuns =
-      classDiffs.filter { it.classloaderTypeChanged || it.codeSourceChanged || it.moduleHashChanged }
+    val smokingGuns = classDiffs.filter {
+      it.classloaderTypeChanged || it.codeSourceChanged || it.moduleHashChanged
+    }
     val instrumentationDiffs = classDiffs.filter { it.instrumentedFlagChanged }
-    val identityNoise =
-      classDiffs.filter {
-        it.classloaderIdentityChanged &&
-          !it.classloaderTypeChanged &&
-          !it.codeSourceChanged &&
-          !it.moduleHashChanged &&
-          !it.instrumentedFlagChanged
-      }
+    val identityNoise = classDiffs.filter {
+      it.classloaderIdentityChanged &&
+        !it.classloaderTypeChanged &&
+        !it.codeSourceChanged &&
+        !it.moduleHashChanged &&
+        !it.instrumentedFlagChanged
+    }
     val otherChanges = classDiffs.filter {
       it.anyChange() && it !in smokingGuns && it !in instrumentationDiffs && it !in identityNoise
     }

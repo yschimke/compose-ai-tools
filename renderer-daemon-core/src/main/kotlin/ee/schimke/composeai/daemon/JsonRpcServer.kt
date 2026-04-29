@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
+import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InitializeParams
@@ -76,6 +78,21 @@ class JsonRpcServer(
   private val historyDir: String = DEFAULT_HISTORY_DIR,
   private val idleTimeoutMs: Long =
     System.getProperty(IDLE_TIMEOUT_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_TIMEOUT_MS,
+  /**
+   * B2.1 Tier-1 fingerprint detector. When non-null, the server captures a [Snapshot] at
+   * construction time and re-checks it on every `fileChanged({ kind: "classpath" })` notification;
+   * a mismatch triggers a one-shot `classpathDirty` notification and a graceful exit within
+   * [classpathDirtyGraceMs]. When null (the harness's fake-mode scenarios, the in-process
+   * integration tests) the classpath path stays a no-op — same as pre-B2.1 behaviour.
+   */
+  private val classpathFingerprint: ClasspathFingerprint? = null,
+  /**
+   * Grace window between emitting `classpathDirty` and calling [onExit]. PROTOCOL.md § 6 documents
+   * this as `daemon.classpathDirtyGraceMs`, default 2000ms. Public so tests can shorten it.
+   */
+  private val classpathDirtyGraceMs: Long =
+    System.getProperty(CLASSPATH_DIRTY_GRACE_PROP)?.toLongOrNull()
+      ?: DEFAULT_CLASSPATH_DIRTY_GRACE_MS,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -88,6 +105,18 @@ class JsonRpcServer(
   private val shutdownRequested = AtomicBoolean(false)
   private val running = AtomicBoolean(true)
   private val exitInvoked = AtomicBoolean(false)
+
+  /**
+   * Fingerprint reference snapshot — captured once at construction (so it reflects the disk state
+   * the daemon was launched against). Null when [classpathFingerprint] is null.
+   */
+  private val classpathSnapshot: ClasspathFingerprint.Snapshot? = classpathFingerprint?.snapshot()
+
+  /**
+   * One-shot guard so a flurry of `fileChanged({ kind: "classpath" })` notifications doesn't emit
+   * `classpathDirty` repeatedly. PROTOCOL.md § 6: "Sent at most once per daemon lifetime."
+   */
+  private val classpathDirtyEmitted = AtomicBoolean(false)
 
   /** Outbound frame queue. SHUTDOWN_SENTINEL is the writer's poison pill. */
   private val outbound = LinkedBlockingQueue<ByteArray>()
@@ -279,8 +308,10 @@ class JsonRpcServer(
             // Leak detection (B2.4) not wired yet — empty list = unavailable.
             leakDetection = emptyList<LeakDetectionMode>(),
           ),
-        // B2.1 (ClasspathFingerprint) replaces this with a real SHA-256.
-        classpathFingerprint = "",
+        // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
+        // `classpathDirty` notifications against the daemon's known-at-startup state. Empty
+        // string when no fingerprint was wired (fake-mode / pre-B2.1 callers).
+        classpathFingerprint = classpathSnapshot?.classpathHash ?: "",
         manifest =
           Manifest(
             // B2.2 (IncrementalDiscovery) replaces this with the real path
@@ -304,6 +335,16 @@ class JsonRpcServer(
         )
         return
       }
+    if (classpathDirtyEmitted.get()) {
+      // PROTOCOL.md § 5: after `classpathDirty` we refuse all further `renderNow` with the
+      // documented error code, and the daemon proceeds toward exit.
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_CLASSPATH_DIRTY,
+        message = "classpath fingerprint changed; daemon is exiting — re-bootstrap required",
+      )
+      return
+    }
     if (shutdownRequested.get()) {
       sendErrorResponse(
         id = req.id,
@@ -523,8 +564,7 @@ class JsonRpcServer(
         host.userClassloaderHolder?.swap()
       }
       FileKind.CLASSPATH -> {
-        // Existing classpathDirty path lands with B2.1 (`ClasspathFingerprint`). Until then a
-        // classpath change is observed only via daemon respawn.
+        handleClasspathFileChanged(params)
       }
       FileKind.RESOURCE -> {
         // B2.0 v1 conservative: mark all previews stale. The daemon does not yet own its preview
@@ -535,8 +575,110 @@ class JsonRpcServer(
     }
   }
 
+  /**
+   * Tier-1 dirty-detection (DESIGN § 8) — runs the cheap → authoritative cascade and emits
+   * `classpathDirty` + initiates a graceful exit when the classpath has truly drifted.
+   *
+   * Cascade:
+   * 1. **No fingerprint configured** (e.g. fake-mode harness, the in-process integration test) —
+   *    no-op; pre-B2.1 behaviour.
+   * 2. **Cheap hash unchanged** — the saved file's bytes match what they were at startup. Common
+   *    case: editor saved a file but no actual content drift (timestamp-only touch). No-op.
+   * 3. **Cheap hash drifted, authoritative classpath hash unchanged** — a build-script edit
+   *    (comment, formatting) that doesn't affect the resolved JAR list. Update the stored cheap
+   *    hash so we don't keep re-walking the classpath, and no-op. (We do NOT emit `classpathDirty`
+   *    — the daemon's classloader is still valid.)
+   * 4. **Both drifted** — emit `classpathDirty` and start the graceful-exit timer.
+   */
+  private fun handleClasspathFileChanged(params: FileChangedParams) {
+    val fingerprint = classpathFingerprint ?: return
+    val baseline = classpathSnapshot ?: return
+    if (classpathDirtyEmitted.get()) {
+      // Already firing — additional notifications collapse into the in-flight exit.
+      return
+    }
+    val freshCheap = fingerprint.cheapHash()
+    if (freshCheap == lastObservedCheapHash) {
+      // Cheap signal stable since last check (or matches startup). False alarm.
+      return
+    }
+    val freshAuthoritative = fingerprint.classpathHash()
+    if (freshAuthoritative == baseline.classpathHash) {
+      // Cheap drifted but the resolved classpath did not. Common case: the user edited a comment
+      // in build.gradle.kts. Update the cheap baseline to avoid re-walking the classpath JAR list
+      // on every subsequent fileChanged for this same edit, and no-op.
+      lastObservedCheapHash = freshCheap
+      return
+    }
+    // Both drifted — Tier-1 fired.
+    triggerClasspathDirty(
+      reason = ClasspathDirtyReason.FINGERPRINT_MISMATCH,
+      detail =
+        "cheapHash=$freshCheap (was=${baseline.cheapHash}); " +
+          "classpathHash=$freshAuthoritative (was=${baseline.classpathHash})",
+      changedPath = params.path,
+    )
+  }
+
+  /**
+   * Emits the one-shot `classpathDirty` notification and schedules a graceful exit. Honours the
+   * no-mid-render-cancellation invariant: the exit thread waits for [inFlightRenders] to drain
+   * (bounded by [classpathDirtyGraceMs]) before tearing the host down. Subsequent `renderNow`
+   * requests are refused with [ERR_CLASSPATH_DIRTY].
+   */
+  private fun triggerClasspathDirty(
+    reason: ClasspathDirtyReason,
+    detail: String,
+    changedPath: String? = null,
+  ) {
+    if (!classpathDirtyEmitted.compareAndSet(false, true)) return
+    val params =
+      ClasspathDirtyParams(
+        reason = reason,
+        detail = detail,
+        changedPaths = changedPath?.let { listOf(it) },
+      )
+    sendNotification("classpathDirty", encode(ClasspathDirtyParams.serializer(), params))
+    // Mark the queue closed so any racing `renderNow` is rejected with the documented error code.
+    shutdownRequested.set(true)
+    Thread(
+        {
+          // Wait up to the grace window for the writer to flush the notification and any
+          // in-flight renders to drain. We deliberately do NOT abort renders — the
+          // no-mid-render-cancellation invariant from DESIGN § 9 still applies.
+          val deadline = System.currentTimeMillis() + classpathDirtyGraceMs
+          while (System.currentTimeMillis() < deadline) {
+            if (outbound.isEmpty() && inFlightRenders.isEmpty()) break
+            try {
+              Thread.sleep(20)
+            } catch (_: InterruptedException) {
+              Thread.currentThread().interrupt()
+              break
+            }
+          }
+          running.set(false)
+          cleanShutdown()
+          invokeExit(0)
+        },
+        "compose-ai-daemon-classpath-dirty-exit",
+      )
+      .apply { isDaemon = false }
+      .start()
+  }
+
+  /**
+   * Cached cheap hash from the most recent observation — starts at the startup snapshot's value and
+   * is bumped only when a cheap-drifted-but-authoritative-stable false alarm fires (case 3 in
+   * [handleClasspathFileChanged]). All other paths leave it alone, so a flurry of fileChanged
+   * notifications for the same touch-but-no-drift event collapses into a single hash recompute.
+   */
+  @Volatile private var lastObservedCheapHash: String? = classpathSnapshot?.cheapHash
+
   private fun handleExit() {
-    val exitCode = if (shutdownRequested.get()) 0 else 1
+    // 0 if the client orchestrated the exit (shutdown received) OR we already initiated a
+    // graceful classpath-dirty exit. 1 otherwise (client sent `exit` without `shutdown` first,
+    // PROTOCOL.md § 3 — that path is a protocol violation).
+    val exitCode = if (shutdownRequested.get() || classpathDirtyEmitted.get()) 0 else 1
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
@@ -682,6 +824,10 @@ class JsonRpcServer(
     const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
     const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L
 
+    /** PROTOCOL.md § 6 — `daemon.classpathDirtyGraceMs`, default 2000ms. */
+    const val CLASSPATH_DIRTY_GRACE_PROP: String = "composeai.daemon.classpathDirtyGraceMs"
+    const val DEFAULT_CLASSPATH_DIRTY_GRACE_MS: Long = 2_000L
+
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —
      * but the shutdown response will be sent.
@@ -698,6 +844,9 @@ class JsonRpcServer(
     const val ERR_INVALID_PARAMS: Int = -32602
     const val ERR_INTERNAL: Int = -32603
     const val ERR_NOT_INITIALIZED: Int = -32001
+
+    /** PROTOCOL.md § 5 — `renderNow` rejected because the daemon will exit imminently. */
+    const val ERR_CLASSPATH_DIRTY: Int = -32002
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }

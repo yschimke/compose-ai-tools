@@ -95,6 +95,29 @@ fun main(args: Array<String>) {
       RobolectricHost(userClassloaderHolder = userClassloaderHolder)
     }
 
-  val server = JsonRpcServer(input = System.`in`, output = realOut, host = host)
+  // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Mirrors the desktop daemon's
+  // construction shape — cheap-signal set from `composeai.daemon.cheapSignalFiles`, authoritative
+  // hash from this JVM's `java.class.path`. Sysprop unset → null fingerprint → pre-B2.1 no-op.
+  val classpathFingerprint: ClasspathFingerprint? =
+    ClasspathFingerprint.parseCheapSignalFilesSysprop().takeIf { it.isNotEmpty() }?.let { cheap ->
+      val classpath =
+        (System.getProperty("java.class.path") ?: "")
+          .split(File.pathSeparator)
+          .filter { it.isNotBlank() }
+          .map { File(it) }
+      System.err.println(
+        "compose-ai-tools daemon: ClasspathFingerprint active " +
+          "(cheap=${cheap.size}, classpath=${classpath.size})"
+      )
+      ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
+    }
+
+  val server =
+    JsonRpcServer(
+      input = System.`in`,
+      output = realOut,
+      host = host,
+      classpathFingerprint = classpathFingerprint,
+    )
   server.run()
 }

@@ -320,12 +320,28 @@ Android implementation: extend Robolectric's existing Resources shadows to captu
 - **Depends on:** B2.0
 - **DoD:** harness scenario asserts editing one `<color name="primary">` invalidates only previews that read it; other previews stay cached. Reverse index size + lookup time bounded on a 100-preview module.
 
-#### B2.1 — `ClasspathFingerprint` (Tier 1)
+#### B2.1 — `ClasspathFingerprint` (Tier 1) ✅
 
 SHA over `libs.versions.toml`, all `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `local.properties`. Re-check on file change in those paths. Authoritative SHA over resolved classpath JAR list at startup. On hit: emit `classpathDirty`, exit cleanly.
 
 - **Depends on:** B1.5
 - **DoD:** integration test: bump a version in `libs.versions.toml` while daemon running; daemon emits `classpathDirty` and exits within 2s.
+
+**Landed.** Implementation:
+
+- `:renderer-daemon-core/src/main/kotlin/.../ClasspathFingerprint.kt` — two-tier fingerprint with `cheapHash()` (SHA-256 over the cheap-signal file *bytes*) + `classpathHash()` (SHA-256 over `(absolutePath, length, lastModified)` per classpath entry). Cheap-signal set is parameterised, not hard-coded; populated from the new `composeai.daemon.cheapSignalFiles` sysprop, which the gradle plugin emits.
+- `JsonRpcServer` gains an optional `classpathFingerprint` ctor arg + `classpathDirtyGraceMs` ctor arg (default 2000ms, sysprop `composeai.daemon.classpathDirtyGraceMs`). At startup it captures a `Snapshot`. `handleFileChanged({ kind: "classpath" })` runs the cheap → authoritative cascade per DESIGN § 8: cheap stable → no-op; cheap drifted but classpath stable → update cached cheap hash, no-op (false-alarm path for comment-only edits in `build.gradle.kts`); both drifted → emit `classpathDirty({ reason: "fingerprintMismatch", detail: "<cheap+classpath hex>", changedPaths: [path] })`, refuse subsequent `renderNow` with the documented `ClasspathDirty` error code (-32002), and self-exit cleanly within the grace window. The exit path drains in-flight renders before `host.shutdown()` per the DESIGN § 9 no-mid-render-cancellation invariant.
+- `initialize.classpathFingerprint` is now populated with the authoritative SHA-256 (was empty pre-B2.1).
+- `:renderer-desktop-daemon/.../DaemonMain.kt` and `:renderer-android-daemon/.../DaemonMain.kt` both build a `ClasspathFingerprint` from the `composeai.daemon.cheapSignalFiles` sysprop + the daemon JVM's own `java.class.path`. When the sysprop is unset (in-process tests, harness fake mode), the fingerprint is null and the pre-B2.1 no-op behaviour holds.
+- `gradle-plugin/.../AndroidPreviewSupport.kt` — `composePreviewDaemonStart` emits `composeai.daemon.cheapSignalFiles` colon-delimited via the new private `collectCheapSignalFiles(project)` helper (collected at task-action time so newly-added subprojects' `build.gradle.kts` files are seen on the next run).
+- Tests: 10 unit tests in `ClasspathFingerprintTest.kt` (deterministic / sensitive-to-bytes / sensitive-to-mtime / sysprop-parse / microbenchmark @ ~1.3ms per cheap recompute over 50×2KB files); 2 in-process integration tests in `JsonRpcServerIntegrationTest.kt` covering the dirty + false-alarm paths; `S6ClasspathDirtyRealModeTest` (desktop, ~1.1s wall-clock) + `S6ClasspathDirtyAndroidRealModeTest` (~6.2s wall-clock) drive the full real-mode subprocess flow through both backends.
+- Plugin test: `DaemonBootstrapTaskTest.descriptor encodes B2_1 cheapSignalFiles sysprop verbatim` pins the descriptor's contract.
+
+Decisions worth highlighting:
+
+- **Cheap-signal set evolution.** The gradle plugin builds the set from `rootProject.allprojects` at task-action time. A subproject added between two `composePreviewDaemonStart` runs IS picked up on the next run. A subproject added while a daemon is already running won't be in the running daemon's baseline — but adding a subproject is itself a `settings.gradle.kts` edit, which IS in the cheap set, so the very edit that adds it triggers the Tier-1 dirty path.
+- **No daemon-side file watcher.** The `fileChanged` notification is the trigger; the editor (or the harness's test driver) sends it. Daemon doesn't watch the filesystem itself.
+- **Synthetic classpath drift in S6.** Real classpath drift would require a Gradle re-resolve mid-test. Instead the test adds a fresh `<rendersDir>-cp-drift/` directory to the daemon's `-cp` via a new `RealDesktop|AndroidHarnessLauncher.extraClasspath` parameter, places the cheap-signal marker file inside it, and edits the marker — both hashes drift because the marker's bytes drift (cheap) AND its parent directory's `(size, lastModified)` drift (authoritative).
 
 #### B2.2 — `IncrementalDiscovery` (Tier 2)
 

@@ -279,6 +279,24 @@ private constructor(
   /** Snapshot of buffered stderr — for failing-test diagnostics. */
   fun dumpStderr(): String = stderrBuffer.toString()
 
+  /**
+   * Whether the spawned subprocess has terminated. Used by S6 (B2.1) to observe a
+   * daemon-self-initiated exit after a `classpathDirty` notification — the daemon never sees a
+   * client-side `shutdown` in that flow, so [shutdownAndExit] doesn't apply.
+   */
+  fun subprocessExited(): Boolean = !process.isAlive
+
+  /**
+   * Returns the spawned subprocess's exit code, blocking up to [timeoutMs] for it to terminate.
+   * Returns null if the timeout elapses before the subprocess exits. Used by S6 to assert the exit
+   * code without sending `exit` first.
+   */
+  fun waitForExit(timeoutMs: Long): Int? {
+    val exited = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+    if (!exited) return null
+    return process.exitValue()
+  }
+
   override fun close() {
     if (process.isAlive) process.destroy()
     process.waitFor(2, TimeUnit.SECONDS)

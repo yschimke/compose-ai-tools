@@ -199,6 +199,231 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  /**
+   * B2.1 — `fileChanged({ kind: "classpath" })` against a daemon with a [ClasspathFingerprint]
+   * configured. When the cheap-signal file's bytes change AND the (synthetic) classpath hash
+   * drifts, the daemon must emit `classpathDirty` exactly once and then exit cleanly.
+   */
+  @Test(timeout = 30_000)
+  fun classpath_fingerprint_dirty_emits_classpathDirty_and_exits() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("classpath-fp-test").toFile()
+    val cheapFile = java.io.File(tmpDir, "libs.versions.toml").apply { writeText("a = 1\n") }
+    val classpathJar = java.io.File(tmpDir, "fake.jar").apply { writeBytes(ByteArray(64) { 1 }) }
+    val fingerprint =
+      ClasspathFingerprint(
+        cheapSignalFiles = listOf(cheapFile),
+        classpathEntries = listOf(classpathJar),
+      )
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitCode = AtomicInteger(-1)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        classpathFingerprint = fingerprint,
+        // Aggressive: tests should exit fast.
+        classpathDirtyGraceMs = 100,
+        onExit = { code ->
+          exitCode.set(code)
+          exitLatch.countDown()
+        },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-classpath").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    val readerThread =
+      Thread(
+          {
+            try {
+              while (true) {
+                val frame = reader.readFrame() ?: break
+                val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+                received.put(obj)
+              }
+            } catch (_: Throwable) {}
+          },
+          "json-rpc-server-test-classpath-reader",
+        )
+        .apply { isDaemon = true }
+    readerThread.start()
+
+    try {
+      // initialize → initialized
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      val init = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
+      assertNotNull(init)
+      // initialize must surface the authoritative classpath hash.
+      val initFp =
+        init!!["result"]!!.jsonObject["classpathFingerprint"]?.jsonPrimitive?.contentOrNull ?: ""
+      assertEquals(
+        "initialize.classpathFingerprint must be SHA-256 hex (64 chars)",
+        ClasspathFingerprint.SHA_256_HEX_LENGTH,
+        initFp.length,
+      )
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      // Modify the cheap-signal file AND the classpath JAR (so both hashes drift).
+      Thread.sleep(20)
+      cheapFile.writeText("a = 2\n")
+      classpathJar.writeBytes(ByteArray(128) { 2 })
+
+      // Send fileChanged({ kind: "classpath" }) — daemon recomputes the cheap hash, sees a
+      // mismatch, then the authoritative hash, sees a mismatch, then emits classpathDirty.
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"fileChanged","params":{
+              "path":"${cheapFile.absolutePath.replace("\\","/")}",
+              "kind":"classpath","changeType":"modified"}}""",
+      )
+
+      val dirty =
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "classpathDirty" }
+      assertNotNull("classpathDirty notification must arrive", dirty)
+      val dirtyParams = dirty!!["params"]!!.jsonObject
+      assertEquals("fingerprintMismatch", dirtyParams["reason"]?.jsonPrimitive?.contentOrNull)
+      val detail = dirtyParams["detail"]?.jsonPrimitive?.contentOrNull ?: ""
+      assertTrue(
+        "detail must reference both hashes; got '$detail'",
+        detail.contains("cheapHash") && detail.contains("classpathHash"),
+      )
+
+      // Now `renderNow` must be refused with ClasspathDirty (-32002).
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":42,"method":"renderNow","params":{
+              "previews":["x"],"tier":"fast"}}""",
+      )
+      val rejected = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 42 }
+      assertNotNull(rejected)
+      assertEquals(
+        JsonRpcServer.ERR_CLASSPATH_DIRTY,
+        rejected!!["error"]!!.jsonObject["code"]?.jsonPrimitive?.intOrNull,
+      )
+
+      // The daemon should self-exit within the grace window — assert exit code 0.
+      assertTrue(
+        "daemon should exit cleanly within grace window",
+        exitLatch.await(5, TimeUnit.SECONDS),
+      )
+      assertEquals(0, exitCode.get())
+    } finally {
+      tmpDir.deleteRecursively()
+    }
+  }
+
+  /**
+   * B2.1 — false-alarm path: cheap hash drifts but the authoritative classpath hash does NOT (e.g.
+   * a comment-only edit in `build.gradle.kts`). Daemon must NOT emit `classpathDirty` and must keep
+   * accepting `renderNow`.
+   */
+  @Test(timeout = 30_000)
+  fun classpath_fingerprint_false_alarm_does_not_emit_classpathDirty() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("classpath-fp-fa-test").toFile()
+    val cheapFile = java.io.File(tmpDir, "build.gradle.kts").apply { writeText("// hi\n") }
+    // No classpath entries → classpath hash is constant regardless of cheap-file edits.
+    val fingerprint =
+      ClasspathFingerprint(cheapSignalFiles = listOf(cheapFile), classpathEntries = emptyList())
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitCode = AtomicInteger(-1)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        classpathFingerprint = fingerprint,
+        classpathDirtyGraceMs = 100,
+        onExit = { code ->
+          exitCode.set(code)
+          exitLatch.countDown()
+        },
+      )
+    Thread({ server.run() }, "json-rpc-server-fa").apply { isDaemon = true }.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-fa-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      // Modify only the cheap file's bytes.
+      Thread.sleep(20)
+      cheapFile.writeText("// edited\n")
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"fileChanged","params":{
+              "path":"${cheapFile.absolutePath.replace("\\","/")}",
+              "kind":"classpath","changeType":"modified"}}""",
+      )
+
+      // Confirm renderNow still works (1.5s margin for FakeRenderHost to process).
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":7,"method":"renderNow","params":{
+              "previews":["ok"],"tier":"fast"}}""",
+      )
+      val ok = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 7 }
+      assertNotNull("renderNow should be accepted on false-alarm path", ok)
+      assertNotNull(ok!!["result"])
+
+      // Tear down cleanly — daemon must NOT have self-exited.
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+      assertEquals(0, exitCode.get())
+    } finally {
+      tmpDir.deleteRecursively()
+    }
+  }
+
   /** Helper: writes one Content-Length-framed JSON message. */
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)

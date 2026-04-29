@@ -96,6 +96,14 @@ class RealDesktopHarnessLauncher(
   private val previewsManifest: File,
   private val classpath: List<File>,
   private val extraJvmArgs: List<String> = emptyList(),
+  /**
+   * Additional `-cp` entries appended after [classpath]. Used by S6 (B2.1) so the daemon's
+   * `java.class.path` includes the cheap-signal marker file's parent directory — which lets editing
+   * the marker drift both the cheap-signal hash AND the authoritative classpath hash (the dir's
+   * `lastModified` shifts when contents change). Empty by default; existing scenarios are
+   * unaffected.
+   */
+  private val extraClasspath: List<File> = emptyList(),
 ) : HarnessLauncher {
 
   override val name: String = "real"
@@ -109,7 +117,8 @@ class RealDesktopHarnessLauncher(
         "must exist before spawning (write the JSON before calling HarnessClient.start)"
     }
     val javaBin = File(System.getProperty("java.home"), "bin/java")
-    val cpString = classpath.joinToString(File.pathSeparator) { it.absolutePath }
+    val fullClasspath = classpath + extraClasspath
+    val cpString = fullClasspath.joinToString(File.pathSeparator) { it.absolutePath }
     val command =
       buildList<String> {
         add(javaBin.absolutePath)
@@ -183,6 +192,8 @@ class RealAndroidHarnessLauncher(
   private val previewsManifest: File,
   private val classpath: List<File>,
   private val extraJvmArgs: List<String> = emptyList(),
+  /** See [RealDesktopHarnessLauncher.extraClasspath]. */
+  private val extraClasspath: List<File> = emptyList(),
 ) : HarnessLauncher {
 
   companion object {
@@ -215,7 +226,8 @@ class RealAndroidHarnessLauncher(
         "must exist before spawning (write the JSON before calling HarnessClient.start)"
     }
     val javaBin = File(System.getProperty("java.home"), "bin/java")
-    val cpString = classpath.joinToString(File.pathSeparator) { it.absolutePath }
+    val fullClasspath = classpath + extraClasspath
+    val cpString = fullClasspath.joinToString(File.pathSeparator) { it.absolutePath }
     val command =
       buildList<String> {
         add(javaBin.absolutePath)
