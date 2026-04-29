@@ -243,6 +243,43 @@ class CompatRulesTest {
   }
 
   @Test
+  fun `activity 1_7 with lifecycle-viewmodel-savedstate 2_9 fires error`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.activity:activity" to "1.7.0") +
+        ("androidx.lifecycle:lifecycle-viewmodel-savedstate" to "2.9.2")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    val f = findings.single { it.id == "activity-vs-lifecycle-savedstate" }
+    assertEquals("error", f.severity)
+    assertTrue("1.7.0" in f.message)
+    assertTrue("2.9.2" in f.message)
+    assertTrue(f.remediationCommands.any { "activity-compose" in it })
+  }
+
+  @Test
+  fun `activity 1_10 with lifecycle 2_9 is quiet`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.activity:activity" to "1.10.0") +
+        ("androidx.lifecycle:lifecycle-viewmodel-savedstate" to "2.9.2")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    assertNull(findings.firstOrNull { it.id == "activity-vs-lifecycle-savedstate" })
+  }
+
+  @Test
+  fun `activity 1_7 alone (lifecycle 2_8) is quiet`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.activity:activity" to "1.7.0") +
+        ("androidx.lifecycle:lifecycle-viewmodel-savedstate" to "2.8.7")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    assertNull(findings.firstOrNull { it.id == "activity-vs-lifecycle-savedstate" })
+  }
+
+  @Test
   fun `semver parses and compares`() {
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))

@@ -44,6 +44,17 @@ internal object CompatRules {
   private val CORE_1_16 = Semver(1, 16, 0)
 
   /**
+   * `androidx.activity:activity` < 1.10.0 was compiled against `androidx.lifecycle:*:2.6.x` and
+   * `androidx.savedstate:savedstate:1.2.x`. compose-ui 1.10.x lists `activity-ktx:1.7.0` as a
+   * runtime dep but in the same release transitively forces `lifecycle-viewmodel:2.9.x` (whose
+   * dependency-constraint pins `lifecycle-viewmodel-savedstate` to the same line) and
+   * `savedstate-ktx:1.3.x`. Activity 1.10.0 is the first release whose `ComponentActivity` bytecode
+   * was rebuilt against the post-rewrite lifecycle/savedstate API surface.
+   */
+  private val ACTIVITY_NEEDS_LIFECYCLE_2_9 = Semver(1, 10, 0)
+  private val LIFECYCLE_VIEWMODEL_SAVEDSTATE_2_9 = Semver(2, 9, 0)
+
+  /**
    * Generic "you're well behind head" minimums for libraries whose version commonly shapes renderer
    * behaviour. Threshold policy: roughly the second-to-last known stable at time of writing —
    * recent enough to flag genuinely stale stacks, lenient enough that a consumer one release behind
@@ -78,8 +89,63 @@ internal object CompatRules {
     checkComposeUiVsCore(mainV, testV, main)?.let(findings::add)
     checkComposeBom(main)?.let(findings::add)
     checkHamcrestSkew(test)?.let(findings::add)
+    checkActivityVsLifecycleSavedState(testV, test)?.let(findings::add)
     findings += checkOldDeps(mainV, testV, main, test)
     return findings
+  }
+
+  /**
+   * compose-ui 1.10.x's runtime graph mixes `androidx.activity:activity-ktx:1.7.0` (compiled
+   * against lifecycle 2.6 / savedstate 1.2) with `androidx.lifecycle:lifecycle-viewmodel:2.9.x`
+   * (whose dependency-constraint forces lifecycle-viewmodel-savedstate to 2.9.x) and
+   * `androidx.savedstate:savedstate-ktx:1.3.x`. Consumers that pin activity-compose to a recent
+   * line (or use a Compose BOM that does) get a coherent graph; consumers that don't — typical
+   * tile-only apps with no direct activity dep — end up with the older activity bytecode invoking
+   * paths that disagree with the newer lifecycle, surfacing as `NoSuchMethodError at
+   * SavedStateHandleSupport.kt:107` on the first `createAndroidComposeRule<ComponentActivity>()`
+   * launch.
+   *
+   * The plugin already substitutes `androidx.activity:*` < 1.10.0 -> 1.10.0 on its own
+   * `composePreviewAndroidRenderer<Variant>` configuration so renderPreviews stays green; this
+   * finding still surfaces the latent skew so consumers know to align their own AGP unit-test runs
+   * (which use the unfiltered `${variant}UnitTestRuntimeClasspath`).
+   */
+  private fun checkActivityVsLifecycleSavedState(
+    testV: Map<String, Semver>,
+    rawTest: Map<String, String>,
+  ): ModuleFindingData? {
+    val activity = testV["androidx.activity:activity"] ?: return null
+    if (activity >= ACTIVITY_NEEDS_LIFECYCLE_2_9) return null
+    val savedstateVm = testV["androidx.lifecycle:lifecycle-viewmodel-savedstate"] ?: return null
+    if (savedstateVm < LIFECYCLE_VIEWMODEL_SAVEDSTATE_2_9) return null
+    val rawActivity = rawTest["androidx.activity:activity"] ?: activity.toString()
+    val rawSavedstateVm =
+      rawTest["androidx.lifecycle:lifecycle-viewmodel-savedstate"] ?: savedstateVm.toString()
+    return ModuleFindingData(
+      id = "activity-vs-lifecycle-savedstate",
+      severity = "error",
+      message =
+        "activity:$rawActivity is too old for lifecycle-viewmodel-savedstate:$rawSavedstateVm on " +
+          "the test classpath",
+      detail =
+        "androidx.activity:activity:$rawActivity was compiled against lifecycle 2.6 / " +
+          "savedstate 1.2; the post-rewrite lifecycle-viewmodel-savedstate:$rawSavedstateVm on " +
+          "the same classpath drags in `androidx.savedstate:savedstate:1.3.x`. " +
+          "ComponentActivity's `enableSavedStateHandles` -> `createSavedStateHandle` chain " +
+          "fails with `NoSuchMethodError at SavedStateHandleSupport.kt:107` the first time " +
+          "`createAndroidComposeRule<ComponentActivity>()` launches the host activity. " +
+          "compose-ui 1.10.x's runtime declares this older activity but forces the newer " +
+          "lifecycle in the same release; consumers without a direct activity-compose pin " +
+          "end up with the mismatched pair.",
+      remediationSummary =
+        "Pin androidx.activity:activity-compose to >= $ACTIVITY_NEEDS_LIFECYCLE_2_9 in the " +
+          "consumer module (or use a Compose BOM that aligns it).",
+      remediationCommands =
+        listOf(
+          "implementation(\"androidx.activity:activity-compose:$ACTIVITY_NEEDS_LIFECYCLE_2_9\")"
+        ),
+      docsUrl = DOCS_ACTIVITY_VS_LIFECYCLE,
+    )
   }
 
   /**
@@ -313,6 +379,8 @@ internal object CompatRules {
   private const val DOCS_COMPOSE_UI_VS_CORE =
     "$DOCS_ROOT#compose-ui-110-on-a-consumer-with-older-androidxcore"
   private const val DOCS_HAMCREST_SKEW = "$DOCS_ROOT#hamcrest-2x-on-the-unit-test-classpath"
+  private const val DOCS_ACTIVITY_VS_LIFECYCLE =
+    "$DOCS_ROOT#activity-110-paired-with-lifecycle-29-on-the-test-classpath"
 }
 
 /**
