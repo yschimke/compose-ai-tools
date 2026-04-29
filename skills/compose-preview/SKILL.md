@@ -171,10 +171,18 @@ Loaded on demand. Read only what the current task needs.
 | [design/WEAR_UI.md](./design/WEAR_UI.md) | Wear OS Material 3 Expressive design. |
 | [design/WEAR_TILES.md](./design/WEAR_TILES.md) | Wear Tiles (protolayout, not Compose). |
 | [design/REMOTE_COMPOSE.md](./design/REMOTE_COMPOSE.md) | Remote Compose dialect + `RemoteDocument`. |
-| [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `preview_main` baselines branch + PR comment GitHub Actions. |
-| [design/AGENT_PR.md](./design/AGENT_PR.md) | Authoring agent-opened PRs and reviewing one locally (render base + head, diff, comment). |
 | [design/CLAUDE_CLOUD.md](./design/CLAUDE_CLOUD.md) | Running compose-preview in Claude Code cloud sandboxes (allowlist, JDK, install paths). |
 | [design/VSCODE.md](./design/VSCODE.md) | VS Code extension (humans, not agents). |
+
+## Related skill
+
+PR-review and CI workflows live in the sibling
+[**compose-preview-review** skill](../compose-preview-review/SKILL.md):
+authoring agent-opened PRs, reviewing UI PRs locally (base + head render,
+diff, text comment), and wiring `preview_main` baselines + PR-comment
+GitHub Actions. The bootstrap installer
+([`scripts/install.sh`](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh))
+sets up both skills together.
 
 ## Tips
 
