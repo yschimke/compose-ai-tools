@@ -5,12 +5,12 @@ agents can see what they're changing. Works with Jetpack Compose (Android,
 via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
 
 Renders include
-[paused-clock animation captures](skills/compose-preview/SKILL.md#animations-and-the-paused-frame-clock-android-only)
+[paused-clock animation captures](skills/compose-preview/design/CAPTURE_MODES.md#animations-and-the-paused-frame-clock-android-only)
 (GIF or single frame) and opt-in
-[ATF accessibility checks](skills/compose-preview/SKILL.md#accessibility-a11y)
+[ATF accessibility checks](skills/compose-preview/design/A11Y.md)
 with annotated overlays.
 
-Also renders [Android XML resources](skills/compose-preview/SKILL.md#android-xml-resource-previews) —
+Also renders [Android XML resources](skills/compose-preview/design/RESOURCE_PREVIEWS.md) —
 vector drawables, adaptive launcher icons, animated-vector drawables — and indexes the icon
 attributes in `AndroidManifest.xml` so tooling can link manifest lines to the same rendered PNG.
 Modules without any matching resources self-no-op, so this comes along for free with the plugin.
