@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.12](https://github.com/yschimke/compose-ai-tools/compare/v0.8.11...v0.8.12) (2026-04-29)
+
+
+### Bug Fixes
+
+* **vscode:** find nested modules + silence cancel-as-failure noise ([#304](https://github.com/yschimke/compose-ai-tools/issues/304)) ([3bf73e4](https://github.com/yschimke/compose-ai-tools/commit/3bf73e4ffd28f286f2a300935dc6e362069e83ea))
+
 ## [0.8.11](https://github.com/yschimke/compose-ai-tools/compare/v0.8.10...v0.8.11) (2026-04-29)
 
 
