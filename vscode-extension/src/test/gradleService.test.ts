@@ -114,9 +114,15 @@ describe('GradleService', () => {
             const compose = manifest!.resources.find((r) => r.id === 'drawable/ic_compose_logo')!;
             assert.deepStrictEqual(Object.keys(compose.sourceFiles).sort(), ['', 'night']);
 
-            // Adaptive-icon captures should carry their shape; vector captures should not.
+            // Adaptive-icon captures should carry their shape and style; vector captures
+            // should carry neither. LEGACY captures carry style but no shape.
             const launcher = manifest!.resources.find((r) => r.id === 'mipmap/ic_launcher')!;
             assert.strictEqual(launcher.captures[0].variant?.shape, 'CIRCLE');
+            assert.strictEqual(launcher.captures[0].variant?.style, 'FULL_COLOR');
+            const themedLight = launcher.captures.find((c) => c.variant?.style === 'THEMED_LIGHT')!;
+            assert.strictEqual(themedLight.variant?.shape, 'SQUIRCLE');
+            const legacy = launcher.captures.find((c) => c.variant?.style === 'LEGACY')!;
+            assert.strictEqual(legacy.variant?.shape, null);
             assert.strictEqual(compose.captures[0].variant?.shape, null);
 
             // Manifest references resolve activity short-form names against the package.

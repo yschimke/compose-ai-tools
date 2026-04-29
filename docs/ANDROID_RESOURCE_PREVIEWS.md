@@ -14,7 +14,7 @@ Plan for treating Android XML resources as first-class previewables alongside `@
 |---|---|---|---|
 | Vector drawable | `<vector>` | `ContextCompat.getDrawable(ctx, R.drawable.foo)` → bitmap-backed canvas | resource qualifiers (see below) |
 | Animated vector | `<animated-vector>` | `start()`, drive `mainClock.advanceTimeBy` per frame, GIF-encode via `ScrollGifEncoder` | resource qualifiers (one GIF per qualifier set); duration auto-detected from animator XML |
-| Adaptive icon | `<adaptive-icon>` (mipmap-anydpi-v26) | composite foreground + background into 108dp canvas, apply shape clip path | resource qualifiers × shape (`CIRCLE`, `ROUNDED_SQUARE`, `SQUARE`) + `LEGACY` |
+| Adaptive icon | `<adaptive-icon>` (mipmap-anydpi-v26) | composite foreground + background into 108dp canvas, apply shape clip path; `THEMED_*` styles tint the `<monochrome>` layer with a 2-tone Material 3 baseline palette before masking | resource qualifiers × shape (`CIRCLE`, `SQUIRCLE`, `ROUNDED_SQUARE`, `SQUARE`) × style (`FULL_COLOR`, `THEMED_LIGHT`, `THEMED_DARK`) + `LEGACY` (single capture per qualifier, mask-independent) |
 
 Out of scope for this iteration: `<animation-list>`, `<shape>`, `<selector>`, `<layer-list>`, `<level-list>`, `<ripple>`, `<bitmap>`. The discovery and JSON-schema work below leaves room for them — adding a new `ResourceType` value plus a renderer branch is the only thing needed to extend the catalogue later.
 
@@ -35,7 +35,8 @@ New types in `gradle-plugin/.../PreviewData.kt`, mirrored TypeScript-side in `vs
 
 ```kotlin
 @Serializable enum class ResourceType { VECTOR, ANIMATED_VECTOR, ADAPTIVE_ICON }
-@Serializable enum class AdaptiveShape { CIRCLE, ROUNDED_SQUARE, SQUARE, LEGACY }
+@Serializable enum class AdaptiveShape { CIRCLE, SQUIRCLE, ROUNDED_SQUARE, SQUARE }
+@Serializable enum class AdaptiveStyle { FULL_COLOR, THEMED_LIGHT, THEMED_DARK, LEGACY }
 
 @Serializable
 data class ResourceVariant(
@@ -55,9 +56,18 @@ data class ResourceVariant(
   /**
    * Adaptive-icon shape mask applied at render time. Not an Android
    * qualifier — adaptive icons are masked at composition time, not at
-   * resource-resolution time. `null` for non-adaptive resources.
+   * resource-resolution time. `null` for non-adaptive resources, and `null`
+   * for `LEGACY` style captures (the mask doesn't apply).
    */
   val shape: AdaptiveShape? = null,
+  /**
+   * Adaptive-icon style. `FULL_COLOR` is the App Search appearance
+   * (composited foreground+background); `THEMED_LIGHT` / `THEMED_DARK` are
+   * the home-screen "Themed icons" appearance (monochrome layer tinted
+   * with a Material 3 baseline 2-tone palette); `LEGACY` is the pre-O
+   * fallback. `null` for non-adaptive resources.
+   */
+  val style: AdaptiveStyle? = null,
 )
 
 @Serializable
@@ -155,8 +165,11 @@ Following the whitelist + normalization rules in [RENDER_FILENAMES.md](RENDER_FI
 - `renders/resources/drawable/ic_compose_logo_night-xhdpi.png` — `drawable-night/` source × xhdpi
 - `renders/resources/drawable/ic_compose_logo_ldrtl-xhdpi.png` — `drawable-ldrtl/` source × xhdpi
 - `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png`
+- `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle.png`
 - `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png`
 - `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png`
+- `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png`
+- `renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png`
 - `renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png`
 - `renders/resources/drawable/avd_pulse_xhdpi.gif`
 
@@ -172,7 +185,7 @@ Mirror of `RobolectricRenderTest`, in a new `ResourcePreviewRenderer` class unde
 - For each `ResourceCapture`, the renderer first sets `RuntimeEnvironment.setQualifiers(variant.qualifiers)` so AAPT picks the correct source file, then per-type:
   - **Vector**: resolve drawable, set bounds from intrinsic size × density factor (parsed from the qualifier string), draw to a bitmap canvas, write PNG.
   - **Animated vector**: resolve drawable, reflect to the AVD's internal `AnimatorSet` (search the drawable's class hierarchy for `mAnimatorSetFromXml` / inside `mAnimatorSet` / inside `mAnimatedVectorState`), drive it directly via `setCurrentPlayTime(t)` per frame, GIF-encode via the existing `ScrollGifEncoder`. Bypasses Choreographer / Looper entirely — under Robolectric's `looperMode=PAUSED` (which we pin for Compose's render path), the AVD's `ObjectAnimator` doesn't receive frame callbacks, but `AnimatorSet.setCurrentPlayTime` synchronously updates each child animator's fraction and notifies its property listeners (which poke the underlying `VectorDrawable`'s group/path values), and the next `draw()` reflects the new state. Window length capped at 1.5s × 50ms/frame = 30 frames to bound looping animators (`repeatCount=-1`, e.g. the sample's pulse). Falls back to a single-frame GIF when reflection misses an unfamiliar AVD layout.
-  - **Adaptive icon**: render foreground + background each into a 108dp×108dp canvas, composite, then apply each `AdaptiveShape`'s clip path. `LEGACY` falls back to the `android:icon` attribute on the `<adaptive-icon>` parent (when present) or to the foreground rendered against a transparent background. Mask paths come from the same set Studio uses (circle, rounded-rect r=8dp, square).
+  - **Adaptive icon**: per-(shape × style) capture. For `FULL_COLOR`, render foreground + background each into a 108dp×108dp canvas and composite, then apply the shape clip. For `THEMED_LIGHT` / `THEMED_DARK`, render the `<monochrome>` layer (`AdaptiveIconDrawable.getMonochrome()`, API 33+) tinted with a fixed Material 3 baseline 2-tone palette against a flat surface-container background, then apply the shape clip. For `LEGACY`, draw the foreground against transparent (no mask). Mask radii: circle / square / rounded-square at 25% / squircle approximated as a rounded-rect at 40%.
 - `ResourcePreviewRenderer` runs as a separate Robolectric test class. The render-task wiring decides which renderer(s) to launch based on which manifests exist post-discovery.
 - The renderer never reads `manifestReferences` — references are pure metadata.
 
@@ -187,7 +200,7 @@ When a resource referenced from the manifest does *not* appear in `resources` (e
 
 ## VS Code surfacing
 
-- `vscode-extension/src/types.ts` mirrors of `ResourceManifest`, `ResourcePreview`, `ResourceCapture`, `ResourceVariant`, `AdaptiveShape`, `ManifestReference`.
+- `vscode-extension/src/types.ts` mirrors of `ResourceManifest`, `ResourcePreview`, `ResourceCapture`, `ResourceVariant`, `AdaptiveShape`, `AdaptiveStyle`, `ManifestReference`.
 - `ResourceManifestService` watches `resources.json` alongside the existing `previews.json` watcher.
 - `AndroidManifestCodeLensProvider` registered against `AndroidManifest.xml`. Returns one CodeLens per `ManifestReference` whose `source` matches the open file. Lens command opens the resource preview tab focused on the referenced resource.
 - Webview: extend the existing Compose preview view with a tabbed "Resources" section (decision deferred to implementation — depends on how busy the existing UI ends up).
@@ -201,14 +214,20 @@ composePreview {
     densities = listOf("mdpi", "xhdpi")     // implicit density fan-out
     shapes = listOf(                        // restrict adaptive-icon shapes
       AdaptiveShape.CIRCLE,
+      AdaptiveShape.SQUIRCLE,
       AdaptiveShape.ROUNDED_SQUARE,
       AdaptiveShape.SQUARE,
-      AdaptiveShape.LEGACY,
+    )
+    styles = listOf(
+      AdaptiveStyle.FULL_COLOR,
+      AdaptiveStyle.THEMED_LIGHT,
+      AdaptiveStyle.THEMED_DARK,
+      AdaptiveStyle.LEGACY,
     )
     // Explicit qualifier dimensions are picked up automatically from the
     // consumer's res/<base>-<quals>/ directories — no DSL needed. Only
-    // implicit dimensions (density fan-out, adaptive-icon shapes) are
-    // configured here.
+    // implicit dimensions (density fan-out, adaptive-icon shapes / styles)
+    // are configured here.
   }
 }
 ```
@@ -237,8 +256,8 @@ Files added under `samples/android/src/main/res/`:
 - `drawable/ic_launcher_background.xml` — vector (background for the adaptive icon).
 - `drawable/ic_launcher_legacy.xml` — vector (pre-O fallback baked into the adaptive icon's legacy slot).
 - `drawable/ic_settings.xml` — vector used as an `android:icon` override on `MainActivity`.
-- `mipmap-anydpi-v26/ic_launcher.xml` — adaptive icon referencing fg+bg.
-- `mipmap-anydpi-v26/ic_launcher_round.xml` — round adaptive variant.
+- `mipmap-anydpi-v26/ic_launcher.xml` — adaptive icon with `<background>` + `<foreground>` + `<monochrome>` (the monochrome layer drives `THEMED_*` rendering) and `android:icon="@drawable/ic_launcher_legacy"` on the root for the pre-O slot.
+- `mipmap-anydpi-v26/ic_launcher_round.xml` — round adaptive variant, same layers.
 
 `samples/android/src/main/AndroidManifest.xml` gains:
 

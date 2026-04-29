@@ -19,7 +19,7 @@ Modules with no matching XML resources self-no-op (a single empty
 | Resource kind | Output | Variant axes |
 |---|---|---|
 | `<vector>` | PNG at intrinsic size × density | `densities`; explicit qualifier dirs (`drawable-night/`, `drawable-ldrtl/`, …) automatically picked up |
-| `<adaptive-icon>` (mipmap-anydpi-v26) | PNG per shape mask, composited fg+bg | `densities` × `shapes` (`CIRCLE`, `ROUNDED_SQUARE`, `SQUARE`, `LEGACY`) |
+| `<adaptive-icon>` (mipmap-anydpi-v26) | PNG per (shape × style), demonstrating both App Search (full colour) and Home (shape-clipped, optionally 2-tone themed) launcher surfaces | `densities` × `shapes` (`CIRCLE`, `SQUIRCLE`, `ROUNDED_SQUARE`, `SQUARE`) × `styles` (`FULL_COLOR`, `THEMED_LIGHT`, `THEMED_DARK`, `LEGACY`) |
 | `<animated-vector>` | GIF | `densities` |
 
 Out of scope today: `<animation-list>`, `<shape>`, `<selector>`,
@@ -36,13 +36,24 @@ composePreview {
         densities = listOf("xhdpi")                 // implicit density fan-out
         shapes = listOf(                            // adaptive-icon mask set
             AdaptiveShape.CIRCLE,
+            AdaptiveShape.SQUIRCLE,                 // Pixel / Material You default
             AdaptiveShape.ROUNDED_SQUARE,
             AdaptiveShape.SQUARE,
-            AdaptiveShape.LEGACY,
+        )
+        styles = listOf(                            // adaptive-icon style set
+            AdaptiveStyle.FULL_COLOR,               // App Search appearance
+            AdaptiveStyle.THEMED_LIGHT,             // Home, "Themed icons" on, light theme
+            AdaptiveStyle.THEMED_DARK,              // Home, "Themed icons" on, dark theme
+            AdaptiveStyle.LEGACY,                   // pre-O fallback
         )
     }
 }
 ```
+
+`THEMED_LIGHT` / `THEMED_DARK` need a `<monochrome>` element on the
+`<adaptive-icon>` (Android 13+). Captures for icons missing the monochrome
+layer are skipped at render time with a warning rather than failing the
+build.
 
 ## AndroidManifest.xml link-don't-re-render
 
