@@ -43,12 +43,12 @@ include(":samples:remotecompose")
 
 include(":renderer-desktop")
 
-include(":renderer-desktop-daemon")
-
 include(":renderer-android")
 
-include(":renderer-daemon-core")
+include(":daemon:core")
 
-include(":renderer-android-daemon")
+include(":daemon:android")
 
-include(":tools:daemon-harness")
+include(":daemon:desktop")
+
+include(":daemon:harness")

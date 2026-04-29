@@ -7,15 +7,15 @@ name: Daemon Harness
 #   * `desktop-fake` — FakeDaemonMain + FakeHost; deterministic-failure
 #     coverage plus the seven-scenario v1 catalogue. Does not link in
 #     Compose Desktop / Skiko on the harness production classpath.
-#   * `desktop-real` — the real `:renderer-desktop-daemon` `DaemonMain`
+#   * `desktop-real` — the real `:daemon:desktop` `DaemonMain`
 #     driven by the same scenarios via `RealDesktopHarnessLauncher`.
 #     Pixel-diffs against the in-repo baselines under
-#     `tools/daemon-harness/baselines/desktop/`.
-#   * `android-real` — D-harness.v2: the real `:renderer-android-daemon`
+#     `daemon/harness/baselines/desktop/`.
+#   * `android-real` — D-harness.v2: the real `:daemon:android`
 #     `DaemonMain` driven via `RealAndroidHarnessLauncher`. Slower than
 #     desktop because Robolectric sandbox bootstrap dominates (~3-10s vs
 #     ~600ms desktop cold). Pixel-diffs against
-#     `tools/daemon-harness/baselines/android/`. The renderer-agnostic claim
+#     `daemon/harness/baselines/android/`. The renderer-agnostic claim
 #     from DESIGN § 4 stops being aspirational when both `desktop-real` and
 #     `android-real` are required.
 
@@ -42,19 +42,19 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Run harness scenarios (desktop, fake)
-        run: ./gradlew :tools:daemon-harness:test
+        run: ./gradlew :daemon:harness:test
       - name: Upload harness test results (desktop, fake)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-desktop-fake-test-results
-          path: tools/daemon-harness/build/reports/tests/
+          path: daemon/harness/build/reports/tests/
       - name: Upload pixel-diff artefacts on failure (desktop, fake)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-desktop-fake-diffs
-          path: tools/daemon-harness/build/reports/daemon-harness/
+          path: daemon/harness/build/reports/daemon-harness/
 
   desktop-real:
     name: Daemon Harness (desktop, real renderer)
@@ -76,19 +76,19 @@ jobs:
       #
       # Track this in `docs/daemon/TODO.md` if it lands.
       - name: Run harness scenarios (desktop, real)
-        run: ./gradlew :tools:daemon-harness:test -Pharness.host=real
+        run: ./gradlew :daemon:harness:test -Pharness.host=real
       - name: Upload harness test results (desktop, real)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-desktop-real-test-results
-          path: tools/daemon-harness/build/reports/tests/
+          path: daemon/harness/build/reports/tests/
       - name: Upload pixel-diff artefacts on failure (desktop, real)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-desktop-real-diffs
-          path: tools/daemon-harness/build/reports/daemon-harness/
+          path: daemon/harness/build/reports/daemon-harness/
 
   android-real:
     name: Daemon Harness (android, real renderer)
@@ -107,16 +107,16 @@ jobs:
       # missing native libs (libfontconfig, libfreetype), install them
       # here. Document in `docs/daemon/TODO.md` if it lands.
       - name: Run harness scenarios (android, real)
-        run: ./gradlew :tools:daemon-harness:test -Pharness.host=real -Pharness.target=android
+        run: ./gradlew :daemon:harness:test -Pharness.host=real -Pharness.target=android
       - name: Upload harness test results (android, real)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-android-real-test-results
-          path: tools/daemon-harness/build/reports/tests/
+          path: daemon/harness/build/reports/tests/
       - name: Upload pixel-diff artefacts on failure (android, real)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-harness-android-real-diffs
-          path: tools/daemon-harness/build/reports/daemon-harness/
+          path: daemon/harness/build/reports/daemon-harness/

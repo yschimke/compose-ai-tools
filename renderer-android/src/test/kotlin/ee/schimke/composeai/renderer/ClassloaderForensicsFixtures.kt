@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * Trivial preview fixture used only by [ClassloaderForensicsTest] (Configuration A) so the survey
- * set can include a "user preview class" entry. Same shape as `:renderer-android-daemon`'s
+ * set can include a "user preview class" entry. Same shape as `:daemon:android`'s
  * `RedFixturePreviewsKt.RedSquare` so cross-module reasoning about the loaded `Class<?>` graph
  * is straightforward — only the package differs.
  *

@@ -45,7 +45,7 @@ internal data class DaemonClasspathDescriptor(
   val enabled: Boolean,
   /**
    * Fully-qualified main class, e.g. `ee.schimke.composeai.daemon.DaemonMain`. Stream B
-   * (`renderer-android-daemon`) provides this entry point; until that module exists, the descriptor
+   * (`daemon/android`) provides this entry point; until that module exists, the descriptor
    * still encodes the conventional name so the descriptor schema is stable.
    */
   val mainClass: String,

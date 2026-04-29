@@ -338,4 +338,4 @@ Optional channel; client routes to the daemon output channel. Stderr remains the
 
 ## 9. Test coverage
 
-Stream B owns Kotlin unit tests for message serialisation under [renderer-android-daemon/src/test/...](../../). Stream C owns TypeScript unit tests under [vscode-extension/src/daemon/](../../vscode-extension/src/daemon/). A shared golden-message corpus lives in [`docs/daemon/protocol-fixtures/`](protocol-fixtures/) (one JSON file per message kind) and is consumed by both test suites. Adding a new message ⇒ add the fixture in the same PR.
+Stream B owns Kotlin unit tests for message serialisation under [daemon/android/src/test/...](../../). Stream C owns TypeScript unit tests under [vscode-extension/src/daemon/](../../vscode-extension/src/daemon/). A shared golden-message corpus lives in [`docs/daemon/protocol-fixtures/`](protocol-fixtures/) (one JSON file per message kind) and is consumed by both test suites. Adding a new message ⇒ add the fixture in the same PR.

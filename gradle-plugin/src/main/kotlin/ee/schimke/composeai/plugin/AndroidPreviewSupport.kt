@@ -714,7 +714,7 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // Mirror of rendererConfig for `:renderer-android-daemon`. The daemon
+    // Mirror of rendererConfig for `:daemon:android`. The daemon
     // module depends on :renderer-android, so transitive deps flow through
     // the same `extendsFrom(testConfig)` graph and stay version-coherent
     // with the consumer's classpath. Used by composePreviewDaemonStart to
@@ -729,7 +729,7 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    val daemonRendererProjectDir = project.rootDir.resolve("renderer-android-daemon")
+    val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")
     val useLocalDaemonRenderer =
       daemonRendererProjectDir.resolve("build.gradle.kts").exists() ||
         daemonRendererProjectDir.resolve("build.gradle").exists()
@@ -738,11 +738,11 @@ internal object AndroidPreviewSupport {
       try {
         project.dependencies.add(
           daemonRendererConfig.name,
-          project.dependencies.project(mapOf("path" to ":renderer-android-daemon")),
+          project.dependencies.project(mapOf("path" to ":daemon:android")),
         )
       } catch (e: org.gradle.api.UnknownProjectException) {
         project.logger.debug(
-          "compose-ai-tools: :renderer-android-daemon project not found, skipping",
+          "compose-ai-tools: :daemon:android project not found, skipping",
           e,
         )
       }
@@ -752,10 +752,10 @@ internal object AndroidPreviewSupport {
       // default (DaemonExtension.enabled = false), so a consumer outside
       // this repo who flips it on will see VS Code surface a clear
       // ClassNotFoundException rather than silently picking a stale path.
-      // When publishing of :renderer-android-daemon lands, replace this
+      // When publishing of :daemon:android lands, replace this
       // log with the same coords shape used for rendererConfig above.
       project.logger.debug(
-        "compose-ai-tools: :renderer-android-daemon is not yet published; " +
+        "compose-ai-tools: :daemon:android is not yet published; " +
           "experimental.daemon only works with the in-repo source layout."
       )
     }
@@ -1201,7 +1201,7 @@ internal object AndroidPreviewSupport {
       this.maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
       this.maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.experimental.daemon.warmSpare)
-      // Conventional entry-point name — `renderer-android-daemon` / Stream B
+      // Conventional entry-point name — `daemon/android` / Stream B
       // (task B1.1) will provide the implementation. Surfacing it as a
       // Property leaves room for future variants (foreground / debug) without
       // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].

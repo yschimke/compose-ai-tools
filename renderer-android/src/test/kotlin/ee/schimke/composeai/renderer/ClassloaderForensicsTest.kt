@@ -24,7 +24,7 @@ import org.robolectric.annotation.GraphicsMode
  * code path.
  *
  * Output: `renderer-android/build/reports/classloader-forensics/standalone.json`. The diff tool
- * (`./gradlew :tools:daemon-harness:dumpClassloaderDiff`) consumes both this JSON and the daemon
+ * (`./gradlew :daemon:harness:dumpClassloaderDiff`) consumes both this JSON and the daemon
  * counterpart's JSON to produce `diff.{json,md}`.
  *
  * Sanity check 1 from the design (run twice, dumps byte-identical modulo timestamps) is exercised
@@ -194,7 +194,7 @@ class ClassloaderForensicsTest {
     /**
      * Survey set per CLASSLOADER-FORENSICS.md § "Survey set". Mandatory + optional combined; we
      * include every entry the design enumerates so the diff has the broadest possible spotlight.
-     * Daemon-only entries are added in `:renderer-android-daemon`'s sister test, not here.
+     * Daemon-only entries are added in `:daemon:android`'s sister test, not here.
      */
     val COMMON_SURVEY_SET: List<String> =
       listOf(

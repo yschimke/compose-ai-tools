@@ -35,7 +35,7 @@ isolation rules that prevent that.
                              │  PROTOCOL.md JSON-RPC over stdio
    ┌─────────────────────────▼────────────────────────────────────┐
    │ Layer 2 — Preview daemon                       [opt-in, v1]  │
-   │   :renderer-daemon-core + :renderer-{android,desktop}-daemon │
+   │   :daemon:core + :renderer-{android,desktop}-daemon │
    │   Long-lived JVM, hot sandbox, JSON-RPC server.              │
    └─────────────────────────┬────────────────────────────────────┘
                              │  reuses
@@ -66,7 +66,7 @@ the contract for "the simple way". Constraints:
   the `experimental.daemon { … }` sub-block and default to the no-op
   setting (`enabled = false`).
 - **No daemon code on the Layer 1 classpath.** `:gradle-plugin` does
-  not depend on `:renderer-daemon-core`. The daemon-bootstrap task
+  not depend on `:daemon:core`. The daemon-bootstrap task
   the plugin registers (`composePreviewDaemonStart`) emits a
   descriptor file; it does not import or instantiate anything from
   the daemon modules.
@@ -99,9 +99,9 @@ The daemon is a separate JVM started by an explicit task. It speaks
 JSON-RPC ([PROTOCOL.md](PROTOCOL.md)) to one client at a time over
 stdio. Constraints:
 
-- **Daemon code lives only in `:renderer-daemon-core` and the two
-  per-target modules** (`:renderer-android-daemon`,
-  `:renderer-desktop-daemon`). The Gradle plugin does not import
+- **Daemon code lives only in `:daemon:core` and the two
+  per-target modules** (`:daemon:android`,
+  `:daemon:desktop`). The Gradle plugin does not import
   these modules; nor does the existing CLI.
 - **Daemon ↔ Gradle plumbing is a one-way file handoff.** The
   `composePreviewDaemonStart` task writes a launch descriptor JSON
@@ -118,7 +118,7 @@ stdio. Constraints:
 What Layer 2 *may* be consumed by:
 
 - The VS Code extension's `daemonClient.ts` (Stream C work).
-- The harness in `:tools:daemon-harness`.
+- The harness in `:daemon:harness`.
 - Layer 3's MCP server, as a JSON-RPC client.
 
 What Layer 2 must **not** be consumed by:
@@ -134,7 +134,7 @@ The MCP server is a thin JSON-RPC ↔ MCP translation shim, in its own
 module `:tools:daemon-mcp`. Constraints:
 
 - **MCP code lives only in `:tools:daemon-mcp`.** Neither
-  `:renderer-daemon-core` nor any per-target daemon module imports
+  `:daemon:core` nor any per-target daemon module imports
   the Kotlin MCP SDK or Ktor. The daemon stays a JSON-RPC server
   with no MCP awareness.
 - **MCP server is a JSON-RPC client of the daemon.** It uses the same
@@ -161,14 +161,14 @@ module `:tools:daemon-mcp`. Constraints:
 
 What Layer 3 *may* depend on:
 
-- `:renderer-daemon-core` for the wire-format types only (`Messages.kt`).
+- `:daemon:core` for the wire-format types only (`Messages.kt`).
   Specifically: it reads the same Kotlin data classes the daemon
   serializes, so JSON parsing stays type-safe. It does not reach into
   the daemon's render engine, sandbox holder, or classloader code.
 
 What Layer 3 must **not** depend on:
 
-- `:renderer-android-daemon` or `:renderer-desktop-daemon` (the
+- `:daemon:android` or `:daemon:desktop` (the
   per-target render engines). These are concrete renderers; the MCP
   server treats them as opaque processes spawned via `composePreviewDaemonStart`.
 - `:gradle-plugin`. The MCP server invokes Gradle (or the existing
@@ -185,7 +185,7 @@ not on this list is a layering violation.
 | `composePreviewDaemonStart` task → launch descriptor JSON | L1 → L2 | file in `build/preview-daemon/launch.json` | L1 emits, L2 reads |
 | Daemon JSON-RPC over stdio | L2 ↔ extension/supervisor | `PROTOCOL.md` | L2 |
 | MCP wire format ↔ daemon JSON-RPC translation | L3 ↔ L2 | `:tools:daemon-mcp` shim | L3 |
-| `:renderer-daemon-core` `Messages.kt` types | shared by L2 + L3 | Kotlin data classes | L2 |
+| `:daemon:core` `Messages.kt` types | shared by L2 + L3 | Kotlin data classes | L2 |
 | `composePreviewDaemonStart` → spawn-daemon helper used by L3's `DaemonSupervisor` | L3 → L1 | shells out to Gradle | L3 |
 
 If a future change wants to add a new seam, it goes here first. If
@@ -203,8 +203,8 @@ Each layer can be removed without breaking the layers below it.
 - Daemon and Layer 1 unaffected.
 
 **Removing Layer 2 (daemon):**
-- Delete `:renderer-daemon-core`, `:renderer-android-daemon`,
-  `:renderer-desktop-daemon`, `:tools:daemon-harness`,
+- Delete `:daemon:core`, `:daemon:android`,
+  `:daemon:desktop`, `:daemon:harness`,
   `:tools:daemon-mcp`.
 - Remove the `experimental.daemon` DSL block and the
   `composePreviewDaemonStart` task registration from `:gradle-plugin`.

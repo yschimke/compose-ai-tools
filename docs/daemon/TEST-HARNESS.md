@@ -11,7 +11,7 @@ feature — protocol changes, render correctness, lifecycle invariants,
 predictive prefetch, the cost model, and the sandbox-recycle dance — before
 that feature reaches a real editor session.
 
-Desktop-first. `:renderer-desktop-daemon` (hello-world skeleton today;
+Desktop-first. `:daemon:desktop` (hello-world skeleton today;
 real `DesktopHost` in B-desktop.1.5) is the simpler surface — no
 Robolectric `InstrumentingClassLoader`, no `bridge` package, no
 `HardwareRenderer` native-buffer leaks, sub-second cold init — so a
@@ -43,8 +43,8 @@ verification without Android complexity. Android comes later (§ 7).
 
 ### Non-goals
 
-- **Not a replacement for `:renderer-daemon-core`'s in-process unit tests.**
-  [`JsonRpcServerIntegrationTest`](../../renderer-daemon-core/src/test/kotlin/ee/schimke/composeai/daemon/JsonRpcServerIntegrationTest.kt)
+- **Not a replacement for `:daemon:core`'s in-process unit tests.**
+  [`JsonRpcServerIntegrationTest`](../../daemon/core/src/test/kotlin/ee/schimke/composeai/daemon/JsonRpcServerIntegrationTest.kt)
   remains the fast, hermetic, every-PR check on framing + dispatch. The
   harness adds the subprocess + real-host + image dimensions on top.
 - **Not a replacement for the VS Code extension's tests.**
@@ -66,15 +66,15 @@ verification without Android complexity. Android comes later (§ 7).
 
 ### Recommended shape
 
-A **new module `:tools:daemon-harness`** under a fresh `tools/` directory
+A **new module `:daemon:harness`** under a fresh `tools/` directory
 applying `org.jetbrains.kotlin.jvm` only (no Android, no Compose plugins).
-JUnit test source set (`./gradlew :tools:daemon-harness:test`) runs the
+JUnit test source set (`./gradlew :daemon:harness:test`) runs the
 scenario catalogue against a fresh daemon per scenario; a `main()` entry
-point (`./gradlew :tools:daemon-harness:run`) drives a single scenario
+point (`./gradlew :daemon:harness:run`) drives a single scenario
 interactively for debugging.
 
-Depends on `:renderer-daemon-core` for the
-[`Messages.kt`](../../renderer-daemon-core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt)
+Depends on `:daemon:core` for the
+[`Messages.kt`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt)
 serialisation types and the `ContentLengthFramer` already used by
 `JsonRpcServerIntegrationTest`. Type-level drift between harness and
 daemon is impossible — they share the data classes.
@@ -89,16 +89,16 @@ construction the descriptor is sufficient to launch a working daemon.
 
 Three options weighed:
 
-- **`:renderer-desktop-daemon` integrationTest source set.** Co-located
+- **`:daemon:desktop` integrationTest source set.** Co-located
   with code under test, but cross-target reuse is awkward (same scenarios
-  must run against `:renderer-android-daemon`); per-target plugin classpath
+  must run against `:daemon:android`); per-target plugin classpath
   pollution; hides that the harness is *playing the editor*, not testing
   daemon internals.
 - **Extend `:samples:android-daemon-bench`.** Reuses bench subprocess
   plumbing, but muddles bench (perf numbers) with harness (correctness),
   and bench is Android-specific.
-- **New `:tools:daemon-harness`.** Renderer-agnostic by construction; only
-  depends on `:renderer-daemon-core`; doubles as a reference client for
+- **New `:daemon:harness`.** Renderer-agnostic by construction; only
+  depends on `:daemon:core`; doubles as a reference client for
   anyone porting the daemon to a new editor; CLI mode for debugging
   without VS Code. Cost: another module.
 
@@ -108,7 +108,7 @@ role as a top-level module makes the boundary clear.
 
 ### Module classpath wiring
 
-`implementation(project(":renderer-daemon-core"))`,
+`implementation(project(":daemon:core"))`,
 `implementation(libs.kotlinx.serialization.json)`,
 `testImplementation(libs.junit)` + `truth`. The harness reads
 `<bench>/build/compose-previews/daemon-launch.json` at scenario start;
@@ -279,7 +279,7 @@ that needs one rolls its own
 ([`ScrollPreviewPixelTest`](../../samples/android/src/test/kotlin/com/example/sampleandroid/ScrollPreviewPixelTest.kt),
 `LongScrollPreviewPixelTest`), each fine for asserting colour dominance
 but not a general-purpose diff. The harness ships a small in-tree
-`PixelDiff.kt` under `:tools:daemon-harness/src/main/kotlin/...` (no
+`PixelDiff.kt` under `:daemon:harness/src/main/kotlin/...` (no
 third-party dependency) that the D2.2 pixel-diff CI gate also consumes.
 Consolidation is a side-effect of this work.
 
@@ -309,7 +309,7 @@ being rendered:
 - **Captured real-render baselines** — for real-mode scenarios (v1.5+)
   the baseline is whatever the real Compose renderer produces for a
   given `@Preview`. These *do* go in-repo at
-  `tools/daemon-harness/baselines/<target>/<scenario>/<id>.png`. The
+  `daemon/harness/baselines/<target>/<scenario>/<id>.png`. The
   desktop set is small (~10 PNGs at ~100KB total); Android may
   eventually grow. Git LFS stays an escape hatch only if on-disk volume
   becomes painful — not pre-emptively wired. Decision deferred until
@@ -321,7 +321,7 @@ differs is where the bytes live.
 
 ### Regenerating baselines
 
-`:tools:daemon-harness:regenerateBaselines` re-runs every scenario in
+`:daemon:harness:regenerateBaselines` re-runs every scenario in
 capture mode — no assertion; PNG written to the baseline location,
 overwriting. The PR diff of the changed PNGs is the visual-review surface
 (same pattern as Roborazzi).
@@ -360,13 +360,13 @@ classpath — proves the fingerprint hashes file content) and a *real
 version literal change* (canary for noticing a real drift).
 
 **No `git stash` fallback.** The harness reverts its own edits; a
-crashed test leaves a `tools/daemon-harness/build/PENDING_REVERTS.json`
+crashed test leaves a `daemon/harness/build/PENDING_REVERTS.json`
 marker that the next run reverts or fails fast on. `git stash` would
 risk eating unrelated developer work; never invoke it.
 
 ## 6. Subprocess management
 
-**Spawn:** `:tools:daemon-harness:test` `dependsOn` the target's
+**Spawn:** `:daemon:harness:test` `dependsOn` the target's
 `composePreviewDaemonStart` so the descriptor is fresh; harness loads
 `<bench>/build/compose-previews/daemon-launch.json`, validates
 `enabled == true` (bench modules used by the harness set this), builds
@@ -406,19 +406,19 @@ The harness is renderer-agnostic. The only target-specific bits are:
 | Concern | Desktop | Android |
 |---------|---------|---------|
 | Descriptor | `:samples:desktop-daemon-bench:composePreviewDaemonStart` (planned by P0.6) | `:samples:android-daemon-bench:composePreviewDaemonStart` (exists) |
-| Baselines | `tools/daemon-harness/baselines/desktop/` | `tools/daemon-harness/baselines/android/` |
+| Baselines | `daemon/harness/baselines/desktop/` | `daemon/harness/baselines/android/` |
 | `PreviewInfo.id` shape | `BenchPreviews.kt#FooPreview` | `com.example.daemonbench.BenchPreviewsKt#FooPreview_…` |
 
-Selection by Gradle property: `./gradlew :tools:daemon-harness:test
+Selection by Gradle property: `./gradlew :daemon:harness:test
 -Ptarget=desktop|android` (default `desktop`). The harness resolves the
 descriptor path, baseline directory, and per-target preview-ID aliases
-from a `tools/daemon-harness/scenarios.toml` map. Adding a third
+from a `daemon/harness/scenarios.toml` map. Adding a third
 renderer (e.g. iOS CMP) is "a new target row + a baseline directory."
 
 ## 8. CI integration
 
 **Per-PR jobs:**
-- `daemon-harness-desktop` (always-on): `:tools:daemon-harness:test
+- `daemon-harness-desktop` (always-on): `:daemon:harness:test
   -Ptarget=desktop`. Fast — desktop daemon is sub-second cold; full v1
   catalogue ~60s warm.
 - `daemon-harness-android` (always-on once stable; opt-in initially):
@@ -451,9 +451,9 @@ scenario; port it once the harness exists.
 
 ## 8a. The `FakeHost` test fixture
 
-The harness ships a `FakeHost` that implements [`RenderHost`](../../renderer-daemon-core/src/main/kotlin/ee/schimke/composeai/daemon/RenderHost.kt). It runs in the same JVM as the real daemon (it *is* the daemon's `RenderHost` for fake-mode runs), serves PNGs from a local fixture directory keyed by preview ID, and reads pre-cooked metadata from a small JSON manifest.
+The harness ships a `FakeHost` that implements [`RenderHost`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/RenderHost.kt). It runs in the same JVM as the real daemon (it *is* the daemon's `RenderHost` for fake-mode runs), serves PNGs from a local fixture directory keyed by preview ID, and reads pre-cooked metadata from a small JSON manifest.
 
-Lives under `tools/daemon-harness/src/main/kotlin/.../FakeHost.kt` with fixtures in `tools/daemon-harness/fixtures/<scenario>/`. Each scenario's fixture directory contains:
+Lives under `daemon/harness/src/main/kotlin/.../FakeHost.kt` with fixtures in `daemon/harness/fixtures/<scenario>/`. Each scenario's fixture directory contains:
 
 - `previews.json` — the same shape as a real `composePreviewDaemonStart` manifest, listing the previews this scenario expects to render.
 - `<previewId>.png` — the PNG the fake "renders" when asked for that preview.
@@ -470,7 +470,7 @@ Lives under `tools/daemon-harness/src/main/kotlin/.../FakeHost.kt` with fixtures
 
 The harness's launch path is parameterised:
 
-- `-Pharness.host=fake` — harness spawns a daemon JVM whose entry point is a tiny `FakeDaemonMain` that wires `JsonRpcServer` → `FakeHost`. No `:renderer-android-daemon` or `:renderer-desktop-daemon` on the classpath at all.
+- `-Pharness.host=fake` — harness spawns a daemon JVM whose entry point is a tiny `FakeDaemonMain` that wires `JsonRpcServer` → `FakeHost`. No `:daemon:android` or `:daemon:desktop` on the classpath at all.
 - `-Pharness.host=real` — harness spawns the real `composePreviewDaemonStart` descriptor, same as a VS Code launch.
 
 Default is `fake` until the matching real renderer's Stream B / B-desktop work has landed for the chosen `target`; flips to `real` once it has.
@@ -485,8 +485,8 @@ Each rung independently shippable; each gated on the previous rung
 working in CI for ~a week.
 
 **v0 — single happy-path scenario, desktop only, against `FakeHost`.**
-Module `:tools:daemon-harness` exists. S1 only. `PixelDiff.kt` shipped;
-one baseline PNG; one fixture directory under `tools/daemon-harness/fixtures/s1/`.
+Module `:daemon:harness` exists. S1 only. `PixelDiff.kt` shipped;
+one baseline PNG; one fixture directory under `daemon/harness/fixtures/s1/`.
 Subprocess plumbing works end-to-end against a `FakeDaemonMain`. CI
 workflow runs S1 on every PR. **Independent of B-desktop.1.5** thanks to
 `FakeHost` (§ 8a) — proves the architecture without depending on the
@@ -530,9 +530,9 @@ move here first; they migrate to § 11 once resolved.
 
 ## 11. Decisions made
 
-- **Module location:** new top-level module `:tools:daemon-harness`
+- **Module location:** new top-level module `:daemon:harness`
   (plain `org.jetbrains.kotlin.jvm`, depends only on
-  `:renderer-daemon-core`). Co-locating under `:renderer-desktop-daemon`'s
+  `:daemon:core`). Co-locating under `:daemon:desktop`'s
   integrationTest source set or extending
   `:samples:android-daemon-bench` were both ruled out because they
   couple the harness to a per-target module and pollute the classpath.
@@ -548,7 +548,7 @@ move here first; they migrate to § 11 once resolved.
   boxes, gradients; same generator produces both fixture and baseline
   so nothing is checked in for v0+v1. **Real-mode scenarios** (v1.5+)
   capture actual Compose-rendered PNGs to in-repo
-  `tools/daemon-harness/baselines/<target>/<scenario>/<id>.png`. Git
+  `daemon/harness/baselines/<target>/<scenario>/<id>.png`. Git
   LFS stays an escape hatch only if real-mode on-disk volume becomes
   painful; not pre-emptively wired. Always disambiguated from the
   latency baselines in `baseline-latency.csv`.

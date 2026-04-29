@@ -68,12 +68,12 @@ This gives us two backends that share everything except the host:
 
 | Module                     | Host                  | What it sandboxes                                                  | Backend strengths                                   |
 |----------------------------|-----------------------|--------------------------------------------------------------------|-----------------------------------------------------|
-| `:renderer-android-daemon` | `RobolectricHost`     | Robolectric `InstrumentingClassLoader`, `ComponentActivity`        | Real Android resources, AAR support, Wear, Tiles    |
-| `:renderer-desktop-daemon` | `DesktopHost`         | Plain JVM classloader, `Recomposer`, Skiko `Surface`               | Light init, fewer leak shapes, faster iteration     |
+| `:daemon:android` | `RobolectricHost`     | Robolectric `InstrumentingClassLoader`, `ComponentActivity`        | Real Android resources, AAR support, Wear, Tiles    |
+| `:daemon:desktop` | `DesktopHost`         | Plain JVM classloader, `Recomposer`, Skiko `Surface`               | Light init, fewer leak shapes, faster iteration     |
 
-A `:renderer-daemon-core` shared module holds the protocol types (`Messages.kt`), the JSON-RPC server (`JsonRpcServer.kt`), and the abstract `RenderHost` interface; both per-target modules depend on it. Stream B's existing `:renderer-android-daemon` keeps its `DaemonHost` (renamed to `RobolectricHost` once the core extraction lands); the desktop module is a fresh implementation against the same `RenderHost` interface.
+A `:daemon:core` shared module holds the protocol types (`Messages.kt`), the JSON-RPC server (`JsonRpcServer.kt`), and the abstract `RenderHost` interface; both per-target modules depend on it. Stream B's existing `:daemon:android` keeps its `DaemonHost` (renamed to `RobolectricHost` once the core extraction lands); the desktop module is a fresh implementation against the same `RenderHost` interface.
 
-**Why desktop first for new features.** Desktop is the simpler implementation surface — no Robolectric `InstrumentingClassLoader`, no `bridge` package classloader workaround, no `HardwareRenderer`/`Bitmap` native-buffer leak shapes, sub-second cold init. UX-facing features (predictive prefetch, the cost model in [PREDICTIVE.md § 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model), `MetricsSink` observability, the multi-tier render queue) get a shorter feedback loop on desktop. Once a feature is proven on desktop, the Android backend picks it up via the shared `:renderer-daemon-core` module without code duplication. Android continues in parallel — it's still the larger user surface and exercises the harder leak-defense path that informs everything.
+**Why desktop first for new features.** Desktop is the simpler implementation surface — no Robolectric `InstrumentingClassLoader`, no `bridge` package classloader workaround, no `HardwareRenderer`/`Bitmap` native-buffer leak shapes, sub-second cold init. UX-facing features (predictive prefetch, the cost model in [PREDICTIVE.md § 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model), `MetricsSink` observability, the multi-tier render queue) get a shorter feedback loop on desktop. Once a feature is proven on desktop, the Android backend picks it up via the shared `:daemon:core` module without code duplication. Android continues in parallel — it's still the larger user surface and exercises the harder leak-defense path that informs everything.
 
 ## 5. IPC contract (sketch)
 
@@ -103,7 +103,7 @@ The protocol must be locked in Phase 0 of the implementation work — see [TODO.
 renderer-android/                    UNCHANGED — RobolectricRenderTest.kt etc.
 renderer-desktop/                    UNCHANGED — existing Skiko renderer
 
-renderer-daemon-core/                NEW — pure JVM, renderer-agnostic
+daemon/core/                NEW — pure JVM, renderer-agnostic
   src/main/kotlin/.../daemon/
     JsonRpcServer.kt                 stdio JSON-RPC + Content-Length framing
     RenderHost.kt                    Abstract host interface
@@ -116,7 +116,7 @@ renderer-daemon-core/                NEW — pure JVM, renderer-agnostic
     protocol/
       Messages.kt                    @Serializable request/response types
 
-renderer-android-daemon/             NEW — depends on renderer-android + core
+daemon/android/             NEW — depends on renderer-android + core
   src/main/kotlin/.../daemon/
     DaemonMain.kt                    Wires RobolectricHost + JsonRpcServer
     RobolectricHost.kt               Holds Robolectric sandbox open (was DaemonHost)
@@ -124,7 +124,7 @@ renderer-android-daemon/             NEW — depends on renderer-android + core
     bridge/DaemonHostBridge.kt       Cross-classloader handoff (java.util.concurrent.* only)
     RenderEngine.kt                  Per-preview render body (initially duplicated)
 
-renderer-desktop-daemon/             NEW — depends on renderer-desktop + core
+daemon/desktop/             NEW — depends on renderer-desktop + core
   src/main/kotlin/.../daemon/
     DaemonMain.kt                    Wires DesktopHost + JsonRpcServer
     DesktopHost.kt                   Holds Recomposer + Skiko surface open
@@ -151,11 +151,11 @@ samples/
   desktop-daemon-bench/              NEW — desktop latency harness (D2-desktop)
 ```
 
-`:renderer-daemon-core` is the seam that lets desktop and Android share everything except the `RenderHost` implementation. Stream B's existing code (already shipped on `agent/preview-daemon-streamB`) gets refactored once: `JsonRpcServer.kt` and `Messages.kt` move into core; `DaemonHost.kt` is renamed to `RobolectricHost.kt` and stays in `:renderer-android-daemon`. After that, both backends evolve in parallel against a single protocol surface.
+`:daemon:core` is the seam that lets desktop and Android share everything except the `RenderHost` implementation. Stream B's existing code (already shipped on `agent/preview-daemon-streamB`) gets refactored once: `JsonRpcServer.kt` and `Messages.kt` move into core; `DaemonHost.kt` is renamed to `RobolectricHost.kt` and stays in `:daemon:android`. After that, both backends evolve in parallel against a single protocol surface.
 
 ## 7. Sharing strategy — what crosses the boundary
 
-**`renderer-android-daemon` depends on `renderer-android`** for already-extracted helpers that have no test-runner coupling: `AccessibilityChecker`, `GoogleFontInterceptor`, `AnimationInspector`, `ScrollDriver`, `PixelSystemFontAliases`, `RenderManifest`, `PreviewRenderStrategy`. These are already separate files and safe to import.
+**`daemon/android` depends on `renderer-android`** for already-extracted helpers that have no test-runner coupling: `AccessibilityChecker`, `GoogleFontInterceptor`, `AnimationInspector`, `ScrollDriver`, `PixelSystemFontAliases`, `RenderManifest`, `PreviewRenderStrategy`. These are already separate files and safe to import.
 
 **`RobolectricRenderTest.kt` itself is NOT a dependency.** The per-preview render body (qualifiers + `setContent` + `advanceTimeBy` + `captureRoboImage`) is **duplicated** into `RenderEngine.kt` for v1, because:
 

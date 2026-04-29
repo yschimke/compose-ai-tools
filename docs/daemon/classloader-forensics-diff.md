@@ -1,7 +1,7 @@
 # Classloader forensics diff: standalone-control vs daemon-subject
 
 - A (control): `/home/yuri/workspace/compose-ai-tools/renderer-android/build/reports/classloader-forensics/standalone.json`
-- B (subject): `/home/yuri/workspace/compose-ai-tools/renderer-android-daemon/build/reports/classloader-forensics/daemon.json`
+- B (subject): `/home/yuri/workspace/compose-ai-tools/daemon/android/build/reports/classloader-forensics/daemon.json`
 - Survey size: A=32, B=38, both=31
 - Unchanged: 13/31
 

@@ -35,7 +35,7 @@ this — they swap *which* preview the spec payload references between
 two pre-loaded composables (`RedSquare` → `BlueSquare`); both classes
 were loaded once at daemon spawn and reflection just dispatches to a
 different one. Genuine recompile-then-rerender is not tested.
-[`S3_5RecompileSaveLoopRealModeTest`](../../tools/daemon-harness/src/test/kotlin/ee/schimke/composeai/daemon/harness/S3_5RecompileSaveLoopRealModeTest.kt)
+[`S3_5RecompileSaveLoopRealModeTest`](../../daemon/harness/src/test/kotlin/ee/schimke/composeai/daemon/harness/S3_5RecompileSaveLoopRealModeTest.kt)
 is the `@Ignore`d placeholder for the test that flips green when this
 design lands.
 
@@ -145,7 +145,7 @@ paid **once at daemon spawn** and never again per save-loop iteration.
 
 ### Implementation seams
 
-**Android (`:renderer-android-daemon`):**
+**Android (`:daemon:android`):**
 
 - `SandboxHoldingRunner` already overrides
   `RobolectricTestRunner.createClassLoaderConfig()` for the bridge
@@ -163,7 +163,7 @@ paid **once at daemon spawn** and never again per save-loop iteration.
   The render thread's pending queue is drained before the swap (no
   mid-render cancellation — DESIGN § 9 invariant).
 
-**Desktop (`:renderer-desktop-daemon`):**
+**Desktop (`:daemon:desktop`):**
 
 - Simpler. No `InstrumentingClassLoader`; the parent is the daemon
   process's own app classloader. `DaemonMain` constructs the initial
@@ -173,7 +173,7 @@ paid **once at daemon spawn** and never again per save-loop iteration.
 - Skiko / Compose Desktop runtime is on the parent — no special
   handling needed for native libs.
 
-**Shared infrastructure (`:renderer-daemon-core`):**
+**Shared infrastructure (`:daemon:core`):**
 
 - A small `RenderHost` extension or sibling — `UserClassLoaderHolder`
   or similar — that owns the `currentChildLoader` lifecycle. Both
@@ -192,11 +192,11 @@ paid **once at daemon spawn** and never again per save-loop iteration.
 cross-render `Recomposer` retention is not a problem in the current
 design:
 
-- Desktop's [`RenderEngine`](../../renderer-desktop-daemon/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
+- Desktop's [`RenderEngine`](../../daemon/desktop/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
   allocates `ImageComposeScene(width, height, density)` inside `render`
   and `try/finally`-closes it. `ImageComposeScene.close()` disposes the
   scene's internal `Recomposer` + `Composition`.
-- Android's [`RenderEngine`](../../renderer-android-daemon/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
+- Android's [`RenderEngine`](../../daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
   builds a `createAndroidComposeRule<ComponentActivity>()` inside the
   per-render `Statement`. The rule's outer wrapper closes the
   `ActivityScenario` on `evaluate()` return; `Activity.onDestroy()`
@@ -328,7 +328,7 @@ resolved.
    1 above for the verification details. Belt-and-braces: a soak
    `WeakReference` probe is still part of B2.0's DoD.
 
-2. **`UserClassLoaderHolder` in `:renderer-daemon-core` first.** Land
+2. **`UserClassLoaderHolder` in `:daemon:core` first.** Land
    it in core; refactor per-target only if Android's child-loader
    complexity (the Robolectric `doNotAcquirePackage` + bridge
    discipline) leaks into core's API surface in a way that

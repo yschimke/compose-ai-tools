@@ -202,13 +202,13 @@ works. Run via `./gradlew :renderer-android:test --tests
 ### Configuration B — daemon path
 
 Lives at
-`renderer-android-daemon/src/test/kotlin/.../ClassloaderForensicsDaemonTest.kt`.
+`daemon/android/src/test/kotlin/.../ClassloaderForensicsDaemonTest.kt`.
 A JUnit `@Test` annotated `@RunWith(SandboxHoldingRunner::class)` (the
 daemon's existing variant of `RobolectricTestRunner` that holds the
 sandbox open via the dummy-`@Test` pattern). Submits a single render
 request whose body is "dump the survey set" instead of running the
 real RenderEngine. Writes JSON to
-`renderer-android-daemon/build/reports/classloader-forensics/daemon.json`.
+`daemon/android/build/reports/classloader-forensics/daemon.json`.
 
 Reuses `RobolectricHost`'s render-thread + bridge dispatch; the dump
 runs in the sandbox classloader, with the daemon-side `UserClassLoaderHolder`
@@ -230,15 +230,15 @@ End-to-end:
 ```
 ./gradlew :renderer-android:test \
           --tests "ee.schimke.composeai.renderer.ClassloaderForensicsTest" \
-          :renderer-android-daemon:test \
+          :daemon:android:test \
           --tests "ee.schimke.composeai.daemon.ClassloaderForensicsDaemonTest" \
-          :tools:daemon-harness:dumpClassloaderDiff
+          :daemon:harness:dumpClassloaderDiff
 ```
 
-(`:renderer-android` and `:renderer-android-daemon` are AGP `library` modules
+(`:renderer-android` and `:daemon:android` are AGP `library` modules
 whose top-level `:test` lifecycle delegates to `:testDebugUnitTest`.)
 
-The diff task lives in `:tools:daemon-harness:dumpClassloaderDiff` and writes
+The diff task lives in `:daemon:harness:dumpClassloaderDiff` and writes
 `docs/daemon/classloader-forensics-diff.{md,json}`. Per Decision 5 below, v0
 is a developer-invoked diagnostic, not a CI gate.
 
@@ -270,7 +270,7 @@ configuration; sibling `diff.json` and human-readable
 ## Implementation seam
 
 A single shared `ClassloaderForensics` library class in
-`:renderer-daemon-core` exposing:
+`:daemon:core` exposing:
 
 ```kotlin
 object ClassloaderForensics {
@@ -285,11 +285,11 @@ object ClassloaderForensics {
 
 Both Configuration A and B call `capture(...)` with their respective
 context. The test bodies are tiny (~30 lines each); the heavy lifting
-is in the library. Living in `:renderer-daemon-core` means it has no
+is in the library. Living in `:daemon:core` means it has no
 Robolectric/Compose dependency at the type level — it works against
 `Class<?>` and `ClassLoader` reflection only — and both
 `:renderer-android` (the working standalone path) and
-`:renderer-android-daemon` can depend on it without circular deps.
+`:daemon:android` can depend on it without circular deps.
 
 The library is renderer-agnostic; desktop could call it too if we ever
 want forensic dumps on the desktop side (e.g. to validate the
@@ -367,7 +367,7 @@ based on what we found. Possible follow-ups:
 
 ## Decisions to surface
 
-1. **Library placement: `:renderer-daemon-core` vs a new top-level
+1. **Library placement: `:daemon:core` vs a new top-level
    `:tools:classloader-forensics`.** Core is renderer-agnostic and
    the right home if we want desktop dumps too. A standalone tool is
    cleaner if this is purely Android-bug-hunting and we never need

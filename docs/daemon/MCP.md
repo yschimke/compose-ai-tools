@@ -257,11 +257,11 @@ clients the existing daemon. Reasons:
 - Doesn't constrain the daemon's evolution to MCP's spec cadence.
 - Doesn't require VS Code (works for headless agent loops, CI, and
   the harness's eventual MCP integration test).
-- Reuses `:renderer-daemon-core`'s `Messages.kt` types verbatim — the
+- Reuses `:daemon:core`'s `Messages.kt` types verbatim — the
   shim translates *between* two strongly-typed Kotlin schemas, which
   is a tiny amount of code (~300 LOC).
 - The shim's renderer-agnosticism is automatic since
-  `:renderer-daemon-core` is.
+  `:daemon:core` is.
 
 **Option C as a follow-up** for VS Code-hosted MCP. Lives alongside
 Option A, doesn't replace it.

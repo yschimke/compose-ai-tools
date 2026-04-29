@@ -24,7 +24,7 @@ The MCP SDK ships first-party from the MCP project. It has:
 - **Logging + progress + completion APIs** for free — `sendLoggingMessage`,
   progress notifications, URI-template completion.
 
-Building this from scratch on top of `:renderer-daemon-core`'s
+Building this from scratch on top of `:daemon:core`'s
 existing `JsonRpcServer` would mean re-implementing capability
 negotiation, paging, sampling, and the wire-shape conformance tests.
 The SDK is ~2KB of dep weight and saves a real chunk of work.
@@ -42,7 +42,7 @@ Ktor specifically because:
 ## Module structure
 
 New top-level module `:tools:daemon-mcp` (mirroring the existing
-`:tools:daemon-harness` pattern):
+`:daemon:harness` pattern):
 
 ```
 tools/daemon-mcp/
@@ -67,7 +67,7 @@ Production deps:
 ```kotlin
 dependencies {
   implementation("io.modelcontextprotocol:kotlin-sdk-server:$mcpVersion")
-  implementation(project(":renderer-daemon-core"))   // for Messages.kt + JsonRpcServer types
+  implementation(project(":daemon:core"))   // for Messages.kt + JsonRpcServer types
   implementation(libs.ktor.server.core)
   implementation(libs.ktor.server.cio)               // CIO engine — small, coroutine-native
   implementation(libs.ktor.server.content.negotiation)
@@ -76,10 +76,10 @@ dependencies {
 }
 ```
 
-`:renderer-daemon-core` is the only daemon-side dep — same renderer-
-agnostic surface invariant that `:tools:daemon-harness` honours. The
-shim never depends on `:renderer-android-daemon` or
-`:renderer-desktop-daemon` directly; it spawns the launch descriptor
+`:daemon:core` is the only daemon-side dep — same renderer-
+agnostic surface invariant that `:daemon:harness` honours. The
+shim never depends on `:daemon:android` or
+`:daemon:desktop` directly; it spawns the launch descriptor
 the same way the harness's `RealHarnessLauncher` does.
 
 ## Server bootstrap
@@ -475,7 +475,7 @@ priority" heuristic may be enough.
 ## Decisions to surface
 
 1. **Module name**: `:tools:daemon-mcp` (recommended; mirrors
-   `:tools:daemon-harness`) vs `:tools:mcp-server` (less specific but
+   `:daemon:harness`) vs `:tools:mcp-server` (less specific but
    future-proofs for non-daemon MCP needs). Recommend `:tools:daemon-mcp`.
 2. **Ktor engine**: CIO (smaller, coroutine-native) vs Netty (more
    mature). Recommend CIO; daemon-side traffic is tiny.
