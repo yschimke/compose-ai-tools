@@ -130,6 +130,24 @@ fun main(args: Array<String>) {
       PreviewIndex.empty()
     }
 
+  // B2.2 phase 2 — wire the incremental rescan path. Mirrors `:daemon:desktop`'s wireup; the
+  // ClassGraph scan happens against this JVM's `java.class.path` and is scoped to the smallest
+  // classpath element overlapping the saved `.kt` file (see [IncrementalDiscovery]). Skip wiring
+  // when the index is empty — no baseline → scan-on-save has nothing to diff against.
+  val incrementalDiscovery: IncrementalDiscovery? =
+    if (previewIndex.size > 0) {
+      val classpath =
+        (System.getProperty("java.class.path") ?: "")
+          .split(File.pathSeparator)
+          .filter { it.isNotBlank() }
+          .map { Path.of(it) }
+      System.err.println(
+        "compose-ai-tools daemon: IncrementalDiscovery active " +
+          "(classpath=${classpath.size}, previewCount=${previewIndex.size})"
+      )
+      IncrementalDiscovery(classpath = classpath)
+    } else null
+
   val server =
     JsonRpcServer(
       input = System.`in`,
@@ -137,6 +155,7 @@ fun main(args: Array<String>) {
       host = host,
       classpathFingerprint = classpathFingerprint,
       previewIndex = previewIndex,
+      incrementalDiscovery = incrementalDiscovery,
     )
   server.run()
 }

@@ -334,9 +334,25 @@ data class ScenarioPaths(
  * test body.
  */
 fun writePreviewsManifest(fixtureDir: File, previewIds: List<String>) {
+  writePreviewsManifest(fixtureDir, previewIds.map { id -> id to null })
+}
+
+/**
+ * **B2.2 phase 2 overload** — emits one preview row per `(id, sourceFile)` pair. When `sourceFile`
+ * is non-null it's serialised into the row so the daemon-side [PreviewIndex] anchors the preview
+ * to that file path; the fake-mode S3 scenario uses this so a `fileChanged` against the same path
+ * produces a `discoveryUpdated` with `removed = [id]`.
+ */
+@JvmName("writePreviewsManifestWithSources")
+fun writePreviewsManifest(fixtureDir: File, previews: List<Pair<String, String?>>) {
   val rows =
-    previewIds.joinToString(",") { id ->
-      """{"id":"$id","className":"fake.${id.replace("-", "_").replaceFirstChar { it.uppercase() }}","functionName":"Preview"}"""
+    previews.joinToString(",") { (id, sourceFile) ->
+      val cls = "fake.${id.replace("-", "_").replaceFirstChar { it.uppercase() }}"
+      val sourceField =
+        if (sourceFile != null) {
+          ",\"sourceFile\":\"${sourceFile.replace("\\", "\\\\")}\""
+        } else ""
+      "{\"id\":\"$id\",\"className\":\"$cls\",\"functionName\":\"Preview\"$sourceField}"
     }
   File(fixtureDir, "previews.json").writeText("[$rows]")
 }

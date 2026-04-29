@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
+import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InitializeParams
@@ -25,6 +26,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.lang.management.ManagementFactory
+import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -98,10 +100,21 @@ class JsonRpcServer(
    * [DaemonMain]. Surfaced to clients via `initialize.manifest`. Defaults to [PreviewIndex.empty]
    * so existing in-process call sites (the integration tests, fake-mode harness scenarios) stay
    * source-compatible — the empty index reports `path = ""` and `previewCount = 0`, matching the
-   * pre-B2.2 stub. Phase 2 will replace this with a mutable holder that supports incremental
-   * rescan + `discoveryUpdated` emission.
+   * pre-B2.2 stub.
+   *
+   * B2.2 phase 2 — the index is now mutable. `fileChanged({kind: source})` runs the
+   * cheap-prefilter → scoped-scan → diff → applyDiff cascade against [incrementalDiscovery] and
+   * emits `discoveryUpdated` when the diff is non-empty.
    */
   private val previewIndex: PreviewIndex = PreviewIndex.empty(),
+  /**
+   * B2.2 phase 2 — when non-null, [handleFileChanged] for `kind: "source"` runs the cheap pre-
+   * filter + scoped ClassGraph scan against this discovery instance, diffs against [previewIndex],
+   * applies the diff in-place, and emits `discoveryUpdated`. When null (the in-process
+   * integration tests, the pre-phase-2 default) the source path stays a classloader-swap-only
+   * no-op — same behaviour as before phase 2 landed.
+   */
+  private val incrementalDiscovery: IncrementalDiscovery? = null,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -310,9 +323,10 @@ class JsonRpcServer(
         pid = currentPid(),
         capabilities =
           ServerCapabilities(
-            // Tier-2 (B2.2) lands later; until then we honour PROTOCOL.md § 3
-            // verbatim and report false.
-            incrementalDiscovery = false,
+            // B2.2 phase 2 — flipped to true when an [IncrementalDiscovery] is wired (the
+            // production daemon-main path). In-process integration tests / fake-mode callers
+            // that don't pass one still see false, matching the pre-phase-2 contract.
+            incrementalDiscovery = incrementalDiscovery != null,
             sandboxRecycle = true,
             // Leak detection (B2.4) not wired yet — empty list = unavailable.
             leakDetection = emptyList<LeakDetectionMode>(),
@@ -325,9 +339,9 @@ class JsonRpcServer(
           Manifest(
             // B2.2 phase 1 — the daemon owns its preview index now. Path is the absolute path of
             // the `previews.json` we loaded at startup ("" when no `composeai.daemon.previewsJsonPath`
-            // sysprop was supplied — fake-mode / in-process tests). Phase 2 (incremental rescan +
-            // `discoveryUpdated` emission) is still pending and will keep this field in sync as
-            // discovery diffs land.
+            // sysprop was supplied — fake-mode / in-process tests). B2.2 phase 2 keeps the count
+            // live by mutating the index in-place from `discoveryUpdated` emissions; the path is
+            // immutable for the daemon's lifetime.
             path = previewIndex.path?.toAbsolutePath()?.toString() ?: "",
             previewCount = previewIndex.size,
           ),
@@ -553,38 +567,105 @@ class JsonRpcServer(
   }
 
   /**
-   * Routes a `fileChanged` notification — B2.0 wires this to the disposable user classloader (see
-   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
+   * Routes a `fileChanged` notification.
    *
-   * - **`kind: "source"`** → drops the strong reference to the host's current child classloader so
-   *   the next render lazily allocates a fresh [java.net.URLClassLoader] reading the recompiled
-   *   bytecode off disk. Honours the no-mid-render-cancellation invariant: this is a queue-time
-   *   event, not preemption, so any in-flight render keeps using its already-resolved `Class<?>`.
-   * - **`kind: "classpath"`** → existing classpathDirty path (B2.1, not yet implemented). No-op
-   *   here; left to B2.1.
+   * - **`kind: "source"`** (B2.0 + B2.2 phase 2):
+   *   1. Drops the strong reference to the host's current child classloader so the next render
+   *      lazily allocates a fresh [java.net.URLClassLoader] reading the recompiled bytecode off
+   *      disk (B2.0 — see
+   *      [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
+   *   2. When [incrementalDiscovery] is wired, runs the cheap-prefilter → scoped-scan → diff →
+   *      applyDiff cascade on a worker thread and emits `discoveryUpdated` if the diff is
+   *      non-empty (B2.2 phase 2 —
+   *      [DESIGN § 8 Tier 2](../../../../../../docs/daemon/DESIGN.md)).
+   *
+   *   Honours the no-mid-render-cancellation invariant: both steps are queue-time events, not
+   *   preemption, so any in-flight render keeps using its already-resolved `Class<?>` and the
+   *   already-snapshotted `PreviewIndex`.
+   * - **`kind: "classpath"`** → Tier-1 fingerprint cascade ([handleClasspathFileChanged]).
    * - **`kind: "resource"`** → conservative v1: would mark all previews stale, but the daemon does
-   *   not yet own its own preview index, so this is a no-op for now. B2.0c lands the smart variant
-   *   (per-preview resource-read tracking).
+   *   not yet own its own preview index for resources, so this is a no-op for now. B2.0c lands
+   *   the smart variant (per-preview resource-read tracking).
    *
    * Hosts that don't participate in the parent/child split (the harness's `FakeHost`, the B1.3
-   * stub) return `null` from [RenderHost.userClassloaderHolder]; the swap is then skipped and the
-   * v1 fake-mode behaviour ("fileChanged is a no-op") still holds.
+   * stub) return `null` from [RenderHost.userClassloaderHolder]; the swap is then skipped.
    */
   private fun handleFileChanged(params: FileChangedParams) {
     when (params.kind) {
       FileKind.SOURCE -> {
         host.userClassloaderHolder?.swap()
+        runIncrementalDiscovery(params.path)
       }
       FileKind.CLASSPATH -> {
         handleClasspathFileChanged(params)
       }
       FileKind.RESOURCE -> {
         // B2.0 v1 conservative: mark all previews stale. The daemon does not yet own its preview
-        // index (B2.2), so there's nothing to mark; smart per-preview invalidation lands with
-        // B2.0c. Left as a no-op deliberately so the harness's existing
+        // index for resources (B2.0c lands the per-preview resource-read tracking that gives us a
+        // smart invalidation pass). Left as a no-op deliberately so the harness's existing
         // `S3RenderAfterEdit*Test` (fake-mode) "fileChanged is a no-op" assertion still holds.
       }
     }
+  }
+
+  /**
+   * B2.2 phase 2 — runs the daemon-side cheap-prefilter / scoped-scan / diff cascade for one
+   * source-file `fileChanged` notification, applies the resulting diff in-place to [previewIndex],
+   * and emits `discoveryUpdated` if non-empty.
+   *
+   * Runs the heavy work on a fresh daemon thread so the JSON-RPC read loop never blocks on a
+   * scan. Mirrors the fire-and-forget pattern [submitRenderAsync] uses for renders. We
+   * deliberately pick a fresh thread (rather than reusing an executor) for symmetry with the
+   * render path; saved-file events arrive O(seconds) apart in a typical save loop, so the cost of
+   * one short-lived `Thread` per save is negligible compared to a ClassGraph scan.
+   *
+   * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for
+   * in-process integration tests.
+   */
+  private fun runIncrementalDiscovery(path: String) {
+    val discovery = incrementalDiscovery ?: return
+    Thread(
+        {
+          try {
+            val file =
+              try {
+                Path.of(path)
+              } catch (t: Throwable) {
+                System.err.println(
+                  "compose-ai-daemon: incrementalDiscovery: invalid path '$path' " +
+                    "(${t.javaClass.simpleName}: ${t.message}); skipping"
+                )
+                return@Thread
+              }
+            if (!discovery.cheapPrefilter(file, previewIndex)) return@Thread
+            val scan = discovery.scanForFile(file)
+            val diff = previewIndex.diff(newScanForFile = scan, sourceFile = file)
+            if (discoveryDiffEmpty(diff)) return@Thread
+            previewIndex.applyDiff(diff)
+            emitDiscoveryUpdated(diff)
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: incrementalDiscovery worker failed " +
+                "(${t.javaClass.simpleName}: ${t.message})"
+            )
+            t.printStackTrace(System.err)
+          }
+        },
+        "compose-ai-daemon-incremental-discovery",
+      )
+      .apply { isDaemon = true }
+      .start()
+  }
+
+  private fun emitDiscoveryUpdated(diff: DiscoveryDiff) {
+    val params =
+      DiscoveryUpdatedParams(
+        added = diff.added.map { encode(PreviewInfoDto.serializer(), it) },
+        removed = diff.removed,
+        changed = diff.changed.map { encode(PreviewInfoDto.serializer(), it) },
+        totalPreviews = diff.totalPreviews,
+      )
+    sendNotification("discoveryUpdated", encode(DiscoveryUpdatedParams.serializer(), params))
   }
 
   /**

@@ -34,6 +34,13 @@ dependencies {
   // it — they instantiate `Json {}` and reference protocol types directly.
   api(libs.kotlinx.serialization.json)
 
+  // B2.2 phase 2 — IncrementalDiscovery's scoped @Preview scan uses ClassGraph,
+  // mirroring the gradle-plugin's DiscoverPreviewsTask. Layered as `implementation`
+  // because it's an internal detail of the daemon-side discovery pass; not part of
+  // the renderer-agnostic protocol surface that downstream :daemon:android /
+  // :daemon:desktop modules consume from this module's `api`.
+  implementation(libs.classgraph)
+
   testImplementation(libs.junit)
 }
 

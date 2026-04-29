@@ -22,12 +22,13 @@ import org.junit.Test
  * `renderNow(["red-square"])` and `renderNow(["blue-square"])` calls; assert the second renders
  * blue.
  *
- * **Gap parity with fake mode.** v1 daemon does not emit `discoveryUpdated` on `fileChanged` (B2.2
- * unimplemented — see [S3RenderAfterEditTest]'s KDoc). Real-mode S3 doesn't bother sending a
- * `fileChanged` notification because the render bypasses any file-watching path entirely; instead
- * the assertion is purely "second renderNow with a different previewId returns different bytes".
- * Once B2.2 lands, this test should add a fileChanged + assert `discoveryUpdated` — same shape as
- * the fake-mode one will need.
+ * **Gap parity with fake mode.** B2.2 phase 2 wired `discoveryUpdated` emission on
+ * `fileChanged({kind: source})`; the fake-mode [S3RenderAfterEditTest] now asserts presence. The
+ * real-mode flow doesn't yet send a `fileChanged` notification because the render bypasses any
+ * file-watching path entirely (no real source `.kt` is being edited mid-test) — adding that
+ * assertion would require a recompile-on-the-fly fixture similar to
+ * `S3_5RecompileSaveLoopRealModeTest`. Out of scope for v1; this test stays the
+ * "different previewId → different bytes" round-trip check.
  *
  * Captured baselines: reuses `red-square.png` from v1.5a's S1 (no duplication) and adds
  * `blue-square.png`. Both live under `daemon/harness/baselines/desktop/s3/`.

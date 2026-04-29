@@ -4,9 +4,10 @@ import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import java.io.File
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -25,14 +26,12 @@ import org.junit.Test
  *
  * 1. `renderNow` → asserts v1 is what comes back.
  * 2. [editSource] swaps v1 → v2 on disk (auto-revert in `finally`).
- * 3. Sends `fileChanged({kind: source})`.
- * 4. `renderNow` again → asserts v2 is what comes back.
- *
- * **Gap from the daemon's v1 reality.** TEST-HARNESS § 3 imagines the daemon emits a
- * `discoveryUpdated` notification on `fileChanged` (Tier-2 incremental discovery, B2.2). The v1
- * daemon does **not** implement that — `JsonRpcServer.handleNotification`'s `fileChanged` arm is a
- * no-op (line ~470). This scenario assets only the renderNow round-trip with the new fixture wins;
- * `discoveryUpdated` is documented here as not yet emitted and is not asserted.
+ * 3. Sends `fileChanged({kind: source})` against a `.kt` file the index anchors the preview to.
+ * 4. **B2.2 phase 2** — asserts the daemon emits `discoveryUpdated` with `removed = [<previewId>]`
+ *    (the harness's classpath has no compiled bytecode under the fixture dir, so the scoped scan
+ *    returns empty and the diff path treats the preview as deleted-from-this-file). Pre-phase-2
+ *    this assertion was inverted: we polled with a 250ms timeout that was expected to expire.
+ * 5. `renderNow` again → asserts v2 is what comes back.
  */
 class S3RenderAfterEditTest {
 
@@ -49,11 +48,30 @@ class S3RenderAfterEditTest {
     // Stash the v2 variant under the documented filename — purely for readers; not used by FakeHost
     // directly. The actual swap happens via `editSource` below replacing the live PNG bytes.
     File(paths.fixtureDir, "$previewId.v2.png").writeBytes(v2Bytes)
-    writePreviewsManifest(paths.fixtureDir, listOf(previewId))
+
+    // B2.2 phase 2 — synthesise a stand-in source file that the daemon's PreviewIndex anchors the
+    // preview to. The cheap pre-filter trips on either an `@Preview` text match OR an index hit by
+    // `sourceFile`; we use the latter (no real Compose code in the fixture). The follow-up
+    // `fileChanged` carries this same path so the diff path sees "preview was on this file, scan
+    // returned nothing → emit removed = [previewId]".
+    val sourceKtFile = File(paths.fixtureDir, "Preview1.kt")
+    sourceKtFile.writeText(
+      """
+      // Fake-mode harness fixture for S3. Not compiled. The daemon's discovery cascade reads this
+      // path purely as the `sourceFile` anchor recorded in the in-memory PreviewIndex.
+      """
+        .trimIndent()
+    )
+    writePreviewsManifest(paths.fixtureDir, listOf(previewId to sourceKtFile.absolutePath))
 
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      val initResult = client.initialize()
+      assertEquals(1, initResult.protocolVersion)
+      assertTrue(
+        "B2.2 phase 2 — IncrementalDiscovery wired in fake-mode, capability must flip true",
+        initResult.capabilities.incrementalDiscovery,
+      )
       client.sendInitialized()
 
       // 1. First render — must serve v1.
@@ -78,30 +96,31 @@ class S3RenderAfterEditTest {
       // 2. Swap fixture to v2 with auto-revert. The `editSource` primitive (Scenario.kt) reverts in
       //    `finally` so a crashed test can't leave the fixture dirty.
       editSource(pngFile, v2Bytes) {
-        // 3. Tell the daemon a source file changed. v1 daemon's fileChanged handler is a no-op
-        //    today (gap with TEST-HARNESS § 3's discoveryUpdated expectation; see KDoc); we send
-        //    it for protocol fidelity but don't poll for any acknowledgement.
+        // 3. Tell the daemon a source file changed. Use the `.kt` anchor — the cheap pre-filter
+        //    consults the index by `sourceFile` and trips on the match, the scoped scan returns
+        //    empty (no compiled bytecode under the fixture), and the diff emits removed.
         client.fileChanged(
-          path = pngFile.absolutePath,
+          path = sourceKtFile.absolutePath,
           kind = FileKind.SOURCE,
           changeType = ChangeType.MODIFIED,
         )
-        // The harness must NOT see a discoveryUpdated under v1 daemon reality. We assert the
-        // *absence* by polling with a short timeout that should expire.
-        var sawDiscoveryUpdated = false
-        try {
-          client.pollNotification("discoveryUpdated", 250.milliseconds)
-          sawDiscoveryUpdated = true
-        } catch (_: Throwable) {
-          // Expected: timed out → daemon doesn't emit discoveryUpdated yet (gap).
-        }
-        assertFalse(
-          "v1 daemon does not yet emit discoveryUpdated on fileChanged (B2.2 unimplemented). " +
-            "If this assertion ever flips green, B2.2 has landed and this test should tighten.",
-          sawDiscoveryUpdated,
-        )
 
-        // 4. Second render — must serve v2.
+        // 4. Assert the daemon emits `discoveryUpdated`. B2.2 phase 2 — pre-phase-2 this assertion
+        //    was the *absence* of the notification (the regression marker). Now we tighten.
+        val discovery = client.pollNotification("discoveryUpdated", 2.seconds)
+        val params =
+          discovery["params"]?.jsonObject ?: error("discoveryUpdated missing params: $discovery")
+        val removedIds =
+          params["removed"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        assertTrue(
+          "discoveryUpdated.removed must contain $previewId; got $removedIds",
+          previewId in removedIds,
+        )
+        // The fake-mode scan returns no @Preview classes; nothing else changes.
+        assertEquals(emptyList<Any?>(), params["added"]?.jsonArray?.toList() ?: emptyList<Any?>())
+        assertEquals(0, params["totalPreviews"]?.jsonPrimitive?.intOrNull)
+
+        // 5. Second render — must serve v2.
         val secondStart = System.currentTimeMillis()
         val rn2 = client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
         assertEquals(listOf(previewId), rn2.queued)
@@ -138,7 +157,7 @@ class S3RenderAfterEditTest {
         )
       }
 
-      // 5. Clean shutdown.
+      // 6. Clean shutdown.
       val exitCode = client.shutdownAndExit()
       assertEquals("Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
     } finally {

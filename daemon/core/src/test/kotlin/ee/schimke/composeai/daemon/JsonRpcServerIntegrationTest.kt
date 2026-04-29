@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -592,6 +593,131 @@ class JsonRpcServerIntegrationTest {
       assertEquals(0, exitCode.get())
     } finally {
       tmpDir.deleteRecursively()
+    }
+  }
+
+  /**
+   * B2.2 phase 2 — `fileChanged({kind: source, path: <.kt>})` against a daemon configured with a
+   * non-empty [PreviewIndex] AND a wired [IncrementalDiscovery] must emit `discoveryUpdated`
+   * within a couple of seconds with the diff against the cached index.
+   *
+   * The synthetic classpath has no `@Preview`-bearing classes, so the scoped scan returns empty
+   * and the diff carries `removed = [the index's preview]`.
+   */
+  @Test(timeout = 30_000)
+  fun fileChanged_source_emits_discoveryUpdated() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("phase2-discovery-test")
+    // The "source" file we'll claim changed. Cheap pre-filter trips on text match (`@Preview`).
+    val sourceKt = tmpDir.resolve("Foo.kt")
+    java.nio.file.Files.writeString(sourceKt, "@Preview\nfun Foo() {}\n")
+
+    // Seed the index with a preview anchored to the source file's absolute path. The scan returns
+    // empty (no compiled classes in the synthetic classpath); the diff's `removed` slot picks up
+    // the indexed preview because its `sourceFile` matches the saved path.
+    val previewDto =
+      PreviewInfoDto(
+        id = "Foo",
+        className = "com.example.FooKt",
+        methodName = "Foo",
+        sourceFile = sourceKt.toAbsolutePath().toString(),
+      )
+    val index = PreviewIndex.fromMap(path = sourceKt, byId = mapOf("Foo" to previewDto))
+    val discovery =
+      IncrementalDiscovery(
+        classpath = listOf(tmpDir),
+        knownPreviewAnnotationFqns = setOf("androidx.compose.ui.tooling.preview.Preview"),
+      )
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        previewIndex = index,
+        incrementalDiscovery = discovery,
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-discovery").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-discovery-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      val init = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
+      assertNotNull(init)
+      // capability flips true once IncrementalDiscovery is wired.
+      val caps = init!!["result"]!!.jsonObject["capabilities"]!!.jsonObject
+      assertEquals(true, caps["incrementalDiscovery"]?.jsonPrimitive?.boolean)
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      // Send fileChanged for the source `.kt`. Daemon spawns a worker, scans, diffs, emits.
+      val abs = sourceKt.toAbsolutePath().toString().replace("\\", "\\\\")
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"fileChanged","params":{
+              "path":"$abs","kind":"source","changeType":"modified"}}""",
+      )
+
+      val discoveryNotif =
+        pollUntil(received) {
+          it["method"]?.jsonPrimitive?.contentOrNull == "discoveryUpdated"
+        }
+      assertNotNull("discoveryUpdated notification must arrive", discoveryNotif)
+      val params = discoveryNotif!!["params"]!!.jsonObject
+      val removed =
+        params["removed"]
+          ?.let { (it as kotlinx.serialization.json.JsonArray).map { e -> e.jsonPrimitive.content } }
+          ?: emptyList()
+      assertEquals(listOf("Foo"), removed)
+      assertEquals(0, params["totalPreviews"]?.jsonPrimitive?.intOrNull)
+      // Verify the index was updated in-place.
+      assertEquals(0, index.size)
+
+      // Tear down.
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      tmpDir.toFile().deleteRecursively()
+      serverThread.join(10_000)
     }
   }
 
