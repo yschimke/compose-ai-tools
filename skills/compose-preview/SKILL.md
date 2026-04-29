@@ -35,7 +35,7 @@ Applied to each module that declares the plugin:
 |------|---------|
 | `:<module>:discoverPreviews` | Scan compiled classes, emit `build/compose-previews/previews.json`. |
 | `:<module>:renderAllPreviews` | Discover + render every `@Preview` to PNG under `build/compose-previews/`. |
-| `:<module>:discoverAndroidResources` | Walk `res/drawable*` + `res/mipmap*`, parse `AndroidManifest.xml`, emit `build/compose-previews/resources.json`. See [Android XML resource previews](#android-xml-resource-previews). |
+| `:<module>:discoverAndroidResources` | Walk `res/drawable*` + `res/mipmap*`, parse `AndroidManifest.xml`, emit `build/compose-previews/resources.json`. See [design/RESOURCE_PREVIEWS.md](./design/RESOURCE_PREVIEWS.md). |
 | `:<module>:renderAndroidResources` | Render every discovered XML drawable / mipmap to PNG / GIF under `build/compose-previews/renders/resources/`. |
 
 Both are Gradle-cacheable with strict configuration caching — unchanged inputs
@@ -81,102 +81,6 @@ invocation. State is persisted per-module under
 `<module>/build/compose-previews/.cli-state.json` and gets wiped by
 `./gradlew clean`.
 
-## Permissions for agent workflows
-
-Agents using this skill run the same handful of commands on every iteration
-(render, read PNGs, occasionally stage copies). Most agent harnesses
-(Claude Code, Cursor, Cline, Aider, Copilot, etc.) support some form of
-pre-approval — allowlist entries, trusted-command lists, or auto-accept
-rules. The exact syntax differs, so the lists below are patterns rather
-than a specific config file. Translate them into your harness's format and
-keep anything that publishes or mutates shared state on the prompt path.
-
-**Safe to pre-approve** (read/render, only writes under gitignored `build/`):
-
-- `compose-preview` — all subcommands write under `build/compose-previews/`.
-- `./gradlew` / `gradle` — already trusted in most JVM projects.
-- Reading `**/build/**` — rendered PNGs and staged copies live here.
-- `mkdir -p`, `cp`, `rm -f` — for staging copies (see below).
-- Read-only git: `git worktree add|remove|list`, `git ls-remote`, `git fetch`,
-  `git show`, `git diff`, `git log`. Used by the PR-review workflow to render
-  a base branch without touching the working copy.
-- Read-only `gh`: `gh pr view`, `gh pr diff`, `gh run list|view [--log[-failed]]|watch`,
-  `gh workflow list|view`, `gh release list|view`, `gh auth status`, plus GET
-  on `gh api repos/<owner>/<repo>/{comments,actions,contents,…}`. The
-  `gh run` calls come up constantly when a render fails on the runner.
-
-**Require explicit consent** (publish or mutate shared state — keep on the
-prompt path):
-
-- `gh gist create` — public by default; even `--secret` URLs are shareable.
-- `gh pr edit`, `gh pr comment`, `gh pr review`, `gh pr merge|close|reopen|ready`.
-- `POST`/`PATCH`/`DELETE` via `gh api`.
-- `git push`, `git commit`, `git branch -D`, `git reset --hard`.
-- Uploads to external hosts (image hosts, paste services).
-
-If the user approves a gist, PR edit, or push once, don't persist it as a
-general allowlist entry — the next iteration may not want the same level of
-publicity.
-
-### Staging PNGs outside the render output
-
-`compose-preview` writes each PNG under
-`<module>/build/compose-previews/renders/<id>.png`. Reading those paths
-directly works for a single iteration, but agents often want to hold
-captures steady across a diff — before/after pairs, the subset a PR
-touches, or images copied next to a worktree that's about to be removed.
-
-Stage those copies **somewhere under `build/`**. Every Android/KMP project
-`.gitignore`s that path, so nothing leaks into commits, and the location is
-consistent across checkouts. The exact layout (`build/preview-staging/`,
-`build/agent/<ts>/`, a module-local `build/…`, etc.) is up to the agent —
-pick what fits the task.
-
-Don't stage outside `build/`. Checked-in paths like `docs/` or `screenshots/`
-risk committing generated binaries.
-
-## Designing composables for previewability
-
-`@Preview` only calls composables with zero arguments (or all-default). That
-rules out anything taking a `ViewModel`, repository, or DI-injected service.
-The standard fix is **state hoisting** — split each screen into two layers:
-
-```kotlin
-// Stateful wrapper: wires runtime dependencies. Not previewable.
-@Composable
-fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
-    val state by viewModel.state.collectAsState()
-    HomeScreen(state = state, onRefresh = viewModel::refresh)
-}
-
-// Stateless UI: pure function of state + callbacks. Previewable with
-// hand-rolled fixtures — no mocks, no test dispatchers, no DI.
-@Composable
-fun HomeScreen(state: HomeState, onRefresh: () -> Unit) { /* … */ }
-
-@Preview @Composable fun HomeScreen_loaded() =
-    HomeScreen(HomeState.Loaded(items = sampleItems), onRefresh = {})
-
-@Preview @Composable fun HomeScreen_empty() =
-    HomeScreen(HomeState.Empty, onRefresh = {})
-
-@Preview @Composable fun HomeScreen_error() =
-    HomeScreen(HomeState.Error("Network unavailable"), onRefresh = {})
-```
-
-Every visual state is a fixture — the state is data, constructed inline.
-This is also the foundation for testing UI without standing up business
-logic: the same stateless composable that a preview renders is the one a
-screenshot test or Compose UI test exercises.
-
-**Agent guidance:** if you're asked to iterate on a composable that accepts
-a ViewModel, repository, or injected dependency, **first propose extracting
-a stateless inner composable and preview that instead.** Rendering the
-stateful wrapper either fails outright or produces a misleading
-empty/loading frame that doesn't exercise the UI. The one-time extraction
-cost unlocks the fast `compose-preview` iteration loop for every future
-change on that screen.
-
 ## Workflow: iterate on a design
 
 1. **List** previews: `compose-preview list` (optionally `--filter <name>` or
@@ -191,33 +95,31 @@ change on that screen.
 5. **Verify visually** — always read the PNG after a UI change. Don't assume
    the change looks correct.
 
-## VS Code extension
+## Designing composables for previewability
 
-With the `vscjava.vscode-gradle` extension installed, the Compose Preview
-extension provides:
+`@Preview` only calls composables with zero arguments (or all-default), so
+anything taking a `ViewModel`, repository, or DI-injected service can't be
+previewed directly. Apply **state hoisting**: split each screen into a
+stateful wrapper (wires runtime deps) and a stateless inner composable that
+takes state + callbacks. Preview the stateless layer with hand-rolled
+fixtures.
 
-- A **preview panel** (webview) listing rendered previews for the active module.
-- **CodeLens** and **hover** actions above every `@Preview` function in Kotlin
-  files (re-render, open PNG).
-- Commands:
-  - `Compose Preview: Refresh` / `Render All`
-  - `Compose Preview: Run for File` — render only previews in the active file.
-- Auto-refresh on editor save (debounced) and on active-editor switch to a
-  Kotlin file.
+**Agent guidance:** if you're asked to iterate on a composable that accepts
+a ViewModel or injected dependency, **first propose extracting a stateless
+inner composable** and preview that instead. The one-time extraction unlocks
+the fast `compose-preview` iteration loop for every future change on that
+screen.
+
+See [design/STATE_HOISTING.md](./design/STATE_HOISTING.md) for the full
+pattern with code.
 
 ## Setup
 
-The plugin is published to Maven Central, so no credentials, PAT, or
-registry configuration is required. Most projects already have
-`mavenCentral()` in their plugin repositories (AGP and the Kotlin Gradle
-Plugin are both hosted there).
+The plugin is published to Maven Central, so no credentials or registry
+configuration is required. Most projects already have `mavenCentral()` in
+their plugin repositories.
 
-Run the steps in order. Step 0 is a precheck — if it fails, **stop** and
-fix the environment before editing any Gradle files.
-
-### 0. Install the CLI and run `doctor`
-
-Bootstrap the CLI, then verify the environment:
+Bootstrap the CLI and verify the environment:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
@@ -225,25 +127,11 @@ curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scri
 compose-preview doctor
 ```
 
-The install script is idempotent, pulls the latest release into
-`~/.local/opt/compose-preview/<version>/`, and symlinks
-`~/.local/bin/compose-preview`. If that directory isn't on your `PATH`, the
-script prints the exact command to add it (`fish_add_path …` or a `PATH=`
-line for bash/zsh).
+`doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
+compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the script
+prints the exact command to add it.
 
-`compose-preview doctor` verifies Java 17 or newer is on `PATH` (the only
-hard prereq for the plugin now that Maven Central resolution needs no
-auth). JDK 21 / 25 are fine — the renderer is compiled to JDK 17 bytecode.
-
-### 1. Register the plugin repository (only if mavenCentral is missing)
-
-Most Android/KMP projects already include `mavenCentral()` in
-`pluginManagement.repositories` in `settings.gradle.kts`. If yours doesn't,
-add it alongside `gradlePluginPortal()` and `google()`.
-
-### 2. Apply the plugin
-
-In `<module>/build.gradle.kts`:
+Apply the plugin in `<module>/build.gradle.kts`:
 
 <!-- x-release-please-start-version -->
 ```kotlin
@@ -259,214 +147,42 @@ composePreview {
 ```
 <!-- x-release-please-end -->
 
-(Groovy DSL works identically — translate property assignments to `=`.)
-
 CMP Desktop projects additionally need
 `implementation(compose.components.uiToolingPreview)` — the bundled `@Preview`
 annotation has `SOURCE` retention and is invisible to classpath scanning
 otherwise.
 
 The Android variant relies on Robolectric with native graphics; the plugin
-takes care of the relevant test/tooling dependencies so you don't configure
-them manually. Agents MUST NOT run internal tasks like `collectPreviewInfo` —
-they're wired by the plugin itself.
+takes care of the relevant test/tooling dependencies. Agents MUST NOT run
+internal tasks like `collectPreviewInfo` — they're wired by the plugin itself.
 
-## Multi-preview annotations
+## Reference docs
 
-Functions can declare multiple `@Preview` variants via meta-annotations (e.g.
-`@PreviewFontScale`, `@WearPreviewDevices`, `@WearPreviewFontScales`). Each
-variant appears as its own entry in `previews.json` with a unique id, so all
-CLI commands address them individually — no variant index needed.
+Loaded on demand. Read only what the current task needs.
 
-## Animations and the paused frame clock (Android only)
+| Path | When to read |
+|---|---|
+| [design/PERMISSIONS.md](./design/PERMISSIONS.md) | Setting up agent allowlists; staging PNGs outside `build/`. |
+| [design/STATE_HOISTING.md](./design/STATE_HOISTING.md) | Full state-hoisting pattern with code examples. |
+| [design/CAPTURE_MODES.md](./design/CAPTURE_MODES.md) | Multi-preview annotations, paused-clock animation captures, scrolling captures. |
+| [design/A11Y.md](./design/A11Y.md) | ATF accessibility checks (`compose-preview a11y`). |
+| [design/CMP_SHARED.md](./design/CMP_SHARED.md) | Compose Multiplatform `:shared` modules (`commonMain` previews via Desktop pipeline). |
+| [design/RESOURCE_PREVIEWS.md](./design/RESOURCE_PREVIEWS.md) | Android XML resources (`<vector>`, `<animated-vector>`, `<adaptive-icon>`). |
+| [design/WEAR_UI.md](./design/WEAR_UI.md) | Wear OS Material 3 Expressive design. |
+| [design/WEAR_TILES.md](./design/WEAR_TILES.md) | Wear Tiles (protolayout, not Compose). |
+| [design/REMOTE_COMPOSE.md](./design/REMOTE_COMPOSE.md) | Remote Compose dialect + `RemoteDocument`. |
+| [design/CLAUDE_CLOUD.md](./design/CLAUDE_CLOUD.md) | Running compose-preview in Claude Code cloud sandboxes (allowlist, JDK, install paths). |
+| [design/VSCODE.md](./design/VSCODE.md) | VS Code extension (humans, not agents). |
 
-The Android renderer pauses the Compose `mainClock` and advances by a fixed
-step before capture, so infinite animations
-(`CircularProgressIndicator`, `rememberInfiniteTransition`, `withFrameNanos`
-loops) terminate deterministically instead of hanging the idling resource.
-You don't need to call `awaitIdle` or `mainClock.advanceTimeBy` yourself.
+## Related skill
 
-To capture one composable at multiple timeline points, stack
-`@RoboComposePreviewOptions` from Roborazzi — each `ManualClockOptions`
-entry becomes its own capture with a `_TIME_<ms>ms` id suffix:
-
-```kotlin
-import com.github.takahirom.roborazzi.annotations.ManualClockOptions
-import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
-
-@Preview(name = "Spinner", showBackground = true)
-@RoboComposePreviewOptions(
-    manualClockOptions = [
-        ManualClockOptions(advanceTimeMillis = 0L),
-        ManualClockOptions(advanceTimeMillis = 500L),
-        ManualClockOptions(advanceTimeMillis = 1500L),
-    ],
-)
-@Composable
-fun SpinnerPreview() { /* … */ }
-```
-
-Requires `implementation(libs.roborazzi.annotations)` (or
-`com.github.takahirom.roborazzi:roborazzi-annotations`). Each capture
-appears in the CLI's `captures[]` with `advanceTimeMillis` set.
-
-Caveats: a11y mode disables the paused clock (ATF needs live semantics), so
-don't combine it with timeline fan-outs. CMP Desktop has no per-preview
-clock control — pick a static frame if you need determinism.
-
-## Scrolling captures
-
-For previews that exercise scrollable content (`LazyColumn`,
-`TransformingLazyColumn`, `LazyRow`, …), add `@ScrollingPreview` from
-`ee.schimke.composeai:preview-annotations`:
-
-```kotlin
-import ee.schimke.composeai.preview.ScrollMode
-import ee.schimke.composeai.preview.ScrollingPreview
-
-@Preview(name = "End", showBackground = true)
-@ScrollingPreview(modes = [ScrollMode.END])
-@Composable
-fun MyListEndPreview() { MyList() }
-
-// One function → two captures. Produces `..._SCROLL_top.png` (initial
-// frame) and `..._SCROLL_end.png` (scrolled to content end).
-@Preview(name = "Scroll", showBackground = true)
-@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
-@Composable
-fun MyListTopAndEndPreview() { MyList() }
-
-@WearPreviewLargeRound
-@ScrollingPreview(modes = [ScrollMode.LONG])
-@Composable
-fun MyListLongPreview() { MyList() }
-```
-
-Modes:
-
-- `TOP` — initial unscrolled frame. Useful alongside END/LONG in a single
-  function so a sibling preview isn't needed.
-- `END` — scrolls to content end, captures one frame.
-- `LONG` — stitches slices into one tall PNG covering the full scrollable
-  extent. On round Wear faces the output is clipped to a capsule shape
-  (half-circle top, rectangular middle, half-circle bottom).
-
-Knobs: `maxScrollPx` caps scroll distance on END/LONG (`0` = unbounded);
-`reduceMotion = true` (default) disables Wear `TransformingLazyColumn`
-transforms that would otherwise vary slice-to-slice. Only vertical scrolling
-is supported. `@ScrollingPreview` is Android-only.
-
-Filenames: single-mode → plain `renders/<id>.png`; multi-mode →
-`renders/<id>_SCROLL_<mode>.png`, emitted in enum order (TOP, END, LONG).
-Each capture is a separate entry in the CLI's `captures[]` with `scroll`
-set.
-
-## Accessibility (a11y)
-
-Two complementary checks. Always do both before shipping a UI change:
-
-### 1. Visual review (every change)
-
-Read the rendered PNG. The renderer captures the actual composition, so
-contrast, hit-target size, truncation, RTL mirroring, font-scale overflow,
-night-mode colors, and Wear edge clipping are all inspectable directly.
-`compose-preview show --json` surfaces `changed: true` per capture so you
-only re-read what moved.
-
-For broad coverage, run the preview through font-scale and night-mode
-multi-preview meta-annotations (e.g. `@PreviewFontScale`,
-`@PreviewLightDark`, `@WearPreviewFontScales`) — each variant lands as its
-own entry with a unique id.
-
-### 2. ATF (Accessibility Test Framework) checks
-
-Opt in per-module:
-
-```kotlin
-composePreview {
-    accessibilityChecks {
-        enabled = true              // run ATF, surface findings
-        failOnErrors = true         // optional: gate the build on ERROR-level findings
-        failOnWarnings = false      // optional: gate on WARNING-level findings
-        annotateScreenshots = true  // default; numbered badges + legend per preview
-    }
-}
-```
-
-When enabled, Compose populates real semantics (inspection mode off) and
-ATF walks the captured view. Findings (touch-target size, contrast, missing
-`contentDescription`, etc.) land in `accessibility.json` and an annotated
-PNG with numbered badges.
-
-```sh
-compose-preview a11y                       # human-readable findings
-compose-preview a11y --json --changed-only # for re-render loops
-compose-preview a11y --fail-on errors      # non-zero on ERROR-level
-```
-
-JSON entries include `a11yFindings[]` (level/type/message/viewDescription)
-and `a11yAnnotatedPath`. Read the annotated PNG to map numbered badges back
-to findings. Trade-off: a11y mode disables the paused clock, so infinite
-animations tick during capture — toggle it off for animation-heavy previews.
-
-## Compose Multiplatform shared modules
-
-For KMP `:shared` modules (`com.android.kotlin.multiplatform.library` +
-Compose Multiplatform), the plugin renders previews through the Desktop
-pipeline. Keep `@Preview` in `commonMain` over stateless composables and
-declare a `jvm("desktop")` target. See
-**[design/CMP_SHARED.md](./design/CMP_SHARED.md)** for the full setup,
-limitations, and rationale.
-
-## Android XML resource previews
-
-The plugin also renders `<vector>`, `<animated-vector>`, and `<adaptive-icon>` XML resources alongside `@Preview` composables, and indexes the icon attributes in `AndroidManifest.xml` so tooling can link manifest lines to the rendered PNG. See **[design/RESOURCE_PREVIEWS.md](./design/RESOURCE_PREVIEWS.md)**.
-
-## Wear design guidance
-
-When creating or iterating on Wear OS designs, refer to the
-**[Wear UI Guide](./design/WEAR_UI.md)** for:
-
-- **Material 3 Expressive** principles and best practices.
-- Recommended **Compose Material 3** APIs (e.g., `TransformingLazyColumn`,
-  `EdgeButton`).
-- Proper **System UI** integration (e.g., `TimeText`, `AppScaffold`).
-- **Responsive layout** strategies across screen sizes.
-
-## Wear Tiles
-
-Tiles are a separate Wear surface — protolayout, not Compose. Preview
-functions return `TilePreviewData` instead of emitting composables, and the
-renderer invokes them via `TileRenderer` rather than `ComposeTestRule`. See
-**[design/WEAR_TILES.md](./design/WEAR_TILES.md)** for the authoring
-primitives (`materialScope`, `primaryLayout`, `titleCard`, `textEdgeButton`),
-the dependency wiring, and the `TilePreviewData` / `TilePreviewHelper`
-pattern for building a single-timeline-entry tile from a preview function.
-
-## Remote Compose
-
-For previews against Remote Compose — a Compose dialect with its own applier
-and `@RemoteComposable` target marker that captures the tree into a
-replayable `RemoteDocument` — see the
-**[Remote Compose guide](./design/REMOTE_COMPOSE.md)**. Covers the two
-preview shapes (`RemotePreview { … }` inside a `@Preview` composable vs.
-`@PreviewWrapper(RemotePreviewWrapper::class)`), the creation/tooling
-artifact split, and how Wear's `remote-material3` builds on
-`remote-creation-compose` for Material 3 components inside a remote tree.
-
-## CI and PR workflows
-
-- **[design/CI_PREVIEWS.md](design/CI_PREVIEWS.md)** — setting up the
-  `preview_main` baselines branch and the PR comment GitHub Actions. Read
-  this if you're adding preview CI to a repo or need to fetch baselines
-  from an existing one.
-- **[design/AGENT_PR.md](design/AGENT_PR.md)** — structuring the body of an
-  agent-authored PR, and the full workflow for reviewing one locally
-  (render base + head, diff, post a human-readable comment). Read this
-  when opening or reviewing a PR that touches UI.
-- **[design/CLAUDE_CLOUD.md](design/CLAUDE_CLOUD.md)** — running `compose-preview` in
-  Claude Code cloud sessions: sandbox allowlist gotchas (Google Maven is blocked),
-  JDK setup (17+), and the release-tarball path that works under the default allowlist.
+PR-review and CI workflows live in the sibling
+[**compose-preview-review** skill](../compose-preview-review/SKILL.md):
+authoring agent-opened PRs, reviewing UI PRs locally (base + head render,
+diff, text comment), and wiring `preview_main` baselines + PR-comment
+GitHub Actions. The bootstrap installer
+([`scripts/install.sh`](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh))
+sets up both skills together.
 
 ## Tips
 

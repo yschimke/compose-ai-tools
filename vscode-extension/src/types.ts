@@ -130,7 +130,9 @@ export interface AccessibilityReport {
 
 export type ResourceType = 'VECTOR' | 'ANIMATED_VECTOR' | 'ADAPTIVE_ICON' | string;
 
-export type AdaptiveShape = 'CIRCLE' | 'ROUNDED_SQUARE' | 'SQUARE' | 'LEGACY' | string;
+export type AdaptiveShape = 'CIRCLE' | 'SQUIRCLE' | 'ROUNDED_SQUARE' | 'SQUARE' | string;
+
+export type AdaptiveStyle = 'FULL_COLOR' | 'THEMED_LIGHT' | 'THEMED_DARK' | 'LEGACY' | string;
 
 export interface ResourceVariant {
     /**
@@ -140,8 +142,19 @@ export interface ResourceVariant {
      * qualifier of any particular source file (AAPT picks whichever matches at render time).
      */
     qualifiers: string | null;
-    /** Adaptive-icon shape mask. `null` for non-adaptive resources. */
+    /**
+     * Adaptive-icon shape mask. `null` for non-adaptive resources, and `null` for `LEGACY`
+     * captures (the legacy fallback ignores the system mask).
+     */
     shape: AdaptiveShape | null;
+    /**
+     * Adaptive-icon style. `'FULL_COLOR'` is the foreground+background composite (App Search
+     * appearance); `'THEMED_LIGHT'` / `'THEMED_DARK'` tint the `<monochrome>` layer with a
+     * 2-tone Material 3 palette (home-screen "Themed icons" appearance); `'LEGACY'` is the
+     * pre-O fallback. `null` on resources where the field wasn't populated by an older
+     * plugin version — treat as `'FULL_COLOR'`.
+     */
+    style?: AdaptiveStyle | null;
 }
 
 export interface ResourceCapture {
