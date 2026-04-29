@@ -629,6 +629,53 @@ internal object AndroidPreviewSupport {
               "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it"
             )
           }
+          // androidx.activity / androidx.lifecycle / androidx.savedstate land
+          // on the renderer test JVM via two disjoint paths:
+          //   * compose-ui 1.10.x lists `androidx.activity:activity-ktx:1.7.0`
+          //     as a runtime dep (compiled against lifecycle-viewmodel:2.6.1 and
+          //     savedstate:1.2.1); the same compose-ui release transitively
+          //     requires `lifecycle-viewmodel:2.9.2` (which in turn carries a
+          //     dependency-constraint pinning `lifecycle-viewmodel-savedstate`
+          //     and friends to 2.9.2) and `savedstate-ktx:1.3.1` (forcing
+          //     savedstate to 1.3.1).
+          //   * Consumers that explicitly pin activity/activity-compose to a
+          //     recent version (ComposeStarter, androidify) get a coherent
+          //     graph and pass; consumers that don't (WearTilesKotlin —
+          //     no activity dep declared at all, the app is tile-only and
+          //     activity reaches the test JVM only via compose-ui's transitive
+          //     graph) end up with activity 1.7.0 alongside lifecycle 2.9+ /
+          //     savedstate 1.3+. The mismatch surfaces as
+          //     `NoSuchMethodError at SavedStateHandleSupport.kt:107` the
+          //     first time `ComponentActivity.<init>` walks the
+          //     `enableSavedStateHandles` → `createSavedStateHandle` chain.
+          //
+          // Force the activity/lifecycle/savedstate trio onto the same
+          // generation that compose-ui 1.10.x's *own* runtime path expects,
+          // mirroring what a Compose-BOM-using consumer ends up with. Scoped
+          // to `composePreviewAndroidRenderer<Variant>` so we don't disturb
+          // the consumer's own test-runtime resolution for their tests.
+          if (requested.group == "androidx.activity") {
+            val v = requested.version ?: ""
+            val needsBump =
+              v.startsWith("1.0") ||
+                v.startsWith("1.1.") ||
+                v.startsWith("1.2") ||
+                v.startsWith("1.3") ||
+                v.startsWith("1.4") ||
+                v.startsWith("1.5") ||
+                v.startsWith("1.6") ||
+                v.startsWith("1.7") ||
+                v.startsWith("1.8") ||
+                v.startsWith("1.9")
+            if (needsBump) {
+              useTarget("androidx.activity:${requested.name}:1.10.0")
+              because(
+                "compose-ui 1.10+ runtime mixes activity 1.7.0 (compiled against " +
+                  "lifecycle 2.6) with lifecycle 2.9 / savedstate 1.3 — bump activity " +
+                  "to align with the lifecycle bytecode actually loaded"
+              )
+            }
+          }
         }
       }
 
