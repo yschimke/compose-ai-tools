@@ -200,12 +200,27 @@ object ClassloaderForensics {
       }
     }
 
-    val smokingGuns = classDiffs.filter {
-      it.classloaderIdentityChanged || it.codeSourceChanged || it.moduleHashChanged
-    }
+    // Smoking-gun rule excludes identity-hash-only differences. When A and B run in separate
+    // test forks (the common case — one Gradle Test JVM per module), classloader identity
+    // hashes always differ across runs even for byte-equivalent loaders. Real divergences
+    // surface as either a different loader *type* (e.g. SandboxClassLoader vs AppClassLoader,
+    // the actual Android save-loop bug) OR a different codeSource (different JAR) OR a
+    // different moduleHash (same JAR path, different bytes — instrumentation drift, version
+    // skew). Identity-hash-only differences within the same loader type are routed to
+    // [identityNoise] for visibility without being flagged as a problem.
+    val smokingGuns =
+      classDiffs.filter { it.classloaderTypeChanged || it.codeSourceChanged || it.moduleHashChanged }
     val instrumentationDiffs = classDiffs.filter { it.instrumentedFlagChanged }
+    val identityNoise =
+      classDiffs.filter {
+        it.classloaderIdentityChanged &&
+          !it.classloaderTypeChanged &&
+          !it.codeSourceChanged &&
+          !it.moduleHashChanged &&
+          !it.instrumentedFlagChanged
+      }
     val otherChanges = classDiffs.filter {
-      it.anyChange() && it !in smokingGuns && it !in instrumentationDiffs
+      it.anyChange() && it !in smokingGuns && it !in instrumentationDiffs && it !in identityNoise
     }
     val unchanged = classDiffs.filter { !it.anyChange() }
 
@@ -295,6 +310,20 @@ object ClassloaderForensics {
           }
         },
       )
+      put(
+        "identityNoise",
+        buildJsonArray {
+          identityNoise.forEach {
+            add(
+              buildJsonObject {
+                put("fqn", it.fqn)
+                put("aLoader", it.aLoader)
+                put("bLoader", it.bLoader)
+              }
+            )
+          }
+        },
+      )
       put("unchangedCount", unchanged.size)
       put("totalA", aClasses.size)
       put("totalB", bClasses.size)
@@ -312,22 +341,24 @@ object ClassloaderForensics {
       append("- Survey size: A=${aClasses.size}, B=${bClasses.size}, both=${both.size}\n")
       append("- Unchanged: ${unchanged.size}/${both.size}\n\n")
 
-      append("## 1. Smoking gun — same FQN, different classloader / codeSource / bytecode\n\n")
+      append("## 1. Smoking gun — different loader type / codeSource / bytecode\n\n")
       if (smokingGuns.isEmpty()) {
         append(
-          "_None._ A and B agree on classloader identity, code source, and bytecode for every shared class.\n\n"
+          "_None._ A and B agree on loader type, code source, and bytecode for every shared class. " +
+            "(Identity-hash-only differences within the same loader type are routed to § 7 as " +
+            "expected per-JVM-fork noise, not flagged here.)\n\n"
         )
       } else {
         append(
-          "| FQN | A loader | B loader | A location | B location | classloader-id ≠ | codeSource ≠ | moduleHash ≠ |\n"
+          "| FQN | A loader | B loader | A location | B location | type ≠ | codeSource ≠ | moduleHash ≠ |\n"
         )
         append("|---|---|---|---|---|---|---|---|\n")
         for (d in smokingGuns) {
-          val flag = if (d.classloaderIdentityChanged) "⚠️ yes" else "no"
+          val typeFlag = if (d.classloaderTypeChanged) "⚠️ yes" else "no"
           val csFlag = if (d.codeSourceChanged) "⚠️ yes" else "no"
           val mhFlag = if (d.moduleHashChanged) "⚠️ yes" else "no"
           append(
-            "| `${d.fqn}` | `${d.aLoader}` | `${d.bLoader}` | ${shortLoc(d.aLocation)} | ${shortLoc(d.bLocation)} | $flag | $csFlag | $mhFlag |\n"
+            "| `${d.fqn}` | `${d.aLoader}` | `${d.bLoader}` | ${shortLoc(d.aLocation)} | ${shortLoc(d.bLocation)} | $typeFlag | $csFlag | $mhFlag |\n"
           )
         }
         append("\n")
@@ -376,7 +407,7 @@ object ClassloaderForensics {
         append("\n")
       }
 
-      append("## 6. Other changes (loader-type only / package-version drift)\n\n")
+      append("## 6. Other changes (package-version drift, etc.)\n\n")
       if (otherChanges.isEmpty()) {
         append("_None._\n\n")
       } else {
@@ -385,6 +416,21 @@ object ClassloaderForensics {
           append("| `${d.fqn}` | `${d.aLoader}` | `${d.bLoader}` |\n")
         }
         append("\n")
+      }
+
+      append("## 7. Identity-hash noise (expected per-JVM-fork variance)\n\n")
+      if (identityNoise.isEmpty()) {
+        append(
+          "_None._ Either both runs share a JVM (rare) or no shared classes had identity-hash differences.\n\n"
+        )
+      } else {
+        append(
+          "${identityNoise.size} classes load via the same loader type and bytecode in both " +
+            "configurations but with different `identityHashCode`s. Expected when A and B run " +
+            "in separate Gradle test forks — each Robolectric `Sandbox` builds a fresh " +
+            "`SandboxClassLoader` whose identity hash is per-JVM-run randomness. **Not a bug** " +
+            "unless A and B were supposed to share a JVM.\n\n"
+        )
       }
     }
     mdOut.parentFile?.mkdirs()
