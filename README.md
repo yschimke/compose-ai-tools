@@ -83,10 +83,11 @@ branch.
 Real-world PRs opened by AI coding agents that used `compose-preview` to
 verify their changes.
 
-<!-- Add interesting agent PRs here as they happen — link, agent, one-liner. -->
+<!-- Add interesting agent PRs here as they happen — link + one-liner. -->
 
-*Currently empty — open a PR or [an issue](https://github.com/yschimke/compose-ai-tools/issues/new)
-if you have one to add.*
+- [`yschimke/meshcore-mobile#36`](https://github.com/yschimke/meshcore-mobile/pull/36) — renders Play Store listing screenshots (phone + 7"/10" tablet) directly from `Play Store — …` `@Preview` composables, replacing hand-crafted PNGs.
+
+Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-tools/issues/new).
 
 ## More
 
