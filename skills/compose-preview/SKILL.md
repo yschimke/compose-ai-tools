@@ -15,7 +15,7 @@ This skill is maintained at
 [github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
 under `skills/compose-preview/`. The bundle this documentation ships with is
 <!-- x-release-please-start-version -->
-**v0.8.10**.
+**v0.8.11**.
 <!-- x-release-please-end -->
 
 To check the locally installed version, run `compose-preview --version` (it
@@ -143,7 +143,7 @@ Apply the plugin in `<module>/build.gradle.kts`:
 <!-- x-release-please-start-version -->
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.8.10"
+    id("ee.schimke.composeai.preview") version "0.8.11"
 }
 
 composePreview {

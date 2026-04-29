@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.11](https://github.com/yschimke/compose-ai-tools/compare/v0.8.10...v0.8.11) (2026-04-29)
+
+
+### Features
+
+* **resource-preview:** themed monochrome + squircle adaptive-icon captures ([#294](https://github.com/yschimke/compose-ai-tools/issues/294)) ([e0ff21e](https://github.com/yschimke/compose-ai-tools/commit/e0ff21e625ae3c2448f3e94bad7e3c039e8c8659))
+* **vscode:** add AndroidManifest CodeLens for icon attributes ([#272](https://github.com/yschimke/compose-ai-tools/issues/272)) ([0d1647b](https://github.com/yschimke/compose-ai-tools/commit/0d1647b30df1443561a82f583f7988a2deb842ed))
+
 ## [0.8.10](https://github.com/yschimke/compose-ai-tools/compare/v0.8.9...v0.8.10) (2026-04-26)
 
 
