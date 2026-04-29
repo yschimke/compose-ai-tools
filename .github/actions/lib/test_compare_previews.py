@@ -101,6 +101,29 @@ class LoadCliOutputTest(unittest.TestCase):
             cp.load_cli_output(path)
         self.assertIn("Unexpected CLI JSON shape", str(ctx.exception))
 
+    def test_empty_file_raises_actionable_systemexit(self):
+        # Issue #292: when the upstream `compose-preview show --json` step
+        # produces no output (lost stdout buffer), the action used to die
+        # with a json.JSONDecodeError stack trace pointing at line 1 col 1.
+        # Replace that with a one-liner pointing the user at the right step.
+        path = self.tmp / "empty.json"
+        path.write_text("")
+        with self.assertRaises(SystemExit) as ctx:
+            cp.load_cli_output(path)
+        msg = str(ctx.exception)
+        self.assertIn("empty", msg)
+        self.assertIn("compose-preview show --json", msg)
+
+    def test_malformed_json_raises_actionable_systemexit(self):
+        # Non-empty but unparseable input (e.g. CLI banner bleeding into
+        # stdout, partial write) — same friendly error shape as the empty
+        # case rather than a raw JSONDecodeError.
+        path = self.tmp / "bad.json"
+        path.write_text("not json {{{")
+        with self.assertRaises(SystemExit) as ctx:
+            cp.load_cli_output(path)
+        self.assertIn("not valid JSON", str(ctx.exception))
+
     def test_null_pngPath_and_sha_normalize_to_empty_string(self):
         # The downstream baselines/copy-changed logic uses truthiness on
         # these fields — null must become "" so `if not info["sha256"]`
