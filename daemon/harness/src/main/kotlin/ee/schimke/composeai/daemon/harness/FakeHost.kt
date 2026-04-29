@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon.harness
 import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
 import ee.schimke.composeai.daemon.RenderResult
+import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -59,6 +60,17 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
    */
   private val sidecarCache = ConcurrentHashMap<String, ResolvedSidecars>()
 
+  /**
+   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so `sandboxAgeMs`
+   * is wall-clock since the FakeHost was instantiated; `sandboxAgeRenders` increments on every
+   * `submit()`. Synthetic but real values (the harness wire-format contract is "metrics are
+   * present and parse"; their numeric meaning under fake-mode is nominal). The S8 + B2.3 soak
+   * tests assert presence + monotonic increment of `sandboxAgeRenders`, not absolute heap
+   * numbers — those live behind real-mode soak tests.
+   */
+  private val sandboxStartNs: Long = System.nanoTime()
+  private val renderCount: AtomicLong = AtomicLong(0)
+
   override fun start() {
     // No-op — no real sandbox to bootstrap. Future iterations may pre-decode PNGs here if a
     // scenario shows an unacceptable cold-render delay; for now lazy on-demand reads are fine.
@@ -97,12 +109,34 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
       "FakeHost: missing fixture PNG ${pngFile.absolutePath} for previewId='$previewId'"
     }
     val cl = Thread.currentThread().contextClassLoader
+    // B2.3 — populate the four cost-model keys on every render. Synthetic but real values:
+    // `heapAfterGcMb = 1`, `nativeHeapMb = 1`, `sandboxAgeRenders = renderCount`,
+    // `sandboxAgeMs = monotonic delta from host start`. The S8 + B2.3 soak tests assert these
+    // four keys arrive on the wire (after `JsonRpcServer.renderFinishedFromResult` translates
+    // the flat map into the structured `RenderMetrics`). Sidecar-supplied metrics from
+    // `<previewId>.metrics.json` (e.g. the legacy S8 fixture's `heapAfterGcMb=42` example) take
+    // precedence so existing fixtures keep their explicit values; the four B2.3 keys are merged
+    // as fallback defaults so a fixture with NO `.metrics.json` still satisfies the wire-format
+    // contract.
+    val nextRenderCount = renderCount.incrementAndGet()
+    val ageMs = (System.nanoTime() - sandboxStartNs) / 1_000_000L
+    val b23Defaults: Map<String, Long> =
+      mapOf(
+        RenderMetrics.KEY_HEAP_AFTER_GC_MB to 1L,
+        RenderMetrics.KEY_NATIVE_HEAP_MB to 1L,
+        RenderMetrics.KEY_SANDBOX_AGE_RENDERS to nextRenderCount,
+        RenderMetrics.KEY_SANDBOX_AGE_MS to ageMs,
+      )
+    val mergedMetrics: Map<String, Long> =
+      // Sidecar wins on key collision so legacy fixtures (S8's `heapAfterGcMb=42`) still
+      // assert their explicit values; B2.3 defaults fill in the keys the sidecar omits.
+      b23Defaults + (sidecars.metrics ?: emptyMap())
     return RenderResult(
       id = request.id,
       classLoaderHashCode = System.identityHashCode(cl),
       classLoaderName = cl?.javaClass?.name ?: "<null>",
       pngPath = pngFile.absolutePath,
-      metrics = sidecars.metrics,
+      metrics = mergedMetrics,
     )
   }
 

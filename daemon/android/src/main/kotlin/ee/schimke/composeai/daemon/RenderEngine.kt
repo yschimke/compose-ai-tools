@@ -90,6 +90,14 @@ class RenderEngine(
     requestId: Long,
     classLoader: ClassLoader =
       RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+    /**
+     * B2.3 — per-sandbox lifecycle counters owned by [RobolectricHost.SandboxRunner]. Captured
+     * at sandbox-init time and incremented on every render-completion via
+     * [SandboxMeasurement.collect]. Defaults to a fresh per-call instance for unit tests that
+     * drive the engine directly without a sandbox; the resulting metrics still populate, just
+     * with a sandbox-age that resets per test render.
+     */
+    sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
@@ -198,12 +206,13 @@ class RenderEngine(
     }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
       classLoaderName = classLoader.javaClass.name,
       pngPath = outputFile.absolutePath,
-      metrics = mapOf("tookMs" to tookMs),
+      metrics = metrics,
     )
   }
 

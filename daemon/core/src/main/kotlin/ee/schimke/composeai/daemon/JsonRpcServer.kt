@@ -14,6 +14,7 @@ import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
 import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderFinishedParams
+import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderStartedParams
@@ -519,6 +520,15 @@ class JsonRpcServer(
    *
    * `tookMs` is sourced from `result.metrics["tookMs"]` upstream by [emitRenderFinished]; stub
    * hosts that don't time their bodies pass `0L`.
+   *
+   * **B2.3 — structured [RenderMetrics].** When the host populates the four B2.3 keys
+   * (`heapAfterGcMb`, `nativeHeapMb`, `sandboxAgeRenders`, `sandboxAgeMs`) on
+   * `result.metrics`, [RenderMetrics.fromFlatMap] translates them into a structured
+   * [RenderMetrics] for the wire. A partial map (some but not all four keys) emits a warn-level
+   * `log` notification so drift is observable, and we still emit `metrics: null` — half-populated
+   * objects are misleading because callers cannot tell "field was zero" from "field was missing".
+   * Hosts that return `null` metrics (the B1.5-era stub hosts that don't measure anything) keep
+   * the pre-B2.3 `metrics: null` behaviour.
    */
   private fun renderFinishedFromResult(
     previewId: String,
@@ -526,16 +536,26 @@ class JsonRpcServer(
     tookMs: Long,
   ): RenderFinishedParams {
     val pngPath = result.pngPath ?: "$historyDir/daemon-stub-${result.id}.png"
+    val metrics =
+      when (val outcome = RenderMetrics.fromFlatMap(result.metrics)) {
+        is RenderMetrics.FromFlatMapResult.AbsentSource -> null
+        is RenderMetrics.FromFlatMapResult.PartialMap -> {
+          // Drift signal — host emitted some but not all of the B2.3 keys. Warn so the caller
+          // side observes the gap; still emit `metrics: null` because half-populated objects are
+          // ambiguous on the wire.
+          System.err.println(
+            "compose-ai-daemon: RenderMetrics partial map for previewId='$previewId' " +
+              "(missing keys: ${outcome.missingKeys.joinToString(",")}); emitting metrics=null"
+          )
+          null
+        }
+        is RenderMetrics.FromFlatMapResult.Populated -> outcome.metrics
+      }
     return RenderFinishedParams(
       id = previewId,
       pngPath = pngPath,
       tookMs = tookMs,
-      // Structured RenderMetrics (heap/native/sandbox-age) lands in B2.3. Until then we leave this
-      // null even when the host supplied free-form `Map<String, Long>` metrics — the only field
-      // we currently extract is `tookMs`, which already lives on the wire as a top-level
-      // RenderFinishedParams field. B2.3's hook point is here: read the relevant keys out of
-      // `result.metrics` and populate a [RenderMetrics] object.
-      metrics = null,
+      metrics = metrics,
     )
   }
 

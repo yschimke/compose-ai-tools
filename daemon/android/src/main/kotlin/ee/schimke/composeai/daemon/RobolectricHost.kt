@@ -256,6 +256,15 @@ open class RobolectricHost(
      */
     private val engine: RenderEngine by lazy { RenderEngine() }
 
+    /**
+     * B2.3 — per-sandbox lifecycle counters, instantiated inside the sandbox so `sandboxAgeMs`
+     * is wall-clock since `holdSandboxOpen` started (i.e. since the sandbox booted, not since
+     * the host thread spawned). One stats instance per sandbox lifetime; bumped on every
+     * render-completion by [SandboxMeasurement.collect] via [RenderEngine.render]. Sandbox
+     * recycle (B2.5) will replace this; until then it counts up forever.
+     */
+    private val sandboxStats: SandboxLifecycleStats by lazy { SandboxLifecycleStats() }
+
     @Test
     fun holdSandboxOpen() {
       // B2.0-followup — register the sandbox classloader on the bridge as the very first
@@ -351,7 +360,7 @@ open class RobolectricHost(
         DaemonHostBridge.currentChildLoader()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
-      return engine.render(spec, id, classLoader)
+      return engine.render(spec, id, classLoader, sandboxStats = sandboxStats)
     }
 
     /**

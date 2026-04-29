@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.CountDownLatch
@@ -7,6 +8,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
@@ -14,7 +16,10 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import kotlinx.serialization.json.longOrNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -721,6 +726,183 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  /**
+   * B2.3 — when the host returns a `RenderResult.metrics` map carrying the four B2.3 keys,
+   * `JsonRpcServer.renderFinishedFromResult` translates them into a structured [RenderMetrics]
+   * on the wire.
+   */
+  @Test(timeout = 30_000)
+  fun renderFinished_metrics_populated_when_host_supplies_all_four_b23_keys() {
+    val hostMetrics: Map<String, Long> =
+      mapOf(
+        "tookMs" to 7L,
+        RenderMetrics.KEY_HEAP_AFTER_GC_MB to 100L,
+        RenderMetrics.KEY_NATIVE_HEAP_MB to 200L,
+        RenderMetrics.KEY_SANDBOX_AGE_RENDERS to 5L,
+        RenderMetrics.KEY_SANDBOX_AGE_MS to 4321L,
+      )
+    runRenderAndPollFinished(
+      host = FakeRenderHost(metricsToReturn = hostMetrics),
+      assertOnFinished = { params ->
+        val metricsField = params["metrics"]
+        assertNotNull("renderFinished.metrics must be present (B2.3)", metricsField)
+        assertNotEquals(
+          "renderFinished.metrics must not be JsonNull (B2.3)",
+          JsonNull,
+          metricsField,
+        )
+        val metricsObj = metricsField!!.jsonObject
+        assertEquals(
+          100L,
+          metricsObj[RenderMetrics.KEY_HEAP_AFTER_GC_MB]?.jsonPrimitive?.long,
+        )
+        assertEquals(
+          200L,
+          metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.long,
+        )
+        assertEquals(
+          5L,
+          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]?.jsonPrimitive?.long,
+        )
+        assertEquals(
+          4321L,
+          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.long,
+        )
+        // tookMs at the top level too — already wired pre-B2.3.
+        assertEquals(7L, params["tookMs"]?.jsonPrimitive?.longOrNull)
+      },
+    )
+  }
+
+  /**
+   * B2.3 back-compat — when the host returns `metrics = null` (the B1.5-era stub hosts), the
+   * wire-level `renderFinished.metrics` stays null. Pins the pre-B2.3 behaviour for hosts that
+   * don't measure anything.
+   */
+  @Test(timeout = 30_000)
+  fun renderFinished_metrics_null_when_host_supplies_null() {
+    runRenderAndPollFinished(
+      host = FakeRenderHost(metricsToReturn = null),
+      assertOnFinished = { params ->
+        val metricsField = params["metrics"]
+        val isNullOrAbsent = metricsField == null || metricsField is JsonNull
+        assertTrue(
+          "renderFinished.metrics must stay null when host returns null metrics: got $metricsField",
+          isNullOrAbsent,
+        )
+      },
+    )
+  }
+
+  /**
+   * B2.3 partial-map path — when the host populates *some* B2.3 keys but not all four, the wire
+   * still emits `metrics: null` (no half-populated objects) and the daemon warn-logs the gap.
+   * Pinned here to lock the JsonRpcServer behaviour; the partial-map outcome itself is unit-
+   * tested in [RenderMetricsFromFlatMapTest].
+   */
+  @Test(timeout = 30_000)
+  fun renderFinished_metrics_null_when_host_supplies_partial_map() {
+    val partial: Map<String, Long> =
+      mapOf(
+        RenderMetrics.KEY_HEAP_AFTER_GC_MB to 1L,
+        RenderMetrics.KEY_NATIVE_HEAP_MB to 2L,
+        // Missing sandboxAgeRenders + sandboxAgeMs.
+      )
+    runRenderAndPollFinished(
+      host = FakeRenderHost(metricsToReturn = partial),
+      assertOnFinished = { params ->
+        val metricsField = params["metrics"]
+        val isNullOrAbsent = metricsField == null || metricsField is JsonNull
+        assertTrue(
+          "renderFinished.metrics must stay null on partial-map host return: got $metricsField",
+          isNullOrAbsent,
+        )
+      },
+    )
+  }
+
+  /**
+   * Drives the initialize → renderNow → renderFinished round-trip against a custom
+   * [FakeRenderHost] and lets the caller assert on the `renderFinished.params` JSON. Factored out
+   * of the three B2.3 tests above so they can each focus on the metrics shape.
+   */
+  private fun runRenderAndPollFinished(
+    host: FakeRenderHost,
+    assertOnFinished: (JsonObject) -> Unit,
+  ) {
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-b23").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-b23-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":true}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":2,"method":"renderNow","params":{
+              "previews":["preview-A"],"tier":"fast"}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 })
+      val finished =
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+      assertNotNull("renderFinished notification should arrive", finished)
+      val params = finished!!["params"]!!.jsonObject
+      assertEquals("preview-A", params["id"]?.jsonPrimitive?.contentOrNull)
+      assertOnFinished(params)
+
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      serverThread.join(5_000)
+    }
+  }
+
   /** Helper: writes one Content-Length-framed JSON message. */
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)
@@ -755,7 +937,14 @@ class JsonRpcServerIntegrationTest {
  * "single render thread" guarantee. The [interruptCount] counter spies on `Thread.interrupt()`
  * calls — the no-mid-render-cancellation invariant requires this to stay at zero.
  */
-private class FakeRenderHost : RenderHost {
+private class FakeRenderHost(
+  /**
+   * If non-null, every successful render returns this map verbatim as `RenderResult.metrics`.
+   * Used by the B2.3 integration tests to drive `JsonRpcServer.renderFinishedFromResult` through
+   * its happy / partial / null branches.
+   */
+  private val metricsToReturn: Map<String, Long>? = null
+) : RenderHost {
 
   val interruptCount = java.util.concurrent.atomic.AtomicInteger(0)
   private val queue = LinkedBlockingQueue<RenderRequest>()
@@ -775,7 +964,12 @@ private class FakeRenderHost : RenderHost {
             when (req) {
               is RenderRequest.Render -> {
                 val result =
-                  RenderResult(id = req.id, classLoaderHashCode = 0, classLoaderName = "fake")
+                  RenderResult(
+                    id = req.id,
+                    classLoaderHashCode = 0,
+                    classLoaderName = "fake",
+                    metrics = metricsToReturn,
+                  )
                 results.computeIfAbsent(req.id) { LinkedBlockingQueue() }.put(result)
               }
               RenderRequest.Shutdown -> return@Thread

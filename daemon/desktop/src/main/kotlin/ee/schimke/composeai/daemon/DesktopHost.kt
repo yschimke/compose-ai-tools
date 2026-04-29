@@ -82,6 +82,15 @@ open class DesktopHost(
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
   /**
+   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so
+   * `sandboxAgeMs` is wall-clock since the desktop host was instantiated; bumped per render-
+   * completion by [SandboxMeasurement.collect] (called from [RenderEngine.render]). Sandbox
+   * recycle (B2.5) will reset these once it lands; for B2.3 v1 the counter just keeps growing
+   * over the host's lifetime — documented behaviour.
+   */
+  private val sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats()
+
+  /**
    * Set if any [InterruptedException] is observed on the render thread. Production code never
    * causes one (we hold the no-mid-render-cancellation invariant); the test asserts this stays
    * `false` after a clean shutdown to detect a future regression that introduces a stray
@@ -212,7 +221,7 @@ open class DesktopHost(
         userClassloaderHolder?.currentChildLoader()
           ?: RenderEngine::class.java.classLoader
           ?: ClassLoader.getSystemClassLoader()
-      engine.render(spec, request.id, classLoader)
+      engine.render(spec, request.id, classLoader, sandboxStats = sandboxStats)
     }
   }
 

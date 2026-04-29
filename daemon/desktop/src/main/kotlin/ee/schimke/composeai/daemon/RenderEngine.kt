@@ -80,6 +80,14 @@ class RenderEngine(
     requestId: Long,
     classLoader: ClassLoader =
       RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+    /**
+     * B2.3 — per-host measurement context. The host owns its own [SandboxLifecycleStats] (start
+     * time + render counter); the engine simply reads from it at metrics-population time and
+     * bumps the counter once per render. Defaults to a fresh per-call instance for unit tests
+     * that drive the engine directly without a host wrapper — the resulting metrics are still
+     * populated, just with a sandbox-age that resets on every test render.
+     */
+    sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
@@ -143,12 +151,13 @@ class RenderEngine(
     }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
       classLoaderName = classLoader.javaClass.name,
       pngPath = outputFile.absolutePath,
-      metrics = mapOf("tookMs" to tookMs),
+      metrics = metrics,
     )
   }
 

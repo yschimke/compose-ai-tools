@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.JsonNull
@@ -7,6 +8,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume
@@ -17,14 +19,13 @@ import org.junit.Test
  * `renderFinished.tookMs` carries the timing the engine measured, and pins the remaining
  * structured-metrics gap with TEST-HARNESS § 3's cost-model expectation (B2.3 unimplemented).
  *
- * **What's present today:**
- * - `renderFinished.tookMs` reflects the wall-clock the engine spent in `RenderEngine.render` (B-
- *   desktop.1.4 populates `RenderResult.metrics["tookMs"]`; D-harness.v1.5b follow-up plumbs that
- *   value through `JsonRpcServer.emitRenderFinished` rather than hardcoding `0`). The fix landed
- *   alongside this test KDoc — assertion below tightens to `tookMs in 1..30_000`.
- * - `renderFinished.metrics` (typed as `RenderMetrics?`) is `null` today
- *   (`renderFinishedFromResult` sets it to null — same gap as fake-mode S8). B2.3 is unimplemented;
- *   cost-model fields (heap, native heap, sandbox-age, render count) don't exist on the wire yet.
+ * **What's present post-B2.3:**
+ * - `renderFinished.tookMs` reflects the wall-clock the engine spent in `RenderEngine.render`.
+ * - `renderFinished.metrics` (typed as `RenderMetrics?`) carries the four B2.3 cost-model
+ *   fields — `heapAfterGcMb` (post-`System.gc()` Runtime delta), `nativeHeapMb` (committed
+ *   virtual memory size on HotSpot), `sandboxAgeRenders` (per-sandbox counter), `sandboxAgeMs`
+ *   (wall-clock since `DesktopHost`'s construction). The desktop host owns its own
+ *   `SandboxLifecycleStats`, so the first render's `sandboxAgeRenders` is exactly 1.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -84,17 +85,51 @@ class S8CostModelMetricsRealModeTest {
         tookMs!! in 1L..30_000L,
       )
 
-      // 2. Wire-level metrics: B2.3 unimplemented → null today. Documented gap; same as fake-mode
-      //    S8. When B2.3 lands and `RenderFinishedParams.metrics` carries heap / native-heap /
-      //    sandbox-age fields, this assertion flips and the test should tighten to assert each
-      //    field's presence + sane range.
+      // 2. Wire-level metrics: B2.3 lands the four cost-model fields on
+      //    `RenderFinishedParams.metrics`. Each must be present + parse as Long + fall in a sane
+      //    range for a real desktop render.
       val wireMetrics = params["metrics"]
-      val wireMetricsIsNullOrAbsent = wireMetrics == null || wireMetrics is JsonNull
+      assertNotNull("renderFinished.metrics must be populated post-B2.3", wireMetrics)
+      assertNotEquals(
+        "renderFinished.metrics must not be JsonNull post-B2.3",
+        JsonNull,
+        wireMetrics,
+      )
+      val metricsObj = wireMetrics!!.jsonObject
+      val heapAfterGcMb =
+        metricsObj[RenderMetrics.KEY_HEAP_AFTER_GC_MB]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+      val nativeHeapMb =
+        metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+      val sandboxAgeRenders =
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toLongOrNull()
+      val sandboxAgeMs =
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toLongOrNull()
+      assertNotNull("metrics.heapAfterGcMb must be a Long", heapAfterGcMb)
+      assertNotNull("metrics.nativeHeapMb must be a Long", nativeHeapMb)
+      assertNotNull("metrics.sandboxAgeRenders must be a Long", sandboxAgeRenders)
+      assertNotNull("metrics.sandboxAgeMs must be a Long", sandboxAgeMs)
       assertTrue(
-        "v1 daemon reality: renderFinished.metrics is null today (B2.3 unimplemented; gap with " +
-          "TEST-HARNESS § 3). If this assertion ever flips green, B2.3 has landed cost-model " +
-          "fields and this test should tighten to assert each field's presence + sane range.",
-        wireMetricsIsNullOrAbsent,
+        "metrics.heapAfterGcMb in [1, 8192] for a real desktop render: got $heapAfterGcMb",
+        heapAfterGcMb!! in 1L..8192L,
+      )
+      assertTrue(
+        "metrics.nativeHeapMb >= 0 (0 if non-HotSpot fallback): got $nativeHeapMb",
+        nativeHeapMb!! >= 0L,
+      )
+      assertEquals(
+        "first render's sandboxAgeRenders must be 1",
+        1L,
+        sandboxAgeRenders,
+      )
+      assertTrue(
+        "metrics.sandboxAgeMs must be non-negative: got $sandboxAgeMs",
+        sandboxAgeMs!! >= 0L,
       )
 
       val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
@@ -102,7 +137,10 @@ class S8CostModelMetricsRealModeTest {
         scenario = "s8-real",
         preview = previewId,
         actualMs = wallClockMs,
-        notes = "S8 real: wire tookMs=$tookMs (engine-measured); structured metrics=null (B2.3 gap)",
+        notes =
+          "S8 real: wire tookMs=$tookMs (engine-measured); B2.3 metrics " +
+            "heapAfterGcMb=$heapAfterGcMb nativeHeapMb=$nativeHeapMb " +
+            "sandboxAgeRenders=$sandboxAgeRenders sandboxAgeMs=$sandboxAgeMs",
       )
 
       val exitCode = client.shutdownAndExit(timeout = 30.seconds)

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.JsonNull
@@ -7,21 +8,22 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume
 import org.junit.Test
 
 /**
- * D-harness.v2 Android counterpart of [S8CostModelMetricsRealModeTest] — verifies that the Android
- * daemon's wire-level `renderFinished.tookMs` carries the timing the engine measured, and pins the
- * same B2.3-unimplemented gap on the structured metrics map.
+ * D-harness.v2 Android counterpart of [S8CostModelMetricsRealModeTest] — verifies that the
+ * Android daemon's wire-level `renderFinished.tookMs` carries the timing the engine measured, and
+ * that the four post-B2.3 cost-model fields populate `renderFinished.metrics`.
  *
- * **Same wire shape as desktop.** Both backends populate `RenderResult.metrics["tookMs"]` from
- * `System.nanoTime()` deltas around their respective render bodies (B1.4 / B-desktop.1.4);
- * `JsonRpcServer.emitRenderFinished` (in `:daemon:core`) reads the value and forwards it
- * as the wire-level `tookMs`. The `RenderFinishedParams.metrics` (typed as `RenderMetrics?`) is
- * still null on both targets — B2.3 unimplemented.
+ * **Same wire shape as desktop.** Both backends populate `RenderResult.metrics` from
+ * `SandboxMeasurement.collect`; `JsonRpcServer.renderFinishedFromResult` (in `:daemon:core`)
+ * translates the flat map into the structured [RenderMetrics] for the wire. On Android the
+ * `SandboxLifecycleStats` lives inside the Robolectric sandbox (per-sandbox lifetime), so the
+ * first render's `sandboxAgeRenders` is 1.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -82,14 +84,50 @@ class S8CostModelMetricsAndroidRealModeTest {
         tookMs!! in 1L..60_000L,
       )
 
-      // 2. Wire-level metrics: B2.3 unimplemented → null today on both targets.
+      // 2. Wire-level metrics: B2.3 — the four cost-model fields must populate
+      //    `renderFinished.metrics` on the Android target too.
       val wireMetrics = params["metrics"]
-      val wireMetricsIsNullOrAbsent = wireMetrics == null || wireMetrics is JsonNull
+      assertNotNull("renderFinished.metrics must be populated post-B2.3 (android)", wireMetrics)
+      assertNotEquals(
+        "renderFinished.metrics must not be JsonNull (android)",
+        JsonNull,
+        wireMetrics,
+      )
+      val metricsObj = wireMetrics!!.jsonObject
+      val heapAfterGcMb =
+        metricsObj[RenderMetrics.KEY_HEAP_AFTER_GC_MB]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+      val nativeHeapMb =
+        metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+      val sandboxAgeRenders =
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toLongOrNull()
+      val sandboxAgeMs =
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toLongOrNull()
+      assertNotNull("metrics.heapAfterGcMb must be a Long", heapAfterGcMb)
+      assertNotNull("metrics.nativeHeapMb must be a Long", nativeHeapMb)
+      assertNotNull("metrics.sandboxAgeRenders must be a Long", sandboxAgeRenders)
+      assertNotNull("metrics.sandboxAgeMs must be a Long", sandboxAgeMs)
       assertTrue(
-        "v1 daemon reality (android): renderFinished.metrics is null today (B2.3 unimplemented; " +
-          "gap with TEST-HARNESS § 3, same as desktop). When B2.3 lands cost-model fields, this " +
-          "test should tighten to assert each field's presence + sane range.",
-        wireMetricsIsNullOrAbsent,
+        "metrics.heapAfterGcMb in [1, 8192] for a real android render: got $heapAfterGcMb",
+        heapAfterGcMb!! in 1L..8192L,
+      )
+      assertTrue(
+        "metrics.nativeHeapMb >= 0 (0 if non-HotSpot fallback): got $nativeHeapMb",
+        nativeHeapMb!! >= 0L,
+      )
+      assertEquals(
+        "first render's sandboxAgeRenders must be 1",
+        1L,
+        sandboxAgeRenders,
+      )
+      assertTrue(
+        "metrics.sandboxAgeMs must be non-negative: got $sandboxAgeMs",
+        sandboxAgeMs!! >= 0L,
       )
 
       val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
@@ -98,7 +136,9 @@ class S8CostModelMetricsAndroidRealModeTest {
         preview = previewId,
         actualMs = wallClockMs,
         notes =
-          "S8 android: wire tookMs=$tookMs (engine-measured); structured metrics=null (B2.3 gap)",
+          "S8 android: wire tookMs=$tookMs (engine-measured); B2.3 metrics " +
+            "heapAfterGcMb=$heapAfterGcMb nativeHeapMb=$nativeHeapMb " +
+            "sandboxAgeRenders=$sandboxAgeRenders sandboxAgeMs=$sandboxAgeMs",
       )
 
       val exitCode = client.shutdownAndExit(timeout = 60.seconds)

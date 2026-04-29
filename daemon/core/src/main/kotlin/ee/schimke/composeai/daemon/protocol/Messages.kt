@@ -198,7 +198,75 @@ data class RenderMetrics(
   val nativeHeapMb: Long,
   val sandboxAgeRenders: Long,
   val sandboxAgeMs: Long,
-)
+) {
+  companion object {
+    /**
+     * The four flat-map keys [RenderHost] implementations populate on `RenderResult.metrics` to
+     * carry B2.3 measurement values across the renderer-agnostic seam.
+     *
+     * Pinned here so `:daemon:core`, `:daemon:android`, `:daemon:desktop`, and `:daemon:harness`
+     * agree on the exact spelling without each reaching for a string literal at the call site.
+     */
+    const val KEY_HEAP_AFTER_GC_MB: String = "heapAfterGcMb"
+    const val KEY_NATIVE_HEAP_MB: String = "nativeHeapMb"
+    const val KEY_SANDBOX_AGE_RENDERS: String = "sandboxAgeRenders"
+    const val KEY_SANDBOX_AGE_MS: String = "sandboxAgeMs"
+
+    /**
+     * Translates the flat `Map<String, Long>` carrier on `RenderResult.metrics` into a structured
+     * [RenderMetrics] for the wire. Returns `null` when any of the four B2.3 keys is missing —
+     * we deliberately do not emit a half-populated metrics object since callers can't tell the
+     * difference between "field truly was zero" and "field was missing", and the wire-level
+     * presence of `metrics: null` already encodes "measurement unavailable" cleanly. Extra
+     * unknown keys (e.g. the renderer's pre-existing `tookMs`) are ignored — they continue to
+     * flow through `RenderFinishedParams.tookMs` at the top level.
+     *
+     * Returns a `Result` so the caller (`JsonRpcServer.renderFinishedFromResult`) can warn-log
+     * the partial-map case and observe drift — a common shape early in a host backend's
+     * measurement plumbing.
+     */
+    fun fromFlatMap(map: Map<String, Long>?): FromFlatMapResult {
+      if (map == null) return FromFlatMapResult.AbsentSource
+      val heap = map[KEY_HEAP_AFTER_GC_MB]
+      val native = map[KEY_NATIVE_HEAP_MB]
+      val ageRenders = map[KEY_SANDBOX_AGE_RENDERS]
+      val ageMs = map[KEY_SANDBOX_AGE_MS]
+      val missing = buildList {
+        if (heap == null) add(KEY_HEAP_AFTER_GC_MB)
+        if (native == null) add(KEY_NATIVE_HEAP_MB)
+        if (ageRenders == null) add(KEY_SANDBOX_AGE_RENDERS)
+        if (ageMs == null) add(KEY_SANDBOX_AGE_MS)
+      }
+      if (missing.isNotEmpty()) return FromFlatMapResult.PartialMap(missing)
+      return FromFlatMapResult.Populated(
+        RenderMetrics(
+          heapAfterGcMb = heap!!,
+          nativeHeapMb = native!!,
+          sandboxAgeRenders = ageRenders!!,
+          sandboxAgeMs = ageMs!!,
+        )
+      )
+    }
+  }
+
+  /**
+   * Tagged outcome of [fromFlatMap]. The three cases the wire layer needs to distinguish:
+   *
+   * - [AbsentSource] — the host returned `null` metrics (e.g. the B1.5-era stub hosts that don't
+   *   measure anything). The wire emits `metrics: null` with no log noise — pre-B2.3 behaviour.
+   * - [PartialMap] — the host populated *some* B2.3 keys but not all four. The wire still emits
+   *   `metrics: null` (no half-populated objects), but [JsonRpcServer.renderFinishedFromResult]
+   *   logs a warn-level notification so caller-side drift is observable.
+   * - [Populated] — all four keys present; the wire carries the structured object.
+   */
+  sealed interface FromFlatMapResult {
+    data object AbsentSource : FromFlatMapResult
+
+    data class PartialMap(val missingKeys: List<String>) : FromFlatMapResult
+
+    data class Populated(val metrics: RenderMetrics) : FromFlatMapResult
+  }
+}
 
 @Serializable data class RenderFailedParams(val id: String, val error: RenderError)
 
