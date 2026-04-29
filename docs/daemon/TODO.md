@@ -350,6 +350,11 @@ Scoped ClassGraph scan of a single classpath element. Regex pre-filter for `@Pre
 - **Depends on:** P0.2, B1.5
 - **DoD:** unit test: synthetic project with 100 preview-bearing classes; edit one; discovery completes in < 100ms; diff is exactly that one class's previews.
 
+Phased delivery:
+
+- ✅ **Phase 1 — preview index ownership.** Daemon owns its own `PreviewIndex` parsed from `previews.json` at startup (gradle plugin emits `composeai.daemon.previewsJsonPath` sysprop on the daemon JVM). `initialize.manifest.{path, previewCount}` now reports the real values instead of the pre-B2.2 stub. Index is read-only for the daemon's lifetime. Layering invariant preserved: `:daemon:core` defines its own `PreviewInfoDto` mirror with `ignoreUnknownKeys = true`, no dep on `:gradle-plugin`. Lands the long-standing `// B2.2 ...` TODO comment in `JsonRpcServer.handleInitialize`.
+- **Phase 2 — incremental rescan + `discoveryUpdated`.** ClassGraph scan on `fileChanged({kind:"sources"})`, diff against the in-memory index, emit `discoveryUpdated`. Open.
+
 #### B2.3 — `SandboxLifecycle` measurement (Layer 1)
 
 Per-render: heap post-GC, native heap, class histogram for tracked classes, render time, sandbox age. Emitted on `renderFinished.metrics`.

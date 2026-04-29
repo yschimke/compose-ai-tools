@@ -150,6 +150,40 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
+  fun `descriptor encodes B2_2 previewsJsonPath sysprop verbatim`() {
+    // B2.2 phase 1 — the daemon owns its own preview index, parsed from `previews.json` at
+    // startup. The gradle plugin surfaces the absolute path via the
+    // `composeai.daemon.previewsJsonPath` sysprop on the daemon JVM. This test pins the contract
+    // that whatever value upstream wires propagates verbatim through the descriptor's
+    // `systemProperties` map.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val previewsJsonAbs = "/abs/build/compose-previews/previews.json"
+    val task =
+      project.tasks.register("composePreviewDaemonStart", DaemonBootstrapTask::class.java) {
+        modulePath.set(":x")
+        variant.set("debug")
+        daemonEnabled.set(true)
+        maxHeapMb.set(512)
+        maxRendersPerSandbox.set(50)
+        warmSpare.set(true)
+        mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        jvmArgs.set(emptyList())
+        systemProperties.set(mapOf("composeai.daemon.previewsJsonPath" to previewsJsonAbs))
+        workingDirectory.set(tempDir.root.absolutePath)
+        manifestPath.set(previewsJsonAbs)
+        outputFile.set(outFile)
+      }
+
+    task.get().emit()
+
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.systemProperties).containsKey("composeai.daemon.previewsJsonPath")
+    assertThat(descriptor.systemProperties["composeai.daemon.previewsJsonPath"])
+      .isEqualTo(previewsJsonAbs)
+  }
+
+  @Test
   fun `descriptor honours enabled flag from extension wiring`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")

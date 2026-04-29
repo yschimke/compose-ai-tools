@@ -1299,6 +1299,11 @@ internal object AndroidPreviewSupport {
           // KDoc. Colon-delimited; empty when none of the canonical files exist on disk (rare;
           // most real Android projects have at least `build.gradle.kts` + `settings.gradle.kts`).
           val cheapSignalFiles = collectCheapSignalFiles(project)
+          // B2.2 phase 1 — emit `composeai.daemon.previewsJsonPath` so the daemon can own its
+          // own preview index (parsed at startup; surfaced via `initialize.manifest`). The path
+          // mirrors the value we already pass to `renderPreviews` via `manifestFile`. Phase 2
+          // (incremental rescan + `discoveryUpdated` emission) keeps the same sysprop — only the
+          // daemon-side load policy changes.
           val daemonProps =
             linkedMapOf(
               "composeai.daemon.protocolVersion" to "1",
@@ -1314,6 +1319,7 @@ internal object AndroidPreviewSupport {
                 userClassDirs.joinToString(java.io.File.pathSeparator),
               "composeai.daemon.cheapSignalFiles" to
                 cheapSignalFiles.joinToString(java.io.File.pathSeparator) { it.absolutePath },
+              "composeai.daemon.previewsJsonPath" to manifestFile.get(),
             )
           LinkedHashMap(base).apply { putAll(daemonProps) }
         }

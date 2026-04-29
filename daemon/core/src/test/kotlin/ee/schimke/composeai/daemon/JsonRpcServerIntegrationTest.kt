@@ -200,6 +200,177 @@ class JsonRpcServerIntegrationTest {
   }
 
   /**
+   * B2.2 phase 1 — when the daemon is constructed with a non-empty [PreviewIndex], the
+   * `initialize` response's `manifest` block reports the absolute path of the loaded
+   * `previews.json` and the count of previews known to the daemon. Mirrors the
+   * `initialize.classpathFingerprint` pin in the B2.1 test below.
+   */
+  @Test(timeout = 30_000)
+  fun initialize_manifest_reports_preview_index_path_and_count() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("preview-index-test")
+    val previewsJson = tmpDir.resolve("previews.json")
+    java.nio.file.Files.writeString(
+      previewsJson,
+      """
+      {
+        "module": ":t",
+        "variant": "debug",
+        "previews": [
+          {"id":"A","className":"com.x.AKt","functionName":"A"},
+          {"id":"B","className":"com.x.BKt","functionName":"B","sourceFile":"B.kt"}
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    val index = PreviewIndex.loadFromFile(previewsJson)
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitCode = AtomicInteger(-1)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        previewIndex = index,
+        onExit = { code ->
+          exitCode.set(code)
+          exitLatch.countDown()
+        },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-manifest").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-manifest-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      val init = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
+      assertNotNull("initialize response should arrive", init)
+      val manifest = init!!["result"]!!.jsonObject["manifest"]!!.jsonObject
+      assertEquals(
+        previewsJson.toAbsolutePath().toString(),
+        manifest["path"]?.jsonPrimitive?.contentOrNull,
+      )
+      assertEquals(2, manifest["previewCount"]?.jsonPrimitive?.intOrNull)
+
+      // Tear down cleanly.
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+      assertEquals(0, exitCode.get())
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      tmpDir.toFile().deleteRecursively()
+      serverThread.join(10_000)
+    }
+  }
+
+  /**
+   * B2.2 phase 1 back-compat — when the daemon is constructed without a [PreviewIndex] (the
+   * default), `initialize.manifest` reports `path = ""` and `previewCount = 0`. Pins the
+   * pre-B2.2 stub shape so existing in-process callers that don't yet wire the index keep
+   * receiving the empty placeholder.
+   */
+  @Test(timeout = 30_000)
+  fun initialize_manifest_defaults_to_empty_index() {
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    Thread({ server.run() }, "json-rpc-server-default-manifest").apply { isDaemon = true }.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-default-manifest-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      val init = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
+      assertNotNull(init)
+      val manifest = init!!["result"]!!.jsonObject["manifest"]!!.jsonObject
+      assertEquals("", manifest["path"]?.jsonPrimitive?.contentOrNull)
+      assertEquals(0, manifest["previewCount"]?.jsonPrimitive?.intOrNull)
+
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+    }
+  }
+
+  /**
    * B2.1 — `fileChanged({ kind: "classpath" })` against a daemon with a [ClasspathFingerprint]
    * configured. When the cheap-signal file's bytes change AND the (synthetic) classpath hash
    * drifts, the daemon must emit `classpathDirty` exactly once and then exit cleanly.

@@ -4,6 +4,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import java.io.File
+import java.nio.file.Path
 
 /**
  * Entry point for the preview daemon JVM — see docs/daemon/DESIGN.md § 4.
@@ -112,12 +113,30 @@ fun main(args: Array<String>) {
       ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
     }
 
+  // B2.2 phase 1 — load the in-memory preview index from `previews.json`. The gradle plugin's
+  // `composePreviewDaemonStart` task emits the absolute path as a sysprop on the daemon JVM (see
+  // `composeai.daemon.previewsJsonPath` in AndroidPreviewSupport.kt). When unset (in-process tests,
+  // ad-hoc launches) we come up with the empty index — same shape as the pre-B2.2 stub.
+  val previewsJsonPath = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+  val previewIndex: PreviewIndex =
+    if (!previewsJsonPath.isNullOrBlank()) {
+      val loaded = PreviewIndex.loadFromFile(Path.of(previewsJsonPath))
+      System.err.println(
+        "compose-ai-tools daemon: PreviewIndex loaded " +
+          "(path=${loaded.path}, previewCount=${loaded.size})"
+      )
+      loaded
+    } else {
+      PreviewIndex.empty()
+    }
+
   val server =
     JsonRpcServer(
       input = System.`in`,
       output = realOut,
       host = host,
       classpathFingerprint = classpathFingerprint,
+      previewIndex = previewIndex,
     )
   server.run()
 }

@@ -93,6 +93,15 @@ class JsonRpcServer(
   private val classpathDirtyGraceMs: Long =
     System.getProperty(CLASSPATH_DIRTY_GRACE_PROP)?.toLongOrNull()
       ?: DEFAULT_CLASSPATH_DIRTY_GRACE_MS,
+  /**
+   * B2.2 phase 1 — the in-memory preview index, parsed from `previews.json` at daemon startup by
+   * [DaemonMain]. Surfaced to clients via `initialize.manifest`. Defaults to [PreviewIndex.empty]
+   * so existing in-process call sites (the integration tests, fake-mode harness scenarios) stay
+   * source-compatible — the empty index reports `path = ""` and `previewCount = 0`, matching the
+   * pre-B2.2 stub. Phase 2 will replace this with a mutable holder that supports incremental
+   * rescan + `discoveryUpdated` emission.
+   */
+  private val previewIndex: PreviewIndex = PreviewIndex.empty(),
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -314,10 +323,13 @@ class JsonRpcServer(
         classpathFingerprint = classpathSnapshot?.classpathHash ?: "",
         manifest =
           Manifest(
-            // B2.2 (IncrementalDiscovery) replaces this with the real path
-            // and count once the daemon owns its own previews.json.
-            path = "",
-            previewCount = 0,
+            // B2.2 phase 1 — the daemon owns its preview index now. Path is the absolute path of
+            // the `previews.json` we loaded at startup ("" when no `composeai.daemon.previewsJsonPath`
+            // sysprop was supplied — fake-mode / in-process tests). Phase 2 (incremental rescan +
+            // `discoveryUpdated` emission) is still pending and will keep this field in sync as
+            // discovery diffs land.
+            path = previewIndex.path?.toAbsolutePath()?.toString() ?: "",
+            previewCount = previewIndex.size,
           ),
       )
     sendResponse(req.id, encode(InitializeResult.serializer(), result))
