@@ -13,10 +13,17 @@ Desktop (via `ImageComposeScene` + Skia).
 
 This skill is maintained at
 [github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
-under `skills/compose-preview/`. To check for updates, compare the installed
-copy against the `main` branch there (e.g. `git ls-remote
-https://github.com/yschimke/compose-ai-tools HEAD` for the latest commit, or
-fetch `skills/compose-preview/SKILL.md` from `main` and diff).
+under `skills/compose-preview/`. The bundle this documentation ships with is
+<!-- x-release-please-start-version -->
+**v0.8.10**.
+<!-- x-release-please-end -->
+
+To check the locally installed version, run `compose-preview --version` (it
+also lives at `~/.claude/skills/compose-preview/.skill-version`). Run
+`compose-preview doctor` to compare against the latest GitHub release — it
+emits an `env.bundle-version` line and warns when the installed bundle
+trails. To upgrade, run `compose-preview update`, which re-runs the
+[bootstrap installer](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh).
 
 ## What this skill provides
 

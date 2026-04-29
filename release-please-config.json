@@ -19,7 +19,7 @@
         "docs/RELEASING.md",
         {
           "type": "generic",
-          "path": "cli/src/main/kotlin/ee/schimke/composeai/cli/DoctorCommand.kt"
+          "path": "cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt"
         },
         {
           "type": "generic",

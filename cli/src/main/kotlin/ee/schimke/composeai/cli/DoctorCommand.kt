@@ -54,8 +54,7 @@ class DoctorCommand(args: List<String>) {
    * `--plugin-version` or the CLI's compiled-in default. Distinct from [appliedPluginVersion],
    * which is what the project actually has on its classpath.
    */
-  private val recommendedPluginVersion =
-    args.flagValue("--plugin-version") ?: DEFAULT_PLUGIN_VERSION
+  private val recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
 
   /**
    * Plugin version actually applied to the project, read from the Tooling model after
@@ -92,7 +91,19 @@ class DoctorCommand(args: List<String>) {
 
     checkComposeBomVersion()
     if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1") {
+      checkBundleVersion()
       checkNetworkReach()
+    } else {
+      // Still surface the installed version offline — paste-friendly for bug reports and the
+      // single most useful line in the report when the user is asking "what am I running?".
+      addCheck(
+        DoctorCheck(
+          id = "env.bundle-version",
+          category = "env",
+          status = "ok",
+          message = "compose-preview $BUNDLE_VERSION (update check skipped)",
+        )
+      )
     }
 
     // Project checks: only when a Gradle project is reachable.
@@ -829,6 +840,99 @@ class DoctorCommand(args: List<String>) {
   }
 
   /**
+   * Compares the installed CLI's [BUNDLE_VERSION] against the latest GitHub release tag. Mirrors
+   * the resolution trick in `scripts/install.sh` — a HEAD against the public `releases/latest`
+   * redirect, not `api.github.com`, because the API rate-limits unauthenticated callers on shared
+   * sandbox IPs (Claude Code cloud, GitHub Actions free tier, etc.) and would 403.
+   *
+   * Failure modes are non-fatal:
+   * - Unreachable network → `skipped` check, single-line note. Same env-var opt-out
+   *   (`COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`) as the rest of network probes.
+   * - Latest tag unparseable → `skipped`. Conservative: never call something "out of date" we can't
+   *   verify.
+   * - Installed == latest → `ok`.
+   * - Installed older → `warning` with a `compose-preview update` remediation. Newer-than-latest
+   *   (SNAPSHOT or pre-release) is treated as `ok` — these come from local builds and shouldn't
+   *   nag.
+   */
+  private fun checkBundleVersion() {
+    val latestUrl = "https://github.com/$REPO/releases/latest"
+    val resolved =
+      try {
+        val conn =
+          (URI(latestUrl).toURL().openConnection() as HttpURLConnection).apply {
+            requestMethod = "HEAD"
+            connectTimeout = 3_000
+            readTimeout = 3_000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "compose-preview-doctor")
+          }
+        try {
+          conn.responseCode // force the request
+          conn.url.toString()
+        } finally {
+          conn.disconnect()
+        }
+      } catch (e: Exception) {
+        addCheck(
+          DoctorCheck(
+            id = "env.bundle-version",
+            category = "env",
+            status = "skipped",
+            message = "compose-preview $BUNDLE_VERSION (could not check for updates)",
+            detail = "GET $latestUrl: ${e.message ?: e.javaClass.simpleName}",
+          )
+        )
+        return
+      }
+
+    // Public redirect is `…/releases/tag/v<version>`. Strip everything up to the last `/v`.
+    val latest = resolved.substringAfterLast("/v", missingDelimiterValue = "")
+    if (latest.isBlank()) {
+      addCheck(
+        DoctorCheck(
+          id = "env.bundle-version",
+          category = "env",
+          status = "skipped",
+          message = "compose-preview $BUNDLE_VERSION (could not parse latest release tag)",
+          detail = "redirect target: $resolved",
+        )
+      )
+      return
+    }
+
+    val cmp = compareSemver(BUNDLE_VERSION, latest)
+    when {
+      cmp >= 0 ->
+        addCheck(
+          DoctorCheck(
+            id = "env.bundle-version",
+            category = "env",
+            status = "ok",
+            message = "compose-preview $BUNDLE_VERSION (latest)",
+            detail = if (cmp > 0) "ahead of published latest v$latest" else null,
+          )
+        )
+      else ->
+        addCheck(
+          DoctorCheck(
+            id = "env.bundle-version",
+            category = "env",
+            status = "warning",
+            message = "compose-preview $BUNDLE_VERSION is behind latest v$latest",
+            detail = "see https://github.com/$REPO/releases/tag/v$latest for changes",
+            remediation =
+              DoctorRemediation(
+                summary = "Update the compose-preview skill bundle and CLI to v$latest.",
+                commands = listOf("compose-preview update"),
+                docs = "https://github.com/$REPO/releases/latest",
+              ),
+          )
+        )
+    }
+  }
+
+  /**
    * Probe Google-controlled hosts that the Android render path and Compose's downloadable-fonts
    * integration depend on at build + render time. Each host becomes one `env.network.<id>` check;
    * an unreachable host is a warning (it only matters for specific consumers) and points at the
@@ -959,9 +1063,6 @@ class DoctorCommand(args: List<String>) {
   )
 
   companion object {
-    private const val REPO = "yschimke/compose-ai-tools"
-    private const val DEFAULT_PLUGIN_VERSION = "0.8.10" // x-release-please-version
-
     /**
      * Minimum supported Compose BOM — 2025.01.00 → compose-ui 1.9.0. That's the first BOM where
      * `ComposeUiNode.setCompositeKeyHash` (emitted by compose-compiler 2.2.21) exists on the
