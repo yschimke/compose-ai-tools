@@ -1,0 +1,94 @@
+# baseline-latency.csv — captured by android-daemon-bench (P0.1) and
+# desktop-daemon-bench (P0.6) :benchPreviewLatency tasks. See
+# docs/daemon/baseline-latency.md for methodology + reference machine.
+target,phase,scenario,run,milliseconds,notes
+android,config,cold,1,2337,wall of renderPreviews --dry-run
+android,compile,cold,1,2472,wall of compileDebugKotlin task (incl. config)
+android,discovery,cold,1,1415,wall of discoverPreviews task (incl. config)
+android,forkAndInit,cold,1,4041,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,cold,1,5561,sum of 5 JUnit testcase time= attrs (full preview set)
+android,config,cold,2,1311,wall of renderPreviews --dry-run
+android,compile,cold,2,1670,wall of compileDebugKotlin task (incl. config)
+android,discovery,cold,2,1218,wall of discoverPreviews task (incl. config)
+android,forkAndInit,cold,2,2870,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,cold,2,5464,sum of 5 JUnit testcase time= attrs (full preview set)
+android,config,cold,3,1106,wall of renderPreviews --dry-run
+android,compile,cold,3,1358,wall of compileDebugKotlin task (incl. config)
+android,discovery,cold,3,1122,wall of discoverPreviews task (incl. config)
+android,forkAndInit,cold,3,2661,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,cold,3,5448,sum of 5 JUnit testcase time= attrs (full preview set)
+android,config,warm-no-edit,1,564,wall of renderPreviews --dry-run
+android,compile,warm-no-edit,1,1062,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+android,discovery,warm-no-edit,1,1156,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+android,forkAndInit,warm-no-edit,1,622,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+android,render,warm-no-edit,1,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+android,config,warm-no-edit,2,553,wall of renderPreviews --dry-run
+android,compile,warm-no-edit,2,534,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+android,discovery,warm-no-edit,2,572,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+android,forkAndInit,warm-no-edit,2,598,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+android,render,warm-no-edit,2,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+android,config,warm-no-edit,3,557,wall of renderPreviews --dry-run
+android,compile,warm-no-edit,3,523,compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks
+android,discovery,warm-no-edit,3,557,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+android,forkAndInit,warm-no-edit,3,578,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no sandbox)
+android,render,warm-no-edit,3,0,renderPreviews UP-TO-DATE; no per-test work (0 by definition)
+android,config,warm-after-1-line-edit,1,524,wall of renderPreviews --dry-run
+android,compile,warm-after-1-line-edit,1,950,wall of compileDebugKotlin task (incl. config)
+android,discovery,warm-after-1-line-edit,1,705,wall of discoverPreviews task (incl. config)
+android,forkAndInit,warm-after-1-line-edit,1,1690,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,warm-after-1-line-edit,1,5433,sum of 5 JUnit testcase time= attrs (full preview set)
+android,config,warm-after-1-line-edit,2,527,wall of renderPreviews --dry-run
+android,compile,warm-after-1-line-edit,2,909,wall of compileDebugKotlin task (incl. config)
+android,discovery,warm-after-1-line-edit,2,695,wall of discoverPreviews task (incl. config)
+android,forkAndInit,warm-after-1-line-edit,2,1690,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,warm-after-1-line-edit,2,5518,sum of 5 JUnit testcase time= attrs (full preview set)
+android,config,warm-after-1-line-edit,3,534,wall of renderPreviews --dry-run
+android,compile,warm-after-1-line-edit,3,879,wall of compileDebugKotlin task (incl. config)
+android,discovery,warm-after-1-line-edit,3,666,wall of discoverPreviews task (incl. config)
+android,forkAndInit,warm-after-1-line-edit,3,1681,renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead
+android,render,warm-after-1-line-edit,3,5534,sum of 5 JUnit testcase time= attrs (full preview set)
+desktop,config,cold,1,1603,wall of renderPreviews --dry-run
+desktop,compile,cold,1,3219,wall of compileKotlin task (incl. config)
+desktop,discovery,cold,1,2018,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,cold,1,1693,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,cold,1,9378,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)
+desktop,config,cold,2,1264,wall of renderPreviews --dry-run
+desktop,compile,cold,2,2203,wall of compileKotlin task (incl. config)
+desktop,discovery,cold,2,1748,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,cold,2,1228,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,cold,2,9456,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)
+desktop,config,cold,3,1247,wall of renderPreviews --dry-run
+desktop,compile,cold,3,2034,wall of compileKotlin task (incl. config)
+desktop,discovery,cold,3,1592,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,cold,3,1464,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,cold,3,9225,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)
+desktop,config,warm-no-edit,1,488,wall of renderPreviews --dry-run
+desktop,compile,warm-no-edit,1,1016,compileKotlin UP-TO-DATE; wall is config + up-to-date checks
+desktop,discovery,warm-no-edit,1,987,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+desktop,forkAndInit,warm-no-edit,1,530,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)
+desktop,render,warm-no-edit,1,0,renderPreviews UP-TO-DATE; no render work (0 by definition)
+desktop,config,warm-no-edit,2,481,wall of renderPreviews --dry-run
+desktop,compile,warm-no-edit,2,498,compileKotlin UP-TO-DATE; wall is config + up-to-date checks
+desktop,discovery,warm-no-edit,2,508,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+desktop,forkAndInit,warm-no-edit,2,498,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)
+desktop,render,warm-no-edit,2,0,renderPreviews UP-TO-DATE; no render work (0 by definition)
+desktop,config,warm-no-edit,3,480,wall of renderPreviews --dry-run
+desktop,compile,warm-no-edit,3,486,compileKotlin UP-TO-DATE; wall is config + up-to-date checks
+desktop,discovery,warm-no-edit,3,505,discoverPreviews UP-TO-DATE; wall is config + up-to-date checks
+desktop,forkAndInit,warm-no-edit,3,511,renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)
+desktop,render,warm-no-edit,3,0,renderPreviews UP-TO-DATE; no render work (0 by definition)
+desktop,config,warm-after-1-line-edit,1,485,wall of renderPreviews --dry-run
+desktop,compile,warm-after-1-line-edit,1,1222,wall of compileKotlin task (incl. config)
+desktop,discovery,warm-after-1-line-edit,1,1188,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,warm-after-1-line-edit,1,613,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,warm-after-1-line-edit,1,9463,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)
+desktop,config,warm-after-1-line-edit,2,500,wall of renderPreviews --dry-run
+desktop,compile,warm-after-1-line-edit,2,972,wall of compileKotlin task (incl. config)
+desktop,discovery,warm-after-1-line-edit,2,1209,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,warm-after-1-line-edit,2,868,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,warm-after-1-line-edit,2,9415,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)
+desktop,config,warm-after-1-line-edit,3,614,wall of renderPreviews --dry-run
+desktop,compile,warm-after-1-line-edit,3,927,wall of compileKotlin task (incl. config)
+desktop,discovery,warm-after-1-line-edit,3,1244,wall of discoverPreviews task (incl. config)
+desktop,forkAndInit,warm-after-1-line-edit,3,797,renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks
+desktop,render,warm-after-1-line-edit,3,9473,sum of 5 direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)

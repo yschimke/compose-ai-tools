@@ -56,6 +56,11 @@ dependencies {
   implementation(libs.junit)
   implementation(libs.kotlinx.serialization.json)
 
+  // Classloader-forensics diagnostic library lives in `:daemon:core` (renderer-agnostic
+  // surface — see docs/daemon/CLASSLOADER-FORENSICS.md). `testImplementation` because it's only
+  // referenced by `ClassloaderForensicsTest` and shouldn't widen the renderer's main classpath.
+  testImplementation(project(":daemon:core"))
+
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
   // they must match what the CONSUMER module declares, because AGP's
   // `process<Variant>Resources` builds the unit-test merged resource APK

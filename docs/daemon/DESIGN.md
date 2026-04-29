@@ -48,16 +48,32 @@ preview-daemon (one JVM per consumer module)
    ├── IncrementalDiscovery  — re-scans only changed source class dirs
    ├── FocusTracker          — current visible-preview set from VS Code
    ├── RenderQueue           — coalesces, prioritises focused previews first
-   └── RobolectricHost       — single hot sandbox + warm spare
+   └── RenderHost            — renderer-specific sandbox holder + warm spare
             │
-            └── ComponentActivity + ComposeTestRule, recycled per preview
+            ├── (android) RobolectricHost — Compose-test-rule + ComponentActivity, recycled per preview
+            └── (desktop) DesktopHost     — Recomposer + Skiko surface, recycled per preview
 ```
 
 **Per-module, not per-project.** Robolectric sandbox config is a function of the consumer module's classpath + AndroidX versions + `compileSdk`. Two modules in the same project can legitimately have incompatible Compose versions (renderer-vs-consumer alignment is documented in [docs/RENDERER_COMPATIBILITY.md](../RENDERER_COMPATIBILITY.md)). One sandbox per module sidesteps this. A future per-project mode is possible if we share the renderer JAR plus isolate per-module classloaders under a parent — out of scope for v1.
 
-The daemon is **launched by VS Code** (replacing the `GradleApi.runTask("renderPreviews")` call in `gradleService.ts`) but **bootstrapped by Gradle** — we still need Gradle once at startup to compute the test classpath, JVM args, and `robolectric.properties` exactly the way `AndroidPreviewSupport.kt` does today. New Gradle task `composePreviewDaemonStart` emits a JSON descriptor (classpath, JVM args, system props, java launcher path); VS Code execs `java` with those args.
+The daemon is **launched by VS Code** (replacing the `GradleApi.runTask("renderPreviews")` call in `gradleService.ts`) but **bootstrapped by Gradle** — we still need Gradle once at startup to compute the test classpath, JVM args, and `robolectric.properties` (Android) or the Skiko classpath (desktop) exactly the way `AndroidPreviewSupport.kt` / the desktop renderer plumbing does today. New Gradle task `composePreviewDaemonStart` emits a JSON descriptor (classpath, JVM args, system props, java launcher path); VS Code execs `java` with those args.
 
 A manual `./gradlew composePreviewDaemonStart --foreground` mode is also available, for debugging the daemon without VS Code in the loop.
+
+### Renderer-agnostic surface
+
+The protocol, the JSON-RPC server, and everything in the VS Code extension are **deliberately agnostic to which renderer is on the other end of the wire**. None of the message shapes in [PROTOCOL.md](PROTOCOL.md) mention Android, Robolectric, Skiko, or Compose Desktop; they trade in `previewId`, `pngPath`, `metrics.tookMs`. The only renderer-specific code is the Kotlin `RenderHost` implementation inside the per-target daemon module.
+
+This gives us two backends that share everything except the host:
+
+| Module                     | Host                  | What it sandboxes                                                  | Backend strengths                                   |
+|----------------------------|-----------------------|--------------------------------------------------------------------|-----------------------------------------------------|
+| `:daemon:android` | `RobolectricHost`     | Robolectric `InstrumentingClassLoader`, `ComponentActivity`        | Real Android resources, AAR support, Wear, Tiles    |
+| `:daemon:desktop` | `DesktopHost`         | Plain JVM classloader, `Recomposer`, Skiko `Surface`               | Light init, fewer leak shapes, faster iteration     |
+
+A `:daemon:core` shared module holds the protocol types (`Messages.kt`), the JSON-RPC server (`JsonRpcServer.kt`), and the abstract `RenderHost` interface; both per-target modules depend on it. Stream B's existing `:daemon:android` keeps its `DaemonHost` (renamed to `RobolectricHost` once the core extraction lands); the desktop module is a fresh implementation against the same `RenderHost` interface.
+
+**Why desktop first for new features.** Desktop is the simpler implementation surface — no Robolectric `InstrumentingClassLoader`, no `bridge` package classloader workaround, no `HardwareRenderer`/`Bitmap` native-buffer leak shapes, sub-second cold init. UX-facing features (predictive prefetch, the cost model in [PREDICTIVE.md § 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model), `MetricsSink` observability, the multi-tier render queue) get a shorter feedback loop on desktop. Once a feature is proven on desktop, the Android backend picks it up via the shared `:daemon:core` module without code duplication. Android continues in parallel — it's still the larger user surface and exercises the harder leak-defense path that informs everything.
 
 ## 5. IPC contract (sketch)
 
@@ -85,11 +101,12 @@ The protocol must be locked in Phase 0 of the implementation work — see [TODO.
 
 ```
 renderer-android/                    UNCHANGED — RobolectricRenderTest.kt etc.
-renderer-android-daemon/             NEW — depends on renderer-android
+renderer-desktop/                    UNCHANGED — existing Skiko renderer
+
+daemon/core/                NEW — pure JVM, renderer-agnostic
   src/main/kotlin/.../daemon/
-    DaemonMain.kt                    JSON-RPC server, lifecycle, signal handling
-    DaemonHost.kt                    Holds Robolectric sandbox open
-    RenderEngine.kt                  Per-preview render body (initially duplicated)
+    JsonRpcServer.kt                 stdio JSON-RPC + Content-Length framing
+    RenderHost.kt                    Abstract host interface
     IncrementalDiscovery.kt          Tier-2 scoped ClassGraph
     DependencyIndex.kt               Tier-3 ASM walk + reverse index (v2)
     ClasspathFingerprint.kt          Tier-1 dirty detection
@@ -99,26 +116,46 @@ renderer-android-daemon/             NEW — depends on renderer-android
     protocol/
       Messages.kt                    @Serializable request/response types
 
+daemon/android/             NEW — depends on renderer-android + core
+  src/main/kotlin/.../daemon/
+    DaemonMain.kt                    Wires RobolectricHost + JsonRpcServer
+    RobolectricHost.kt               Holds Robolectric sandbox open (was DaemonHost)
+    SandboxHoldingRunner.kt          Robolectric runner that exposes the bridge package
+    bridge/DaemonHostBridge.kt       Cross-classloader handoff (java.util.concurrent.* only)
+    RenderEngine.kt                  Per-preview render body (initially duplicated)
+
+daemon/desktop/             NEW — depends on renderer-desktop + core
+  src/main/kotlin/.../daemon/
+    DaemonMain.kt                    Wires DesktopHost + JsonRpcServer
+    DesktopHost.kt                   Holds Recomposer + Skiko surface open
+    RenderEngine.kt                  Per-preview render body (initially duplicated)
+
 gradle-plugin/                       ADDITIVE ONLY (one helper extraction)
   src/main/kotlin/.../plugin/daemon/
     DaemonBootstrapTask.kt           Emits launch-descriptor JSON
     DaemonExtension.kt               composePreview.experimental.daemon { … }
     DaemonClasspathDescriptor.kt     Serialises the JVM launch spec
+                                     (target-aware: picks android-daemon vs
+                                     desktop-daemon classpath based on the
+                                     consumer plugin)
 
 vscode-extension/                    ADDITIVE ONLY (one router shim)
   src/daemon/
-    daemonClient.ts                  JSON-RPC over stdio
-    daemonProcess.ts                 Spawn/respawn/health
+    daemonClient.ts                  JSON-RPC over stdio (renderer-agnostic)
+    daemonProcess.ts                 Spawn/respawn/health (renderer-agnostic)
     daemonProtocol.ts                Types mirroring Messages.kt
     daemonGate.ts                    Feature-flag check + fallback to gradleService
 
 samples/
-  android-daemon-bench/              NEW — latency harness, diff against existing PNGs
+  android-daemon-bench/              NEW — Android latency harness, diff against existing PNGs
+  desktop-daemon-bench/              NEW — desktop latency harness (D2-desktop)
 ```
+
+`:daemon:core` is the seam that lets desktop and Android share everything except the `RenderHost` implementation. Stream B's existing code (already shipped on `agent/preview-daemon-streamB`) gets refactored once: `JsonRpcServer.kt` and `Messages.kt` move into core; `DaemonHost.kt` is renamed to `RobolectricHost.kt` and stays in `:daemon:android`. After that, both backends evolve in parallel against a single protocol surface.
 
 ## 7. Sharing strategy — what crosses the boundary
 
-**`renderer-android-daemon` depends on `renderer-android`** for already-extracted helpers that have no test-runner coupling: `AccessibilityChecker`, `GoogleFontInterceptor`, `AnimationInspector`, `ScrollDriver`, `PixelSystemFontAliases`, `RenderManifest`, `PreviewRenderStrategy`. These are already separate files and safe to import.
+**`daemon/android` depends on `renderer-android`** for already-extracted helpers that have no test-runner coupling: `AccessibilityChecker`, `GoogleFontInterceptor`, `AnimationInspector`, `ScrollDriver`, `PixelSystemFontAliases`, `RenderManifest`, `PreviewRenderStrategy`. These are already separate files and safe to import.
 
 **`RobolectricRenderTest.kt` itself is NOT a dependency.** The per-preview render body (qualifiers + `setContent` + `advanceTimeBy` + `captureRoboImage`) is **duplicated** into `RenderEngine.kt` for v1, because:
 
@@ -133,6 +170,8 @@ samples/
 ## 8. Staleness cascade — when do we actually re-render?
 
 A four-tier cascade. Each tier is cheaper than the next; stop at the cheapest "no work" answer.
+
+> **Implementation note (post-v2):** Tier 2's "preview source changed" trigger is necessary but not sufficient on its own. Once discovery has identified a stale preview, the daemon still needs to *load fresh bytecode for that preview's class* — Robolectric's `InstrumentingClassLoader` and the desktop daemon's app classloader both cache by class name and silently return stale bytes after a recompile. The fix is the parent/child classloader split spec'd in [CLASSLOADER.md](CLASSLOADER.md) (B2.0 in TODO.md). Until B2.0 lands, the daemon's "warm render" numbers in [§ 13](#13-latency-budget) and [`baseline-latency.csv`](baseline-latency.csv) only describe rendering the *same* preview repeatedly against an unchanged classpath — not the actual edit-then-render save loop.
 
 ### Tier 1 — project fundamentally changed
 
@@ -165,6 +204,8 @@ This is the hard tier. `FooPreview()` calls `BarComposable()` defined in another
 **Resources:** treat any `res/**` change as "all previews in module stale" for v1. Resource edits are infrequent enough that brute-force + visibility filter is fine.
 
 ### Tier 4 — is the user looking at this?
+
+> See also [PREDICTIVE.md](PREDICTIVE.md) for a proposed extension that adds speculative-prefetch tiers on top of the reactive `setVisible` / `setFocus` signals described here.
 
 **State from VS Code:**
 
@@ -211,6 +252,19 @@ Epilogue:
 1. `setContent { }` (empty) to give Compose a frame to dispose `LaunchedEffect` / `DisposableEffect`.
 2. Encode bitmap, then `bitmap.recycle()`.
 3. Close any `HardwareRenderer` / `ImageReader` opened by the capture path.
+
+### No mid-render cancellation — invariant + enforcement
+
+Once a render has started, it runs to completion. This is load-bearing for memory safety: aborting between any prologue / body / epilogue step leaves the sandbox holding a half-disposed Compose graph, an unrecycled `Bitmap` whose native `GraphicBuffer` is still owned by the `HardwareRenderer`, or `ShadowPackageManager` / `ActivityScenario` state the next preview will trip over. The worst failure shape is silent visual drift — colour-bleed across previews when a buffer is reused — which surfaces as a CI pixel-diff failure with no obvious memory leak to chase. See [PREDICTIVE.md § 9](PREDICTIVE.md#9-decisions-made) for the full leak-shape rationale.
+
+Enforced in code (so accidental cancellation can't sneak in):
+
+- Render thread does **not** poll `Thread.interrupted()`; the daemon's own code never calls `interrupt()` on it.
+- Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread abort. The in-flight render finishes before the sandbox tears down.
+- `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue before resolving the response.
+- JVM SIGTERM handler waits for the drain before exit. SIGKILL is the only way to force termination mid-render — it leaks the sandbox classloader, but nothing we can defend against at that point.
+- A regression test submits a render, immediately invokes shutdown, and asserts the render still completes and the result is observable.
+- End-to-end coverage: scenario S2 in [TEST-HARNESS.md § 3](TEST-HARNESS.md#3-scenarios-catalogue) regression-tests this invariant against a real daemon subprocess.
 
 ### Recycle policy
 
@@ -350,7 +404,7 @@ await renderer.renderPreviews(module, tier);
 
 ## 13. Latency budget
 
-Estimated; first task in implementation is to capture a real baseline with the bench harness.
+Estimates below; **measured baseline captured by P0.1 — see [`baseline-latency.csv`](baseline-latency.csv)** + [methodology sidecar](baseline-latency.md). The bench module is `:samples:android-daemon-bench`. Re-run with `./gradlew :samples:android-daemon-bench:benchPreviewLatency`.
 
 | Phase | Cold | Warm (Gradle daemon hot, no code change) | Daemon warm |
 |-------|------|------------------------------------------|-------------|
@@ -361,6 +415,27 @@ Estimated; first task in implementation is to capture a real baseline with the b
 | Render N previews | 0.3–1s each | 0.3–1s each | 0.3–1s each |
 
 Daemon-warm floor for a single focused preview: **kotlinc (1–2s) + 1 render (0.3–1s) ≈ 1.5–3s**. Sub-second is achievable when the user pre-saves a class-only file with a non-source change, or with a v2 kotlinc-daemon path. v1 target: **< 1s for a single focused preview when no kotlinc work is needed; < 3s with kotlinc.**
+
+### Measured baseline (Ryzen 9 3900X, JDK 21, Gradle 9.4.1, AGP 9.2.0, 5 trivial previews)
+
+Median per (phase, scenario) from the bench, rounded:
+
+| Phase         | Cold (median) | Warm-no-edit | Warm-after-1-line-edit |
+| ------------- | ------------- | ------------ | ---------------------- |
+| `config`      | 1.3s          | 0.55s        | 0.53s                  |
+| `compile`     | 1.7s (incl. config) | 0.5s (UP-TO-DATE) | 0.9s (incl. config) |
+| `discovery`   | 1.2s (incl. config) | 0.55s (UP-TO-DATE) | 0.7s (incl. config) |
+| `forkAndInit` | 2.9s          | 0.6s (renderPreviews UP-TO-DATE) | 1.7s |
+| `render`      | 5.5s for 5 previews ≈ 1.1s each | 0 (UP-TO-DATE) | 5.5s for 5 ≈ 1.1s each |
+
+Surprises versus the estimated table:
+
+- **Cold Gradle config is ~1.3s, not 3–8s.** The estimate was conservative; on this machine config is consistently sub-1.5s once toolchains are downloaded. Likely much higher on first-ever run where toolchain provisioning dominates — the bench skips that.
+- **`forkAndInit` warm-after-edit is ~1.7s, not 3–6s.** Test JVM fork + Robolectric init was estimated as a fixed ~5s cost; in practice the JVM fork itself is < 1s on a warm OS page cache and Robolectric sandbox init for 5 previews is closer to ~1s. The estimate was sized for `:samples:android` (heavier classpath, more shadows). The daemon's value-add here is closer to ~2s amortised, not ~5s — still a meaningful win, especially compounded across many edits.
+- **Render is at the high end of 0.3–1s/preview.** 1.1s/preview on this trivial workload sets the floor — the daemon path can't beat this without changes to the per-preview render body itself (out of v1 scope).
+- **Pure-comment edits leave `renderPreviews` UP-TO-DATE.** Because kotlinc emits identical bytecode for comment-only changes, the downstream input snapshots don't budge. The bench therefore uses a **string-literal swap** to force a full pipeline run; comment-only edits in the wild will measure as `warm-no-edit` performance (i.e., near-instant).
+
+The headline takeaway: **the cold→warm-after-edit delta on this machine is ~12s → ~9s** (`config + compile + discovery + forkAndInit + render`), with the daemon's addressable surface being the **~2.5s of `config + forkAndInit`** in the warm-edit case. Hitting the v1 sub-second target requires both eliminating that 2.5s and short-circuiting the per-preview render to a single focused preview (saving ~4.4s of the 5.5s render row). Both are designed for; the bench is now in place to verify.
 
 ## 14. Validation strategy
 

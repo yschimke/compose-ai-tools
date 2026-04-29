@@ -29,14 +29,26 @@ include(":samples:android-library")
 
 include(":samples:android-screenshot-test")
 
+include(":samples:android-daemon-bench")
+
 include(":samples:wear")
 
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
 
+include(":samples:desktop-daemon-bench")
+
 include(":samples:remotecompose")
 
 include(":renderer-desktop")
 
 include(":renderer-android")
+
+include(":daemon:core")
+
+include(":daemon:android")
+
+include(":daemon:desktop")
+
+include(":daemon:harness")

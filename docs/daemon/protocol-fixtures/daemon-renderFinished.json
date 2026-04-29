@@ -1,0 +1,11 @@
+{
+  "id": "com.example.HomeKt#HomePreview",
+  "pngPath": "/home/dev/projects/my-app/samples/android/build/compose-previews/renders/com.example.HomeKt-HomePreview.png",
+  "tookMs": 320,
+  "metrics": {
+    "heapAfterGcMb": 412,
+    "nativeHeapMb": 64,
+    "sandboxAgeRenders": 17,
+    "sandboxAgeMs": 24800
+  }
+}

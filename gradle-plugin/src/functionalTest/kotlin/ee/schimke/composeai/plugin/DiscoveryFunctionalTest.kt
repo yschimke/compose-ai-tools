@@ -139,6 +139,13 @@ class DiscoveryFunctionalTest {
       assertThat(it.params.device).isNull()
       assertThat(it.params.showSystemUi).isFalse()
     }
+
+    // P0.2 daemon prep: at least one preview must surface its `sourceFile`
+    // so the daemon's incremental-discovery path (B2.2) has a path to
+    // file-event correlation. Field is populated from ClassGraph's
+    // bytecode `SourceFile` attribute and rewritten to a package-qualified
+    // path in DiscoverPreviewsTask — see PreviewData.sourceFile.
+    assertThat(manifest.previews.any { !it.sourceFile.isNullOrBlank() }).isTrue()
   }
 
   @Test

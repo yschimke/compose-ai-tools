@@ -714,6 +714,52 @@ internal object AndroidPreviewSupport {
       )
     }
 
+    // Mirror of rendererConfig for `:daemon:android`. The daemon
+    // module depends on :renderer-android, so transitive deps flow through
+    // the same `extendsFrom(testConfig)` graph and stay version-coherent
+    // with the consumer's classpath. Used by composePreviewDaemonStart to
+    // place the daemon's main class on the launch descriptor's classpath.
+    val daemonRendererConfig =
+      project.configurations.maybeCreate("composePreviewAndroidDaemon$capVariant").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        if (testConfig != null) {
+          copyAttributes(attributes, testConfig.attributes)
+          extendsFrom(testConfig)
+        }
+      }
+
+    val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")
+    val useLocalDaemonRenderer =
+      daemonRendererProjectDir.resolve("build.gradle.kts").exists() ||
+        daemonRendererProjectDir.resolve("build.gradle").exists()
+
+    if (useLocalDaemonRenderer) {
+      try {
+        project.dependencies.add(
+          daemonRendererConfig.name,
+          project.dependencies.project(mapOf("path" to ":daemon:android")),
+        )
+      } catch (e: org.gradle.api.UnknownProjectException) {
+        project.logger.debug(
+          "compose-ai-tools: :daemon:android project not found, skipping",
+          e,
+        )
+      }
+    } else {
+      // External mode is intentionally a no-op while the daemon is
+      // experimental and unpublished. The daemon stays disabled by
+      // default (DaemonExtension.enabled = false), so a consumer outside
+      // this repo who flips it on will see VS Code surface a clear
+      // ClassNotFoundException rather than silently picking a stale path.
+      // When publishing of :daemon:android lands, replace this
+      // log with the same coords shape used for rendererConfig above.
+      project.logger.debug(
+        "compose-ai-tools: :daemon:android is not yet published; " +
+          "experimental.daemon only works with the in-repo source layout."
+      )
+    }
+
     // Classes used for Gradle's test-class scanning. Local mode: the
     // renderer-android project's compiled output directories. External
     // mode: the AAR's `classes.jar`, expanded via `zipTree` so Gradle's
@@ -788,56 +834,25 @@ internal object AndroidPreviewSupport {
     // doesn't do conflict resolution, so whichever JAR comes first wins at
     // classload time. Putting the renderer's dependencies first ensures the
     // test code gets the versions it was compiled against.
+    //
+    // Construction is delegated to [AndroidPreviewClasspath.buildTestClasspath] so
+    // the upcoming preview daemon (see docs/daemon/DESIGN.md) can build the same
+    // classpath without re-implementing the inline DSL. The trailing AGP test
+    // classes / classpath additions are still composed in the Test lambda below
+    // (they need `findByName("test${capVariant}UnitTest")` which only resolves
+    // late).
     val resolvedClasspath =
-      project.files().apply {
-        // Robolectric properties dir BEFORE consumer test resources so our
-        // Application override wins when classloader.getResource walks the
-        // classpath. Consumers with their own `robolectric.properties` at
-        // the same package path are unusual — they'd need it specifically
-        // for this renderer's test class.
-        from(generateRobolectricPropertiesTask.flatMap { it.outputDir })
-        from(
-          rendererConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
-        )
-        from(rendererClassDirs)
-        if (testConfig != null) {
-          from(testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-          from(
-            testConfig.incoming
-              .artifactView { attributes.attribute(artifactType, "android-classes") }
-              .files
-          )
-        }
-        // screenshotTest source set has its own runtime config — any
-        // `screenshotTestImplementation(...)` dep the consumer declared is
-        // only visible here, not via `testConfig`. Include it so previews
-        // under `src/screenshotTest/` can reference those classes at
-        // render time. No-op when the screenshot plugin isn't applied.
-        screenshotTestRuntimeConfig?.let { stConfig ->
-          from(stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-          from(
-            stConfig.incoming
-              .artifactView { attributes.attribute(artifactType, "android-classes") }
-              .files
-          )
-        }
-        from(sourceClassDirs)
-        from(unitTestConfigDir)
-        // SDK stub android.jar on the OUTER classpath so JUnit can introspect
-        // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
-        // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
-        // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
-        // before Robolectric's sandbox classloader is even created.
-        //
-        // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
-        // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
-        // resolution to its own `android-all` artifact (real framework classes, with
-        // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
-        //
-        // Sourced from AGP's SdkComponents so we don't have to parse local.properties
-        // or read rootProject.file(...).
-        from(project.files(bootClasspath))
-      }
+      AndroidPreviewClasspath.buildTestClasspath(
+        project = project,
+        bootClasspath = bootClasspath,
+        rendererConfig = rendererConfig,
+        rendererClassDirs = rendererClassDirs,
+        sourceClassDirs = sourceClassDirs,
+        testConfig = testConfig,
+        screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
+        unitTestConfigDir = unitTestConfigDir,
+        robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
+      )
 
     val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirectory = previewOutputDir.map { it.dir("renders") }
@@ -944,16 +959,9 @@ internal object AndroidPreviewSupport {
         // a chance to register `test${capVariant}UnitTest` by the time this
         // runs — onVariants fires before unit-test tasks are wired.
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
-        jvmArgs(
-          "--add-opens=java.base/java.lang=ALL-UNNAMED",
-          "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-          // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
-          // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
-          // module rules this fails with IllegalAccessException without this
-          // opens. Reached via `PathIterator` — triggered here by Wear Compose's
-          // curved text renderer.
-          "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        )
+        // Static JVM open flags live in [AndroidPreviewClasspath.buildJvmArgs] so the
+        // preview daemon can reuse the same set when launching its own JVM.
+        jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
 
         // Inherit AGP's unit-test javaLauncher so the forked test worker
         // runs on the same JDK as `test${capVariant}UnitTest` — which
@@ -969,33 +977,6 @@ internal object AndroidPreviewSupport {
         // discovery on some JVM/classloader combinations. See #142.
         agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
 
-        // Belt-and-braces for the graphics/looper modes. Config now
-        // lives in `ee/schimke/composeai/renderer/robolectric.properties`
-        // (see `RobolectricRenderTestBase` KDoc for why we can't use
-        // `@GraphicsMode` directly). These system properties are a third
-        // independent Robolectric config channel and cost nothing to
-        // keep — survive both annotation and properties paths regressing.
-        systemProperty("robolectric.graphicsMode", "NATIVE")
-        systemProperty("robolectric.looperMode", "PAUSED")
-        // Conscrypt isn't needed for preview rendering (no TLS/HTTP paths
-        // execute) and its native library is flaky on some Linux sandboxes
-        // — e.g. missing/ABI-mismatched `libstdc++.so.6`. Telling Robolectric
-        // to skip the install avoids those failures without shipping our
-        // own Conscrypt stubs. See `ConscryptMode` /
-        // `ConscryptModeConfigurer` in Robolectric.
-        systemProperty("robolectric.conscryptMode", "OFF")
-        // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
-        // ImageReader + HardwareRenderer.syncAndDraw, the only path that
-        // replays Compose's RenderNodes correctly.
-        systemProperty("robolectric.pixelCopyRenderMode", "hardware")
-        // Roborazzi defaults to "compare" mode (which doesn't write pixels
-        // unless the expected baseline exists). Force "record" so every run
-        // writes fresh PNGs.
-        systemProperty("roborazzi.test.record", "true")
-
-        systemProperty("composeai.render.manifest", manifestFile.get())
-        systemProperty("composeai.render.outputDir", rendersDir.get())
-
         // GoogleFont interceptor cache — defaults to
         // `<project>/.compose-preview-history/fonts/`, same root the
         // history task uses, so committed TTFs sit beside committed PNGs.
@@ -1005,14 +986,24 @@ internal object AndroidPreviewSupport {
           extension.historyDir
             .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
             .map { it.dir("fonts").asFile.absolutePath }
-        systemProperty("composeai.fonts.cacheDir", fontsCacheDir.get())
         // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
         // on a CI profile) skips network on cache miss so the render
         // shows the fallback font rather than silently fetching from
         // `fonts.googleapis.com`.
         val fontsOffline =
           project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
-        systemProperty("composeai.fonts.offline", fontsOffline.get())
+        // Static system properties (Robolectric modes + the path-bearing composeai.*
+        // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
+        // preview daemon can replay the same set when launching its own JVM. The
+        // dynamic per-task ArgumentProviders (a11y, tier) stay below — they need
+        // lazy `Provider<>` evaluation at task-execution time.
+        AndroidPreviewClasspath.buildSystemProperties(
+            manifestPath = manifestFile.get(),
+            rendersDir = rendersDir.get(),
+            fontsCacheDir = fontsCacheDir.get(),
+            fontsOffline = fontsOffline.get(),
+          )
+          .forEach { (k, v) -> systemProperty(k, v) }
 
         // ATF flags are routed through a CommandLineArgumentProvider
         // rather than `systemProperty(...)` so toggling the `-P` override
@@ -1181,6 +1172,162 @@ internal object AndroidPreviewSupport {
       previewOutputDir,
       verifyA11yTask,
     )
+
+    // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
+    // unconditionally so the VS Code extension can sniff the output file
+    // even when `experimental.daemon.enabled = false` (it then refuses to
+    // launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
+    // renderPreviews task's so the spawned daemon JVM is byte-for-byte
+    // equivalent. See `docs/daemon/DESIGN.md` § 4 / § 6.
+    //
+    // Built lazily via providers so the AGP unit-test task's javaLauncher
+    // resolves at execution time (same reason renderPreviews above defers it).
+    val daemonAgpTestTask = project.provider {
+      project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
+    }
+    val daemonFontsCacheDir =
+      extension.historyDir
+        .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
+        .map { it.dir("fonts").asFile.absolutePath }
+    val daemonFontsOffline =
+      project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+    project.tasks.register(
+      "composePreviewDaemonStart",
+      ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
+    ) {
+      this.modulePath.set(project.path)
+      this.variant.set(variantName)
+      this.daemonEnabled.set(extension.experimental.daemon.enabled)
+      this.maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
+      this.maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
+      this.warmSpare.set(extension.experimental.daemon.warmSpare)
+      // Conventional entry-point name — `daemon/android` / Stream B
+      // (task B1.1) will provide the implementation. Surfacing it as a
+      // Property leaves room for future variants (foreground / debug) without
+      // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
+      this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+      // Inherit AGP's unit-test javaLauncher exactly the way renderPreviews
+      // does (see line ~802 above) so the daemon runs on the project's
+      // configured toolchain rather than the first `java` on PATH.
+      this.javaLauncher.set(
+        project.provider {
+          daemonAgpTestTask.orNull?.javaLauncher?.orNull?.executablePath?.asFile?.absolutePath
+        }
+      )
+      // Daemon module's classes FIRST so [mainClass] resolves before
+      // anything in the consumer's transitive graph shadows it. Both
+      // `jar` and `android-classes` artifact views are pulled because
+      // the daemon module is an AGP library — `android-classes` is its
+      // built classes JAR, `jar` would be a plain Kotlin JAR if Stream
+      // B ever splits the module. Same defensive pair as
+      // AndroidPreviewClasspath uses for testConfig.
+      this.classpath.from(
+        daemonRendererConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "jar") }
+          .files
+      )
+      this.classpath.from(
+        daemonRendererConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "android-classes") }
+          .files
+      )
+      // Same FileCollection the renderPreviews `Test` task assembles, plus
+      // the AGP unit-test task's classpath (R.jar etc.) appended at the
+      // tail — see line ~764 for the rationale. Composed lazily to defer
+      // `findByName("test${capVariant}UnitTest")` resolution.
+      this.classpath.from(resolvedClasspath)
+      this.classpath.from(
+        project.provider { daemonAgpTestTask.orNull?.testClassesDirs ?: project.files() }
+      )
+      this.classpath.from(
+        project.provider { daemonAgpTestTask.orNull?.classpath ?: project.files() }
+      )
+      // Static JVM open flags from the shared helper, plus the
+      // daemon-specific heap ceiling. AGP test task's own jvmArgs are
+      // intentionally NOT inherited here — they're test-runner specific
+      // (e.g. `-ea` and JUnit-internal opens) and may collide with the
+      // daemon's own runner. Stream B can opt back in if needed.
+      this.jvmArgs.set(
+        project.provider {
+          AndroidPreviewClasspath.buildJvmArgs() +
+            "-Xmx${extension.experimental.daemon.maxHeapMb.get()}m"
+        }
+      )
+      // Same path-bearing system properties the renderPreviews Test task
+      // uses, plus daemon-specific keys for [DaemonExtension] config the
+      // daemon reads at startup. Built eagerly here (no
+      // CommandLineArgumentProvider equivalent for descriptor JSON) — VS
+      // Code-driven flips of `composePreview.tier` / a11y don't apply to
+      // the daemon yet (it runs the focused-render path), so config-cache
+      // invalidation isn't a concern in this task the way it is for
+      // renderPreviews.
+      //
+      this.systemProperties.set(
+        project.provider {
+          val base =
+            AndroidPreviewClasspath.buildSystemProperties(
+              manifestPath = manifestFile.get(),
+              rendersDir = rendersDir.get(),
+              fontsCacheDir = daemonFontsCacheDir.get(),
+              fontsOffline = daemonFontsOffline.get(),
+            )
+          // B2.0 — emit `composeai.daemon.userClassDirs` so the daemon can construct a disposable
+          // child URLClassLoader for the user's compiled-class output. Heuristic: any classpath
+          // entry under the consumer module's `build/intermediates/` or `build/tmp/kotlin-classes/`
+          // tree (kotlinc's standard outputs for AGP variants). The file paths are realised lazily
+          // here — the FileCollection has been resolved by the time `systemProperties.get()`
+          // executes at task-action time. Colon-delimited (`File.pathSeparator`); empty when no
+          // user-class-dirs are found (then the daemon falls back to the legacy single-classloader
+          // path — pre-B2.0 behaviour).
+          val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
+          val userClassMarkers =
+            listOf(
+              "$consumerBuildDir/intermediates/",
+              "$consumerBuildDir/tmp/kotlin-classes/",
+              "$consumerBuildDir/classes/",
+            )
+          val classpathEntries = this.classpath.files.map { it.absolutePath }
+          val userClassDirs = classpathEntries.filter { entry ->
+            userClassMarkers.any { marker -> entry.startsWith(marker) }
+          }
+          // B2.1 — emit `composeai.daemon.cheapSignalFiles` so the daemon can build a Tier-1
+          // ClasspathFingerprint at startup. Set per DESIGN § 8: `libs.versions.toml`, every
+          // `build.gradle.kts` / `build.gradle` reachable from the root project's allprojects,
+          // `settings.gradle.kts` / `settings.gradle`, `gradle.properties`, `local.properties`.
+          // The list is built at task-action time (so newly-added subproject scripts since
+          // configuration are seen) — see the `cheap-signal evolution` paragraph in the B2.1
+          // KDoc. Colon-delimited; empty when none of the canonical files exist on disk (rare;
+          // most real Android projects have at least `build.gradle.kts` + `settings.gradle.kts`).
+          val cheapSignalFiles = collectCheapSignalFiles(project)
+          // B2.2 phase 1 — emit `composeai.daemon.previewsJsonPath` so the daemon can own its
+          // own preview index (parsed at startup; surfaced via `initialize.manifest`). The path
+          // mirrors the value we already pass to `renderPreviews` via `manifestFile`. Phase 2
+          // (incremental rescan + `discoveryUpdated` emission) keeps the same sysprop — only the
+          // daemon-side load policy changes.
+          val daemonProps =
+            linkedMapOf(
+              "composeai.daemon.protocolVersion" to "1",
+              "composeai.daemon.idleTimeoutMs" to "5000",
+              "composeai.daemon.maxHeapMb" to
+                extension.experimental.daemon.maxHeapMb.get().toString(),
+              "composeai.daemon.maxRendersPerSandbox" to
+                extension.experimental.daemon.maxRendersPerSandbox.get().toString(),
+              "composeai.daemon.warmSpare" to
+                extension.experimental.daemon.warmSpare.get().toString(),
+              "composeai.daemon.modulePath" to project.path,
+              "composeai.daemon.userClassDirs" to
+                userClassDirs.joinToString(java.io.File.pathSeparator),
+              "composeai.daemon.cheapSignalFiles" to
+                cheapSignalFiles.joinToString(java.io.File.pathSeparator) { it.absolutePath },
+              "composeai.daemon.previewsJsonPath" to manifestFile.get(),
+            )
+          LinkedHashMap(base).apply { putAll(daemonProps) }
+        }
+      )
+      this.workingDirectory.set(project.projectDir.absolutePath)
+      this.manifestPath.set(manifestFile)
+      this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
+    }
   }
 
   /**
@@ -1409,5 +1556,40 @@ internal object AndroidPreviewSupport {
           "to let the plugin add them automatically."
       )
     }
+  }
+
+  /**
+   * B2.1 — collects the cheap-signal file set per
+   * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
+   * `gradle/libs.versions.toml`, every `build.gradle.kts` / `build.gradle` reachable from the root
+   * project's allprojects, `settings.gradle.kts` / `settings.gradle`, `gradle.properties`,
+   * `local.properties`. Only files that exist on disk are returned (a missing `local.properties` is
+   * the common case in CI; we don't want a ghost path in the daemon's hash baseline).
+   *
+   * **Cheap-signal evolution.** The set is computed at task-action time, not at configuration time,
+   * so a `build.gradle.kts` added under a freshly-included subproject *before* the next
+   * `composePreviewDaemonStart` re-run is picked up. Subprojects added *after* the daemon already
+   * spawned with the previous list won't be in the daemon's baseline — but adding a subproject is
+   * itself a `settings.gradle.kts` edit, which IS in the cheap-signal set, so the very edit that
+   * adds it triggers the Tier-1 dirty path. Net: no missed-dirty case under realistic editor
+   * workflows; the only edge case is hand-creating a `subproject/build.gradle.kts` without touching
+   * `settings.gradle.kts`, which would require manual Gradle re-run anyway.
+   */
+  private fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> {
+    val out = LinkedHashSet<java.io.File>()
+    val rootProject = project.rootProject
+    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
+    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
+      .forEach { out += rootProject.file(it) }
+    rootProject.allprojects.forEach { sub ->
+      out += sub.file("build.gradle.kts")
+      out += sub.file("build.gradle")
+    }
+    // Only emit paths that actually exist — missing files contribute their absolute path string
+    // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
+    // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
+    // daemon's [ClasspathFingerprint] handles missing files defensively even when they are in
+    // its list, but the gradle plugin's role is to feed it real paths only.
+    return out.filter { it.isFile }
   }
 }

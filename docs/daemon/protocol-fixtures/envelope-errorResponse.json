@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32002,
+    "message": "Daemon classpath dirty; restart required.",
+    "data": {
+      "kind": "ClasspathDirty"
+    }
+  }
+}

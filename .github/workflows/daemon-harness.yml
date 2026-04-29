@@ -1,0 +1,122 @@
+name: Daemon Harness
+
+# End-to-end test harness for the preview daemon — see
+# docs/daemon/TEST-HARNESS.md and docs/daemon/TODO.md § D-harness.v2.
+#
+# Three jobs run on every PR:
+#   * `desktop-fake` — FakeDaemonMain + FakeHost; deterministic-failure
+#     coverage plus the seven-scenario v1 catalogue. Does not link in
+#     Compose Desktop / Skiko on the harness production classpath.
+#   * `desktop-real` — the real `:daemon:desktop` `DaemonMain`
+#     driven by the same scenarios via `RealDesktopHarnessLauncher`.
+#     Pixel-diffs against the in-repo baselines under
+#     `daemon/harness/baselines/desktop/`.
+#   * `android-real` — D-harness.v2: the real `:daemon:android`
+#     `DaemonMain` driven via `RealAndroidHarnessLauncher`. Slower than
+#     desktop because Robolectric sandbox bootstrap dominates (~3-10s vs
+#     ~600ms desktop cold). Pixel-diffs against
+#     `daemon/harness/baselines/android/`. The renderer-agnostic claim
+#     from DESIGN § 4 stops being aspirational when both `desktop-real` and
+#     `android-real` are required.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-fake:
+    name: Daemon Harness (desktop, fake host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run harness scenarios (desktop, fake)
+        run: ./gradlew :daemon:harness:test
+      - name: Upload harness test results (desktop, fake)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-fake-test-results
+          path: daemon/harness/build/reports/tests/
+      - name: Upload pixel-diff artefacts on failure (desktop, fake)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-fake-diffs
+          path: daemon/harness/build/reports/daemon-harness/
+
+  desktop-real:
+    name: Daemon Harness (desktop, real renderer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Skiko ships its native bundle inside the Compose Desktop classpath,
+      # so we expect no system packages to be needed on ubuntu-latest. If
+      # this job ever fails with `UnsatisfiedLinkError` for libfreetype /
+      # libfontconfig, install them here:
+      #
+      #   - name: Install Skiko native deps
+      #     run: |
+      #       sudo apt-get update
+      #       sudo apt-get install -y libfreetype6 libfontconfig1
+      #
+      # Track this in `docs/daemon/TODO.md` if it lands.
+      - name: Run harness scenarios (desktop, real)
+        run: ./gradlew :daemon:harness:test -Pharness.host=real
+      - name: Upload harness test results (desktop, real)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-real-test-results
+          path: daemon/harness/build/reports/tests/
+      - name: Upload pixel-diff artefacts on failure (desktop, real)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-desktop-real-diffs
+          path: daemon/harness/build/reports/daemon-harness/
+
+  android-real:
+    name: Daemon Harness (android, real renderer)
+    runs-on: ubuntu-latest
+    # Slower than desktop because Robolectric sandbox bootstrap dominates
+    # cold render. Generous timeout — observed ~45s end-to-end on the dev
+    # box; CI runners are noisier so allow 15min.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # `:samples:android` already bootstraps Robolectric on ubuntu-latest
+      # so we expect no extra system packages. If this job ever fails with
+      # missing native libs (libfontconfig, libfreetype), install them
+      # here. Document in `docs/daemon/TODO.md` if it lands.
+      - name: Run harness scenarios (android, real)
+        run: ./gradlew :daemon:harness:test -Pharness.host=real -Pharness.target=android
+      - name: Upload harness test results (android, real)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-android-real-test-results
+          path: daemon/harness/build/reports/tests/
+      - name: Upload pixel-diff artefacts on failure (android, real)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-harness-android-real-diffs
+          path: daemon/harness/build/reports/daemon-harness/
