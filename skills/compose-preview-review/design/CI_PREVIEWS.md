@@ -119,6 +119,23 @@ when needed.
 | `head-branch` | `preview_pr` | Shared branch for per-PR render commits. |
 | `pr-number` | (event) | PR number, auto-detected from the `pull_request` event. |
 
+## Mobile readability
+
+A lot of PR review happens on phones, where GitHub renders comment tables
+inline and any wide row forces horizontal scrolling. Long fully-qualified
+function or class names are the usual offender. When tweaking the comment
+generator (or building similar before/after reports), keep the layout
+vertical-friendly:
+
+- Columns are still fine — the goal isn't to drop the table, just to keep
+  rows narrow enough to fit on a phone.
+- Put the image on the left as a small thumbnail (e.g. `width="120"`) and
+  wrap it in a link to the full-size PNG so reviewers can tap through for
+  pixel detail.
+- Trim package names — the simple class / function name plus the module
+  heading is usually enough to disambiguate. Stash the FQN in a `<details>`
+  block or `title=` attribute if it's worth keeping.
+
 ## Querying baselines outside CI
 
 ```bash
