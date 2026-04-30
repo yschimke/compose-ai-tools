@@ -267,4 +267,16 @@ export type WebviewToExtension =
      * re-rendered. (A future per-preview filter would scope this to the
      * single previewId; today it falls back to a full-module render.)
      */
-    | { command: 'refreshHeavy'; previewId: string };
+    | { command: 'refreshHeavy'; previewId: string }
+    /**
+     * Webview reports current geometric visibility of preview cards plus
+     * cards it predicts will scroll into view next based on scroll velocity
+     * and direction. Consumed by the daemon scheduler — see
+     * `docs/daemon/PREDICTIVE.md` § 7 (v1.1 scroll-ahead). Ignored when the
+     * daemon path is disabled (the extension simply doesn't use the data).
+     *
+     * Both fields are full snapshots, not deltas — daemon dedups against the
+     * previous send. `predicted` excludes IDs already in `visible` because
+     * those are reactively rendered by the visible queue.
+     */
+    | { command: 'viewportUpdated'; visible: string[]; predicted: string[] };
