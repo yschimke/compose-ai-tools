@@ -233,18 +233,7 @@ internal object ComposePreviewTasks {
     )
   }
 
-  /**
-   * Registers `renderAllPreviews` as the user-facing entry point. When
-   * `composePreview.historyEnabled = true`, inserts a `historizePreviews` task between the render
-   * task and the aggregate so every run archives changed PNGs into the configured history
-   * directory.
-   *
-   * `historizePreviews` is always registered (cheap — lazy TaskProvider) and `renderAllPreviews`
-   * picks which task to depend on via a Provider that Gradle resolves at task-graph-building time.
-   * That way we don't need to call `extension.historyEnabled.get()` at plugin-apply time, which
-   * would be premature — the user's `composePreview { ... }` block hasn't evaluated yet when
-   * `withPlugin` fires.
-   */
+  /** Registers `renderAllPreviews` as the user-facing entry point. */
   fun registerRenderAllPreviews(
     project: Project,
     extension: PreviewExtension,
@@ -252,21 +241,6 @@ internal object ComposePreviewTasks {
     previewOutputDir: Provider<Directory>,
     verifyAccessibilityTask: TaskProvider<*>?,
   ) {
-    // Default history dir: <project>/.compose-preview-history — outside `build/`
-    // so snapshots survive `./gradlew clean`. Users can override via extension.
-    val defaultHistoryDir = project.layout.projectDirectory.dir(".compose-preview-history")
-    val resolvedHistoryDir = extension.historyDir.orElse(defaultHistoryDir)
-
-    val historizeTask =
-      project.tasks.register("historizePreviews", HistorizePreviewsTask::class.java) {
-        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
-        rendersDir.set(previewOutputDir.map { it.dir("renders") })
-        historyDir.set(resolvedHistoryDir)
-        group = "compose preview"
-        description = "Archive changed previews into the local history directory"
-        dependsOn(renderTask)
-      }
-
     // Post-condition check: every entry in the manifest must have a PNG
     // on disk after the render dependency ran. We ship the renderer
     // (RobolectricRenderTest on Android, RenderPreviewsTask on desktop)
@@ -289,9 +263,7 @@ internal object ComposePreviewTasks {
         .orElse("full")
     project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
       group = "compose preview"
-      dependsOn(
-        extension.historyEnabled.map { enabled -> if (enabled) historizeTask else renderTask }
-      )
+      dependsOn(renderTask)
       // `verifyAccessibility` runs AFTER rendering so PNGs always exist
       // even when the check fails. `finalizedBy` (instead of `dependsOn`)
       // lets the build still produce artefacts for CLI/VSCode to
@@ -310,8 +282,8 @@ internal object ComposePreviewTasks {
 
         // `build/compose-previews/renders/` is a derived artefact —
         // the renderer rewrites it every run, and downstream tools
-        // (VS Code, CLI, history) compare the CURRENT manifest
-        // against on-disk state. Files left over from deleted or
+        // (VS Code, CLI) compare the CURRENT manifest against on-disk
+        // state. Files left over from deleted or
         // renamed previews confuse that comparison, so we delete
         // anything that isn't referenced by a current manifest
         // entry.

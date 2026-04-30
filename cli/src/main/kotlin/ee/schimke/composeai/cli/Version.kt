@@ -8,7 +8,7 @@ package ee.schimke.composeai.cli
  * Updated by release-please — keep the trailing comment intact (see `release-please-config.json`,
  * `extra-files`).
  */
-internal const val BUNDLE_VERSION = "0.8.12" // x-release-please-version
+internal const val BUNDLE_VERSION = "0.9.0" // x-release-please-version
 
 /** GitHub repo slug used to resolve releases and the `update` subcommand bootstrap. */
 internal const val REPO = "yschimke/compose-ai-tools"

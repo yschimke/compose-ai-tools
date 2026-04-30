@@ -383,7 +383,7 @@ Out-of-scope follow-ups (B2.4+):
 Weak-reference probe every Nth render. `--detect-leaks=heavy` flag wires LeakCanary JVM-test. JFR ring buffer always on; dumped on `leakSuspected` or `sandboxRecycle`.
 
 - **Depends on:** B2.3
-- **DoD:** synthetic leak (deliberately retain Activity ref) detected within 50 renders. JFR dump appears in `.compose-preview-history/leaks/`.
+- **DoD:** synthetic leak (deliberately retain Activity ref) detected within 50 renders. JFR dump appears in the daemon-owned state directory.
 
 #### B2.5 — Recycle policy + warm spare (Layer 3)
 
@@ -614,7 +614,7 @@ Adds `reason: "filterCandidate"` for dropdown opens / highlights, with the 150ms
 
 ### P2.5.4 — Multi-signal predictive engine (v2) [Streams B + C, joint]
 
-Adds dwell-hover, file-explorer-click, recently-focused-history reasons. Persists per-project hit rates to `.compose-preview-history/predictive-stats.json`. Auto-disable on battery (extension queries OS power state; manual override setting). Tier weights tunable from telemetry. Soak gate (DESIGN § 15) re-run with prediction enabled is **mandatory** before this rung un-flags.
+Adds dwell-hover, file-explorer-click, recently-focused-history reasons. Persists per-project hit rates to a daemon-owned state file. Auto-disable on battery (extension queries OS power state; manual override setting). Tier weights tunable from telemetry. Soak gate (DESIGN § 15) re-run with prediction enabled is **mandatory** before this rung un-flags.
 
 - **Depends on:** P2.5.3, D2.3
 - **DoD:** soak run with prediction on for 1000 renders shows no `sandboxLeaked` events and ≤ 3 `sandboxRecycle` (i.e., one extra over the no-prediction baseline). Persisted stats survive a daemon restart and re-tune the per-project weights. Battery-detection auto-disable verified manually on a laptop.

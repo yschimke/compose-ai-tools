@@ -165,32 +165,28 @@ Both `preview_main` and `preview_pr` are append-only:
   names — so images keep resolving after the PR merges and after
   later PRs advance either branch.
 
-## Local persistent state: `.compose-preview-history/`
+## Local persistent state: `.compose-preview-history/fonts/`
 
 CI keeps long-lived state on the `preview_main` and `preview_pr`
-branches. There's also a per-module local equivalent —
-`<module>/.compose-preview-history/`, deliberately outside `build/` so
-it survives `./gradlew clean`. Two distinct things land there:
+branches. There's also a per-module local cache —
+`<module>/.compose-preview-history/fonts/`, deliberately outside
+`build/` so it survives `./gradlew clean`. The directory holds the
+**downloadable-font cache**, populated automatically the first time a
+preview pulls a Google Font — no opt-in needed. Cached here so
+repeated renders after `clean` don't re-download, and so
+`-PcomposePreview.fontsOffline=true` can serve cache misses without
+hitting the network.
 
-- **Snapshots**, when `composePreview.historyEnabled = true` is set in
-  the module's `build.gradle.kts`. Every rendered PNG that differs from
-  the previous snapshot gets archived under `<id>/<timestamp>.png`,
-  giving you cross-`./gradlew clean` history without going via CI.
-- **Downloadable-font cache** (`fonts/`), populated automatically the
-  first time a preview pulls a Google Font — no opt-in needed. Cached
-  here so repeated renders after `clean` don't re-download, and so
-  `-PcomposePreview.fontsOffline=true` can serve cache misses without
-  hitting the network.
-
-Both subtrees are designed to be **committed to git** when
-reproducibility matters (network-free renders, byte-stable baselines).
-The samples in this repo commit their cached `fonts/` so CI doesn't
-depend on `fonts.gstatic.com` being reachable. Override the location
-via `composePreview.historyDir = layout.projectDirectory.dir("…")`.
+The cache is designed to be **committed to git** when reproducibility
+matters (network-free renders, byte-stable baselines). The samples in
+this repo commit their cached `fonts/` so CI doesn't depend on
+`fonts.gstatic.com` being reachable.
 
 If your project doesn't want this, `.gitignore` the directory — the
 choice is between local reproducibility and a smaller working tree.
 Agents and humans should expect to encounter the directory at the
 module root rather than under `build/`; it's the one deliberate
 exception to the otherwise-true "writes go under gitignored `build/`"
-framing the SKILL uses.
+framing the SKILL uses. (The dirname is historical: an earlier
+preview-history feature shared this root; it has since been removed
+and the cache is the only writer.)

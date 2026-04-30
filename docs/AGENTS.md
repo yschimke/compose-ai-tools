@@ -72,7 +72,7 @@ Four-stage pipeline, spread across the modules:
 
 1. **Discovery** — [gradle-plugin/](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/) scans compiled `.class` files with ClassGraph for `@Preview` annotations (including transitive multi-preview meta-annotations with cycle detection) and writes `build/compose-previews/previews.json`. Entry point: [DiscoverPreviewsTask.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/DiscoverPreviewsTask.kt).
 
-2. **Task wiring** — [ComposePreviewPlugin.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewPlugin.kt) registers `discoverPreviews`, `renderPreviews`, `historizePreviews`, and the user-facing `renderAllPreviews` aggregate. It detects Android vs CMP Desktop at configuration time and takes different paths:
+2. **Task wiring** — [ComposePreviewPlugin.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewPlugin.kt) registers `discoverPreviews`, `renderPreviews`, and the user-facing `renderAllPreviews` aggregate. It detects Android vs CMP Desktop at configuration time and takes different paths:
    - **Android:** uses AGP `artifactView` filters (`artifactType=jar`, `android-classes`) to resolve AAR-extracted class jars, copies JVM args from AGP's `test<Variant>UnitTest` task, and launches a Gradle `Test` task that runs [RobolectricRenderTest.kt](renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) inside a Robolectric sandbox with `graphicsMode=NATIVE`. `android.jar` is added so the Robolectric runner classes load before the sandbox classloader takes over.
    - **Desktop/JVM:** creates a `composePreviewRenderer` configuration pointing at `:renderer-desktop`, then launches [DesktopRendererMain.kt](renderer-desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt) as a subprocess with the module's runtime classpath plus the renderer.
 
@@ -86,8 +86,6 @@ Four-stage pipeline, spread across the modules:
    Options are applied by hand in `renderDefault` rather than through `RoborazziComposeOptions` (its `configured(...)` chain wants an `ActivityScenario` it owns, awkward to share with `ComposeTestRule`): size/locale/uiMode/round/orientation via `RuntimeEnvironment.setQualifiers` (strict grammar order — locale, width, height, round, orientation, night); fontScale via `RuntimeEnvironment.setFontScale` (Configuration field, not a qualifier — same knob Roborazzi's `RoborazziComposeFontScaleOption` uses); background and inspection via `CompositionLocalProvider`.
    
    Capture path: `ShadowPixelCopy` is routed to `HardwareRenderingScreenshot` → `ImageReader + HardwareRenderer.syncAndDraw` via `robolectric.pixelCopyRenderMode=hardware` on the `renderPreviews` `Test` task — the only path that replays Compose's `RenderNode`s correctly under Robolectric.
-
-4. **History (optional)** — [HistorizePreviewsTask.kt](gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/HistorizePreviewsTask.kt) archives changed PNGs into `.compose-preview-history/` (outside `build/`, survives `clean`). Enabled via `composePreview.historyEnabled`.
 
 `renders/` is ephemeral: rewritten every run, stale files deleted. Filenames are normalized — see [docs/RENDER_FILENAMES.md](RENDER_FILENAMES.md).
 

@@ -316,7 +316,7 @@ Every Nth render (default 50) or via `--detect-leaks` daemon flag:
 
 - **Weak-reference probe.** Hold `WeakReference` to activity, composition, root `View`. After the next preview's `setContent` swap, force GC twice with 50ms sleep; check if previous refs cleared. Anything reachable → emit `leakSuspected` with class name and last-render context.
 - **LeakCanary JVM (`leakcanary-jvm-test`).** On-demand via `--detect-leaks=heavy`. Heavy (seconds), runs Shark on a heap dump for reference chains. Worth wiring up because reference-chain output is exactly what we'd ask for in a bug report.
-- **JFR.** Always enabled with a 5MB in-memory ring buffer. On `leakSuspected` or recycle, dump JFR to `.compose-preview-history/leaks/`. Negligible cost.
+- **JFR.** Always enabled with a 5MB in-memory ring buffer. On `leakSuspected` or recycle, dump JFR to the daemon-owned state directory. Negligible cost.
 
 ### Layer 3 — recycle (see § 9)
 

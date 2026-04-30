@@ -363,21 +363,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 titleRow.appendChild(icon);
             }
 
-            // History button only appears when the Gradle plugin has been
-            // configured with historyEnabled = true and at least one
-            // snapshot exists on disk — signalled by p.hasHistory.
-            if (p.hasHistory) {
-                const historyBtn = document.createElement('button');
-                historyBtn.className = 'icon-button card-history-btn';
-                historyBtn.title = 'Show render history';
-                historyBtn.setAttribute('aria-label', 'Show render history');
-                historyBtn.innerHTML = '<i class="codicon codicon-history" aria-hidden="true"></i>';
-                historyBtn.addEventListener('click', () => {
-                    vscode.postMessage({ command: 'showHistory', previewId: p.id });
-                });
-                titleRow.appendChild(historyBtn);
-            }
-
             // Stale-tier refresh button — only attached up front for cards
             // already known to be stale at setPreviews time. updateStaleBadges
             // also adds/removes it on subsequent renders. Placed before the
@@ -420,12 +405,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 card.appendChild(buildFrameControls(card));
             }
 
-            // Lazy-built history drawer — only populated when the user clicks
-            // the history button and the extension returns entries.
-            const drawer = document.createElement('div');
-            drawer.className = 'history-drawer';
-            drawer.hidden = true;
-            card.appendChild(drawer);
             return card;
         }
 
@@ -529,121 +508,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             indicator.textContent = (idx + 1) + ' / ' + caps.length + ' \u00B7 ' + label;
             if (prevBtn) prevBtn.disabled = idx === 0;
             if (nextBtn) nextBtn.disabled = idx === caps.length - 1;
-        }
-
-        /**
-         * Populates a card's history drawer and reveals it. Called when the
-         * extension replies to our showHistory request.
-         */
-        function showHistory(previewId, entries) {
-            const card = document.getElementById('preview-' + sanitizeId(previewId));
-            if (!card) return;
-            const drawer = card.querySelector('.history-drawer');
-            if (!drawer) return;
-
-            if (!entries || entries.length === 0) {
-                drawer.hidden = false;
-                drawer.innerHTML = '<div class="history-empty">No history yet. Enable <code>historyEnabled</code> in composePreview to start archiving.</div>';
-                return;
-            }
-
-            drawer.innerHTML = '';
-
-            // Header with close button + position indicator
-            const head = document.createElement('div');
-            head.className = 'history-head';
-            const label = document.createElement('span');
-            label.className = 'history-label';
-            const close = document.createElement('button');
-            close.className = 'icon-button history-close';
-            close.innerHTML = '<i class="codicon codicon-close" aria-hidden="true"></i>';
-            close.title = 'Close history';
-            close.addEventListener('click', () => {
-                drawer.hidden = true;
-                restoreLatestImage(card);
-            });
-            head.appendChild(label);
-            head.appendChild(close);
-            drawer.appendChild(head);
-
-            // Horizontal timeline strip — click a chip to view that snapshot
-            const strip = document.createElement('div');
-            strip.className = 'history-strip';
-            strip.setAttribute('role', 'list');
-            for (const entry of entries) {
-                const chip = document.createElement('button');
-                chip.className = 'history-chip';
-                chip.dataset.filename = entry.filename;
-                chip.title = entry.iso;
-                chip.textContent = formatChipLabel(entry.timestamp);
-                chip.addEventListener('click', () => {
-                    // Visual feedback + state
-                    strip.querySelectorAll('.history-chip').forEach(c =>
-                        c.classList.toggle('selected', c === chip));
-                    label.textContent = 'Viewing ' + entry.iso;
-                    card.dataset.viewingHistory = entry.filename;
-                    // Show spinner in the main image container until the extension replies
-                    const container = card.querySelector('.image-container');
-                    if (container && !container.querySelector('.loading-overlay')) {
-                        const overlay = document.createElement('div');
-                        overlay.className = 'loading-overlay subtle';
-                        overlay.innerHTML = '<div class="spinner" aria-label="Loading snapshot"></div>';
-                        container.appendChild(overlay);
-                    }
-                    vscode.postMessage({
-                        command: 'loadHistoryImage',
-                        previewId: previewId,
-                        filename: entry.filename,
-                    });
-                });
-                strip.appendChild(chip);
-            }
-            drawer.appendChild(strip);
-            drawer.hidden = false;
-
-            // Preselect the newest entry and load it so the user sees content immediately.
-            const firstChip = strip.querySelector('.history-chip');
-            if (firstChip) { firstChip.click(); }
-        }
-
-        /** Snapshot filename 20260412-215512 becomes 2026-04-12 21:55 for display. */
-        function formatChipLabel(timestamp) {
-            const m = /^(\\d{4})(\\d{2})(\\d{2})-(\\d{2})(\\d{2})\\d{2}/.exec(timestamp);
-            if (!m) return timestamp;
-            return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
-        }
-
-        function updateHistoryImage(previewId, filename, imageData) {
-            const card = document.getElementById('preview-' + sanitizeId(previewId));
-            if (!card) return;
-            // Ignore stale replies — user may have clicked another chip or closed.
-            if (card.dataset.viewingHistory !== filename) return;
-            const container = card.querySelector('.image-container');
-            if (!container) return;
-            const overlay = container.querySelector('.loading-overlay');
-            if (overlay) overlay.remove();
-            let img = container.querySelector('img');
-            if (!img) {
-                img = document.createElement('img');
-                img.alt = card.dataset.function + ' preview';
-                container.appendChild(img);
-            }
-            // Preserve the latest render's data URL so we can restore it on close.
-            if (!card.dataset.latestImage) {
-                card.dataset.latestImage = img.src;
-            }
-            img.src = 'data:image/png;base64,' + imageData;
-            img.className = 'fade-in';
-        }
-
-        function restoreLatestImage(card) {
-            delete card.dataset.viewingHistory;
-            const container = card.querySelector('.image-container');
-            const img = container?.querySelector('img');
-            if (img && card.dataset.latestImage) {
-                img.src = card.dataset.latestImage;
-                delete card.dataset.latestImage;
-            }
         }
 
         function updateCardMetadata(card, p) {
@@ -926,7 +790,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
          * Why a button rather than a static badge: clicking it is the only
          * way the user can recover a fresh GIF/long-scroll image without
          * editing source. Keeping it inside the title row puts it in the
-         * same affordance band as history / open-source buttons.
+         * same affordance band as the open-source buttons.
          */
         function applyStaleBadge(card, isStale) {
             const titleRow = card.querySelector('.card-title-row');
@@ -1070,13 +934,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
             const ro = caps && caps[captureIndex] ? caps[captureIndex].renderOutput : '';
             const newSrc = 'data:' + mimeFor(ro) + ';base64,' + imageData;
-
-            // If the user is viewing a history snapshot, don't clobber it —
-            // stash the new latest so closing the drawer reveals the update.
-            if (card.dataset.viewingHistory) {
-                card.dataset.latestImage = newSrc;
-                return;
-            }
 
             let img = container.querySelector('img');
             if (!img) {
@@ -1233,14 +1090,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
                 case 'showMessage':
                     setMessage(msg.text, 'extension');
-                    break;
-
-                case 'setHistory':
-                    showHistory(msg.previewId, msg.entries);
-                    break;
-
-                case 'updateHistoryImage':
-                    updateHistoryImage(msg.previewId, msg.filename, msg.imageData);
                     break;
             }
         });

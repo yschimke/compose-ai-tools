@@ -374,7 +374,7 @@ v2 are worth building.
 
 - Adds dwell-hover, file-explorer-click, recently-focused-history.
 - All five tier weights become tunable from telemetry.
-- Per-user / per-project hit-rate persistence (`.compose-preview-history/predictive-stats.json`).
+- Per-user / per-project hit-rate persistence (daemon-owned state directory; concrete location TBD).
 - Auto-disable on battery; opt-out per signal.
 - This is the version where § 6's risks need real validation, not just
   mitigation by paper. Soak gate re-run is mandatory before un-flagging.
@@ -448,8 +448,7 @@ move here first; they migrate to § 9 once resolved.
   in-memory ring buffer (last N renders, surfaced via the existing
   `predictionStats` notification and the daemon log channel). A
   `MetricsSink` interface lets later versions add concrete sinks —
-  e.g. a `JsonlFileSink` writing to
-  `.compose-preview-history/predictive-stats.jsonl`, an
+  e.g. a `JsonlFileSink` writing to a daemon-owned state directory, an
   `OpenTelemetrySink`, or a `PrometheusSink` — without rewriting the
   emit path. The default registration is `InMemoryRingSink` only; other
   sinks are opt-in via the experimental DSL. No persistence in v1.1; no
