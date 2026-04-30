@@ -8,8 +8,8 @@ import org.junit.Test
  *
  * The fake-mode S10 already proves the wire shape end-to-end. The real-mode landing waits on the
  * gradle plugin emitting the `composeai.daemon.gitRefHistory` sysprop into the daemon launch
- * descriptor (a follow-up task that's NOT in scope for this PR). Keeping the placeholder here
- * pins the intent and makes the future landing point obvious to anyone scanning the harness suite.
+ * descriptor (a follow-up task that's NOT in scope for this PR). Keeping the placeholder here pins
+ * the intent and makes the future landing point obvious to anyone scanning the harness suite.
  */
 @Ignore("S10 real-mode desktop placeholder — see KDoc")
 class S10MainHistoryReadDesktopRealModeTest {

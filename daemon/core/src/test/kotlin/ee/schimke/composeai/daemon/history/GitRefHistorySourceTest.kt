@@ -17,13 +17,13 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * H10-read — `GitRefHistorySource` unit tests. Each test synthesises a temp git repo on disk,
- * sets up a `refs/heads/preview/...` ref with the documented storage convention (HISTORY.md §
+ * H10-read — `GitRefHistorySource` unit tests. Each test synthesises a temp git repo on disk, sets
+ * up a `refs/heads/preview/...` ref with the documented storage convention (HISTORY.md §
  * "GitRefHistorySource"), and exercises the source through its public surface.
  *
- * **`git` binary required.** All tests `Assume.assumeTrue` on `git --version` so CI runners
- * without git skip cleanly. Production callers (the daemon mains) tolerate missing git the same
- * way [GitProvenance] does — silent degradation.
+ * **`git` binary required.** All tests `Assume.assumeTrue` on `git --version` so CI runners without
+ * git skip cleanly. Production callers (the daemon mains) tolerate missing git the same way
+ * [GitProvenance] does — silent degradation.
  */
 class GitRefHistorySourceTest {
 
@@ -112,9 +112,21 @@ class GitRefHistorySourceTest {
     // Build three sidecar+png pairs for two preview dirs, plus a matching _index.jsonl.
     val entries =
       listOf(
-        synthEntry(id = "20260430-101234-aaaaaaaa", previewId = "com.example.A", bytes = "first".toByteArray()),
-        synthEntry(id = "20260430-101300-bbbbbbbb", previewId = "com.example.A", bytes = "second".toByteArray()),
-        synthEntry(id = "20260430-101400-cccccccc", previewId = "com.example.B", bytes = "third".toByteArray()),
+        synthEntry(
+          id = "20260430-101234-aaaaaaaa",
+          previewId = "com.example.A",
+          bytes = "first".toByteArray(),
+        ),
+        synthEntry(
+          id = "20260430-101300-bbbbbbbb",
+          previewId = "com.example.A",
+          bytes = "second".toByteArray(),
+        ),
+        synthEntry(
+          id = "20260430-101400-cccccccc",
+          previewId = "com.example.B",
+          bytes = "third".toByteArray(),
+        ),
       )
     populatePreviewMain(entries)
 
@@ -148,12 +160,23 @@ class GitRefHistorySourceTest {
 
   @Test
   fun corrupt_index_skips_truncated_line_and_lists_others() {
-    val good1 = synthEntry(id = "20260430-100000-11111111", previewId = "com.example.A", bytes = "a".toByteArray())
-    val good2 = synthEntry(id = "20260430-100100-22222222", previewId = "com.example.A", bytes = "b".toByteArray())
-    val tree = createTreeWithEntriesAndIndex(listOf(good1, good2)) { jsonl ->
-      // Corrupt: append a half-line that's not valid JSON.
-      jsonl + "{\"id\":\"truncat" + "\n"
-    }
+    val good1 =
+      synthEntry(
+        id = "20260430-100000-11111111",
+        previewId = "com.example.A",
+        bytes = "a".toByteArray(),
+      )
+    val good2 =
+      synthEntry(
+        id = "20260430-100100-22222222",
+        previewId = "com.example.A",
+        bytes = "b".toByteArray(),
+      )
+    val tree =
+      createTreeWithEntriesAndIndex(listOf(good1, good2)) { jsonl ->
+        // Corrupt: append a half-line that's not valid JSON.
+        jsonl + "{\"id\":\"truncat" + "\n"
+      }
     val commit = commitTree(tree, parent = null, message = "corrupt-index")
     runOk("git", "-C", repoRoot.toString(), "update-ref", "refs/heads/preview/main", commit)
 
@@ -224,14 +247,11 @@ class GitRefHistorySourceTest {
           warnEmitter = warnEmitter,
         )
       val manager =
-        HistoryManager(
-          sources = listOf(localFs, gitSource),
-          module = ":t",
-          gitProvenance = null,
-        )
+        HistoryManager(sources = listOf(localFs, gitSource), module = ":t", gitProvenance = null)
 
       val all = manager.list(HistoryFilter())
-      // Two unique renders — shared render's LocalFs copy is canonical, git-only render comes from git.
+      // Two unique renders — shared render's LocalFs copy is canonical, git-only render comes from
+      // git.
       assertEquals(2, all.totalCount)
       val sharedSurface = all.entries.first { it.id == localFsEntry.id }
       assertEquals(
@@ -271,7 +291,8 @@ class GitRefHistorySourceTest {
     id: String,
     previewId: String,
     bytes: ByteArray,
-    timestamp: String = "2026-04-30T${id.substring(9, 11)}:${id.substring(11, 13)}:${id.substring(13, 15)}Z",
+    timestamp: String =
+      "2026-04-30T${id.substring(9, 11)}:${id.substring(11, 13)}:${id.substring(13, 15)}Z",
   ): SynthEntry {
     val pngHash = LocalFsHistorySource.sha256Hex(bytes)
     return synthEntryFromHash(id, previewId, timestamp, pngHash, bytes)
@@ -312,8 +333,8 @@ class GitRefHistorySourceTest {
   }
 
   /**
-   * Builds an in-tree layout `<previewIdSan>/<id>.{png,json}` + `_index.jsonl` and returns the
-   * tree sha. Uses `git hash-object` + `git mktree` rather than building the working tree.
+   * Builds an in-tree layout `<previewIdSan>/<id>.{png,json}` + `_index.jsonl` and returns the tree
+   * sha. Uses `git hash-object` + `git mktree` rather than building the working tree.
    */
   private fun createTreeWithEntriesAndIndex(
     entries: List<SynthEntry>,
@@ -335,11 +356,13 @@ class GitRefHistorySourceTest {
       val subTree = mktree(subTreeEntries.toString())
       rootEntries.append("040000 tree $subTree\t$sanitised\n")
     }
-    // Build _index.jsonl — entries minus previewMetadata, one per line, append-order (oldest first).
+    // Build _index.jsonl — entries minus previewMetadata, one per line, append-order (oldest
+    // first).
     val sortedByTs = entries.sortedBy { it.entry.timestamp }
-    val indexBody = sortedByTs.joinToString("\n") {
-      json.encodeToString(HistoryEntry.serializer(), it.entry.copy(previewMetadata = null))
-    } + "\n"
+    val indexBody =
+      sortedByTs.joinToString("\n") {
+        json.encodeToString(HistoryEntry.serializer(), it.entry.copy(previewMetadata = null))
+      } + "\n"
     val transformed = transformIndex(indexBody)
     val indexSha = hashObject(transformed.toByteArray(StandardCharsets.UTF_8))
     rootEntries.append("100644 blob $indexSha\t_index.jsonl\n")
@@ -356,9 +379,7 @@ class GitRefHistorySourceTest {
     pb.outputStream.use { it.write(input.toByteArray(StandardCharsets.UTF_8)) }
     val finished = pb.waitFor(15, TimeUnit.SECONDS)
     require(finished) { "mktree timed out" }
-    require(pb.exitValue() == 0) {
-      "mktree failed: ${pb.errorStream.bufferedReader().readText()}"
-    }
+    require(pb.exitValue() == 0) { "mktree failed: ${pb.errorStream.bufferedReader().readText()}" }
     return pb.inputStream.bufferedReader().readText().trim()
   }
 
@@ -377,7 +398,8 @@ class GitRefHistorySourceTest {
   }
 
   private fun commitTree(treeSha: String, parent: String?, message: String): String {
-    val args = mutableListOf("git", "-C", repoRoot.toString(), "commit-tree", treeSha, "-m", message)
+    val args =
+      mutableListOf("git", "-C", repoRoot.toString(), "commit-tree", treeSha, "-m", message)
     if (parent != null) {
       args.add("-p")
       args.add(parent)

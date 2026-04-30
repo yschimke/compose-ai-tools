@@ -157,20 +157,19 @@ fun main(args: Array<String>) {
   // one-time warn-level `log` notification with a hint for the human and degrade gracefully
   // (no entries in `history/list`). See HISTORY.md § "GitRefHistorySource".
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println(
-        "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
-          "gitRefs=${gitRefHistoryRefs})"
-      )
-      HistoryManager.forLocalFsAndGitRefs(
-        historyDir = Path.of(dir),
-        module = System.getProperty(MODULE_ID_PROP) ?: "",
-        gitProvenance = gitProvenance,
-        gitRefs = gitRefHistoryRefs,
-        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println(
+      "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
+        "gitRefs=${gitRefHistoryRefs})"
+    )
+    HistoryManager.forLocalFsAndGitRefs(
+      historyDir = Path.of(dir),
+      module = System.getProperty(MODULE_ID_PROP) ?: "",
+      gitProvenance = gitProvenance,
+      gitRefs = gitRefHistoryRefs,
+      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+    )
+  }
 
   val server =
     JsonRpcServer(

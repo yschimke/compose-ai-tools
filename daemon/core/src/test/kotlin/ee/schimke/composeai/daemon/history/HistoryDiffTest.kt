@@ -15,7 +15,6 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -27,9 +26,9 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * H3 — `history/diff` METADATA-mode unit tests. Drives the [JsonRpcServer] over piped streams
- * with a [HistoryManager] backed by a temp [LocalFsHistorySource] so each test can synthesise
- * the entries it needs and assert on the wire shape.
+ * H3 — `history/diff` METADATA-mode unit tests. Drives the [JsonRpcServer] over piped streams with
+ * a [HistoryManager] backed by a temp [LocalFsHistorySource] so each test can synthesise the
+ * entries it needs and assert on the wire shape.
  *
  * Covers the cases enumerated in HISTORY.md § "What this PR lands § H3":
  * - same hash → `pngHashChanged = false`, both metadata returned
@@ -62,8 +61,22 @@ class HistoryDiffTest {
       // pin distinct timestamps so the entry ids differ (id = "<ts>-<shortHash>").
       val ts1 = Instant.parse("2026-04-30T10:12:34Z")
       val ts2 = Instant.parse("2026-04-30T10:12:35Z")
-      val entry1 = manager.recordRender("preview-A", "same-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1, timestamp = ts1)!!
-      val entry2 = manager.recordRender("preview-A", "same-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1, timestamp = ts2)!!
+      val entry1 =
+        manager.recordRender(
+          "preview-A",
+          "same-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts1,
+        )!!
+      val entry2 =
+        manager.recordRender(
+          "preview-A",
+          "same-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts2,
+        )!!
       assertEquals(entry1.pngHash, entry2.pngHash)
 
       val resp = diffRoundTrip(send, receive, from = entry1.id, to = entry2.id)
@@ -72,10 +85,13 @@ class HistoryDiffTest {
       assertEquals(entry1.id, result["fromMetadata"]!!.jsonObject["id"]!!.jsonPrimitive.content)
       assertEquals(entry2.id, result["toMetadata"]!!.jsonObject["id"]!!.jsonPrimitive.content)
       // Pixel-mode fields are null in METADATA mode by design.
-      assertTrue(result["diffPx"] == null || result["diffPx"] == kotlinx.serialization.json.JsonNull)
+      assertTrue(
+        result["diffPx"] == null || result["diffPx"] == kotlinx.serialization.json.JsonNull
+      )
       assertTrue(result["ssim"] == null || result["ssim"] == kotlinx.serialization.json.JsonNull)
       assertTrue(
-        result["diffPngPath"] == null || result["diffPngPath"] == kotlinx.serialization.json.JsonNull
+        result["diffPngPath"] == null ||
+          result["diffPngPath"] == kotlinx.serialization.json.JsonNull
       )
     }
   }
@@ -85,8 +101,22 @@ class HistoryDiffTest {
     runWith { _, manager, send, receive ->
       val ts1 = Instant.parse("2026-04-30T10:12:34Z")
       val ts2 = Instant.parse("2026-04-30T10:12:35Z")
-      val entry1 = manager.recordRender("preview-A", "first-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1, timestamp = ts1)!!
-      val entry2 = manager.recordRender("preview-A", "second-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1, timestamp = ts2)!!
+      val entry1 =
+        manager.recordRender(
+          "preview-A",
+          "first-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts1,
+        )!!
+      val entry2 =
+        manager.recordRender(
+          "preview-A",
+          "second-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts2,
+        )!!
       assertTrue(entry1.pngHash != entry2.pngHash)
 
       val resp = diffRoundTrip(send, receive, from = entry1.id, to = entry2.id)
@@ -98,8 +128,20 @@ class HistoryDiffTest {
   @Test(timeout = 30_000)
   fun different_previewIds_diffMismatch() {
     runWith { _, manager, send, receive ->
-      val a = manager.recordRender("preview-A", "a-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1)!!
-      val b = manager.recordRender("preview-B", "b-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1)!!
+      val a =
+        manager.recordRender(
+          "preview-A",
+          "a-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+        )!!
+      val b =
+        manager.recordRender(
+          "preview-B",
+          "b-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+        )!!
       val resp = diffRoundTrip(send, receive, from = a.id, to = b.id)
       val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
       assertEquals(JsonRpcServer.ERR_HISTORY_DIFF_MISMATCH, errCode)
@@ -109,7 +151,13 @@ class HistoryDiffTest {
   @Test(timeout = 30_000)
   fun missing_from_entryNotFound() {
     runWith { _, manager, send, receive ->
-      val a = manager.recordRender("preview-A", "a-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1)!!
+      val a =
+        manager.recordRender(
+          "preview-A",
+          "a-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+        )!!
       val resp = diffRoundTrip(send, receive, from = "does-not-exist", to = a.id)
       val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
       assertEquals(JsonRpcServer.ERR_HISTORY_ENTRY_NOT_FOUND, errCode)
@@ -119,7 +167,13 @@ class HistoryDiffTest {
   @Test(timeout = 30_000)
   fun missing_to_entryNotFound() {
     runWith { _, manager, send, receive ->
-      val a = manager.recordRender("preview-A", "a-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1)!!
+      val a =
+        manager.recordRender(
+          "preview-A",
+          "a-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+        )!!
       val resp = diffRoundTrip(send, receive, from = a.id, to = "does-not-exist")
       val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
       assertEquals(JsonRpcServer.ERR_HISTORY_ENTRY_NOT_FOUND, errCode)
@@ -129,7 +183,13 @@ class HistoryDiffTest {
   @Test(timeout = 30_000)
   fun pixel_mode_not_yet_implemented() {
     runWith { _, manager, send, receive ->
-      val a = manager.recordRender("preview-A", "a-bytes".toByteArray(), trigger = "renderNow", renderTookMs = 1)!!
+      val a =
+        manager.recordRender(
+          "preview-A",
+          "a-bytes".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+        )!!
       val resp = diffRoundTrip(send, receive, from = a.id, to = a.id, mode = "pixel")
       val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
       assertEquals(JsonRpcServer.ERR_HISTORY_PIXEL_NOT_IMPLEMENTED, errCode)
@@ -141,12 +201,13 @@ class HistoryDiffTest {
   // -------------------------------------------------------------------------
 
   private fun runWith(
-    block: (
-      JsonRpcServer,
-      HistoryManager,
-      send: (String) -> Unit,
-      receive: LinkedBlockingQueue<JsonObject>,
-    ) -> Unit
+    block:
+      (
+        JsonRpcServer,
+        HistoryManager,
+        send: (String) -> Unit,
+        receive: LinkedBlockingQueue<JsonObject>,
+      ) -> Unit
   ) {
     val manager =
       HistoryManager.forLocalFs(historyDir = historyDir, module = ":t", gitProvenance = null)
@@ -165,7 +226,8 @@ class HistoryDiffTest {
         historyManager = manager,
         onExit = { _ -> exitLatch.countDown() },
       )
-    val serverThread = Thread({ server.run() }, "history-diff-test-server").apply { isDaemon = true }
+    val serverThread =
+      Thread({ server.run() }, "history-diff-test-server").apply { isDaemon = true }
     serverThread.start()
 
     val received = LinkedBlockingQueue<JsonObject>()
@@ -186,7 +248,9 @@ class HistoryDiffTest {
 
     val send: (String) -> Unit = { jsonText ->
       val payload = jsonText.toByteArray(Charsets.UTF_8)
-      clientToServerOut.write("Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII))
+      clientToServerOut.write(
+        "Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
+      )
       clientToServerOut.write(payload)
       clientToServerOut.flush()
     }
@@ -257,8 +321,10 @@ class HistoryDiffTest {
    */
   private class StubHost : RenderHost {
     override fun start() {}
+
     override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult =
       error("StubHost.submit: not used in HistoryDiffTest — tests drive HistoryManager directly")
+
     override fun shutdown(timeoutMs: Long) {}
   }
 

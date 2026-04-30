@@ -100,19 +100,18 @@ fun main(args: Array<String>) {
   // GitRefHistorySources alongside the writable LocalFsHistorySource. Tests that don't set the
   // sysprop see the pre-H10 single-source behaviour.
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println(
-        "compose-ai-daemon harness: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs})"
-      )
-      HistoryManager.forLocalFsAndGitRefs(
-        historyDir = Path.of(dir),
-        module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
-        gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
-        gitRefs = gitRefHistoryRefs,
-        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println(
+      "compose-ai-daemon harness: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs})"
+    )
+    HistoryManager.forLocalFsAndGitRefs(
+      historyDir = Path.of(dir),
+      module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
+      gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
+      gitRefs = gitRefHistoryRefs,
+      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+    )
+  }
 
   val server =
     JsonRpcServer(

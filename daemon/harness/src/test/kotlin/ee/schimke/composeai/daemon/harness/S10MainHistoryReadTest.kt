@@ -13,7 +13,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
@@ -101,7 +100,9 @@ class S10MainHistoryReadTest {
       val exitCode = client.shutdownAndExit()
       assertEquals(0, exitCode)
     } catch (t: Throwable) {
-      System.err.println("S10MainHistoryReadTest failed; stderr from daemon:\n${client.dumpStderr()}")
+      System.err.println(
+        "S10MainHistoryReadTest failed; stderr from daemon:\n${client.dumpStderr()}"
+      )
       throw t
     } finally {
       try {
@@ -153,9 +154,12 @@ class S10MainHistoryReadTest {
       val subTree = mktree(repoRoot, sub.toString())
       rootEntries.append("040000 tree $subTree\t$sanitised\n")
     }
-    val indexLines = entries.sortedBy { it.entry.timestamp }.joinToString("\n") {
-      json.encodeToString(HistoryEntry.serializer(), it.entry.copy(previewMetadata = null))
-    } + "\n"
+    val indexLines =
+      entries
+        .sortedBy { it.entry.timestamp }
+        .joinToString("\n") {
+          json.encodeToString(HistoryEntry.serializer(), it.entry.copy(previewMetadata = null))
+        } + "\n"
     val indexSha = hashObject(repoRoot, indexLines.toByteArray(StandardCharsets.UTF_8))
     rootEntries.append("100644 blob $indexSha\t_index.jsonl\n")
     val rootTree = mktree(repoRoot, rootEntries.toString())
@@ -163,7 +167,12 @@ class S10MainHistoryReadTest {
     runOk("git", "-C", repoRoot.absolutePath, "update-ref", "refs/heads/preview/main", commit)
   }
 
-  private fun synth(id: String, previewId: String, bytes: ByteArray, timestamp: String): SynthEntry {
+  private fun synth(
+    id: String,
+    previewId: String,
+    bytes: ByteArray,
+    timestamp: String,
+  ): SynthEntry {
     val pngHash = LocalFsHistorySource.sha256Hex(bytes)
     val entry =
       HistoryEntry(
@@ -191,9 +200,7 @@ class S10MainHistoryReadTest {
         .start()
     pb.outputStream.use { it.write(input.toByteArray(StandardCharsets.UTF_8)) }
     require(pb.waitFor(15, TimeUnit.SECONDS)) { "mktree timed out" }
-    require(pb.exitValue() == 0) {
-      "mktree failed: ${pb.errorStream.bufferedReader().readText()}"
-    }
+    require(pb.exitValue() == 0) { "mktree failed: ${pb.errorStream.bufferedReader().readText()}" }
     return pb.inputStream.bufferedReader().readText().trim()
   }
 
@@ -212,7 +219,9 @@ class S10MainHistoryReadTest {
 
   private fun commitTree(repoRoot: File, treeSha: String, message: String): String {
     val pb =
-      ProcessBuilder(listOf("git", "-C", repoRoot.absolutePath, "commit-tree", treeSha, "-m", message))
+      ProcessBuilder(
+          listOf("git", "-C", repoRoot.absolutePath, "commit-tree", treeSha, "-m", message)
+        )
         .redirectErrorStream(false)
         .start()
     require(pb.waitFor(15, TimeUnit.SECONDS)) { "commit-tree timed out" }

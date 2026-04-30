@@ -47,8 +47,8 @@ class FakeHarnessLauncher(
   private val workspaceRoot: File? = null,
   /**
    * H10-read — comma-separated list of full git ref names (e.g. `refs/heads/preview/main`) for
-   * [GitRefHistorySource] wiring. When non-empty, sets `-Dcomposeai.daemon.gitRefHistory=…` on
-   * the spawned JVM.
+   * [GitRefHistorySource] wiring. When non-empty, sets `-Dcomposeai.daemon.gitRefHistory=…` on the
+   * spawned JVM.
    */
   private val gitRefHistory: List<String> = emptyList(),
 ) : HarnessLauncher {
