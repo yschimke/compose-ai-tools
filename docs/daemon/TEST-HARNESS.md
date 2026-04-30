@@ -1,8 +1,14 @@
 # Preview daemon — end-to-end test harness
 
-> **Status:** design proposal. No code yet. Ladder ships in v0..v3 (§ 9). Not
-> in scope for any current Stream B/C task; lives under Stream D alongside
-> the bench harnesses (P0.1 / P0.6 / D2.1 / D2.2 / D2.3).
+> **Status:** implemented as `:daemon:harness`. Scenarios S1–S10 ship
+> across both desktop and android targets in fake and real modes (per
+> [TODO.md § Phase D-harness](TODO.md)); CI runs `desktop-fake`,
+> `desktop-real`, and `android-real` jobs in
+> `.github/workflows/daemon-harness.yml`. Outstanding work tracked in
+> the v3 ladder (§ 9): session-mode soak, weekly drift-report workflow,
+> S6/S9/S10 lifting once their gating features (B2.1 ✅, B2.5, P2.5.2)
+> ship. This doc is the design + scenario reference; the implementation
+> matches it.
 
 This document specifies a **VS-Code-shaped driver** that exercises a real
 daemon JVM over JSON-RPC the way the editor will, but without any editor in

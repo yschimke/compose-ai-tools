@@ -1,9 +1,16 @@
 # Preview history — design
 
-> **Status:** design only. Capturing the on-disk schema, JSON-RPC surface,
-> and consumer mappings so the daemon, the existing Gradle path, the
-> MCP server, and the VS Code extension can all agree on what "history"
-> means before any of them ship code.
+> **Status:** H1, H2, H3, H9, H10a have shipped — daemon writes
+> sidecars + index entries, exposes `history/list` / `history/read` /
+> `history/diff` (metadata mode), and the `HistorySource` interface
+> with multi-source merging is live including read-only
+> `GitRefHistorySource`. MCP layer (H6) ships `history_list` /
+> `history_diff` tools and `compose-preview-history://` resource URIs.
+> Outstanding: H4 (auto-prune), H5 (pixel-mode diff), H10b (gradle
+> plugin emits `composeai.daemon.gitRefHistory`), H11+ (`WRITE_LOCAL` /
+> `WRITE_PUSH` / LFS / squash GC), H7+ (VS Code panel — gated on the
+> extension picking up the surface). Full phase status in
+> [TODO.md § Phase H](TODO.md#phase-h--preview-history-parallel-to-phase-2).
 
 ## What this is
 

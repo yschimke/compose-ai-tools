@@ -1,10 +1,16 @@
-# Disposable user classloader (B2.0)
+# Disposable user classloader
 
-> **Status:** design proposal. Captures the architecture for fixing the
-> daemon's actual save-loop blocker. Implementation lands as
-> [TODO.md B2.0](TODO.md#b20--disposable-user-classloader-shared-seam).
+> **Status:** implemented. The parent/child classloader split landed in
+> `:daemon:core`'s [`UserClassLoaderHolder`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/UserClassLoaderHolder.kt)
+> and both backends. Per-render fresh-`Recomposer` invariant verified;
+> the soak `WeakReference` probe is live. This doc is the architecture
+> reference + risk register; the implementation now matches it.
 > Cross-referenced from
 > [DESIGN.md § 8](DESIGN.md#8-staleness-cascade--when-do-we-actually-re-render).
+>
+> Outstanding follow-ups: B2.0c (per-preview resource-read tracking) is
+> still open — see § Resource changes below. Android `S3_5` is gated on
+> a Compose-Android compiler-mangled-method-name fix.
 
 ## Why this exists
 

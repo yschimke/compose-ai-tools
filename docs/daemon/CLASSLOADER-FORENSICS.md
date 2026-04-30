@@ -1,12 +1,14 @@
 # Classloader forensics — what loads what, from where
 
-> **Status:** design proposal for a diagnostic tool. No implementation
-> shipped yet. Born out of the B2.0 Android S3.5 follow-up failures —
-> two distinct attempts (ASM bytecode swap; dual-sourceset pre-compile)
-> both tripped on Compose-Android reflection in different ways, and we
-> don't have ground truth on *what's actually loaded by which
-> classloader* in either path. This doc spec's the dump that gives us
-> ground truth.
+> **Status:** implemented. The forensic-dump library lives in
+> [`:daemon:core/.../forensics/ClassloaderForensics.kt`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/forensics/ClassloaderForensics.kt);
+> the daemon-side dispatch is gated on a `forensic-dump=` payload prefix
+> in [`RobolectricHost.SandboxRunner`](../../daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/RobolectricHost.kt).
+> Born out of the Android S3.5 follow-up failures — two distinct attempts
+> (ASM bytecode swap; dual-sourceset pre-compile) both tripped on
+> Compose-Android reflection in different ways. The captured dump pair
+> lives at [`classloader-forensics-diff.{json,md}`](classloader-forensics-diff.md).
+> This doc is the schema reference + investigation context.
 
 ## Why
 

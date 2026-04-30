@@ -1,425 +1,314 @@
-# MCP server in Kotlin + Ktor — implementation design
+# MCP server — implementation reference
 
-> **Status:** design proposal. Concretes the Option A architecture
-> sketched in [MCP.md](MCP.md) — separate Kotlin process, MCP-server
-> shim that JSON-RPC-clients the existing daemon. Uses
-> [`io.modelcontextprotocol:kotlin-sdk`](https://github.com/modelcontextprotocol/kotlin-sdk)
-> + Ktor for the transport layer. No implementation yet; this captures
-> the build shape so an agent (or human) can land it directly.
+> **Status:** implemented in `:mcp` (top-level module).
+> See [MCP.md](MCP.md) for the high-level mapping; this doc covers the
+> implementation specifics: module layout, transport, wire format, key
+> classes, multi-workspace lifecycle.
 
-## Why Ktor + the Kotlin MCP SDK
+## Module location
 
-The MCP SDK ships first-party from the MCP project. It has:
+`:mcp` is a top-level module (NOT `:daemon:mcp`), parallel to
+`:daemon:core` etc. It depends only on `:daemon:core` for the protocol
+message types and spawns daemon JVMs over stdio via launch descriptors
+emitted by `composePreviewDaemonStart`.
 
-- **Server / Client class abstractions** that handle the JSON-RPC
-  envelope, capability negotiation, and notification routing — so we
-  don't reimplement framing or schema validation.
-- **Transport plug-ins** for stdio, streamable HTTP, SSE, WebSocket,
-  and an in-memory `ChannelTransport` used for unit tests.
-- **Ktor integration helpers** (`mcpStreamableHttp()`, `mcp { ... }`)
-  that mount an MCP server at a configurable path inside an arbitrary
-  Ktor application — so the same server jar can run as a stdio
-  process for a local agent *or* be embedded in an HTTP server for
-  remote agents.
-- **Logging + progress + completion APIs** for free — `sendLoggingMessage`,
-  progress notifications, URI-template completion.
+## Why we don't use the MCP Kotlin SDK
 
-Building this from scratch on top of `:daemon:core`'s
-existing `JsonRpcServer` would mean re-implementing capability
-negotiation, paging, sampling, and the wire-shape conformance tests.
-The SDK is ~2KB of dep weight and saves a real chunk of work.
+The implementation is hand-rolled rather than built on
+[`io.modelcontextprotocol:kotlin-sdk`](https://github.com/modelcontextprotocol/kotlin-sdk).
+Rationale (per `mcp/build.gradle.kts:40-45`):
 
-Ktor specifically because:
+- The SDK auto-registers internal handlers for `resources/list` /
+  `resources/read` / `subscribe`, making the dynamic catalog + push
+  subscription model we want awkward to bolt on.
+- Rolling our own keeps the wire layer self-contained, mirrors the
+  proven `:daemon:core` `JsonRpcServer` framing, and removes a
+  0.x-version-pin risk.
+- The SDK can be reintroduced as an internal refactor once the surface
+  stabilises.
 
-- The existing project already uses Kotlin/JVM end-to-end; another
-  Kotlin module fits the build matrix.
-- Streamable-HTTP for remote agents needs an HTTP server. Ktor's
-  `Application` model is the canonical Kotlin choice; the MCP SDK's
-  Ktor helpers expect it.
-- Coroutine-native — matches the daemon's existing concurrency
-  discipline (no callbacks, no Future juggling).
+The wire-shape work the SDK would do is small: capability negotiation,
+JSON-RPC envelope, LSP-style framing. The daemon already does all three
+in `:daemon:core` and we reuse the patterns.
 
-## Module structure
+## Transport
 
-New top-level module `:daemon:mcp` (mirroring the existing
-`:daemon:harness` pattern):
+**stdio only.** The MCP server reads framed JSON-RPC from stdin, writes
+to stdout. Same `Content-Length:` framing as the daemon
+([PROTOCOL.md § 1](PROTOCOL.md#1-transport)).
+
+HTTP / SSE / streamable-HTTP transports are out of scope today. If a
+remote-agent use case materialises, the right next step is to factor
+[`McpSession`](../../mcp/src/main/kotlin/ee/schimke/composeai/mcp/McpServer.kt)'s
+read/write loops behind a transport interface and add an HTTP variant
+alongside. The wire-shape code (request dispatch, notification fan-out)
+stays.
+
+## Module layout
 
 ```
-daemon/mcp/
-  build.gradle.kts
-  src/main/kotlin/ee/schimke/composeai/daemon/mcp/
-    DaemonMcpMain.kt          ← entry point: stdio by default, --http for HTTP server
-    DaemonMcpServer.kt        ← the SDK Server wired with our tools/resources
-    DaemonClient.kt           ← thin wrapper that JSON-RPC-clients the daemon JVM
-    DaemonSupervisor.kt       ← spawns + lifecycle-manages per-module daemons
-    PreviewResource.kt        ← compose-preview:// URI parsing + Resource construction
-    Subscriptions.kt          ← maps daemon's renderFinished notifications →
-                               notifications/resources/updated for subscribed URIs
-    HttpTransport.kt          ← Ktor app for streamable-HTTP mode
-  src/test/kotlin/...
-    DaemonMcpServerTest.kt    ← uses the SDK's ChannelTransport for in-process testing
-    SubscriptionsTest.kt
-    StreamableHttpIntegrationTest.kt  ← spawns the server with --http, drives via real HTTP
+mcp/
+├── build.gradle.kts
+├── scripts/
+│   ├── README.md
+│   └── real_e2e_smoke.py
+└── src/main/kotlin/ee/schimke/composeai/mcp/
+    ├── DaemonMcpMain.kt        — entry point; arg parsing; supervisor wiring
+    ├── DaemonMcpServer.kt      — the load-bearing wiring layer
+    ├── McpServer.kt            — McpSession (one connected client) + handler interface
+    ├── DaemonClient.kt         — JSON-RPC client of one daemon JVM
+    ├── DaemonSupervisor.kt     — owns per-(workspace, module) daemons
+    ├── PreviewResource.kt      — URI parsing (PreviewUri / HistoryUri / WorkspaceId / FqnGlob)
+    ├── Subscriptions.kt        — per-session subscription bookkeeping + watch entries
+    ├── WatchPropagator.kt      — translates watch unions to per-daemon setVisible/setFocus
+    ├── HistoryStore.kt         — pluggable seam (NOOP default; daemon owns history today)
+    └── protocol/
+        └── McpMessages.kt      — MCP wire-shape types
 ```
 
-Production deps:
+Test sources cover protocol conformance (`DaemonMcpServerTest`),
+fake-daemon end-to-end (`FakeDaemon` + `RealMcpEndToEndTest` gated on
+`-Pmcp.real=true`), and resource-read flows (`PreviewResourceTest`).
+
+## Key classes
+
+### `DaemonSupervisor`
+
+Owns the per-(workspace, module) daemon map. Workspaces are registered
+explicitly via the `register_project` MCP tool (or `--project <path>`
+CLI args at startup). Daemons within a workspace spawn lazily on first
+reference.
+
+`DescriptorProvider` is a pluggable seam — production reads
+`<moduleDir>/build/compose-previews/daemon-launch.json` from disk; tests
+substitute an in-memory provider.
+
+`DaemonClientFactory` is the spawn seam — production
+([`SubprocessDaemonClientFactory`](../../mcp/src/main/kotlin/ee/schimke/composeai/mcp/DaemonMcpMain.kt))
+forks a JVM via `ProcessBuilder` and pipes its stdio into a
+`DaemonClient`; tests inject an in-memory factory wiring the client to a
+fake daemon over piped streams.
+
+The supervisor demultiplexes every daemon's notification stream by method
+name through `NotificationRouter`. `DaemonMcpServer` registers handlers
+for `discoveryUpdated`, `renderFinished`, `renderFailed`,
+`classpathDirty`, `historyAdded` plus an `onClose` for daemon death.
+
+### `DaemonMcpServer`
+
+The load-bearing wiring layer. Owns:
+
+- The per-(workspace, module) preview catalog populated from daemon
+  `discoveryUpdated`.
+- The MCP resources surface (`list`, `read`, `subscribe`, `unsubscribe`).
+- The MCP tools surface (12 tools — see [MCP.md § Tools](MCP.md#tools)).
+- The translation of daemon `renderFinished` →
+  `notifications/resources/updated`.
+- The translation of daemon `discoveryUpdated` →
+  `notifications/resources/list_changed`.
+- Watch propagation back to daemons via `WatchPropagator`.
+- A multi-waiter dedup map (`pendingRenders`) so concurrent reads of the
+  same URI all wake up on one `renderFinished`.
+- Two single-thread executors: `daemonLifecycleExecutor` for
+  classpath-dirty respawns, `progressBeatExecutor` for periodic
+  `notifications/progress` beats during slow renders.
+
+The render path:
+
+1. `resources/read(uri)` parses the URI, picks the right daemon, adds a
+   `CompletableFuture<RenderOutcome>` to `pendingRenders` BEFORE sending
+   `renderNow` (so the daemon's notification can't arrive ahead of the
+   wait).
+2. Optionally schedules `notifications/progress` beats every 500 ms if
+   the client opted in via `_meta.progressToken`.
+3. Awaits the future with `renderTimeoutMs` (default 60 s).
+4. Reads the PNG from disk (the daemon writes it; the MCP server reads
+   it back), encodes as base64, returns as a `BlobResourceContents`.
+
+History URIs (`compose-preview-history://…`) bypass step 1 and call
+`history/read({ inline: true })` against the daemon directly — historical
+bytes are immutable so there's no render path involved.
+
+### `McpSession`
+
+One connected MCP client. Owns a reader thread (drains stdin, dispatches
+to handlers) and serialises writes through a synchronised `OutputStream`.
+
+Method handlers are pluggable via the `McpHandlers` interface so tests
+can drive the session without a supervisor. `DaemonMcpServer.newSession`
+wires the production handler set.
+
+Capability negotiation advertises:
 
 ```kotlin
-dependencies {
-  implementation("io.modelcontextprotocol:kotlin-sdk-server:$mcpVersion")
-  implementation(project(":daemon:core"))   // for Messages.kt + JsonRpcServer types
-  implementation(libs.ktor.server.core)
-  implementation(libs.ktor.server.cio)               // CIO engine — small, coroutine-native
-  implementation(libs.ktor.server.content.negotiation)
-  implementation(libs.kotlinx.serialization.json)
-  implementation(libs.kotlinx.coroutines.core)
-}
+ServerCapabilities(
+  tools = ToolsCapability(listChanged = false),
+  resources = ResourcesCapability(subscribe = true, listChanged = true),
+)
 ```
 
-`:daemon:core` is the only daemon-side dep — same renderer-
-agnostic surface invariant that `:daemon:harness` honours. The
-shim never depends on `:daemon:android` or
-`:daemon:desktop` directly; it spawns the launch descriptor
-the same way the harness's `RealHarnessLauncher` does.
+`notifications/initialized` is optional — the response to `initialize`
+already flips the gating flag, since some clients omit the
+follow-up notification.
 
-## Server bootstrap
+### `Subscriptions` + `WatchPropagator`
 
-`DaemonMcpServer.kt` (sketch):
+Two-tier subscription model:
 
-```kotlin
-class DaemonMcpServer(
-  private val supervisor: DaemonSupervisor,
-  private val subscriptions: Subscriptions,
-) {
-  fun build(): Server {
-    val server = Server(
-      serverInfo = Implementation(name = "compose-preview-daemon", version = PluginVersion.value),
-      options = ServerOptions(
-        capabilities = ServerCapabilities(
-          tools = ServerCapabilities.Tools(listChanged = true),
-          resources = ServerCapabilities.Resources(
-            subscribe = true,         // load-bearing: push notifications
-            listChanged = true,       // discoveryUpdated → list_changed
-          ),
-          logging = ServerCapabilities.Logging(),
-        ),
-      ),
-    )
+- **Per-URI subscriptions** (`resources/subscribe(uri)`) — direct.
+- **Watch entries** (`watch` tool) — `(workspaceId, modulePath?,
+  fqnGlob?)` matchers. Expanded against the live catalog on every
+  `discoveryUpdated`.
 
-    server.addTool(
-      name = "render_preview",
-      description = "Re-render a Compose @Preview by URI; returns the rendered PNG.",
-      inputSchema = Tool.Input(
-        properties = JsonObject(mapOf(
-          "uri" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
-          "tier" to JsonObject(mapOf(
-            "type" to JsonPrimitive("string"),
-            "enum" to JsonArray(listOf(JsonPrimitive("fast"), JsonPrimitive("full"))),
-          )),
-        )),
-        required = listOf("uri"),
-      ),
-    ) { request ->
-      val uri = request.arguments?.get("uri")?.jsonPrimitive?.content
-        ?: return@addTool errorResult("missing uri")
-      val tier = request.arguments?.get("tier")?.jsonPrimitive?.content ?: "full"
-      val pngBytes = supervisor.renderNow(PreviewUri.parse(uri), tier)
-      CallToolResult(content = listOf(ImageContent(data = pngBytes.encodeBase64(), mimeType = "image/png")))
-    }
+On every `renderFinished`, both the per-URI subscribers and the
+watch-matchers fire. A session subscribed AND watching gets one
+notification (set semantics).
 
-    server.addResourceProvider { listResources, readResource, subscribe, unsubscribe ->
-      // listResources: aggregates `discoverPreviews` across every supervised daemon
-      // readResource:  triggers `renderNow` if URI's PNG is stale; returns blob
-      // subscribe:     calls `subscriptions.subscribe(uri, server)` so renderFinished
-      //                pushes notifications/resources/updated
-      // unsubscribe:   inverse
-    }
+`WatchPropagator` aggregates the union of all sessions' watches per
+daemon and forwards it as `setVisible` + `setFocus`. Idempotent — caches
+the last sent set per daemon and skips the wire call when unchanged.
 
-    // Hook the supervisor's classpathDirty handler to send a logging message
-    // before exit; clients see "module classpath changed" → reconnect.
-    supervisor.onClasspathDirty { module, reason ->
-      server.sendLoggingMessage(
-        level = LoggingLevel.warning,
-        data = JsonObject(mapOf("module" to JsonPrimitive(module), "reason" to JsonPrimitive(reason))),
-      )
-      // The supervisor handles the actual respawn; the server stays up.
-    }
+The MCP-side `set_visible` / `set_focus` tools (#332) provide a direct
+passthrough alongside the watch-driven path: an agent can express
+"render this one ahead of others" without registering a long-lived
+watch. The next `WatchPropagator.recompute` (e.g. on the next
+`discoveryUpdated` or `watch`/`unwatch`) replaces whatever the explicit
+tool set.
 
-    return server
-  }
-}
-```
+Note: the daemon's render queue is still single-priority FIFO today, so
+the wire calls flow through but don't yet reorder the queue. The
+plumbing is there for B2.5 / predictive prefetch to start honouring
+focus.
 
-The `Server` instance is then attached to a transport in
-`DaemonMcpMain`:
+### `PreviewUri` / `HistoryUri` / `WorkspaceId`
 
-```kotlin
-fun main(args: Array<String>) {
-  val httpPort = args.firstOrNull { it.startsWith("--http=") }?.removePrefix("--http=")?.toInt()
-  val supervisor = DaemonSupervisor(workspaceRoot = File(System.getProperty("user.dir")))
-  val subscriptions = Subscriptions()
-  val server = DaemonMcpServer(supervisor, subscriptions).build()
+URI shape:
 
-  if (httpPort == null) {
-    // Local agent — stdio. The supervisor's daemons live in the same process tree.
-    val transport = StdioServerTransport()
-    runBlocking {
-      server.connect(transport)
-      transport.run()
-    }
-  } else {
-    // Remote agent — Ktor streamable-HTTP. Same server, different transport.
-    embeddedServer(CIO, port = httpPort) {
-      install(ContentNegotiation) { json(McpJson) }
-      mcp { server }                  // SDK helper from io.modelcontextprotocol:kotlin-sdk
-    }.start(wait = true)
-  }
-}
-```
+- `compose-preview://<workspaceId>/<encodedModulePath>/<previewFqn>?config=<qualifier>`
+- `compose-preview-history://<workspaceId>/<encodedModulePath>/<previewFqn>/<entryId>`
 
-## Tools surface (v0)
+`WorkspaceId` is `<sanitised-rootProjectName>-<8-char-sha256>` over the
+canonical absolute path. Two worktrees of the same repo get distinct IDs
+by construction; symlink aliases collapse.
 
-| Tool | Purpose | Maps to daemon's |
-|---|---|---|
-| `render_preview(uri, tier)` | Force a render, bypassing cache. Returns PNG bytes inline. | `renderNow` |
-| `discover_previews(module)` | Explicit list-now for a module. Returns a list of preview URIs + display names. Mostly redundant with `resources/list`. | `initialize` + `discoveryUpdated` |
-| `list_modules()` | What modules have a live daemon. | `DaemonSupervisor`'s in-memory state |
+`encodedModulePath` swaps `:` for `_` so `:samples:android` rides as
+`_samples_android` inside a URI hostname segment.
 
-`set_focus`, `set_visible`, etc. — deferred to v1+. Reactive priority
-falls out naturally from "most recent `resources/read` is highest
-priority"; explicit tools only earn their keep once an agent loop
-shows the implicit heuristic isn't enough.
+`FqnGlob` compiles a glob over preview FQNs — `*` matches non-dot
+characters, `**` matches anything including dots, `?` matches one
+non-dot. Used by the `watch` tool's `fqnGlobPattern` field.
 
-## Resources surface
+## Lifecycle
 
-URI scheme: `compose-preview://<module>/<preview-fqn>?config=<qualifier>`.
+### Server start
 
-`PreviewResource.kt`:
+`DaemonMcpMain.main` builds a supervisor with disk-reading descriptor
+provider + subprocess factory, instantiates `DaemonMcpServer`, registers
+any `--project <path>[:<rootProjectName>]` CLI args, hooks a JVM shutdown
+hook for graceful supervisor teardown, and starts a single `McpSession`
+on stdin/stdout. Blocks main thread on `awaitClose()` until stdin EOF.
 
-```kotlin
-data class PreviewUri(val module: String, val previewFqn: String, val config: String?) {
-  fun toUri(): String =
-    "compose-preview://${module.removePrefix(":")}/$previewFqn" +
-      if (config != null) "?config=$config" else ""
+### First preview request for a module
 
-  companion object {
-    fun parse(s: String): PreviewUri = ...   // strict parser; rejects malformed URIs
-  }
-}
+Supervisor's `daemonFor(workspaceId, modulePath)` does a
+`computeIfAbsent` over the per-project daemon map; on miss, reads the
+descriptor, spawns the JVM, wires the notification stream, calls
+`initialize`. Initial preview set comes from
+`initialize.manifest.path` — supervisor reads that file and synthesises
+a `discoveryUpdated` notification through the router so the catalog
+populates on the same code path as incremental updates.
 
-fun PreviewUri.toMcpResource(displayName: String, lastModified: Instant?, sizeBytes: Long?): Resource =
-  Resource(
-    uri = toUri(),
-    name = previewFqn.substringAfterLast('.'),
-    title = displayName,
-    description = "Compose @Preview rendered by the preview daemon",
-    mimeType = "image/png",
-    size = sizeBytes,
-    annotations = ResourceAnnotations(
-      audience = listOf(ResourceAudience.user, ResourceAudience.assistant),
-      priority = 0.5,
-      lastModified = lastModified,
-    ),
-  )
-```
+Spawn cost is the daemon's cold-start time: ~5–10 s for Robolectric,
+~600 ms for desktop.
 
-`resources/list` aggregates across every supervised module:
-`supervisor.allDaemons.flatMap { it.previews().map { it.toMcpResource(...) } }`.
+### `classpathDirty`
 
-`resources/read` parses the URI, dispatches to the right daemon,
-checks freshness, blocks on `renderFinished`, returns the bytes as a
-`BlobResourceContents` (base64-encoded PNG).
+The daemon emits exactly once per lifetime then exits within
+`classpathDirtyGraceMs` (default 2 s). The MCP server:
 
-## Subscriptions — the push path
+1. Fails any in-flight render waiters for that daemon with
+   `RenderOutcome.Failed("classpathDirty", …)`.
+2. Removes the daemon from the supervisor and clears catalog +
+   `WatchPropagator` state.
+3. Emits `notifications/resources/list_changed` so connected clients
+   re-list.
+4. Schedules a respawn on `daemonLifecycleExecutor`. If the new daemon
+   also emits `classpathDirty` before any successful render, the
+   supervisor stops respawning (cap of 1) — the descriptor is genuinely
+   stale and the user needs to re-run `composePreviewDaemonStart`.
 
-`Subscriptions.kt` is the load-bearing translation layer.
+The respawn cap is a workspace-lifetime counter; it doesn't decay. A
+workspace stuck against the cap recovers when the user re-registers via
+`register_project` (which clears the supervisor's cached entry).
 
-```kotlin
-class Subscriptions {
-  private val byUri = ConcurrentHashMap<String, MutableSet<ServerSession>>()
+### Daemon dies for other reasons
 
-  fun subscribe(uri: String, session: ServerSession) {
-    byUri.compute(uri) { _, set -> (set ?: mutableSetOf()).also { it.add(session) } }
-  }
+`onClose` handler runs catalog + propagator cleanup; the next reference
+to the same `(workspaceId, modulePath)` triggers a fresh spawn via
+`computeIfAbsent`. No automatic respawn — the next user request drives
+recovery.
 
-  fun unsubscribe(uri: String, session: ServerSession) { ... }
+### MCP client disconnect
 
-  /** Called by DaemonSupervisor when any daemon emits renderFinished. */
-  suspend fun notifyUpdated(uri: String) {
-    byUri[uri]?.forEach { session ->
-      session.sendResourceUpdated(uri)   // SDK helper that emits notifications/resources/updated
-    }
-  }
+`McpSession.runReader` exits on stdin EOF; `onClose` handler unregisters
+from the session registry and forgets the session's subscriptions /
+watches. `DaemonMcpMain.main` calls `supervisor.shutdown()` after the
+session exits, which sends `shutdown` + `exit` to every daemon and waits
+for them to drain.
 
-  /** Called when discoveryUpdated arrives — the *set* of resources changed. */
-  suspend fun notifyListChanged() {
-    byUri.values.flatten().toSet().forEach { session ->
-      session.sendResourceListChanged()
-    }
-  }
-}
-```
+## Tools surface
 
-The `DaemonSupervisor` hooks the daemon's existing notification stream:
+See [MCP.md § Tools](MCP.md#tools) for the full table. Implementation
+notes:
 
-```kotlin
-class DaemonSupervisor(...) {
-  fun onRenderFinished(handler: suspend (uri: String) -> Unit) { ... }
-  fun onDiscoveryUpdated(handler: suspend (module: String) -> Unit) { ... }
-  fun onClasspathDirty(handler: suspend (module: String, reason: String) -> Unit) { ... }
-  // Implementation: each daemon's stdio JSON-RPC notification stream is
-  // demuxed by method name and dispatched to registered handlers.
-}
-```
+- `register_project` canonicalises the path, derives the `WorkspaceId`,
+  and stores the optional `modules` hint on the project record. Does not
+  spawn daemons.
+- `watch` eagerly spawns daemons matching the watch (synchronously for
+  daemons already up, asynchronously via `daemonLifecycleExecutor` for
+  fresh ones) so the catalog populates without the client having to
+  speculatively `read` first.
+- `notify_file_changed` forwards the `fileChanged` notification to every
+  daemon in the workspace AND re-issues `renderNow` for every URI any
+  session has watched/subscribed in this workspace. The daemon's
+  `fileChanged({source})` is a classloader swap, not an auto-render —
+  the explicit re-render is what drives push notifications back out.
+- `history_list` decorates each entry with a
+  `compose-preview-history://` URI so clients can call `resources/read`
+  on it directly.
+- `history_diff` is metadata-mode only (pixel-mode reserved for daemon
+  phase H5).
 
-`DaemonMcpServer.build()` wires:
+## Reliability invariants
 
-```kotlin
-supervisor.onRenderFinished { uri -> subscriptions.notifyUpdated(uri) }
-supervisor.onDiscoveryUpdated { module -> subscriptions.notifyListChanged() }
-supervisor.onClasspathDirty { module, reason ->
-  server.sendLoggingMessage(level = LoggingLevel.warning, data = ...)
-  // supervisor handles respawn internally
-}
-```
-
-That's the entire push story: existing daemon notification → MCP
-notification, with the URI as the join key.
-
-## Multi-module multiplexing
-
-`DaemonSupervisor` owns a `Map<ModulePath, DaemonClient>`. On first
-`render_preview` for a new module, it:
-
-1. Runs `composePreviewDaemonStart` for that module via Gradle (using
-   the existing Tooling API path the harness's launchers use).
-2. Spawns the daemon JVM from the emitted descriptor.
-3. Wires the daemon's stdio notification stream into the supervisor's
-   handlers.
-4. Caches the `DaemonClient` keyed by module path.
-
-`list_modules()` returns the cache's keys. Daemons that go quiet are
-torn down lazily after `daemon.idleTimeoutMs` (matches the per-daemon
-idle policy from PROTOCOL.md § 3).
-
-The supervisor is the only piece that touches Gradle. Everything
-downstream (the MCP server, the subscription routing, the resource
-provider) is JSON-RPC-over-stdio against an opaque `DaemonClient`.
-
-## Transports
-
-### Stdio — the default for local agents
-
-```bash
-$ claude mcp add compose-preview ./gradlew :daemon:mcp:run
-```
-
-`StdioServerTransport()` from the SDK. Server's stdin/stdout speaks
-MCP; logs go to stderr. The supervisor's spawned daemons inherit
-stderr-redirection from the SDK's stdio plumbing, so daemon logs are
-visible in the parent's stderr without corrupting the wire.
-
-### Streamable-HTTP — for remote / multi-agent setups
-
-```bash
-$ ./gradlew :daemon:mcp:run --args='--http=8080'
-```
-
-Ktor `embeddedServer(CIO, port = 8080) { mcp { server } }`. The MCP
-SDK's `mcp { ... }` route DSL handles the streamable-HTTP transport's
-single-endpoint pattern (one URL accepts JSON or SSE depending on the
-client's `Accept` header). Ktor handles connection management,
-content-negotiation, and the SSE keepalive.
-
-This unlocks **remote agents** — an agent running on a different
-machine can connect over HTTP, render previews via the daemon, and
-receive subscription notifications via SSE. CLI can't do this without
-a network wrapper.
-
-### In-memory — for unit tests
-
-```kotlin
-class DaemonMcpServerTest {
-  @Test
-  fun `subscribed client receives notifications/resources/updated when daemon renders`() = runTest {
-    val (clientTransport, serverTransport) = ChannelTransport.pair()
-    val supervisor = FakeDaemonSupervisor()
-    val server = DaemonMcpServer(supervisor, Subscriptions()).build()
-    server.connect(serverTransport)
-
-    val client = Client(...)
-    client.connect(clientTransport)
-    client.subscribe("compose-preview://samples-android/RedSquare")
-
-    val notification = client.expectNotification("notifications/resources/updated", timeout = 5.seconds)
-    supervisor.simulateRenderFinished("compose-preview://samples-android/RedSquare")
-
-    assertEquals("compose-preview://samples-android/RedSquare", notification.params["uri"])
-  }
-}
-```
-
-The `ChannelTransport` from the SDK is in-memory — no subprocess, no
-file I/O, no port allocation. Same SDK code path the production stdio
-transport uses, just bound to a Kotlin `Channel` instead of stdin /
-stdout.
+- **Multi-waiter dedup.** A `CompletableFuture` is published BEFORE
+  `renderNow` is sent so the daemon's notification can't race ahead of
+  the wait.
+- **Render-result completion outside the daemon's reader-thread compute
+  lambda.** `pendingRenders.remove(key)` returns the list atomically;
+  futures are completed afterwards so a slow consumer can't block the
+  daemon's reader thread.
+- **Single-threaded daemon-lifecycle executor.** Classpath-dirty
+  respawns serialise so concurrent saves can't double-spawn (the
+  supervisor's `daemonFor` is already `computeIfAbsent`-safe; the
+  executor adds belt-and-braces).
+- **Daemon-flagged executors for everything.** Lifecycle and progress-beat
+  executors don't delay JVM shutdown.
 
 ## What this provides that the CLI can't
 
-The existing `compose-preview` CLI (one-shot render via Gradle):
-
 | Capability | CLI | MCP server |
-|---|---|---|
-| **Push on render-complete** | ❌ Process exits; no channel for notifications | ✅ `notifications/resources/updated` over the persistent stdio/HTTP connection |
-| **Push on discovery change** | ❌ Re-running discovery means re-running the CLI | ✅ `notifications/resources/list_changed` |
-| **Sub-second warm renders** | ❌ Cold Gradle config + sandbox init every invocation (~5–10s) | ✅ Daemon stays warm; second render is ~50ms |
-| **Subscription back-pressure** | ❌ No subscription concept | ✅ Client subscribes to specific URIs; server tracks who wants what |
-| **Multi-module multiplexing** | ❌ One CLI call → one Gradle module | ✅ Supervisor multiplexes per-module daemons behind one MCP surface |
-| **Cross-render cache** | ❌ Each invocation starts fresh | ✅ Daemon caches PNGs; freshness driven by `fileChanged` (B2.0/B2.1) |
-| **Progress notifications** | ❌ stdout/stderr text; client parses | ✅ `notifications/progress` typed events for long renders |
-| **Structured failures** | ❌ Non-zero exit + stderr text | ✅ `renderFailed` → typed `notifications/message({ level: "error", data: { kind, message, stackTrace } })` |
-| **URI-template completion** | ❌ Client has to know preview FQNs upfront | ✅ MCP completion API — agent can ask "what previews exist matching pattern X?" |
-| **Capability negotiation** | ❌ All-or-nothing CLI flags | ✅ Client declares which features it supports (`subscribe`, `listChanged`); server tailors notifications |
-| **Remote / cross-machine** | ❌ CLI is local-only | ✅ Streamable-HTTP transport lets remote agents render previews |
-| **Multiple concurrent agent sessions** | ❌ One CLI per call | ✅ One server, many connected agents (sharing the same warm daemons) |
-| **Sampling / elicitation** | ❌ One-shot input/output | ✅ Server can ask the client for input mid-render (e.g. "this preview has 3 device variants — which?"). Future hook; not v1. |
-| **Resource priority annotations** | ❌ No annotations | ✅ `audience: ["assistant"]` lets the server hint which previews are most relevant for an agent's context |
-| **Image bytes inline** | ❌ Writes PNG to disk; client reads it | ✅ `BlobResourceContents` returns base64 PNG inline; no file-system juggling |
-
-The four most load-bearing wins:
-
-1. **Subscriptions** — the user's original question. Push notifications
-   replace polling. An agent rendering a preview while a developer
-   edits gets fresh bytes pushed at it within tens of milliseconds of
-   `fileChanged`.
-2. **Persistent warm sandbox** — sub-second renders compound across an
-   agent session. CLI's 10s cold-start is a session killer.
-3. **Multi-module multiplexing** — agent sees the whole project as one
-   resource list, not "rerun the CLI for each module".
-4. **Streamable-HTTP** — remote / cross-machine setups become
-   first-class. Useful for hosted-agent setups where the daemon JVM
-   runs on a build server but the agent loop runs in the cloud.
-
-## Lifecycle + supervision
-
-The MCP server's lifecycle owns its supervised daemons, not the
-client's. Three explicit transitions:
-
-- **MCP server start**: connects transport, registers tools/resources,
-  doesn't spawn any daemons yet (lazy on first preview request).
-- **First preview request for a module**: supervisor checks if a
-  daemon for that module exists; if not, runs
-  `composePreviewDaemonStart` + spawns. Cold path; ~5s.
-- **Idle module**: supervisor reaps daemons whose last-render is older
-  than `daemon.idleTimeoutMs`. Reaped daemon's URIs become
-  "list-but-not-readable-without-respawn"; next `resources/read` for
-  one of those URIs respawns the daemon (lazy).
-- **MCP server shutdown**: gracefully shuts every supervised daemon
-  (sends `shutdown` + `exit`, awaits drain, checks SIGTERM handler
-  result), then exits.
-- **classpathDirty**: supervisor handles transparently — daemon exits,
-  supervisor respawns, MCP server stays up. Pushes a logging message
-  so the agent sees the transition.
+|------------|-----|------------|
+| **Push on render-complete** | ❌ Process exits; no notification channel | ✅ `notifications/resources/updated` |
+| **Push on discovery change** | ❌ Re-run the CLI | ✅ `notifications/resources/list_changed` |
+| **Sub-second warm renders** | ❌ Cold Gradle config + sandbox init every invocation | ✅ Daemon stays warm |
+| **Subscription back-pressure** | ❌ No subscription concept | ✅ Per-URI + watch-glob subscriptions |
+| **Multi-module multiplexing** | ❌ One CLI call → one Gradle module | ✅ Supervisor multiplexes per-module daemons |
+| **Multi-workspace** | ❌ One CLI per project root | ✅ Multiple `register_project` calls; one MCP server hosts many |
+| **Progress notifications** | ❌ stdout text; client parses | ✅ `notifications/progress` typed events |
+| **Structured failures** | ❌ Non-zero exit + stderr text | ✅ `RenderOutcome.Failed` typed back to caller |
+| **Image bytes inline** | ❌ Writes PNG; client reads disk | ✅ `BlobResourceContents` returns base64 PNG inline |
+| **History resources** | ❌ Walks `.compose-preview-history/` directly | ✅ `compose-preview-history://` URIs + `history_list` / `history_diff` tools |
 
 ## Phasing
 
@@ -495,63 +384,14 @@ selection). Speculative; gate on actual demand.
 PIXEL and surfaces the `diffPx` / `ssim` / `diffPngPath` fields the
 wire shape already reserves.
 
-## Risks
-
-1. **MCP SDK is young** (Kotlin SDK 0.x as of this writing). Wire-shape
-   stability across SDK upgrades is not guaranteed; the shim should
-   pin the SDK version and bump deliberately.
-2. **PNG bytes over stdio are base64**. A 1MB PNG = ~1.4MB on the
-   wire. For an agent rendering a few previews per minute, fine. For
-   bulk renders (e.g. an agent reviewing a 200-preview module), the
-   streamable-HTTP transport has fewer constraints.
-3. **Per-module daemon spawn cost (~5s)** is paid lazily on first
-   request per module per MCP-server lifetime. Not amortised across
-   different agent sessions if the MCP server is per-session.
-   Alternative: long-lived MCP server, multiple agents share the same
-   warm daemon pool. v2 territory.
-4. **Capability negotiation with old clients**. Clients that don't
-   support `subscribe` get cold reads on every `resources/read` —
-   correct behaviour, just slower. Should be documented in the
-   user-facing MCP server README.
-5. **Daemon classpath updates** mid-agent-session require the agent
-   to handle classpathDirty respawns. The MCP server hides this with
-   the "logging message + supervisor respawn" pattern, but the next
-   resource-read after respawn could hit a stale subscription
-   (subscriptions tracked by URI; URIs survive respawn unless the
-   set of previews changed). Solution: on respawn, supervisor re-emits
-   `notifications/resources/list_changed` so subscribed clients
-   re-list. Documented inline.
-
-## Decisions to surface
-
-1. **Module name**: `:daemon:mcp` (recommended; mirrors
-   `:daemon:harness`) vs `:tools:mcp-server` (less specific but
-   future-proofs for non-daemon MCP needs). Recommend `:daemon:mcp`.
-2. **Ktor engine**: CIO (smaller, coroutine-native) vs Netty (more
-   mature). Recommend CIO; daemon-side traffic is tiny.
-3. **Tool naming**: `render_preview` (snake_case, MCP convention) vs
-   `renderPreview` (camelCase, Kotlin convention). MCP convention wins
-   per public-facing tool surface.
-4. **URI scheme**: confirm `compose-preview://` is fine (vs `file://`).
-   Recommend custom; covered in MCP.md decision 2.
-5. **Spawn responsibility**: MCP server spawns daemons via the
-   supervisor (recommended) vs MCP server requires the daemons to be
-   already-running. Recommended path means the agent doesn't need any
-   pre-flight setup; trade-off is the supervisor has to know how to
-   invoke Gradle (Tooling API or shell-out).
-6. **HTTP auth model for v2**: bearer-token? mTLS? OAuth (since MCP
-   spec has hooks for it)? Defer; gate on actual remote-agent demand.
-
 ## Cross-references
 
-- [MCP.md](MCP.md) — high-level design; this doc is the
-  Option-A-implementation specifics.
-- [PROTOCOL.md](PROTOCOL.md) — the daemon's wire format the MCP shim
+- [MCP.md](MCP.md) — high-level mapping.
+- [PROTOCOL.md](PROTOCOL.md) — the daemon wire format the MCP shim
   translates from.
-- [DESIGN.md § 4](DESIGN.md#4-architecture) — daemon architecture; MCP
-  server is one of the consumers enumerated there.
-- [TEST-HARNESS.md](TEST-HARNESS.md) — pattern to follow for an MCP
-  integration test that spawns the server as a subprocess and drives
-  it with a real client (extends to MCP via the SDK's `Client` class).
-- [io.modelcontextprotocol/kotlin-sdk](https://github.com/modelcontextprotocol/kotlin-sdk)
-  — the SDK; pin a version once we start work.
+- [LAYERING.md](LAYERING.md) — module-boundary rules; MCP is Layer 3.
+- [TEST-HARNESS.md](TEST-HARNESS.md) — pattern the harness follows for
+  spawning real daemons; MCP's `RealMcpEndToEndTest` reuses the same
+  shape.
+- [HISTORY.md § "Layer 3 — MCP mapping"](HISTORY.md#layer-3--mcp-mapping)
+  — history-resource mapping details.

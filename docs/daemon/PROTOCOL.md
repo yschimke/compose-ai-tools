@@ -113,7 +113,7 @@ Result:
   capabilities: {
     incrementalDiscovery: boolean;   // false in v1.0; true once Tier-2 lands
     sandboxRecycle: boolean;
-    leakDetection: ("light" | "heavy")[];
+    leakDetection: ("light" | "heavy")[];   // reserved; always [] today (TODO B2.4)
   };
   classpathFingerprint: string;      // SHA-256 hex of the resolved test classpath
   manifest: {
@@ -398,6 +398,8 @@ Emitted after every Tier-2 incremental discovery that changed the set.
 
 Render failures are not protocol errors — `renderNow` succeeded in queueing the work. A failure here means the render itself blew up.
 
+> **Implementation gap:** the daemon currently emits `kind: "internal"` for every render failure regardless of the underlying cause; the `compile` / `runtime` / `capture` / `timeout` discriminants are reserved on the wire but not yet populated. Clients should treat any `kind` value as opaque text until this lands.
+
 ### `classpathDirty`
 
 ```ts
@@ -410,7 +412,12 @@ Render failures are not protocol errors — `renderNow` succeeded in queueing th
 
 Sent at most once per daemon lifetime. After this notification the daemon refuses all `renderNow` (returning `ClasspathDirty`) and exits within `daemon.classpathDirtyGraceMs` (default 2000ms) to give the client time to consume the message and re-bootstrap.
 
-### `sandboxRecycle`
+### `sandboxRecycle` (reserved; not yet emitted)
+
+> Reserved for the sandbox-recycle work (TODO B2.4 / B2.5 / B2.6). The
+> wire shape is locked so a future client can be coded against it; the
+> daemon does not currently emit it. Sandbox age counters keep growing
+> for the host's lifetime today.
 
 ```ts
 {
@@ -424,7 +431,9 @@ Sent at most once per daemon lifetime. After this notification the daemon refuse
 
 Informational. Always followed by either an immediate resumption or a `daemonWarming`.
 
-### `daemonWarming`
+### `daemonWarming` (reserved; not yet emitted)
+
+> Reserved alongside `sandboxRecycle`. Not emitted today.
 
 ```ts
 { etaMs: number }                    // best-effort estimate; client shows spinner
@@ -432,7 +441,9 @@ Informational. Always followed by either an immediate resumption or a `daemonWar
 
 Sent when no warm spare is ready and the next render is blocked on sandbox build. Followed by `daemonReady` when render service resumes.
 
-### `daemonReady`
+### `daemonReady` (reserved; not yet emitted)
+
+> Reserved alongside `daemonWarming`. Not emitted today.
 
 ```ts
 {}
