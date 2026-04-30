@@ -17,6 +17,7 @@ import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
+import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -31,6 +32,14 @@ let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
+let historyPanel: HistoryPanel | null = null;
+/**
+ * Mutable closure for the history panel's read/diff fall-back path.
+ * `buildHistorySource` captures this object once at panel-construction time
+ * and reads `.current` at call-time so we never need to re-instantiate the
+ * source when the user navigates between modules.
+ */
+const historyScopeRef: { current: HistoryScope | null } = { current: null };
 /** Tracks the most recent preview set per module for daemon focus computation.
  *  The daemon path doesn't re-issue `discoverPreviews` on every save — it
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
@@ -219,6 +228,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             // Gradle, which re-bootstraps a fresh daemon when the user
             // re-enables it via composePreviewDaemonStart.
         },
+        onHistoryAdded: (_moduleId, params) => {
+            // Phase H7 — daemon push: a fresh render landed and was
+            // archived. Forward to the History panel; the panel filters
+            // by `entry.module` against the currently-scoped module so an
+            // unrelated render in a background module doesn't pop the
+            // timeline.
+            historyPanel?.onHistoryAdded(params);
+        },
     }, outputChannel);
 
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
@@ -244,6 +261,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     }
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(PreviewPanel.viewId, panel),
+    );
+
+    // Phase H7 — Preview History panel (HISTORY.md § "VS Code integration").
+    // Live when `composePreview.experimental.daemon.enabled` is true; falls
+    // back to reading `<projectDir>/.compose-preview-history/index.jsonl` +
+    // sidecars when the daemon isn't healthy. View shows up unconditionally
+    // — the view container is contributed in package.json — but its content
+    // is empty when no Kotlin file is in scope. The setScope() driver is
+    // wired below into the active-editor change events.
+    historyScopeRef.current = null;
+    historyPanel = new HistoryPanel(
+        context.extensionUri,
+        buildHistorySource({
+            isDaemonReady: (moduleId) => daemonGate?.isDaemonReady(moduleId) ?? false,
+            daemonList: async (scope) => {
+                const client = await daemonGate?.getOrSpawn(
+                    scope.moduleId, daemonScheduler!.daemonEvents(scope.moduleId),
+                );
+                if (!client) { throw new Error('daemon unavailable'); }
+                return client.historyList({ previewId: scope.previewId });
+            },
+            daemonRead: async (id) => {
+                const moduleId = historyScopeRef.current?.moduleId;
+                if (!moduleId) { throw new Error('no scope'); }
+                const client = await daemonGate?.getOrSpawn(
+                    moduleId, daemonScheduler!.daemonEvents(moduleId),
+                );
+                if (!client) { throw new Error('daemon unavailable'); }
+                return client.historyRead({ id, inline: false });
+            },
+            daemonDiff: async (fromId, toId) => {
+                const moduleId = historyScopeRef.current?.moduleId;
+                if (!moduleId) { throw new Error('no scope'); }
+                const client = await daemonGate?.getOrSpawn(
+                    moduleId, daemonScheduler!.daemonEvents(moduleId),
+                );
+                if (!client) { throw new Error('daemon unavailable'); }
+                return client.historyDiff({ from: fromId, to: toId, mode: 'metadata' });
+            },
+            currentScope: historyScopeRef.current,
+            logger: outputChannel,
+        }),
+    );
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(HistoryPanel.viewId, historyPanel),
     );
 
     context.subscriptions.push(
@@ -807,6 +869,8 @@ async function refresh(
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
         currentScopeFile = null;
+        historyScopeRef.current = null;
+        historyPanel?.setScope(null);
         if (activeFile && isPreviewSourceFile(activeFile)) {
             maybeShowSetupPrompt(activeFile);
         }
@@ -815,6 +879,14 @@ async function refresh(
     logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
 
     currentScopeFile = activeFile;
+    // Phase H7 — re-scope the History panel alongside the live panel.
+    // `projectDir` is the consumer module's absolute path; we synthesize
+    // it from workspaceRoot + module here because GradleService keeps
+    // modules as relative slash-paths.
+    const projectDir = path.join(gradleService.workspaceRoot, module);
+    const newScope: HistoryScope = { moduleId: module, projectDir };
+    historyScopeRef.current = newScope;
+    historyPanel?.setScope(newScope);
     const modules = [module];
     // Package-qualified path (e.g. `com/example/samplewear/Previews.kt`) so
     // files with the same basename in different packages don't collide.

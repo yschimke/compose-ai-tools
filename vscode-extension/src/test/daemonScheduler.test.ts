@@ -351,4 +351,52 @@ describe('DaemonScheduler', () => {
             assert.deepStrictEqual(gradle.bootstrapCalls, []);
         });
     });
+
+    describe('onHistoryAdded forwarding (Phase H7)', () => {
+        it('passes the daemon notification through with the right moduleId', async () => {
+            const gate = new FakeGate();
+            const log: string[] = [];
+            const seen: { moduleId: string; entry: unknown }[] = [];
+            const scheduler = new DaemonScheduler(
+                gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
+                {
+                    onPreviewImageReady: () => {},
+                    onRenderFailed: () => {},
+                    onClasspathDirty: () => {},
+                    onHistoryAdded: (moduleId, params) => seen.push({ moduleId, entry: params.entry }),
+                },
+                { appendLine: (s) => log.push(s) },
+            );
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onHistoryAdded?: (params: { entry: unknown }) => void;
+            };
+            evts.onHistoryAdded!({ entry: { id: 'abc', previewId: 'X' } });
+            assert.strictEqual(seen.length, 1);
+            assert.strictEqual(seen[0].moduleId, 'mod');
+            assert.deepStrictEqual(seen[0].entry, { id: 'abc', previewId: 'X' });
+        });
+
+        it('is a no-op when the caller didn\'t register an onHistoryAdded handler', async () => {
+            // No `onHistoryAdded` on SchedulerEvents (it's optional). The
+            // scheduler must tolerate that — daemon pushes still arrive,
+            // they just go nowhere.
+            const gate = new FakeGate();
+            const scheduler = new DaemonScheduler(
+                gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
+                {
+                    onPreviewImageReady: () => {},
+                    onRenderFailed: () => {},
+                    onClasspathDirty: () => {},
+                    // no onHistoryAdded
+                },
+            );
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onHistoryAdded?: (params: { entry: unknown }) => void;
+            };
+            // Doesn't throw.
+            evts.onHistoryAdded!({ entry: { id: 'abc' } });
+        });
+    });
 });

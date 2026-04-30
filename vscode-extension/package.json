@@ -57,6 +57,12 @@
                     "type": "webview",
                     "id": "composePreview.panel",
                     "name": "Previews"
+                },
+                {
+                    "type": "webview",
+                    "id": "composePreview.historyPanel",
+                    "name": "History",
+                    "when": "config.composePreview.experimental.daemon.enabled"
                 }
             ]
         },

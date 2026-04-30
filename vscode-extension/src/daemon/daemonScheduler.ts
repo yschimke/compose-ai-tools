@@ -5,6 +5,7 @@ import { DaemonGate } from './daemonGate';
 import {
     FileChangeType,
     FileKind,
+    HistoryAddedParams,
     RenderFinishedParams,
     RenderTier,
 } from './daemonProtocol';
@@ -31,6 +32,9 @@ export interface SchedulerEvents {
      * renders for this module and the caller should re-run Gradle.
      */
     onClasspathDirty: (moduleId: string, detail: string) => void;
+    /** Phase H2 — daemon archived a render. Forwarded to the History
+     *  panel; optional because the panel may not exist in test mode. */
+    onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
 }
 
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
@@ -230,7 +234,15 @@ export class DaemonScheduler {
         }
     }
 
-    private daemonEvents(moduleId: string) {
+    /**
+     * Builds the [DaemonClientEvents]-shaped bag the gate registers per
+     * module. Public so `extension.ts`'s history-source wiring can reuse
+     * the same events bag when issuing one-off `historyList` /
+     * `historyRead` / `historyDiff` calls — the gate's daemon registry
+     * keys on identity equivalence of the events bag, so reusing the
+     * same one keeps a single live registration.
+     */
+    daemonEvents(moduleId: string) {
         return {
             onRenderFinished: (params: RenderFinishedParams) => {
                 this.handleRenderFinished(moduleId, params);
@@ -245,6 +257,9 @@ export class DaemonScheduler {
                     if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
                 }
                 this.events.onClasspathDirty(moduleId, params.detail);
+            },
+            onHistoryAdded: (params: HistoryAddedParams) => {
+                this.events.onHistoryAdded?.(moduleId, params);
             },
             onChannelClosed: () => {
                 // Daemon died; clear caches so the next call re-issues them
