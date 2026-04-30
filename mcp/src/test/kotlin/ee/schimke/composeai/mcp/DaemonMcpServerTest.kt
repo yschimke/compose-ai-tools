@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.After
 import org.junit.Before
@@ -97,6 +98,8 @@ class DaemonMcpServerTest {
         "unwatch",
         "list_watches",
         "notify_file_changed",
+        "set_visible",
+        "set_focus",
         "history_list",
         "history_diff",
       )
@@ -382,7 +385,7 @@ class DaemonMcpServerTest {
   }
 
   @Test
-  fun `historyAdded notification triggers resources list_changed push`() {
+  fun `historyAdded fires list_changed only for sessions interested in the matching live URI`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
@@ -405,6 +408,14 @@ class DaemonMcpServerTest {
       }
       put("renderTookMs", 1L)
     }
+
+    // Without any subscription/watch the targeted fan-out is silent — historyAdded fires for an
+    // unrelated session and the test client sees nothing.
+    daemon.emitHistoryAdded(entry)
+    Thread.sleep(200) // small buffer in case a notification was about to arrive
+    // Now subscribe the live preview's URI; the next historyAdded should fire list_changed.
+    val liveUri = PreviewUri(workspaceId, ":module", "com.example.X").toUri()
+    client.request("resources/subscribe", buildJsonObject { put("uri", liveUri) })
     daemon.emitHistoryAdded(entry)
     val n = client.expectNotification("notifications/resources/list_changed", 2_000)
     assertThat(n.method).isEqualTo("notifications/resources/list_changed")
@@ -499,6 +510,44 @@ class DaemonMcpServerTest {
     val blobB = (parsedB.contents.single() as ResourceContents.Blob).blob
     assertThat(java.util.Base64.getDecoder().decode(blobA)).isEqualTo(pngBytes)
     assertThat(java.util.Base64.getDecoder().decode(blobB)).isEqualTo(pngBytes)
+  }
+
+  @Test
+  fun `set_visible and set_focus tools forward ids verbatim to the matching daemon`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+
+    val visResp =
+      client.callTool(
+        "set_visible",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("module", ":module")
+          putJsonArray("ids") {
+            add(JsonPrimitive("com.example.A"))
+            add(JsonPrimitive("com.example.B"))
+          }
+        },
+      )
+    assertThat(visResp.firstTextContent()).contains("forwarded 2 id(s)")
+    val visible = daemon.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(visible).isEqualTo(listOf("com.example.A", "com.example.B"))
+
+    val focusResp =
+      client.callTool(
+        "set_focus",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("module", ":module")
+          putJsonArray("ids") { add(JsonPrimitive("com.example.A")) }
+        },
+      )
+    assertThat(focusResp.firstTextContent()).contains("forwarded 1 id(s)")
+    val focus = daemon.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(focus).isEqualTo(listOf("com.example.A"))
   }
 
   @Test

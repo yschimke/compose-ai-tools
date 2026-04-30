@@ -480,6 +480,46 @@ class DaemonMcpServer(
           ),
       ),
       ToolDef(
+        name = "set_visible",
+        description =
+          "Override the daemon's visible-preview set for one (workspace, module) directly. The watch propagator's setVisible derives from registered watches; this tool lets an agent express \"these previews are on screen right now\" without a long-lived watch. Sets the daemon's visible filter to the given preview FQNs verbatim. The watch propagator's next recompute (e.g. on `discoveryUpdated` or `watch`/`unwatch`) will replace whatever set_visible set.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "module":{"type":"string","description":"Gradle module path."},
+                "ids":{"type":"array","items":{"type":"string"},"description":"Preview FQNs (e.g. com.example.PreviewsKt.RedSquare)."}
+              },
+              "required":["workspaceId","module","ids"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "set_focus",
+        description =
+          "Override the daemon's focused-preview set. Same shape as set_visible — focus is the higher-priority slice the daemon renders first when its queue drains. Use when an agent is about to read a specific preview and wants to express \"render this one ahead of others\".",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "module":{"type":"string"},
+                "ids":{"type":"array","items":{"type":"string"}}
+              },
+              "required":["workspaceId","module","ids"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
         name = "history_diff",
         description =
           "Diff two history entries by id (metadata mode only — pixel mode is reserved for daemon phase H5). Returns `{pngHashChanged, fromMetadata, toMetadata}`. Cross-source: `from` and `to` may live on different `HistorySource`s (LocalFs vs git-ref), so this is the load-bearing call for \"did my edit change rendered output vs the version on main?\".",
@@ -517,6 +557,8 @@ class DaemonMcpServer(
       "unwatch" -> toolUnwatch(session, args)
       "list_watches" -> toolListWatches(session)
       "notify_file_changed" -> toolNotifyFileChanged(args)
+      "set_visible" -> toolSetVisible(args)
+      "set_focus" -> toolSetFocus(args)
       "history_list" -> toolHistoryList(args)
       "history_diff" -> toolHistoryDiff(args)
       else -> errorCallToolResult("unknown tool: $name")
@@ -693,6 +735,47 @@ class DaemonMcpServer(
     val daemon =
       runCatching { supervisor.daemonFor(workspaceId, module) }.getOrNull() ?: return null
     return daemon to module
+  }
+
+  private fun toolSetVisible(args: JsonObject): CallToolResult =
+    forwardVisibilityCall(args, "set_visible") { daemon, ids -> daemon.client.setVisible(ids) }
+
+  private fun toolSetFocus(args: JsonObject): CallToolResult =
+    forwardVisibilityCall(args, "set_focus") { daemon, ids -> daemon.client.setFocus(ids) }
+
+  /**
+   * Shared body for [toolSetVisible] / [toolSetFocus]: parse + validate args, look up the daemon,
+   * forward the wire call. The two tools differ only in which `setVisible` / `setFocus` method they
+   * invoke on the daemon client.
+   */
+  private fun forwardVisibilityCall(
+    args: JsonObject,
+    toolName: String,
+    forward: (SupervisedDaemon, List<String>) -> Unit,
+  ): CallToolResult {
+    val ws =
+      args["workspaceId"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("$toolName: missing 'workspaceId'")
+    val workspaceId = WorkspaceId(ws)
+    if (supervisor.project(workspaceId) == null) {
+      return errorCallToolResult("$toolName: workspace '$ws' not registered")
+    }
+    val module =
+      args["module"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("$toolName: missing 'module'")
+    val ids =
+      (args["ids"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+        ?: return errorCallToolResult("$toolName: missing 'ids' array")
+    val daemon =
+      runCatching { supervisor.daemonFor(workspaceId, module) }
+        .getOrElse {
+          return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
+        }
+    runCatching { forward(daemon, ids) }
+      .onFailure {
+        return errorCallToolResult("$toolName: wire call failed: ${it.message}")
+      }
+    return textCallToolResult("$toolName: forwarded ${ids.size} id(s) to $module")
   }
 
   private fun toolHistoryList(args: JsonObject): CallToolResult {
@@ -915,10 +998,10 @@ class DaemonMcpServer(
         config = entry?.config,
       )
     val uriStr = uri.toUri()
-    val targets = mutableSetOf<Any>()
+    val targets = mutableSetOf<Session>()
     targets.addAll(subscriptions.sessionsSubscribedTo(uriStr))
     targets.addAll(subscriptions.sessionsWatching(uri))
-    targets.forEach { (it as? McpSession)?.notifyResourceUpdated(uriStr) }
+    targets.forEach { it.notifyResourceUpdated(uriStr) }
     // 3. Record history (no-op default).
     runCatching { historyStore.record(uri, pngPath, Instant.now()) }
   }
@@ -953,23 +1036,44 @@ class DaemonMcpServer(
    */
   /**
    * The daemon's `historyAdded` notification carries one new [HistoryEntry] per render. Per
-   * HISTORY.md § Subscriptions, the MCP mapping fires `notifications/resources/list_changed` so:
+   * HISTORY.md § Subscriptions, only sessions that have expressed interest in the affected preview
+   * should receive the list-grew signal:
    *
-   * - clients that subscribed to a `compose-preview-history://…` URI for THIS preview re-list (the
-   *   entry set grew),
-   * - clients that subscribed to the *live* `compose-preview://…` URI also re-list (HISTORY.md §
-   *   "Resources/subscribe" makes this explicit — subscribers to the live URI receive
-   *   `list_changed` whenever a new history entry lands for it).
+   * - subscribers to the matching live `compose-preview://…` URI ("subscribers to the live URI
+   *   receive `list_changed` whenever a new history entry lands for it"),
+   * - sessions whose watch set (workspace/module/glob) covers the URI.
    *
-   * Cheap signal: a single repo-wide `notifications/resources/list_changed` covers both cases
-   * without the supervisor having to remember which URIs are subscribed. Clients that care filter
-   * their next `resources/list` by URI prefix.
+   * The previous implementation broadcast `list_changed` to every connected session on every
+   * render. Clients with no interest in this preview were forced to filter their entire resource
+   * list on every save — a significant noise multiplier with multiple workspaces or hot save loops.
+   * The targeted form costs one extra parse (extract `entry.previewId`) per event.
+   *
+   * Falls back to a session-registry-wide broadcast when the entry payload is malformed (no
+   * previewId field, or fails to parse) — a degraded but safe behaviour that ensures clients still
+   * re-list on history events the supervisor can't classify.
    */
   private fun onHistoryAdded(daemon: SupervisedDaemon, params: JsonObject?) {
-    // No state to update here — history is owned by the daemon, served on demand by
-    // history/list / history/read. We only need to tell connected MCP sessions that the resource
-    // list grew.
-    sessions.forEach { it.notifyResourceListChanged() }
+    val entry = params?.get("entry") as? JsonObject
+    val previewFqn = entry?.get("previewId")?.jsonPrimitive?.contentOrNull
+    if (previewFqn == null) {
+      // Degraded fallback: tell everyone, the way we used to.
+      sessions.forEach { it.notifyResourceListChanged() }
+      return
+    }
+    val configValue =
+      (entry["previewMetadata"] as? JsonObject)?.get("config")?.jsonPrimitive?.contentOrNull
+    val liveUri =
+      PreviewUri(
+        workspaceId = daemon.workspaceId,
+        modulePath = daemon.modulePath,
+        previewFqn = previewFqn,
+        config = configValue,
+      )
+    val liveUriStr = liveUri.toUri()
+    val targets = mutableSetOf<Session>()
+    targets.addAll(subscriptions.sessionsSubscribedTo(liveUriStr))
+    targets.addAll(subscriptions.sessionsWatching(liveUri))
+    targets.forEach { it.notifyResourceListChanged() }
   }
 
   private fun onClasspathDirty(daemon: SupervisedDaemon, params: JsonObject?) {

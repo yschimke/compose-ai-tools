@@ -14,36 +14,36 @@ import java.util.concurrent.ConcurrentHashMap
  *   prioritises rendering it via `setVisible`/`setFocus` on the appropriate daemons, and pushes
  *   per-URI updates as renders complete. Re-expansion happens on `discoveryUpdated`.
  *
- * Sessions are opaque — we identify them by `Any` reference equality so the MCP transport layer
+ * Sessions are opaque — we identify them by `Session` reference equality so the MCP transport layer
  * (which owns the actual session object) decides what counts as a session. In v0 every connected
  * MCP client is one session; HTTP transport later may multiplex.
  */
 class Subscriptions {
 
   /** URI → set of session refs subscribed to it. */
-  private val byUri = ConcurrentHashMap<String, MutableSet<Any>>()
+  private val byUri = ConcurrentHashMap<String, MutableSet<Session>>()
 
   /** Session ref → its watch sets. */
-  private val watches = ConcurrentHashMap<Any, MutableList<WatchEntry>>()
+  private val watches = ConcurrentHashMap<Session, MutableList<WatchEntry>>()
 
-  fun subscribe(uri: String, session: Any) {
+  fun subscribe(uri: String, session: Session) {
     val set = byUri.computeIfAbsent(uri) { ConcurrentHashMap.newKeySet() }
     set.add(session)
   }
 
-  fun unsubscribe(uri: String, session: Any) {
+  fun unsubscribe(uri: String, session: Session) {
     byUri[uri]?.remove(session)
   }
 
   /** Registers a watch entry for [session]. Returns the entry so the tool can echo it back. */
-  fun watch(session: Any, entry: WatchEntry): WatchEntry {
+  fun watch(session: Session, entry: WatchEntry): WatchEntry {
     val list = watches.computeIfAbsent(session) { mutableListOf() }
     synchronized(list) { list.add(entry) }
     return entry
   }
 
   /** Removes every watch for [session] matching [predicate]. Returns the number removed. */
-  fun unwatch(session: Any, predicate: (WatchEntry) -> Boolean): Int {
+  fun unwatch(session: Session, predicate: (WatchEntry) -> Boolean): Int {
     val list = watches[session] ?: return 0
     return synchronized(list) {
       val before = list.size
@@ -53,16 +53,16 @@ class Subscriptions {
   }
 
   /** Drops all subscriptions and watches owned by [session]. Called on session disconnect. */
-  fun forget(session: Any) {
+  fun forget(session: Session) {
     byUri.values.forEach { it.remove(session) }
     watches.remove(session)
   }
 
   /** Sessions currently subscribed to [uri]. */
-  fun sessionsSubscribedTo(uri: String): Set<Any> = byUri[uri]?.toSet() ?: emptySet()
+  fun sessionsSubscribedTo(uri: String): Set<Session> = byUri[uri]?.toSet() ?: emptySet()
 
   /** Watch entries registered by [session], snapshot. */
-  fun watchesFor(session: Any): List<WatchEntry> =
+  fun watchesFor(session: Session): List<WatchEntry> =
     watches[session]?.let { synchronized(it) { it.toList() } } ?: emptyList()
 
   /**
@@ -70,8 +70,8 @@ class Subscriptions {
    * who didn't explicitly `subscribe` but did `watch` a glob covering the URI. A session that both
    * subscribed AND watched is returned once (set semantics).
    */
-  fun sessionsWatching(uri: PreviewUri): Set<Any> {
-    val out = mutableSetOf<Any>()
+  fun sessionsWatching(uri: PreviewUri): Set<Session> {
+    val out = mutableSetOf<Session>()
     for ((session, entries) in watches) {
       val list = synchronized(entries) { entries.toList() }
       if (list.any { it.matches(uri) }) out.add(session)
@@ -100,8 +100,8 @@ class Subscriptions {
   }
 
   /** Snapshot of every (session, watch) pair — for diagnostics / `list_watches` tool. */
-  fun snapshotAllWatches(): List<Pair<Any, WatchEntry>> {
-    val out = mutableListOf<Pair<Any, WatchEntry>>()
+  fun snapshotAllWatches(): List<Pair<Session, WatchEntry>> {
+    val out = mutableListOf<Pair<Session, WatchEntry>>()
     for ((session, entries) in watches) {
       val list = synchronized(entries) { entries.toList() }
       list.forEach { out.add(session to it) }
