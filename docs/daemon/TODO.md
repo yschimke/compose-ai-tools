@@ -688,6 +688,23 @@ A1.1 unblocks C1.2; B1.5 unblocks C1.3; B2.5 unblocks C2.3. Otherwise streams ar
 
 ---
 
+## Phase H — Preview history (parallel to Phase 2)
+
+Tracking the daemon-side history phases from [HISTORY.md § "Phasing"](HISTORY.md#phasing).
+
+- **H1 — Daemon writes sidecar + index entry per render** ✅ landed
+- **H2 — `history/list` + `history/read` + `historyAdded` notification** ✅ landed
+- **H3 — `history/diff` (metadata mode)** — still open
+- **H4 — Auto-prune + `historyPruned` notification** — still open
+- **H5 — `history/diff` (pixel mode + diff PNG)** — still open
+- H6+ (MCP / VS Code / git refs / cross-worktree merging) — see HISTORY.md table.
+
+H1+H2 ship behind the existing `composePreview.experimental.daemon { enabled = true }` gate. The
+gradle plugin's daemon launch descriptor will gain `composeai.daemon.historyDir` emission in a
+follow-up; until then, agents and ad-hoc launches set the sysprop directly.
+
+---
+
 ## Risks to track per task
 
 If an agent hits one of these mid-task, raise immediately rather than working around it:

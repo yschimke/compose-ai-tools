@@ -35,6 +35,16 @@ class FakeHarnessLauncher(
   private val classpath: List<File>,
   private val mainClass: String = "ee.schimke.composeai.daemon.harness.FakeDaemonMain",
   private val extraJvmArgs: List<String> = emptyList(),
+  /**
+   * H1+H2 — when non-null, sets `-Dcomposeai.daemon.historyDir=<path>` on the spawned JVM so
+   * [FakeDaemonMain] wires a [HistoryManager]. Default null = no history, pre-H1 behaviour.
+   */
+  private val historyDir: File? = null,
+  /**
+   * H1+H2 — workspace root for git-provenance resolution. Optional; defaults to the spawned JVM's
+   * cwd (the harness module's project dir under Gradle test execution).
+   */
+  private val workspaceRoot: File? = null,
 ) : HarnessLauncher {
 
   override val name: String = "fake"
@@ -52,6 +62,9 @@ class FakeHarnessLauncher(
         // Match the in-process integration test's idle timeout — keeps harness scenarios snappy
         // when a misbehaving test forgets to send `exit`.
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
+        if (historyDir != null) add("-Dcomposeai.daemon.historyDir=${historyDir.absolutePath}")
+        if (workspaceRoot != null)
+          add("-Dcomposeai.daemon.workspaceRoot=${workspaceRoot.absolutePath}")
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)

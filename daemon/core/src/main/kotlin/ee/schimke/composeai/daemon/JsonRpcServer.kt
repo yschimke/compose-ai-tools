@@ -1,10 +1,19 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.history.HistoryEntry
+import ee.schimke.composeai.daemon.history.HistoryFilter
+import ee.schimke.composeai.daemon.history.HistoryManager
+import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
 import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.HistoryAddedParams
+import ee.schimke.composeai.daemon.protocol.HistoryListParams
+import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryReadParams
+import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -27,7 +36,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.lang.management.ManagementFactory
+import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -116,6 +127,14 @@ class JsonRpcServer(
    * behaviour as before phase 2 landed.
    */
   private val incrementalDiscovery: IncrementalDiscovery? = null,
+  /**
+   * H1+H2 — when non-null, every successful render produces a sidecar + index entry on disk
+   * (HISTORY.md § "What this PR lands § H1") and emits a `historyAdded` notification. The
+   * `history/list` and `history/read` requests dispatch into this manager. When null (in-process
+   * tests, fake-mode harness scenarios that don't opt in), history calls return empty / not-found
+   * and `historyAdded` notifications never fire — pre-H1 behaviour.
+   */
+  private val historyManager: HistoryManager? = null,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -284,6 +303,8 @@ class JsonRpcServer(
       "initialize" -> handleInitialize(req)
       "renderNow" -> handleRenderNow(req)
       "shutdown" -> handleShutdown(req)
+      "history/list" -> handleHistoryList(req)
+      "history/read" -> handleHistoryRead(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -491,7 +512,198 @@ class JsonRpcServer(
     val tookMs = result.metrics?.get("tookMs") ?: 0L
     val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), finished))
+    // H1 — record the render to history, if configured. Wrapped in a fail-open try/catch so a
+    // history write failure never blocks the renderFinished wire-format. The render's notification
+    // has already been sent above; history is observation, not state.
+    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
+  }
+
+  /**
+   * H1 — reads the render's PNG bytes off disk (when [RenderResult.pngPath] is non-null and the
+   * file exists), sha256s them, and writes a sidecar + index entry via [historyManager]. Emits
+   * `historyAdded` after the entry has been persisted.
+   *
+   * Skips when:
+   * - [historyManager] is null or disabled (the pre-H1 default for in-process tests).
+   * - `result.pngPath` is null or the file doesn't exist (B1.5-era stub hosts; the daemon-stub
+   *   placeholder path that was never written to disk).
+   *
+   * Failures are logged to stderr and swallowed. The render itself is unaffected.
+   */
+  private fun recordHistoryForRender(
+    previewId: String,
+    result: RenderResult,
+    finished: RenderFinishedParams,
+  ) {
+    val mgr = historyManager ?: return
+    if (!mgr.isEnabled) return
+    val pngPath = result.pngPath ?: return
+    val pngFile = Path.of(pngPath)
+    if (!Files.exists(pngFile)) {
+      // Stub-host path — pngPath is the deterministic `daemon-stub-${id}.png` placeholder that
+      // never actually lands on disk. Skip silently; this is the pre-H1 behaviour for stub hosts.
+      return
+    }
+    val pngBytes =
+      try {
+        Files.readAllBytes(pngFile)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
+            "(${t.javaClass.simpleName}: ${t.message}); skipping history entry"
+        )
+        return
+      }
+    val previewMetadata =
+      previewIndex.byId(previewId)?.let {
+        PreviewMetadataSnapshot(
+          displayName = it.displayName,
+          group = it.group,
+          sourceFile = it.sourceFile,
+          config = null,
+        )
+      }
+    val entry =
+      try {
+        mgr.recordRender(
+          previewId = previewId,
+          pngBytes = pngBytes,
+          trigger = "renderNow",
+          triggerDetail = null,
+          renderTookMs = finished.tookMs,
+          metrics = finished.metrics,
+          previewMetadata = previewMetadata,
+        )
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: history: HistoryManager.recordRender($previewId) threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+        )
+        return
+      }
+    if (entry != null) {
+      sendNotification(
+        "historyAdded",
+        encode(HistoryAddedParams.serializer(), HistoryAddedParams(entry = encodeHistoryEntry(entry))),
+      )
+    }
+  }
+
+  private fun encodeHistoryEntry(entry: HistoryEntry): JsonElement =
+    json.encodeToJsonElement(HistoryEntry.serializer(), entry)
+
+  private fun handleHistoryList(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, HistoryListParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid history/list params: ${e.message}",
+        )
+        return
+      }
+    val mgr = historyManager
+    if (mgr == null || !mgr.isEnabled) {
+      sendResponse(
+        req.id,
+        encode(
+          HistoryListResult.serializer(),
+          HistoryListResult(entries = emptyList(), nextCursor = null, totalCount = 0),
+        ),
+      )
+      return
+    }
+    val filter =
+      HistoryFilter(
+        previewId = params.previewId,
+        since = params.since,
+        until = params.until,
+        limit = params.limit,
+        cursor = params.cursor,
+        branch = params.branch,
+        branchPattern = params.branchPattern,
+        commit = params.commit,
+        worktreePath = params.worktreePath,
+        agentId = params.agentId,
+        sourceKind = params.sourceKind,
+        sourceId = params.sourceId,
+      )
+    val page =
+      try {
+        mgr.list(filter)
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/list failed: ${t.message}",
+        )
+        return
+      }
+    val result =
+      HistoryListResult(
+        entries = page.entries.map { encodeHistoryEntry(it) },
+        nextCursor = page.nextCursor,
+        totalCount = page.totalCount,
+      )
+    sendResponse(req.id, encode(HistoryListResult.serializer(), result))
+  }
+
+  private fun handleHistoryRead(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, HistoryReadParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid history/read params: ${e.message}",
+        )
+        return
+      }
+    val mgr = historyManager
+    if (mgr == null || !mgr.isEnabled) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_ENTRY_NOT_FOUND,
+        message = "history not configured",
+      )
+      return
+    }
+    val read =
+      try {
+        mgr.read(params.id, includeBytes = params.inline)
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/read failed: ${t.message}",
+        )
+        return
+      }
+    if (read == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_ENTRY_NOT_FOUND,
+        message = "history entry not found: ${params.id}",
+      )
+      return
+    }
+    val previewMetadataElem =
+      read.previewMetadata?.let {
+        json.encodeToJsonElement(PreviewMetadataSnapshot.serializer(), it)
+      }
+    val pngBase64 = read.pngBytes?.let { Base64.getEncoder().encodeToString(it) }
+    val dto =
+      HistoryReadResultDto(
+        entry = encodeHistoryEntry(read.entry),
+        previewMetadata = previewMetadataElem,
+        pngPath = read.pngPath,
+        pngBytes = pngBase64,
+      )
+    sendResponse(req.id, encode(HistoryReadResultDto.serializer(), dto))
   }
 
   private fun emitRenderFailed(failure: RenderResultOrFailure.Failure) {
@@ -959,6 +1171,16 @@ class JsonRpcServer(
 
     /** PROTOCOL.md § 5 — `renderNow` rejected because the daemon will exit imminently. */
     const val ERR_CLASSPATH_DIRTY: Int = -32002
+
+    /** HISTORY.md § "Error codes" — `history/read` referenced a missing entry id. */
+    const val ERR_HISTORY_ENTRY_NOT_FOUND: Int = -32010
+
+    /**
+     * HISTORY.md § "Error codes" — `history/diff` was given two entries from different previews.
+     * Reserved in the wire enum even though `history/diff` itself isn't implemented in H1+H2 (lands
+     * in H3+); pinned here so the code constant is part of the locked surface.
+     */
+    const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }

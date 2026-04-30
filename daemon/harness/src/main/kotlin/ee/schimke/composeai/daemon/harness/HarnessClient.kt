@@ -4,6 +4,10 @@ import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.HistoryListParams
+import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryReadParams
+import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -139,6 +143,55 @@ private constructor(
   ) {
     val n = JsonRpcNotification(method = method, params = params)
     sendFrame(json.encodeToString(JsonRpcNotification.serializer(), n))
+  }
+
+  /** H1+H2 — drives `history/list`. Mirrors the wire shape from HISTORY.md § "Layer 2". */
+  fun historyList(params: HistoryListParams = HistoryListParams()): HistoryListResult {
+    val id = nextId.getAndIncrement()
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "history/list",
+        params = json.encodeToJsonElement(HistoryListParams.serializer(), params),
+      )
+    val response = sendAndPoll(id, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("history/list: no result — error=${response["error"]}, full=${response}")
+    return json.decodeFromJsonElement(HistoryListResult.serializer(), resultElem)
+  }
+
+  /** H1+H2 — drives `history/read`. */
+  fun historyRead(id: String, inline: Boolean = false): HistoryReadResultDto {
+    val rpcId = nextId.getAndIncrement()
+    val params = HistoryReadParams(id = id, inline = inline)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "history/read",
+        params = json.encodeToJsonElement(HistoryReadParams.serializer(), params),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("history/read: no result — error=${response["error"]}, full=${response}")
+    return json.decodeFromJsonElement(HistoryReadResultDto.serializer(), resultElem)
+  }
+
+  /**
+   * H1+H2 — like [historyRead] but returns the raw response so callers can assert on
+   * `error.code == -32010` (HistoryEntryNotFound).
+   */
+  fun historyReadRaw(id: String, inline: Boolean = false): JsonObject {
+    val rpcId = nextId.getAndIncrement()
+    val params = HistoryReadParams(id = id, inline = inline)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "history/read",
+        params = json.encodeToJsonElement(HistoryReadParams.serializer(), params),
+      )
+    return sendAndPoll(rpcId, request, 10.seconds)
   }
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */
