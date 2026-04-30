@@ -3,8 +3,13 @@ package ee.schimke.composeai.daemon.history
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlin.io.path.exists
 import kotlin.io.path.readBytes
 import kotlin.io.path.readText
@@ -142,6 +147,211 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
   }
 
   /**
+   * H4 — applies the pruning policy from HISTORY.md § "Pruning policy". Loads the index newest-
+   * first, runs the three-pass cascade (age → per-preview count → total size), enforces the
+   * "never drop the most recent entry per preview" floor, then either:
+   *
+   * - **Dry run** ([dryRun] = true): returns the would-remove set + freed bytes; does NOT touch
+   *   disk.
+   * - **Live** ([dryRun] = false): deletes sidecar `.json` files; deletes PNG files only when no
+   *   surviving sidecar references the same file (dedup-by-hash means N sidecars may share one
+   *   PNG); rewrites `index.jsonl` atomically (write-temp-then-atomic-rename) so an interrupted
+   *   prune leaves either the old or the new index — never partial.
+   *
+   * Failures in individual file deletes are logged to stderr and swallowed — pruning never fails
+   * the daemon. The on-disk archive is self-healing on the next pass.
+   */
+  override fun prune(config: HistoryPruneConfig, dryRun: Boolean): PruneResult {
+    val indexFile = historyDir.resolve(INDEX_FILENAME)
+    if (!indexFile.exists()) return PruneResult.EMPTY
+
+    // Load every entry from the index — self-heals against missing sidecars + malformed lines.
+    // Sort newest-first by `timestamp` then `id`. The append-order from production writes is
+    // already chronological, but explicit sort makes prune robust against backdated entries
+    // (e.g. tests that write in reversed temporal order, or future migration tools).
+    val all: List<HistoryEntry> =
+      readIndexNewestFirst(indexFile)
+        .sortedWith(compareByDescending<HistoryEntry> { it.timestamp }.thenByDescending { it.id })
+    if (all.isEmpty()) return PruneResult.EMPTY
+
+    // Compute the "must always survive" set: most recent entry per previewId. This floor applies
+    // throughout — every pruning pass intersects against this set so a violator who happens to be
+    // the only/most-recent entry for its preview survives.
+    val mostRecentPerPreview: Map<String, String> =
+      buildMap {
+        // `all` is newest-first, so the FIRST occurrence of each previewId is the most recent.
+        for (entry in all) {
+          if (!containsKey(entry.previewId)) put(entry.previewId, entry.id)
+        }
+      }
+
+    // Tracks ids marked for removal. Uses LinkedHashSet for stable iteration (= test-friendly).
+    val toRemove = LinkedHashSet<String>()
+
+    fun protect(entry: HistoryEntry): Boolean = mostRecentPerPreview[entry.previewId] == entry.id
+
+    // -----------------------------------------------------------------------------------
+    // Pass 1 — age. Drop entries with timestamp < (now - maxAgeDays).
+    // -----------------------------------------------------------------------------------
+    if (config.maxAgeDays > 0) {
+      val cutoff = Instant.now().minusSeconds(config.maxAgeDays.toLong() * 86_400L)
+      val cutoffString = OffsetDateTime.ofInstant(cutoff, ZoneOffset.UTC).format(ISO_TS)
+      for (entry in all) {
+        if (entry.id in toRemove) continue
+        if (protect(entry)) continue
+        if (entry.timestamp < cutoffString) toRemove.add(entry.id)
+      }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Pass 2 — per-preview count. Keep newest N per preview; mark the rest for removal.
+    // -----------------------------------------------------------------------------------
+    if (config.maxEntriesPerPreview > 0) {
+      val grouped: Map<String, List<HistoryEntry>> =
+        all.filter { it.id !in toRemove }.groupBy { it.previewId }
+      for ((_, group) in grouped) {
+        // group is in original (newest-first) order — Kotlin's groupBy preserves first-encounter
+        // order. Survivors = first N; older are pruned.
+        val excess = group.drop(config.maxEntriesPerPreview)
+        for (entry in excess) {
+          if (protect(entry)) continue
+          toRemove.add(entry.id)
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Pass 3 — total size. If surviving set still exceeds maxTotalSizeBytes, drop oldest first.
+    // -----------------------------------------------------------------------------------
+    if (config.maxTotalSizeBytes > 0L) {
+      val survivors = all.filter { it.id !in toRemove }
+      var totalSize = survivors.sumOf { it.pngSize }
+      if (totalSize > config.maxTotalSizeBytes) {
+        // Walk oldest → newest, drop until under threshold. `survivors` is newest-first, so iterate
+        // in reverse.
+        for (entry in survivors.asReversed()) {
+          if (totalSize <= config.maxTotalSizeBytes) break
+          if (protect(entry)) continue
+          if (entry.id in toRemove) continue
+          toRemove.add(entry.id)
+          totalSize -= entry.pngSize
+        }
+      }
+    }
+
+    if (toRemove.isEmpty()) return PruneResult.EMPTY
+
+    val removedEntries = all.filter { it.id in toRemove }
+    val survivors = all.filter { it.id !in toRemove }
+
+    // Compute freedBytes — only count entries whose PNG file actually goes away. A sidecar B'
+    // pointing at the same `<id>.png` filename as a surviving sidecar B leaves the PNG on disk.
+    // For dedup-by-hash, multiple sidecars may share one PNG: the dedup-target's sidecar's pngPath
+    // is the *original* PNG's filename, so survivors[].pngPath stays referenced as long as one
+    // sidecar with that pngPath survives.
+    val survivingPngPaths: Set<Pair<String, String>> = // (sanitisedPreviewDir, pngPath)
+      survivors.mapTo(HashSet()) { PreviewIdSanitiser.sanitise(it.previewId) to it.pngPath }
+    val freedBytes =
+      removedEntries.sumOf { entry ->
+        val key = PreviewIdSanitiser.sanitise(entry.previewId) to entry.pngPath
+        if (key in survivingPngPaths) 0L else entry.pngSize
+      }
+
+    if (dryRun) {
+      return PruneResult(
+        removedEntryIds = removedEntries.map { it.id },
+        freedBytes = freedBytes,
+      )
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Live mode — actually mutate disk.
+    // -----------------------------------------------------------------------------------
+    // 1. Rewrite the index first (atomic via tempfile + rename). If anything below fails, the
+    //    survivor entries are still readable; orphaned PNGs are tolerable (they're effectively
+    //    leaked bytes that the next prune can re-discover via timestamp comparison).
+    val indexTempFile = historyDir.resolve("$INDEX_FILENAME.tmp")
+    try {
+      val sb = StringBuilder()
+      // index.jsonl is append-order = oldest first. survivors is newest-first; reverse for write.
+      for (entry in survivors.asReversed()) {
+        // Match the live append shape: same fields as the sidecar, minus previewMetadata.
+        val indexEntry = entry.copy(previewMetadata = null)
+        sb.append(JSON.encodeToString(HistoryEntry.serializer(), indexEntry))
+        sb.append('\n')
+      }
+      Files.write(
+        indexTempFile,
+        sb.toString().toByteArray(StandardCharsets.UTF_8),
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+      )
+      try {
+        Files.move(
+          indexTempFile,
+          indexFile,
+          StandardCopyOption.ATOMIC_MOVE,
+          StandardCopyOption.REPLACE_EXISTING,
+        )
+      } catch (_: Throwable) {
+        // ATOMIC_MOVE is not supported on every filesystem (older NFS, some Windows configs);
+        // fall back to a non-atomic rename. The window between the two is tiny and the survivors
+        // are still bytewise complete on disk in the tempfile until rename finishes.
+        Files.move(indexTempFile, indexFile, StandardCopyOption.REPLACE_EXISTING)
+      }
+    } catch (t: Throwable) {
+      // Index rewrite failed → bail out without touching sidecars / PNGs. Leaves the on-disk
+      // state untouched (since the index move never landed). Try to clean the tempfile.
+      try {
+        Files.deleteIfExists(indexTempFile)
+      } catch (_: Throwable) {
+        // ignore
+      }
+      System.err.println(
+        "compose-ai-daemon: LocalFsHistorySource.prune: index rewrite failed " +
+          "(${t.javaClass.simpleName}: ${t.message}); leaving archive untouched"
+      )
+      return PruneResult.EMPTY
+    }
+
+    // 2. Delete sidecars for every removed entry.
+    for (entry in removedEntries) {
+      val sanitised = PreviewIdSanitiser.sanitise(entry.previewId)
+      val sidecar = historyDir.resolve(sanitised).resolve("${entry.id}.json")
+      try {
+        Files.deleteIfExists(sidecar)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: LocalFsHistorySource.prune: sidecar delete failed for " +
+            "$sidecar (${t.javaClass.simpleName}: ${t.message})"
+        )
+      }
+    }
+
+    // 3. Delete PNGs for removed entries — only when no surviving sidecar references the file.
+    for (entry in removedEntries) {
+      val sanitised = PreviewIdSanitiser.sanitise(entry.previewId)
+      val key = sanitised to entry.pngPath
+      if (key in survivingPngPaths) continue
+      val pngFile = historyDir.resolve(sanitised).resolve(entry.pngPath)
+      try {
+        Files.deleteIfExists(pngFile)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: LocalFsHistorySource.prune: PNG delete failed for " +
+            "$pngFile (${t.javaClass.simpleName}: ${t.message})"
+        )
+      }
+    }
+
+    return PruneResult(
+      removedEntryIds = removedEntries.map { it.id },
+      freedBytes = freedBytes,
+    )
+  }
+
+  /**
    * Walks the per-preview directory looking for the most recent (lex-sorted) sidecar whose pngHash
    * matches [hash]. Returns the relative PNG filename of the match, or null when no match.
    */
@@ -253,6 +463,9 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       encodeDefaults = false
       prettyPrint = false
     }
+
+    /** Pinned ISO-8601 UTC formatter for prune-cutoff comparisons. */
+    private val ISO_TS: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     /** SHA-256 hex of [bytes]. */
     fun sha256Hex(bytes: ByteArray): String {

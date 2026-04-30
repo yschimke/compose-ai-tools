@@ -430,3 +430,58 @@ data class HistoryDiffResult(
   val ssim: Double? = null,
   val diffPngPath: String? = null,
 )
+
+// ---------------------------------------------------------------------------
+// H4 — `history/prune` request + `historyPruned` notification. See HISTORY.md
+// § "Pruning policy" + § "historyPruned".
+// ---------------------------------------------------------------------------
+
+/**
+ * Manual prune trigger. Each parameter is optional and overrides the daemon's configured default
+ * for THIS call only — the auto-prune scheduler keeps using its configured defaults. Set any value
+ * to `0` or negative to disable that knob (e.g. `maxAgeDays: 0` → no age-based pruning).
+ *
+ * `dryRun = true` returns the would-remove set without touching disk.
+ */
+@Serializable
+data class HistoryPruneParams(
+  val maxEntriesPerPreview: Int? = null,
+  val maxAgeDays: Int? = null,
+  val maxTotalSizeBytes: Long? = null,
+  val dryRun: Boolean = false,
+)
+
+@Serializable
+data class HistoryPruneSourceResult(
+  val removedEntryIds: List<String>,
+  val freedBytes: Long,
+)
+
+/**
+ * Result of `history/prune`. [removedEntries] / [freedBytes] are the cross-source aggregate;
+ * [sourceResults] is the per-source breakdown keyed by `HistorySource.id` (only writable sources
+ * are listed — read-only git/HTTP sources don't participate in pruning).
+ */
+@Serializable
+data class HistoryPruneResult(
+  val removedEntries: List<String>,
+  val freedBytes: Long,
+  val sourceResults: Map<String, HistoryPruneSourceResult>,
+)
+
+/**
+ * `historyPruned` notification (HISTORY.md § "historyPruned"). Emitted after each NON-EMPTY prune
+ * pass — auto-prune passes that removed nothing produce no notification.
+ */
+@Serializable
+data class HistoryPrunedParams(
+  val removedIds: List<String>,
+  val freedBytes: Long,
+  val reason: PruneReasonWire,
+)
+
+@Serializable
+enum class PruneReasonWire {
+  @SerialName("auto") AUTO,
+  @SerialName("manual") MANUAL,
+}

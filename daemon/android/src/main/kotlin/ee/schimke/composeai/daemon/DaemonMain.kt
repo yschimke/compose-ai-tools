@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
+import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import java.io.File
 import java.nio.file.Path
 
@@ -162,10 +163,13 @@ fun main(args: Array<String>) {
     } else null
   // H10-read — see desktop DaemonMain for the design rationale.
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+  // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
+  val pruneConfig = HistoryPruneConfig.fromSysprops()
   val historyManager: HistoryManager? =
     historyDirProp?.let { dir ->
       System.err.println(
-        "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs})"
+        "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
+          "pruneConfig=$pruneConfig)"
       )
       HistoryManager.forLocalFsAndGitRefs(
         historyDir = Path.of(dir),
@@ -173,6 +177,7 @@ fun main(args: Array<String>) {
         gitProvenance = gitProvenance,
         gitRefs = gitRefHistoryRefs,
         repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+        pruneConfig = pruneConfig,
       )
     }
 

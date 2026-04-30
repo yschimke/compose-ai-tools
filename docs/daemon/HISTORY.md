@@ -635,25 +635,30 @@ result: {
 `mode = "pixel"` runs a real pixel comparison and writes a diff PNG
 into a sibling `.diffs/` subfolder for the consumer to read.
 
-### `history/prune` (request, client → daemon)
+### `history/prune` (request, client → daemon) — H4 landed
 
 ```ts
 params: {
-  maxEntriesPerPreview?: number;
+  maxEntriesPerPreview?: number;     // null → daemon-configured default; 0 / negative → disabled
   maxAgeDays?: number;
-  maxSizeBytes?: number;
-  dryRun?: boolean;
+  maxTotalSizeBytes?: number;
+  dryRun?: boolean;                  // default false
 }
 result: {
-  removedEntries: string[];        // ids
+  removedEntries: string[];          // ids removed (or would be in dry-run)
   freedBytes: number;
+  sourceResults: { [sourceId: string]: { removedEntryIds: string[]; freedBytes: number } };
 }
 ```
 
 Manual prune trigger. Auto-prune runs on a configurable interval
-(default 1h) using the same logic with config defaults. The dry-run
-mode lets a consumer ask "what would auto-prune do?" without
+(default 1h) using the same logic with the daemon's defaults. The
+dry-run mode lets a consumer ask "what would auto-prune do?" without
 mutating the archive.
+
+`sourceResults` is keyed by `HistorySource.id`. Only WRITABLE sources
+participate — read-only `GitRefHistorySource` / HTTP backends are
+skipped (their pruning is the producer's concern).
 
 ### `historyAdded` (notification, daemon → client)
 
@@ -800,18 +805,37 @@ PR #311; there is no second writer to coordinate with.
 
 ## Pruning policy
 
-Configured via the existing `composePreview { … }` DSL plus a new
-nested block:
+H4 — landed via `HistoryPruneConfig` in `:daemon:core`. The production
+daemon mains read defaults from sysprops on the spawned JVM:
+
+| knob | default | sysprop |
+|---|---|---|
+| `maxEntriesPerPreview` | 50 | `composeai.daemon.history.maxEntriesPerPreview` |
+| `maxAgeDays` | 14 | `composeai.daemon.history.maxAgeDays` |
+| `maxTotalSizeBytes` | 500_000_000 (500 MB) | `composeai.daemon.history.maxTotalSizeBytes` |
+| `autoPruneIntervalMs` | 3_600_000 (1 hour) | `composeai.daemon.history.autoPruneIntervalMs` |
+
+Setting any individual knob to `0` or negative disables that knob — e.g.
+`-Dcomposeai.daemon.history.maxAgeDays=0` skips the age pass entirely.
+
+**All-off behaviour.** When EVERY knob is `≤ 0`, the auto-prune scheduler
+never starts — no thread, no work, zero overhead. This is the safety
+hatch for users who want to manage prune cadence externally (e.g. a
+nightly Gradle task) or who prefer never to prune at all.
+
+The Layer 1 DSL nested block lands separately (out of scope for H4 —
+gradle plugin will translate `composePreview { history { … } }` to the
+sysprops above in a follow-up):
 
 ```kotlin
 composePreview {
   history {
     enabled = true                 // existing
     dir = file(".history")         // existing
-    maxEntriesPerPreview = 50      // new; default 50
-    maxAgeDays = 14                // new; default 14
-    maxTotalSizeBytes = 500_000_000 // new; default 500 MB
-    autoPruneIntervalMin = 60      // new; daemon-only; default 60min
+    maxEntriesPerPreview = 50      // future Layer-1 wiring
+    maxAgeDays = 14
+    maxTotalSizeBytes = 500_000_000
+    autoPruneIntervalMin = 60
   }
 }
 ```
@@ -828,9 +852,25 @@ Pruning never drops the most recent entry per preview, even if it
 violates a size cap — the diff feature requires at least one prior
 entry to be useful.
 
-The daemon emits `historyPruned` after each auto-prune. Manual
-prunes (via `history/prune`) emit one notification with the full
-removed set.
+**Index atomicity.** The index rewrite is tempfile-then-atomic-rename so
+an interrupted prune leaves either the old or the new index — never a
+partial one. Sidecar / PNG deletes are best-effort (a failure logs to
+stderr but doesn't abort the prune; orphaned files self-heal on the
+next pass).
+
+**PNG dedup-aware delete.** Multiple sidecars may share one PNG file
+(dedup-by-hash). When a sidecar is removed but a SURVIVING sidecar
+still references the same PNG, the PNG file stays on disk. `freedBytes`
+in [PruneResult] only counts entries whose PNG actually got deleted.
+
+**Read-only sources.** `GitRefHistorySource` and any future read-only
+backend (HTTP) skip pruning entirely — read-only from the daemon's
+perspective; cleanup is the producer's concern.
+
+The daemon emits `historyPruned` after each NON-EMPTY auto-prune pass.
+Empty (no-op) passes do not emit a notification (don't spam clients).
+Manual prunes (via `history/prune`) emit one notification with the full
+removed set, with `reason: "manual"`. Dry-run prunes never emit.
 
 ## Layering rules
 
@@ -871,7 +911,7 @@ index; old indices stay readable as v0.
 | **H1** | Daemon writes sidecar + index entry per render | Layer 2 | — |
 | **H2** | `history/list` + `history/read` + `historyAdded` notification | Layer 2 | H1 |
 | ~~**H3**~~ | ~~`history/diff` (metadata mode)~~ | Layer 2 | H2 — landed |
-| **H4** | Auto-prune + `historyPruned` notification | Layer 2 | H2 |
+| ~~**H4**~~ | ~~Auto-prune + `historyPruned` notification~~ | Layer 2 | H2 — landed |
 | **H5** | `history/diff` (pixel mode + diff PNG) | Layer 2 | H3 |
 | **H6** | MCP resource + tool mapping | Layer 3 | H2 + `:daemon:mcp` phase 2 |
 | **H7** | VS Code Preview History panel | extension | H2 |

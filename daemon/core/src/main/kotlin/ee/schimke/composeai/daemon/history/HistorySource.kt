@@ -106,4 +106,25 @@ interface HistorySource {
 
   /** Reads one entry by id. Returns null when the id isn't present in this source. */
   fun read(entryId: String, includeBytes: Boolean = false): HistoryReadResult?
+
+  /**
+   * H4 — applies the pruning policy from [config] to this source's storage. Read-only sources
+   * (git-ref, HTTP) return [PruneResult.EMPTY] without touching anything; the daemon doesn't write
+   * to those backends, so cleanup is the producer's concern.
+   *
+   * **Pruning order** (HISTORY.md § "Pruning policy"):
+   * 1. Age — drop entries with `timestamp < now - maxAgeDays`.
+   * 2. Per-preview count — keep newest [HistoryPruneConfig.maxEntriesPerPreview] per preview.
+   * 3. Total size — if surviving set still exceeds [HistoryPruneConfig.maxTotalSizeBytes], drop
+   *    oldest entries across all previews until under threshold.
+   *
+   * Each pass operates on the survivor set from the previous; the most-recent entry per preview
+   * is NEVER dropped (HISTORY.md: "diff requires at least one prior entry to be useful").
+   *
+   * **Dry-run mode** ([dryRun] = true) computes the removal set + freed bytes without touching
+   * disk. Useful for "what would auto-prune do?" probes from a consumer.
+   *
+   * Each individual knob set to `0` or negative is treated as disabled — that pass is skipped.
+   */
+  fun prune(config: HistoryPruneConfig, dryRun: Boolean = false): PruneResult = PruneResult.EMPTY
 }
