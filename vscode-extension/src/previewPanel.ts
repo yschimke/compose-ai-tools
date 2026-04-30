@@ -405,6 +405,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 card.appendChild(buildFrameControls(card));
             }
 
+            observeCardForViewport(card);
             return card;
         }
 
@@ -723,6 +724,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             for (const [id, card] of existingCards) {
                 if (!newIds.has(id)) {
                     cardCaptures.delete(id);
+                    intersecting.delete(id);
+                    if (intersectionObserver) intersectionObserver.unobserve(card);
                     card.remove();
                 }
             }
@@ -966,6 +969,101 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // re-read the list on every image (re)load without re-querying the
         // DOM for data attributes.
         const cardA11yFindings = new Map();
+
+        // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
+        // Webview owns the geometry. Extension's daemon scheduler consumes
+        // the published snapshot; when the daemon path is off the extension
+        // simply ignores these messages.
+        const intersecting = new Set();
+        let lastScrollTop = 0;
+        let lastScrollAt = 0;
+        let scrollVelocity = 0; // px/ms, +ve = scrolling down
+        let viewportDebounce = null;
+
+        const intersectionObserver = ('IntersectionObserver' in window)
+            ? new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    const id = entry.target.dataset.previewId;
+                    if (!id) continue;
+                    if (entry.isIntersecting) intersecting.add(id);
+                    else intersecting.delete(id);
+                }
+                scheduleViewportPublish();
+            }, { root: null, rootMargin: '0px', threshold: 0.1 })
+            : null;
+
+        function observeCardForViewport(card) {
+            if (intersectionObserver) intersectionObserver.observe(card);
+        }
+
+        function unobserveAllCards() {
+            if (!intersectionObserver) return;
+            intersecting.clear();
+            document.querySelectorAll('.preview-card').forEach(c => intersectionObserver.unobserve(c));
+        }
+
+        // Coalesce viewport publishes — IntersectionObserver fires per-card
+        // during a scroll burst; don't drown the daemon in setVisible spam.
+        function scheduleViewportPublish() {
+            if (viewportDebounce) return;
+            viewportDebounce = setTimeout(() => {
+                viewportDebounce = null;
+                publishViewport();
+            }, 120);
+        }
+
+        document.addEventListener('scroll', () => {
+            const now = performance.now();
+            const top = window.scrollY || document.documentElement.scrollTop || 0;
+            const dt = Math.max(1, now - lastScrollAt);
+            const dy = top - lastScrollTop;
+            // Light EMA so a single jittery frame doesn't flip the predicted set.
+            scrollVelocity = scrollVelocity * 0.4 + (dy / dt) * 0.6;
+            lastScrollAt = now;
+            lastScrollTop = top;
+            scheduleViewportPublish();
+        }, { passive: true });
+
+        // Project the next-page IDs based on scroll direction. Velocity is
+        // signed (px/ms): positive = scrolling down → predict cards below
+        // the lowest currently-visible card; negative = predict above.
+        function predictNextIds() {
+            if (Math.abs(scrollVelocity) < 0.05) return [];
+            const visibleCards = Array.from(document.querySelectorAll('.preview-card'))
+                .filter(c => intersecting.has(c.dataset.previewId)
+                    && !c.classList.contains('filtered-out'));
+            if (visibleCards.length === 0) return [];
+            const allCards = Array.from(document.querySelectorAll('.preview-card'))
+                .filter(c => !c.classList.contains('filtered-out'));
+            // Cards are in DOM order; pick the ones immediately ahead of the
+            // last visible (or before the first) up to a bounded count.
+            const PREDICT_AHEAD = 4;
+            const ids = [];
+            if (scrollVelocity > 0) {
+                const lastVisibleIdx = allCards.indexOf(visibleCards[visibleCards.length - 1]);
+                for (let i = lastVisibleIdx + 1; i < allCards.length && ids.length < PREDICT_AHEAD; i++) {
+                    const id = allCards[i].dataset.previewId;
+                    if (id && !intersecting.has(id)) ids.push(id);
+                }
+            } else {
+                const firstVisibleIdx = allCards.indexOf(visibleCards[0]);
+                for (let i = firstVisibleIdx - 1; i >= 0 && ids.length < PREDICT_AHEAD; i--) {
+                    const id = allCards[i].dataset.previewId;
+                    if (id && !intersecting.has(id)) ids.push(id);
+                }
+            }
+            return ids;
+        }
+
+        function publishViewport() {
+            const visible = Array.from(intersecting);
+            const predicted = predictNextIds();
+            vscode.postMessage({
+                command: 'viewportUpdated',
+                visible,
+                predicted,
+            });
+        }
 
         window.addEventListener('message', event => {
             const msg = event.data;
