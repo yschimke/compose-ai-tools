@@ -19,10 +19,10 @@ import java.net.URLClassLoader
  * cached `Class<?>`.
  *
  * Per [Decision 2](../../../../../../docs/daemon/CLASSLOADER.md#decisions-made) this lives in
- * `:daemon:core`. It's renderer-agnostic: a `URLClassLoader` lifecycle holder doesn't
- * touch Compose, Robolectric, or any backend specifics. Both [RenderHost] implementations
- * (`DesktopHost` and `RobolectricHost`) construct one against the user-class-dirs sysprop wired by
- * the gradle plugin's launch descriptor.
+ * `:daemon:core`. It's renderer-agnostic: a `URLClassLoader` lifecycle holder doesn't touch
+ * Compose, Robolectric, or any backend specifics. Both [RenderHost] implementations (`DesktopHost`
+ * and `RobolectricHost`) construct one against the user-class-dirs sysprop wired by the gradle
+ * plugin's launch descriptor.
  *
  * **Thread-safety.** The holder is read by the render thread and mutated by the JSON-RPC read
  * thread (when `handleFileChanged` arrives). All access goes through `synchronized(this)` — the

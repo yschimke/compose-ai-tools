@@ -102,12 +102,12 @@ object HarnessTestSupport {
     System.getProperty("composeai.harness.regenerate")?.equals("true", ignoreCase = true) == true
 
   /**
-   * Resolves a real-mode baseline PNG path under
-   * `daemon/harness/baselines/<target>/<scenario>` relative to the harness module's working
-   * directory. The path is materialised lazily by [diffOrCaptureBaseline] — callers don't need to
-   * mkdir. Defaults to the current `-Ptarget=` (desktop unless overridden); D-harness.v2 added the
-   * per-target split so Robolectric's bitmap output and Skiko's bitmap output (which won't be
-   * byte-identical for "the same composable") have separate baselines per target.
+   * Resolves a real-mode baseline PNG path under `daemon/harness/baselines/<target>/<scenario>`
+   * relative to the harness module's working directory. The path is materialised lazily by
+   * [diffOrCaptureBaseline] — callers don't need to mkdir. Defaults to the current `-Ptarget=`
+   * (desktop unless overridden); D-harness.v2 added the per-target split so Robolectric's bitmap
+   * output and Skiko's bitmap output (which won't be byte-identical for "the same composable") have
+   * separate baselines per target.
    */
   fun baselineFile(scenario: String, name: String, target: String = harnessTarget()): File {
     val rel = File("baselines/$target/$scenario/$name")
@@ -339,8 +339,8 @@ fun writePreviewsManifest(fixtureDir: File, previewIds: List<String>) {
 
 /**
  * **B2.2 phase 2 overload** — emits one preview row per `(id, sourceFile)` pair. When `sourceFile`
- * is non-null it's serialised into the row so the daemon-side [PreviewIndex] anchors the preview
- * to that file path; the fake-mode S3 scenario uses this so a `fileChanged` against the same path
+ * is non-null it's serialised into the row so the daemon-side [PreviewIndex] anchors the preview to
+ * that file path; the fake-mode S3 scenario uses this so a `fileChanged` against the same path
  * produces a `discoveryUpdated` with `removed = [id]`.
  */
 @JvmName("writePreviewsManifestWithSources")

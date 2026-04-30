@@ -82,10 +82,10 @@ class RenderEngine(
       RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
     /**
      * B2.3 — per-host measurement context. The host owns its own [SandboxLifecycleStats] (start
-     * time + render counter); the engine simply reads from it at metrics-population time and
-     * bumps the counter once per render. Defaults to a fresh per-call instance for unit tests
-     * that drive the engine directly without a host wrapper — the resulting metrics are still
-     * populated, just with a sandbox-age that resets on every test render.
+     * time + render counter); the engine simply reads from it at metrics-population time and bumps
+     * the counter once per render. Defaults to a fresh per-call instance for unit tests that drive
+     * the engine directly without a host wrapper — the resulting metrics are still populated, just
+     * with a sandbox-age that resets on every test render.
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {

@@ -67,16 +67,16 @@ class FakeHarnessLauncher(
 }
 
 /**
- * Spawns the real desktop daemon — `ee.schimke.composeai.daemon.DaemonMain` from
- * `:daemon:desktop` — for D-harness.v1.5a's `-Pharness.host=real` mode.
+ * Spawns the real desktop daemon — `ee.schimke.composeai.daemon.DaemonMain` from `:daemon:desktop`
+ * — for D-harness.v1.5a's `-Pharness.host=real` mode.
  *
  * **Classpath resolution (Option A from the v1.5a task brief).** The harness module deliberately
- * does not depend on `:daemon:desktop` in production code — that would tie the
- * renderer-agnostic harness production classpath to a specific renderer. We add the dep as
- * `testImplementation` only, so the harness's *test* `java.class.path` includes the desktop
- * daemon's main classes (`DaemonMain`, `DesktopHost`, `RenderEngine`, `RenderSpec`) and Compose
- * Desktop / Skiko's `compose.desktop.currentOs` native bundle. The production classpath is
- * unaffected — the renderer-agnostic invariant from
+ * does not depend on `:daemon:desktop` in production code — that would tie the renderer-agnostic
+ * harness production classpath to a specific renderer. We add the dep as `testImplementation` only,
+ * so the harness's *test* `java.class.path` includes the desktop daemon's main classes
+ * (`DaemonMain`, `DesktopHost`, `RenderEngine`, `RenderSpec`) and Compose Desktop / Skiko's
+ * `compose.desktop.currentOs` native bundle. The production classpath is unaffected — the
+ * renderer-agnostic invariant from
  * [DESIGN § 4](../../../../docs/daemon/DESIGN.md#renderer-agnostic-surface) holds where it matters.
  *
  * **System properties on the spawned JVM:**
@@ -140,8 +140,8 @@ class RealDesktopHarnessLauncher(
 }
 
 /**
- * Spawns the real Android daemon — `ee.schimke.composeai.daemon.DaemonMain` from
- * `:daemon:android` — for D-harness.v2's `-Ptarget=android` mode.
+ * Spawns the real Android daemon — `ee.schimke.composeai.daemon.DaemonMain` from `:daemon:android`
+ * — for D-harness.v2's `-Ptarget=android` mode.
  *
  * **The JVM entry point is identical to the desktop launcher.** The package is
  * `ee.schimke.composeai.daemon` in both modules, just different runtime classpaths. The Android
@@ -200,12 +200,12 @@ class RealAndroidHarnessLauncher(
     /**
      * Returns the spawned-daemon classpath the harness build wired up via
      * `composeai.harness.androidDaemonClasspath` (a file listing one absolute JAR path per line).
-     * D-harness.v2's harness build resolves `:daemon:android`'s runtime classpath +
-     * testFixtures into that file at task execution time so the harness's plain JVM test runtime
-     * (which can't natively consume Android library variants) doesn't have to handle AGP variant
-     * resolution. Returns null if the property is unset — tests that need the Android daemon gate
-     * themselves with `Assume.assumeTrue(target == "android")` and the harness build only sets the
-     * property when `-Ptarget=android`-compatible test runs are configured.
+     * D-harness.v2's harness build resolves `:daemon:android`'s runtime classpath + testFixtures
+     * into that file at task execution time so the harness's plain JVM test runtime (which can't
+     * natively consume Android library variants) doesn't have to handle AGP variant resolution.
+     * Returns null if the property is unset — tests that need the Android daemon gate themselves
+     * with `Assume.assumeTrue(target == "android")` and the harness build only sets the property
+     * when `-Ptarget=android`-compatible test runs are configured.
      */
     fun classpathFromProperty(): List<File>? {
       val path = System.getProperty("composeai.harness.androidDaemonClasspath") ?: return null

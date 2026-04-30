@@ -11,10 +11,10 @@ import kotlinx.serialization.json.Json
  *
  * Mirrors the test-only `SpecRoutingHost` from
  * [JsonRpcDesktopIntegrationTest][ee.schimke.composeai.daemon.JsonRpcDesktopIntegrationTest], but
- * lives in the main source set so [DaemonMain] can mount it when spawned by
- * `:daemon:harness`'s `RealDesktopHarnessLauncher`. Without this routing the real daemon
- * (driven by `JsonRpcServer.handleRenderNow`, which only forwards `previewId=<id>` in the payload —
- * see `JsonRpcServer.kt` line ~352) would fall through to [DesktopHost.dispatchRender]'s
+ * lives in the main source set so [DaemonMain] can mount it when spawned by `:daemon:harness`'s
+ * `RealDesktopHarnessLauncher`. Without this routing the real daemon (driven by
+ * `JsonRpcServer.handleRenderNow`, which only forwards `previewId=<id>` in the payload — see
+ * `JsonRpcServer.kt` line ~352) would fall through to [DesktopHost.dispatchRender]'s
  * `renderStubFallback` path, producing no PNG.
  *
  * **Activated only when** `-Dcomposeai.harness.previewsManifest=<path>` is set on the JVM —

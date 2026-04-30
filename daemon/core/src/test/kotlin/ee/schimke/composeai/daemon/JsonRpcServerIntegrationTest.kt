@@ -32,8 +32,8 @@ import org.junit.Test
  *
  * Uses a [FakeRenderHost] that bypasses any backend (no Robolectric sandbox, no desktop Compose
  * runtime) so the test is deterministic and fast (sub-second). The real-host smoke test for the
- * Robolectric backend lives in `:daemon:android`'s `DaemonHostTest`, which is separately
- * gated because Robolectric cold-boot is non-deterministic and incompatible with Gradle's default
+ * Robolectric backend lives in `:daemon:android`'s `DaemonHostTest`, which is separately gated
+ * because Robolectric cold-boot is non-deterministic and incompatible with Gradle's default
  * same-JVM test ordering (multiple `JUnitCore.runClasses` invocations in one JVM intermittently
  * hang on the second sandbox bootstrap).
  *
@@ -42,8 +42,8 @@ import org.junit.Test
  *
  * 1. The descriptor produced by Stream A's `composePreviewDaemonStart` task lives in
  *    `samples/android/build/...` and isn't available to a unit test classpath without a Gradle
- *    dependency on the consumer module — that would be a circular dep (`:daemon:android`
- *    consumes `:samples:android`).
+ *    dependency on the consumer module — that would be a circular dep (`:daemon:android` consumes
+ *    `:samples:android`).
  * 2. The real value the DoD wanted to prove — request → response → notification round-trip with a
  *    working host — is fully exercised here, including the no-mid-render-cancellation invariant (we
  *    drain the in-flight queue before resolving `shutdown`). A subprocess wrapper would only add
@@ -206,10 +206,10 @@ class JsonRpcServerIntegrationTest {
   }
 
   /**
-   * B2.2 phase 1 — when the daemon is constructed with a non-empty [PreviewIndex], the
-   * `initialize` response's `manifest` block reports the absolute path of the loaded
-   * `previews.json` and the count of previews known to the daemon. Mirrors the
-   * `initialize.classpathFingerprint` pin in the B2.1 test below.
+   * B2.2 phase 1 — when the daemon is constructed with a non-empty [PreviewIndex], the `initialize`
+   * response's `manifest` block reports the absolute path of the loaded `previews.json` and the
+   * count of previews known to the daemon. Mirrors the `initialize.classpathFingerprint` pin in the
+   * B2.1 test below.
    */
   @Test(timeout = 30_000)
   fun initialize_manifest_reports_preview_index_path_and_count() {
@@ -310,9 +310,9 @@ class JsonRpcServerIntegrationTest {
 
   /**
    * B2.2 phase 1 back-compat — when the daemon is constructed without a [PreviewIndex] (the
-   * default), `initialize.manifest` reports `path = ""` and `previewCount = 0`. Pins the
-   * pre-B2.2 stub shape so existing in-process callers that don't yet wire the index keep
-   * receiving the empty placeholder.
+   * default), `initialize.manifest` reports `path = ""` and `previewCount = 0`. Pins the pre-B2.2
+   * stub shape so existing in-process callers that don't yet wire the index keep receiving the
+   * empty placeholder.
    */
   @Test(timeout = 30_000)
   fun initialize_manifest_defaults_to_empty_index() {
@@ -603,11 +603,11 @@ class JsonRpcServerIntegrationTest {
 
   /**
    * B2.2 phase 2 — `fileChanged({kind: source, path: <.kt>})` against a daemon configured with a
-   * non-empty [PreviewIndex] AND a wired [IncrementalDiscovery] must emit `discoveryUpdated`
-   * within a couple of seconds with the diff against the cached index.
+   * non-empty [PreviewIndex] AND a wired [IncrementalDiscovery] must emit `discoveryUpdated` within
+   * a couple of seconds with the diff against the cached index.
    *
-   * The synthetic classpath has no `@Preview`-bearing classes, so the scoped scan returns empty
-   * and the diff carries `removed = [the index's preview]`.
+   * The synthetic classpath has no `@Preview`-bearing classes, so the scoped scan returns empty and
+   * the diff carries `removed = [the index's preview]`.
    */
   @Test(timeout = 30_000)
   fun fileChanged_source_emits_discoveryUpdated() {
@@ -695,15 +695,13 @@ class JsonRpcServerIntegrationTest {
       )
 
       val discoveryNotif =
-        pollUntil(received) {
-          it["method"]?.jsonPrimitive?.contentOrNull == "discoveryUpdated"
-        }
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "discoveryUpdated" }
       assertNotNull("discoveryUpdated notification must arrive", discoveryNotif)
       val params = discoveryNotif!!["params"]!!.jsonObject
       val removed =
-        params["removed"]
-          ?.let { (it as kotlinx.serialization.json.JsonArray).map { e -> e.jsonPrimitive.content } }
-          ?: emptyList()
+        params["removed"]?.let {
+          (it as kotlinx.serialization.json.JsonArray).map { e -> e.jsonPrimitive.content }
+        } ?: emptyList()
       assertEquals(listOf("Foo"), removed)
       assertEquals(0, params["totalPreviews"]?.jsonPrimitive?.intOrNull)
       // Verify the index was updated in-place.
@@ -728,8 +726,8 @@ class JsonRpcServerIntegrationTest {
 
   /**
    * B2.3 — when the host returns a `RenderResult.metrics` map carrying the four B2.3 keys,
-   * `JsonRpcServer.renderFinishedFromResult` translates them into a structured [RenderMetrics]
-   * on the wire.
+   * `JsonRpcServer.renderFinishedFromResult` translates them into a structured [RenderMetrics] on
+   * the wire.
    */
   @Test(timeout = 30_000)
   fun renderFinished_metrics_populated_when_host_supplies_all_four_b23_keys() {
@@ -752,22 +750,10 @@ class JsonRpcServerIntegrationTest {
           metricsField,
         )
         val metricsObj = metricsField!!.jsonObject
-        assertEquals(
-          100L,
-          metricsObj[RenderMetrics.KEY_HEAP_AFTER_GC_MB]?.jsonPrimitive?.long,
-        )
-        assertEquals(
-          200L,
-          metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.long,
-        )
-        assertEquals(
-          5L,
-          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]?.jsonPrimitive?.long,
-        )
-        assertEquals(
-          4321L,
-          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.long,
-        )
+        assertEquals(100L, metricsObj[RenderMetrics.KEY_HEAP_AFTER_GC_MB]?.jsonPrimitive?.long)
+        assertEquals(200L, metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.long)
+        assertEquals(5L, metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]?.jsonPrimitive?.long)
+        assertEquals(4321L, metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.long)
         // tookMs at the top level too — already wired pre-B2.3.
         assertEquals(7L, params["tookMs"]?.jsonPrimitive?.longOrNull)
       },
@@ -797,8 +783,8 @@ class JsonRpcServerIntegrationTest {
   /**
    * B2.3 partial-map path — when the host populates *some* B2.3 keys but not all four, the wire
    * still emits `metrics: null` (no half-populated objects) and the daemon warn-logs the gap.
-   * Pinned here to lock the JsonRpcServer behaviour; the partial-map outcome itself is unit-
-   * tested in [RenderMetricsFromFlatMapTest].
+   * Pinned here to lock the JsonRpcServer behaviour; the partial-map outcome itself is unit- tested
+   * in [RenderMetricsFromFlatMapTest].
    */
   @Test(timeout = 30_000)
   fun renderFinished_metrics_null_when_host_supplies_partial_map() {
@@ -822,9 +808,9 @@ class JsonRpcServerIntegrationTest {
   }
 
   /**
-   * Drives the initialize → renderNow → renderFinished round-trip against a custom
-   * [FakeRenderHost] and lets the caller assert on the `renderFinished.params` JSON. Factored out
-   * of the three B2.3 tests above so they can each focus on the metrics shape.
+   * Drives the initialize → renderNow → renderFinished round-trip against a custom [FakeRenderHost]
+   * and lets the caller assert on the `renderFinished.params` JSON. Factored out of the three B2.3
+   * tests above so they can each focus on the metrics shape.
    */
   private fun runRenderAndPollFinished(
     host: FakeRenderHost,
@@ -930,8 +916,8 @@ class JsonRpcServerIntegrationTest {
 /**
  * In-test [RenderHost] implementation that mimics a real backend's submit/shutdown contract without
  * bootstrapping anything heavy (Robolectric sandbox, Compose desktop runtime, …). Renderer-agnostic
- * by design: it lives alongside [JsonRpcServer] in `:daemon:core`, away from any specific
- * render backend.
+ * by design: it lives alongside [JsonRpcServer] in `:daemon:core`, away from any specific render
+ * backend.
  *
  * Renders complete instantly on a single dedicated worker thread, mirroring the real backends'
  * "single render thread" guarantee. The [interruptCount] counter spies on `Thread.interrupt()`
@@ -939,9 +925,9 @@ class JsonRpcServerIntegrationTest {
  */
 private class FakeRenderHost(
   /**
-   * If non-null, every successful render returns this map verbatim as `RenderResult.metrics`.
-   * Used by the B2.3 integration tests to drive `JsonRpcServer.renderFinishedFromResult` through
-   * its happy / partial / null branches.
+   * If non-null, every successful render returns this map verbatim as `RenderResult.metrics`. Used
+   * by the B2.3 integration tests to drive `JsonRpcServer.renderFinishedFromResult` through its
+   * happy / partial / null branches.
    */
   private val metricsToReturn: Map<String, Long>? = null
 ) : RenderHost {

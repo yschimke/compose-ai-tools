@@ -39,8 +39,8 @@ import org.junit.rules.TemporaryFolder
  * JVM. We deferred — same reasoning as B1.5's `JsonRpcServerIntegrationTest`:
  *
  * 1. Subprocess plumbing (ProcessBuilder + descriptor wiring) duplicates work that
- *    `:daemon:harness`'s `HarnessClient` already implements; D-harness.v1.5 will hit this
- *    code path against a real spawned daemon as part of its `-Pharness.host=real` flip.
+ *    `:daemon:harness`'s `HarnessClient` already implements; D-harness.v1.5 will hit this code path
+ *    against a real spawned daemon as part of its `-Pharness.host=real` flip.
  * 2. The wire-layer round-trip + real-render assertion the DoD wants to prove are fully exercised
  *    in-process. A subprocess would only add `ProcessBuilder` plumbing on top.
  *

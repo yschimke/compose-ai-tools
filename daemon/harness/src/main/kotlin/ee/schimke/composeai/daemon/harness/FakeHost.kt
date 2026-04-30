@@ -61,12 +61,12 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
   private val sidecarCache = ConcurrentHashMap<String, ResolvedSidecars>()
 
   /**
-   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so `sandboxAgeMs`
-   * is wall-clock since the FakeHost was instantiated; `sandboxAgeRenders` increments on every
-   * `submit()`. Synthetic but real values (the harness wire-format contract is "metrics are
-   * present and parse"; their numeric meaning under fake-mode is nominal). The S8 + B2.3 soak
-   * tests assert presence + monotonic increment of `sandboxAgeRenders`, not absolute heap
-   * numbers — those live behind real-mode soak tests.
+   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so `sandboxAgeMs` is
+   * wall-clock since the FakeHost was instantiated; `sandboxAgeRenders` increments on every
+   * `submit()`. Synthetic but real values (the harness wire-format contract is "metrics are present
+   * and parse"; their numeric meaning under fake-mode is nominal). The S8 + B2.3 soak tests assert
+   * presence + monotonic increment of `sandboxAgeRenders`, not absolute heap numbers — those live
+   * behind real-mode soak tests.
    */
   private val sandboxStartNs: Long = System.nanoTime()
   private val renderCount: AtomicLong = AtomicLong(0)
@@ -226,8 +226,8 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
  * notification (v1+); they have no semantic effect on the v0 S1 flow. Only `id` is load-bearing.
  *
  * **B2.2 phase 2** added [sourceFile], [displayName], and [group] so the harness can stage a
- * fake-mode `discoveryUpdated` end-to-end. When the test writes a `.kt` file under the fixture
- * dir, sets `sourceFile` to that absolute path, and sends `fileChanged({kind: source, path: <.kt>})`,
+ * fake-mode `discoveryUpdated` end-to-end. When the test writes a `.kt` file under the fixture dir,
+ * sets `sourceFile` to that absolute path, and sends `fileChanged({kind: source, path: <.kt>})`,
  * the daemon's diff path observes "preview removed from this file" (because ClassGraph has no
  * compiled bytecode under the fixture dir to find) and emits `discoveryUpdated`. Optional —
  * fixtures predating phase 2 omit the field and the diff path collapses to a no-op for them.

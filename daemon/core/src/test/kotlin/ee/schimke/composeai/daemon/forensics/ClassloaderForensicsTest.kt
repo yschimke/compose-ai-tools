@@ -12,8 +12,8 @@ import org.junit.Test
  * Unit-test surface for the renderer-agnostic [ClassloaderForensics] library. Exercises capture +
  * diff against the host JVM's classloader graph (no Robolectric) — the Android-specific behaviour
  * is covered by `:renderer-android`'s `ClassloaderForensicsTest` (Configuration A) and
- * `:daemon:android`'s `ClassloaderForensicsDaemonTest` (Configuration B). This test only
- * pins the library's invariants:
+ * `:daemon:android`'s `ClassloaderForensicsDaemonTest` (Configuration B). This test only pins the
+ * library's invariants:
  *
  * * Capturing twice in the same JVM produces the same per-class data (sanity check 1 from
  *   CLASSLOADER-FORENSICS.md § Sanity checks — modulo timestamps/contextHint differences).

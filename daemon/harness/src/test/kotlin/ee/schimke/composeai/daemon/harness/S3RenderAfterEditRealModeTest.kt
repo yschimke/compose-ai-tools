@@ -27,8 +27,8 @@ import org.junit.Test
  * real-mode flow doesn't yet send a `fileChanged` notification because the render bypasses any
  * file-watching path entirely (no real source `.kt` is being edited mid-test) — adding that
  * assertion would require a recompile-on-the-fly fixture similar to
- * `S3_5RecompileSaveLoopRealModeTest`. Out of scope for v1; this test stays the
- * "different previewId → different bytes" round-trip check.
+ * `S3_5RecompileSaveLoopRealModeTest`. Out of scope for v1; this test stays the "different
+ * previewId → different bytes" round-trip check.
  *
  * Captured baselines: reuses `red-square.png` from v1.5a's S1 (no duplication) and adds
  * `blue-square.png`. Both live under `daemon/harness/baselines/desktop/s3/`.

@@ -5,9 +5,9 @@ package ee.schimke.composeai.daemon.fixtures
  * ClassGraph scan path without pulling Compose UI tooling onto the `:daemon:core` test classpath
  * (which would be a layering inversion — the daemon core deliberately doesn't depend on Compose).
  *
- * `RUNTIME` retention so ClassGraph's annotation reader sees it; `name` / `group` parameters
- * mirror the real `@Preview`'s `name = "..."` / `group = "..."` so the diff-tracked field
- * extraction in `IncrementalDiscovery.toDto` has something to read.
+ * `RUNTIME` retention so ClassGraph's annotation reader sees it; `name` / `group` parameters mirror
+ * the real `@Preview`'s `name = "..."` / `group = "..."` so the diff-tracked field extraction in
+ * `IncrementalDiscovery.toDto` has something to read.
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FUNCTION)

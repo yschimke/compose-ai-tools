@@ -16,9 +16,9 @@ import kotlinx.serialization.json.Json
  * `:daemon:core` from depending on `:gradle-plugin`. The plugin owns the authoritative
  * [PreviewInfo] type (`gradle-plugin/.../PreviewData.kt`) and writes it to disk via
  * kotlinx-serialization; the daemon parses the same JSON shape with this minimal mirror, capturing
- * only the fields the daemon actually needs. Extra fields the plugin emits (params block,
- * captures list, accessibility report pointer, …) are ignored at parse time via
- * `ignoreUnknownKeys`, so adding new plugin-side fields does NOT break the daemon's parser.
+ * only the fields the daemon actually needs. Extra fields the plugin emits (params block, captures
+ * list, accessibility report pointer, …) are ignored at parse time via `ignoreUnknownKeys`, so
+ * adding new plugin-side fields does NOT break the daemon's parser.
  *
  * **Why duplicate instead of share.** Sharing the type would either pull `:gradle-plugin` onto the
  * daemon's classpath (heavy, and a layering inversion) or carve a third "shared protocol" module
@@ -67,8 +67,8 @@ private data class PreviewManifestDto(val previews: List<PreviewInfoDto> = empty
 
 /**
  * Diff produced by [PreviewIndex.diff] — what changed between the cached index and a fresh scan
- * scoped to one source file. Mirrors the wire shape of `discoveryUpdated`
- * ([PROTOCOL.md § 6](../../../../../../../docs/daemon/PROTOCOL.md)).
+ * scoped to one source file. Mirrors the wire shape of `discoveryUpdated` ([PROTOCOL.md §
+ * 6](../../../../../../../docs/daemon/PROTOCOL.md)).
  */
 data class DiscoveryDiff(
   /** Previews present in the new scan but not in the cached index. */
@@ -91,8 +91,8 @@ fun discoveryDiffEmpty(diff: DiscoveryDiff): Boolean =
 /**
  * In-memory preview index owned by the daemon.
  *
- * **B2.2 phase 1.** The daemon parses `previews.json` once at startup and exposes the resulting
- * map for `initialize.manifest.{path, previewCount}`.
+ * **B2.2 phase 1.** The daemon parses `previews.json` once at startup and exposes the resulting map
+ * for `initialize.manifest.{path, previewCount}`.
  *
  * **B2.2 phase 2.** The index is now mutable — [diff] computes the delta against a freshly-scanned
  * `Set<PreviewInfoDto>` for one source file, and [applyDiff] merges that delta in-place. Reads use
@@ -127,15 +127,17 @@ internal constructor(
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */
   fun ids(): Set<String> = lock.read { byId.keys.toSet() }
 
-  /** Snapshot of the current `id → PreviewInfoDto` map. Not live; safe to iterate without locking. */
+  /**
+   * Snapshot of the current `id → PreviewInfoDto` map. Not live; safe to iterate without locking.
+   */
   fun snapshot(): Map<String, PreviewInfoDto> = lock.read { LinkedHashMap(byId) }
 
   /**
    * Computes a [DiscoveryDiff] for one source file.
    *
    * - `added` = previews in [newScanForFile] whose id is NOT currently in the index.
-   * - `removed` = ids in the current index whose `sourceFile == sourceFile.toString()` AND that
-   *   are absent from [newScanForFile].
+   * - `removed` = ids in the current index whose `sourceFile == sourceFile.toString()` AND that are
+   *   absent from [newScanForFile].
    * - `changed` = ids present in both, but whose [PreviewInfoDto] differs by `==`.
    * - `totalPreviews` = the index's size AFTER applying the diff (so callers can emit it on the
    *   wire without a second lookup).
@@ -158,12 +160,7 @@ internal constructor(
       // Compute the post-update size: start with current, drop removed, add additions.
       // Changed entries don't move the count.
       val newTotal = byId.size - removed.size + added.size
-      DiscoveryDiff(
-        added = added,
-        removed = removed,
-        changed = changed,
-        totalPreviews = newTotal,
-      )
+      DiscoveryDiff(added = added, removed = removed, changed = changed, totalPreviews = newTotal)
     }
   }
 
@@ -185,8 +182,8 @@ internal constructor(
   companion object {
     /**
      * The empty placeholder. Used when no `composeai.daemon.previewsJsonPath` was supplied — e.g.
-     * fake-mode harness scenarios, the in-process integration tests, the pre-B2.2 default.
-     * `path = null`, `size = 0`.
+     * fake-mode harness scenarios, the in-process integration tests, the pre-B2.2 default. `path =
+     * null`, `size = 0`.
      */
     fun empty(): PreviewIndex = PreviewIndex(path = null, initial = emptyMap())
 
@@ -200,8 +197,8 @@ internal constructor(
 
     /**
      * Parses [path] as a plugin-emitted `previews.json` and returns an index over its `previews`
-     * array. Returns [empty] (and prints a warn-level diagnostic to stderr) if the file is
-     * missing, unreadable, or malformed; never throws.
+     * array. Returns [empty] (and prints a warn-level diagnostic to stderr) if the file is missing,
+     * unreadable, or malformed; never throws.
      */
     fun loadFromFile(path: Path): PreviewIndex {
       val absolute = path.toAbsolutePath()
@@ -242,8 +239,8 @@ internal constructor(
     /**
      * System property the per-target [DaemonMain] reads to locate `previews.json`. The gradle
      * plugin emits this as part of `composePreviewDaemonStart`'s descriptor (see
-     * [DaemonClasspathDescriptor.systemProperties]); when unset, the daemon comes up with
-     * [empty] — preserves pre-B2.2 in-process / fake-mode behaviour.
+     * [DaemonClasspathDescriptor.systemProperties]); when unset, the daemon comes up with [empty] —
+     * preserves pre-B2.2 in-process / fake-mode behaviour.
      */
     const val PREVIEWS_JSON_PATH_PROP: String = "composeai.daemon.previewsJsonPath"
 

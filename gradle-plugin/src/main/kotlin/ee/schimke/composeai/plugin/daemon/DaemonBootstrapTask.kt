@@ -32,12 +32,12 @@ import org.gradle.api.tasks.TaskAction
  * `renderPreviews` task uses. That guarantees the daemon JVM is byte-for-byte equivalent to a
  * `renderPreviews` JVM, modulo the daemon-specific entries documented below.
  *
- * **Pending Stream B integration.** The daemon's own renderer JAR (`daemon/android`, Phase
- * 1 task B1.1) is NOT yet on disk in this worktree. When it lands, `registerAndroidTasks` should
- * prepend that configuration's resolved files to [classpath] so
- * [DaemonClasspathDescriptor.mainClass] (`ee.schimke.composeai.daemon.DaemonMain`) is loadable by
- * the launched JVM. Until then, the descriptor's [DaemonClasspathDescriptor.enabled] field defaults
- * to `false` and the VS Code extension MUST refuse to launch.
+ * **Pending Stream B integration.** The daemon's own renderer JAR (`daemon/android`, Phase 1 task
+ * B1.1) is NOT yet on disk in this worktree. When it lands, `registerAndroidTasks` should prepend
+ * that configuration's resolved files to [classpath] so [DaemonClasspathDescriptor.mainClass]
+ * (`ee.schimke.composeai.daemon.DaemonMain`) is loadable by the launched JVM. Until then, the
+ * descriptor's [DaemonClasspathDescriptor.enabled] field defaults to `false` and the VS Code
+ * extension MUST refuse to launch.
  *
  * **Caching.** `@CacheableTask` because the only output is a small JSON derivable from declared
  * inputs — the entire body is deterministic. The classpath is `@Classpath` (not `@InputFiles`) so a

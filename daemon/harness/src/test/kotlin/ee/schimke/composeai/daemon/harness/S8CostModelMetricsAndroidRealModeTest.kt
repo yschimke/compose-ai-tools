@@ -15,15 +15,15 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * D-harness.v2 Android counterpart of [S8CostModelMetricsRealModeTest] — verifies that the
- * Android daemon's wire-level `renderFinished.tookMs` carries the timing the engine measured, and
- * that the four post-B2.3 cost-model fields populate `renderFinished.metrics`.
+ * D-harness.v2 Android counterpart of [S8CostModelMetricsRealModeTest] — verifies that the Android
+ * daemon's wire-level `renderFinished.tookMs` carries the timing the engine measured, and that the
+ * four post-B2.3 cost-model fields populate `renderFinished.metrics`.
  *
  * **Same wire shape as desktop.** Both backends populate `RenderResult.metrics` from
  * `SandboxMeasurement.collect`; `JsonRpcServer.renderFinishedFromResult` (in `:daemon:core`)
  * translates the flat map into the structured [RenderMetrics] for the wire. On Android the
- * `SandboxLifecycleStats` lives inside the Robolectric sandbox (per-sandbox lifetime), so the
- * first render's `sandboxAgeRenders` is 1.
+ * `SandboxLifecycleStats` lives inside the Robolectric sandbox (per-sandbox lifetime), so the first
+ * render's `sandboxAgeRenders` is 1.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -104,10 +104,7 @@ class S8CostModelMetricsAndroidRealModeTest {
           ?.contentOrNull
           ?.toLongOrNull()
       val sandboxAgeMs =
-        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
-          ?.jsonPrimitive
-          ?.contentOrNull
-          ?.toLongOrNull()
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
       assertNotNull("metrics.heapAfterGcMb must be a Long", heapAfterGcMb)
       assertNotNull("metrics.nativeHeapMb must be a Long", nativeHeapMb)
       assertNotNull("metrics.sandboxAgeRenders must be a Long", sandboxAgeRenders)
@@ -120,11 +117,7 @@ class S8CostModelMetricsAndroidRealModeTest {
         "metrics.nativeHeapMb >= 0 (0 if non-HotSpot fallback): got $nativeHeapMb",
         nativeHeapMb!! >= 0L,
       )
-      assertEquals(
-        "first render's sandboxAgeRenders must be 1",
-        1L,
-        sandboxAgeRenders,
-      )
+      assertEquals("first render's sandboxAgeRenders must be 1", 1L, sandboxAgeRenders)
       assertTrue(
         "metrics.sandboxAgeMs must be non-negative: got $sandboxAgeMs",
         sandboxAgeMs!! >= 0L,

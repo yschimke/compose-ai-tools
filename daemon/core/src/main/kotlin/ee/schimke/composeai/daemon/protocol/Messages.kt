@@ -214,16 +214,16 @@ data class RenderMetrics(
 
     /**
      * Translates the flat `Map<String, Long>` carrier on `RenderResult.metrics` into a structured
-     * [RenderMetrics] for the wire. Returns `null` when any of the four B2.3 keys is missing —
-     * we deliberately do not emit a half-populated metrics object since callers can't tell the
+     * [RenderMetrics] for the wire. Returns `null` when any of the four B2.3 keys is missing — we
+     * deliberately do not emit a half-populated metrics object since callers can't tell the
      * difference between "field truly was zero" and "field was missing", and the wire-level
-     * presence of `metrics: null` already encodes "measurement unavailable" cleanly. Extra
-     * unknown keys (e.g. the renderer's pre-existing `tookMs`) are ignored — they continue to
-     * flow through `RenderFinishedParams.tookMs` at the top level.
+     * presence of `metrics: null` already encodes "measurement unavailable" cleanly. Extra unknown
+     * keys (e.g. the renderer's pre-existing `tookMs`) are ignored — they continue to flow through
+     * `RenderFinishedParams.tookMs` at the top level.
      *
-     * Returns a `Result` so the caller (`JsonRpcServer.renderFinishedFromResult`) can warn-log
-     * the partial-map case and observe drift — a common shape early in a host backend's
-     * measurement plumbing.
+     * Returns a `Result` so the caller (`JsonRpcServer.renderFinishedFromResult`) can warn-log the
+     * partial-map case and observe drift — a common shape early in a host backend's measurement
+     * plumbing.
      */
     fun fromFlatMap(map: Map<String, Long>?): FromFlatMapResult {
       if (map == null) return FromFlatMapResult.AbsentSource

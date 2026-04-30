@@ -22,8 +22,8 @@ import org.junit.Test
  * and the latency CSV.
  *
  * Three preview composables — `RedSquare`, `BlueSquare`, `GreenSquare` — and three baselines under
- * `daemon/harness/baselines/desktop/s4/`. The diff catches a wire-level mix-up (e.g. the
- * daemon dispatching the wrong composable for a previewId).
+ * `daemon/harness/baselines/desktop/s4/`. The diff catches a wire-level mix-up (e.g. the daemon
+ * dispatching the wrong composable for a previewId).
  */
 class S4VisibilityFilterRealModeTest {
 
