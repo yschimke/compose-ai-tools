@@ -47,6 +47,11 @@ export const ERROR_CLASSPATH_DIRTY = -32002;
 export const ERROR_SANDBOX_RECYCLING = -32003;
 export const ERROR_UNKNOWN_PREVIEW = -32004;
 export const ERROR_RENDER_FAILED = -32005;
+// History (phase H2 / H3) — see PROTOCOL.md § 5 (history/list, history/read,
+// history/diff) and HISTORY.md § "Layer 2 — JSON-RPC API".
+export const ERROR_HISTORY_ENTRY_NOT_FOUND = -32010;
+export const ERROR_HISTORY_DIFF_MISMATCH = -32011;
+export const ERROR_HISTORY_PIXEL_NOT_IMPLEMENTED = -32012;
 
 // initialize (PROTOCOL.md § 3)
 
@@ -161,6 +166,87 @@ export interface LogParams {
     message: string;
     category?: string;
     context?: Record<string, unknown>;
+}
+
+// History (phase H1+H2+H3) — see PROTOCOL.md § 5 / § 6 and HISTORY.md
+// "Layer 2 — JSON-RPC API" + "Sidecar metadata schema" for the canonical
+// shapes. The Kotlin counterpart lives in `Messages.kt` and carries the
+// payload fields as `JsonElement` to avoid pulling history-package types
+// onto the dispatch surface; we mirror that with `unknown` here so the
+// types stay schema-agnostic against future additive fields.
+
+export type HistorySourceKind = 'fs' | 'git' | 'http';
+
+export interface HistoryListParams {
+    previewId?: string;
+    since?: string;                   // ISO 8601 lower bound
+    until?: string;                   // ISO 8601 upper bound
+    limit?: number;                   // daemon defaults to 50, max 500
+    cursor?: string;                  // opaque token from a previous response
+    branch?: string;
+    branchPattern?: string;           // regex
+    commit?: string;                  // long or short SHA
+    worktreePath?: string;
+    agentId?: string;
+    sourceKind?: HistorySourceKind;
+    sourceId?: string;
+}
+
+export interface HistoryListResult {
+    /** Sidecar JSON shape per HISTORY.md § "Sidecar metadata schema". */
+    entries: unknown[];
+    /** Present iff more entries match — feed back as `cursor` to paginate. */
+    nextCursor?: string;
+    totalCount: number;
+}
+
+export interface HistoryReadParams {
+    id: string;
+    /** When true, daemon returns base64 PNG bytes inline (`pngBytes`). When
+     *  false, the client reads `pngPath` from disk — preferred for local
+     *  same-host clients (VS Code) to avoid the wire round-trip. */
+    inline?: boolean;
+}
+
+export interface HistoryReadResult {
+    /** Sidecar JSON. */
+    entry: unknown;
+    /** PreviewMetadataSnapshot — frozen at render time. May be null when
+     *  the originating manifest is gone. */
+    previewMetadata?: unknown;
+    /** Absolute path; the client reads bytes from here when `inline=false`. */
+    pngPath: string;
+    /** Base64 PNG; populated only when the request set `inline: true`. */
+    pngBytes?: string;
+}
+
+export type HistoryDiffMode = 'metadata' | 'pixel';
+
+export interface HistoryDiffParams {
+    from: string;
+    to: string;
+    mode?: HistoryDiffMode;           // default 'metadata'
+}
+
+/**
+ * `mode = 'metadata'` (default) is cheap: daemon hashes both PNGs and
+ * returns the sidecars. Pixel-mode fields are reserved for phase H5; in
+ * METADATA mode they are always undefined/null. A caller asking for
+ * `mode = 'pixel'` against a current daemon receives error
+ * `HistoryPixelNotImplemented` (-32012).
+ */
+export interface HistoryDiffResult {
+    pngHashChanged: boolean;
+    fromMetadata: unknown;
+    toMetadata: unknown;
+    diffPx?: number;
+    ssim?: number;
+    diffPngPath?: string;
+}
+
+export interface HistoryAddedParams {
+    /** Sidecar JSON of the newly-written entry. */
+    entry: unknown;
 }
 
 /**
