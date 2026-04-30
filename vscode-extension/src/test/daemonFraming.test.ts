@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import { FrameDecoder, encodeFrame } from '../daemon/daemonFraming';
 
 describe('daemon framing', () => {
@@ -67,5 +69,89 @@ describe('daemon framing', () => {
         assert.strictEqual(messages.length, 0);
         assert.strictEqual(errors.length, 1);
         assert.match(errors[0].message, /Content-Length/);
+    });
+
+    it('handles a body that contains the header terminator literally', () => {
+        // The header terminator is `\r\n\r\n`. If a JSON body contains the
+        // same byte sequence (e.g. inside a string) the decoder MUST NOT
+        // treat it as the start of the next frame — Content-Length is the
+        // only authority for body boundaries.
+        const messages: string[] = [];
+        const decoder = new FrameDecoder({
+            onMessage: (json) => messages.push(json),
+            onError: () => assert.fail('no error expected'),
+        });
+        const payload = { method: 'embed', text: 'line1\r\n\r\nline2' };
+        decoder.push(encodeFrame(payload));
+        assert.strictEqual(messages.length, 1);
+        assert.deepStrictEqual(JSON.parse(messages[0]), payload);
+    });
+
+    it('accepts case-insensitive Content-Length header', () => {
+        // LSP framing canonicalises the header name as `Content-Length`, but
+        // RFC 7230 § 3.2 says HTTP headers are case-insensitive. Tolerate
+        // a daemon that emits it as `content-length:`.
+        const messages: string[] = [];
+        const decoder = new FrameDecoder({
+            onMessage: (json) => messages.push(json),
+            onError: () => assert.fail('no error expected'),
+        });
+        const body = Buffer.from('{"method":"x"}', 'utf-8');
+        const header = Buffer.from(`content-length: ${body.length}\r\n\r\n`, 'ascii');
+        decoder.push(Buffer.concat([header, body]));
+        assert.strictEqual(JSON.parse(messages[0]).method, 'x');
+    });
+
+    it('ignores an optional Content-Type header alongside Content-Length', () => {
+        // PROTOCOL.md § 1: Content-Type is optional and ignored by the reader.
+        const messages: string[] = [];
+        const decoder = new FrameDecoder({
+            onMessage: (json) => messages.push(json),
+            onError: () => assert.fail('no error expected'),
+        });
+        const body = Buffer.from('{"method":"y"}', 'utf-8');
+        const header = Buffer.from(
+            `Content-Length: ${body.length}\r\n` +
+            `Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n`,
+            'ascii',
+        );
+        decoder.push(Buffer.concat([header, body]));
+        assert.strictEqual(JSON.parse(messages[0]).method, 'y');
+    });
+
+    it('round-trips every shipped protocol fixture', () => {
+        // Encode each fixture, push the encoded bytes through the decoder,
+        // assert the decoded JSON matches. Catches regressions in encode
+        // (length miscounts) and decode (boundary mishandling) against the
+        // exact shapes the daemon uses on the wire.
+        const fixturesDir = path.resolve(__dirname, '..', '..', '..', 'docs', 'daemon', 'protocol-fixtures');
+        const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.json') && !f.startsWith('README'));
+        assert.ok(files.length > 0, 'no fixtures found');
+
+        for (const file of files) {
+            const original = JSON.parse(fs.readFileSync(path.join(fixturesDir, file), 'utf-8'));
+            const messages: string[] = [];
+            const decoder = new FrameDecoder({
+                onMessage: (json) => messages.push(json),
+                onError: () => assert.fail(`framing error on fixture ${file}`),
+            });
+            decoder.push(encodeFrame(original));
+            assert.strictEqual(messages.length, 1, `fixture ${file} did not round-trip`);
+            assert.deepStrictEqual(JSON.parse(messages[0]), original, `fixture ${file} mutated`);
+        }
+    });
+
+    it('handles an empty-object payload (Content-Length: 2)', () => {
+        // The `daemonReady` notification carries `{}` as params — minimum
+        // legal body length. Make sure the decoder doesn't get stuck on
+        // sub-byte tracking.
+        const messages: string[] = [];
+        const decoder = new FrameDecoder({
+            onMessage: (json) => messages.push(json),
+            onError: () => assert.fail('no error expected'),
+        });
+        decoder.push(encodeFrame({}));
+        assert.strictEqual(messages.length, 1);
+        assert.deepStrictEqual(JSON.parse(messages[0]), {});
     });
 });
