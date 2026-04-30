@@ -11,12 +11,16 @@ import kotlinx.serialization.json.JsonObject
  * **CLI:**
  *
  * ```
- * compose-preview-mcp [--project <path>[:<rootProjectName>]]...
+ * compose-preview-mcp [--project <path>[:<rootProjectName>]]... [--replicas-per-daemon <N>]
  * ```
  *
  * Each `--project` flag pre-registers a workspace with the supervisor at startup so connecting
  * clients see the project in `list_projects` immediately. Projects can also be added at runtime via
  * the `register_project` MCP tool.
+ *
+ * `--replicas-per-daemon N` (or the `composeai.mcp.replicasPerDaemon` system property) spawns N
+ * extra in-process replicas per (workspace, module) for render fan-out — see
+ * [DaemonSupervisor.replicasPerDaemon]. Default 0 (one daemon per module).
  *
  * On stdin EOF the server tears down every supervised daemon (sending `shutdown` + `exit` per
  * PROTOCOL.md § 3) and exits cleanly.
@@ -25,10 +29,12 @@ object DaemonMcpMain {
 
   @JvmStatic
   fun main(args: Array<String>) {
+    val replicasPerDaemon = parseReplicasPerDaemon(args)
     val supervisor =
       DaemonSupervisor(
         descriptorProvider = DescriptorProvider.readingFromDisk(),
         clientFactory = SubprocessDaemonClientFactory(),
+        replicasPerDaemon = replicasPerDaemon,
       )
     val server = DaemonMcpServer(supervisor)
 
@@ -79,6 +85,33 @@ object DaemonMcpMain {
     val idx = raw.lastIndexOf(':')
     return if (idx <= 0) raw to null
     else raw.substring(0, idx) to raw.substring(idx + 1).takeIf { it.isNotEmpty() }
+  }
+
+  private fun parseReplicasPerDaemon(args: Array<String>): Int {
+    // CLI flag wins over the system property; system property wins over the default. Negative
+    // or unparseable values fall back to 0 with a stderr warning rather than crashing the server
+    // — replication is an opt-in optimisation, not load-bearing.
+    val fromArgs =
+      generateSequence(0) { it + 1 }
+        .takeWhile { it < args.size }
+        .firstNotNullOfOrNull { i ->
+          when {
+            args[i] == "--replicas-per-daemon" && i + 1 < args.size -> args[i + 1]
+            args[i].startsWith("--replicas-per-daemon=") ->
+              args[i].removePrefix("--replicas-per-daemon=")
+            else -> null
+          }
+        }
+    val raw = fromArgs ?: System.getProperty("composeai.mcp.replicasPerDaemon")
+    if (raw.isNullOrBlank()) return 0
+    val parsed = raw.toIntOrNull()
+    if (parsed == null || parsed < 0) {
+      System.err.println(
+        "compose-preview-mcp: ignoring invalid --replicas-per-daemon='$raw' (want non-negative int)"
+      )
+      return 0
+    }
+    return parsed
   }
 }
 

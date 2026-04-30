@@ -54,8 +54,14 @@ class WatchPropagator(
     if ((previous ?: emptySet()) == watched) return
     lastSent[key] = watched
     val ids = watched.toList()
-    runCatching { daemon.client.setVisible(ids) }
-    runCatching { daemon.client.setFocus(ids) }
+    // Fan out to every replica — each replica has its own render queue + visible-set state and
+    // consults it when prioritising background renders, so they all need the same view of "what
+    // the user is looking at". With `replicasPerDaemon = 0` this collapses to one call to the
+    // primary, preserving existing behaviour.
+    daemon.allClients().forEach { client ->
+      runCatching { client.setVisible(ids) }
+      runCatching { client.setFocus(ids) }
+    }
   }
 
   /**
