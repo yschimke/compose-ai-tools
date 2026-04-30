@@ -79,6 +79,13 @@ class DaemonMcpServer(
    */
   private val pendingRenders = ConcurrentHashMap<RenderKey, LinkedBlockingQueue<RenderOutcome>>()
 
+  /**
+   * Per-(workspace, module) counter of consecutive `classpathDirty` self-loops since the last clean
+   * spawn. Reset to zero whenever a respawn succeeds without the new daemon also emitting
+   * `classpathDirty`. See [onClasspathDirty] for the cap rationale.
+   */
+  private val respawnAttempts = ConcurrentHashMap<DaemonAddr, Int>()
+
   private val watchPropagator =
     WatchPropagator(
       subscriptions = subscriptions,
@@ -97,18 +104,22 @@ class DaemonMcpServer(
       },
     )
 
+  /**
+   * Worker that runs the (slow) replacement-daemon spawn after a `classpathDirty` notification.
+   * Single-threaded and daemon-flagged so it never delays JVM shutdown. Bounded queue isn't needed
+   * — `classpathDirty` is at most once per daemon lifetime.
+   */
+  private val respawnExecutor: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+      Thread(r, "mcp-respawn-worker").apply { isDaemon = true }
+    }
+
   init {
     val router = supervisor.router()
     router.on("discoveryUpdated") { daemon, params -> onDiscoveryUpdated(daemon, params) }
     router.on("renderFinished") { daemon, params -> onRenderFinished(daemon, params) }
     router.on("renderFailed") { daemon, params -> onRenderFailed(daemon, params) }
-    router.on("classpathDirty") { daemon, params ->
-      System.err.println(
-        "DaemonMcpServer: classpathDirty for ${daemon.workspaceId}/${daemon.modulePath}: " +
-          (params?.get("detail")?.jsonPrimitive?.contentOrNull ?: "<no detail>")
-      )
-      // v0: log only. Respawn on next render. Future: push a logging notification + auto-respawn.
-    }
+    router.on("classpathDirty") { daemon, params -> onClasspathDirty(daemon, params) }
     router.onClose { daemon ->
       catalog.remove(DaemonAddr(daemon.workspaceId, daemon.modulePath))
       watchPropagator.forget(daemon)
@@ -637,6 +648,83 @@ class DaemonMcpServer(
     pendingRenders[key]?.offer(RenderOutcome.Failed(kind, message))
   }
 
+  /**
+   * Per PROTOCOL.md § 6, the daemon emits `classpathDirty` exactly once and then exits within
+   * [`daemon.classpathDirtyGraceMs`][..] (default 2000ms). The MCP supervisor's job here is to
+   *
+   * 1. Forget the dying daemon so the next `daemonFor` for the same coordinates spawns afresh
+   *    against (presumably) the refreshed descriptor.
+   * 2. Purge cached state (catalog, propagator memo, in-flight render waiters) — the new daemon
+   *    will re-emit its initial `discoveryUpdated` via the supervisor's
+   *    `synthesiseInitialDiscovery` path, which repopulates the catalog.
+   * 3. Tell connected clients the resource list is stale (`notifications/resources/list_changed`)
+   *    so they re-list when ready.
+   * 4. Schedule a respawn on the [respawnExecutor] worker so the daemon's reader thread (which is
+   *    about to die anyway) doesn't block on the new daemon's cold-start.
+   *
+   * If the descriptor on disk is itself stale (the user/VS Code hasn't re-run
+   * `composePreviewDaemonStart`), the new daemon will hit `classpathDirty` again. We log that and
+   * stop trying after one self-loop — repeated thrashing serves no one. Production users are
+   * expected to re-bootstrap before the supervisor's respawn kicks in.
+   */
+  private fun onClasspathDirty(daemon: SupervisedDaemon, params: JsonObject?) {
+    val detail = params?.get("detail")?.jsonPrimitive?.contentOrNull ?: "<no detail>"
+    val reason = params?.get("reason")?.jsonPrimitive?.contentOrNull ?: "<no reason>"
+    System.err.println(
+      "DaemonMcpServer: classpathDirty for ${daemon.workspaceId}/${daemon.modulePath} " +
+        "(reason=$reason): $detail"
+    )
+
+    val workspaceId = daemon.workspaceId
+    val modulePath = daemon.modulePath
+
+    // Fail any in-flight render waiters for this daemon — the daemon is exiting and won't
+    // produce a `renderFinished` for them.
+    pendingRenders.keys
+      .filter { it.workspaceId == workspaceId && it.modulePath == modulePath }
+      .forEach { key ->
+        pendingRenders[key]?.offer(
+          RenderOutcome.Failed("classpathDirty", "daemon exiting: $detail")
+        )
+      }
+
+    // Forget the daemon + cached state. (The daemon's wire close will also fire `onClose` and
+    // try to remove the same catalog entry — a second remove is a no-op.)
+    supervisor.forgetDaemon(workspaceId, modulePath)
+    catalog.remove(DaemonAddr(workspaceId, modulePath))
+    watchPropagator.forget(daemon)
+    sessions.forEach { it.notifyResourceListChanged() }
+
+    // Track respawn attempts so a permanently-stale descriptor (one whose own classpath
+    // fingerprint disagrees with reality) doesn't loop forever.
+    val attemptKey = DaemonAddr(workspaceId, modulePath)
+    val attempts = respawnAttempts.merge(attemptKey, 1) { a, b -> a + b } ?: 1
+    if (attempts > MAX_RESPAWN_ATTEMPTS_PER_LIFETIME) {
+      System.err.println(
+        "DaemonMcpServer: respawn attempt cap reached for $workspaceId/$modulePath " +
+          "($attempts > $MAX_RESPAWN_ATTEMPTS_PER_LIFETIME); giving up. " +
+          "Re-run `./gradlew $modulePath:composePreviewDaemonStart` and call `register_project` " +
+          "again to retry."
+      )
+      return
+    }
+
+    respawnExecutor.execute {
+      val outcome =
+        runCatching { supervisor.daemonFor(workspaceId, modulePath) }
+          .onFailure {
+            System.err.println(
+              "DaemonMcpServer: classpathDirty respawn failed for $workspaceId/$modulePath: " +
+                "${it.message}"
+            )
+          }
+      if (outcome.isSuccess) {
+        // Reset the attempt counter on a clean respawn — a future classpathDirty starts fresh.
+        respawnAttempts.remove(attemptKey)
+      }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
@@ -665,5 +753,15 @@ class DaemonMcpServer(
     return if (content.startsWith("ref:"))
       content.removePrefix("ref:").trim().substringAfterLast('/')
     else content.take(8)
+  }
+
+  companion object {
+    /**
+     * Cap on consecutive `classpathDirty` self-loops before the supervisor stops respawning. One
+     * legitimate retry covers the common case where the user/VS Code re-ran
+     * `composePreviewDaemonStart` between the dirty event and the supervisor's worker firing.
+     * Higher caps would just thrash if the descriptor is actually stale.
+     */
+    private const val MAX_RESPAWN_ATTEMPTS_PER_LIFETIME: Int = 1
   }
 }

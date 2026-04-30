@@ -67,9 +67,7 @@ class LocalFsHistorySourceReadTest {
     writeEntry(previewId = "A", timestampField = "2026-04-30T10:00:10Z", suffix = "03")
 
     val page =
-      source.list(
-        HistoryFilter(since = "2026-04-30T10:00:03Z", until = "2026-04-30T10:00:08Z")
-      )
+      source.list(HistoryFilter(since = "2026-04-30T10:00:03Z", until = "2026-04-30T10:00:08Z"))
     assertEquals(1, page.entries.size)
     assertEquals("2026-04-30T10:00:05Z", page.entries[0].timestamp)
   }
@@ -86,7 +84,8 @@ class LocalFsHistorySourceReadTest {
       previewId = "A",
       timestampField = "2026-04-30T10:00:05Z",
       suffix = "02",
-      git = GitInfo(branch = "agent/foo", commit = "cafef00d", shortCommit = "cafef00", dirty = false),
+      git =
+        GitInfo(branch = "agent/foo", commit = "cafef00d", shortCommit = "cafef00", dirty = false),
     )
     val page = source.list(HistoryFilter(branch = "agent/foo"))
     assertEquals(1, page.entries.size)
@@ -125,7 +124,8 @@ class LocalFsHistorySourceReadTest {
 
   @Test
   fun read_returns_entry_and_resolves_png_path() {
-    val (id, _) = writeEntry(previewId = "A", timestampField = "2026-04-30T10:00:00Z", suffix = "01")
+    val (id, _) =
+      writeEntry(previewId = "A", timestampField = "2026-04-30T10:00:00Z", suffix = "01")
     val read = source.read(id, includeBytes = false)
     assertNotNull(read)
     assertEquals(id, read!!.entry.id)
@@ -150,8 +150,8 @@ class LocalFsHistorySourceReadTest {
   }
 
   /**
-   * Writes one synthetic entry. Returns the id and the PNG bytes for callers that want to assert
-   * on round-trip identity (e.g. inline-bytes test).
+   * Writes one synthetic entry. Returns the id and the PNG bytes for callers that want to assert on
+   * round-trip identity (e.g. inline-bytes test).
    */
   private fun writeEntry(
     previewId: String,

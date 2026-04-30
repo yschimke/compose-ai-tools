@@ -288,6 +288,13 @@ internal object ComposePreviewTasks {
       )
       systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
       systemProperties.put("composeai.daemon.previewsJsonPath", previewsJsonProvider)
+      // Same path the daemon's `PreviewManifestRouter` reads to map the protocol-level
+      // `previewId` payload into the `RenderSpec(className, functionName)` the engine needs.
+      // Without it, `JsonRpcServer.handleRenderNow`'s `previewId=<id>` payload bottoms out in
+      // `DesktopHost.renderStubFallback` and the daemon emits a stub PNG path that doesn't
+      // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
+      // launchers used to set this); now any production-mode launcher needs it.
+      systemProperties.put("composeai.harness.previewsManifest", previewsJsonProvider)
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
