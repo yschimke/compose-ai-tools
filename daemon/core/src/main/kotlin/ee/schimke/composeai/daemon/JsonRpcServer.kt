@@ -163,6 +163,10 @@ class JsonRpcServer(
    */
   private val classpathDirtyEmitted = AtomicBoolean(false)
 
+  /** Startup-timeline guards so the "first renderNow / first renderFinished" marks fire once. */
+  private val firstRenderNowSeen = AtomicBoolean(false)
+  private val firstRenderFinishedSeen = AtomicBoolean(false)
+
   /** Outbound frame queue. SHUTDOWN_SENTINEL is the writer's poison pill. */
   private val outbound = LinkedBlockingQueue<ByteArray>()
 
@@ -190,9 +194,12 @@ class JsonRpcServer(
    * 2. stdin EOF without `shutdown`+`exit` → waits up to [idleTimeoutMs], then exits with code 1.
    */
   fun run() {
+    StartupTimings.mark("JsonRpcServer.run() entered")
     host.start()
+    StartupTimings.mark("host.start() returned (sandbox ready)")
     writerThread.start()
     renderWatcherThread.start()
+    StartupTimings.mark("read loop entering")
     try {
       readLoop()
       // EOF without exit notification — PROTOCOL.md § 3 idle-timeout exit.
@@ -319,6 +326,7 @@ class JsonRpcServer(
   }
 
   private fun handleInitialize(req: JsonRpcRequest) {
+    StartupTimings.mark("initialize received")
     val params =
       try {
         decodeParams(req.params, InitializeParams.serializer())
@@ -374,9 +382,13 @@ class JsonRpcServer(
           ),
       )
     sendResponse(req.id, encode(InitializeResult.serializer(), result))
+    StartupTimings.mark("initialize responded")
   }
 
   private fun handleRenderNow(req: JsonRpcRequest) {
+    if (firstRenderNowSeen.compareAndSet(false, true)) {
+      StartupTimings.mark("first renderNow received")
+    }
     val params =
       try {
         decodeParams(req.params, RenderNowParams.serializer())
@@ -516,6 +528,10 @@ class JsonRpcServer(
     val tookMs = result.metrics?.get("tookMs") ?: 0L
     val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), finished))
+    if (firstRenderFinishedSeen.compareAndSet(false, true)) {
+      StartupTimings.mark("first renderFinished sent")
+      StartupTimings.summary()
+    }
     // H1 — record the render to history, if configured. Wrapped in a fail-open try/catch so a
     // history write failure never blocks the renderFinished wire-format. The render's notification
     // has already been sent above; history is observation, not state.

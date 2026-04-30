@@ -83,21 +83,48 @@ open class RobolectricHost(
     Thread({ runJUnit() }, "compose-ai-daemon-host").apply { isDaemon = false }
 
   /**
-   * Starts the host thread. After this call the worker thread is alive and
-   * waiting for requests on [DaemonHostBridge.requests]. The first [submit]
-   * still blocks until the Robolectric sandbox is fully bootstrapped
-   * (~5–15s on a typical dev machine), but subsequent submits hit a hot
-   * sandbox and return in stub-render time.
+   * Starts the host thread AND blocks until the Robolectric sandbox is fully bootstrapped.
+   *
+   * After this returns, [submit] is guaranteed to find a hot sandbox — no per-submit
+   * sandbox-ready waits, no cold-start cliff where the first N submits each race a 60s timeout
+   * before the sandbox finishes building.
+   *
+   * Cold-start cost on a fresh `~/.cache/robolectric` is dominated by downloading
+   * `android-all-instrumented-{ver}-{sdk}.jar` (~150 MB) and instrumenting every class on the
+   * daemon's classpath; that can run into minutes. Warm starts (cache hit + no incremental
+   * rebuild) are ~5–15s. The configurable timeout below is the upper bound on the cold path.
+   *
+   * The protocol model is `daemonReady = sandboxReady`: `initialize` must not return success
+   * while the sandbox is still bootstrapping, so the client surfaces a clean "warming" state on
+   * its side rather than rendering against a half-built host. Blocking here in [start] delivers
+   * that — `JsonRpcServer.run()` only enters its read loop once we return.
+   *
+   * Configurable via `composeai.daemon.sandboxBootTimeoutMs` (default 600_000 = 10 minutes). On
+   * timeout the daemon refuses to start; the client surfaces the failure via initialize never
+   * returning rather than via per-render timeouts.
    */
   override fun start() {
+    StartupTimings.mark("RobolectricHost.start() entered")
     DaemonHostBridge.reset()
     // B2.0-followup — do NOT pre-publish the child loader here. The holder's `parentSupplier`
     // resolves to the sandbox classloader via `DaemonHostBridge.sandboxClassLoaderRef`, which is
     // set inside `SandboxRunner.holdSandboxOpen` once the sandbox boots. Calling
     // `holder.currentChildLoader()` here would race the sandbox boot and throw — or worse, allocate
-    // with a fallback parent. We defer publishing to `submit()`, which awaits the sandbox-ready
-    // latch first.
+    // with a fallback parent. We block on the sandbox-ready latch below; publishing then happens
+    // lazily in [publishChildLoader] from a hot sandbox.
     workerThread.start()
+    StartupTimings.mark("worker thread launched (Robolectric init begins)")
+    val timeoutMs =
+      System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
+        ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS
+    val ready = DaemonHostBridge.awaitSandboxReady(timeoutMs = timeoutMs)
+    check(ready) {
+      "Robolectric sandbox failed to bootstrap within ${timeoutMs}ms — holdSandboxOpen never " +
+        "set sandboxClassLoaderRef. On a cold cache the instrumented android-all jar download " +
+        "can dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>. Otherwise check " +
+        "the SandboxHoldingRunner / Robolectric sandbox bootstrap logs for a real failure."
+    }
+    StartupTimings.mark("sandbox-ready latch fired")
   }
 
   /**
@@ -107,19 +134,12 @@ open class RobolectricHost(
    * [submit] so a fileChanged-driven swap on the JSON-RPC thread is visible to the next render —
    * see B2.0's no-mid-render-cancellation discipline.
    *
-   * Awaits the sandbox-ready latch (via [DaemonHostBridge.awaitSandboxReady]) before allocating, so
-   * the holder's `parentSupplier` (which reads `DaemonHostBridge.sandboxClassLoaderRef`) sees the
-   * sandbox loader, not null. The 60-second timeout is generous for a cold Robolectric sandbox
-   * boot (~5–15s in practice) and well under any realistic "the sandbox failed to bootstrap"
-   * threshold.
+   * The sandbox-ready latch is already 0 by the time [submit] runs — [start] blocked on it. The
+   * holder's `parentSupplier` (which reads `DaemonHostBridge.sandboxClassLoaderRef`) sees the
+   * sandbox loader directly, no per-submit wait, no race.
    */
   private fun publishChildLoader() {
     val holder = userClassloaderHolder ?: return
-    val sandboxReady = DaemonHostBridge.awaitSandboxReady(timeoutMs = 60_000)
-    check(sandboxReady) {
-      "sandbox didn't initialise within 60s — holdSandboxOpen never set sandboxClassLoaderRef. " +
-        "Check the SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
-    }
     DaemonHostBridge.setCurrentChildLoader(holder.currentChildLoader())
   }
 
@@ -187,6 +207,19 @@ open class RobolectricHost(
    * exit. Idempotent.
    */
   companion object {
+    /**
+     * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty
+     * `~/.cache/robolectric` is dominated by the `android-all-instrumented-{ver}-{sdk}.jar`
+     * download (~150 MB) plus instrumenting every class on the daemon's classpath; the default
+     * 10-minute ceiling covers that. Warm boots (cache hit) are 5–15s and never approach this
+     * limit. Override with `-Dcomposeai.daemon.sandboxBootTimeoutMs=<ms>` for slower CI
+     * runners or constrained networks.
+     */
+    const val SANDBOX_BOOT_TIMEOUT_PROP: String = "composeai.daemon.sandboxBootTimeoutMs"
+
+    /** 10 minutes — covers a cold-cache instrumented-android-all download + first-time scan. */
+    const val DEFAULT_SANDBOX_BOOT_TIMEOUT_MS: Long = 10L * 60L * 1000L
+
     /**
      * Forensic-dump payload prefix — see docs/daemon/CLASSLOADER-FORENSICS.md § Implementation
      * seam. Routed through the existing `RenderRequest.Render.payload` field rather than a new
