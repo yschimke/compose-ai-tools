@@ -1181,9 +1181,6 @@ internal object AndroidPreviewSupport {
     //
     // Built lazily via providers so the AGP unit-test task's javaLauncher
     // resolves at execution time (same reason renderPreviews above defers it).
-    val daemonAgpTestTask = project.provider {
-      project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
-    }
     val daemonFontsCacheDir =
       project.layout.projectDirectory
         .dir(".compose-preview-history")
@@ -1192,10 +1189,36 @@ internal object AndroidPreviewSupport {
         .absolutePath
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+    // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
+    // mustn't capture `project`. The cheap-signal set used to be collected at task-action
+    // time so newly-added subproject scripts were seen on the same run, but doing it
+    // there forces the systemProperties Provider closure to capture `project`, which the
+    // configuration cache (`org.gradle.configuration-cache.problems=fail`) refuses to
+    // serialise. A subproject add is itself a `settings.gradle.kts` edit, which IS in the
+    // cheap-signal set, so the next run picks it up — net behaviour unchanged after one
+    // re-run of `composePreviewDaemonStart` and the config-cache invalidation that the
+    // edit triggers.
+    val daemonCheapSignalFiles =
+      collectCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) { it.absolutePath }
+    val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
+    val daemonUserClassMarkers =
+      listOf(
+        "$consumerBuildDir/intermediates/",
+        "$consumerBuildDir/tmp/kotlin-classes/",
+        "$consumerBuildDir/classes/",
+      )
     project.tasks.register(
       "composePreviewDaemonStart",
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
+      // Resolved once when the task is realised — the register {…} block runs lazily at
+      // task-graph-resolution time, by which point AGP has registered the unit-test task.
+      // Pulling the reference here (rather than wrapping `findByName` in a Provider that
+      // re-runs at execution time) keeps the @Input Provider chains below from capturing
+      // `project`, which is what the configuration cache rejects.
+      val agpTestTask =
+        project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
+
       this.modulePath.set(project.path)
       this.variant.set(variantName)
       this.daemonEnabled.set(extension.experimental.daemon.enabled)
@@ -1209,12 +1232,13 @@ internal object AndroidPreviewSupport {
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Inherit AGP's unit-test javaLauncher exactly the way renderPreviews
       // does (see line ~802 above) so the daemon runs on the project's
-      // configured toolchain rather than the first `java` on PATH.
-      this.javaLauncher.set(
-        project.provider {
-          daemonAgpTestTask.orNull?.javaLauncher?.orNull?.executablePath?.asFile?.absolutePath
-        }
-      )
+      // configured toolchain rather than the first `java` on PATH. AGP's
+      // javaLauncher Property is itself a config-cache-safe Provider produced
+      // by the toolchains plugin, so mapping it to an absolute path doesn't
+      // introduce any new captures.
+      agpTestTask?.javaLauncher?.let { launcher ->
+        this.javaLauncher.set(launcher.map { it.executablePath.asFile.absolutePath })
+      }
       // Daemon module's classes FIRST so [mainClass] resolves before
       // anything in the consumer's transitive graph shadows it. Both
       // `jar` and `android-classes` artifact views are pulled because
@@ -1234,97 +1258,70 @@ internal object AndroidPreviewSupport {
       )
       // Same FileCollection the renderPreviews `Test` task assembles, plus
       // the AGP unit-test task's classpath (R.jar etc.) appended at the
-      // tail — see line ~764 for the rationale. Composed lazily to defer
-      // `findByName("test${capVariant}UnitTest")` resolution.
+      // tail — see line ~764 for the rationale.
       this.classpath.from(resolvedClasspath)
-      this.classpath.from(
-        project.provider { daemonAgpTestTask.orNull?.testClassesDirs ?: project.files() }
-      )
-      this.classpath.from(
-        project.provider { daemonAgpTestTask.orNull?.classpath ?: project.files() }
-      )
+      this.classpath.from(agpTestTask?.testClassesDirs ?: project.files())
+      this.classpath.from(agpTestTask?.classpath ?: project.files())
       // Static JVM open flags from the shared helper, plus the
       // daemon-specific heap ceiling. AGP test task's own jvmArgs are
       // intentionally NOT inherited here — they're test-runner specific
       // (e.g. `-ea` and JUnit-internal opens) and may collide with the
       // daemon's own runner. Stream B can opt back in if needed.
-      this.jvmArgs.set(
-        project.provider {
-          AndroidPreviewClasspath.buildJvmArgs() +
-            "-Xmx${extension.experimental.daemon.maxHeapMb.get()}m"
-        }
-      )
-      // Same path-bearing system properties the renderPreviews Test task
-      // uses, plus daemon-specific keys for [DaemonExtension] config the
-      // daemon reads at startup. Built eagerly here (no
-      // CommandLineArgumentProvider equivalent for descriptor JSON) — VS
-      // Code-driven flips of `composePreview.tier` / a11y don't apply to
-      // the daemon yet (it runs the focused-render path), so config-cache
-      // invalidation isn't a concern in this task the way it is for
-      // renderPreviews.
+      this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
+      this.jvmArgs.add(extension.experimental.daemon.maxHeapMb.map { "-Xmx${it}m" })
+      // Same path-bearing system properties the renderPreviews Test task uses, plus
+      // daemon-specific keys for [DaemonExtension] config the daemon reads at startup.
       //
-      this.systemProperties.set(
-        project.provider {
-          val base =
-            AndroidPreviewClasspath.buildSystemProperties(
-              manifestPath = manifestFile.get(),
-              rendersDir = rendersDir.get(),
-              fontsCacheDir = daemonFontsCacheDir,
-              fontsOffline = daemonFontsOffline.get(),
-            )
-          // B2.0 — emit `composeai.daemon.userClassDirs` so the daemon can construct a disposable
-          // child URLClassLoader for the user's compiled-class output. Heuristic: any classpath
-          // entry under the consumer module's `build/intermediates/` or `build/tmp/kotlin-classes/`
-          // tree (kotlinc's standard outputs for AGP variants). The file paths are realised lazily
-          // here — the FileCollection has been resolved by the time `systemProperties.get()`
-          // executes at task-action time. Colon-delimited (`File.pathSeparator`); empty when no
-          // user-class-dirs are found (then the daemon falls back to the legacy single-classloader
-          // path — pre-B2.0 behaviour).
-          val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
-          val userClassMarkers =
-            listOf(
-              "$consumerBuildDir/intermediates/",
-              "$consumerBuildDir/tmp/kotlin-classes/",
-              "$consumerBuildDir/classes/",
-            )
-          val classpathEntries = this.classpath.files.map { it.absolutePath }
-          val userClassDirs = classpathEntries.filter { entry ->
-            userClassMarkers.any { marker -> entry.startsWith(marker) }
-          }
-          // B2.1 — emit `composeai.daemon.cheapSignalFiles` so the daemon can build a Tier-1
-          // ClasspathFingerprint at startup. Set per DESIGN § 8: `libs.versions.toml`, every
-          // `build.gradle.kts` / `build.gradle` reachable from the root project's allprojects,
-          // `settings.gradle.kts` / `settings.gradle`, `gradle.properties`, `local.properties`.
-          // The list is built at task-action time (so newly-added subproject scripts since
-          // configuration are seen) — see the `cheap-signal evolution` paragraph in the B2.1
-          // KDoc. Colon-delimited; empty when none of the canonical files exist on disk (rare;
-          // most real Android projects have at least `build.gradle.kts` + `settings.gradle.kts`).
-          val cheapSignalFiles = collectCheapSignalFiles(project)
-          // B2.2 phase 1 — emit `composeai.daemon.previewsJsonPath` so the daemon can own its
-          // own preview index (parsed at startup; surfaced via `initialize.manifest`). The path
-          // mirrors the value we already pass to `renderPreviews` via `manifestFile`. Phase 2
-          // (incremental rescan + `discoveryUpdated` emission) keeps the same sysprop — only the
-          // daemon-side load policy changes.
-          val daemonProps =
-            linkedMapOf(
-              "composeai.daemon.protocolVersion" to "1",
-              "composeai.daemon.idleTimeoutMs" to "5000",
-              "composeai.daemon.maxHeapMb" to
-                extension.experimental.daemon.maxHeapMb.get().toString(),
-              "composeai.daemon.maxRendersPerSandbox" to
-                extension.experimental.daemon.maxRendersPerSandbox.get().toString(),
-              "composeai.daemon.warmSpare" to
-                extension.experimental.daemon.warmSpare.get().toString(),
-              "composeai.daemon.modulePath" to project.path,
-              "composeai.daemon.userClassDirs" to
-                userClassDirs.joinToString(java.io.File.pathSeparator),
-              "composeai.daemon.cheapSignalFiles" to
-                cheapSignalFiles.joinToString(java.io.File.pathSeparator) { it.absolutePath },
-              "composeai.daemon.previewsJsonPath" to manifestFile.get(),
-            )
-          LinkedHashMap(base).apply { putAll(daemonProps) }
-        }
+      // Per-key `put(...)` calls (rather than a single `set(provider { wholeMap })`) so
+      // each entry's Provider chain only captures serialisable references — Property
+      // values from the extension, layout-derived providers, the static markers list,
+      // and the eagerly-resolved cheap-signal string. A single map-building lambda
+      // would have to capture `project` and `this` (to call `collectCheapSignalFiles`
+      // and read `this.classpath.files`), which the configuration cache rejects with
+      // `error writing value of type DefaultMapProperty`.
+      this.systemProperties.put("robolectric.graphicsMode", "NATIVE")
+      this.systemProperties.put("robolectric.looperMode", "PAUSED")
+      this.systemProperties.put("robolectric.conscryptMode", "OFF")
+      this.systemProperties.put("robolectric.pixelCopyRenderMode", "hardware")
+      this.systemProperties.put("roborazzi.test.record", "true")
+      this.systemProperties.put("composeai.render.manifest", manifestFile)
+      this.systemProperties.put("composeai.render.outputDir", rendersDir)
+      this.systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
+      this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+      this.systemProperties.put("composeai.daemon.protocolVersion", "1")
+      this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
+      this.systemProperties.put(
+        "composeai.daemon.maxHeapMb",
+        extension.experimental.daemon.maxHeapMb.map { it.toString() },
       )
+      this.systemProperties.put(
+        "composeai.daemon.maxRendersPerSandbox",
+        extension.experimental.daemon.maxRendersPerSandbox.map { it.toString() },
+      )
+      this.systemProperties.put(
+        "composeai.daemon.warmSpare",
+        extension.experimental.daemon.warmSpare.map { it.toString() },
+      )
+      this.systemProperties.put("composeai.daemon.modulePath", project.path)
+      // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the
+      // `daemonUserClassMarkers` List<String> (a configuration-time constant);
+      // `classpath.elements` is a Provider<Set<FileSystemLocation>> wired via the task's
+      // own @Classpath FileCollection, which the configuration cache serialises as part
+      // of the task's input snapshot.
+      this.systemProperties.put(
+        "composeai.daemon.userClassDirs",
+        this.classpath.elements.map { elements ->
+          elements
+            .map { it.asFile.absolutePath }
+            .filter { entry -> daemonUserClassMarkers.any { marker -> entry.startsWith(marker) } }
+            .joinToString(java.io.File.pathSeparator)
+        },
+      )
+      this.systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
+      // B2.2 phase 1 — `composeai.daemon.previewsJsonPath`. Same path as the renderPreviews
+      // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
+      // know about the renderer-shared key.
+      this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
