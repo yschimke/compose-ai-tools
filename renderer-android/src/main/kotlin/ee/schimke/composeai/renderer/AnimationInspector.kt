@@ -189,7 +189,7 @@ internal class AnimationInspector private constructor(
                 .filter { m ->
                     val name = m.name
                     m.parameterTypes.isEmpty() &&
-                        java.util.Map::class.java.isAssignableFrom(m.returnType) &&
+                        Map::class.java.isAssignableFrom(m.returnType) &&
                         (name.startsWith("get") && name.endsWith("Clocks\$ui_tooling"))
                 }
                 .onEach { it.isAccessible = true }
@@ -296,7 +296,7 @@ internal class AnimationInspector private constructor(
                 .filter { ctor ->
                     ctor.parameterTypes.isNotEmpty() &&
                         ctor.parameterTypes.all { p ->
-                            kotlin.jvm.functions.Function0::class.java.isAssignableFrom(p)
+                            Function0::class.java.isAssignableFrom(p)
                         }
                 }
                 .maxByOrNull { it.parameterTypes.size }
@@ -304,12 +304,12 @@ internal class AnimationInspector private constructor(
 
         private fun noOpCallbacks(count: Int): Array<Any> = Array(count) { NO_OP_CALLBACK }
 
-        private val NO_OP_CALLBACK = object : kotlin.jvm.functions.Function0<Unit> {
+        private val NO_OP_CALLBACK = object : Function0<Unit> {
             override fun invoke() = Unit
         }
     }
 
-    private class Function0Adapter<T>(private val produce: () -> T) : kotlin.jvm.functions.Function0<T> {
+    private class Function0Adapter<T>(private val produce: () -> T) : Function0<T> {
         override fun invoke(): T = produce()
     }
 }

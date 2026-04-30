@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import tapmoc.TapmocExtension
 import tapmoc.configureKotlinCompatibility
 
@@ -13,6 +14,13 @@ plugins {
 // against this artifact. `checkDependencies()` fails the build if a
 // transitive API dep raises the floor.
 configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+// Silence `Language version 2.0 is deprecated …` from the 2.3.x compiler.
+// We intentionally hold the floor at 2.0 (see `kotlinCoreLibraries` in
+// libs.versions.toml); drop this when that version bumps to 2.1+.
+tasks.withType<KotlinCompilationTask<*>>().configureEach {
+  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
+}
 
 extensions.configure<TapmocExtension> { checkDependencies() }
 

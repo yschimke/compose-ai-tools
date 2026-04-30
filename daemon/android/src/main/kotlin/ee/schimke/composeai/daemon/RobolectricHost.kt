@@ -274,7 +274,13 @@ open class RobolectricHost(
       // the Android save-loop's classloader-identity skew. See
       // `docs/daemon/classloader-forensics-diff.md` and the `sandboxClassLoaderRef` KDoc on
       // `DaemonHostBridge`.
-      DaemonHostBridge.setSandboxClassLoader(this.javaClass.classLoader)
+      // `this.javaClass.classLoader` is platform-typed to `ClassLoader?`, but
+      // every JVM-loaded class except primitives / array stubs has a non-null
+      // loader (we'd be looking at the bootstrap loader's `null` only for
+      // primitive `Class` objects, which don't apply here — `SandboxRunner` is
+      // loaded by Robolectric's `InstrumentingClassLoader`). Assert non-null
+      // so the new strict Kotlin platform-type checks stop warning.
+      DaemonHostBridge.setSandboxClassLoader(this.javaClass.classLoader!!)
 
       while (!DaemonHostBridge.shutdown.get()) {
         val request =
@@ -404,7 +410,7 @@ open class RobolectricHost(
         val captureMethod =
           forensicsClass.getMethod(
             "capture",
-            java.util.List::class.java,
+            List::class.java,
             Class.forName(
               "ee.schimke.composeai.daemon.forensics.RobolectricConfigSnapshot",
               true,

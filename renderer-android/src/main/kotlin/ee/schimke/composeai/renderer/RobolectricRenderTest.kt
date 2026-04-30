@@ -460,6 +460,12 @@ abstract class RobolectricRenderTestBase(
         val a11yEnabled = System.getProperty("composeai.a11y.enabled") == "true"
         val annotate = a11yEnabled && System.getProperty("composeai.a11y.annotate") != "false"
 
+        // The v2 replacement (`androidx.compose.ui.test.junit4.v2.createAndroidComposeRule`)
+        // that the deprecation warning suggests was added in compose-ui-test
+        // 1.11.0-alpha03; the renderer compiles against `compose-bom-compat`
+        // (1.9.5) so the v2 entry point isn't on our compile classpath. Once
+        // the compat floor moves up, drop the suppression and switch.
+        @Suppress("DEPRECATION")
         val rule = createAndroidComposeRule<ComponentActivity>()
         val description = org.junit.runner.Description.createTestDescription(
             this::class.java,

@@ -9,9 +9,10 @@ kotlin = "2.3.21"
 # language features in any published module so dropping to 2.0.21 has zero
 # cost on our source today.
 # Caveat: the 2.3.x compiler emits `Language version 2.0 is deprecated and
-# its support will be removed in a future version of Kotlin`. When that
-# removal lands (likely 2.4.x), bump this to `2.1.x` and accept that
-# Kotlin 2.0.x consumers will need to upgrade.
+# its support will be removed in a future version of Kotlin`. That warning
+# is silenced via `-Xsuppress-version-warnings` in the modules calling
+# `configureKotlinCompatibility(...)`; remove the flag (and bump this to
+# `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
 agp = "9.2.0"
 ktfmt = "0.26.0"
@@ -75,6 +76,16 @@ maven-publish = "0.36.0"
 # driving Google's own `validate*ScreenshotTest` tasks. Still alpha —
 # re-check compatibility when bumping AGP.
 android-compose-screenshot = "0.0.1-alpha14"
+# Checker Framework qualifier annotations. ATF (`accessibility-test-framework`,
+# pulled in transitively by `roborazzi-accessibility-check`) annotates its
+# nullable getters with `@org.checkerframework.checker.nullness.qual.Nullable`.
+# When that annotation isn't on the renderer's compile classpath the Kotlin
+# 2.3+ compiler emits `INACCESSIBLE_TYPE` warnings (becomes an error in
+# language version 2.4 — KT-80247) on every call site that reads such a
+# getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
+# warning without exporting the annotation to consumers (it's marker-only;
+# zero runtime impact).
+checker-qual = "3.49.0"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -111,6 +122,7 @@ ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.59.0" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.59.0" }
 roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version = "1.59.0" }
+checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version = "1.59.0" }
 junit = { module = "junit:junit", version.ref = "junit" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }

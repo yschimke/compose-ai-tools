@@ -137,6 +137,11 @@ class RenderEngine(
         android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
       )
 
+    // v2 `createAndroidComposeRule` (compose-ui-test 1.11.0-alpha03+) is the
+    // long-term replacement, but we share the renderer's `compose-bom-compat`
+    // (1.9.5) compile floor. Track [RobolectricRenderTest.renderDefault] when
+    // the floor moves up.
+    @Suppress("DEPRECATION")
     val rule = createAndroidComposeRule<ComponentActivity>()
     val description =
       org.junit.runner.Description.createTestDescription(
