@@ -4,7 +4,17 @@ import * as path from 'path';
 import {
     DAEMON_DESCRIPTOR_SCHEMA_VERSION,
     DaemonLaunchDescriptor,
+    ERROR_HISTORY_DIFF_MISMATCH,
+    ERROR_HISTORY_ENTRY_NOT_FOUND,
+    ERROR_HISTORY_PIXEL_NOT_IMPLEMENTED,
     FileChangedParams,
+    HistoryAddedParams,
+    HistoryDiffParams,
+    HistoryDiffResult,
+    HistoryListParams,
+    HistoryListResult,
+    HistoryReadParams,
+    HistoryReadResult,
     InitializeParams,
     InitializeResult,
     PROTOCOL_VERSION,
@@ -111,5 +121,100 @@ describe('daemon launch descriptor', () => {
         };
         const round = JSON.parse(JSON.stringify(desc)) as DaemonLaunchDescriptor;
         assert.deepStrictEqual(round, desc);
+    });
+});
+
+/**
+ * H1+H2+H3 wire shapes. No fixtures shipped under
+ * `docs/daemon/protocol-fixtures/` for history methods yet (the Kotlin side
+ * keeps `entry`/`previewMetadata` as JsonElement and there's no golden
+ * corpus); we instead pin the documented sidecar JSON structure from
+ * HISTORY.md § "Sidecar metadata schema" so any drift on the doc surface is
+ * a test failure here.
+ */
+describe('history protocol shapes', () => {
+    it('error codes match PROTOCOL.md § 5', () => {
+        // Pinned constants — change in lockstep with the Kotlin side. The
+        // daemon's `JsonRpcServer` returns these literal codes from
+        // history/list / history/read / history/diff dispatch.
+        assert.strictEqual(ERROR_HISTORY_ENTRY_NOT_FOUND, -32010);
+        assert.strictEqual(ERROR_HISTORY_DIFF_MISMATCH, -32011);
+        assert.strictEqual(ERROR_HISTORY_PIXEL_NOT_IMPLEMENTED, -32012);
+    });
+
+    it('history/list params accept every documented filter', () => {
+        // Compile-time + runtime check: every filter listed in PROTOCOL.md
+        // § 5 ("history/list") must be assignable to HistoryListParams.
+        const params: HistoryListParams = {
+            previewId: 'com.example.RedSquare',
+            since: '2026-04-29T00:00:00Z',
+            until: '2026-04-30T23:59:59Z',
+            limit: 50,
+            cursor: 'opaque-token',
+            branch: 'main',
+            branchPattern: '^agent/.*',
+            commit: '6af6b8c',
+            worktreePath: '/home/yuri/workspace/compose-ai-tools',
+            agentId: 'claude-code',
+            sourceKind: 'git',
+            sourceId: 'git:preview/main@abc123',
+        };
+        const round = JSON.parse(JSON.stringify(params));
+        assert.deepStrictEqual(round, params);
+    });
+
+    it('history/list result mirrors the documented field set', () => {
+        const result: HistoryListResult = {
+            entries: [{ id: '20260430-101234-a1b2c3d4', previewId: 'com.example.X' }],
+            nextCursor: 'next-page',
+            totalCount: 142,
+        };
+        assert.strictEqual(result.entries.length, 1);
+        assert.strictEqual(result.totalCount, 142);
+    });
+
+    it('history/read params + result round-trip', () => {
+        const params: HistoryReadParams = { id: '20260430-101234-a1b2c3d4', inline: false };
+        const result: HistoryReadResult = {
+            entry: { id: params.id, previewId: 'com.example.X' },
+            previewMetadata: { displayName: 'X', sourceFile: '/abs/X.kt' },
+            pngPath: '/abs/.compose-preview-history/com.example.X/20260430-101234-a1b2c3d4.png',
+        };
+        assert.strictEqual(result.pngPath.endsWith('.png'), true);
+        assert.strictEqual(result.pngBytes, undefined,
+            'inline=false omits pngBytes; the client reads from disk');
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(params)), params);
+    });
+
+    it('history/diff metadata-mode result keeps pixel fields nullable', () => {
+        // Per PROTOCOL.md § 5: `diffPx` / `ssim` / `diffPngPath` are reserved
+        // for phase H5; in metadata mode they are always undefined or null.
+        // A result asserting them as required would lock us into H5 prematurely.
+        const params: HistoryDiffParams = { from: 'a1', to: 'a2', mode: 'metadata' };
+        const result: HistoryDiffResult = {
+            pngHashChanged: true,
+            fromMetadata: { id: 'a1' },
+            toMetadata: { id: 'a2' },
+        };
+        assert.strictEqual(params.mode, 'metadata');
+        assert.strictEqual(result.diffPx, undefined);
+        assert.strictEqual(result.ssim, undefined);
+        assert.strictEqual(result.diffPngPath, undefined);
+    });
+
+    it('historyAdded notification carries an entry payload', () => {
+        // The wire shape from PROTOCOL.md § 6 ("historyAdded"): a single
+        // `entry` field whose value is the sidecar JSON. We don't pin the
+        // sidecar's full shape here — that lives in HISTORY.md and changes
+        // additively — but we do pin the envelope.
+        const params: HistoryAddedParams = {
+            entry: {
+                id: '20260430-101234-a1b2c3d4',
+                previewId: 'com.example.RedSquare',
+                pngHash: 'a1b2c3d4e5f6789',
+            },
+        };
+        const round = JSON.parse(JSON.stringify(params)) as HistoryAddedParams;
+        assert.deepStrictEqual(round, params);
     });
 });

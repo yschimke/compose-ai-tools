@@ -272,6 +272,104 @@ describe('DaemonClient', () => {
         assert.strictEqual(client.isClosed(), true);
     });
 
+    it('dispatches historyAdded notifications to the right handler', async () => {
+        const { toServer, toClient } = bidiPair();
+        const seen: unknown[] = [];
+        const client = new DaemonClient(toServer, toClient, {
+            onHistoryAdded: (params) => seen.push(params.entry),
+        });
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0',
+            method: 'historyAdded',
+            params: {
+                entry: {
+                    id: '20260430-101234-a1b2c3d4',
+                    previewId: 'com.example.X',
+                    pngHash: 'abcdef',
+                },
+            },
+        }));
+        await new Promise((r) => setImmediate(r));
+        assert.strictEqual(seen.length, 1);
+        assert.strictEqual((seen[0] as { previewId: string }).previewId, 'com.example.X');
+        client.exit();
+    });
+
+    it('history/list passes every filter through verbatim', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const filters = {
+            previewId: 'com.example.X',
+            since: '2026-04-30T00:00:00Z',
+            limit: 10,
+            branch: 'main',
+            sourceKind: 'fs' as const,
+        };
+        const p = client.historyList(filters);
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'history/list');
+        assert.deepStrictEqual(sent.params, filters);
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0', id: sent.id,
+            result: { entries: [], totalCount: 0 },
+        }));
+        const res = await p;
+        assert.strictEqual(res.totalCount, 0);
+    });
+
+    it('history/read default omits inline and reads pngPath from disk', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const p = client.historyRead({ id: 'a1' });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'history/read');
+        assert.deepStrictEqual(sent.params, { id: 'a1' });
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0', id: sent.id,
+            result: { entry: { id: 'a1' }, pngPath: '/abs/a1.png' },
+        }));
+        const res = await p;
+        assert.strictEqual(res.pngPath, '/abs/a1.png');
+        assert.strictEqual(res.pngBytes, undefined);
+    });
+
+    it('history/diff defaults to metadata mode and tolerates null pixel fields', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const p = client.historyDiff({ from: 'a1', to: 'a2' });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'history/diff');
+        assert.deepStrictEqual(sent.params, { from: 'a1', to: 'a2' });
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0', id: sent.id,
+            result: {
+                pngHashChanged: true,
+                fromMetadata: { id: 'a1' },
+                toMetadata: { id: 'a2' },
+            },
+        }));
+        const res = await p;
+        assert.strictEqual(res.pngHashChanged, true);
+        assert.strictEqual(res.diffPx, undefined);
+    });
+
+    it('history/diff with mode=pixel surfaces the reserved-for-H5 error', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const p = client.historyDiff({ from: 'a1', to: 'a2', mode: 'pixel' });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0', id: sent.id,
+            error: { code: -32012, message: 'pixel mode reserved for H5' },
+        }));
+        await assert.rejects(p, (err: Error) =>
+            err instanceof DaemonRpcError && (err as DaemonRpcError).rpc.code === -32012);
+    });
+
     it('initialize stamps protocolVersion = 1 and sends initialized after', async () => {
         const { toServer, toClient } = bidiPair();
         const frames = captureFrames(toServer);
