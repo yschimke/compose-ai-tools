@@ -2,6 +2,10 @@ package ee.schimke.composeai.mcp
 
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -27,9 +31,34 @@ class DaemonSupervisor(
   private val descriptorProvider: DescriptorProvider,
   private val clientFactory: DaemonClientFactory,
   private val router: NotificationRouter = NotificationRouter(),
+  /**
+   * Extra in-process replicas to spawn per (workspace, module) once the primary is up. The primary
+   * is always spawned synchronously and seeds the catalog via `synthesiseInitialDiscovery`; the
+   * replicas come up off-thread, share the (now-warm) Maven cache, and absorb render fan-out so
+   * concurrent `renderNow` requests for different previews don't queue behind each other on a
+   * single render thread. `replicasPerDaemon = 0` (the default) preserves the original
+   * 1-daemon-per-module behaviour. Total daemons per module = `1 + replicasPerDaemon`.
+   */
+  private val replicasPerDaemon: Int = 0,
 ) {
 
+  init {
+    require(replicasPerDaemon >= 0) { "replicasPerDaemon must be >= 0, got $replicasPerDaemon" }
+  }
+
   private val projects = ConcurrentHashMap<WorkspaceId, RegisteredProject>()
+
+  /**
+   * Off-thread spawner for **additional replicas** beyond the primary. Sized to the configured
+   * replica count so all replicas of one module can come up in parallel; capped so several modules
+   * spawning concurrently don't fork an unbounded number of JVMs.
+   */
+  private val replicaSpawnExecutor: ExecutorService =
+    Executors.newFixedThreadPool(
+      maxOf(1, replicasPerDaemon).coerceAtMost(REPLICA_SPAWN_POOL_CAP)
+    ) { r ->
+      Thread(r, "mcp-daemon-replica-spawn").apply { isDaemon = true }
+    }
 
   /**
    * Registers a project at [absolutePath] (must already exist on disk). Returns the assigned
@@ -87,17 +116,22 @@ class DaemonSupervisor(
   fun project(workspaceId: WorkspaceId): RegisteredProject? = projects[workspaceId]
 
   /**
-   * Forgets the [SupervisedDaemon] for [workspaceId] + [modulePath] without ordering a shutdown —
-   * the daemon already announced it's exiting (classpathDirty) and will close the wire on its own.
-   * The next [daemonFor] for the same coordinates spawns afresh against the (presumably refreshed)
-   * descriptor.
+   * Forgets the [SupervisedDaemon] for [workspaceId] + [modulePath] and tears down any peer
+   * replicas. Intended for the `classpathDirty` respawn flow: the dirty replica is already exiting
+   * on its own, but with `replicasPerDaemon > 0` the peers are still alive on the same stale
+   * classpath and must be killed explicitly. Shutdown of the dirty replica is a no-op (its wire is
+   * already closing); peer shutdowns send `shutdown`/`exit` per protocol.
    *
-   * Intended for the `classpathDirty` respawn flow only. Returns `true` if a daemon entry was
-   * actually removed.
+   * The next [daemonFor] for the same coordinates spawns afresh against the (presumably refreshed)
+   * descriptor. Returns `true` if a daemon entry was actually removed — the second of two racing
+   * `classpathDirty` events from different replicas of the same group sees `false` and can skip the
+   * respawn-counter bump.
    */
   fun forgetDaemon(workspaceId: WorkspaceId, modulePath: String): Boolean {
     val project = projects[workspaceId] ?: return false
-    return project.daemons.remove(modulePath) != null
+    val removed = project.daemons.remove(modulePath) ?: return false
+    runCatching { removed.shutdown() }
+    return true
   }
 
   /**
@@ -119,6 +153,8 @@ class DaemonSupervisor(
       project.daemons.clear()
     }
     projects.clear()
+    replicaSpawnExecutor.shutdown()
+    runCatching { replicaSpawnExecutor.awaitTermination(2, TimeUnit.SECONDS) }
   }
 
   /** Returns the [NotificationRouter] so callers can register handlers. */
@@ -130,29 +166,85 @@ class DaemonSupervisor(
 
   private fun spawn(project: RegisteredProject, modulePath: String): SupervisedDaemon {
     val descriptor = descriptorProvider.descriptorFor(project, modulePath)
+    val supervised = SupervisedDaemon(workspaceId = project.workspaceId, modulePath = modulePath)
+
+    // Primary spawn is synchronous so the calling thread blocks on cold-start and the catalog is
+    // seeded before any subsequent `daemonFor` returns. Subsequent replicas piggy-back on the
+    // (now-warm) Maven cache — see `replicasPerDaemon` KDoc.
+    spawnReplica(project, descriptor, supervised, isPrimary = true)
+
+    // Fire off replica spawns in parallel. They share the warmed Maven cache and the JIT'd
+    // classloader cache from the primary, so cold-start cost is dominated by the primary; the
+    // replicas come up in roughly max(replica) instead of sum(replicas).
+    repeat(replicasPerDaemon) { idx ->
+      replicaSpawnExecutor.execute {
+        runCatching { spawnReplica(project, descriptor, supervised, isPrimary = false) }
+          .onFailure {
+            System.err.println(
+              "DaemonSupervisor: replica spawn ${idx + 1} failed for " +
+                "${project.workspaceId}/$modulePath: ${it.message}"
+            )
+          }
+      }
+    }
+
+    return supervised
+  }
+
+  /**
+   * Spawns one client (primary or replica) and attaches it to [supervised]. The primary blocks on
+   * `initialize` and seeds the catalog via [synthesiseInitialDiscovery]; replicas only need to
+   * `initialize` (catalog is already populated by the primary's manifest read).
+   */
+  private fun spawnReplica(
+    project: RegisteredProject,
+    descriptor: DaemonLaunchDescriptor,
+    supervised: SupervisedDaemon,
+    isPrimary: Boolean,
+  ) {
     val spawn = clientFactory.spawn(project, descriptor)
-    val supervised =
-      SupervisedDaemon(workspaceId = project.workspaceId, modulePath = modulePath, spawn = spawn)
+    // Wire the client BEFORE publishing the spawn to the replica list — otherwise a concurrent
+    // `clientForRender` reader could pick this index and call `.client` before the spawn's
+    // internal lazy client field is initialised (DaemonSpawn implementations construct the
+    // DaemonClient inside `client(onNotification, onClose)`).
     spawn.client(
       onNotification = { method, params -> router.dispatch(supervised, method, params) },
-      onClose = { router.dispatchClose(supervised) },
+      onClose = {
+        // Only fire dispatchClose to handlers (which drop catalog state etc.) when the *last*
+        // replica is gone — otherwise a single replica's wire close would tear down state shared
+        // with its still-alive peers.
+        if (supervised.removeReplica(spawn)) {
+          router.dispatchClose(supervised)
+        }
+      },
     )
+    supervised.addReplica(spawn)
     runCatching {
       val result =
         spawn.client.initialize(
           workspaceRoot = project.path.absolutePath,
-          moduleId = modulePath,
+          moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
         )
-      // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes via
-      // `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
-      // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by reading
-      // that file and dispatching it through the router as if it were a wire-level event. This
-      // keeps every catalog-population code path (DaemonMcpServer.onDiscoveryUpdated) on a single
-      // shape rather than splitting "initial seed" vs "incremental".
-      synthesiseInitialDiscovery(supervised, result.manifest.path)
+      if (isPrimary) {
+        // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
+        // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
+        // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
+        // reading that file and dispatching it through the router as if it were a wire-level
+        // event. Replicas of the same module would synthesise the same set, so we skip them.
+        synthesiseInitialDiscovery(supervised, result.manifest.path)
+      }
     }
-    return supervised
+  }
+
+  companion object {
+    /**
+     * Cap on the replica-spawn thread pool. With many modules each requesting `replicasPerDaemon`
+     * extra replicas, an unbounded pool would fork tens of JVMs at once and trash the host. Cold
+     * Robolectric bootstraps are CPU + I/O heavy, so eight concurrent forks is the comfortable
+     * upper bound on a typical dev machine.
+     */
+    private const val REPLICA_SPAWN_POOL_CAP: Int = 8
   }
 
   private fun synthesiseInitialDiscovery(daemon: SupervisedDaemon, manifestPath: String) {
@@ -192,16 +284,73 @@ data class RegisteredProject(
   val daemons: ConcurrentHashMap<String, SupervisedDaemon> = ConcurrentHashMap(),
 )
 
-/** A live daemon — owned by [DaemonSupervisor]. */
-class SupervisedDaemon(
-  val workspaceId: WorkspaceId,
-  val modulePath: String,
-  private val spawn: DaemonSpawn,
-) {
-  val client: DaemonClient
-    get() = spawn.client
+/**
+ * A live daemon — owned by [DaemonSupervisor]. May front 1+N underlying replicas (see
+ * [DaemonSupervisor.replicasPerDaemon]). All replicas serve the same (workspaceId, modulePath); the
+ * supervisor uses the group to fan out invalidations and shard render fan-out.
+ */
+class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
 
-  fun shutdown() = spawn.shutdown()
+  /**
+   * Replicas in spawn order. The primary is at index 0, populated by the synchronous spawn path;
+   * extra replicas append as their async spawns finish. Iterations take a snapshot — the list is
+   * copy-on-write so concurrent appends + reads are safe.
+   */
+  private val replicas: CopyOnWriteArrayList<DaemonSpawn> = CopyOnWriteArrayList()
+
+  /**
+   * The primary [DaemonClient]. Used for control-plane operations (`initialize`, `history*`,
+   * `setVisible`/`setFocus` — though propagation fans out to every replica, see [allClients]).
+   * Throws if no replica has been registered yet (only possible during the brief window before the
+   * primary's synchronous spawn returns).
+   */
+  val client: DaemonClient
+    get() {
+      val list = replicas
+      check(list.isNotEmpty()) { "SupervisedDaemon($workspaceId/$modulePath): no replicas" }
+      return list[0].client
+    }
+
+  /** Snapshot of every active replica's client — for fan-out (e.g. `fileChanged`, `setVisible`). */
+  fun allClients(): List<DaemonClient> = replicas.map { it.client }
+
+  /**
+   * Picks a replica's client for a render keyed on [previewId]. Hash-based so the same preview
+   * lands on the same replica every time (cache locality + render dedup); different previews spread
+   * across replicas so concurrent renders run in parallel. Falls back to the primary when no
+   * replica is yet registered.
+   */
+  fun clientForRender(previewId: String): DaemonClient {
+    val list = replicas
+    if (list.isEmpty()) error("SupervisedDaemon($workspaceId/$modulePath): no replicas")
+    if (list.size == 1) return list[0].client
+    // Math.floorMod gives a non-negative index even for negative hashCodes.
+    val idx = Math.floorMod(previewId.hashCode(), list.size)
+    return list[idx].client
+  }
+
+  /** Number of currently-active replicas (primary + extras). */
+  fun replicaCount(): Int = replicas.size
+
+  internal fun addReplica(spawn: DaemonSpawn) {
+    replicas.add(spawn)
+  }
+
+  /**
+   * Removes [spawn] from the replica set. Returns `true` if this was the *last* replica — callers
+   * use this to decide whether to fire group-level cleanup (e.g. dispatching `onClose` to handlers
+   * that own per-(workspace, module) state).
+   */
+  internal fun removeReplica(spawn: DaemonSpawn): Boolean {
+    replicas.remove(spawn)
+    return replicas.isEmpty()
+  }
+
+  fun shutdown() {
+    val snapshot = replicas.toList()
+    replicas.clear()
+    snapshot.forEach { runCatching { it.shutdown() } }
+  }
 }
 
 /**

@@ -115,13 +115,14 @@ class DaemonMcpServer(
 
   /**
    * Worker for slow daemon-lifecycle work — replacement-daemon spawn after a `classpathDirty`
-   * notification, and async first-spawn from the `watch` tool. Single-threaded so concurrent
-   * requests for the same module don't double-spawn (the supervisor's `daemonFor` is already
-   * `computeIfAbsent`-safe, but serialising here also keeps the McpSession reader thread free).
-   * Daemon-flagged so it never delays JVM shutdown.
+   * notification, and async first-spawn from the `watch` tool. Bounded multi-threaded so several
+   * modules can cold-start in parallel — without this, a workspace with N preview modules paid `N ×
+   * cold-start` (Robolectric: minutes on a cold Maven cache). The supervisor's `daemonFor` is
+   * `computeIfAbsent`-safe so concurrent requests for the same module still de-dup. Daemon-flagged
+   * so the executor never delays JVM shutdown.
    */
   private val daemonLifecycleExecutor: java.util.concurrent.ExecutorService =
-    java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+    java.util.concurrent.Executors.newFixedThreadPool(DAEMON_LIFECYCLE_THREADS) { r ->
       Thread(r, "mcp-daemon-lifecycle").apply { isDaemon = true }
     }
 
@@ -295,7 +296,13 @@ class DaemonMcpServer(
       l.add(future)
       l
     }
-    daemon.client.renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL)
+    // Shard render fan-out across replicas: same previewFqn → same replica (cache locality +
+    // dedup), different previewFqns → spread across replicas so concurrent renders run in
+    // parallel. With replicasPerDaemon = 0 this collapses to the primary, preserving the
+    // single-daemon path.
+    daemon
+      .clientForRender(uri.previewFqn)
+      .renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL)
     // Optional `notifications/progress` beat: when the client opted in via
     // `_meta.progressToken`, fire periodic monotonic progress notifications so a UI can show a
     // spinner / progress bar while the slow render completes. Beat thread is daemon-flagged
@@ -919,8 +926,12 @@ class DaemonMcpServer(
     var forwarded = 0
     var rendered = 0
     project.daemons.values.forEach { daemon ->
-      runCatching { daemon.client.fileChanged(path = path, kind = kind, changeType = changeType) }
-        .onSuccess { forwarded++ }
+      // File invalidation must reach EVERY replica — each replica has its own independent
+      // discovery + render cache, so missing one would leave it serving stale bytes.
+      daemon.allClients().forEach { client ->
+        runCatching { client.fileChanged(path = path, kind = kind, changeType = changeType) }
+          .onSuccess { forwarded++ }
+      }
       val byId = catalog[DaemonAddr(daemon.workspaceId, daemon.modulePath)] ?: return@forEach
       // Build the candidate URI set for this daemon and intersect with current watches/subs.
       val candidates =
@@ -937,14 +948,20 @@ class DaemonMcpServer(
           subscriptions.sessionsSubscribedTo(uri.toUri()).isNotEmpty()
       }
       if (ofInterest.isNotEmpty()) {
-        runCatching {
-          daemon.client.renderNow(
-            previews = ofInterest.map { it.previewFqn },
-            tier = RenderTier.FULL,
-            reason = "notify_file_changed:$path",
-          )
+        // Group renders by their target replica so we issue one renderNow per replica with the
+        // subset of previews it owns. Same hash function as `clientForRender` so the dispatch
+        // here matches what `renderAndReadBytes` would do for the same previewFqn.
+        val byReplica = ofInterest.groupBy { daemon.clientForRender(it.previewFqn) }
+        byReplica.forEach { (client, group) ->
+          runCatching {
+            client.renderNow(
+              previews = group.map { it.previewFqn },
+              tier = RenderTier.FULL,
+              reason = "notify_file_changed:$path",
+            )
+          }
+          rendered += group.size
         }
-        rendered += ofInterest.size
       }
     }
     return textCallToolResult(
@@ -1097,12 +1114,15 @@ class DaemonMcpServer(
         }
       }
 
-    // Forget the daemon + cached state. (The daemon's wire close will also fire `onClose` and
-    // try to remove the same catalog entry — a second remove is a no-op.)
-    supervisor.forgetDaemon(workspaceId, modulePath)
+    // Forget the daemon + cached state. With `replicasPerDaemon > 0`, multiple replicas of the
+    // same group may race to emit `classpathDirty` (they all see the same stale classpath). The
+    // first call wins — `forgetDaemon` returns false on subsequent calls so we skip the
+    // respawn-counter bump and the respawn schedule, avoiding double-spawn under the race.
+    val firstClassedDirty = supervisor.forgetDaemon(workspaceId, modulePath)
     catalog.remove(DaemonAddr(workspaceId, modulePath))
     watchPropagator.forget(daemon)
     sessions.forEach { it.notifyResourceListChanged() }
+    if (!firstClassedDirty) return
 
     // Track respawn attempts so a permanently-stale descriptor (one whose own classpath
     // fingerprint disagrees with reality) doesn't loop forever.
@@ -1214,5 +1234,12 @@ class DaemonMcpServer(
      * balance between "responsive UI updates" and "not flooding the wire on a fast render".
      */
     private const val PROGRESS_BEAT_INTERVAL_MS: Long = 500
+
+    /**
+     * Worker count for [daemonLifecycleExecutor]. Sized so a few modules can cold-start in parallel
+     * without forking enough JVMs to thrash the host; aligns with the supervisor's own
+     * replica-spawn pool cap.
+     */
+    private const val DAEMON_LIFECYCLE_THREADS: Int = 4
   }
 }
