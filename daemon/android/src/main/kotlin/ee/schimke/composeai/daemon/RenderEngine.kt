@@ -115,6 +115,14 @@ class RenderEngine(
     val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
 
+    // `device = "id:wearos_*_round"` / `isRound=true` previews need a circular crop matching the
+    // standalone renderer's `RobolectricRenderTest`. The standalone path also gates on
+    // `showSystemUi || kind == TILE` to skip the crop on non-fullscreen previews (the crop is a
+    // device frame, not part of the composable), but the daemon's v1 `RenderSpec` doesn't carry
+    // either field — assume any explicit round-device request wants the crop. Refine when those
+    // fields get plumbed through.
+    val isRound = isRoundDevice(spec.device)
+
     // Per-preview Robolectric configuration — qualifiers re-applied so a previous render's size /
     // density doesn't bleed into this one. Same entrypoints `RobolectricRenderTest` uses; both
     // mutate `RuntimeEnvironment` global state, which is OK here because the sandbox is single-
@@ -123,6 +131,7 @@ class RenderEngine(
       widthDp = pxToDp(spec.widthPx, spec.density),
       heightDp = pxToDp(spec.heightPx, spec.density),
       density = spec.density,
+      isRound = isRound,
     )
     org.robolectric.RuntimeEnvironment.setFontScale(1.0f)
 
@@ -169,9 +178,15 @@ class RenderEngine(
             rule.mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)
 
             outputFile.parentFile?.mkdirs()
+            // `applyDeviceCrop = true` is what produces the circular alpha mask Roborazzi paints
+            // over the captured bitmap; the `round` resource qualifier set above only affects
+            // `Configuration.isScreenRound`. Both are needed for parity with the standalone
+            // renderer's wear-round path.
+            val roborazziOptions =
+              RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
             rule
               .onRoot()
-              .captureRoboImage(file = outputFile, roborazziOptions = ROBORAZZI_OPTIONS)
+              .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
           } finally {
             // DESIGN § 9 + § 10 cleanup epilogue. The Compose test rule does not allow a second
             // `setContent` on the same `ComponentActivity`, so we can't drive the
@@ -234,15 +249,17 @@ class RenderEngine(
   }
 
   /**
-   * Subset of `RobolectricRenderTest.applyPreviewQualifiers` — only the size + density qualifiers
-   * the daemon's v1 surface exercises. Locale / uiMode / round / orientation come from
+   * Subset of `RobolectricRenderTest.applyPreviewQualifiers` — only the size / density / round
+   * qualifiers the daemon's v1 surface exercises. Locale / uiMode / orientation come from
    * `@Preview` annotation fields the daemon doesn't yet thread through. Same `RuntimeEnvironment`
-   * entrypoints as the renderer — output dimensions match Studio's preview pane.
+   * entrypoints as the renderer — output dimensions match Studio's preview pane. Qualifier order
+   * follows Robolectric's strict grammar (locale, width, height, round, orientation, …, density).
    */
-  private fun applyPreviewQualifiers(widthDp: Int, heightDp: Int, density: Float) {
+  private fun applyPreviewQualifiers(widthDp: Int, heightDp: Int, density: Float, isRound: Boolean) {
     val qualifiers = buildList {
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
+      if (isRound) add("round")
       if (widthDp > 0 && heightDp > 0) {
         add(if (widthDp > heightDp) "land" else "port")
       }
@@ -266,9 +283,22 @@ class RenderEngine(
      * the standalone JUnit path's settle point.
      */
     private const val CAPTURE_ADVANCE_MS = 32L
-
-    private val ROBORAZZI_OPTIONS = RoborazziOptions()
   }
+}
+
+/**
+ * Detects whether a Compose `@Preview(device = ...)` string refers to a round (circular) display —
+ * matches Wear OS round devices the same way `:renderer-android`'s `RoundClip.kt` does. Inlined
+ * rather than depended on for the same reason `RenderEngine` itself is duplicated (see file kdoc):
+ * the daemon doesn't take a compile-time dep on the renderer's internals. Reconcile when the v2
+ * shared render-body extraction lands.
+ */
+internal fun isRoundDevice(device: String?): Boolean {
+  if (device.isNullOrBlank()) return false
+  val lower = device.lowercase()
+  return lower.contains("_round") ||
+    lower.contains("isround=true") ||
+    lower.contains("shape=round")
 }
 
 /**
@@ -306,6 +336,13 @@ data class RenderSpec(
   val density: Float = 2.0f,
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
+  /**
+   * Raw `@Preview(device = …)` string when known — `id:wearos_small_round`,
+   * `spec:width=…,isRound=true`, `id:pixel_5`, etc. Used by the render body to detect round Wear
+   * devices and apply the circular crop / `round` resource qualifier; non-round / null values are
+   * a no-op. Mirrors the standalone renderer's `RenderPreviewParams.device` for the v1 subset.
+   */
+  val device: String? = null,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
 ) {
@@ -315,10 +352,10 @@ data class RenderSpec(
     /**
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
-     * `showBackground`, `backgroundColor`, `outputBaseName`. `className` and `functionName` are
-     * required; everything else falls back to the defaults on this data class. Returns `null` when
-     * the payload doesn't carry a `className=` token (the discriminator the host uses to route
-     * legacy stub-payload requests through the classloader-identity path).
+     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`. `className` and
+     * `functionName` are required; everything else falls back to the defaults on this data class.
+     * Returns `null` when the payload doesn't carry a `className=` token (the discriminator the
+     * host uses to route legacy stub-payload requests through the classloader-identity path).
      */
     fun parseFromPayloadOrNull(payload: String): RenderSpec? {
       if (!payload.contains("className=")) return null
@@ -341,6 +378,7 @@ data class RenderSpec(
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
+        device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
       )
     }

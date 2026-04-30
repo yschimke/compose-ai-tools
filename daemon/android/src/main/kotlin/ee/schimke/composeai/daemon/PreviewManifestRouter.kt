@@ -74,6 +74,9 @@ class PreviewManifestRouter(
             append("heightPx=").append(entry.heightPx ?: 320).append(';')
             append("density=").append(entry.density ?: 2.0f).append(';')
             append("showBackground=").append(entry.showBackground ?: true).append(';')
+            entry.device?.takeIf { it.isNotBlank() }?.let {
+              append("device=").append(it).append(';')
+            }
             append("outputBaseName=").append(outputBaseName)
           },
       )
@@ -110,5 +113,11 @@ data class PreviewManifestEntry(
   val heightPx: Int? = null,
   val density: Float? = null,
   val showBackground: Boolean? = null,
+  /**
+   * Raw `@Preview(device = …)` string when the source preview has one set. Forwarded into the
+   * `RenderSpec` payload so the render body applies the wear-round crop / `round` resource
+   * qualifier for circular Wear devices.
+   */
+  val device: String? = null,
   val outputBaseName: String? = null,
 )
