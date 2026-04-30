@@ -461,7 +461,7 @@ body {
     cursor: default;
 }
 
-/* -- Card title row + history button --------------------------------- */
+/* -- Card title row --------------------------------------------------- */
 
 .card-title-row {
     display: flex;
@@ -479,89 +479,6 @@ body {
     padding: 0;
     font: inherit;
     font-weight: 600;
-}
-
-.card-history-btn {
-    flex: 0 0 auto;
-    width: 20px;
-    height: 20px;
-}
-.card-history-btn .codicon {
-    font-size: 14px;
-}
-
-/* -- History drawer --------------------------------------------------- */
-
-.history-drawer {
-    border-top: 1px solid var(--card-border);
-    background: var(--vscode-editorWidget-background, var(--card-bg));
-    padding: 4px 6px 6px;
-}
-
-.history-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    margin-bottom: 4px;
-}
-
-.history-label {
-    font-size: calc(var(--vscode-font-size) - 3px);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-}
-
-.history-close {
-    width: 18px;
-    height: 18px;
-}
-.history-close .codicon {
-    font-size: 12px;
-}
-
-.history-strip {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 4px;
-    padding-bottom: 2px;
-}
-
-.history-chip {
-    flex: 0 0 auto;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: 1px solid transparent;
-    border-radius: 2px;
-    font-family: inherit;
-    font-size: calc(var(--vscode-font-size) - 3px);
-    padding: 2px 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
-.history-chip:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
-}
-.history-chip:focus-visible {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
-}
-.history-chip.selected {
-    border-color: var(--vscode-focusBorder);
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-}
-
-.history-empty {
-    font-size: calc(var(--vscode-font-size) - 3px);
-    color: var(--text-secondary);
-    font-style: italic;
-    padding: 4px 2px;
-}
-.history-empty code {
-    font-family: var(--vscode-editor-font-family);
 }
 
 /* --- Accessibility (ATF) findings --- */

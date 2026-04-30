@@ -39,7 +39,8 @@ let lastLoadedModules: string[] = [];
  */
 let currentScopeFile: string | null = null;
 const registry = new PreviewRegistry();
-/** previewId → module, updated on every refresh. Used by history commands. */
+/** previewId → module, updated on every refresh. Used to look up the
+ *  owning module when the webview posts a per-preview action. */
 const previewModuleMap = new Map<string, string>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
@@ -666,7 +667,6 @@ async function refresh(
             const perModule: PreviewInfo[] = [];
             if (manifest) {
                 for (const p of manifest.previews) {
-                    p.hasHistory = gradleService.listHistory(mod, p.id).length > 0;
                     // Pre-compute carousel labels once so the webview doesn't
                     // have to know how to render dimension summaries.
                     for (const capture of p.captures) {
@@ -836,14 +836,6 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             sendModuleList();
             if (selectedModule) { refresh(false); }
             break;
-        case 'showHistory':
-            if (msg.previewId) { sendHistoryList(msg.previewId); }
-            break;
-        case 'loadHistoryImage':
-            if (msg.previewId && msg.filename) {
-                sendHistoryImage(msg.previewId, msg.filename);
-            }
-            break;
         case 'refreshHeavy':
             // Click on the stale badge → full-tier render of the owning
             // module. Once we have a `-PcomposePreview.previewIds=` filter
@@ -868,25 +860,6 @@ interface WebviewToExtensionMessage {
     functionName?: string;
     value?: string;
     previewId?: string;
-    filename?: string;
-}
-
-function sendHistoryList(previewId: string) {
-    if (!gradleService || !panel) { return; }
-    const mod = previewModuleMap.get(previewId);
-    if (!mod) { return; }
-    const entries = gradleService.listHistory(mod, previewId);
-    panel.postMessage({ command: 'setHistory', previewId, entries });
-}
-
-async function sendHistoryImage(previewId: string, filename: string) {
-    if (!gradleService || !panel) { return; }
-    const mod = previewModuleMap.get(previewId);
-    if (!mod) { return; }
-    const imageData = await gradleService.readHistoryImage(mod, previewId, filename);
-    if (imageData) {
-        panel.postMessage({ command: 'updateHistoryImage', previewId, filename, imageData });
-    }
 }
 
 /**

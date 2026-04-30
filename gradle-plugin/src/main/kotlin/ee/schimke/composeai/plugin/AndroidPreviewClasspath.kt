@@ -166,11 +166,11 @@ internal object AndroidPreviewClasspath {
       "roborazzi.test.record" to "true",
       "composeai.render.manifest" to manifestPath,
       "composeai.render.outputDir" to rendersDir,
-      // GoogleFont interceptor cache — defaults to
-      // `<project>/.compose-preview-history/fonts/`, same root the
-      // history task uses, so committed TTFs sit beside committed PNGs.
-      // The renderer class no-ops when this property is absent, so the
-      // feature is fully additive for existing consumers.
+      // GoogleFont interceptor cache — the cache lives under
+      // `<project>/.compose-preview-history/fonts/`. The dirname is
+      // historical; nothing else writes there now. The renderer class
+      // no-ops when this property is absent, so the feature is fully
+      // additive for existing consumers.
       "composeai.fonts.cacheDir" to fontsCacheDir,
       // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
       // on a CI profile) skips network on cache miss so the render

@@ -974,15 +974,17 @@ internal object AndroidPreviewSupport {
         // discovery on some JVM/classloader combinations. See #142.
         agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
 
-        // GoogleFont interceptor cache — defaults to
-        // `<project>/.compose-preview-history/fonts/`, same root the
-        // history task uses, so committed TTFs sit beside committed PNGs.
-        // The renderer class no-ops when this property is absent, so the
-        // feature is fully additive for existing consumers.
+        // GoogleFont interceptor cache lives under
+        // `<project>/.compose-preview-history/fonts/`. The dirname is
+        // historical; nothing else writes there now. The renderer class
+        // no-ops when this property is absent, so the feature is fully
+        // additive for existing consumers.
         val fontsCacheDir =
-          extension.historyDir
-            .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
-            .map { it.dir("fonts").asFile.absolutePath }
+          project.layout.projectDirectory
+            .dir(".compose-preview-history")
+            .dir("fonts")
+            .asFile
+            .absolutePath
         // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
         // on a CI profile) skips network on cache miss so the render
         // shows the fallback font rather than silently fetching from
@@ -997,7 +999,7 @@ internal object AndroidPreviewSupport {
         AndroidPreviewClasspath.buildSystemProperties(
             manifestPath = manifestFile.get(),
             rendersDir = rendersDir.get(),
-            fontsCacheDir = fontsCacheDir.get(),
+            fontsCacheDir = fontsCacheDir,
             fontsOffline = fontsOffline.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
@@ -1183,9 +1185,11 @@ internal object AndroidPreviewSupport {
       project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
     }
     val daemonFontsCacheDir =
-      extension.historyDir
-        .orElse(project.layout.projectDirectory.dir(".compose-preview-history"))
-        .map { it.dir("fonts").asFile.absolutePath }
+      project.layout.projectDirectory
+        .dir(".compose-preview-history")
+        .dir("fonts")
+        .asFile
+        .absolutePath
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     project.tasks.register(
@@ -1265,7 +1269,7 @@ internal object AndroidPreviewSupport {
             AndroidPreviewClasspath.buildSystemProperties(
               manifestPath = manifestFile.get(),
               rendersDir = rendersDir.get(),
-              fontsCacheDir = daemonFontsCacheDir.get(),
+              fontsCacheDir = daemonFontsCacheDir,
               fontsOffline = daemonFontsOffline.get(),
             )
           // B2.0 — emit `composeai.daemon.userClassDirs` so the daemon can construct a disposable

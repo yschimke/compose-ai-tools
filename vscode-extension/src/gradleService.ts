@@ -1,11 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, HistoryEntry, PreviewManifest, ResourceManifest } from './types';
+import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, ResourceManifest } from './types';
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
-
-const HISTORY_DIRNAME = '.compose-preview-history';
-const TIMESTAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/;
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -106,14 +103,6 @@ export interface Logger {
 }
 
 const nullLogger: Logger = { appendLine() {}, append() {} };
-
-/** Parses `yyyyMMdd-HHmmss[-N]` into ISO 8601, or returns null if malformed. */
-function timestampToIso(stem: string): string | null {
-    const m = TIMESTAMP_RE.exec(stem);
-    if (!m) { return null; }
-    const [, y, mo, d, h, mi, s] = m;
-    return `${y}-${mo}-${d}T${h}:${mi}:${s}Z`;
-}
 
 /**
  * Subset of vscjava.vscode-gradle's exported API.
@@ -367,58 +356,6 @@ export class GradleService {
         } catch {
             return null;
         }
-    }
-
-    /**
-     * Lists historical snapshots for a preview, newest first. Returns `[]` if
-     * the user hasn't enabled `composePreview.historyEnabled`, if the folder
-     * is empty, or if the preview has never been archived yet.
-     */
-    listHistory(module: string, previewId: string): HistoryEntry[] {
-        const dir = this.historyFolder(module, previewId);
-        if (!fs.existsSync(dir)) { return []; }
-
-        let files: string[];
-        try {
-            files = fs.readdirSync(dir);
-        } catch {
-            return [];
-        }
-
-        const entries: HistoryEntry[] = [];
-        for (const f of files) {
-            if (!f.endsWith('.png')) { continue; }
-            const stem = f.slice(0, -4);
-            const iso = timestampToIso(stem);
-            if (!iso) { continue; }
-            entries.push({ filename: f, timestamp: stem, iso });
-        }
-        // Filenames sort lexicographically = chronologically because of the
-        // yyyyMMdd-HHmmss prefix. Reverse for newest-first display.
-        entries.sort((a, b) => b.filename.localeCompare(a.filename));
-        return entries;
-    }
-
-    async readHistoryImage(module: string, previewId: string, filename: string): Promise<string | null> {
-        // Filename is user-controlled (from the webview); reject path traversal.
-        if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
-            return null;
-        }
-        const dir = this.historyFolder(module, previewId);
-        const pngPath = path.join(dir, filename);
-        try {
-            const data = await fs.promises.readFile(pngPath);
-            return data.toString('base64');
-        } catch {
-            return null;
-        }
-    }
-
-    private historyFolder(module: string, previewId: string): string {
-        // Mirror HistorizePreviewsTask.sanitize exactly so the webview's
-        // PreviewInfo.id maps to the correct on-disk folder.
-        const sanitized = previewId.replace(/[^a-zA-Z0-9._-]/g, '_');
-        return path.join(this.workspaceRoot, module, HISTORY_DIRNAME, sanitized);
     }
 
     async cancel(): Promise<void> {

@@ -67,7 +67,7 @@ Pick the workflow that matches the task:
 | Path | When to read |
 |---|---|
 | [design/AGENT_PR.md](./design/AGENT_PR.md) | Full PR review + agent PR authoring guidance: comment structure, image hosting choices, things to flag, integration with `preview-comment` CI when present. |
-| [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `preview_main` baselines branch + PR-comment GitHub Actions: workflow YAML, action inputs, branch durability, persistent state under `.compose-preview-history/`. |
+| [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `preview_main` baselines branch + PR-comment GitHub Actions: workflow YAML, action inputs, branch durability. |
 
 ## Related
 

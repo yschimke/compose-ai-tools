@@ -3,7 +3,6 @@ package ee.schimke.composeai.plugin
 import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
 import javax.inject.Inject
 import org.gradle.api.Action
-import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -12,19 +11,6 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val variant: Property<String> = objects.property(String::class.java).convention("debug")
   val sdkVersion: Property<Int> = objects.property(Int::class.java).convention(35)
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
-
-  /**
-   * When true, each `renderAllPreviews` run archives every rendered PNG whose content differs from
-   * the most recent entry into [historyDir]. Default: false.
-   */
-  val historyEnabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
-
-  /**
-   * Root directory for preview history snapshots. Each preview gets a subfolder named after its id;
-   * inside, filenames are timestamps. Lives outside `build/` by default so `./gradlew clean`
-   * doesn't wipe it.
-   */
-  val historyDir: DirectoryProperty = objects.directoryProperty()
 
   /**
    * Number of parallel JVM forks used to render previews. Default 1 (no sharding).
