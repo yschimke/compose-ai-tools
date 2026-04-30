@@ -9,8 +9,7 @@ import org.junit.Test
 /**
  * B2.2 phase 2 — pins the diff path against the cached [PreviewIndex]. The diff is the producer of
  * the `discoveryUpdated` wire payload, so these cases lock its arithmetic verbatim against the
- * scenarios documented in
- * [DESIGN § 8 Tier 2](../../../../../../docs/daemon/DESIGN.md).
+ * scenarios documented in [DESIGN § 8 Tier 2](../../../../../../docs/daemon/DESIGN.md).
  */
 class PreviewIndexDiffTest {
 
@@ -109,7 +108,13 @@ class PreviewIndexDiffTest {
 
   @Test
   fun `discoveryDiffEmpty true when all three lists empty`() {
-    val empty = DiscoveryDiff(added = emptyList(), removed = emptyList(), changed = emptyList(), totalPreviews = 7)
+    val empty =
+      DiscoveryDiff(
+        added = emptyList(),
+        removed = emptyList(),
+        changed = emptyList(),
+        totalPreviews = 7,
+      )
     assertTrue(discoveryDiffEmpty(empty))
   }
 }

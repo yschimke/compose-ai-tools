@@ -44,9 +44,8 @@ import org.junit.rules.TemporaryFolder
  * about: an `interrupt()` while the worker is in `take()` or `Thread.sleep()` would surface as an
  * `InterruptedException` (covered by [DesktopHost.renderThreadInterrupted]); an `interrupt()` set
  * outside a blocking call would leave the flag visible if any subsequent blocking call was made,
- * also covered. The contributing-doc rule (see `daemon/desktop/CONTRIBUTING.md`) catches
- * the static case — any `Thread.interrupt()` call introduced under
- * `:daemon:desktop/src/main/`.
+ * also covered. The contributing-doc rule (see `daemon/desktop/CONTRIBUTING.md`) catches the static
+ * case — any `Thread.interrupt()` call introduced under `:daemon:desktop/src/main/`.
  */
 class CancellationInvariantTest {
 

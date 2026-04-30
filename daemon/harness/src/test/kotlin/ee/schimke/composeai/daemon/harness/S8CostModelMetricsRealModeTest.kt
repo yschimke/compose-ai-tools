@@ -21,11 +21,11 @@ import org.junit.Test
  *
  * **What's present post-B2.3:**
  * - `renderFinished.tookMs` reflects the wall-clock the engine spent in `RenderEngine.render`.
- * - `renderFinished.metrics` (typed as `RenderMetrics?`) carries the four B2.3 cost-model
- *   fields — `heapAfterGcMb` (post-`System.gc()` Runtime delta), `nativeHeapMb` (committed
- *   virtual memory size on HotSpot), `sandboxAgeRenders` (per-sandbox counter), `sandboxAgeMs`
- *   (wall-clock since `DesktopHost`'s construction). The desktop host owns its own
- *   `SandboxLifecycleStats`, so the first render's `sandboxAgeRenders` is exactly 1.
+ * - `renderFinished.metrics` (typed as `RenderMetrics?`) carries the four B2.3 cost-model fields —
+ *   `heapAfterGcMb` (post-`System.gc()` Runtime delta), `nativeHeapMb` (committed virtual memory
+ *   size on HotSpot), `sandboxAgeRenders` (per-sandbox counter), `sandboxAgeMs` (wall-clock since
+ *   `DesktopHost`'s construction). The desktop host owns its own `SandboxLifecycleStats`, so the
+ *   first render's `sandboxAgeRenders` is exactly 1.
  *
  * **No baseline PNG.** Test asserts on the wire shape only.
  */
@@ -106,10 +106,7 @@ class S8CostModelMetricsRealModeTest {
           ?.contentOrNull
           ?.toLongOrNull()
       val sandboxAgeMs =
-        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
-          ?.jsonPrimitive
-          ?.contentOrNull
-          ?.toLongOrNull()
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
       assertNotNull("metrics.heapAfterGcMb must be a Long", heapAfterGcMb)
       assertNotNull("metrics.nativeHeapMb must be a Long", nativeHeapMb)
       assertNotNull("metrics.sandboxAgeRenders must be a Long", sandboxAgeRenders)
@@ -122,11 +119,7 @@ class S8CostModelMetricsRealModeTest {
         "metrics.nativeHeapMb >= 0 (0 if non-HotSpot fallback): got $nativeHeapMb",
         nativeHeapMb!! >= 0L,
       )
-      assertEquals(
-        "first render's sandboxAgeRenders must be 1",
-        1L,
-        sandboxAgeRenders,
-      )
+      assertEquals("first render's sandboxAgeRenders must be 1", 1L, sandboxAgeRenders)
       assertTrue(
         "metrics.sandboxAgeMs must be non-negative: got $sandboxAgeMs",
         sandboxAgeMs!! >= 0L,

@@ -12,10 +12,11 @@ import org.junit.Test
 /**
  * B2.2 phase 2 — pins the daemon-side incremental rescan path.
  *
- * **Scan fixture.** [`TestPreviewFixtures`][ee.schimke.composeai.daemon.fixtures.TestPreviewFixtures]
- * carries two `@TestPreview`-annotated methods on the test classpath. The `@TestPreview`
- * annotation is the daemon-test-only stand-in for `androidx.compose.ui.tooling.preview.Preview` —
- * we can't depend on the real Compose tooling artefact here without inverting
+ * **Scan fixture.**
+ * [`TestPreviewFixtures`][ee.schimke.composeai.daemon.fixtures.TestPreviewFixtures] carries two
+ * `@TestPreview`-annotated methods on the test classpath. The `@TestPreview` annotation is the
+ * daemon-test-only stand-in for `androidx.compose.ui.tooling.preview.Preview` — we can't depend on
+ * the real Compose tooling artefact here without inverting
  * [LAYERING.md](../../../../../../docs/daemon/LAYERING.md). The tests construct
  * [IncrementalDiscovery] with `knownPreviewAnnotationFqns = setOf("...TestPreview")` so the scan
  * recognises it.
@@ -159,10 +160,7 @@ class IncrementalDiscoveryTest {
       ids.any { it.endsWith(".secondPreview_alpha") },
     )
     val first = results.first { it.id.endsWith(".firstPreview_first") }
-    assertEquals(
-      "ee.schimke.composeai.daemon.fixtures.TestPreviewFixtures",
-      first.className,
-    )
+    assertEquals("ee.schimke.composeai.daemon.fixtures.TestPreviewFixtures", first.className)
     assertEquals("firstPreview", first.methodName)
     assertEquals("first", first.displayName)
   }

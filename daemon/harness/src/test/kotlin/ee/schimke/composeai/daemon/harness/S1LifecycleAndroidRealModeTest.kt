@@ -18,10 +18,10 @@ import org.junit.Test
 /**
  * D-harness.v2 Android counterpart of [S1LifecycleRealModeTest] — drives the same lifecycle
  * (`initialize → initialized → renderNow → renderStarted → renderFinished → shutdown → exit`), but
- * spawns the real `:daemon:android` `DaemonMain` via [RealAndroidHarnessLauncher] rather
- * than [RealDesktopHarnessLauncher]. The first time DESIGN § 4's renderer-agnostic claim is
- * enforced end-to-end at the harness level: same scenario shape, same composable, only the launcher
- * and baseline directory differ.
+ * spawns the real `:daemon:android` `DaemonMain` via [RealAndroidHarnessLauncher] rather than
+ * [RealDesktopHarnessLauncher]. The first time DESIGN § 4's renderer-agnostic claim is enforced
+ * end-to-end at the harness level: same scenario shape, same composable, only the launcher and
+ * baseline directory differ.
  *
  * **Skipped under fake mode and under `-Ptarget=desktop`.**
  *
@@ -32,8 +32,8 @@ import org.junit.Test
  *
  * **Per-target baselines.** Robolectric's bitmap output (HardwareRenderer/ImageReader) won't be
  * byte-identical to Skiko's — different renderers produce different AA / sub-pixel positioning. The
- * android baseline at `daemon/harness/baselines/android/s1/red-square.png` is captured
- * separately on first run; subsequent runs pixel-diff against it within the standard tolerance.
+ * android baseline at `daemon/harness/baselines/android/s1/red-square.png` is captured separately
+ * on first run; subsequent runs pixel-diff against it within the standard tolerance.
  */
 class S1LifecycleAndroidRealModeTest {
 

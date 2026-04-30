@@ -5,16 +5,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for [RenderMetrics.fromFlatMap] — the flat `Map<String, Long>` →
- * structured [RenderMetrics] translator B2.3 lands.
+ * Unit tests for [RenderMetrics.fromFlatMap] — the flat `Map<String, Long>` → structured
+ * [RenderMetrics] translator B2.3 lands.
  *
  * Three cases the JSON-RPC server depends on:
  * - Happy path: all four B2.3 keys present → struct populated 1:1 with the map values.
  * - Partial map: at least one key missing → result is [RenderMetrics.FromFlatMapResult.PartialMap]
  *   with the missing-keys list. The wire layer logs a warn-level notification on this and emits
  *   `metrics: null` (no half-populated objects).
- * - Extras: unknown keys (e.g. `tookMs`, future host-private counters) are ignored — the four
- *   known keys still translate cleanly.
+ * - Extras: unknown keys (e.g. `tookMs`, future host-private counters) are ignored — the four known
+ *   keys still translate cleanly.
  */
 class RenderMetricsFromFlatMapTest {
 
@@ -121,13 +121,15 @@ class RenderMetricsFromFlatMapTest {
     )
     val partial = result as RenderMetrics.FromFlatMapResult.PartialMap
     assertEquals(4, partial.missingKeys.size)
-    assertTrue(partial.missingKeys.containsAll(
-      listOf(
-        RenderMetrics.KEY_HEAP_AFTER_GC_MB,
-        RenderMetrics.KEY_NATIVE_HEAP_MB,
-        RenderMetrics.KEY_SANDBOX_AGE_RENDERS,
-        RenderMetrics.KEY_SANDBOX_AGE_MS,
+    assertTrue(
+      partial.missingKeys.containsAll(
+        listOf(
+          RenderMetrics.KEY_HEAP_AFTER_GC_MB,
+          RenderMetrics.KEY_NATIVE_HEAP_MB,
+          RenderMetrics.KEY_SANDBOX_AGE_RENDERS,
+          RenderMetrics.KEY_SANDBOX_AGE_MS,
+        )
       )
-    ))
+    )
   }
 }

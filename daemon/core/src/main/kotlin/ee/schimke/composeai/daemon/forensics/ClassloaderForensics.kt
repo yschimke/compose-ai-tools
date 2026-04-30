@@ -21,11 +21,11 @@ import kotlinx.serialization.json.put
  * package versions, and a SHA-256 of the class's bytecode (`moduleHash`) reachable via the class's
  * own classloader. Plus a runtime-config snapshot for the active Robolectric configuration.
  *
- * **Renderer-agnostic.** Lives in `:daemon:core` because both `:renderer-android` (the
- * working standalone path, Configuration A) and `:daemon:android` (the broken daemon path,
- * Configuration B) need to call `capture(...)` against the *same* survey set — and the library
- * itself touches only `Class<?>` / `ClassLoader` / `getProtectionDomain` reflection, so it has no
- * Compose / Robolectric / AndroidX dependency at the type level.
+ * **Renderer-agnostic.** Lives in `:daemon:core` because both `:renderer-android` (the working
+ * standalone path, Configuration A) and `:daemon:android` (the broken daemon path, Configuration B)
+ * need to call `capture(...)` against the *same* survey set — and the library itself touches only
+ * `Class<?>` / `ClassLoader` / `getProtectionDomain` reflection, so it has no Compose / Robolectric
+ * / AndroidX dependency at the type level.
  *
  * **Two entrypoints:**
  *

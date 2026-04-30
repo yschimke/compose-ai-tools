@@ -24,8 +24,8 @@ import org.junit.Test
  *    the same preview — gives a "cold then warm" picture).
  * 2. Verify the CSV file is correctly created at the expected path with a header row and at least
  *    one data row after the suite runs. (Per the task brief: "Latency CSV exists at
- *    `daemon/harness/build/reports/daemon-harness/latency.csv` after a test run, populated
- *    for every scenario × preview pair.")
+ *    `daemon/harness/build/reports/daemon-harness/latency.csv` after a test run, populated for
+ *    every scenario × preview pair.")
  *
  * For fake mode the actual will be ~50ms (FakeHost just reads from disk + replies); the baselineMs
  * in the CSV is the desktop real-render median (~1100ms from

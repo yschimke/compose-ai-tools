@@ -20,20 +20,20 @@ import java.nio.file.Path
  *
  * **Pipeline** (see [DESIGN.md § 8 Tier 2](../../../../../../../docs/daemon/DESIGN.md)).
  *
- * 1. **Cheap pre-filter** — [cheapPrefilter] regex-greps the saved `.kt` file's text for
- *    `@Preview` (or any registered multi-preview meta-annotation FQN already in the index). If no
- *    match AND the file isn't currently in the preview-bearing set, the file definitely doesn't
- *    contribute previews and we can skip the scan entirely. ~1ms per save. Fail-safe: returns
- *    `true` on any I/O exception so a transient read error doesn't drop a real edit.
+ * 1. **Cheap pre-filter** — [cheapPrefilter] regex-greps the saved `.kt` file's text for `@Preview`
+ *    (or any registered multi-preview meta-annotation FQN already in the index). If no match AND
+ *    the file isn't currently in the preview-bearing set, the file definitely doesn't contribute
+ *    previews and we can skip the scan entirely. ~1ms per save. Fail-safe: returns `true` on any
+ *    I/O exception so a transient read error doesn't drop a real edit.
  * 2. **Scoped scan** — [scanForFile] runs ClassGraph filtered to the smallest classpath element
  *    containing the changed file's compiled `.class` output. Returns the previews this file
  *    currently contributes. Fail-safe: returns `emptySet` on scan failure (logged via stderr —
  *    free-form per [PROTOCOL.md § 1](../../../../../../../docs/daemon/PROTOCOL.md)).
  *
- * **Limitations.** v1 uses a path-substring heuristic for source `.kt` → classpath dir mapping
- * (see [classpathElementForFile]). When the heuristic misses, the scan falls back to the full
- * daemon classpath — correct, just slower. v2 (a follow-up; not in this commit) would source the
- * mapping from the launch descriptor.
+ * **Limitations.** v1 uses a path-substring heuristic for source `.kt` → classpath dir mapping (see
+ * [classpathElementForFile]). When the heuristic misses, the scan falls back to the full daemon
+ * classpath — correct, just slower. v2 (a follow-up; not in this commit) would source the mapping
+ * from the launch descriptor.
  *
  * **Multi-preview meta-annotations.** Users can define `@LightDarkPreviews` etc. that fan out to
  * multiple `@Preview`s. The plugin discovers these via `scanResult.getClassInfo(annName)` and
@@ -76,20 +76,20 @@ class IncrementalDiscovery(
    * known to contribute previews to [currentIndex]. Returning `true` means callers should escalate
    * to [scanForFile]; returning `false` means the save can be skipped entirely.
    *
-   * Fail-safe on I/O errors — returns `true` so a transient read failure can't silently drop a
-   * real edit.
+   * Fail-safe on I/O errors — returns `true` so a transient read failure can't silently drop a real
+   * edit.
    */
   fun cheapPrefilter(file: Path, currentIndex: PreviewIndex): Boolean {
     // Quick path: file currently contributes previews. The basename match guards against the
     // worst-case "absolute path" → "relative path" mismatch by also accepting suffix matches.
     val pathString = file.toString()
     val basename = file.fileName?.toString().orEmpty()
-    val indexedSourceFiles = currentIndex.snapshot().values.mapNotNullTo(HashSet()) { it.sourceFile }
-    val indexHit =
-      indexedSourceFiles.any { sourceFile ->
-        sourceFile == pathString ||
-          (basename.isNotEmpty() && (sourceFile == basename || sourceFile.endsWith("/$basename")))
-      }
+    val indexedSourceFiles =
+      currentIndex.snapshot().values.mapNotNullTo(HashSet()) { it.sourceFile }
+    val indexHit = indexedSourceFiles.any { sourceFile ->
+      sourceFile == pathString ||
+        (basename.isNotEmpty() && (sourceFile == basename || sourceFile.endsWith("/$basename")))
+    }
     if (indexHit) return true
 
     return try {
@@ -110,9 +110,9 @@ class IncrementalDiscovery(
    * The returned set's id field uses the same `<className>.<methodName>` form the gradle plugin
    * emits when no variant suffix is present, plus any `_<name>` / `_<group>` suffix needed to
    * disambiguate multi-preview expansions. We deliberately do NOT recompute the plugin's full
-   * variant suffix (device/fontScale/uiMode); the diff path only uses tracked fields, and adding
-   * a fresh preview variant via the daemon path is rare enough that picking up the new id on the
-   * next plugin-side full discovery is acceptable v1 behaviour.
+   * variant suffix (device/fontScale/uiMode); the diff path only uses tracked fields, and adding a
+   * fresh preview variant via the daemon path is rare enough that picking up the new id on the next
+   * plugin-side full discovery is acceptable v1 behaviour.
    *
    * Fail-safe: returns `emptySet` on any scan failure (and writes a stderr diagnostic).
    */
@@ -237,10 +237,10 @@ class IncrementalDiscovery(
   }
 
   /**
-   * Resolves the saved source `.kt` file to the smallest classpath element that holds its
-   * compiled `.class` output. Heuristic: walk classpath dirs (skipping JARs), pick the one whose
-   * absolute path overlaps with the source file's path components after a recognised source-set
-   * prefix (`src/main/kotlin/`, `src/<variant>/kotlin/`). Returns `null` when no dir overlaps.
+   * Resolves the saved source `.kt` file to the smallest classpath element that holds its compiled
+   * `.class` output. Heuristic: walk classpath dirs (skipping JARs), pick the one whose absolute
+   * path overlaps with the source file's path components after a recognised source-set prefix
+   * (`src/main/kotlin/`, `src/<variant>/kotlin/`). Returns `null` when no dir overlaps.
    *
    * v2 follow-up: the gradle plugin's `composePreviewDaemonStart` could emit a source-set →
    * classpath-dir mapping in its launch descriptor, removing the heuristic. Until then this is
@@ -251,13 +251,15 @@ class IncrementalDiscovery(
     val pathString = file.toString().replace('\\', '/')
     // Pull off the "src/<sourceSet>/kotlin/<rel>" tail; the `<rel>` is the package path the
     // compiler outputs into.
-    val idx = SOURCE_SET_PREFIXES.firstNotNullOfOrNull { prefix ->
-      val match = Regex("""/$prefix/(?<rel>.+\.kt)$""").find(pathString)
-      match?.groups?.get("rel")?.value
-    } ?: return null
+    val idx =
+      SOURCE_SET_PREFIXES.firstNotNullOfOrNull { prefix ->
+        val match = Regex("""/$prefix/(?<rel>.+\.kt)$""").find(pathString)
+        match?.groups?.get("rel")?.value
+      } ?: return null
 
     val withoutKt = idx.removeSuffix(".kt")
-    // `<package>/<filename>` — match against any classpath dir holding `<package>/<filename>Kt.class`
+    // `<package>/<filename>` — match against any classpath dir holding
+    // `<package>/<filename>Kt.class`
     // OR `<package>/<file's class without Kt>.class`.
     val packagePath = withoutKt.substringBeforeLast('/', missingDelimiterValue = "")
     return classpath

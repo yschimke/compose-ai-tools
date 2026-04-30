@@ -82,11 +82,11 @@ open class DesktopHost(
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
   /**
-   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so
-   * `sandboxAgeMs` is wall-clock since the desktop host was instantiated; bumped per render-
-   * completion by [SandboxMeasurement.collect] (called from [RenderEngine.render]). Sandbox
-   * recycle (B2.5) will reset these once it lands; for B2.3 v1 the counter just keeps growing
-   * over the host's lifetime — documented behaviour.
+   * B2.3 — per-host sandbox-lifecycle counters. Captured at host construction so `sandboxAgeMs` is
+   * wall-clock since the desktop host was instantiated; bumped per render- completion by
+   * [SandboxMeasurement.collect] (called from [RenderEngine.render]). Sandbox recycle (B2.5) will
+   * reset these once it lands; for B2.3 v1 the counter just keeps growing over the host's lifetime
+   * — documented behaviour.
    */
   private val sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats()
 

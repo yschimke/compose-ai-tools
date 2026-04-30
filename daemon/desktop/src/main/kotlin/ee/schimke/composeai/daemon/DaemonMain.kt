@@ -173,9 +173,9 @@ fun main(args: Array<String>) {
  *    `InputStream.read(...)`; closing the stream surfaces an `IOException` / EOF and the loop
  *    breaks. This is option (a) from the B-desktop.1.6 task brief — "close `System.in` from the
  *    shutdown hook so the loop sees EOF" — chosen over adding a `requestStop()` API to
- *    `:daemon:core` because it doesn't widen the core surface. The trade-off is the read
- *    loop still walks through its own EOF→idle-timeout path before reaching `cleanShutdown`; the
- *    drain we care about (host render thread) is handled by step 2 below, independently.
+ *    `:daemon:core` because it doesn't widen the core surface. The trade-off is the read loop still
+ *    walks through its own EOF→idle-timeout path before reaching `cleanShutdown`; the drain we care
+ *    about (host render thread) is handled by step 2 below, independently.
  * 2. Calls [RenderHost.shutdown] with the timeout from `composeai.daemon.idleTimeoutMs` (capped at
  *    the JVM's default 30s shutdown-hook grace window — JVMs kill non-daemon hooks that exceed
  *    this). [DesktopHost.shutdown] enqueues a poison pill on the render queue and joins the worker
@@ -195,12 +195,12 @@ fun main(args: Array<String>) {
  * doesn't span renders. There is nothing we can do about this in user code; the only mitigation is
  * the gradle plugin / VS Code client preferring SIGTERM over SIGKILL for routine daemon disposal.
  *
- * **Manual smoke test.** Run `./gradlew :daemon:desktop:runDaemonMain` in one terminal,
- * note the PID printed in the hello banner, and `kill -TERM <pid>` from another terminal. The
- * hook's "draining…" line lands on stderr, [DesktopHost.shutdown] returns once the worker is gone,
- * and the JVM exits within ~1s for an idle daemon (the time taken by `host.shutdown()` plus the
- * read loop's EOF→idleTimeout-sleep walk; the latter is bounded by the
- * `composeai.daemon.idleTimeoutMs` system property, default 5s).
+ * **Manual smoke test.** Run `./gradlew :daemon:desktop:runDaemonMain` in one terminal, note the
+ * PID printed in the hello banner, and `kill -TERM <pid>` from another terminal. The hook's
+ * "draining…" line lands on stderr, [DesktopHost.shutdown] returns once the worker is gone, and the
+ * JVM exits within ~1s for an idle daemon (the time taken by `host.shutdown()` plus the read loop's
+ * EOF→idleTimeout-sleep walk; the latter is bounded by the `composeai.daemon.idleTimeoutMs` system
+ * property, default 5s).
  */
 private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.InputStream) {
   // Same property the JsonRpcServer reads, so a single sysprop tunes both timeouts coherently.

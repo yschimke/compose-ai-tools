@@ -38,8 +38,8 @@ class SandboxLifecycleStats(
   fun bumpRenderCount(): Long = renderCount.incrementAndGet()
 
   /**
-   * Resets both counters — wired from B2.5's recycle path once that lands. For B2.3 v1 nobody
-   * calls this in production; only unit tests use it.
+   * Resets both counters — wired from B2.5's recycle path once that lands. For B2.3 v1 nobody calls
+   * this in production; only unit tests use it.
    */
   fun reset() {
     startNs = System.nanoTime()
@@ -48,24 +48,24 @@ class SandboxLifecycleStats(
 }
 
 /**
- * Per-render measurement helper — collects the four B2.3 metrics into a flat
- * `Map<String, Long>` carrier so the renderer-agnostic [RenderResult.metrics] stays a free-form
- * `Map<String, Long>?` (per the B2.3 brief: "translate flat map → structured `RenderMetrics` in
- * `JsonRpcServer`"). The engine calls [collect] once per render-completion.
+ * Per-render measurement helper — collects the four B2.3 metrics into a flat `Map<String, Long>`
+ * carrier so the renderer-agnostic [RenderResult.metrics] stays a free-form `Map<String, Long>?`
+ * (per the B2.3 brief: "translate flat map → structured `RenderMetrics` in `JsonRpcServer`"). The
+ * engine calls [collect] once per render-completion.
  *
  * Measurement cost target: < 10ms per render (B2.3 DoD). Composed of:
- * - One `System.gc()` hint (HotSpot mostly honours this for instrumentation; not load-bearing,
- *   we just want post-render heap to reflect short-lived allocation).
+ * - One `System.gc()` hint (HotSpot mostly honours this for instrumentation; not load-bearing, we
+ *   just want post-render heap to reflect short-lived allocation).
  * - Three `MemoryMXBean` / `Runtime` accessor calls (each O(1)).
  * - One [SandboxLifecycleStats] read + bump.
  *
- * **`nativeHeapMb` is an approximation** — we report the JVM's committed virtual memory size
- * (via [com.sun.management.OperatingSystemMXBean.getCommittedVirtualMemorySize]), divided by 1MB.
- * That is *not* strictly the "native heap" — it covers JVM heap + native libs + mapped files —
- * but it's the closest portable proxy on HotSpot. The daemon's heaviest native-side state is Skia
- * (desktop) and Robolectric's native libs (Android), both of which show up under committed
- * virtual memory. On non-HotSpot JVMs where the cast fails we fall back to 0 with a one-time
- * warn-log; clients see `nativeHeapMb = 0` and that's clearer than a hand-waved heuristic.
+ * **`nativeHeapMb` is an approximation** — we report the JVM's committed virtual memory size (via
+ * [com.sun.management.OperatingSystemMXBean.getCommittedVirtualMemorySize]), divided by 1MB. That
+ * is *not* strictly the "native heap" — it covers JVM heap + native libs + mapped files — but it's
+ * the closest portable proxy on HotSpot. The daemon's heaviest native-side state is Skia (desktop)
+ * and Robolectric's native libs (Android), both of which show up under committed virtual memory. On
+ * non-HotSpot JVMs where the cast fails we fall back to 0 with a one-time warn-log; clients see
+ * `nativeHeapMb = 0` and that's clearer than a hand-waved heuristic.
  */
 object SandboxMeasurement {
 

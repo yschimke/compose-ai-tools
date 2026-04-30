@@ -18,16 +18,15 @@ import org.junit.Test
 /**
  * Real-mode counterpart to [S1LifecycleTest] — drives the same `initialize → initialized →
  * renderNow → renderStarted → renderFinished → shutdown → exit` lifecycle, but spawns the actual
- * `:daemon:desktop` `DaemonMain` via [RealDesktopHarnessLauncher] rather than
- * [FakeDaemonMain].
+ * `:daemon:desktop` `DaemonMain` via [RealDesktopHarnessLauncher] rather than [FakeDaemonMain].
  *
  * **Skipped under fake mode.** `JUnit Assume.assumeTrue(harnessHost == "real")` short-circuits the
  * test under the default `-Pharness.host=fake`. Run with `./gradlew :daemon:harness:test
  * -Pharness.host=real --tests "*S1LifecycleRealModeTest"`.
  *
  * **Auto-capture-on-first-run baseline.** A baseline PNG lives at
- * `daemon/harness/baselines/desktop/s1/red-square.png`. On the first run the test captures
- * the rendered PNG to that path and asserts only the basic "PNG exists, mostly red" properties. On
+ * `daemon/harness/baselines/desktop/s1/red-square.png`. On the first run the test captures the
+ * rendered PNG to that path and asserts only the basic "PNG exists, mostly red" properties. On
  * subsequent runs it pixel-diffs against the baseline. A `regenerateBaselines` task is the v1.5b
  * story; this auto-capture is the v1.5a flow — re-capturing means deleting the baseline file by
  * hand.

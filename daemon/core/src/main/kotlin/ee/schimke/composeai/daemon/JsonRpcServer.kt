@@ -103,17 +103,17 @@ class JsonRpcServer(
    * source-compatible — the empty index reports `path = ""` and `previewCount = 0`, matching the
    * pre-B2.2 stub.
    *
-   * B2.2 phase 2 — the index is now mutable. `fileChanged({kind: source})` runs the
-   * cheap-prefilter → scoped-scan → diff → applyDiff cascade against [incrementalDiscovery] and
-   * emits `discoveryUpdated` when the diff is non-empty.
+   * B2.2 phase 2 — the index is now mutable. `fileChanged({kind: source})` runs the cheap-prefilter
+   * → scoped-scan → diff → applyDiff cascade against [incrementalDiscovery] and emits
+   * `discoveryUpdated` when the diff is non-empty.
    */
   private val previewIndex: PreviewIndex = PreviewIndex.empty(),
   /**
    * B2.2 phase 2 — when non-null, [handleFileChanged] for `kind: "source"` runs the cheap pre-
    * filter + scoped ClassGraph scan against this discovery instance, diffs against [previewIndex],
-   * applies the diff in-place, and emits `discoveryUpdated`. When null (the in-process
-   * integration tests, the pre-phase-2 default) the source path stays a classloader-swap-only
-   * no-op — same behaviour as before phase 2 landed.
+   * applies the diff in-place, and emits `discoveryUpdated`. When null (the in-process integration
+   * tests, the pre-phase-2 default) the source path stays a classloader-swap-only no-op — same
+   * behaviour as before phase 2 landed.
    */
   private val incrementalDiscovery: IncrementalDiscovery? = null,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
@@ -339,7 +339,8 @@ class JsonRpcServer(
         manifest =
           Manifest(
             // B2.2 phase 1 — the daemon owns its preview index now. Path is the absolute path of
-            // the `previews.json` we loaded at startup ("" when no `composeai.daemon.previewsJsonPath`
+            // the `previews.json` we loaded at startup ("" when no
+            // `composeai.daemon.previewsJsonPath`
             // sysprop was supplied — fake-mode / in-process tests). B2.2 phase 2 keeps the count
             // live by mutating the index in-place from `discoveryUpdated` emissions; the path is
             // immutable for the daemon's lifetime.
@@ -522,13 +523,13 @@ class JsonRpcServer(
    * hosts that don't time their bodies pass `0L`.
    *
    * **B2.3 — structured [RenderMetrics].** When the host populates the four B2.3 keys
-   * (`heapAfterGcMb`, `nativeHeapMb`, `sandboxAgeRenders`, `sandboxAgeMs`) on
-   * `result.metrics`, [RenderMetrics.fromFlatMap] translates them into a structured
-   * [RenderMetrics] for the wire. A partial map (some but not all four keys) emits a warn-level
-   * `log` notification so drift is observable, and we still emit `metrics: null` — half-populated
-   * objects are misleading because callers cannot tell "field was zero" from "field was missing".
-   * Hosts that return `null` metrics (the B1.5-era stub hosts that don't measure anything) keep
-   * the pre-B2.3 `metrics: null` behaviour.
+   * (`heapAfterGcMb`, `nativeHeapMb`, `sandboxAgeRenders`, `sandboxAgeMs`) on `result.metrics`,
+   * [RenderMetrics.fromFlatMap] translates them into a structured [RenderMetrics] for the wire. A
+   * partial map (some but not all four keys) emits a warn-level `log` notification so drift is
+   * observable, and we still emit `metrics: null` — half-populated objects are misleading because
+   * callers cannot tell "field was zero" from "field was missing". Hosts that return `null` metrics
+   * (the B1.5-era stub hosts that don't measure anything) keep the pre-B2.3 `metrics: null`
+   * behaviour.
    */
   private fun renderFinishedFromResult(
     previewId: String,
@@ -590,22 +591,20 @@ class JsonRpcServer(
    * Routes a `fileChanged` notification.
    *
    * - **`kind: "source"`** (B2.0 + B2.2 phase 2):
-   *   1. Drops the strong reference to the host's current child classloader so the next render
-   *      lazily allocates a fresh [java.net.URLClassLoader] reading the recompiled bytecode off
-   *      disk (B2.0 — see
-   *      [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
-   *   2. When [incrementalDiscovery] is wired, runs the cheap-prefilter → scoped-scan → diff →
-   *      applyDiff cascade on a worker thread and emits `discoveryUpdated` if the diff is
-   *      non-empty (B2.2 phase 2 —
-   *      [DESIGN § 8 Tier 2](../../../../../../docs/daemon/DESIGN.md)).
+   *     1. Drops the strong reference to the host's current child classloader so the next render
+   *        lazily allocates a fresh [java.net.URLClassLoader] reading the recompiled bytecode off
+   *        disk (B2.0 — see [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
+   *     2. When [incrementalDiscovery] is wired, runs the cheap-prefilter → scoped-scan → diff →
+   *        applyDiff cascade on a worker thread and emits `discoveryUpdated` if the diff is
+   *        non-empty (B2.2 phase 2 — [DESIGN § 8 Tier 2](../../../../../../docs/daemon/DESIGN.md)).
    *
-   *   Honours the no-mid-render-cancellation invariant: both steps are queue-time events, not
-   *   preemption, so any in-flight render keeps using its already-resolved `Class<?>` and the
-   *   already-snapshotted `PreviewIndex`.
+   *    Honours the no-mid-render-cancellation invariant: both steps are queue-time events, not
+   *    preemption, so any in-flight render keeps using its already-resolved `Class<?>` and the
+   *    already-snapshotted `PreviewIndex`.
    * - **`kind: "classpath"`** → Tier-1 fingerprint cascade ([handleClasspathFileChanged]).
    * - **`kind: "resource"`** → conservative v1: would mark all previews stale, but the daemon does
-   *   not yet own its own preview index for resources, so this is a no-op for now. B2.0c lands
-   *   the smart variant (per-preview resource-read tracking).
+   *   not yet own its own preview index for resources, so this is a no-op for now. B2.0c lands the
+   *   smart variant (per-preview resource-read tracking).
    *
    * Hosts that don't participate in the parent/child split (the harness's `FakeHost`, the B1.3
    * stub) return `null` from [RenderHost.userClassloaderHolder]; the swap is then skipped.
@@ -633,14 +632,14 @@ class JsonRpcServer(
    * source-file `fileChanged` notification, applies the resulting diff in-place to [previewIndex],
    * and emits `discoveryUpdated` if non-empty.
    *
-   * Runs the heavy work on a fresh daemon thread so the JSON-RPC read loop never blocks on a
-   * scan. Mirrors the fire-and-forget pattern [submitRenderAsync] uses for renders. We
-   * deliberately pick a fresh thread (rather than reusing an executor) for symmetry with the
-   * render path; saved-file events arrive O(seconds) apart in a typical save loop, so the cost of
-   * one short-lived `Thread` per save is negligible compared to a ClassGraph scan.
+   * Runs the heavy work on a fresh daemon thread so the JSON-RPC read loop never blocks on a scan.
+   * Mirrors the fire-and-forget pattern [submitRenderAsync] uses for renders. We deliberately pick
+   * a fresh thread (rather than reusing an executor) for symmetry with the render path; saved-file
+   * events arrive O(seconds) apart in a typical save loop, so the cost of one short-lived `Thread`
+   * per save is negligible compared to a ClassGraph scan.
    *
-   * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for
-   * in-process integration tests.
+   * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for in-process
+   * integration tests.
    */
   private fun runIncrementalDiscovery(path: String) {
     val discovery = incrementalDiscovery ?: return

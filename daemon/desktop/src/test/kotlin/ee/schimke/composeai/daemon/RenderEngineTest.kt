@@ -24,10 +24,10 @@ import org.junit.rules.TemporaryFolder
  *   subsequent renders should be faster). The test only fails if a render itself fails — the timing
  *   data is for the agent to report back, not a CI assertion.
  *
- * Pixel-diff helper is inlined here rather than imported from `:daemon:harness`'s `PixelDiff`
- * to avoid a circular dep (`:daemon:desktop` ← `:daemon:harness` would invert the
- * dependency graph the harness was built around). v2 reconciles by hoisting `PixelDiff` into a
- * shared utilities module if a third call-site needs it.
+ * Pixel-diff helper is inlined here rather than imported from `:daemon:harness`'s `PixelDiff` to
+ * avoid a circular dep (`:daemon:desktop` ← `:daemon:harness` would invert the dependency graph the
+ * harness was built around). v2 reconciles by hoisting `PixelDiff` into a shared utilities module
+ * if a third call-site needs it.
  */
 class RenderEngineTest {
 

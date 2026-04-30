@@ -25,13 +25,12 @@ import java.nio.file.Path
  * *production-shaped*, not piped streams in the same JVM (that's [`JsonRpcServerIntegrationTest`]'s
  * job in core).
  *
- * **B2.2 phase 2.** The fake daemon also seeds the daemon-side [PreviewIndex] from the same
- * fixture manifest [FakeHost] reads, then wires an [IncrementalDiscovery] so
- * `fileChanged({kind: source})` actually exercises the discovery cascade end-to-end (cheap
- * pre-filter → scoped scan → diff → emit `discoveryUpdated`). The harness's classpath has no
- * compiled `@Preview` classes, so `scanForFile` returns empty and the diff carries `removed` for
- * any preview whose `sourceFile` matches the saved path — that's exactly what the S3 scenario
- * test asserts.
+ * **B2.2 phase 2.** The fake daemon also seeds the daemon-side [PreviewIndex] from the same fixture
+ * manifest [FakeHost] reads, then wires an [IncrementalDiscovery] so `fileChanged({kind: source})`
+ * actually exercises the discovery cascade end-to-end (cheap pre-filter → scoped scan → diff → emit
+ * `discoveryUpdated`). The harness's classpath has no compiled `@Preview` classes, so `scanForFile`
+ * returns empty and the diff carries `removed` for any preview whose `sourceFile` matches the saved
+ * path — that's exactly what the S3 scenario test asserts.
  */
 fun main(args: Array<String>) {
   val fixtureProp =

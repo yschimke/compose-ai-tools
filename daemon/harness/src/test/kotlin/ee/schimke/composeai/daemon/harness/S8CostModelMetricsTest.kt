@@ -24,21 +24,21 @@ import org.junit.Test
  * Long>` that `FakeHost` populates `RenderResult.metrics` with; the harness asserts the
  * round-tripped JSON matches.
  *
- * **Post-B2.3 wire shape.** `JsonRpcServer.renderFinishedFromResult` now translates the host's
- * flat `Map<String, Long>` carrier into a structured [RenderMetrics] on the wire (see
+ * **Post-B2.3 wire shape.** `JsonRpcServer.renderFinishedFromResult` now translates the host's flat
+ * `Map<String, Long>` carrier into a structured [RenderMetrics] on the wire (see
  * [RenderMetrics.fromFlatMap]). [FakeHost] populates the four B2.3 keys on every render —
  * `heapAfterGcMb` / `nativeHeapMb` / `sandboxAgeRenders` / `sandboxAgeMs` — with synthetic but
- * non-zero values. Sidecar-supplied metrics from `<previewId>.metrics.json` still take
- * precedence on key collision so legacy fixtures (this test's `heapAfterGcMb=42`,
- * `nativeHeapMb=17`, `sandboxAgeRenders=3` example) keep their explicit values.
+ * non-zero values. Sidecar-supplied metrics from `<previewId>.metrics.json` still take precedence
+ * on key collision so legacy fixtures (this test's `heapAfterGcMb=42`, `nativeHeapMb=17`,
+ * `sandboxAgeRenders=3` example) keep their explicit values.
  *
  * **What this test asserts after B2.3:**
  *
  * 1. `FakeHost` round-trips the fixture's metrics map verbatim (sidecar loader sanity check).
- * 2. The wire-level `renderFinished.metrics` is now a populated [RenderMetrics] object (not
- *    null) and carries the four B2.3 fields — sidecar values for `heapAfterGcMb`,
- *    `nativeHeapMb`, `sandboxAgeRenders`, plus the FakeHost-provided default for `sandboxAgeMs`
- *    (which the sidecar doesn't override, so we just check it's a non-negative `Long`).
+ * 2. The wire-level `renderFinished.metrics` is now a populated [RenderMetrics] object (not null)
+ *    and carries the four B2.3 fields — sidecar values for `heapAfterGcMb`, `nativeHeapMb`,
+ *    `sandboxAgeRenders`, plus the FakeHost-provided default for `sandboxAgeMs` (which the sidecar
+ *    doesn't override, so we just check it's a non-negative `Long`).
  *
  * Real cost-model parity (TEST-HARNESS § 3's "measured ratios within ±50% of cost-catalogue
  * ratios") is impossible against `FakeHost` — the metrics are whatever we configure. That parity
@@ -107,18 +107,12 @@ class S8CostModelMetricsTest {
           ?.contentOrNull
           ?.toLongOrNull()
       val sandboxAgeMs =
-        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
-          ?.jsonPrimitive
-          ?.contentOrNull
-          ?.toLongOrNull()
+        metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
       assertEquals("heapAfterGcMb sourced from sidecar", 42L, heapAfterGcMb)
       assertEquals("nativeHeapMb sourced from sidecar", 17L, nativeHeapMb)
       assertEquals("sandboxAgeRenders sourced from sidecar", 3L, sandboxAgeRenders)
       assertNotNull("sandboxAgeMs supplied by FakeHost B2.3 default", sandboxAgeMs)
-      assertTrue(
-        "sandboxAgeMs must be a non-negative wall-clock measurement",
-        sandboxAgeMs!! >= 0L,
-      )
+      assertTrue("sandboxAgeMs must be a non-negative wall-clock measurement", sandboxAgeMs!! >= 0L)
 
       paths.latency.record(
         scenario = paths.name,

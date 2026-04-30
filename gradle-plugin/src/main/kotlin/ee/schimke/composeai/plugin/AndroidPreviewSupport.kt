@@ -741,10 +741,7 @@ internal object AndroidPreviewSupport {
           project.dependencies.project(mapOf("path" to ":daemon:android")),
         )
       } catch (e: org.gradle.api.UnknownProjectException) {
-        project.logger.debug(
-          "compose-ai-tools: :daemon:android project not found, skipping",
-          e,
-        )
+        project.logger.debug("compose-ai-tools: :daemon:android project not found, skipping", e)
       }
     } else {
       // External mode is intentionally a no-op while the daemon is

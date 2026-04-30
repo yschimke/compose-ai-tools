@@ -20,17 +20,16 @@ import org.junit.Test
  *
  * **What the soak test pins:**
  * - All 100 renders return `renderFinished.metrics` populated (not `null` / `JsonNull`).
- * - `sandboxAgeRenders` increments monotonically across renders (1, 2, …, 100). FakeHost holds
- *   one host instance for the whole test, so this counter starts at 1 and grows by 1 per render.
+ * - `sandboxAgeRenders` increments monotonically across renders (1, 2, …, 100). FakeHost holds one
+ *   host instance for the whole test, so this counter starts at 1 and grows by 1 per render.
  * - `sandboxAgeMs` is non-decreasing across renders (wall-clock).
  * - `heapAfterGcMb > 0` and `nativeHeapMb > 0` — synthetic FakeHost defaults are 1, so this
  *   exercises the wire-level "metrics arrived populated" contract end-to-end.
  *
- * Real measurement-overhead assertion (the < 10ms-per-render DoD threshold) lives behind real-
- * mode soak tests on the desktop daemon — see [B23SoakDesktopRealModeTest] (`@Disabled` for now;
- * pulling in real-mode soak runs is a B2.4-era follow-up). FakeHost doesn't actually measure
- * anything (it just stamps synthetic values), so the overhead check is meaningless under fake
- * mode.
+ * Real measurement-overhead assertion (the < 10ms-per-render DoD threshold) lives behind real- mode
+ * soak tests on the desktop daemon — see [B23SoakDesktopRealModeTest] (`@Disabled` for now; pulling
+ * in real-mode soak runs is a B2.4-era follow-up). FakeHost doesn't actually measure anything (it
+ * just stamps synthetic values), so the overhead check is meaningless under fake mode.
  */
 class B23SoakTest {
 
@@ -55,7 +54,11 @@ class B23SoakTest {
 
       for (i in 1..renderCount) {
         val rn = client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
-        assertEquals("renderNow($i) must queue exactly the one preview", listOf(previewId), rn.queued)
+        assertEquals(
+          "renderNow($i) must queue exactly the one preview",
+          listOf(previewId),
+          rn.queued,
+        )
         val finished = client.pollRenderFinishedFor(previewId, timeout = 10.seconds)
         val params =
           finished["params"]?.jsonObject ?: error("renderFinished($i) missing params: $finished")
@@ -63,11 +66,7 @@ class B23SoakTest {
         // Every renderFinished must carry populated metrics — no JsonNull, no missing field.
         val wireMetrics = params["metrics"]
         assertNotNull("renderFinished($i).metrics must be populated", wireMetrics)
-        assertNotEquals(
-          "renderFinished($i).metrics must not be JsonNull",
-          JsonNull,
-          wireMetrics,
-        )
+        assertNotEquals("renderFinished($i).metrics must not be JsonNull", JsonNull, wireMetrics)
         val metricsObj = wireMetrics!!.jsonObject
 
         val heapAfterGcMb =
@@ -76,20 +75,14 @@ class B23SoakTest {
             ?.contentOrNull
             ?.toLongOrNull()
         val nativeHeapMb =
-          metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]
-            ?.jsonPrimitive
-            ?.contentOrNull
-            ?.toLongOrNull()
+          metricsObj[RenderMetrics.KEY_NATIVE_HEAP_MB]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
         val sandboxAgeRenders =
           metricsObj[RenderMetrics.KEY_SANDBOX_AGE_RENDERS]
             ?.jsonPrimitive
             ?.contentOrNull
             ?.toLongOrNull()
         val sandboxAgeMs =
-          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]
-            ?.jsonPrimitive
-            ?.contentOrNull
-            ?.toLongOrNull()
+          metricsObj[RenderMetrics.KEY_SANDBOX_AGE_MS]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
 
         assertNotNull("render($i).heapAfterGcMb must parse as Long", heapAfterGcMb)
         assertNotNull("render($i).nativeHeapMb must parse as Long", nativeHeapMb)
