@@ -52,3 +52,5 @@ include(":daemon:android")
 include(":daemon:desktop")
 
 include(":daemon:harness")
+
+include(":mcp")
