@@ -585,7 +585,10 @@ class JsonRpcServer(
     if (entry != null) {
       sendNotification(
         "historyAdded",
-        encode(HistoryAddedParams.serializer(), HistoryAddedParams(entry = encodeHistoryEntry(entry))),
+        encode(
+          HistoryAddedParams.serializer(),
+          HistoryAddedParams(entry = encodeHistoryEntry(entry)),
+        ),
       )
     }
   }

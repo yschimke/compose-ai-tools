@@ -21,8 +21,8 @@ import org.junit.Test
  *   says.
  *
  * Skipped when the test JVM has no `git` on the path (CI containers without git installed). The
- * brief explicitly says don't gate the harness's S9 on git availability — same here for the
- * core unit test.
+ * brief explicitly says don't gate the harness's S9 on git availability — same here for the core
+ * unit test.
  */
 class GitProvenanceTest {
 
@@ -54,10 +54,7 @@ class GitProvenanceTest {
     val provenance = GitProvenance(workspaceRoot = tmpDir, env = mapOf())
     val (worktree, git) = provenance.snapshot()
     assertNotNull("worktree must be non-null in a git repo", worktree)
-    assertEquals(
-      tmpDir.toRealPath().toString(),
-      Path.of(worktree!!.path!!).toRealPath().toString(),
-    )
+    assertEquals(tmpDir.toRealPath().toString(), Path.of(worktree!!.path!!).toRealPath().toString())
     assertNotNull("git provenance must be non-null in a git repo", git)
     assertNotNull("commit must be present", git!!.commit)
     assertEquals(7, git.shortCommit?.length)
@@ -90,8 +87,12 @@ class GitProvenanceTest {
     try {
       val provenance = GitProvenance(workspaceRoot = nonGitDir, env = mapOf())
       val (worktree, git) = provenance.snapshot()
-      // worktree may be null OR carry only id-label/agentId if any env was set; here env is empty so:
-      assertTrue(worktree == null || (worktree.path == null && worktree.id == null && worktree.agentId == null))
+      // worktree may be null OR carry only id-label/agentId if any env was set; here env is empty
+      // so:
+      assertTrue(
+        worktree == null ||
+          (worktree.path == null && worktree.id == null && worktree.agentId == null)
+      )
       assertNull(git)
     } finally {
       nonGitDir.toFile().deleteRecursively()
@@ -144,11 +145,7 @@ class GitProvenanceTest {
     }
 
   private fun runOrFail(workingDir: File, vararg cmd: String) {
-    val proc =
-      ProcessBuilder(*cmd)
-        .directory(workingDir)
-        .redirectErrorStream(true)
-        .start()
+    val proc = ProcessBuilder(*cmd).directory(workingDir).redirectErrorStream(true).start()
     val finished = proc.waitFor(15, TimeUnit.SECONDS)
     assertTrue("$cmd timed out", finished)
     assertEquals(

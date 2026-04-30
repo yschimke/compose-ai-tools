@@ -179,8 +179,8 @@ private constructor(
   }
 
   /**
-   * H1+H2 — like [historyRead] but returns the raw response so callers can assert on
-   * `error.code == -32010` (HistoryEntryNotFound).
+   * H1+H2 — like [historyRead] but returns the raw response so callers can assert on `error.code ==
+   * -32010` (HistoryEntryNotFound).
    */
   fun historyReadRaw(id: String, inline: Boolean = false): JsonObject {
     val rpcId = nextId.getAndIncrement()

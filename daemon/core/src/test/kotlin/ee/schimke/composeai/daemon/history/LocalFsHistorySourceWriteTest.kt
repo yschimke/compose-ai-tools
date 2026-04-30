@@ -41,13 +41,20 @@ class LocalFsHistorySourceWriteTest {
     val previewId = "com.example.Foo"
     val sanitised = "com.example.Foo"
 
-    val entries = (1..3).map { i ->
-      val bytes = byteArrayOf(i.toByte(), 0x00, 0x01)
-      val hash = LocalFsHistorySource.sha256Hex(bytes)
-      val entry = makeEntry(id = "ts-$i-${hash.take(8)}", previewId = previewId, hash = hash, size = bytes.size.toLong())
-      source.write(entry, bytes)
-      Triple(entry, bytes, hash)
-    }
+    val entries =
+      (1..3).map { i ->
+        val bytes = byteArrayOf(i.toByte(), 0x00, 0x01)
+        val hash = LocalFsHistorySource.sha256Hex(bytes)
+        val entry =
+          makeEntry(
+            id = "ts-$i-${hash.take(8)}",
+            previewId = previewId,
+            hash = hash,
+            size = bytes.size.toLong(),
+          )
+        source.write(entry, bytes)
+        Triple(entry, bytes, hash)
+      }
 
     val previewDir = tmpDir.resolve(sanitised)
     assertTrue(Files.isDirectory(previewDir))
@@ -65,7 +72,9 @@ class LocalFsHistorySourceWriteTest {
     }
 
     val indexLines =
-      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter { it.isNotBlank() }
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
     assertEquals(3, indexLines.size)
     val ids = indexLines.map { json.decodeFromString(HistoryEntry.serializer(), it).id }
     assertEquals(entries.map { it.first.id }, ids)
@@ -78,8 +87,20 @@ class LocalFsHistorySourceWriteTest {
     val bytes = byteArrayOf(0x10, 0x20, 0x30, 0x40)
     val hash = LocalFsHistorySource.sha256Hex(bytes)
 
-    val firstEntry = makeEntry(id = "a-${hash.take(8)}", previewId = previewId, hash = hash, size = bytes.size.toLong())
-    val secondEntry = makeEntry(id = "b-${hash.take(8)}", previewId = previewId, hash = hash, size = bytes.size.toLong())
+    val firstEntry =
+      makeEntry(
+        id = "a-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+      )
+    val secondEntry =
+      makeEntry(
+        id = "b-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+      )
     source.write(firstEntry, bytes)
     source.write(secondEntry, bytes)
 
@@ -99,7 +120,9 @@ class LocalFsHistorySourceWriteTest {
 
     // Index has both lines, both readable.
     val indexLines =
-      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter { it.isNotBlank() }
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
     assertEquals(2, indexLines.size)
   }
 
@@ -110,11 +133,23 @@ class LocalFsHistorySourceWriteTest {
     val previewId = "Bar"
     val bytes = byteArrayOf(0x77, 0x77, 0x77)
     val hash = LocalFsHistorySource.sha256Hex(bytes)
-    val firstEntry = makeEntry(id = "old-${hash.take(8)}", previewId = previewId, hash = hash, size = bytes.size.toLong())
+    val firstEntry =
+      makeEntry(
+        id = "old-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+      )
     LocalFsHistorySource(historyDir = tmpDir).write(firstEntry, bytes)
 
     val sourceB = LocalFsHistorySource(historyDir = tmpDir)
-    val secondEntry = makeEntry(id = "new-${hash.take(8)}", previewId = previewId, hash = hash, size = bytes.size.toLong())
+    val secondEntry =
+      makeEntry(
+        id = "new-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+      )
     sourceB.write(secondEntry, bytes)
 
     val previewDir = tmpDir.resolve("Bar")
@@ -123,7 +158,11 @@ class LocalFsHistorySourceWriteTest {
     assertTrue(Files.exists(firstPng))
     assertFalse("Cross-restart dedup must skip the duplicate PNG", Files.exists(secondPng))
 
-    val sidecar = json.decodeFromString(HistoryEntry.serializer(), Files.readString(previewDir.resolve("${secondEntry.id}.json")))
+    val sidecar =
+      json.decodeFromString(
+        HistoryEntry.serializer(),
+        Files.readString(previewDir.resolve("${secondEntry.id}.json")),
+      )
     assertEquals("${firstEntry.id}.png", sidecar.pngPath)
   }
 
@@ -133,7 +172,13 @@ class LocalFsHistorySourceWriteTest {
     val rawId = "com/example/foo:bar"
     val bytes = byteArrayOf(1, 2, 3)
     val hash = LocalFsHistorySource.sha256Hex(bytes)
-    val entry = makeEntry(id = "ts-${hash.take(8)}", previewId = rawId, hash = hash, size = bytes.size.toLong())
+    val entry =
+      makeEntry(
+        id = "ts-${hash.take(8)}",
+        previewId = rawId,
+        hash = hash,
+        size = bytes.size.toLong(),
+      )
     source.write(entry, bytes)
 
     // sanitisation collapses '/' and ':' to '_'

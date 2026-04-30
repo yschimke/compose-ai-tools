@@ -150,15 +150,14 @@ fun main(args: Array<String>) {
     if (historyDirProp != null) {
       GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
     } else null
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println("compose-ai-tools desktop daemon: HistoryManager active (dir=$dir)")
-      HistoryManager.forLocalFs(
-        historyDir = Path.of(dir),
-        module = System.getProperty(MODULE_ID_PROP) ?: "",
-        gitProvenance = gitProvenance,
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println("compose-ai-tools desktop daemon: HistoryManager active (dir=$dir)")
+    HistoryManager.forLocalFs(
+      historyDir = Path.of(dir),
+      module = System.getProperty(MODULE_ID_PROP) ?: "",
+      gitProvenance = gitProvenance,
+    )
+  }
 
   val server =
     JsonRpcServer(

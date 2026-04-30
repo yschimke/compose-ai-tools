@@ -38,14 +38,16 @@ class HistoryManager(
   private val gitProvenance: GitProvenance?,
 ) {
 
-  /** True when at least one writable source is configured — i.e. when `recordRender` is meaningful. */
+  /**
+   * True when at least one writable source is configured — i.e. when `recordRender` is meaningful.
+   */
   val isEnabled: Boolean
     get() = sources.any { it.supportsWrites() }
 
   /**
    * Tracks the most-recent entry per previewId so [recordRender] can fill in `previousId` +
-   * `deltaFromPrevious.pngHashChanged`. Carries `(entryId, pngHash)` so the delta pass doesn't
-   * have to re-read the previous sidecar off disk.
+   * `deltaFromPrevious.pngHashChanged`. Carries `(entryId, pngHash)` so the delta pass doesn't have
+   * to re-read the previous sidecar off disk.
    */
   private val previousByPreview: AtomicReference<Map<String, PreviousEntry>> =
     AtomicReference(emptyMap())
@@ -77,7 +79,8 @@ class HistoryManager(
     val shortHash = pngHash.substring(0, 8)
     val ts = timestamp.atOffset(ZoneOffset.UTC).format(TIMESTAMP_FORMAT)
     val id = "$ts-$shortHash"
-    val isoTimestamp = timestamp.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    val isoTimestamp =
+      timestamp.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
     val (worktreeInfo, gitInfo) = gitProvenance?.snapshot() ?: Pair(null, null)
     val previous = previousByPreview.get()[previewId]
@@ -86,11 +89,7 @@ class HistoryManager(
       if (previous != null) {
         // Cheap field — full pixel diff lands in H5. For H1 we flip pngHashChanged based on the
         // previous entry's full pngHash (cached so we don't have to re-read the prior sidecar).
-        HistoryDelta(
-          pngHashChanged = previous.pngHash != pngHash,
-          diffPx = null,
-          ssim = null,
-        )
+        HistoryDelta(pngHashChanged = previous.pngHash != pngHash, diffPx = null, ssim = null)
       } else null
 
     // pngPath is provisional — LocalFsHistorySource overwrites it when dedup hits. For non-FS
@@ -171,9 +170,7 @@ class HistoryManager(
   }
 
   companion object {
-    /**
-     * `yyyyMMdd-HHmmss` UTC. Pinned format — HISTORY.md § "On-disk schema" filename shape.
-     */
+    /** `yyyyMMdd-HHmmss` UTC. Pinned format — HISTORY.md § "On-disk schema" filename shape. */
     private val TIMESTAMP_FORMAT: DateTimeFormatter =
       DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC)
 

@@ -8,16 +8,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Pins the kotlinx.serialization round-trip for [HistoryEntry] — every nested struct
- * (`worktree` / `git` / `source` / `triggerDetail` / `previewMetadata` / `metrics` /
- * `deltaFromPrevious`) must survive encode → decode without field loss.
+ * Pins the kotlinx.serialization round-trip for [HistoryEntry] — every nested struct (`worktree` /
+ * `git` / `source` / `triggerDetail` / `previewMetadata` / `metrics` / `deltaFromPrevious`) must
+ * survive encode → decode without field loss.
  *
- * The on-disk sidecar JSON is the wire format; this test is the one place where the schema's
- * shape is locked end-to-end. New fields added to [HistoryEntry] should grow this fixture.
+ * The on-disk sidecar JSON is the wire format; this test is the one place where the schema's shape
+ * is locked end-to-end. New fields added to [HistoryEntry] should grow this fixture.
  */
 class HistoryEntryRoundTripTest {
 
-  private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
+  private val json = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = false
+  }
 
   @Test
   fun fully_populated_entry_round_trips() {
@@ -77,7 +80,8 @@ class HistoryEntryRoundTripTest {
 
   @Test
   fun minimal_entry_round_trips() {
-    // Tests the "no provenance, no previous, no delta" path — the first render in a non-git workspace.
+    // Tests the "no provenance, no previous, no delta" path — the first render in a non-git
+    // workspace.
     val entry =
       HistoryEntry(
         id = "20260430-101234-deadbeef",
