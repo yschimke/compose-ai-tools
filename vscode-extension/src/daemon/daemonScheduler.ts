@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as vscode from 'vscode';
-import { DaemonClient } from './daemonClient';
+import { GradleService } from '../gradleService';
 import { DaemonGate } from './daemonGate';
 import {
     FileChangeType,
@@ -9,6 +8,9 @@ import {
     RenderFinishedParams,
     RenderTier,
 } from './daemonProtocol';
+
+export type WarmProgress = (state: WarmState) => void;
+export type WarmState = 'bootstrapping' | 'spawning' | 'ready' | 'fallback';
 
 export interface SchedulerEvents {
     /**
@@ -81,6 +83,46 @@ export class DaemonScheduler {
     async ensureModule(moduleId: string): Promise<boolean> {
         const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
         return client !== null;
+    }
+
+    /**
+     * Pre-warms a module: runs the Gradle bootstrap task (writes
+     * `daemon-launch.json`) and spawns the JVM if not already up. Intended
+     * to be called when the user navigates to a Kotlin file in a
+     * daemon-enabled module, so the daemon is alive by the time they hit
+     * save — the first save then collapses to "kotlinc + render" instead
+     * of "Gradle bootstrap + JVM spawn + sandbox init + render".
+     *
+     * `progress` fires through `'bootstrapping'` while the Gradle task
+     * runs, `'spawning'` while the JVM comes up, and `'ready'` once
+     * `initialize` is acknowledged. `'fallback'` fires on any failure —
+     * the next save will run Gradle as today. No-op when the gate is
+     * disabled.
+     */
+    async warmModule(
+        gradleService: GradleService,
+        moduleId: string,
+        progress?: WarmProgress,
+    ): Promise<boolean> {
+        if (!this.gate.isEnabled()) { return false; }
+        if (this.gate.isDaemonReady(moduleId)) {
+            progress?.('ready');
+            return true;
+        }
+        try {
+            progress?.('bootstrapping');
+            await gradleService.runDaemonBootstrap(moduleId);
+        } catch (err) {
+            this.logger.appendLine(
+                `[daemon] bootstrap task failed for ${moduleId}: ${(err as Error).message}`,
+            );
+            progress?.('fallback');
+            return false;
+        }
+        progress?.('spawning');
+        const ok = await this.ensureModule(moduleId);
+        progress?.(ok ? 'ready' : 'fallback');
+        return ok;
     }
 
     /**

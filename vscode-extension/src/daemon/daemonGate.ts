@@ -106,9 +106,9 @@ export class DaemonGate {
 
     /**
      * Ensures the consumer's `daemon-launch.json` exists by running the
-     * Gradle bootstrap task once per module. Cheap on subsequent calls
-     * (cacheable). Swallows failures — a missing descriptor on first launch
-     * just means we silently fall back to Gradle, which is the safe default.
+     * Gradle bootstrap task once per module. Cheap and cacheable. Swallows
+     * failures — a missing descriptor on first launch just means we silently
+     * fall back to Gradle, which is the safe default.
      */
     async bootstrap(gradleService: GradleService, moduleId: string): Promise<void> {
         if (!this.isEnabled()) { return; }
@@ -119,6 +119,13 @@ export class DaemonGate {
                 `[daemon] bootstrap task failed for ${moduleId}: ${(err as Error).message}`,
             );
         }
+    }
+
+    /** True iff a healthy daemon is already up for this module — warm path
+     *  short-circuit. */
+    isDaemonReady(moduleId: string): boolean {
+        const existing = this.daemons.get(moduleId);
+        return existing != null && !existing.client.isClosed();
     }
 
     async dispose(): Promise<void> {
