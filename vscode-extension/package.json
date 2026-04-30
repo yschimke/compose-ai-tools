@@ -112,7 +112,7 @@
     "scripts": {
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "test": "npm run compile && mocha 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
+        "test": "npm run compile && mocha --exit 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies"
