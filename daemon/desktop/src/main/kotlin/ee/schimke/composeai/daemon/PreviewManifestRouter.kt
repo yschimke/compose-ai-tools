@@ -68,6 +68,9 @@ class PreviewManifestRouter(
             append("heightPx=").append(entry.heightPx ?: 320).append(';')
             append("density=").append(entry.density ?: 2.0f).append(';')
             append("showBackground=").append(entry.showBackground ?: true).append(';')
+            entry.device
+              ?.takeIf { it.isNotBlank() }
+              ?.let { append("device=").append(it).append(';') }
             append("outputBaseName=").append(outputBaseName)
           },
       )
@@ -104,5 +107,11 @@ data class PreviewManifestEntry(
   val heightPx: Int? = null,
   val density: Float? = null,
   val showBackground: Boolean? = null,
+  /**
+   * Raw `@Preview(device = …)` string when the source preview has one set. Forwarded into
+   * `RenderSpec` so the Android render path can apply the wear-round crop / `round` resource
+   * qualifier; the desktop path ignores it (no circular crop on JVM rendering).
+   */
+  val device: String? = null,
   val outputBaseName: String? = null,
 )

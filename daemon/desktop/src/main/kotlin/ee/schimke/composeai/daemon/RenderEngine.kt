@@ -189,6 +189,13 @@ data class RenderSpec(
   val density: Float = 2.0f,
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
+  /**
+   * Raw `@Preview(device = …)` string when known. The desktop render path is currently
+   * shape-agnostic (no circular crop — that's an Android/Robolectric-only mechanism), but the field
+   * is carried so the wire format stays identical to `:daemon:android`'s `RenderSpec` and a single
+   * payload can drive both backends.
+   */
+  val device: String? = null,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
 ) {
@@ -198,8 +205,8 @@ data class RenderSpec(
     /**
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
-     * `showBackground`, `backgroundColor`, `outputBaseName`. `className` and `functionName` are
-     * required; everything else falls back to the defaults on this data class.
+     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`. `className` and
+     * `functionName` are required; everything else falls back to the defaults on this data class.
      *
      * Keeping this stringly-typed for v1 is deliberate (per the task brief). When `RenderRequest`
      * grows a typed `previewId: String?` field, [DesktopHost] will look the spec up in
@@ -229,6 +236,7 @@ data class RenderSpec(
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
+        device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
       )
     }
