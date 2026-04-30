@@ -8,14 +8,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Wall-clock timeline of the daemon's interesting boot events.
  *
  * Emit a [mark] at every stage that contributes meaningfully to startup latency. Each mark prints a
- * single stderr line `compose-ai-daemon: [+<elapsedMs>ms] <label>` and is buffered for [summary]
- * so the full timeline is reproducible after the fact. The reference clock is the JVM start time
- * (via [ManagementFactory.getRuntimeMXBean]) so events seen on the worker thread, the JSON-RPC
- * thread, and inside the Robolectric sandbox all line up against one shared origin.
+ * single stderr line `compose-ai-daemon: [+<elapsedMs>ms] <label>` and is buffered for [summary] so
+ * the full timeline is reproducible after the fact. The reference clock is the JVM start time (via
+ * [ManagementFactory.getRuntimeMXBean]) so events seen on the worker thread, the JSON-RPC thread,
+ * and inside the Robolectric sandbox all line up against one shared origin.
  *
  * The format is human-readable on purpose — operators reading daemon stderr (or the editor's
  * "daemon log" output channel) shouldn't need a JSON parser to see "step 3 took 8 seconds." For
- * machine consumption a future change can wire [marks] into a `daemonTimings` JSON-RPC notification.
+ * machine consumption a future change can wire [marks] into a `daemonTimings` JSON-RPC
+ * notification.
  *
  * Reasons to add a mark:
  *
@@ -27,8 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Reasons NOT to add a mark:
  *
  * - Every queue insertion / dequeue (too noisy; spam dilutes the signal).
- * - Anything inside the steady-state render path (this is a *startup* timeline; render-time
- *   metrics already flow through `renderFinished.metrics`).
+ * - Anything inside the steady-state render path (this is a *startup* timeline; render-time metrics
+ *   already flow through `renderFinished.metrics`).
  *
  * See [docs/daemon/STARTUP.md](../../../../../../docs/daemon/STARTUP.md) for the analysis of where
  * the time actually goes and the menu of options to attack each stage.
