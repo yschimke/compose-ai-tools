@@ -97,6 +97,8 @@ class DaemonMcpServerTest {
         "unwatch",
         "list_watches",
         "notify_file_changed",
+        "history_list",
+        "history_diff",
       )
   }
 
@@ -172,6 +174,331 @@ class DaemonMcpServerTest {
     val focus = daemon.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
     assertThat(visible).isEqualTo(listOf("com.example.Red"))
     assertThat(focus).isEqualTo(listOf("com.example.Red"))
+  }
+
+  @Test
+  fun `classpathDirty respawn re-issues setVisible to the replacement daemon`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    // First daemon: spawn via watch, register interest, observe initial setVisible.
+    val firstDaemon = warmDaemonFor(workspaceId, ":module")
+    firstDaemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+    client.callTool(
+      "watch",
+      buildJsonObject {
+        put("workspaceId", workspaceId.value)
+        put("module", ":module")
+        put("fqnGlob", "com.example.Red")
+      },
+    )
+    val firstVisible = firstDaemon.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(firstVisible).isEqualTo(listOf("com.example.Red"))
+
+    // Trigger the classpathDirty respawn flow on the first daemon.
+    firstDaemon.emitClasspathDirty()
+
+    // Wait for the supervisor's async respawn to construct a second FakeDaemon. The supervisor
+    // hands ownership of the new daemon to factory.spawnHistory[1].
+    val deadline = System.currentTimeMillis() + 5_000
+    while (factory.spawnHistory.size < 2 && System.currentTimeMillis() < deadline) {
+      Thread.sleep(50)
+    }
+    assertThat(factory.spawnHistory.size).isAtLeast(2)
+    val secondDaemon = factory.spawnHistory[1]
+
+    // Replacement daemon emits its (newly-rebuilt) discovery — supervisor's
+    // `synthesiseInitialDiscovery` would normally do this from the manifest path, but the
+    // FakeDescriptorProvider's blank manifestPath skips that, so we drive it manually.
+    secondDaemon.emitDiscovery("com.example.Red")
+
+    // Existing watch should re-fire setVisible on the replacement daemon (the propagator's
+    // memo for this DaemonKey was forgotten by `onClasspathDirty`, so the same watched set
+    // counts as a delta against `previous=null` and is re-sent).
+    val secondVisible = secondDaemon.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
+    val secondFocus = secondDaemon.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(secondVisible).isEqualTo(listOf("com.example.Red"))
+    assertThat(secondFocus).isEqualTo(listOf("com.example.Red"))
+  }
+
+  @Test
+  fun `history_list returns entries decorated with compose-preview-history URIs`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+
+    val entry1 = buildJsonObject {
+      put("id", "entry-1")
+      put("previewId", "com.example.RedSquare")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:00:00Z")
+      put("pngHash", "deadbeef")
+      put("pngSize", 4218L)
+      put("pngPath", "/tmp/r1.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 12L)
+    }
+    val entry2 = buildJsonObject {
+      put("id", "entry-2")
+      put("previewId", "com.example.RedSquare")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:01:00Z")
+      put("pngHash", "cafef00d")
+      put("pngSize", 4218L)
+      put("pngPath", "/tmp/r2.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 13L)
+    }
+    daemon.setHistory(listOf(entry1, entry2))
+
+    val resp =
+      client.callTool(
+        "history_list",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("module", ":module")
+        },
+      )
+    val text = resp.firstTextContent()
+    val parsed = json.parseToJsonElement(text).jsonObject
+    assertThat(parsed["totalCount"]?.jsonPrimitive?.content?.toInt()).isEqualTo(2)
+    val entries = parsed["entries"]!!.jsonArray
+    assertThat(entries).hasSize(2)
+    val firstUri = entries[0].jsonObject["resourceUri"]?.jsonPrimitive?.contentOrNull
+    assertThat(firstUri)
+      .isEqualTo(
+        "compose-preview-history://${workspaceId.value}/_module/com.example.RedSquare/entry-1"
+      )
+  }
+
+  @Test
+  fun `history_diff forwards from to ids and decodes pngHashChanged`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+
+    val entryA = buildJsonObject {
+      put("id", "a")
+      put("previewId", "com.example.X")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:00:00Z")
+      put("pngHash", "AAAA")
+      put("pngSize", 100L)
+      put("pngPath", "/tmp/a.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 1L)
+    }
+    val entryB = buildJsonObject {
+      put("id", "b")
+      put("previewId", "com.example.X")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:01:00Z")
+      put("pngHash", "BBBB")
+      put("pngSize", 100L)
+      put("pngPath", "/tmp/b.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 1L)
+    }
+    daemon.setHistory(listOf(entryA, entryB))
+
+    val resp =
+      client.callTool(
+        "history_diff",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("module", ":module")
+          put("from", "a")
+          put("to", "b")
+        },
+      )
+    val parsed = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(parsed["pngHashChanged"]?.jsonPrimitive?.content?.toBoolean()).isTrue()
+    assertThat(parsed["fromMetadata"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("a")
+    assertThat(parsed["toMetadata"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("b")
+  }
+
+  @Test
+  fun `resources read on a compose-preview-history URI returns inline PNG bytes`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+
+    val entry = buildJsonObject {
+      put("id", "h-1")
+      put("previewId", "com.example.X")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:00:00Z")
+      put("pngHash", "AAAA")
+      put("pngSize", 11L)
+      put("pngPath", "/tmp/h-1.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 1L)
+    }
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3)
+    daemon.setHistory(listOf(entry))
+    daemon.setHistoryInlineBytes("h-1", pngBytes)
+
+    val historyUri = HistoryUri(workspaceId, ":module", "com.example.X", "h-1").toUri()
+    val resp = client.request("resources/read", buildJsonObject { put("uri", historyUri) })
+    val parsed = json.decodeFromJsonElement(ReadResourceResult.serializer(), resp)
+    val blob = (parsed.contents.single() as ResourceContents.Blob).blob
+    assertThat(java.util.Base64.getDecoder().decode(blob)).isEqualTo(pngBytes)
+  }
+
+  @Test
+  fun `historyAdded notification triggers resources list_changed push`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+
+    val entry = buildJsonObject {
+      put("id", "added-1")
+      put("previewId", "com.example.X")
+      put("module", ":module")
+      put("timestamp", "2026-04-30T10:00:00Z")
+      put("pngHash", "AAAA")
+      put("pngSize", 11L)
+      put("pngPath", "/tmp/added.png")
+      put("producer", "fake")
+      put("trigger", "manual")
+      putJsonObject("source") {
+        put("kind", "fs")
+        put("id", "fs:/tmp/h")
+      }
+      put("renderTookMs", 1L)
+    }
+    daemon.emitHistoryAdded(entry)
+    val n = client.expectNotification("notifications/resources/list_changed", 2_000)
+    assertThat(n.method).isEqualTo("notifications/resources/list_changed")
+  }
+
+  @Test
+  fun `resources read emits progress notifications when the client opts in`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Slow"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("slow.png")
+    Files.write(pngFile.toPath(), pngBytes)
+
+    // Stage the auto-emit but DELAY it for ~700ms so the 500ms progress-beat cadence has time
+    // to fire at least once before the renderFinished arrives.
+    daemon.autoRenderPngPath = { id ->
+      if (id == previewId) {
+        Thread.sleep(700)
+        pngFile.absolutePath
+      } else null
+    }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val params = buildJsonObject {
+      put("uri", uri)
+      // Per MCP spec, `_meta.progressToken` is the client's opt-in handle.
+      putJsonObject("_meta") { put("progressToken", JsonPrimitive("read-1")) }
+    }
+    val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    val readFuture =
+      pool.submit<JsonObject> { client.request("resources/read", params, timeoutMs = 10_000) }
+
+    val progress = client.expectNotification("notifications/progress", 5_000)
+    val progressParams = progress.params
+    assertThat(progressParams?.get("progressToken")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("read-1")
+    // progress is a numeric millisecond elapsed counter
+    val progressVal = progressParams?.get("progress")?.jsonPrimitive?.content?.toDouble() ?: 0.0
+    assertThat(progressVal).isAtLeast(0.0)
+
+    val readResp = readFuture.get(15, TimeUnit.SECONDS)
+    pool.shutdown()
+    val parsed = json.decodeFromJsonElement(ReadResourceResult.serializer(), readResp)
+    val blob = (parsed.contents.single() as ResourceContents.Blob).blob
+    assertThat(java.util.Base64.getDecoder().decode(blob)).isEqualTo(pngBytes)
+  }
+
+  @Test
+  fun `concurrent resources read calls for the same URI both receive bytes`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3)
+    val pngFile = tmp.newFile("fake-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    // Two concurrent reads of the same URI. Pre-dedup-fix this would race on a single queue
+    // slot: one waiter would get the bytes, the other would time out. With per-call futures,
+    // both complete on the same `renderFinished` (the daemon may emit one or two events
+    // depending on internal dedup; either way both waiters wake).
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+    val futA =
+      pool.submit<JsonObject> {
+        client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+      }
+    val futB =
+      pool.submit<JsonObject> {
+        client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+      }
+    val readA = futA.get(15, TimeUnit.SECONDS)
+    val readB = futB.get(15, TimeUnit.SECONDS)
+    pool.shutdown()
+
+    val parsedA = json.decodeFromJsonElement(ReadResourceResult.serializer(), readA)
+    val parsedB = json.decodeFromJsonElement(ReadResourceResult.serializer(), readB)
+    val blobA = (parsedA.contents.single() as ResourceContents.Blob).blob
+    val blobB = (parsedB.contents.single() as ResourceContents.Blob).blob
+    assertThat(java.util.Base64.getDecoder().decode(blobA)).isEqualTo(pngBytes)
+    assertThat(java.util.Base64.getDecoder().decode(blobB)).isEqualTo(pngBytes)
   }
 
   @Test

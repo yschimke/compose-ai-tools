@@ -731,8 +731,8 @@ class JsonRpcServer(
 
   /**
    * H3 — `history/diff` metadata mode. Resolves [from] and [to] entry ids via the [historyManager]
-   * (which iterates configured sources in priority order, so a cross-source diff "LocalFs vs
-   * GitRef preview/main" works the same as an intra-source diff). Emits:
+   * (which iterates configured sources in priority order, so a cross-source diff "LocalFs vs GitRef
+   * preview/main" works the same as an intra-source diff). Emits:
    *
    * - `HistoryEntryNotFound` (-32010) when either id is missing.
    * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
@@ -1310,11 +1310,11 @@ class JsonRpcServer(
     const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
 
     /**
-     * HISTORY.md § "Error codes" — `history/diff` was called with `mode = pixel`, which is
-     * reserved for phase H5 and not implemented in H3. We deliberately return a clean error code
-     * (rather than silently leaving the pixel fields null in METADATA mode) so callers can tell
-     * "I asked for pixel and the daemon isn't ready" apart from "I asked for metadata and got null
-     * pixel fields by design."
+     * HISTORY.md § "Error codes" — `history/diff` was called with `mode = pixel`, which is reserved
+     * for phase H5 and not implemented in H3. We deliberately return a clean error code (rather
+     * than silently leaving the pixel fields null in METADATA mode) so callers can tell "I asked
+     * for pixel and the daemon isn't ready" apart from "I asked for metadata and got null pixel
+     * fields by design."
      */
     const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
 

@@ -1,6 +1,5 @@
 package ee.schimke.composeai.daemon.history
 
-import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -34,18 +33,19 @@ import kotlinx.serialization.json.Json
  * populate the ref. The daemon doesn't fail; the consumer just sees "no main-history available."
  *
  * **Source rewriting.** The on-ref sidecars carry whatever `source` field they were written with —
- * but we know the source is *us* now. Both [list] and [read] rewrite `entry.source` to a
- * `kind: "git"` shape stamped with this source's id, the ref name, and the ref's HEAD commit sha.
+ * but we know the source is *us* now. Both [list] and [read] rewrite `entry.source` to a `kind:
+ * "git"` shape stamped with this source's id, the ref name, and the ref's HEAD commit sha.
  *
  * **PNG extraction.** [read] writes the PNG blob into a daemon-managed cache dir
  * (`<historyDir>/.git-ref-cache/`) keyed by `(refCommit, entryId)`. Subsequent reads of the same
  * blob hit the cache. Tempfiles are cleaned up on JVM shutdown via [Runtime.addShutdownHook].
  *
  * @param repoRoot the working tree (or bare repo) the ref lives in.
- * @param ref the full ref name (e.g. `refs/heads/preview/main`); use full form to avoid
- *   ambiguity between heads, remotes, and tags.
+ * @param ref the full ref name (e.g. `refs/heads/preview/main`); use full form to avoid ambiguity
+ *   between heads, remotes, and tags.
  * @param displayId stable identifier for `entry.source.id` rewriting; defaults to `git:$ref`.
- * @param cacheDir where extracted PNG blobs land; defaults to `<repoRoot>/.compose-preview-history/.git-ref-cache`.
+ * @param cacheDir where extracted PNG blobs land; defaults to
+ *   `<repoRoot>/.compose-preview-history/.git-ref-cache`.
  * @param gitExecutable git binary; defaults to `git` on PATH.
  * @param warnEmitter logger for the ref-missing case. The production daemon passes
  *   [JsonRpcServer]'s log emitter; tests pass a buffer-capturing lambda.
@@ -212,16 +212,15 @@ class GitRefHistorySource(
   }
 
   /**
-   * Returns the contents of `<refCommit>:<path>` as text, or null if the path isn't present in
-   * the tree. Uses `git show` with `--`. Trailing newline is preserved verbatim — the index
-   * parser handles blank lines.
+   * Returns the contents of `<refCommit>:<path>` as text, or null if the path isn't present in the
+   * tree. Uses `git show` with `--`. Trailing newline is preserved verbatim — the index parser
+   * handles blank lines.
    */
-  private fun catFile(refCommit: String, path: String): String? =
-    runGit("show", "$refCommit:$path")
+  private fun catFile(refCommit: String, path: String): String? = runGit("show", "$refCommit:$path")
 
   /**
-   * Extracts a binary blob from `<refCommit>:<path>` into [cacheDir]. Returns the cached file
-   * path or null on failure. Idempotent: subsequent reads with the same key see the existing file.
+   * Extracts a binary blob from `<refCommit>:<path>` into [cacheDir]. Returns the cached file path
+   * or null on failure. Idempotent: subsequent reads with the same key see the existing file.
    */
   private fun extractBlobToCache(refCommit: String, path: String): Path? {
     val safeName = "${refCommit.take(7)}-${path.replace('/', '_')}"
@@ -333,11 +332,7 @@ class GitRefHistorySource(
     fun parseRefsSysprop(
       propValue: String? = System.getProperty(GIT_REF_HISTORY_PROP)
     ): List<String> =
-      propValue
-        ?.split(',', ';')
-        ?.map { it.trim() }
-        ?.filter { it.isNotEmpty() }
-        ?: emptyList()
+      propValue?.split(',', ';')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 
     /**
      * Default cache dir for a given history dir. Mirrors the in-source default but exposed so

@@ -157,9 +157,9 @@ class HistoryManager(
    * highest-priority source's copy, applies the filter, sorts newest-first, and re-paginates the
    * combined result.
    *
-   * Per-source filtering is intentionally NOT trusted to compose with cross-source pagination —
-   * we always re-filter the merged set so a `sourceKind` filter applied across sources behaves
-   * the same way it does inside one source.
+   * Per-source filtering is intentionally NOT trusted to compose with cross-source pagination — we
+   * always re-filter the merged set so a `sourceKind` filter applied across sources behaves the
+   * same way it does inside one source.
    *
    * Source priority for dedup: the order in [sources]. LocalFs first means the writable source's
    * canonical entry (with `source.kind = "fs"`) is what surfaces; a GitRef-only render still

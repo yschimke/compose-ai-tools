@@ -122,6 +122,67 @@ data class PreviewUri(
 }
 
 /**
+ * History resource URI — `compose-preview-history://<workspace>/<module>/<previewFqn>/<entryId>`.
+ * Distinct from [PreviewUri] so clients can disambiguate "current state" (live preview) from
+ * "snapshot" (historical entry). Per [HISTORY.md § Layer 3 — MCP mapping](
+ * ../../../../../../docs/daemon/HISTORY.md#layer-3--mcp-mapping).
+ *
+ * The `entryId` is the stable hash-based id the daemon attaches to each `HistoryEntry`; it's opaque
+ * to MCP — the supervisor passes it back to the daemon's `history/read` / `history/diff` verbatim.
+ * We round-trip the value through the URI without any encoding because the daemon's id format
+ * already excludes `/` and `?`.
+ */
+data class HistoryUri(
+  val workspaceId: WorkspaceId,
+  val modulePath: String,
+  val previewFqn: String,
+  val entryId: String,
+) {
+  init {
+    require(modulePath.startsWith(":")) {
+      "HistoryUri.modulePath must start with ':' (got '$modulePath')"
+    }
+    require(!previewFqn.contains('/') && !previewFqn.contains('?')) {
+      "HistoryUri.previewFqn must not contain '/' or '?' (got '$previewFqn')"
+    }
+    require(!entryId.contains('/') && !entryId.contains('?')) {
+      "HistoryUri.entryId must not contain '/' or '?' (got '$entryId')"
+    }
+  }
+
+  fun toUri(): String =
+    "$SCHEME://${workspaceId.value}/${PreviewUri.encodeModule(modulePath)}/$previewFqn/$entryId"
+
+  override fun toString(): String = toUri()
+
+  companion object {
+    const val SCHEME: String = "compose-preview-history"
+
+    fun parseOrNull(s: String): HistoryUri? {
+      val prefix = "$SCHEME://"
+      if (!s.startsWith(prefix)) return null
+      val parts = s.removePrefix(prefix).split('/')
+      if (parts.size < 4) return null
+      val workspace = parts[0]
+      val moduleEncoded = parts[1]
+      val fqn = parts[2]
+      val entry = parts.subList(3, parts.size).joinToString("/")
+      if (workspace.isBlank() || moduleEncoded.isBlank() || fqn.isBlank() || entry.isBlank())
+        return null
+      return HistoryUri(
+        workspaceId = WorkspaceId(workspace),
+        modulePath = PreviewUri.decodeModule(moduleEncoded),
+        previewFqn = fqn,
+        entryId = entry,
+      )
+    }
+
+    fun parse(s: String): HistoryUri =
+      requireNotNull(parseOrNull(s)) { "Malformed compose-preview-history URI: '$s'" }
+  }
+}
+
+/**
  * Glob over preview FQN — used by the `watch` tool to register an "area of interest". A single `*`
  * matches any sequence of non-`.` characters; `**` matches anything including dots; `?` matches one
  * non-`.` character. Matching is case-sensitive — Kotlin FQNs are.

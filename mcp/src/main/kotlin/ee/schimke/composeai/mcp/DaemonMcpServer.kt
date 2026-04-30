@@ -20,7 +20,6 @@ import java.nio.file.Files
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -74,10 +73,20 @@ class DaemonMcpServer(
     ConcurrentHashMap()
 
   /**
-   * Outstanding `resources/read` waiters, keyed by `(workspace, module, previewId)`. Awakened by
-   * `renderFinished` notifications. We block at most [renderTimeoutMs] on the queue, then time out.
+   * Outstanding `resources/read` waiters, keyed by `(workspace, module, previewId)`. Each call adds
+   * its own `CompletableFuture` so concurrent reads of the same URI all wake up on the next
+   * `renderFinished` — `LinkedBlockingQueue` semantics would have served the outcome to one waiter
+   * and timed out the rest. The list type is `CopyOnWriteArrayList` because the read path
+   * (snapshot-and-complete inside `compute`) is rare; each render produces one fan-out, while a
+   * single render-in-flight is a quiet line.
    */
-  private val pendingRenders = ConcurrentHashMap<RenderKey, LinkedBlockingQueue<RenderOutcome>>()
+  private val pendingRenders =
+    ConcurrentHashMap<
+      RenderKey,
+      java.util.concurrent.CopyOnWriteArrayList<
+        java.util.concurrent.CompletableFuture<RenderOutcome>
+      >,
+    >()
 
   /**
    * Per-(workspace, module) counter of consecutive `classpathDirty` self-loops since the last clean
@@ -105,13 +114,25 @@ class DaemonMcpServer(
     )
 
   /**
-   * Worker that runs the (slow) replacement-daemon spawn after a `classpathDirty` notification.
-   * Single-threaded and daemon-flagged so it never delays JVM shutdown. Bounded queue isn't needed
-   * — `classpathDirty` is at most once per daemon lifetime.
+   * Worker for slow daemon-lifecycle work — replacement-daemon spawn after a `classpathDirty`
+   * notification, and async first-spawn from the `watch` tool. Single-threaded so concurrent
+   * requests for the same module don't double-spawn (the supervisor's `daemonFor` is already
+   * `computeIfAbsent`-safe, but serialising here also keeps the McpSession reader thread free).
+   * Daemon-flagged so it never delays JVM shutdown.
    */
-  private val respawnExecutor: java.util.concurrent.ExecutorService =
+  private val daemonLifecycleExecutor: java.util.concurrent.ExecutorService =
     java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-      Thread(r, "mcp-respawn-worker").apply { isDaemon = true }
+      Thread(r, "mcp-daemon-lifecycle").apply { isDaemon = true }
+    }
+
+  /**
+   * Scheduled worker for periodic `notifications/progress` beats during slow renders. Pool size 1
+   * is enough — beats fire at [PROGRESS_BEAT_INTERVAL_MS] and self-cancel as soon as the underlying
+   * [renderAndReadBytes] future completes.
+   */
+  private val progressBeatExecutor: java.util.concurrent.ScheduledExecutorService =
+    java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+      Thread(r, "mcp-progress-beat").apply { isDaemon = true }
     }
 
   init {
@@ -120,6 +141,7 @@ class DaemonMcpServer(
     router.on("renderFinished") { daemon, params -> onRenderFinished(daemon, params) }
     router.on("renderFailed") { daemon, params -> onRenderFailed(daemon, params) }
     router.on("classpathDirty") { daemon, params -> onClasspathDirty(daemon, params) }
+    router.on("historyAdded") { daemon, params -> onHistoryAdded(daemon, params) }
     router.onClose { daemon ->
       catalog.remove(DaemonAddr(daemon.workspaceId, daemon.modulePath))
       watchPropagator.forget(daemon)
@@ -151,8 +173,11 @@ class DaemonMcpServer(
           )
         }
 
-        override fun readResource(session: McpSession, uri: String): ReadResourceResult =
-          handleReadResource(uri)
+        override fun readResource(
+          session: McpSession,
+          uri: String,
+          progressToken: JsonElement?,
+        ): ReadResourceResult = handleReadResource(session, uri, progressToken)
 
         override fun subscribe(session: McpSession, uri: String) {
           subscriptions.subscribe(uri, session)
@@ -211,27 +236,82 @@ class DaemonMcpServer(
     return out.sortedBy { it.uri }
   }
 
-  private fun handleReadResource(uri: String): ReadResourceResult {
+  private fun handleReadResource(
+    session: McpSession,
+    uri: String,
+    progressToken: JsonElement?,
+  ): ReadResourceResult {
+    // History URIs short-circuit to `history/read` against the daemon — historical bytes are
+    // immutable so there's no render path involved.
+    HistoryUri.parseOrNull(uri)?.let { historyUri ->
+      return readHistoryResource(uri, historyUri)
+    }
     val parsed = PreviewUri.parseOrNull(uri) ?: error("Invalid compose-preview URI: '$uri'")
-    val pngBytes = renderAndReadBytes(parsed)
+    val pngBytes = renderAndReadBytes(parsed, session, progressToken)
     val encoded = Base64.getEncoder().encodeToString(pngBytes)
     return ReadResourceResult(
       contents = listOf(ResourceContents.Blob(uri = uri, mimeType = "image/png", blob = encoded))
     )
   }
 
-  private fun renderAndReadBytes(uri: PreviewUri): ByteArray {
+  /**
+   * Reads a `compose-preview-history://…` resource by calling `history/read` on the matching daemon
+   * with `inline = true`. The daemon's response carries the PNG bytes already base64- encoded; we
+   * forward them verbatim to the MCP client.
+   *
+   * Falls back to reading the file from `pngPath` when `pngBytes` is unset (older daemons or non-FS
+   * sources where inline is opportunistic).
+   */
+  private fun readHistoryResource(uriString: String, uri: HistoryUri): ReadResourceResult {
+    val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    val result = daemon.client.historyRead(entryId = uri.entryId, inline = true)
+    val blob =
+      result.pngBytes
+        ?: run {
+          val file = File(result.pngPath)
+          check(file.isFile) { "history/read pngPath does not exist: ${result.pngPath}" }
+          Base64.getEncoder().encodeToString(Files.readAllBytes(file.toPath()))
+        }
+    return ReadResourceResult(
+      contents = listOf(ResourceContents.Blob(uri = uriString, mimeType = "image/png", blob = blob))
+    )
+  }
+
+  private fun renderAndReadBytes(
+    uri: PreviewUri,
+    session: McpSession? = null,
+    progressToken: JsonElement? = null,
+  ): ByteArray {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
     val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
-    val slot = pendingRenders.computeIfAbsent(key) { LinkedBlockingQueue() }
+    // Multi-waiter dedup: each call adds its own CompletableFuture to the per-key list, so
+    // concurrent `resources/read` for the same URI all wake up on the next `renderFinished`
+    // — they all asked "what's the current bytes for this preview?" and the daemon's reply
+    // satisfies every concurrent reader. Crucially, the future is published BEFORE
+    // `renderNow` is sent, so the daemon's notification can't arrive ahead of the wait.
+    val future = java.util.concurrent.CompletableFuture<RenderOutcome>()
+    pendingRenders.compute(key) { _, list ->
+      val l = list ?: java.util.concurrent.CopyOnWriteArrayList()
+      l.add(future)
+      l
+    }
     daemon.client.renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL)
+    // Optional `notifications/progress` beat: when the client opted in via
+    // `_meta.progressToken`, fire periodic monotonic progress notifications so a UI can show a
+    // spinner / progress bar while the slow render completes. Beat thread is daemon-flagged
+    // and exits as soon as the future completes (or the timeout cleanup path runs).
+    val progressBeat = startProgressBeatIfNeeded(session, progressToken, future, uri)
     val outcome =
-      slot.poll(renderTimeoutMs, TimeUnit.MILLISECONDS)
-        ?: run {
-          pendingRenders.remove(key)
-          error("renderAndReadBytes: timed out after ${renderTimeoutMs}ms for $uri")
-        }
-    pendingRenders.remove(key)
+      try {
+        future.get(renderTimeoutMs, TimeUnit.MILLISECONDS)
+      } catch (e: java.util.concurrent.TimeoutException) {
+        // Best-effort cleanup so a stuck daemon doesn't leak futures forever.
+        pendingRenders.computeIfPresent(key) { _, list -> list.also { it.remove(future) } }
+        progressBeat?.cancel(true)
+        error("renderAndReadBytes: timed out after ${renderTimeoutMs}ms for $uri")
+      } finally {
+        progressBeat?.cancel(false)
+      }
     when (outcome) {
       is RenderOutcome.Failed ->
         error("renderAndReadBytes failed for $uri: ${outcome.kind} ${outcome.message}")
@@ -368,6 +448,58 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
+      ToolDef(
+        name = "history_list",
+        description =
+          "List historical render entries for a workspace's daemon. Proxies the daemon's `history/list` JSON-RPC method (PROTOCOL.md § 5). Returns newest-first sidecar metadata; pair with `history_read` (or `resources/read` on a `compose-preview-history://` URI) to fetch bytes. Filters mirror the daemon: previewId / since / until / branch / commit / etc.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "module":{"type":"string","description":"Gradle module path; required so the supervisor knows which daemon to ask."},
+                "previewId":{"type":"string","description":"Optional preview FQN filter (e.g. com.example.RedSquare)."},
+                "since":{"type":"string","description":"ISO-8601 lower bound, e.g. 2026-04-30T00:00:00Z."},
+                "until":{"type":"string","description":"ISO-8601 upper bound."},
+                "limit":{"type":"integer","description":"Default 50, max 500."},
+                "cursor":{"type":"string","description":"Opaque pagination token from a previous response."},
+                "branch":{"type":"string"},
+                "branchPattern":{"type":"string","description":"Regex over branch."},
+                "commit":{"type":"string","description":"Long or short SHA."},
+                "worktreePath":{"type":"string"},
+                "agentId":{"type":"string"},
+                "sourceKind":{"type":"string","enum":["fs","git","http"]},
+                "sourceId":{"type":"string"}
+              },
+              "required":["workspaceId","module"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "history_diff",
+        description =
+          "Diff two history entries by id (metadata mode only — pixel mode is reserved for daemon phase H5). Returns `{pngHashChanged, fromMetadata, toMetadata}`. Cross-source: `from` and `to` may live on different `HistorySource`s (LocalFs vs git-ref), so this is the load-bearing call for \"did my edit change rendered output vs the version on main?\".",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "module":{"type":"string"},
+                "from":{"type":"string","description":"Entry id (HistoryEntry.id)."},
+                "to":{"type":"string"}
+              },
+              "required":["workspaceId","module","from","to"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -385,6 +517,8 @@ class DaemonMcpServer(
       "unwatch" -> toolUnwatch(session, args)
       "list_watches" -> toolListWatches(session)
       "notify_file_changed" -> toolNotifyFileChanged(args)
+      "history_list" -> toolHistoryList(args)
+      "history_diff" -> toolHistoryDiff(args)
       else -> errorCallToolResult("unknown tool: $name")
     }
   }
@@ -478,13 +612,28 @@ class DaemonMcpServer(
     val toSpawn =
       if (module != null) listOf(module)
       else synchronized(project.knownModules) { project.knownModules.toList() }
-    toSpawn.forEach { mp ->
-      runCatching { supervisor.daemonFor(workspaceId, mp) }
-        .onFailure { System.err.println("watch: lazy spawn failed for $mp: ${it.message}") }
+    // Spawn off-thread so the McpSession reader doesn't block on cold-start (Robolectric ~5–10s,
+    // desktop ~600ms). The supervisor's `daemonFor` is `computeIfAbsent`-safe so duplicate watches
+    // racing on the same module are fine. Each successful spawn calls
+    // `synthesiseInitialDiscovery`, which fires `discoveryUpdated` → `onDiscoveryUpdated` →
+    // `notifyResourceListChanged` + `watchPropagator.recompute(daemon)`, so the watch's set ends
+    // up forwarded to the daemon as `setVisible`/`setFocus` without a synchronous round-trip here.
+    val toSpawnSet = toSpawn.toSet()
+    val alreadySpawned = toSpawnSet.filter { project.daemons.containsKey(it) }
+    val pending = toSpawnSet - alreadySpawned.toSet()
+    pending.forEach { mp ->
+      daemonLifecycleExecutor.execute {
+        runCatching { supervisor.daemonFor(workspaceId, mp) }
+          .onFailure { System.err.println("watch: async spawn failed for $mp: ${it.message}") }
+      }
     }
-    // Recompute every daemon's view; the propagator skips daemons whose URI set didn't change.
-    project.daemons.values.forEach { watchPropagator.recompute(it) }
-    return textCallToolResult("watching $entry (spawned ${toSpawn.size} daemon(s))")
+    // For daemons that are ALREADY up, recompute synchronously — the propagator skips daemons
+    // whose URI set didn't change. The async spawns above will recompute themselves once their
+    // initial discovery lands in `onDiscoveryUpdated`.
+    alreadySpawned.forEach { mp -> project.daemons[mp]?.let { watchPropagator.recompute(it) } }
+    return textCallToolResult(
+      "watching $entry (already-up: ${alreadySpawned.size}, spawning: ${pending.size})"
+    )
   }
 
   private fun toolUnwatch(session: McpSession, args: JsonObject): CallToolResult {
@@ -520,6 +669,138 @@ class DaemonMcpServer(
           )
         }
       }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * Resolves the (workspaceId, module) pair the history tools need plus the live daemon — the
+   * daemon owns the configured `HistoryManager`, so every history call goes through it.
+   */
+  private fun resolveHistoryDaemon(
+    args: JsonObject,
+    toolName: String,
+  ): Pair<SupervisedDaemon, String>? {
+    val ws =
+      args["workspaceId"]?.jsonPrimitive?.contentOrNull
+        ?: return null.also {
+          // Caller wraps this null into an errorCallToolResult; we surface the missing-field
+          // message there.
+        }
+    val workspaceId = WorkspaceId(ws)
+    if (supervisor.project(workspaceId) == null) return null
+    val module = args["module"]?.jsonPrimitive?.contentOrNull ?: return null
+    val daemon =
+      runCatching { supervisor.daemonFor(workspaceId, module) }.getOrNull() ?: return null
+    return daemon to module
+  }
+
+  private fun toolHistoryList(args: JsonObject): CallToolResult {
+    val ws =
+      args["workspaceId"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_list: missing 'workspaceId'")
+    val workspaceId = WorkspaceId(ws)
+    if (supervisor.project(workspaceId) == null) {
+      return errorCallToolResult("history_list: workspace '$ws' not registered")
+    }
+    val module =
+      args["module"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_list: missing 'module'")
+    val daemon =
+      runCatching { supervisor.daemonFor(workspaceId, module) }
+        .getOrElse {
+          return errorCallToolResult("history_list: daemon spawn failed: ${it.message}")
+        }
+    val params =
+      ee.schimke.composeai.daemon.protocol.HistoryListParams(
+        previewId = args["previewId"]?.jsonPrimitive?.contentOrNull,
+        since = args["since"]?.jsonPrimitive?.contentOrNull,
+        until = args["until"]?.jsonPrimitive?.contentOrNull,
+        limit = args["limit"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        cursor = args["cursor"]?.jsonPrimitive?.contentOrNull,
+        branch = args["branch"]?.jsonPrimitive?.contentOrNull,
+        branchPattern = args["branchPattern"]?.jsonPrimitive?.contentOrNull,
+        commit = args["commit"]?.jsonPrimitive?.contentOrNull,
+        worktreePath = args["worktreePath"]?.jsonPrimitive?.contentOrNull,
+        agentId = args["agentId"]?.jsonPrimitive?.contentOrNull,
+        sourceKind = args["sourceKind"]?.jsonPrimitive?.contentOrNull,
+        sourceId = args["sourceId"]?.jsonPrimitive?.contentOrNull,
+      )
+    val result =
+      runCatching { daemon.client.historyList(params) }
+        .getOrElse {
+          return errorCallToolResult("history_list failed: ${it.message}")
+        }
+
+    // Decorate each entry with the matching `compose-preview-history://` URI so clients can
+    // call `resources/read` on it directly.
+    val annotated = buildJsonObject {
+      put("totalCount", JsonPrimitive(result.totalCount))
+      if (result.nextCursor != null) put("nextCursor", JsonPrimitive(result.nextCursor))
+      putJsonArray("entries") {
+        result.entries.forEach { entry ->
+          val obj = entry as? JsonObject ?: return@forEach
+          val previewId = obj["previewId"]?.jsonPrimitive?.contentOrNull
+          val entryId = obj["id"]?.jsonPrimitive?.contentOrNull
+          val uri =
+            if (previewId != null && entryId != null)
+              HistoryUri(workspaceId, module, previewId, entryId).toUri()
+            else null
+          add(
+            buildJsonObject {
+              obj.forEach { (k, v) -> put(k, v) }
+              if (uri != null) put("resourceUri", JsonPrimitive(uri))
+            }
+          )
+        }
+      }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(annotated.toString())))
+  }
+
+  private fun toolHistoryDiff(args: JsonObject): CallToolResult {
+    val ws =
+      args["workspaceId"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_diff: missing 'workspaceId'")
+    val workspaceId = WorkspaceId(ws)
+    if (supervisor.project(workspaceId) == null) {
+      return errorCallToolResult("history_diff: workspace '$ws' not registered")
+    }
+    val module =
+      args["module"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_diff: missing 'module'")
+    val from =
+      args["from"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_diff: missing 'from'")
+    val to =
+      args["to"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("history_diff: missing 'to'")
+    val daemon =
+      runCatching { supervisor.daemonFor(workspaceId, module) }
+        .getOrElse {
+          return errorCallToolResult("history_diff: daemon spawn failed: ${it.message}")
+        }
+    val result =
+      runCatching {
+          daemon.client.historyDiff(
+            fromId = from,
+            toId = to,
+            mode = ee.schimke.composeai.daemon.protocol.HistoryDiffMode.METADATA,
+          )
+        }
+        .getOrElse {
+          return errorCallToolResult("history_diff failed: ${it.message}")
+        }
+
+    val payload = buildJsonObject {
+      put("pngHashChanged", JsonPrimitive(result.pngHashChanged))
+      put("fromMetadata", result.fromMetadata)
+      put("toMetadata", result.toMetadata)
+      // Pixel-mode fields are always null in METADATA mode by design (HISTORY.md § H3).
+      // We expose them so a client written against the H5-shape doesn't choke on missing keys.
+      if (result.diffPx != null) put("diffPx", JsonPrimitive(result.diffPx))
+      if (result.ssim != null) put("ssim", JsonPrimitive(result.ssim))
+      if (result.diffPngPath != null) put("diffPngPath", JsonPrimitive(result.diffPngPath))
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
@@ -618,9 +899,12 @@ class DaemonMcpServer(
   private fun onRenderFinished(daemon: SupervisedDaemon, params: JsonObject?) {
     val previewId = params?.get("id")?.jsonPrimitive?.contentOrNull ?: return
     val pngPath = params["pngPath"]?.jsonPrimitive?.contentOrNull ?: return
-    // 1. Wake any pending resources/read awaiter.
+    // 1. Wake every pending resources/read awaiter for this URI. We remove the list atomically
+    //    and complete each future outside the compute lambda so a slow consumer can't block
+    //    other waiters or the daemon's reader thread.
     val key = RenderKey(daemon.workspaceId, daemon.modulePath, previewId)
-    pendingRenders[key]?.offer(RenderOutcome.Finished(pngPath))
+    val toComplete = pendingRenders.remove(key)
+    toComplete?.forEach { it.complete(RenderOutcome.Finished(pngPath)) }
     // 2. Build the matching URI and notify subscribers + watchers.
     val entry = catalog[DaemonAddr(daemon.workspaceId, daemon.modulePath)]?.get(previewId)
     val uri =
@@ -645,7 +929,7 @@ class DaemonMcpServer(
     val kind = errorObj?.get("kind")?.jsonPrimitive?.contentOrNull ?: "unknown"
     val message = errorObj?.get("message")?.jsonPrimitive?.contentOrNull ?: "no message"
     val key = RenderKey(daemon.workspaceId, daemon.modulePath, previewId)
-    pendingRenders[key]?.offer(RenderOutcome.Failed(kind, message))
+    pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Failed(kind, message)) }
   }
 
   /**
@@ -659,14 +943,35 @@ class DaemonMcpServer(
    *    `synthesiseInitialDiscovery` path, which repopulates the catalog.
    * 3. Tell connected clients the resource list is stale (`notifications/resources/list_changed`)
    *    so they re-list when ready.
-   * 4. Schedule a respawn on the [respawnExecutor] worker so the daemon's reader thread (which is
-   *    about to die anyway) doesn't block on the new daemon's cold-start.
+   * 4. Schedule a respawn on the [daemonLifecycleExecutor] worker so the daemon's reader thread
+   *    (which is about to die anyway) doesn't block on the new daemon's cold-start.
    *
    * If the descriptor on disk is itself stale (the user/VS Code hasn't re-run
    * `composePreviewDaemonStart`), the new daemon will hit `classpathDirty` again. We log that and
    * stop trying after one self-loop — repeated thrashing serves no one. Production users are
    * expected to re-bootstrap before the supervisor's respawn kicks in.
    */
+  /**
+   * The daemon's `historyAdded` notification carries one new [HistoryEntry] per render. Per
+   * HISTORY.md § Subscriptions, the MCP mapping fires `notifications/resources/list_changed` so:
+   *
+   * - clients that subscribed to a `compose-preview-history://…` URI for THIS preview re-list (the
+   *   entry set grew),
+   * - clients that subscribed to the *live* `compose-preview://…` URI also re-list (HISTORY.md §
+   *   "Resources/subscribe" makes this explicit — subscribers to the live URI receive
+   *   `list_changed` whenever a new history entry lands for it).
+   *
+   * Cheap signal: a single repo-wide `notifications/resources/list_changed` covers both cases
+   * without the supervisor having to remember which URIs are subscribed. Clients that care filter
+   * their next `resources/list` by URI prefix.
+   */
+  private fun onHistoryAdded(daemon: SupervisedDaemon, params: JsonObject?) {
+    // No state to update here — history is owned by the daemon, served on demand by
+    // history/list / history/read. We only need to tell connected MCP sessions that the resource
+    // list grew.
+    sessions.forEach { it.notifyResourceListChanged() }
+  }
+
   private fun onClasspathDirty(daemon: SupervisedDaemon, params: JsonObject?) {
     val detail = params?.get("detail")?.jsonPrimitive?.contentOrNull ?: "<no detail>"
     val reason = params?.get("reason")?.jsonPrimitive?.contentOrNull ?: "<no reason>"
@@ -683,9 +988,9 @@ class DaemonMcpServer(
     pendingRenders.keys
       .filter { it.workspaceId == workspaceId && it.modulePath == modulePath }
       .forEach { key ->
-        pendingRenders[key]?.offer(
-          RenderOutcome.Failed("classpathDirty", "daemon exiting: $detail")
-        )
+        pendingRenders.remove(key)?.forEach {
+          it.complete(RenderOutcome.Failed("classpathDirty", "daemon exiting: $detail"))
+        }
       }
 
     // Forget the daemon + cached state. (The daemon's wire close will also fire `onClose` and
@@ -709,7 +1014,7 @@ class DaemonMcpServer(
       return
     }
 
-    respawnExecutor.execute {
+    daemonLifecycleExecutor.execute {
       val outcome =
         runCatching { supervisor.daemonFor(workspaceId, modulePath) }
           .onFailure {
@@ -747,6 +1052,42 @@ class DaemonMcpServer(
 
   private fun parseSchema(s: String): JsonElement = json.parseToJsonElement(s)
 
+  /**
+   * Schedules `notifications/progress` beats to [session] every [PROGRESS_BEAT_INTERVAL_MS] until
+   * [future] completes. Returns the scheduled handle so the caller can cancel it on completion.
+   *
+   * No-op when [session] or [progressToken] is null — the client didn't opt in.
+   *
+   * The progress value is a wall-clock-elapsed-ms count rather than a render-progress estimate
+   * because the daemon doesn't currently expose render progress. Total is left unset (unknown);
+   * `message` carries a short status string the client can show as a tooltip / log line.
+   */
+  private fun startProgressBeatIfNeeded(
+    session: McpSession?,
+    progressToken: JsonElement?,
+    future: java.util.concurrent.CompletableFuture<*>,
+    uri: PreviewUri,
+  ): java.util.concurrent.ScheduledFuture<*>? {
+    if (session == null || progressToken == null) return null
+    val start = System.currentTimeMillis()
+    return progressBeatExecutor.scheduleAtFixedRate(
+      {
+        if (future.isDone) return@scheduleAtFixedRate
+        runCatching {
+          val elapsed = (System.currentTimeMillis() - start).toDouble()
+          session.notifyProgress(
+            token = progressToken,
+            progress = elapsed,
+            message = "rendering ${uri.previewFqn}",
+          )
+        }
+      },
+      PROGRESS_BEAT_INTERVAL_MS,
+      PROGRESS_BEAT_INTERVAL_MS,
+      TimeUnit.MILLISECONDS,
+    )
+  }
+
   private fun detectBranch(workspacePath: File): String? {
     val head = File(workspacePath, ".git/HEAD").takeIf { it.isFile } ?: return null
     val content = runCatching { head.readText().trim() }.getOrNull() ?: return null
@@ -763,5 +1104,11 @@ class DaemonMcpServer(
      * Higher caps would just thrash if the descriptor is actually stale.
      */
     private const val MAX_RESPAWN_ATTEMPTS_PER_LIFETIME: Int = 1
+
+    /**
+     * Cadence for `notifications/progress` beats during a slow `resources/read`. 500ms strikes a
+     * balance between "responsive UI updates" and "not flooding the wire on a fast render".
+     */
+    private const val PROGRESS_BEAT_INTERVAL_MS: Long = 500
   }
 }

@@ -112,6 +112,21 @@ class FakeDaemon : DaemonSpawn {
     sendNotification("discoveryUpdated", params)
   }
 
+  /**
+   * Pushes a `classpathDirty` notification. PROTOCOL.md § 6 says this fires at most once per
+   * lifetime; tests should treat the daemon as dying after this call.
+   */
+  fun emitClasspathDirty(
+    reason: String = "fingerprintMismatch",
+    detail: String = "test-driven classpathDirty",
+  ) {
+    val params = buildJsonObject {
+      put("reason", reason)
+      put("detail", detail)
+    }
+    sendNotification("classpathDirty", params)
+  }
+
   /** Pushes a `renderFinished` notification. Returns the synthetic pngPath emitted. */
   fun emitRenderFinished(previewId: String, pngPath: String): String {
     val params = buildJsonObject {
@@ -186,11 +201,83 @@ class FakeDaemon : DaemonSpawn {
       "shutdown" -> {
         sendResponse(id, kotlinx.serialization.json.JsonNull)
       }
+      "history/list" -> {
+        // Tests preload `historyEntries` via `setHistory(...)`; we just echo them back wrapped
+        // in the wire shape. Filtering + cursor support are deliberately stubbed — the H6
+        // mapping forwards params verbatim, so unit tests don't need full filter coverage here.
+        val payload = buildJsonObject {
+          putJsonArray("entries") { historyEntries.forEach { add(it) } }
+          put("totalCount", historyEntries.size)
+        }
+        sendResponse(id, payload)
+      }
+      "history/read" -> {
+        val entryId = params?.get("id")?.jsonPrimitive?.contentOrNull
+        val entry = historyEntries.firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull == entryId }
+        if (entry == null) {
+          sendError(id, -32010, "HistoryEntryNotFound: $entryId")
+        } else {
+          val inline = params?.get("inline")?.jsonPrimitive?.contentOrNull == "true"
+          val pngPath = entry["pngPath"]?.jsonPrimitive?.contentOrNull ?: "/tmp/missing.png"
+          val payload = buildJsonObject {
+            put("entry", entry)
+            put("pngPath", pngPath)
+            if (inline) {
+              val bytes =
+                historyInlineBytes[entryId] ?: byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+              put("pngBytes", java.util.Base64.getEncoder().encodeToString(bytes))
+            }
+          }
+          sendResponse(id, payload)
+        }
+      }
+      "history/diff" -> {
+        val from = params?.get("from")?.jsonPrimitive?.contentOrNull
+        val to = params?.get("to")?.jsonPrimitive?.contentOrNull
+        val fromEntry = historyEntries.firstOrNull {
+          it["id"]?.jsonPrimitive?.contentOrNull == from
+        }
+        val toEntry = historyEntries.firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull == to }
+        if (fromEntry == null || toEntry == null) {
+          sendError(id, -32010, "HistoryEntryNotFound: from=$from to=$to")
+        } else {
+          val payload = buildJsonObject {
+            put(
+              "pngHashChanged",
+              fromEntry["pngHash"]?.jsonPrimitive?.contentOrNull !=
+                toEntry["pngHash"]?.jsonPrimitive?.contentOrNull,
+            )
+            put("fromMetadata", fromEntry)
+            put("toMetadata", toEntry)
+          }
+          sendResponse(id, payload)
+        }
+      }
       else -> {
         // Unknown methods: error response so the client doesn't hang.
         sendError(id, -32601, "method not found: $method")
       }
     }
+  }
+
+  /** Test helper — preload `history/list`/`history/read`/`history/diff` results. */
+  private val historyEntries: MutableList<JsonObject> = java.util.concurrent.CopyOnWriteArrayList()
+  private val historyInlineBytes: MutableMap<String, ByteArray> =
+    java.util.concurrent.ConcurrentHashMap()
+
+  fun setHistory(entries: List<JsonObject>) {
+    historyEntries.clear()
+    historyEntries.addAll(entries)
+  }
+
+  fun setHistoryInlineBytes(entryId: String, bytes: ByteArray) {
+    historyInlineBytes[entryId] = bytes
+  }
+
+  /** Pushes a `historyAdded` notification carrying [entry]. */
+  fun emitHistoryAdded(entry: JsonObject) {
+    val params = buildJsonObject { put("entry", entry) }
+    sendNotification("historyAdded", params)
   }
 
   private fun handleNotification(method: String, params: JsonObject?) {
@@ -303,12 +390,22 @@ class FakeDaemon : DaemonSpawn {
 
 /** Test [DaemonClientFactory] that always returns a [FakeDaemon]. */
 class FakeDaemonClientFactory : DaemonClientFactory {
-  /** Map of (workspaceId, modulePath) → fake. Tests assert/manipulate via this. */
+  /** Map of (workspaceId, modulePath) → most-recent fake. */
   val daemons: MutableMap<Pair<WorkspaceId, String>, FakeDaemon> = mutableMapOf()
+
+  /**
+   * Every fake ever spawned by this factory, in spawn order. Useful for respawn-shaped tests (e.g.
+   * `classpathDirty` recovery): the first spawn lands at index 0 and the supervisor's replacement
+   * after `classpathDirty` lands at index 1.
+   */
+  val spawnHistory: MutableList<FakeDaemon> = java.util.concurrent.CopyOnWriteArrayList()
 
   override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     val daemon = FakeDaemon()
-    daemons[project.workspaceId to descriptor.modulePath] = daemon
+    synchronized(this) {
+      daemons[project.workspaceId to descriptor.modulePath] = daemon
+      spawnHistory.add(daemon)
+    }
     return daemon
   }
 }
