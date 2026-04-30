@@ -347,3 +347,52 @@ enum class LogLevel {
   @SerialName("warn") WARN,
   @SerialName("error") ERROR,
 }
+
+// =====================================================================
+// 6. History — H1 + H2 wire-format. See docs/daemon/HISTORY.md § "Layer 2 —
+//    JSON-RPC API" and `HistoryEntry` in
+//    ee.schimke.composeai.daemon.history.
+//
+// The `entry`, `previewMetadata` fields below carry already-encoded JSON
+// rather than typed Kotlin classes — kotlinx.serialization can't reach
+// across the package boundary into ee.schimke.composeai.daemon.history
+// without pulling its types onto the Messages.kt import surface, which
+// would create a circular include for the JsonRpcServer dispatch path.
+// We use JsonElement + the dispatch layer encodes/decodes against the
+// real `HistoryEntry` / `PreviewInfoDto` serializers at the call site.
+// =====================================================================
+
+@Serializable
+data class HistoryListParams(
+  val previewId: String? = null,
+  val since: String? = null,
+  val until: String? = null,
+  val limit: Int? = null,
+  val cursor: String? = null,
+  val branch: String? = null,
+  val branchPattern: String? = null,
+  val commit: String? = null,
+  val worktreePath: String? = null,
+  val agentId: String? = null,
+  val sourceKind: String? = null,
+  val sourceId: String? = null,
+)
+
+@Serializable
+data class HistoryListResult(
+  val entries: List<JsonElement>,
+  val nextCursor: String? = null,
+  val totalCount: Int,
+)
+
+@Serializable data class HistoryReadParams(val id: String, val inline: Boolean = false)
+
+@Serializable
+data class HistoryReadResultDto(
+  val entry: JsonElement,
+  val previewMetadata: JsonElement? = null,
+  val pngPath: String,
+  val pngBytes: String? = null,
+)
+
+@Serializable data class HistoryAddedParams(val entry: JsonElement)

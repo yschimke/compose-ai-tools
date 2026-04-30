@@ -3,6 +3,8 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
 
@@ -148,6 +150,25 @@ fun main(args: Array<String>) {
       IncrementalDiscovery(classpath = classpath)
     } else null
 
+  // H1+H2 — wire the per-render history archive. Path comes from `composeai.daemon.historyDir`;
+  // workspace root for git-provenance resolution comes from `composeai.daemon.workspaceRoot` (JVM
+  // CWD when unset). Mirrors the desktop daemon's wireup. See HISTORY.md § "What this PR lands".
+  val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
+  val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
+  val gitProvenance =
+    if (historyDirProp != null) {
+      GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+    } else null
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println("compose-ai-tools daemon: HistoryManager active (dir=$dir)")
+      HistoryManager.forLocalFs(
+        historyDir = Path.of(dir),
+        module = System.getProperty(MODULE_ID_PROP) ?: "",
+        gitProvenance = gitProvenance,
+      )
+    }
+
   val server =
     JsonRpcServer(
       input = System.`in`,
@@ -156,6 +177,16 @@ fun main(args: Array<String>) {
       classpathFingerprint = classpathFingerprint,
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
+      historyManager = historyManager,
     )
   server.run()
 }
+
+/** HISTORY.md § "What this PR lands § H1" — null disables history. */
+private const val HISTORY_DIR_PROP = "composeai.daemon.historyDir"
+
+/** Optional override for git-provenance resolution; defaults to JVM CWD. */
+private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
+
+/** Module project path stamped into every history entry's `module` field. */
+private const val MODULE_ID_PROP = "composeai.daemon.moduleId"

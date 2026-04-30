@@ -6,6 +6,8 @@ import ee.schimke.composeai.daemon.IncrementalDiscovery
 import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.PreviewIndex
 import ee.schimke.composeai.daemon.PreviewInfoDto
+import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
 
@@ -88,6 +90,21 @@ fun main(args: Array<String>) {
       IncrementalDiscovery(classpath = classpath)
     } else null
 
+  // H1+H2 — wire the per-render history archive when the harness opted in via
+  // `composeai.daemon.historyDir`. Mirrors the production daemon main wireup. Tests that don't set
+  // the sysprop see the pre-H1 default (no history written, history/list returns empty).
+  val historyDirProp = System.getProperty("composeai.daemon.historyDir")
+  val workspaceRootProp = System.getProperty("composeai.daemon.workspaceRoot")
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println("compose-ai-daemon harness: HistoryManager active (dir=$dir)")
+      HistoryManager.forLocalFs(
+        historyDir = Path.of(dir),
+        module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
+        gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
+      )
+    }
+
   val server =
     JsonRpcServer(
       input = System.`in`,
@@ -96,6 +113,7 @@ fun main(args: Array<String>) {
       daemonVersion = "harness-fake",
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
+      historyManager = historyManager,
     )
   server.run()
 }

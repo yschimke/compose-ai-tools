@@ -50,6 +50,8 @@ Standard JSON-RPC codes plus daemon-specific extensions in the reserved `-32000.
 | -32003   | SandboxRecycling      | Daemon is between sandboxes; retry shortly. |
 | -32004   | UnknownPreview        | Preview ID not in the current discovery set. |
 | -32005   | RenderFailed          | Render itself failed; details in `data`. |
+| -32010   | HistoryEntryNotFound  | `history/read` referenced a missing entry id. |
+| -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews (reserved; phase H3+). |
 
 `error.data` is an object; daemon-specific errors include `data.kind: string` for machine-routable subcategories.
 
@@ -197,6 +199,61 @@ Errors:
 - `ClasspathDirty` (-32002) — daemon will not render until restarted.
 - `SandboxRecycling` (-32003) — retry after the next `daemonReady` notification.
 
+### `history/list` (phase H2)
+
+```ts
+// params
+{
+  previewId?: string;
+  since?: string;                   // ISO timestamp lower bound
+  until?: string;                   // ISO timestamp upper bound
+  limit?: number;                   // default 50, max 500
+  cursor?: string;                  // opaque pagination token
+  branch?: string;
+  branchPattern?: string;           // regex
+  commit?: string;                  // long or short SHA
+  worktreePath?: string;
+  agentId?: string;
+  sourceKind?: "fs" | "git" | "http";
+  sourceId?: string;
+}
+
+// result
+{
+  entries: HistoryEntry[];          // newest first
+  nextCursor?: string;
+  totalCount: number;
+}
+```
+
+`HistoryEntry` is the sidecar JSON shape from [HISTORY.md § "Sidecar metadata schema"](HISTORY.md#sidecar-metadata-schema).
+
+### `history/read` (phase H2)
+
+```ts
+// params
+{ id: string; inline?: boolean }
+
+// result
+{
+  entry: HistoryEntry;
+  previewMetadata?: PreviewMetadataSnapshot;
+  pngPath: string;                  // absolute
+  pngBytes?: string;                // base64; populated when inline=true
+}
+```
+
+Errors:
+- `HistoryEntryNotFound` (-32010) — `id` does not match any entry in the configured sources.
+
+### `history/diff` (phase H3+, reserved)
+
+Not implemented in H1+H2. Calls return `MethodNotFound` (-32601) until H3 lands.
+
+### `history/prune` (phase H4+, reserved)
+
+Not implemented in H1+H2. Calls return `MethodNotFound` (-32601) until H4 lands.
+
 ## 6. Daemon → client notifications
 
 ### `discoveryUpdated`
@@ -321,6 +378,22 @@ Render service is available again after a `daemonWarming` interval.
 ```
 
 Optional channel; client routes to the daemon output channel. Stderr remains the unstructured fallback.
+
+### `historyAdded` (phase H2)
+
+```ts
+{ entry: HistoryEntry }
+```
+
+Emitted whenever a render lands a new entry on disk via the configured `HistoryManager`. Mirrors
+the shape of `discoveryUpdated`. Clients that subscribe avoid polling `history/list`.
+
+The `pngHash` field on `entry` lets a subscriber decide cheaply whether the bytes are different
+from the previous render — if not, skip re-fetching. See [HISTORY.md § "historyAdded"](HISTORY.md#historyadded-notification-daemon--client).
+
+### `historyPruned` (phase H4+, reserved)
+
+Not implemented in H1+H2. Documented in [HISTORY.md § "historyPruned"](HISTORY.md#historypruned-notification-daemon--client) for the H4 landing.
 
 ## 7. Versioning
 

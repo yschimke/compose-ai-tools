@@ -2,6 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
 
@@ -137,6 +139,27 @@ fun main(args: Array<String>) {
       IncrementalDiscovery(classpath = classpath)
     } else null
 
+  // H1+H2 — wire the per-render history archive. Path comes from `composeai.daemon.historyDir`
+  // (the gradle plugin's daemon launch descriptor will emit this in a future task; for now agents
+  // and ad-hoc launches set it manually). The default is null = no history written. Workspace
+  // root for git-provenance resolution comes from `composeai.daemon.workspaceRoot`, with the JVM
+  // CWD as the fallback. See HISTORY.md § "What this PR lands § H1".
+  val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
+  val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
+  val gitProvenance =
+    if (historyDirProp != null) {
+      GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+    } else null
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println("compose-ai-tools desktop daemon: HistoryManager active (dir=$dir)")
+      HistoryManager.forLocalFs(
+        historyDir = Path.of(dir),
+        module = System.getProperty(MODULE_ID_PROP) ?: "",
+        gitProvenance = gitProvenance,
+      )
+    }
+
   val server =
     JsonRpcServer(
       input = System.`in`,
@@ -145,6 +168,7 @@ fun main(args: Array<String>) {
       classpathFingerprint = classpathFingerprint,
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
+      historyManager = historyManager,
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)
@@ -202,6 +226,15 @@ fun main(args: Array<String>) {
  * EOF→idleTimeout-sleep walk; the latter is bounded by the `composeai.daemon.idleTimeoutMs` system
  * property, default 5s).
  */
+/** HISTORY.md § "What this PR lands § H1" — null disables history. */
+private const val HISTORY_DIR_PROP = "composeai.daemon.historyDir"
+
+/** Optional override for git-provenance resolution; defaults to JVM CWD. */
+private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
+
+/** Module project path stamped into every history entry's `module` field. */
+private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
+
 private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.InputStream) {
   // Same property the JsonRpcServer reads, so a single sysprop tunes both timeouts coherently.
   // Default 30s — matches the existing `finally`-block defensive shutdown above and most JVMs'

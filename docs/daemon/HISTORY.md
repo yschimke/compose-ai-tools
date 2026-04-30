@@ -173,18 +173,12 @@ under POSIX `PIPE_BUF` so writes are atomic. Readers seeing torn
 lines on macOS edge cases skip them — the per-preview sidecars are
 the source of truth, the index is the convenience.
 
-### Compatibility with today's layout
+### Greenfield — no legacy data
 
-Pre-design entries (PNGs without sidecars) stay readable. The Layer
-2 reader treats them as `source: "unknown"`, infers `previewId` from
-the parent folder name, parses the timestamp from the filename, and
-omits everything else. Listing degrades gracefully; reading degrades
-to "PNG bytes plus filename-derived metadata".
-
-The Gradle `HistorizePreviewsTask` keeps writing PNG-only today.
-Phase 1 of this design adds sidecar emission to that task too —
-the dedup-by-SHA logic stays, but every kept PNG gets a `.json`
-sibling. Old entries don't get retroactively annotated.
+The legacy `HistorizePreviewsTask` (Gradle-side PNG-only writer) was removed in PR #311 along with
+the unused VS Code Preview History panel. H1 daemon writes are the only writer, so the Layer 2
+reader does NOT have to tolerate PNG-only entries — every entry on disk has a sibling sidecar
+because the daemon wrote both atomically.
 
 ## Trigger taxonomy
 
@@ -193,13 +187,13 @@ this preview. Vocabulary:
 
 | trigger              | who emits | meaning |
 |----------------------|-----------|---------|
-| `initial`            | both      | first render after daemon start / cold Gradle invocation |
+| `initial`            | daemon    | first render after daemon start |
 | `renderNow`          | daemon    | explicit `renderNow` request from a client |
 | `fileChanged`        | daemon    | source/resource/classpath edit triggered the render |
 | `discoveryUpdated`   | daemon    | preview was newly discovered or its metadata changed |
 | `setVisible`         | daemon    | preview entered the visible set (B2.5+ — focus-driven) |
 | `recycleResume`      | daemon    | sandbox recycle re-rendered visible previews |
-| `gradleTask`         | gradle    | `renderAllPreviews` or `renderPreviews` invocation |
+| `gradleTask`         | —         | reserved (legacy `HistorizePreviewsTask` was removed in PR #311); not currently emitted |
 | `manual`             | either    | external trigger (CLI flag, MCP `render_preview` tool) |
 
 `triggerDetail` is a free-form object whose shape is per-trigger
@@ -751,33 +745,18 @@ Storage assumptions:
 The VS Code extension does NOT mutate history. Pruning happens
 daemon-side or via the Gradle path's pruning hook (see § Pruning).
 
-## Layer 1 — Gradle path
-
-The existing `HistorizePreviewsTask` keeps working. Phase 1 changes:
-
-1. Emit a sidecar `.json` for each PNG it writes. Schema matches the
-   sidecar above, with `source: "gradle"` and `trigger: "gradleTask"`.
-2. Append a line to `index.jsonl`.
-3. Run pruning at task end (configurable; default off — Gradle runs
-   are infrequent enough that the daemon's auto-prune covers most
-   cases).
-
-These are additive. No existing behaviour changes.
-
 ## Concurrency model
 
-- **Single writer at a time.** Daemon and Gradle don't render the
-  same module concurrently; the daemon shuts down or refuses
-  `renderNow` while a Gradle build holds the project lock, and the
-  daemon's own `classpathDirty` exit happens before any Gradle
-  re-resolve. So there's never two writers actually colliding.
+The daemon is the only writer. The legacy Gradle-side `HistorizePreviewsTask` was removed in
+PR #311; there is no second writer to coordinate with.
+
 - **Filenames are collision-free.** Timestamp + 8-hex-of-SHA gives
-  practical uniqueness. If two writers somehow land in the same
-  millisecond on identical bytes, the dedup-by-SHA logic skips one.
+  practical uniqueness. The dedup-by-SHA logic on top suppresses
+  re-writing identical bytes for the same preview.
 - **Index `O_APPEND` writes.** Atomic for sub-`PIPE_BUF` lines, which
   the schema fits comfortably.
 - **Reader-side robustness.** Readers tolerate truncated index lines
-  (skip), missing sidecars (degrade to PNG-only metadata), and
+  (skip), missing sidecars (drop the entry from listings — self-healing on next prune), and
   symlinked entries (follow once).
 
 ## Pruning policy
@@ -820,18 +799,16 @@ removed set.
 
 | Module | Reads history? | Writes history? | Imports |
 |---|---|---|---|
-| `:gradle-plugin` (Layer 1) | no | yes (`HistorizePreviewsTask`) | nothing daemon-side |
+| `:gradle-plugin` (Layer 1) | no | no (legacy writer removed in PR #311) | nothing daemon-side |
 | `:daemon:core` (Layer 2) | yes (`history/list`, `history/read`, `history/diff`) | yes (per render) | none beyond Messages.kt |
-| `:daemon:android`, `:daemon:desktop` (Layer 2) | no — they call `renderHost.recordHistory()` which lives in `:daemon:core` | no | `:daemon:core` |
+| `:daemon:android`, `:daemon:desktop` (Layer 2) | no — they call into `:daemon:core` `JsonRpcServer` | no | `:daemon:core` |
 | `:daemon:mcp` (Layer 3) | yes — JSON-RPC client of Layer 2; merges across worktrees consumer-side | no | `:daemon:core` (types only) |
 | VS Code extension | yes — JSON-RPC client of Layer 2, OR direct filesystem | no | nothing daemon-side |
 
-The daemon is the only writer to its own LocalFs source while
-running. The Gradle plugin writes to that same LocalFs source when
-no daemon is up. Git / HTTP sources are Layer 2 plug-ins that don't
-escape the daemon's process. Cross-worktree merging happens above
-Layer 2 — at the MCP server or in the editor — never inside a
-daemon.
+The daemon is the only writer to its own LocalFs source. Git / HTTP
+sources are Layer 2 plug-ins that don't escape the daemon's process.
+Cross-worktree merging happens above Layer 2 — at the MCP server or
+in the editor — never inside a daemon.
 
 ## File-format versioning
 
@@ -851,8 +828,8 @@ index; old indices stay readable as v0.
 
 | Phase | Scope | Owner | Depends on |
 |---|---|---|---|
-| **H0** | Sidecar schema + index.jsonl emission from `HistorizePreviewsTask` | Layer 1 | — |
-| **H1** | Daemon writes sidecar + index entry per render | Layer 2 | H0 schema lock |
+| ~~**H0**~~ | ~~Sidecar schema + index.jsonl emission from `HistorizePreviewsTask`~~ | — | dropped — legacy task removed in PR #311; greenfield write path is daemon-only |
+| **H1** | Daemon writes sidecar + index entry per render | Layer 2 | — |
 | **H2** | `history/list` + `history/read` + `historyAdded` notification | Layer 2 | H1 |
 | **H3** | `history/diff` (metadata mode) | Layer 2 | H2 |
 | **H4** | Auto-prune + `historyPruned` notification | Layer 2 | H2 |
@@ -867,7 +844,8 @@ index; old indices stay readable as v0.
 | **H13** | `HttpMirrorHistorySource` — read-only CI / S3 mirror | Layer 2 | H9 |
 | **H14** | Cross-worktree merge in MCP `DaemonSupervisor` (multi-worktree timeline) | Layer 3 | H6 |
 
-H0–H2 are independently useful. H3 onward is enrichment.
+H1+H2 are independently useful and ship together as the first daemon-side history landing. H3
+onward is enrichment.
 
 ## Open questions
 
