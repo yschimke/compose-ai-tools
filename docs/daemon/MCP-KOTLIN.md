@@ -101,7 +101,7 @@ The load-bearing wiring layer. Owns:
 - The per-(workspace, module) preview catalog populated from daemon
   `discoveryUpdated`.
 - The MCP resources surface (`list`, `read`, `subscribe`, `unsubscribe`).
-- The MCP tools surface (10 tools — see [MCP.md § Tools](MCP.md#tools)).
+- The MCP tools surface (12 tools — see [MCP.md § Tools](MCP.md#tools)).
 - The translation of daemon `renderFinished` →
   `notifications/resources/updated`.
 - The translation of daemon `discoveryUpdated` →
@@ -168,10 +168,17 @@ notification (set semantics).
 daemon and forwards it as `setVisible` + `setFocus`. Idempotent — caches
 the last sent set per daemon and skips the wire call when unchanged.
 
-Note: the daemon currently treats `setVisible`/`setFocus` as no-ops
-(B2.5 + predictive prefetch territory). The propagator's wire calls are
-correct but not yet observable; once focus-driven priority lands the
-plumbing is already there.
+The MCP-side `set_visible` / `set_focus` tools (#332) provide a direct
+passthrough alongside the watch-driven path: an agent can express
+"render this one ahead of others" without registering a long-lived
+watch. The next `WatchPropagator.recompute` (e.g. on the next
+`discoveryUpdated` or `watch`/`unwatch`) replaces whatever the explicit
+tool set.
+
+Note: the daemon's render queue is still single-priority FIFO today, so
+the wire calls flow through but don't yet reorder the queue. The
+plumbing is there for B2.5 / predictive prefetch to start honouring
+focus.
 
 ### `PreviewUri` / `HistoryUri` / `WorkspaceId`
 

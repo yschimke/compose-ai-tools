@@ -121,7 +121,7 @@ thrashing on a permanently-stale descriptor.
 
 ### Tools
 
-Ten tools in v0:
+Twelve tools today:
 
 | Tool | Purpose | Maps to daemon's |
 |------|---------|------------------|
@@ -132,15 +132,16 @@ Ten tools in v0:
 | `watch(workspaceId, module?, fqnGlob?)` | Register an area of interest. | — (subscription bookkeeping) |
 | `unwatch(workspaceId?, module?, fqnGlob?)` | Drop matching watches. | — |
 | `list_watches()` | List the current session's watches. | — |
+| `set_visible(workspaceId, module, ids)` | Override the daemon's visible-preview set directly (without a long-lived watch). | `setVisible` |
+| `set_focus(workspaceId, module, ids)` | Override the daemon's focused-preview set (higher-priority slice for queue draining). | `setFocus` |
 | `notify_file_changed(workspaceId, path, kind?, changeType?)` | Forward a file-edit notification to every daemon in the workspace. | `fileChanged` |
 | `history_list(workspaceId, module, …)` | List history entries; decorates each with a `compose-preview-history://` URI. | `history/list` |
 | `history_diff(workspaceId, module, from, to)` | Diff two entries (metadata mode). | `history/diff` |
 
-`set_focus` / `set_visible` are not currently exposed as tools — the
-daemon's queue doesn't yet honour them (B2.5+). When predictive prefetch
-ships ([PREDICTIVE.md](PREDICTIVE.md)), MCP either gains a `set_focus`
-tool or the propagator's existing watch→`setVisible` translation becomes
-load-bearing.
+Note: the daemon's render queue is still single-priority FIFO today, so
+`setVisible` / `setFocus` traffic flows through the wire but doesn't yet
+reorder the queue. The plumbing is in place for B2.5 / predictive
+prefetch ([PREDICTIVE.md](PREDICTIVE.md)) to start honouring focus.
 
 ## Architecture
 
