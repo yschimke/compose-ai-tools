@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.PreviewIndex
 import ee.schimke.composeai.daemon.PreviewInfoDto
 import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
@@ -95,14 +96,23 @@ fun main(args: Array<String>) {
   // the sysprop see the pre-H1 default (no history written, history/list returns empty).
   val historyDirProp = System.getProperty("composeai.daemon.historyDir")
   val workspaceRootProp = System.getProperty("composeai.daemon.workspaceRoot")
-  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
-    System.err.println("compose-ai-daemon harness: HistoryManager active (dir=$dir)")
-    HistoryManager.forLocalFs(
-      historyDir = Path.of(dir),
-      module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
-      gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
-    )
-  }
+  // H10-read — `composeai.daemon.gitRefHistory` (comma-separated full ref names) wires read-only
+  // GitRefHistorySources alongside the writable LocalFsHistorySource. Tests that don't set the
+  // sysprop see the pre-H10 single-source behaviour.
+  val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println(
+        "compose-ai-daemon harness: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs})"
+      )
+      HistoryManager.forLocalFsAndGitRefs(
+        historyDir = Path.of(dir),
+        module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
+        gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
+        gitRefs = gitRefHistoryRefs,
+        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+      )
+    }
 
   val server =
     JsonRpcServer(

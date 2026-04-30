@@ -10,6 +10,9 @@ import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.HistoryAddedParams
+import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
+import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
+import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadParams
@@ -305,6 +308,7 @@ class JsonRpcServer(
       "shutdown" -> handleShutdown(req)
       "history/list" -> handleHistoryList(req)
       "history/read" -> handleHistoryRead(req)
+      "history/diff" -> handleHistoryDiff(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -707,6 +711,110 @@ class JsonRpcServer(
         pngBytes = pngBase64,
       )
     sendResponse(req.id, encode(HistoryReadResultDto.serializer(), dto))
+  }
+
+  /**
+   * H3 — `history/diff` metadata mode. Resolves [from] and [to] entry ids via the [historyManager]
+   * (which iterates configured sources in priority order, so a cross-source diff "LocalFs vs
+   * GitRef preview/main" works the same as an intra-source diff). Emits:
+   *
+   * - `HistoryEntryNotFound` (-32010) when either id is missing.
+   * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
+   * - `ERR_HISTORY_PIXEL_NOT_IMPLEMENTED` (-32012) when the caller asks for `mode = pixel` (H5).
+   *
+   * The metadata-mode response is `pngHashChanged + fromMetadata + toMetadata` (full sidecars).
+   * Pixel-mode fields (`diffPx`, `ssim`, `diffPngPath`) stay null in METADATA mode by design — H5
+   * lands the pixel pass.
+   */
+  private fun handleHistoryDiff(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, HistoryDiffParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid history/diff params: ${e.message}",
+        )
+        return
+      }
+    val mgr = historyManager
+    if (mgr == null || !mgr.isEnabled) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_ENTRY_NOT_FOUND,
+        message = "history not configured",
+      )
+      return
+    }
+    if (params.mode == HistoryDiffMode.PIXEL) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_PIXEL_NOT_IMPLEMENTED,
+        message =
+          "history/diff: pixel mode is reserved for phase H5 and not implemented; " +
+            "call with mode='metadata' (the default) for now",
+      )
+      return
+    }
+    val from =
+      try {
+        mgr.read(params.from, includeBytes = false)
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/diff: read(${params.from}) failed: ${t.message}",
+        )
+        return
+      }
+    if (from == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_ENTRY_NOT_FOUND,
+        message = "history entry not found: ${params.from}",
+      )
+      return
+    }
+    val to =
+      try {
+        mgr.read(params.to, includeBytes = false)
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/diff: read(${params.to}) failed: ${t.message}",
+        )
+        return
+      }
+    if (to == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_ENTRY_NOT_FOUND,
+        message = "history entry not found: ${params.to}",
+      )
+      return
+    }
+    if (from.entry.previewId != to.entry.previewId) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_HISTORY_DIFF_MISMATCH,
+        message =
+          "history/diff: from.previewId='${from.entry.previewId}' but " +
+            "to.previewId='${to.entry.previewId}'; pixel diff would be meaningless",
+      )
+      return
+    }
+    val result =
+      HistoryDiffResult(
+        pngHashChanged = from.entry.pngHash != to.entry.pngHash,
+        fromMetadata = encodeHistoryEntry(from.entry),
+        toMetadata = encodeHistoryEntry(to.entry),
+        diffPx = null,
+        ssim = null,
+        diffPngPath = null,
+      )
+    sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
   }
 
   private fun emitRenderFailed(failure: RenderResultOrFailure.Failure) {
@@ -1184,6 +1292,15 @@ class JsonRpcServer(
      * in H3+); pinned here so the code constant is part of the locked surface.
      */
     const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
+
+    /**
+     * HISTORY.md § "Error codes" — `history/diff` was called with `mode = pixel`, which is
+     * reserved for phase H5 and not implemented in H3. We deliberately return a clean error code
+     * (rather than silently leaving the pixel fields null in METADATA mode) so callers can tell
+     * "I asked for pixel and the daemon isn't ready" apart from "I asked for metadata and got null
+     * pixel fields by design."
+     */
+    const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }

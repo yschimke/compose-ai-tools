@@ -150,14 +150,59 @@ class HistoryManager(
     return entry
   }
 
-  /** Lists across all configured sources. H1+H2 has one source so this delegates trivially. */
+  /**
+   * Lists across all configured sources. With one source this delegates trivially; with multiple
+   * (H10-read onward — LocalFs + one or more `GitRefHistorySource`s) it merges per-source pages,
+   * dedups entries that surface in multiple sources by `(previewId, pngHash)` keeping the
+   * highest-priority source's copy, applies the filter, sorts newest-first, and re-paginates the
+   * combined result.
+   *
+   * Per-source filtering is intentionally NOT trusted to compose with cross-source pagination —
+   * we always re-filter the merged set so a `sourceKind` filter applied across sources behaves
+   * the same way it does inside one source.
+   *
+   * Source priority for dedup: the order in [sources]. LocalFs first means the writable source's
+   * canonical entry (with `source.kind = "fs"`) is what surfaces; a GitRef-only render still
+   * surfaces its `source.kind = "git"` entry.
+   */
   fun list(filter: HistoryFilter): HistoryListPage {
     if (sources.isEmpty()) return HistoryListPage(entries = emptyList(), totalCount = 0)
     if (sources.size == 1) return sources.single().list(filter)
-    // Multi-source merging is reserved for H9+. For H1+H2 we still take the first source's page
-    // verbatim, but the entry shape carries `source` so a future merge can dedup on
-    // `(pngHash, previewId, git.commit)`.
-    return sources.first().list(filter)
+
+    // Pull a generous page from each source (no pagination at the per-source layer; we apply
+    // pagination after merging). We pass the full filter so per-source `sourceKind` / `sourceId`
+    // narrows can short-circuit non-matching sources cheaply at the source layer.
+    val perSourceFilter = filter.copy(limit = HistoryFilters.MAX_LIMIT, cursor = null)
+    val merged = LinkedHashMap<Pair<String, String>, HistoryEntry>() // (previewId, pngHash) → entry
+    for (source in sources) {
+      val page =
+        try {
+          source.list(perSourceFilter)
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: HistoryManager.list: source ${source.id} list() threw " +
+              "(${t.javaClass.simpleName}: ${t.message}); skipping"
+          )
+          continue
+        }
+      for (entry in page.entries) {
+        val key = entry.previewId to entry.pngHash
+        // Preserve first writer wins — earlier sources have priority.
+        merged.putIfAbsent(key, entry)
+      }
+    }
+    // Apply the user filter against the merged set; sort newest-first by timestamp; paginate.
+    val matched =
+      merged.values
+        .filter { HistoryFilters.matches(it, filter) }
+        .sortedWith(compareByDescending<HistoryEntry> { it.timestamp }.thenByDescending { it.id })
+    val totalCount = matched.size
+    val slice = HistoryFilters.paginate(matched, filter)
+    return HistoryListPage(
+      entries = slice.entries,
+      nextCursor = slice.nextCursor,
+      totalCount = totalCount,
+    )
   }
 
   /** Reads one entry. Falls through sources in order until a hit. */
@@ -186,6 +231,44 @@ class HistoryManager(
       val sources =
         if (historyDir == null) emptyList()
         else listOf(LocalFsHistorySource(historyDir = historyDir))
+      return HistoryManager(sources = sources, module = module, gitProvenance = gitProvenance)
+    }
+
+    /**
+     * H10-read — builds a manager with a writable [LocalFsHistorySource] plus zero or more
+     * read-only [GitRefHistorySource]s. The local source is always priority-0 (writes go there);
+     * git refs follow in declared order. See HISTORY.md § "Ordering semantics".
+     *
+     * @param gitRefs full ref names (`refs/heads/preview/main`); empty when no refs are configured.
+     * @param warnEmitter passed to each [GitRefHistorySource] for the ref-missing case. The
+     *   production daemon main passes a lambda that posts a warn-level `log` notification; tests
+     *   pass a buffer-capturing lambda.
+     */
+    fun forLocalFsAndGitRefs(
+      historyDir: java.nio.file.Path?,
+      module: String,
+      gitProvenance: GitProvenance?,
+      gitRefs: List<String> = emptyList(),
+      repoRoot: java.nio.file.Path? = historyDir?.parent,
+      warnEmitter: (String) -> Unit = { System.err.println(it) },
+    ): HistoryManager {
+      val sources = buildList {
+        if (historyDir != null) add(LocalFsHistorySource(historyDir = historyDir))
+        if (repoRoot != null) {
+          for (ref in gitRefs) {
+            add(
+              GitRefHistorySource(
+                repoRoot = repoRoot,
+                ref = ref,
+                cacheDir =
+                  historyDir?.let(GitRefHistorySource::defaultCacheDir)
+                    ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
+                warnEmitter = warnEmitter,
+              )
+            )
+          }
+        }
+      }
       return HistoryManager(sources = sources, module = module, gitProvenance = gitProvenance)
     }
   }

@@ -102,30 +102,14 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     val indexFile = historyDir.resolve(INDEX_FILENAME)
     if (!indexFile.exists()) return HistoryListPage(entries = emptyList(), totalCount = 0)
     val allEntries = readIndexNewestFirst(indexFile)
-    val matched = allEntries.filter { matchesFilter(it, filter) }
+    val matched = allEntries.filter { HistoryFilters.matches(it, filter) }
     val totalCount = matched.size
-
-    // Cursor is an opaque base64 of "<timestamp>|<id>"; we drop entries until we pass it.
-    val afterCursor =
-      if (filter.cursor != null) {
-        val decoded =
-          decodeCursor(filter.cursor)
-            ?: return HistoryListPage(emptyList(), totalCount = totalCount)
-        matched.dropWhile { it.timestamp != decoded.timestamp || it.id != decoded.id }.drop(1)
-      } else {
-        matched
-      }
-
-    val limit = (filter.limit ?: DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)
-    val page = afterCursor.take(limit)
-    val nextCursor =
-      if (afterCursor.size > limit) {
-        val last = page.last()
-        encodeCursor(last.timestamp, last.id)
-      } else {
-        null
-      }
-    return HistoryListPage(entries = page, nextCursor = nextCursor, totalCount = totalCount)
+    val slice = HistoryFilters.paginate(matched, filter)
+    return HistoryListPage(
+      entries = slice.entries,
+      nextCursor = slice.nextCursor,
+      totalCount = totalCount,
+    )
   }
 
   override fun read(entryId: String, includeBytes: Boolean): HistoryReadResult? {
@@ -252,30 +236,12 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     return parsed
   }
 
-  private fun matchesFilter(entry: HistoryEntry, f: HistoryFilter): Boolean {
-    if (f.previewId != null && entry.previewId != f.previewId) return false
-    if (f.since != null && entry.timestamp < f.since) return false
-    if (f.until != null && entry.timestamp > f.until) return false
-    if (f.branch != null && entry.git?.branch != f.branch) return false
-    if (f.branchPattern != null) {
-      val branch = entry.git?.branch ?: return false
-      if (!Regex(f.branchPattern).matches(branch)) return false
-    }
-    if (f.commit != null) {
-      val git = entry.git ?: return false
-      if (git.commit != f.commit && git.shortCommit != f.commit) return false
-    }
-    if (f.worktreePath != null && entry.worktree?.path != f.worktreePath) return false
-    if (f.agentId != null && entry.worktree?.agentId != f.agentId) return false
-    if (f.sourceKind != null && entry.source.kind != f.sourceKind) return false
-    if (f.sourceId != null && entry.source.id != f.sourceId) return false
-    return true
-  }
-
   companion object {
     const val INDEX_FILENAME: String = "index.jsonl"
-    const val DEFAULT_LIMIT: Int = 50
-    const val MAX_LIMIT: Int = 500
+    /** Default limit for [HistoryFilter.limit]. Pinned in [HistoryFilters] for shared use. */
+    const val DEFAULT_LIMIT: Int = HistoryFilters.DEFAULT_LIMIT
+    /** Hard ceiling for [HistoryFilter.limit]. Pinned in [HistoryFilters] for shared use. */
+    const val MAX_LIMIT: Int = HistoryFilters.MAX_LIMIT
 
     /**
      * JSON configuration shared across the LocalFs path. `encodeDefaults = false` keeps the sidecar
@@ -302,24 +268,5 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     }
 
     private val HEX_CHARS = "0123456789abcdef".toCharArray()
-
-    private fun encodeCursor(timestamp: String, id: String): String {
-      val raw = "$timestamp|$id".toByteArray(Charsets.UTF_8)
-      return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(raw)
-    }
-
-    private data class CursorPosition(val timestamp: String, val id: String)
-
-    private fun decodeCursor(cursor: String): CursorPosition? {
-      return try {
-        val raw = java.util.Base64.getUrlDecoder().decode(cursor)
-        val text = String(raw, Charsets.UTF_8)
-        val sep = text.indexOf('|')
-        if (sep < 0) return null
-        CursorPosition(timestamp = text.substring(0, sep), id = text.substring(sep + 1))
-      } catch (_: Throwable) {
-        null
-      }
-    }
   }
 }

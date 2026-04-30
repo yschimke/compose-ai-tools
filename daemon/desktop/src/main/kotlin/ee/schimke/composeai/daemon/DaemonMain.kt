@@ -3,6 +3,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
@@ -150,14 +151,26 @@ fun main(args: Array<String>) {
     if (historyDirProp != null) {
       GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
     } else null
-  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
-    System.err.println("compose-ai-tools desktop daemon: HistoryManager active (dir=$dir)")
-    HistoryManager.forLocalFs(
-      historyDir = Path.of(dir),
-      module = System.getProperty(MODULE_ID_PROP) ?: "",
-      gitProvenance = gitProvenance,
-    )
-  }
+  // H10-read — when `composeai.daemon.gitRefHistory` is set (comma-separated list of full ref
+  // names like `refs/heads/preview/main`), each ref produces a read-only [GitRefHistorySource]
+  // alongside the writable [LocalFsHistorySource]. Refs that don't exist locally trigger a
+  // one-time warn-level `log` notification with a hint for the human and degrade gracefully
+  // (no entries in `history/list`). See HISTORY.md § "GitRefHistorySource".
+  val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println(
+        "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
+          "gitRefs=${gitRefHistoryRefs})"
+      )
+      HistoryManager.forLocalFsAndGitRefs(
+        historyDir = Path.of(dir),
+        module = System.getProperty(MODULE_ID_PROP) ?: "",
+        gitProvenance = gitProvenance,
+        gitRefs = gitRefHistoryRefs,
+        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+      )
+    }
 
   val server =
     JsonRpcServer(

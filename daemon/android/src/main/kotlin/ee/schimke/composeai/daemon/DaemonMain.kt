@@ -4,6 +4,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.history.GitProvenance
+import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import java.io.File
 import java.nio.file.Path
@@ -159,13 +160,19 @@ fun main(args: Array<String>) {
     if (historyDirProp != null) {
       GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
     } else null
+  // H10-read — see desktop DaemonMain for the design rationale.
+  val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
   val historyManager: HistoryManager? =
     historyDirProp?.let { dir ->
-      System.err.println("compose-ai-tools daemon: HistoryManager active (dir=$dir)")
-      HistoryManager.forLocalFs(
+      System.err.println(
+        "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs})"
+      )
+      HistoryManager.forLocalFsAndGitRefs(
         historyDir = Path.of(dir),
         module = System.getProperty(MODULE_ID_PROP) ?: "",
         gitProvenance = gitProvenance,
+        gitRefs = gitRefHistoryRefs,
+        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
       )
     }
 
