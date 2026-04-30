@@ -239,16 +239,75 @@ class JsonRpcServerHistoryIntegrationTest {
         diffPixel!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
       )
 
-      // 13. history/prune → MethodNotFound (still reserved).
+      // 13. history/prune (H4) — dryRun with a tight policy returns the would-remove set
+      //     without mutating disk + does NOT emit a `historyPruned` notification.
+      val sidecarBefore = Files.exists(historyDir.resolve("preview-A").resolve("$entryId.png"))
+      assertTrue("PNG must exist before dry-run prune", sidecarBefore)
       writeFrame(
         clientToServerOut,
-        """{"jsonrpc":"2.0","id":11,"method":"history/prune","params":{}}""",
+        """{"jsonrpc":"2.0","id":11,"method":"history/prune","params":{
+              "maxEntriesPerPreview":0,"maxAgeDays":0,"maxTotalSizeBytes":1,
+              "dryRun":true}}""",
       )
-      val prune = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 11 }
-      assertEquals(
-        JsonRpcServer.ERR_METHOD_NOT_FOUND,
-        prune!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
+      val pruneDry = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 11 }
+      assertNotNull("dry-run prune must respond", pruneDry)
+      val pruneDryResult = pruneDry!!["result"]!!.jsonObject
+      // Policy: only "total size" knob active (limit=1 byte) + "never drop most recent per
+      // preview" floor — so removed list is empty (one entry, one preview, must survive).
+      assertEquals(0, pruneDryResult["removedEntries"]!!.jsonArray.size)
+      assertEquals(0, pruneDryResult["freedBytes"]!!.jsonPrimitive.intOrNull)
+      assertTrue(
+        "dry-run must NOT delete the PNG",
+        Files.exists(historyDir.resolve("preview-A").resolve("$entryId.png")),
       )
+
+      // 14. history/prune (H4) — manual prune with all-survive policy returns empty + no notif.
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":12,"method":"history/prune","params":{}}""",
+      )
+      val prune = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 12 }
+      assertNotNull("manual prune must respond", prune)
+      val pruneResult = prune!!["result"]!!.jsonObject
+      assertEquals(0, pruneResult["removedEntries"]!!.jsonArray.size)
+      assertEquals(0, pruneResult["freedBytes"]!!.jsonPrimitive.intOrNull)
+
+      // 15. history/prune (H4) — render a second preview, then prune with maxEntriesPerPreview=1
+      //     and force a removal on the first preview. Asserts the historyPruned notification
+      //     arrives with reason=manual.
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":13,"method":"renderNow","params":{
+              "previews":["preview-A"],"tier":"fast"}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 13 })
+      // Wait for the second historyAdded notification to ensure the entry is on disk.
+      val secondHistoryAdded =
+        pollUntil(received) {
+          it["method"]?.jsonPrimitive?.contentOrNull == "historyAdded" &&
+            it["params"]?.jsonObject?.get("entry")?.jsonObject?.get("id")
+              ?.jsonPrimitive?.content != entryId
+        }
+      assertNotNull("second historyAdded must arrive", secondHistoryAdded)
+
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":14,"method":"history/prune","params":{
+              "maxEntriesPerPreview":1,"maxAgeDays":0,"maxTotalSizeBytes":0}}""",
+      )
+      // Notification fires before the response (listener runs synchronously inside pruneNow,
+      // which runs before sendResponse). Poll historyPruned first so we don't accidentally
+      // discard it while waiting for the response.
+      val pruneNotif =
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "historyPruned" }
+      assertNotNull("historyPruned notification must arrive after non-empty manual prune", pruneNotif)
+      val pruneNotifParams = pruneNotif!!["params"]!!.jsonObject
+      assertEquals("manual", pruneNotifParams["reason"]!!.jsonPrimitive.content)
+      assertEquals(1, pruneNotifParams["removedIds"]!!.jsonArray.size)
+      val prune2 = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 14 }
+      val prune2Result = prune2!!["result"]!!.jsonObject
+      // One preview "preview-A" with 2 entries; cap=1 → 1 removed (the older one).
+      assertEquals(1, prune2Result["removedEntries"]!!.jsonArray.size)
 
       // Tear down cleanly.
       writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")

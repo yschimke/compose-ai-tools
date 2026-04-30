@@ -9,6 +9,8 @@ import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
 import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryPruneParams
+import ee.schimke.composeai.daemon.protocol.HistoryPruneResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
@@ -200,6 +202,22 @@ private constructor(
       response["result"]
         ?: error("history/diff: no result — error=${response["error"]}, full=${response}")
     return json.decodeFromJsonElement(HistoryDiffResult.serializer(), resultElem)
+  }
+
+  /** H4 — drives `history/prune`. Returns the typed result. */
+  fun historyPrune(params: HistoryPruneParams = HistoryPruneParams()): HistoryPruneResult {
+    val rpcId = nextId.getAndIncrement()
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "history/prune",
+        params = json.encodeToJsonElement(HistoryPruneParams.serializer(), params),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("history/prune: no result — error=${response["error"]}, full=${response}")
+    return json.decodeFromJsonElement(HistoryPruneResult.serializer(), resultElem)
   }
 
   /** H3 — like [historyDiff] but returns the raw response so callers can assert on error codes. */

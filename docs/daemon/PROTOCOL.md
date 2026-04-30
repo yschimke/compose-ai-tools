@@ -289,9 +289,44 @@ Errors:
 - `HistoryPixelNotImplemented` (-32012) — `mode = "pixel"` was requested but the pixel pass is
   reserved for phase H5.
 
-### `history/prune` (phase H4+, reserved)
+### `history/prune` (phase H4)
 
-Not implemented in H1+H2. Calls return `MethodNotFound` (-32601) until H4 lands.
+```ts
+params: {
+  maxEntriesPerPreview?: number;     // null → use daemon-configured default
+  maxAgeDays?: number;               // null → use daemon-configured default
+  maxTotalSizeBytes?: number;        // null → use daemon-configured default
+  dryRun?: boolean;                  // default false
+}
+result: {
+  removedEntries: string[];          // entry ids removed (or would be in dry-run)
+  freedBytes: number;                // sum of pngSize for entries whose PNG actually got deleted
+  sourceResults: {                   // per-source breakdown; only writable sources are listed
+    [sourceId: string]: {
+      removedEntryIds: string[];
+      freedBytes: number;
+    };
+  };
+}
+```
+
+Each per-call parameter overrides the daemon's configured default for THIS call only — the
+auto-prune scheduler keeps using its configured defaults. Set any value to `0` or negative to
+disable that knob (e.g. `maxAgeDays: 0` → no age-based pruning).
+
+`dryRun = true` returns the would-remove set without touching disk; does NOT emit
+`historyPruned`. `dryRun = false` (default) mutates and emits a `historyPruned` notification
+when the prune removed at least one entry.
+
+**Pass order.** Age → per-preview count → total size, with the "never drop the most recent
+entry per preview" floor enforced throughout. See HISTORY.md § "Pruning policy".
+
+**Read-only sources.** `GitRefHistorySource` and any other read-only backend skip pruning
+entirely (read-only from the daemon's perspective; cleanup is the producer's concern). Their
+ids do not appear in `sourceResults`.
+
+**No history configured.** When the daemon has no writable history source, returns an empty
+result rather than an error.
 
 ## 6. Daemon → client notifications
 
@@ -430,9 +465,18 @@ the shape of `discoveryUpdated`. Clients that subscribe avoid polling `history/l
 The `pngHash` field on `entry` lets a subscriber decide cheaply whether the bytes are different
 from the previous render — if not, skip re-fetching. See [HISTORY.md § "historyAdded"](HISTORY.md#historyadded-notification-daemon--client).
 
-### `historyPruned` (phase H4+, reserved)
+### `historyPruned` (phase H4)
 
-Not implemented in H1+H2. Documented in [HISTORY.md § "historyPruned"](HISTORY.md#historypruned-notification-daemon--client) for the H4 landing.
+```ts
+{
+  removedIds: string[];               // entry ids removed
+  freedBytes: number;                 // sum of pngSize for entries whose PNG actually got deleted
+  reason: "auto" | "manual";          // AUTO = scheduler; MANUAL = history/prune RPC
+}
+```
+
+Emitted after each NON-EMPTY prune pass. Empty (no-op) passes produce no notification.
+`dryRun` calls never emit. See HISTORY.md § "Pruning policy".
 
 ## 7. Versioning
 

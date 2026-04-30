@@ -3,7 +3,9 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
 import ee.schimke.composeai.daemon.history.HistoryManager
+import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
+import ee.schimke.composeai.daemon.history.PruneReason
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
 import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
@@ -15,8 +17,13 @@ import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
 import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryPrunedParams
+import ee.schimke.composeai.daemon.protocol.HistoryPruneParams
+import ee.schimke.composeai.daemon.protocol.HistoryPruneResult
+import ee.schimke.composeai.daemon.protocol.HistoryPruneSourceResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
+import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -138,12 +145,43 @@ class JsonRpcServer(
    * and `historyAdded` notifications never fire — pre-H1 behaviour.
    */
   private val historyManager: HistoryManager? = null,
+  /**
+   * H4 — initial delay for the auto-prune scheduler. Defaults to
+   * [HistoryManager.DEFAULT_INITIAL_DELAY_MS] (5s — runs after sandbox bootstrap). Tests pass a
+   * very small value (e.g. 50ms) to drive the schedule deterministically.
+   */
+  private val autoPruneInitialDelayMs: Long = HistoryManager.DEFAULT_INITIAL_DELAY_MS,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
   private val json = Json {
     ignoreUnknownKeys = true
     encodeDefaults = false
+  }
+
+  init {
+    // H4 — wire the manager's prune listener so non-empty prune passes (auto or manual) emit a
+    // `historyPruned` JSON-RPC notification. The listener is invoked on whatever thread runs the
+    // prune (the auto-prune scheduler thread, or the read thread for manual calls); both eventually
+    // route through the writer queue, so frame ordering is preserved.
+    historyManager?.setPruneListener { notif ->
+      val wireReason =
+        when (notif.reason) {
+          PruneReason.AUTO -> PruneReasonWire.AUTO
+          PruneReason.MANUAL -> PruneReasonWire.MANUAL
+        }
+      sendNotification(
+        "historyPruned",
+        encode(
+          HistoryPrunedParams.serializer(),
+          HistoryPrunedParams(
+            removedIds = notif.removedIds,
+            freedBytes = notif.freedBytes,
+            reason = wireReason,
+          ),
+        ),
+      )
+    }
   }
 
   private val initialized = AtomicBoolean(false)
@@ -197,6 +235,10 @@ class JsonRpcServer(
     StartupTimings.mark("JsonRpcServer.run() entered")
     host.start()
     StartupTimings.mark("host.start() returned (sandbox ready)")
+    // H4 — kick off the auto-prune scheduler now that the sandbox is up. The first pass fires
+    // after `autoPruneInitialDelayMs` (5s default; small in tests). All-off configs short-circuit
+    // inside `startAutoPrune` so we don't spin a thread for nothing.
+    historyManager?.startAutoPrune(initialDelayMs = autoPruneInitialDelayMs)
     writerThread.start()
     renderWatcherThread.start()
     StartupTimings.mark("read loop entering")
@@ -316,6 +358,7 @@ class JsonRpcServer(
       "history/list" -> handleHistoryList(req)
       "history/read" -> handleHistoryRead(req)
       "history/diff" -> handleHistoryDiff(req)
+      "history/prune" -> handleHistoryPrune(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -833,6 +876,88 @@ class JsonRpcServer(
     sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
   }
 
+  /**
+   * H4 — `history/prune` manual prune trigger. Resolves [HistoryPruneParams] over the daemon's
+   * configured defaults (explicit param wins; null leaves the default). When [HistoryPruneParams.dryRun]
+   * is true, returns the would-remove set without touching disk and does NOT emit a `historyPruned`
+   * notification. Otherwise mutates and (if non-empty) emits `historyPruned` with `reason: "manual"`.
+   *
+   * See HISTORY.md § "Pruning policy" for the order-of-passes contract.
+   */
+  private fun handleHistoryPrune(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, HistoryPruneParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid history/prune params: ${e.message}",
+        )
+        return
+      }
+    val mgr = historyManager
+    if (mgr == null || !mgr.isEnabled) {
+      // No history is configured → returns an empty result rather than a hard error. Mirrors how
+      // history/list degrades: the consumer asked "did anything get pruned?" and the answer is
+      // honestly "no" because nothing's recorded.
+      sendResponse(
+        req.id,
+        encode(
+          HistoryPruneResult.serializer(),
+          HistoryPruneResult(
+            removedEntries = emptyList(),
+            freedBytes = 0L,
+            sourceResults = emptyMap(),
+          ),
+        ),
+      )
+      return
+    }
+    // Compose effective config from the manager's defaults + per-call overrides.
+    val baseConfig = mgr.pruneConfig
+    val effective =
+      HistoryPruneConfig(
+        maxEntriesPerPreview = params.maxEntriesPerPreview ?: baseConfig.maxEntriesPerPreview,
+        maxAgeDays = params.maxAgeDays ?: baseConfig.maxAgeDays,
+        maxTotalSizeBytes = params.maxTotalSizeBytes ?: baseConfig.maxTotalSizeBytes,
+        autoPruneIntervalMs = baseConfig.autoPruneIntervalMs,
+      )
+    val aggregate =
+      try {
+        mgr.pruneNow(
+          config = effective,
+          dryRun = params.dryRun,
+          reason = if (params.dryRun) null else PruneReason.MANUAL,
+        )
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/prune failed: ${t.message}",
+        )
+        return
+      }
+    val perSource =
+      aggregate.sourceResults.mapValues { (_, r) ->
+        HistoryPruneSourceResult(
+          removedEntryIds = r.removedEntryIds,
+          freedBytes = r.freedBytes,
+        )
+      }
+    sendResponse(
+      req.id,
+      encode(
+        HistoryPruneResult.serializer(),
+        HistoryPruneResult(
+          removedEntries = aggregate.removedEntryIds,
+          freedBytes = aggregate.freedBytes,
+          sourceResults = perSource,
+        ),
+      ),
+    )
+  }
+
   private fun emitRenderFailed(failure: RenderResultOrFailure.Failure) {
     val previewId = hostIdToPreviewId.remove(failure.hostId) ?: failure.hostId.toString()
     acceptedAtMs.remove(failure.hostId)
@@ -1227,6 +1352,12 @@ class JsonRpcServer(
         Thread.currentThread().interrupt()
         break
       }
+    }
+    // H4 — stop the auto-prune scheduler before the host. Idempotent; safe under racing exits.
+    try {
+      historyManager?.stopAutoPrune()
+    } catch (e: Throwable) {
+      System.err.println("compose-ai-daemon: historyManager.stopAutoPrune failed: ${e.message}")
     }
     try {
       host.shutdown()

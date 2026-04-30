@@ -51,6 +51,14 @@ class FakeHarnessLauncher(
    * spawned JVM.
    */
   private val gitRefHistory: List<String> = emptyList(),
+  /** H4 — when non-null, sets `-Dcomposeai.daemon.history.maxEntriesPerPreview=…` on the JVM. */
+  private val pruneMaxEntriesPerPreview: Int? = null,
+  /** H4 — when non-null, sets `-Dcomposeai.daemon.history.maxAgeDays=…` on the JVM. */
+  private val pruneMaxAgeDays: Int? = null,
+  /** H4 — when non-null, sets `-Dcomposeai.daemon.history.maxTotalSizeBytes=…` on the JVM. */
+  private val pruneMaxTotalSizeBytes: Long? = null,
+  /** H4 — when non-null, sets `-Dcomposeai.daemon.history.autoPruneIntervalMs=…` on the JVM. */
+  private val pruneAutoIntervalMs: Long? = null,
 ) : HarnessLauncher {
 
   override val name: String = "fake"
@@ -73,6 +81,14 @@ class FakeHarnessLauncher(
           add("-Dcomposeai.daemon.workspaceRoot=${workspaceRoot.absolutePath}")
         if (gitRefHistory.isNotEmpty())
           add("-Dcomposeai.daemon.gitRefHistory=${gitRefHistory.joinToString(",")}")
+        if (pruneMaxEntriesPerPreview != null)
+          add("-Dcomposeai.daemon.history.maxEntriesPerPreview=$pruneMaxEntriesPerPreview")
+        if (pruneMaxAgeDays != null)
+          add("-Dcomposeai.daemon.history.maxAgeDays=$pruneMaxAgeDays")
+        if (pruneMaxTotalSizeBytes != null)
+          add("-Dcomposeai.daemon.history.maxTotalSizeBytes=$pruneMaxTotalSizeBytes")
+        if (pruneAutoIntervalMs != null)
+          add("-Dcomposeai.daemon.history.autoPruneIntervalMs=$pruneAutoIntervalMs")
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)

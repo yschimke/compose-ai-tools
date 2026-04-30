@@ -5,6 +5,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
+import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import java.io.File
 import java.nio.file.Path
 
@@ -157,19 +158,23 @@ fun main(args: Array<String>) {
   // one-time warn-level `log` notification with a hint for the human and degrade gracefully
   // (no entries in `history/list`). See HISTORY.md § "GitRefHistorySource".
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
-  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
-    System.err.println(
-      "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
-        "gitRefs=${gitRefHistoryRefs})"
-    )
-    HistoryManager.forLocalFsAndGitRefs(
-      historyDir = Path.of(dir),
-      module = System.getProperty(MODULE_ID_PROP) ?: "",
-      gitProvenance = gitProvenance,
-      gitRefs = gitRefHistoryRefs,
-      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-    )
-  }
+  // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
+  val pruneConfig = HistoryPruneConfig.fromSysprops()
+  val historyManager: HistoryManager? =
+    historyDirProp?.let { dir ->
+      System.err.println(
+        "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
+          "gitRefs=${gitRefHistoryRefs}, pruneConfig=$pruneConfig)"
+      )
+      HistoryManager.forLocalFsAndGitRefs(
+        historyDir = Path.of(dir),
+        module = System.getProperty(MODULE_ID_PROP) ?: "",
+        gitProvenance = gitProvenance,
+        gitRefs = gitRefHistoryRefs,
+        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+        pruneConfig = pruneConfig,
+      )
+    }
 
   val server =
     JsonRpcServer(

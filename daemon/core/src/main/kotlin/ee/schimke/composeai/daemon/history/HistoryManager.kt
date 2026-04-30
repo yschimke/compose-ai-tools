@@ -4,6 +4,11 @@ import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.JsonElement
 
@@ -36,6 +41,12 @@ class HistoryManager(
   private val sources: List<HistorySource>,
   private val module: String,
   private val gitProvenance: GitProvenance?,
+  /**
+   * H4 — pruning config. Production mains read from sysprops via [HistoryPruneConfig.fromSysprops];
+   * tests pass an explicit instance. The auto-prune scheduler reads this at construction time;
+   * manual `history/prune` RPC calls override individual fields per-call.
+   */
+  val pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
 ) {
 
   /**
@@ -214,7 +225,169 @@ class HistoryManager(
     return null
   }
 
+  // ---------------------------------------------------------------------------------------
+  // H4 — Pruning + auto-prune scheduler.
+  // ---------------------------------------------------------------------------------------
+
+  /**
+   * Listener for `historyPruned` notifications. Set by [JsonRpcServer] at construction; null when
+   * unwired (in-process tests, fake-mode harness scenarios that don't care).
+   */
+  @Volatile private var pruneListener: ((PruneNotification) -> Unit)? = null
+
+  /** Auto-prune scheduler — null until [startAutoPrune] is called; null forever when disabled. */
+  private val scheduler: AtomicReference<ScheduledExecutorService?> = AtomicReference(null)
+
+  private val autoPruneFuture: AtomicReference<ScheduledFuture<*>?> = AtomicReference(null)
+
+  private val autoPruneStopped = AtomicBoolean(false)
+
+  /**
+   * H4 — registers a listener invoked after each non-empty prune pass (auto or manual) so the
+   * caller can emit a `historyPruned` JSON-RPC notification. [JsonRpcServer.runHistoryManager]
+   * wires this on construction; tests pass a buffer-capturing lambda or leave it null.
+   */
+  fun setPruneListener(listener: ((PruneNotification) -> Unit)?) {
+    pruneListener = listener
+  }
+
+  /**
+   * H4 — runs one prune pass across writable [LocalFsHistorySource]s. Read-only sources (git-ref,
+   * HTTP) are intentionally skipped — pruning them is the producer's concern.
+   *
+   * Returns `(removedIds across all sources, totalFreedBytes, perSourceResults)`. When [reason] is
+   * non-null and the combined removed set is non-empty, fires the [pruneListener] (if set).
+   *
+   * @param config the pruning policy to apply. The auto-prune scheduler passes [pruneConfig];
+   *   manual `history/prune` callers pass a per-call overlay (explicit params over defaults).
+   * @param dryRun when true, no disk mutations happen; returns the would-remove set.
+   * @param reason controls the [PruneNotification.reason] field — `AUTO` for the scheduler,
+   *   `MANUAL` for `history/prune`. Null suppresses the listener (used by dry-run probes).
+   */
+  fun pruneNow(
+    config: HistoryPruneConfig = pruneConfig,
+    dryRun: Boolean = false,
+    reason: PruneReason? = null,
+  ): PruneAggregateResult {
+    val perSource = LinkedHashMap<String, PruneResult>()
+    val combinedRemoved = mutableListOf<String>()
+    var combinedFreed = 0L
+    for (source in sources) {
+      if (!source.supportsWrites()) continue
+      val result =
+        try {
+          source.prune(config, dryRun = dryRun)
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: HistoryManager.prune: source ${source.id} prune() threw " +
+              "(${t.javaClass.simpleName}: ${t.message}); skipping"
+          )
+          PruneResult.EMPTY
+        }
+      perSource[source.id] = result
+      combinedRemoved.addAll(result.removedEntryIds)
+      combinedFreed += result.freedBytes
+    }
+    val aggregate =
+      PruneAggregateResult(
+        removedEntryIds = combinedRemoved,
+        freedBytes = combinedFreed,
+        sourceResults = perSource,
+      )
+    if (!dryRun && reason != null && combinedRemoved.isNotEmpty()) {
+      val listener = pruneListener
+      if (listener != null) {
+        try {
+          listener(
+            PruneNotification(
+              removedIds = combinedRemoved.toList(),
+              freedBytes = combinedFreed,
+              reason = reason,
+            )
+          )
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: HistoryManager.pruneNow: pruneListener threw " +
+              "(${t.javaClass.simpleName}: ${t.message}); ignoring"
+          )
+        }
+      }
+    }
+    return aggregate
+  }
+
+  /**
+   * H4 — starts the auto-prune scheduler.
+   *
+   * **Lifecycle.** Schedules one initial pass after [initialDelayMs] (default few seconds — runs
+   * after the daemon's sandbox bootstrap, so first prune doesn't compete with cold-start I/O), then
+   * repeats every [HistoryPruneConfig.autoPruneIntervalMs]. [stopAutoPrune] cancels and joins the
+   * scheduler.
+   *
+   * **All-off short-circuit.** When [pruneConfig].isAllOff is true, this is a no-op — the
+   * scheduler thread is never created. Same for any non-positive [HistoryPruneConfig.autoPruneIntervalMs].
+   *
+   * **Safety.** Reentrancy-guarded — second call with the scheduler already running is a no-op.
+   * The scheduler thread is daemonised so the JVM can exit even if [stopAutoPrune] isn't called.
+   */
+  fun startAutoPrune(initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS) {
+    if (pruneConfig.isAllOff) return
+    if (pruneConfig.autoPruneIntervalMs <= 0L) return
+    if (!isEnabled) return
+    if (autoPruneStopped.get()) return
+    val existing = scheduler.get()
+    if (existing != null) return
+    val exec =
+      Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "compose-ai-daemon-history-auto-prune").apply { isDaemon = true }
+      }
+    if (!scheduler.compareAndSet(null, exec)) {
+      // Lost a race — another thread set the scheduler first. Shut down our redundant exec.
+      exec.shutdownNow()
+      return
+    }
+    val future =
+      exec.scheduleWithFixedDelay(
+        {
+          try {
+            pruneNow(config = pruneConfig, dryRun = false, reason = PruneReason.AUTO)
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: HistoryManager auto-prune pass failed " +
+                "(${t.javaClass.simpleName}: ${t.message}); will retry on next interval"
+            )
+          }
+        },
+        initialDelayMs.coerceAtLeast(0L),
+        pruneConfig.autoPruneIntervalMs,
+        TimeUnit.MILLISECONDS,
+      )
+    autoPruneFuture.set(future)
+  }
+
+  /**
+   * H4 — stops the auto-prune scheduler. Idempotent. Cancels any in-flight pass via interrupt; the
+   * pass observes the interrupt at its next syscall and exits without leaving the index in a
+   * partial state (the rewrite is atomic).
+   */
+  fun stopAutoPrune() {
+    autoPruneStopped.set(true)
+    val future = autoPruneFuture.getAndSet(null)
+    future?.cancel(true)
+    val exec = scheduler.getAndSet(null) ?: return
+    exec.shutdownNow()
+    try {
+      exec.awaitTermination(2, TimeUnit.SECONDS)
+    } catch (_: InterruptedException) {
+      Thread.currentThread().interrupt()
+    }
+  }
+
   companion object {
+
+    /** Initial delay for [startAutoPrune] — a few seconds, after the sandbox is up. */
+    const val DEFAULT_INITIAL_DELAY_MS: Long = 5_000L
+
     /** `yyyyMMdd-HHmmss` UTC. Pinned format — HISTORY.md § "On-disk schema" filename shape. */
     private val TIMESTAMP_FORMAT: DateTimeFormatter =
       DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC)
@@ -227,11 +400,17 @@ class HistoryManager(
       historyDir: java.nio.file.Path?,
       module: String,
       gitProvenance: GitProvenance?,
+      pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
     ): HistoryManager {
       val sources =
         if (historyDir == null) emptyList()
         else listOf(LocalFsHistorySource(historyDir = historyDir))
-      return HistoryManager(sources = sources, module = module, gitProvenance = gitProvenance)
+      return HistoryManager(
+        sources = sources,
+        module = module,
+        gitProvenance = gitProvenance,
+        pruneConfig = pruneConfig,
+      )
     }
 
     /**
@@ -251,6 +430,7 @@ class HistoryManager(
       gitRefs: List<String> = emptyList(),
       repoRoot: java.nio.file.Path? = historyDir?.parent,
       warnEmitter: (String) -> Unit = { System.err.println(it) },
+      pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
     ): HistoryManager {
       val sources = buildList {
         if (historyDir != null) add(LocalFsHistorySource(historyDir = historyDir))
@@ -269,7 +449,12 @@ class HistoryManager(
           }
         }
       }
-      return HistoryManager(sources = sources, module = module, gitProvenance = gitProvenance)
+      return HistoryManager(
+        sources = sources,
+        module = module,
+        gitProvenance = gitProvenance,
+        pruneConfig = pruneConfig,
+      )
     }
   }
 }

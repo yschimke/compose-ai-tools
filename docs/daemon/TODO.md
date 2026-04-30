@@ -695,7 +695,7 @@ Tracking the daemon-side history phases from [HISTORY.md § "Phasing"](HISTORY.m
 - **H1 — Daemon writes sidecar + index entry per render** ✅ landed
 - **H2 — `history/list` + `history/read` + `historyAdded` notification** ✅ landed
 - **H3 — `history/diff` (metadata mode)** ✅ landed
-- **H4 — Auto-prune + `historyPruned` notification** — still open
+- **H4 — Auto-prune + `historyPruned` notification** ✅ landed
 - **H5 — `history/diff` (pixel mode + diff PNG)** — still open
 - **H9 — `HistorySource` interface + multi-source merging in `historyManager`** ✅ landed (the
   interface arrived with H1+H2; multi-source merging arrived with H10-read)
