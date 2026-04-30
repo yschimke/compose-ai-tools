@@ -94,6 +94,30 @@ class McpSession(
     notify("notifications/resources/list_changed")
   }
 
+  /**
+   * Sends a `notifications/progress` per the MCP spec:
+   * https://modelcontextprotocol.io/specification/2025-06-18/basic#progress-notifications.
+   *
+   * Only meaningful when the originating request opted in via `_meta.progressToken` in its params;
+   * the [token] argument is the verbatim value the client sent. [progress] is monotonic (caller's
+   * responsibility); [total] is optional and may be unknown for streaming work.
+   */
+  fun notifyProgress(
+    token: kotlinx.serialization.json.JsonElement,
+    progress: Double,
+    total: Double? = null,
+    message: String? = null,
+  ) {
+    val params =
+      kotlinx.serialization.json.buildJsonObject {
+        put("progressToken", token)
+        put("progress", kotlinx.serialization.json.JsonPrimitive(progress))
+        if (total != null) put("total", kotlinx.serialization.json.JsonPrimitive(total))
+        if (message != null) put("message", kotlinx.serialization.json.JsonPrimitive(message))
+      }
+    notify("notifications/progress", params)
+  }
+
   override fun close() {
     if (!closed.compareAndSet(false, true)) return
     runCatching { input.close() }
@@ -196,7 +220,12 @@ class McpSession(
       params?.let {
         runCatching { json.decodeFromJsonElement(ReadResourceParams.serializer(), it) }.getOrNull()
       } ?: return sendError(id, McpErrorCodes.INVALID_PARAMS, "resources/read: missing uri")
-    val result = handlers.readResource(this, parsed.uri)
+    // Per MCP spec, clients opt in to progress notifications by including a
+    // `_meta.progressToken` (string | number) on the request's params. Pull it out so the
+    // handler can fire periodic `notifications/progress` while a slow render runs.
+    val progressToken =
+      (params as? JsonObject)?.get("_meta")?.let { it as? JsonObject }?.get("progressToken")
+    val result = handlers.readResource(this, parsed.uri, progressToken)
     sendResult(id, json.encodeToJsonElement(ReadResourceResult.serializer(), result))
   }
 
@@ -301,7 +330,16 @@ interface McpHandlers {
 
   fun listResources(session: McpSession): JsonElement
 
-  fun readResource(session: McpSession, uri: String): ReadResourceResult
+  /**
+   * Reads the resource at [uri]. [progressToken], when non-null, is the client's opt-in handle for
+   * `notifications/progress` — implementations that perform slow work should fan out periodic
+   * progress notifications via [McpSession.notifyProgress] using this token.
+   */
+  fun readResource(
+    session: McpSession,
+    uri: String,
+    progressToken: JsonElement? = null,
+  ): ReadResourceResult
 
   fun subscribe(session: McpSession, uri: String)
 

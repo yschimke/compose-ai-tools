@@ -4,6 +4,13 @@ import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
+import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
+import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
+import ee.schimke.composeai.daemon.protocol.HistoryListParams
+import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryReadParams
+import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -143,6 +150,73 @@ class DaemonClient(
       response["result"]
         ?: error("renderNow: no result — error=${response["error"]}, full=$response")
     return json.decodeFromJsonElement(RenderNowResult.serializer(), resultElem)
+  }
+
+  // ---------------------------------------------------------------------------
+  // History (H2 / H3) — see PROTOCOL.md § 5 (`history/list` / `history/read` /
+  // `history/diff`). The MCP server's history mapping (H6) calls these.
+  // ---------------------------------------------------------------------------
+
+  /** Drives `history/list`. Default no-filter call returns recent entries across all previews. */
+  fun historyList(
+    params: HistoryListParams = HistoryListParams(),
+    timeout: Duration = 30.seconds,
+  ): HistoryListResult {
+    val id = nextId.getAndIncrement()
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "history/list",
+        params = json.encodeToJsonElement(HistoryListParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem =
+      response["result"]
+        ?: error("history/list: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(HistoryListResult.serializer(), resultElem)
+  }
+
+  /** Drives `history/read`. With [inline] = true the daemon returns base64 PNG bytes inline. */
+  fun historyRead(
+    entryId: String,
+    inline: Boolean = false,
+    timeout: Duration = 30.seconds,
+  ): HistoryReadResultDto {
+    val id = nextId.getAndIncrement()
+    val params = HistoryReadParams(id = entryId, inline = inline)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "history/read",
+        params = json.encodeToJsonElement(HistoryReadParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem =
+      response["result"]
+        ?: error("history/read: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(HistoryReadResultDto.serializer(), resultElem)
+  }
+
+  /** Drives `history/diff` (metadata mode by default). */
+  fun historyDiff(
+    fromId: String,
+    toId: String,
+    mode: HistoryDiffMode = HistoryDiffMode.METADATA,
+    timeout: Duration = 30.seconds,
+  ): HistoryDiffResult {
+    val id = nextId.getAndIncrement()
+    val params = HistoryDiffParams(from = fromId, to = toId, mode = mode)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "history/diff",
+        params = json.encodeToJsonElement(HistoryDiffParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem =
+      response["result"]
+        ?: error("history/diff: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(HistoryDiffResult.serializer(), resultElem)
   }
 
   /**
