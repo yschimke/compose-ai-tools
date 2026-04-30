@@ -429,10 +429,31 @@ without being its parent.
 
 **Sync modes**:
 
-- `READ_ONLY` (default) — consumer-side merging only. The daemon
-  reads from `git show preview/main:<previewId>/<file>`. Writes go
-  to the local-FS source as usual. Clones get whatever the remote
-  has; nothing is pushed automatically.
+- `READ_ONLY` (default — landed in H10-read) — consumer-side merging only. The daemon reads from
+  `git show preview/main:<previewId>/<file>`. Writes go to the local-FS source as usual. Clones
+  get whatever the remote has; nothing is pushed automatically.
+
+  **Configuration (H10-read landing).** The daemon picks up read-only refs from the
+  `composeai.daemon.gitRefHistory` system property — comma-separated full ref names, e.g.
+  `refs/heads/preview/main,refs/heads/preview/agent/foo`. Empty / unset means no
+  `GitRefHistorySource`s are constructed. Default suggestion for the common case:
+  `composeai.daemon.gitRefHistory=refs/heads/preview/main`.
+
+  **Ref-missing behaviour.** When the configured ref isn't present locally
+  (`git rev-parse --verify <ref>` returns non-zero — common in greenfield repos because CI doesn't
+  push `preview/main` yet), the source emits a one-time warn-level message via the daemon's log
+  channel:
+
+  ```
+  GitRefHistorySource: ref '<ref>' is not present locally.
+    Hint: populate it by fetching from a remote (e.g. `git fetch origin <ref>:<ref>`)
+    or set up CI to push render history on each merge to <branch>.
+    Until then, main-history comparison will not be available.
+  ```
+
+  After the warning the source degrades gracefully — `list` returns an empty page, `read` returns
+  null. The daemon does NOT fail; the consumer just sees "no main-history available" and
+  `history/diff` against a missing ref entry returns `HistoryEntryNotFound (-32010)`.
 - `WRITE_LOCAL` — the daemon writes a commit to the local
   `preview/<branch>` ref after each render burst (debounced, e.g.
   every 30s). No network. Pushes are user-driven.
@@ -831,21 +852,25 @@ index; old indices stay readable as v0.
 | ~~**H0**~~ | ~~Sidecar schema + index.jsonl emission from `HistorizePreviewsTask`~~ | — | dropped — legacy task removed in PR #311; greenfield write path is daemon-only |
 | **H1** | Daemon writes sidecar + index entry per render | Layer 2 | — |
 | **H2** | `history/list` + `history/read` + `historyAdded` notification | Layer 2 | H1 |
-| **H3** | `history/diff` (metadata mode) | Layer 2 | H2 |
+| ~~**H3**~~ | ~~`history/diff` (metadata mode)~~ | Layer 2 | H2 — landed |
 | **H4** | Auto-prune + `historyPruned` notification | Layer 2 | H2 |
 | **H5** | `history/diff` (pixel mode + diff PNG) | Layer 2 | H3 |
 | **H6** | MCP resource + tool mapping | Layer 3 | H2 + `:daemon:mcp` phase 2 |
 | **H7** | VS Code Preview History panel | extension | H2 |
 | **H8** | Cross-source provenance UI ("rendered by daemon", "rendered by Gradle") | extension | H7 |
-| **H9** | `HistorySource` interface + multi-source merging in `historyManager` | Layer 2 | H2 |
-| **H10** | `GitRefHistorySource` (`READ_ONLY` mode) — read from `preview/<branch>` refs | Layer 2 | H9 |
-| **H11** | `GitRefHistorySource` `WRITE_LOCAL` — debounced commit on render burst | Layer 2 | H10 |
+| **H9** | `HistorySource` interface + multi-source merging in `historyManager` | Layer 2 | H2 — landed (H1+H2 already shipped the interface; H10-read shipped multi-source merging) |
+| ~~**H10a**~~ | ~~`GitRefHistorySource` (`READ_ONLY` mode) — read from `preview/<branch>` refs~~ | Layer 2 | H9 — landed |
+| **H10b** | Layer 1 plumbing — gradle plugin emits `composeai.daemon.gitRefHistory` in the daemon launch descriptor + DSL | Layer 1 | H10a |
+| **H11** | `GitRefHistorySource` `WRITE_LOCAL` — debounced commit on render burst | Layer 2 | H10a |
 | **H12** | `WRITE_PUSH` mode + git-LFS support + squash-old-history GC | Layer 2 | H11 |
 | **H13** | `HttpMirrorHistorySource` — read-only CI / S3 mirror | Layer 2 | H9 |
 | **H14** | Cross-worktree merge in MCP `DaemonSupervisor` (multi-worktree timeline) | Layer 3 | H6 |
 
-H1+H2 are independently useful and ship together as the first daemon-side history landing. H3
-onward is enrichment.
+H1+H2 are independently useful and ship together as the first daemon-side history landing. H3 +
+H10-read landed in the second history PR (`history/diff` metadata mode + read-only
+`GitRefHistorySource` for `preview/<branch>` refs). H10b (gradle plugin emitting the sysprop)
+splits out as a separate Layer 1 task because the daemon-side read surface is independently
+useful — agents and ad-hoc launches set the sysprop manually until the plugin path lands.
 
 ## Open questions
 

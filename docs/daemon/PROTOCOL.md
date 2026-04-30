@@ -50,8 +50,9 @@ Standard JSON-RPC codes plus daemon-specific extensions in the reserved `-32000.
 | -32003   | SandboxRecycling      | Daemon is between sandboxes; retry shortly. |
 | -32004   | UnknownPreview        | Preview ID not in the current discovery set. |
 | -32005   | RenderFailed          | Render itself failed; details in `data`. |
-| -32010   | HistoryEntryNotFound  | `history/read` referenced a missing entry id. |
-| -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews (reserved; phase H3+). |
+| -32010   | HistoryEntryNotFound  | `history/read` or `history/diff` referenced a missing entry id. |
+| -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews. |
+| -32012   | HistoryPixelNotImplemented | `history/diff` was called with `mode = "pixel"`; reserved for phase H5. |
 
 `error.data` is an object; daemon-specific errors include `data.kind: string` for machine-routable subcategories.
 
@@ -246,9 +247,47 @@ Errors:
 Errors:
 - `HistoryEntryNotFound` (-32010) — `id` does not match any entry in the configured sources.
 
-### `history/diff` (phase H3+, reserved)
+### `history/diff` (phase H3 — metadata mode)
 
-Not implemented in H1+H2. Calls return `MethodNotFound` (-32601) until H3 lands.
+```ts
+// params
+{
+  from: string;                     // entry id
+  to: string;                       // entry id
+  mode?: "metadata" | "pixel";      // default "metadata"
+}
+
+// result
+{
+  pngHashChanged: boolean;
+  fromMetadata: HistoryEntry;       // full sidecar
+  toMetadata: HistoryEntry;
+  // Pixel-mode fields — null in METADATA mode; populated by phase H5.
+  diffPx?: number;
+  ssim?: number;
+  diffPngPath?: string;
+}
+```
+
+`mode = "metadata"` (default) is cheap: hash compare + sidecar return. The pixel-mode fields
+(`diffPx`, `ssim`, `diffPngPath`) stay `null` in METADATA mode by design.
+
+`mode = "pixel"` is **reserved for phase H5** and not implemented in H3 — calls with
+`mode = "pixel"` return `-32012` (`HistoryPixelNotImplemented`) so callers can distinguish
+"asked for pixel and the daemon isn't ready" from "asked for metadata and got null pixel fields
+by design."
+
+The diff resolves `from` and `to` across all configured `HistorySource`s — `from` may live in
+`LocalFsHistorySource` while `to` lives on a `preview/main` ref via `GitRefHistorySource`. This is
+the load-bearing case for "did my edits change how this preview renders compared to main?" — see
+[HISTORY.md § "Diff across branches"](HISTORY.md#diff-across-branches).
+
+Errors:
+- `HistoryEntryNotFound` (-32010) — either `from` or `to` does not match any entry.
+- `HistoryDiffMismatch` (-32011) — `from` and `to` belong to different previews; pixel diff would
+  be meaningless.
+- `HistoryPixelNotImplemented` (-32012) — `mode = "pixel"` was requested but the pixel pass is
+  reserved for phase H5.
 
 ### `history/prune` (phase H4+, reserved)
 

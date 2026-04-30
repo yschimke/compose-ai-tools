@@ -694,14 +694,21 @@ Tracking the daemon-side history phases from [HISTORY.md § "Phasing"](HISTORY.m
 
 - **H1 — Daemon writes sidecar + index entry per render** ✅ landed
 - **H2 — `history/list` + `history/read` + `historyAdded` notification** ✅ landed
-- **H3 — `history/diff` (metadata mode)** — still open
+- **H3 — `history/diff` (metadata mode)** ✅ landed
 - **H4 — Auto-prune + `historyPruned` notification** — still open
 - **H5 — `history/diff` (pixel mode + diff PNG)** — still open
-- H6+ (MCP / VS Code / git refs / cross-worktree merging) — see HISTORY.md table.
+- **H9 — `HistorySource` interface + multi-source merging in `historyManager`** ✅ landed (the
+  interface arrived with H1+H2; multi-source merging arrived with H10-read)
+- **H10a — `GitRefHistorySource` (READ_ONLY) — read from `preview/<branch>` refs** ✅ landed
+- **H10b — Layer 1 plumbing — gradle plugin emits `composeai.daemon.gitRefHistory` in the daemon
+  launch descriptor + DSL** — still open
+- **H11+ — `GitRefHistorySource` WRITE modes, git-LFS, squash GC** — still open
+- H6+ (MCP / VS Code / cross-worktree merging) — see HISTORY.md table.
 
-H1+H2 ship behind the existing `composePreview.experimental.daemon { enabled = true }` gate. The
-gradle plugin's daemon launch descriptor will gain `composeai.daemon.historyDir` emission in a
-follow-up; until then, agents and ad-hoc launches set the sysprop directly.
+H1+H2 + H3 + H10-read ship behind the existing `composePreview.experimental.daemon { enabled =
+true }` gate. The gradle plugin's daemon launch descriptor will gain `composeai.daemon.historyDir`
++ `composeai.daemon.gitRefHistory` emission in a follow-up (H10b); until then, agents and ad-hoc
+launches set the sysprops directly.
 
 ---
 

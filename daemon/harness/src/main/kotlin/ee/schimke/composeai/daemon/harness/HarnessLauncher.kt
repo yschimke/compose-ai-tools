@@ -45,6 +45,12 @@ class FakeHarnessLauncher(
    * cwd (the harness module's project dir under Gradle test execution).
    */
   private val workspaceRoot: File? = null,
+  /**
+   * H10-read — comma-separated list of full git ref names (e.g. `refs/heads/preview/main`) for
+   * [GitRefHistorySource] wiring. When non-empty, sets `-Dcomposeai.daemon.gitRefHistory=…` on
+   * the spawned JVM.
+   */
+  private val gitRefHistory: List<String> = emptyList(),
 ) : HarnessLauncher {
 
   override val name: String = "fake"
@@ -65,6 +71,8 @@ class FakeHarnessLauncher(
         if (historyDir != null) add("-Dcomposeai.daemon.historyDir=${historyDir.absolutePath}")
         if (workspaceRoot != null)
           add("-Dcomposeai.daemon.workspaceRoot=${workspaceRoot.absolutePath}")
+        if (gitRefHistory.isNotEmpty())
+          add("-Dcomposeai.daemon.gitRefHistory=${gitRefHistory.joinToString(",")}")
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)

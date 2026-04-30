@@ -39,7 +39,8 @@ import org.junit.Test
  * 4. `history/read({inline: true})` returns base64 bytes that decode back to the original PNG.
  * 5. `history/list({previewId: "other"})` filter narrows correctly.
  * 6. `history/read({id: "missing"})` returns a `-32010 HistoryEntryNotFound` error.
- * 7. `history/diff` and `history/prune` return `-32601 MethodNotFound` (reserved, not implemented).
+ * 7. `history/diff` (metadata mode, H3) round-trips a real diff result.
+ * 8. `history/prune` returns `-32601 MethodNotFound` (reserved, not implemented).
  */
 class JsonRpcServerHistoryIntegrationTest {
 
@@ -202,21 +203,48 @@ class JsonRpcServerHistoryIntegrationTest {
       val errCode = missing!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
       assertEquals(JsonRpcServer.ERR_HISTORY_ENTRY_NOT_FOUND, errCode)
 
-      // 10. history/diff and history/prune → MethodNotFound.
+      // 10. history/diff for missing id → -32010.
       writeFrame(
         clientToServerOut,
-        """{"jsonrpc":"2.0","id":8,"method":"history/diff","params":{"from":"a","to":"b"}}""",
+        """{"jsonrpc":"2.0","id":8,"method":"history/diff","params":{"from":"missing","to":"$entryId"}}""",
       )
-      val diff = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 8 }
+      val diffMissing = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 8 }
       assertEquals(
-        JsonRpcServer.ERR_METHOD_NOT_FOUND,
-        diff!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
+        JsonRpcServer.ERR_HISTORY_ENTRY_NOT_FOUND,
+        diffMissing!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
       )
+
+      // 11. history/diff(from=entryId, to=entryId) — same entry → pngHashChanged=false.
       writeFrame(
         clientToServerOut,
-        """{"jsonrpc":"2.0","id":9,"method":"history/prune","params":{}}""",
+        """{"jsonrpc":"2.0","id":9,"method":"history/diff","params":{"from":"$entryId","to":"$entryId"}}""",
       )
-      val prune = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 9 }
+      val diffSelf = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 9 }
+      val diffSelfResult = diffSelf!!["result"]!!.jsonObject
+      assertEquals(
+        false,
+        diffSelfResult["pngHashChanged"]!!.jsonPrimitive.content.toBooleanStrict(),
+      )
+      assertNotNull(diffSelfResult["fromMetadata"])
+      assertNotNull(diffSelfResult["toMetadata"])
+
+      // 12. history/diff with mode=pixel → -32012 (reserved for H5).
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":10,"method":"history/diff","params":{"from":"$entryId","to":"$entryId","mode":"pixel"}}""",
+      )
+      val diffPixel = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+      assertEquals(
+        JsonRpcServer.ERR_HISTORY_PIXEL_NOT_IMPLEMENTED,
+        diffPixel!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
+      )
+
+      // 13. history/prune → MethodNotFound (still reserved).
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":11,"method":"history/prune","params":{}}""",
+      )
+      val prune = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 11 }
       assertEquals(
         JsonRpcServer.ERR_METHOD_NOT_FOUND,
         prune!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,

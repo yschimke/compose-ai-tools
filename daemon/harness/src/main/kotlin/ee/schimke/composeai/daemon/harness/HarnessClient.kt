@@ -4,6 +4,9 @@ import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
+import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
+import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadParams
@@ -176,6 +179,44 @@ private constructor(
       response["result"]
         ?: error("history/read: no result — error=${response["error"]}, full=${response}")
     return json.decodeFromJsonElement(HistoryReadResultDto.serializer(), resultElem)
+  }
+
+  /** H3 — drives `history/diff` (metadata mode by default). */
+  fun historyDiff(
+    from: String,
+    to: String,
+    mode: HistoryDiffMode = HistoryDiffMode.METADATA,
+  ): HistoryDiffResult {
+    val rpcId = nextId.getAndIncrement()
+    val params = HistoryDiffParams(from = from, to = to, mode = mode)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "history/diff",
+        params = json.encodeToJsonElement(HistoryDiffParams.serializer(), params),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("history/diff: no result — error=${response["error"]}, full=${response}")
+    return json.decodeFromJsonElement(HistoryDiffResult.serializer(), resultElem)
+  }
+
+  /** H3 — like [historyDiff] but returns the raw response so callers can assert on error codes. */
+  fun historyDiffRaw(
+    from: String,
+    to: String,
+    mode: HistoryDiffMode = HistoryDiffMode.METADATA,
+  ): JsonObject {
+    val rpcId = nextId.getAndIncrement()
+    val params = HistoryDiffParams(from = from, to = to, mode = mode)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "history/diff",
+        params = json.encodeToJsonElement(HistoryDiffParams.serializer(), params),
+      )
+    return sendAndPoll(rpcId, request, 10.seconds)
   }
 
   /**

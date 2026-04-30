@@ -396,3 +396,37 @@ data class HistoryReadResultDto(
 )
 
 @Serializable data class HistoryAddedParams(val entry: JsonElement)
+
+// ---------------------------------------------------------------------------
+// H3 — `history/diff` metadata-mode wire shape. See HISTORY.md § "What this PR
+// lands § H3" and PROTOCOL.md § 5 ("history/diff").
+//
+// Pixel-mode fields (`diffPx`, `ssim`, `diffPngPath`) are reserved on the
+// `HistoryDiffResult` shape but always null in METADATA mode — H5 lands the
+// full pixel pass. A METADATA caller asking for `mode = PIXEL` receives a
+// distinct -32603 error so `null` pixel fields stay unambiguous.
+// ---------------------------------------------------------------------------
+
+@Serializable
+enum class HistoryDiffMode {
+  @SerialName("metadata") METADATA,
+  @SerialName("pixel") PIXEL,
+}
+
+@Serializable
+data class HistoryDiffParams(
+  val from: String,
+  val to: String,
+  val mode: HistoryDiffMode = HistoryDiffMode.METADATA,
+)
+
+@Serializable
+data class HistoryDiffResult(
+  val pngHashChanged: Boolean,
+  val fromMetadata: JsonElement,
+  val toMetadata: JsonElement,
+  // Pixel-mode fields — null in METADATA mode; populated by H5.
+  val diffPx: Long? = null,
+  val ssim: Double? = null,
+  val diffPngPath: String? = null,
+)
