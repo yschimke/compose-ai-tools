@@ -295,6 +295,15 @@ internal object ComposePreviewTasks {
       // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
       // launchers used to set this); now any production-mode launcher needs it.
       systemProperties.put("composeai.harness.previewsManifest", previewsJsonProvider)
+      // H1+H2 — `composeai.daemon.historyDir` is what flips daemon-side history recording from
+      // off to on. Default location is `<projectDir>/.compose-preview-history` (matches the
+      // legacy convention; user-visible `.gitignore` pattern). Without this sysprop the daemon's
+      // `HistoryManager` stays null and the VS Code history view shows an empty drawer.
+      systemProperties.put(
+        "composeai.daemon.historyDir",
+        project.layout.projectDirectory.dir(".compose-preview-history").asFile.absolutePath,
+      )
+      systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)

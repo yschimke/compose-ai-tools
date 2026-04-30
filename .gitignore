@@ -40,3 +40,8 @@ vscode-extension/out/
 # Python (for .github/actions/lib/ scripts and their tests)
 __pycache__/
 *.pyc
+
+# Daemon preview-history archive — written by the daemon's `HistoryManager` when running
+# (sysprop `composeai.daemon.historyDir`). Each module gets its own archive at
+# `<moduleDir>/.compose-preview-history/`. Ignore at any depth.
+.compose-preview-history/

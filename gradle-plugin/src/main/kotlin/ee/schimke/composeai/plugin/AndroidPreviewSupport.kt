@@ -1329,6 +1329,15 @@ internal object AndroidPreviewSupport {
       // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
       // launchers used to set this); now any production-mode launcher needs it.
       this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
+      // H1+H2 — `composeai.daemon.historyDir` flips daemon-side history recording on. Default
+      // location is `<projectDir>/.compose-preview-history` (matches the legacy convention;
+      // user-visible `.gitignore` pattern). Without this sysprop the daemon's `HistoryManager`
+      // stays null and the VS Code history view shows an empty drawer.
+      this.systemProperties.put(
+        "composeai.daemon.historyDir",
+        project.layout.projectDirectory.dir(".compose-preview-history").asFile.absolutePath,
+      )
+      this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
