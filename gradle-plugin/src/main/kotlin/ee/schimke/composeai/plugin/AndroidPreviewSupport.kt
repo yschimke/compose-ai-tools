@@ -1322,6 +1322,13 @@ internal object AndroidPreviewSupport {
       // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
       // know about the renderer-shared key.
       this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
+      // Same path the daemon's `PreviewManifestRouter` reads to map the protocol-level
+      // `previewId` payload into the `RenderSpec(className, functionName)` the engine needs.
+      // Without it, `JsonRpcServer.handleRenderNow`'s `previewId=<id>` payload bottoms out in
+      // the host's `renderStubFallback` and the daemon emits a stub PNG path that doesn't
+      // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
+      // launchers used to set this); now any production-mode launcher needs it.
+      this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })

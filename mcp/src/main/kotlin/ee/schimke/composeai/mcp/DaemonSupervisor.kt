@@ -87,6 +87,20 @@ class DaemonSupervisor(
   fun project(workspaceId: WorkspaceId): RegisteredProject? = projects[workspaceId]
 
   /**
+   * Forgets the [SupervisedDaemon] for [workspaceId] + [modulePath] without ordering a shutdown —
+   * the daemon already announced it's exiting (classpathDirty) and will close the wire on its own.
+   * The next [daemonFor] for the same coordinates spawns afresh against the (presumably refreshed)
+   * descriptor.
+   *
+   * Intended for the `classpathDirty` respawn flow only. Returns `true` if a daemon entry was
+   * actually removed.
+   */
+  fun forgetDaemon(workspaceId: WorkspaceId, modulePath: String): Boolean {
+    val project = projects[workspaceId] ?: return false
+    return project.daemons.remove(modulePath) != null
+  }
+
+  /**
    * Returns (and lazily spawns) the daemon for [workspaceId] + [modulePath]. Throws when the
    * workspace isn't registered or the module's daemon descriptor is missing.
    *

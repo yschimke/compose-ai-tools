@@ -46,4 +46,15 @@ dependencies {
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 
-tasks.withType<Test>().configureEach { useJUnit() }
+tasks.withType<Test>().configureEach {
+  useJUnit()
+  // Opt-in real-mode: `-Pmcp.real=true` flips the JUnit `Assume` gate in
+  // `RealMcpEndToEndTest`. Mirrors `:daemon:harness`'s `-Pharness.host=real` pattern.
+  // The optional `-Pmcp.workdir=<path>` lets out-of-tree runs point the test at a different
+  // checkout; defaults to the test's own working directory.
+  val mcpReal = providers.gradleProperty("mcp.real").orNull == "true"
+  systemProperty("composeai.mcp.real", mcpReal.toString())
+  providers.gradleProperty("mcp.workdir").orNull?.let {
+    systemProperty("composeai.mcp.workdir", it)
+  }
+}
