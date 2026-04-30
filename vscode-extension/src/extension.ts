@@ -15,6 +15,8 @@ import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
 import { captureLabel } from './captureLabels';
+import { DaemonGate } from './daemon/daemonGate';
+import { DaemonScheduler } from './daemon/daemonScheduler';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -25,6 +27,14 @@ const SCOPE_DEBOUNCE_MS = 300;
 const INIT_DELAY_MS = 1000;
 
 let gradleService: GradleService | null = null;
+let daemonGate: DaemonGate | null = null;
+let daemonScheduler: DaemonScheduler | null = null;
+/** Tracks the most recent preview set per module for daemon focus computation.
+ *  The daemon path doesn't re-issue `discoverPreviews` on every save — it
+ *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
+ *  scoped focus signals can map "active file → preview IDs" without an
+ *  extension-side discovery round-trip. */
+const moduleManifestCache = new Map<string, PreviewInfo[]>();
 let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
@@ -163,6 +173,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         }
         return args;
     });
+
+    // Daemon path is opt-in via composePreview.experimental.daemon.enabled.
+    // When disabled (default) the gate's `isEnabled()` returns false and the
+    // scheduler is never asked to spawn anything — the existing Gradle path
+    // is the entire user-facing behaviour. When enabled, the scheduler runs
+    // *alongside* the existing refresh logic: saves and viewport changes push
+    // notifications to the daemon, the daemon emits renderFinished, and the
+    // extension forwards PNGs to the panel as they arrive (typically ahead
+    // of Gradle's `renderPreviews` on a hot sandbox). The Gradle path remains
+    // the safety net; if the daemon fails we silently fall back without any
+    // user-visible change.
+    daemonGate = new DaemonGate(workspaceRoot, '0.1.0', outputChannel);
+    daemonScheduler = new DaemonScheduler(daemonGate, {
+        onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
+            if (!panel) { return; }
+            // Capture index 0 — the daemon's v1 renderFinished targets the
+            // representative capture only. Multi-capture (animated) renders
+            // still come through the Gradle path; the daemon's predictive
+            // pre-warm focuses on the cheap interactive loop.
+            panel.postMessage({
+                command: 'updateImage',
+                previewId,
+                captureIndex: 0,
+                imageData: imageBase64,
+            });
+        },
+        onRenderFailed: (_moduleId, previewId, message) => {
+            if (!panel) { return; }
+            panel.postMessage({
+                command: 'setImageError',
+                previewId,
+                captureIndex: 0,
+                message,
+            });
+        },
+        onClasspathDirty: (moduleId, detail) => {
+            outputChannel.appendLine(
+                `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
+            );
+            // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
+            // closed handler in DaemonGate evicts the entry. Next save runs
+            // Gradle, which re-bootstraps a fresh daemon when the user
+            // re-enables it via composePreviewDaemonStart.
+        },
+    }, outputChannel);
 
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
     if (isTestMode) {
@@ -349,6 +404,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(doc => {
             if (!isSourceFile(doc.uri.fsPath)) { return; }
+            // Side-channel: when the daemon path is enabled and healthy for
+            // this file's module, push a fileChanged notification + focused
+            // renderNow so the daemon can update the visible preview within
+            // its sub-second hot-sandbox latency budget. This runs alongside
+            // (not instead of) the Gradle refresh — the daemon's renderFinished
+            // typically arrives first; Gradle's slower full-fidelity pass
+            // backstops anything the daemon doesn't cover. When the daemon is
+            // disabled (default) `notifyDaemonOfSave` is a no-op.
+            void notifyDaemonOfSave(doc.uri.fsPath);
             if (!firstSaveSeen.has(doc.uri.fsPath) && !refreshInFlight && pendingSavePath === null) {
                 firstSaveSeen.add(doc.uri.fsPath);
                 invalidateModuleCache(doc.uri.fsPath);
@@ -423,6 +487,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 export function deactivate() {
     if (debounceTimer) { clearTimeout(debounceTimer); }
     pendingRefresh?.abort();
+    // Drain any live daemon JVMs so the user doesn't end up with orphaned
+    // processes after a window close. Fire-and-forget — VS Code won't wait
+    // for an async deactivate beyond a few seconds anyway.
+    void daemonGate?.dispose();
 }
 
 function sameScope(a: string[], b: string[]): boolean {
@@ -496,6 +564,46 @@ function invalidateModuleCache(filePath: string): void {
     const module = gradleService.resolveModule(filePath);
     if (module) { gradleService.invalidateCache(module); }
 }
+
+/**
+ * Side-channel save handler that pushes a `fileChanged` + focus-scoped
+ * `renderNow` to the daemon when the daemon path is enabled and a daemon
+ * exists for this file's module. Runs alongside the Gradle refresh, never
+ * instead of it; the daemon's faster updateImage simply lands sooner. When
+ * the daemon is disabled or unhealthy, this is a complete no-op — the
+ * existing Gradle path is the entire user-facing behaviour.
+ */
+async function notifyDaemonOfSave(filePath: string): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module) { return; }
+
+    // First time we hit a module with the daemon enabled: kick the bootstrap
+    // task so daemon-launch.json exists. Cheap on subsequent calls (cacheable).
+    if (!daemonBootstrappedModules.has(module)) {
+        daemonBootstrappedModules.add(module);
+        await daemonGate.bootstrap(gradleService, module);
+    }
+
+    const ok = await daemonScheduler.ensureModule(module);
+    if (!ok) { return; }
+    await daemonScheduler.fileChanged(module, filePath);
+
+    // Focus scope = the saved file's previews, derived from the most recent
+    // manifest snapshot we got from Gradle's discoverPreviews. The daemon
+    // reads this for queue ordering — focused first. If we don't yet have a
+    // manifest for this module the focus call is skipped; the next refresh
+    // will populate moduleManifestCache.
+    const filterFile = packageQualifiedSourcePath(filePath);
+    const manifest = moduleManifestCache.get(module) ?? [];
+    const ids = manifest.filter(p => p.sourceFile === filterFile).map(p => p.id);
+    if (ids.length === 0) { return; }
+    await daemonScheduler.setFocus(module, ids);
+    await daemonScheduler.renderNow(module, ids, 'fast', 'save');
+}
+
+/** Per-extension-session memo so bootstrap runs once per module. */
+const daemonBootstrappedModules = new Set<string>();
 
 /**
  * Coalesce save-driven refreshes. The next refresh fires when BOTH:
@@ -678,6 +786,16 @@ async function refresh(
                 }
             }
             registry.replaceModule(mod, perModule);
+            // Mirror per-module previews for the daemon scheduler — the
+            // save side-channel uses this snapshot to translate "active
+            // file" into a list of preview IDs without an extension-side
+            // discovery round-trip. Cleared when the module's render
+            // returns no manifest (preview-set went empty).
+            if (manifest) {
+                moduleManifestCache.set(mod, perModule);
+            } else {
+                moduleManifestCache.delete(mod);
+            }
         }
 
         if (abort.signal.aborted) { return; }
@@ -848,6 +966,44 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 }
             }
             break;
+        case 'viewportUpdated':
+            // Daemon-only: route geometric visibility + scroll-ahead
+            // predictions to the scheduler so it can `setVisible` and
+            // queue speculative renders. When the daemon is disabled
+            // (default) `notifyDaemonViewport` is a no-op.
+            if (Array.isArray(msg.visible) && Array.isArray(msg.predicted)) {
+                void notifyDaemonViewport(msg.visible, msg.predicted);
+            }
+            break;
+    }
+}
+
+async function notifyDaemonViewport(visible: string[], predicted: string[]): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    // Group by owning module — viewports cross module boundaries only when
+    // the user is paging across the all-modules view (rare today; the
+    // panel is module-scoped). Each module's daemon gets its own slice.
+    const visibleByModule = new Map<string, string[]>();
+    const predictedByModule = new Map<string, string[]>();
+    for (const id of visible) {
+        const mod = previewModuleMap.get(id);
+        if (!mod) { continue; }
+        if (!visibleByModule.has(mod)) { visibleByModule.set(mod, []); }
+        visibleByModule.get(mod)!.push(id);
+    }
+    for (const id of predicted) {
+        const mod = previewModuleMap.get(id);
+        if (!mod) { continue; }
+        if (!predictedByModule.has(mod)) { predictedByModule.set(mod, []); }
+        predictedByModule.get(mod)!.push(id);
+    }
+    const modules = new Set([...visibleByModule.keys(), ...predictedByModule.keys()]);
+    for (const mod of modules) {
+        await daemonScheduler.setVisible(
+            mod,
+            visibleByModule.get(mod) ?? [],
+            predictedByModule.get(mod) ?? [],
+        );
     }
 }
 
@@ -860,6 +1016,8 @@ interface WebviewToExtensionMessage {
     functionName?: string;
     value?: string;
     previewId?: string;
+    visible?: string[];
+    predicted?: string[];
 }
 
 /**
