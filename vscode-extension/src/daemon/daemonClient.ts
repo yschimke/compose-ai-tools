@@ -5,6 +5,13 @@ import {
     DaemonWarmingParams,
     DiscoveryUpdatedParams,
     FileChangedParams,
+    HistoryAddedParams,
+    HistoryDiffParams,
+    HistoryDiffResult,
+    HistoryListParams,
+    HistoryListResult,
+    HistoryReadParams,
+    HistoryReadResult,
     InitializeParams,
     InitializeResult,
     JsonRpcError,
@@ -44,6 +51,9 @@ export interface DaemonClientEvents {
     onDaemonWarming?: (params: DaemonWarmingParams) => void;
     onDaemonReady?: () => void;
     onLog?: (params: LogParams) => void;
+    /** Phase H2 — daemon emits this after writing each render's sidecar +
+     *  index entry. Subscribers avoid polling `history/list`. */
+    onHistoryAdded?: (params: HistoryAddedParams) => void;
     /** Stream end / framing collapse. After this fires, the client is dead. */
     onChannelClosed?: (err?: Error) => void;
 }
@@ -118,6 +128,27 @@ export class DaemonClient {
 
     renderNow(params: RenderNowParams): Promise<RenderNowResult> {
         return this.request<RenderNowResult>('renderNow', params);
+    }
+
+    /** Phase H2. Returns recent history entries newest-first; pass back
+     *  `result.nextCursor` as `params.cursor` to paginate. Filter fields are
+     *  cumulative (AND semantics). See PROTOCOL.md § 5 (history/list). */
+    historyList(params: HistoryListParams = {}): Promise<HistoryListResult> {
+        return this.request<HistoryListResult>('history/list', params);
+    }
+
+    /** Phase H2. `inline: false` (default) returns `pngPath` only —
+     *  preferred for local same-host clients; the bytes never traverse the
+     *  wire. `inline: true` returns base64 `pngBytes`. See PROTOCOL.md § 5. */
+    historyRead(params: HistoryReadParams): Promise<HistoryReadResult> {
+        return this.request<HistoryReadResult>('history/read', params);
+    }
+
+    /** Phase H3 (metadata mode). `mode: 'pixel'` is reserved for H5 and
+     *  rejects with `HistoryPixelNotImplemented` until then. See
+     *  PROTOCOL.md § 5 (history/diff). */
+    historyDiff(params: HistoryDiffParams): Promise<HistoryDiffResult> {
+        return this.request<HistoryDiffResult>('history/diff', params);
     }
 
     /** Drains in-flight renders, then resolves. Daemon will not exit until `exit` fires. */
@@ -228,6 +259,9 @@ export class DaemonClient {
                 break;
             case 'log':
                 this.events.onLog?.(params as LogParams);
+                break;
+            case 'historyAdded':
+                this.events.onHistoryAdded?.(params as HistoryAddedParams);
                 break;
             default:
                 this.logger.appendLine(`[daemon] ignoring unknown notification: ${method}`);

@@ -5,6 +5,7 @@ import { DaemonGate } from './daemonGate';
 import {
     FileChangeType,
     FileKind,
+    HistoryAddedParams,
     RenderFinishedParams,
     RenderTier,
 } from './daemonProtocol';
@@ -31,6 +32,9 @@ export interface SchedulerEvents {
      * renders for this module and the caller should re-run Gradle.
      */
     onClasspathDirty: (moduleId: string, detail: string) => void;
+    /** Phase H2 — daemon archived a render. Forwarded to the History
+     *  panel; optional because the panel may not exist in test mode. */
+    onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
 }
 
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
@@ -67,6 +71,10 @@ export class DaemonScheduler {
     /** Cards we've already speculatively requested so scrolling back over
      *  them doesn't re-queue identical work. Keyed by `${moduleId}::${id}`. */
     private speculated = new Set<string>();
+    /** Modules where we've already logged a "daemon at stub stage" notice.
+     *  Stops the per-render ENOENT spam when the daemon (B1.5) emits
+     *  synthetic `daemon-stub-N.png` paths that don't exist on disk. */
+    private warnedStubModules = new Set<string>();
 
     constructor(
         private readonly gate: DaemonGate,
@@ -230,7 +238,15 @@ export class DaemonScheduler {
         }
     }
 
-    private daemonEvents(moduleId: string) {
+    /**
+     * Builds the [DaemonClientEvents]-shaped bag the gate registers per
+     * module. Public so `extension.ts`'s history-source wiring can reuse
+     * the same events bag when issuing one-off `historyList` /
+     * `historyRead` / `historyDiff` calls — the gate's daemon registry
+     * keys on identity equivalence of the events bag, so reusing the
+     * same one keeps a single live registration.
+     */
+    daemonEvents(moduleId: string) {
         return {
             onRenderFinished: (params: RenderFinishedParams) => {
                 this.handleRenderFinished(moduleId, params);
@@ -245,6 +261,9 @@ export class DaemonScheduler {
                     if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
                 }
                 this.events.onClasspathDirty(moduleId, params.detail);
+            },
+            onHistoryAdded: (params: HistoryAddedParams) => {
+                this.events.onHistoryAdded?.(moduleId, params);
             },
             onChannelClosed: () => {
                 // Daemon died; clear caches so the next call re-issues them
@@ -264,6 +283,28 @@ export class DaemonScheduler {
             // drop them from the dedup set so a subsequent fileChanged for the
             // same preview can re-render via the reactive path.
             this.speculated.delete(specKey(moduleId, params.id));
+
+            // Stub-render path: until B1.4 lands `RenderEngine` in the
+            // daemon, every "successful" render returns
+            // `<historyDir>/daemon-stub-<id>.{png,gif}` with no bytes
+            // actually written. Documented in JsonRpcServer.kt's
+            // `renderFinishedFromResult` KDoc. Silently no-op rather than
+            // log ENOENT per render — the user's panel is already painted
+            // by the existing Gradle path, and the daemon team will swap
+            // this to real rendering without an extension change. Once
+            // B1.4 ships, the path stops matching and this branch is dead
+            // weight; no harm in keeping it.
+            if (isDaemonStubPath(params.pngPath)) {
+                if (!this.warnedStubModules.has(moduleId)) {
+                    this.warnedStubModules.add(moduleId);
+                    this.logger.appendLine(
+                        `[daemon] ${moduleId} is at stub-render stage (B1.5); ` +
+                        'real renders arrive once :daemon:android ships B1.4 RenderEngine. ' +
+                        'Suppressing per-render ENOENT logs for stub paths.',
+                    );
+                }
+                return;
+            }
 
             const buf = fs.readFileSync(params.pngPath);
             this.events.onPreviewImageReady(
@@ -310,4 +351,19 @@ function sameSet(a: string[] | undefined, b: string[]): boolean {
 
 function specKey(moduleId: string, previewId: string): string {
     return `${moduleId}::${previewId}`;
+}
+
+/**
+ * True iff [pngPath]'s basename matches the documented daemon stub shape
+ * `daemon-stub-<id>.{png,gif}` from `JsonRpcServer.kt`. Once :daemon:android
+ * ships B1.4 (`RenderEngine`), real renders write to a different path and
+ * this returns false on every render.
+ *
+ * Loose match — the daemon team is free to rename the directory; the
+ * filename prefix is what's documented as the contract.
+ */
+function isDaemonStubPath(pngPath: string): boolean {
+    const slash = Math.max(pngPath.lastIndexOf('/'), pngPath.lastIndexOf('\\'));
+    const base = slash >= 0 ? pngPath.slice(slash + 1) : pngPath;
+    return /^daemon-stub-.+\.(png|gif)$/.test(base);
 }

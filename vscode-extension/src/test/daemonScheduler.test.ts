@@ -216,6 +216,59 @@ describe('DaemonScheduler', () => {
         assert.match(failures[0].message, /unreadable/i);
     });
 
+    it('silently no-ops on daemon stub paths — once-per-module info log only', async () => {
+        // Until :daemon:android ships B1.4, every "successful" render
+        // returns `<historyDir>/daemon-stub-<id>.{png,gif}` with nothing
+        // on disk. Logging ENOENT per render drowns the output channel;
+        // the panel is already populated by the Gradle fallback. We
+        // detect the documented stub-filename shape and skip.
+        const { gate, scheduler, log, failures, images } = build();
+        await scheduler.ensureModule('mod');
+        const evts = gate.capturedEvents.get('mod')!;
+        for (let i = 1; i <= 5; i++) {
+            evts.onRenderFinished!({
+                id: `p${i}`,
+                pngPath: `.compose-preview-history/daemon-stub-${i}.png`,
+                tookMs: 1,
+            });
+        }
+        // No image read attempted, no failure surfaced.
+        assert.strictEqual(images.length, 0);
+        assert.strictEqual(failures.length, 0);
+        // One info log per module (rate-limited), not five.
+        const stubLogs = log.filter(l => l.includes('stub-render stage'));
+        assert.strictEqual(stubLogs.length, 1);
+    });
+
+    it('detects gif stub paths the same way as png stubs', async () => {
+        const { gate, scheduler, failures, images } = build();
+        await scheduler.ensureModule('mod');
+        const evts = gate.capturedEvents.get('mod')!;
+        evts.onRenderFinished!({
+            id: 'p1',
+            pngPath: '.compose-preview-history/daemon-stub-1.gif',
+            tookMs: 1,
+        });
+        assert.strictEqual(images.length, 0);
+        assert.strictEqual(failures.length, 0);
+    });
+
+    it('still surfaces ENOENT for non-stub paths (real-render misconfig)', async () => {
+        // The stub filter is precisely scoped — real-render paths that
+        // happen to be missing must still surface as a failure so the
+        // daemon's render bug is visible rather than silently swallowed.
+        const { gate, scheduler, failures } = build();
+        await scheduler.ensureModule('mod');
+        const evts = gate.capturedEvents.get('mod')!;
+        evts.onRenderFinished!({
+            id: 'pY',
+            pngPath: '/abs/build/compose-previews/renders/com.example.X.png',
+            tookMs: 1,
+        });
+        assert.strictEqual(failures.length, 1);
+        assert.match(failures[0].message, /unreadable/i);
+    });
+
     it('forwards onRenderFailed from the daemon directly to the caller', async () => {
         const { gate, scheduler, failures } = build();
         await scheduler.ensureModule('mod');
@@ -349,6 +402,54 @@ describe('DaemonScheduler', () => {
             assert.strictEqual(ok, false);
             assert.deepStrictEqual(states, []);
             assert.deepStrictEqual(gradle.bootstrapCalls, []);
+        });
+    });
+
+    describe('onHistoryAdded forwarding (Phase H7)', () => {
+        it('passes the daemon notification through with the right moduleId', async () => {
+            const gate = new FakeGate();
+            const log: string[] = [];
+            const seen: { moduleId: string; entry: unknown }[] = [];
+            const scheduler = new DaemonScheduler(
+                gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
+                {
+                    onPreviewImageReady: () => {},
+                    onRenderFailed: () => {},
+                    onClasspathDirty: () => {},
+                    onHistoryAdded: (moduleId, params) => seen.push({ moduleId, entry: params.entry }),
+                },
+                { appendLine: (s) => log.push(s) },
+            );
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onHistoryAdded?: (params: { entry: unknown }) => void;
+            };
+            evts.onHistoryAdded!({ entry: { id: 'abc', previewId: 'X' } });
+            assert.strictEqual(seen.length, 1);
+            assert.strictEqual(seen[0].moduleId, 'mod');
+            assert.deepStrictEqual(seen[0].entry, { id: 'abc', previewId: 'X' });
+        });
+
+        it('is a no-op when the caller didn\'t register an onHistoryAdded handler', async () => {
+            // No `onHistoryAdded` on SchedulerEvents (it's optional). The
+            // scheduler must tolerate that — daemon pushes still arrive,
+            // they just go nowhere.
+            const gate = new FakeGate();
+            const scheduler = new DaemonScheduler(
+                gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
+                {
+                    onPreviewImageReady: () => {},
+                    onRenderFailed: () => {},
+                    onClasspathDirty: () => {},
+                    // no onHistoryAdded
+                },
+            );
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onHistoryAdded?: (params: { entry: unknown }) => void;
+            };
+            // Doesn't throw.
+            evts.onHistoryAdded!({ entry: { id: 'abc' } });
         });
     });
 });
