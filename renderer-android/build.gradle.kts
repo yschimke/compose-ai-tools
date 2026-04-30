@@ -5,6 +5,7 @@
 // types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
 
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import tapmoc.TapmocExtension
 import tapmoc.configureKotlinCompatibility
 
@@ -19,6 +20,13 @@ plugins {
 
 // See preview-annotations/build.gradle.kts for the rationale.
 configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+// Mirror preview-annotations: silence the 2.3.x compiler's
+// `Language version 2.0 is deprecated …` warning while we hold the floor
+// at 2.0 (see `kotlinCoreLibraries` in libs.versions.toml).
+tasks.withType<KotlinCompilationTask<*>>().configureEach {
+  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
+}
 
 extensions.configure<TapmocExtension> { checkDependencies() }
 
@@ -156,6 +164,16 @@ dependencies {
   // form `captureRoboImage { @Composable }` closes its ActivityScenario
   // eagerly, which detaches the view before ATF gets to run.
   implementation(libs.roborazzi.accessibility.check)
+  // ATF (`accessibility-test-framework`, transitively pulled in via
+  // roborazzi-accessibility-check) annotates its nullable getters with
+  // `@org.checkerframework.checker.nullness.qual.Nullable`. Without this
+  // annotation class on the compile classpath, Kotlin 2.3+ emits
+  // `INACCESSIBLE_TYPE` warnings (KT-80247 — error in language version 2.4)
+  // at every call site reading one of those getters (e.g. AccessibilityChecker's
+  // `el.className` / `el.resourceName` / etc.). compileOnly is enough — the
+  // annotations are marker-only and we don't want to widen consumers'
+  // runtime classpath.
+  compileOnly(libs.checker.qual)
 
   // Tiles rendering is reflection-driven at runtime (the consumer module
   // supplies the actual classes on the JUnit classpath), so we only need
