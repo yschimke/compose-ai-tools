@@ -10,9 +10,9 @@ import java.util.concurrent.TimeUnit
  *
  * Two-phase resolution:
  *
- * 1. **Construction (cheap, called once per daemon).** Captures [worktree], [remote] — the
- *    worktree root and remote URL never change for a daemon's lifetime. Resolution failure leaves
- *    the fields as null. No exception escapes; a non-git directory is fine.
+ * 1. **Construction (cheap, called once per daemon).** Captures [worktree], [remote] — the worktree
+ *    root and remote URL never change for a daemon's lifetime. Resolution failure leaves the fields
+ *    as null. No exception escapes; a non-git directory is fine.
  * 2. **Per-render refresh ([snapshot]).** Re-resolves [GitInfo.branch], [GitInfo.commit],
  *    [GitInfo.dirty] each call (single `git rev-parse` + `git status --porcelain` is sub-50ms in
  *    the typical project). [GitInfo.remote] is taken from the cached value.
@@ -106,10 +106,15 @@ class GitProvenance(
   )
 
   companion object {
-    /** Environment variable populated by the harness / agent supervisor — HISTORY.md § "Agent attribution". */
+    /**
+     * Environment variable populated by the harness / agent supervisor — HISTORY.md § "Agent
+     * attribution".
+     */
     const val ENV_AGENT_ID: String = "COMPOSEAI_AGENT_ID"
 
-    /** Environment variable that overrides the worktree dir basename — HISTORY.md § "Worktree IDs". */
+    /**
+     * Environment variable that overrides the worktree dir basename — HISTORY.md § "Worktree IDs".
+     */
     const val ENV_WORKTREE_ID: String = "COMPOSEAI_WORKTREE_ID"
   }
 }

@@ -13,8 +13,8 @@ package ee.schimke.composeai.daemon.history
  * source so most filters land mostly-redundant, but the read API still honours them.
  *
  * `sourceKind` / `sourceId` filter by storage backend identity (HISTORY.md § "Wire-format
- * effects"); H1+H2 only have `LocalFsHistorySource` so these are effectively no-ops, but the
- * shape lets H9+ multi-source merging plug in without re-shaping the filter.
+ * effects"); H1+H2 only have `LocalFsHistorySource` so these are effectively no-ops, but the shape
+ * lets H9+ multi-source merging plug in without re-shaping the filter.
  */
 data class HistoryFilter(
   val previewId: String? = null,
@@ -76,11 +76,11 @@ data class HistoryReadResult(
 /**
  * Pluggable history backend — see HISTORY.md § "HistorySource interface".
  *
- * H1+H2 ships only [LocalFsHistorySource]. Future phases (H10 onward) will add `GitRefHistorySource`
- * and `HttpMirrorHistorySource`; the consumer side merges across configured sources by `pngHash +
- * previewId + git.commit`. The interface is intentionally narrow: write is a side-effect of
- * [HistoryManager.recordRender]; read is paginated; watch is reserved for future phases (a UI
- * doesn't poll, it subscribes to `historyAdded`).
+ * H1+H2 ships only [LocalFsHistorySource]. Future phases (H10 onward) will add
+ * `GitRefHistorySource` and `HttpMirrorHistorySource`; the consumer side merges across configured
+ * sources by `pngHash + previewId + git.commit`. The interface is intentionally narrow: write is a
+ * side-effect of [HistoryManager.recordRender]; read is paginated; watch is reserved for future
+ * phases (a UI doesn't poll, it subscribes to `historyAdded`).
  */
 interface HistorySource {
   /** Stable identifier — e.g. `"fs:/abs/historyDir"`, `"git:preview/main"`, `"http:https://…"`. */
@@ -93,8 +93,8 @@ interface HistorySource {
   fun supportsWrites(): Boolean
 
   /**
-   * Persists [entry] (and its associated PNG bytes) into the backing store. Throws when this
-   * source isn't writable — gate via [supportsWrites] first.
+   * Persists [entry] (and its associated PNG bytes) into the backing store. Throws when this source
+   * isn't writable — gate via [supportsWrites] first.
    *
    * Failures here must NOT be load-bearing for the render itself — `HistoryManager.recordRender`
    * catches and logs, then continues. The render succeeded; history is observation, not state.

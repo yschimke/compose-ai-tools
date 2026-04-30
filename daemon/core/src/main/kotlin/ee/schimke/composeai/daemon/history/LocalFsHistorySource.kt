@@ -18,6 +18,7 @@ import kotlinx.serialization.json.Json
  * "On-disk schema".
  *
  * **Layout:**
+ *
  * ```
  * <historyDir>/
  * ├── index.jsonl
@@ -77,7 +78,8 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
         pngFileName
       }
 
-    val canonicalEntry = if (entry.pngPath == effectivePngPath) entry else entry.copy(pngPath = effectivePngPath)
+    val canonicalEntry =
+      if (entry.pngPath == effectivePngPath) entry else entry.copy(pngPath = effectivePngPath)
     val sidecarText = JSON.encodeToString(HistoryEntry.serializer(), canonicalEntry)
     sidecarFile.writeText(sidecarText, StandardCharsets.UTF_8)
 
@@ -106,7 +108,9 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     // Cursor is an opaque base64 of "<timestamp>|<id>"; we drop entries until we pass it.
     val afterCursor =
       if (filter.cursor != null) {
-        val decoded = decodeCursor(filter.cursor) ?: return HistoryListPage(emptyList(), totalCount = totalCount)
+        val decoded =
+          decodeCursor(filter.cursor)
+            ?: return HistoryListPage(emptyList(), totalCount = totalCount)
         matched.dropWhile { it.timestamp != decoded.timestamp || it.id != decoded.id }.drop(1)
       } else {
         matched
@@ -154,8 +158,8 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
   }
 
   /**
-   * Walks the per-preview directory looking for the most recent (lex-sorted) sidecar whose
-   * pngHash matches [hash]. Returns the relative PNG filename of the match, or null when no match.
+   * Walks the per-preview directory looking for the most recent (lex-sorted) sidecar whose pngHash
+   * matches [hash]. Returns the relative PNG filename of the match, or null when no match.
    */
   private fun findMostRecentEntryWithHash(
     previewDir: Path,
@@ -274,8 +278,8 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     const val MAX_LIMIT: Int = 500
 
     /**
-     * JSON configuration shared across the LocalFs path. `encodeDefaults = false` keeps the
-     * sidecar JSON minimal — null fields don't land on disk; readers tolerate their absence.
+     * JSON configuration shared across the LocalFs path. `encodeDefaults = false` keeps the sidecar
+     * JSON minimal — null fields don't land on disk; readers tolerate their absence.
      * `ignoreUnknownKeys = true` keeps forward-compat: a v2 schema add doesn't break a v1 reader.
      */
     private val JSON: Json = Json {
@@ -319,4 +323,3 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     }
   }
 }
-

@@ -59,8 +59,8 @@ data class HistoryEntry(
 @Serializable data class HistorySourceInfo(val kind: String, val id: String)
 
 /**
- * Worktree provenance. `path` is the absolute worktree root; `id` is a human label (defaults to
- * the dir basename or `COMPOSEAI_WORKTREE_ID` env); `agentId` is the optional automated-agent
+ * Worktree provenance. `path` is the absolute worktree root; `id` is a human label (defaults to the
+ * dir basename or `COMPOSEAI_WORKTREE_ID` env); `agentId` is the optional automated-agent
  * self-identifier from `COMPOSEAI_AGENT_ID`. All three are nullable so a non-git workspace still
  * produces a valid sidecar.
  */

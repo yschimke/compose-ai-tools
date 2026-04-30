@@ -35,10 +35,11 @@ class S9HistoryRecordingTest {
   @Test
   fun s9_history_recording_fake_mode() {
     val moduleBuildDir = File("build")
-    val fixtureDir = File(moduleBuildDir, "daemon-harness/fixtures/s9").apply {
-      deleteRecursively()
-      mkdirs()
-    }
+    val fixtureDir =
+      File(moduleBuildDir, "daemon-harness/fixtures/s9").apply {
+        deleteRecursively()
+        mkdirs()
+      }
     val historyDir = Files.createTempDirectory("s9-history").toFile().apply { deleteOnExit() }
     val previewId = "preview-1"
     val pngBytes = TestPatterns.solidColour(64, 64, 0xFF202080.toInt())
@@ -52,18 +53,13 @@ class S9HistoryRecordingTest {
         .filter { it.isNotBlank() }
         .map { File(it) }
     val launcher =
-      FakeHarnessLauncher(
-        fixtureDir = fixtureDir,
-        classpath = classpath,
-        historyDir = historyDir,
-      )
+      FakeHarnessLauncher(fixtureDir = fixtureDir, classpath = classpath, historyDir = historyDir)
     val client = HarnessClient.start(launcher)
     try {
       client.initialize()
       client.sendInitialized()
 
-      val renderNowResult =
-        client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
+      val renderNowResult = client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
       assertEquals(listOf(previewId), renderNowResult.queued)
 
       // historyAdded notification — within 5s of renderFinished. We poll for it explicitly
@@ -93,10 +89,7 @@ class S9HistoryRecordingTest {
       val listResult = client.historyList(HistoryListParams())
       assertEquals(1, listResult.totalCount)
       assertEquals(1, listResult.entries.size)
-      assertEquals(
-        entryId,
-        listResult.entries[0].jsonObject["id"]?.jsonPrimitive?.contentOrNull,
-      )
+      assertEquals(entryId, listResult.entries[0].jsonObject["id"]?.jsonPrimitive?.contentOrNull)
 
       // history/read resolves the PNG path.
       val read = client.historyRead(entryId, inline = false)
@@ -107,7 +100,9 @@ class S9HistoryRecordingTest {
       val exitCode = client.shutdownAndExit()
       assertEquals(0, exitCode)
     } catch (t: Throwable) {
-      System.err.println("S9HistoryRecordingTest failed; stderr from daemon:\n${client.dumpStderr()}")
+      System.err.println(
+        "S9HistoryRecordingTest failed; stderr from daemon:\n${client.dumpStderr()}"
+      )
       throw t
     } finally {
       try {

@@ -34,7 +34,8 @@ import org.junit.Test
  * 1. After a `renderNow` succeeds, a `historyAdded` notification arrives carrying a parseable
  *    [HistoryEntry] whose `pngHash` matches the rendered bytes.
  * 2. `history/list` returns the same entry.
- * 3. `history/read` (default) returns the entry + a non-null `pngPath` referencing the bytes on disk.
+ * 3. `history/read` (default) returns the entry + a non-null `pngPath` referencing the bytes on
+ *    disk.
  * 4. `history/read({inline: true})` returns base64 bytes that decode back to the original PNG.
  * 5. `history/list({previewId: "other"})` filter narrows correctly.
  * 6. `history/read({id: "missing"})` returns a `-32010 HistoryEntryNotFound` error.
@@ -83,7 +84,8 @@ class JsonRpcServerHistoryIntegrationTest {
         historyManager = historyManager,
         onExit = { _ -> exitLatch.countDown() },
       )
-    val serverThread = Thread({ server.run() }, "json-rpc-server-history-test").apply { isDaemon = true }
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-history-test").apply { isDaemon = true }
     serverThread.start()
 
     val received = LinkedBlockingQueue<JsonObject>()
@@ -242,11 +244,13 @@ class JsonRpcServerHistoryIntegrationTest {
    * deterministic blob works.
    */
   private class RealPngHost(private val rendersDir: Path) : RenderHost {
-    @Volatile var lastPngBytes: ByteArray = ByteArray(0)
+    @Volatile
+    var lastPngBytes: ByteArray = ByteArray(0)
       private set
 
     private val queue = LinkedBlockingQueue<RenderRequest>()
-    private val results = java.util.concurrent.ConcurrentHashMap<Long, LinkedBlockingQueue<RenderResult>>()
+    private val results =
+      java.util.concurrent.ConcurrentHashMap<Long, LinkedBlockingQueue<RenderResult>>()
 
     @Volatile private var stopped = false
     private val worker =

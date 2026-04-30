@@ -11,8 +11,8 @@ import org.junit.Test
 /**
  * Pins reader-side robustness from HISTORY.md § "Concurrency model" / § "Provenance trust":
  * - Truncated index lines are skipped with a warn log, not a parse exception.
- * - Index entries that reference a sidecar that doesn't exist on disk are silently dropped from
- *   the listing — "self-healing on next prune".
+ * - Index entries that reference a sidecar that doesn't exist on disk are silently dropped from the
+ *   listing — "self-healing on next prune".
  */
 class LocalFsHistorySourceCorruptionTest {
 
@@ -41,9 +41,10 @@ class LocalFsHistorySourceCorruptionTest {
     // Append a truncated line + a syntactically-valid line for an entry with no sidecar on disk.
     val orphanId = "ts-02-deadbeef"
     val orphanEntry =
-      makeEntry(id = orphanId, hash = "deadbeef".repeat(8), size = 100L).copy(timestamp = "2026-04-30T11:00:00Z")
+      makeEntry(id = orphanId, hash = "deadbeef".repeat(8), size = 100L)
+        .copy(timestamp = "2026-04-30T11:00:00Z")
     val indexFile = tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)
-    val truncated = "{\"id\":\"truncated\",\"previewId\":"  // Deliberately incomplete.
+    val truncated = "{\"id\":\"truncated\",\"previewId\":" // Deliberately incomplete.
     val orphanLine =
       kotlinx.serialization.json.Json.encodeToString(HistoryEntry.serializer(), orphanEntry)
     Files.write(
@@ -53,7 +54,8 @@ class LocalFsHistorySourceCorruptionTest {
     )
 
     val page = source.list(HistoryFilter())
-    // Only the original valid entry should survive — truncated line + orphan reference both filtered.
+    // Only the original valid entry should survive — truncated line + orphan reference both
+    // filtered.
     assertEquals(1, page.entries.size)
     assertEquals(validId, page.entries[0].id)
     assertNotNull(page.entries[0])

@@ -95,15 +95,14 @@ fun main(args: Array<String>) {
   // the sysprop see the pre-H1 default (no history written, history/list returns empty).
   val historyDirProp = System.getProperty("composeai.daemon.historyDir")
   val workspaceRootProp = System.getProperty("composeai.daemon.workspaceRoot")
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println("compose-ai-daemon harness: HistoryManager active (dir=$dir)")
-      HistoryManager.forLocalFs(
-        historyDir = Path.of(dir),
-        module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
-        gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println("compose-ai-daemon harness: HistoryManager active (dir=$dir)")
+    HistoryManager.forLocalFs(
+      historyDir = Path.of(dir),
+      module = System.getProperty("composeai.daemon.moduleId") ?: ":harness",
+      gitProvenance = GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of)),
+    )
+  }
 
   val server =
     JsonRpcServer(

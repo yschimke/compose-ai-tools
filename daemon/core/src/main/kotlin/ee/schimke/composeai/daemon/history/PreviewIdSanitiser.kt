@@ -8,8 +8,8 @@ package ee.schimke.composeai.daemon.history
  * schema"): characters that satisfy [Char.isLetterOrDigit] OR are one of `.`, `_`, `-` are kept
  * verbatim; everything else collapses to `_`. Empty input yields the literal `_`.
  *
- * Stable across processes, locale-independent (the Kotlin `Char.isLetterOrDigit` extension delegates
- * to `Character.isLetterOrDigit(int)` which is Unicode-defined, not locale-dependent).
+ * Stable across processes, locale-independent (the Kotlin `Char.isLetterOrDigit` extension
+ * delegates to `Character.isLetterOrDigit(int)` which is Unicode-defined, not locale-dependent).
  */
 internal object PreviewIdSanitiser {
   fun sanitise(previewId: String): String {
