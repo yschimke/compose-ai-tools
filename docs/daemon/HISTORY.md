@@ -746,16 +746,34 @@ from the archive.
 
 ## VS Code integration
 
-A new "Preview History" panel:
+### Scope guidance — v1 is single-preview only
 
-- Scrollable timeline per preview, newest first
+Until the workflow proves itself, the panel **shows the timeline for
+exactly one preview at a time** — the one whose card the user clicked
+the history button on. No cross-preview aggregated view. No "everything
+that happened across the module" feed. Reasons:
+
+- Reduces UI surface (no filters, no preview-selector dropdown).
+- Reduces wire load — `history/list` is called with a `previewId`
+  filter, not unbounded.
+- The cross-preview view is genuinely speculative — it's not clear yet
+  what shape the user actually wants when they're looking at "history
+  for this whole module." Single-preview is the cheap, obviously
+  useful thing to ship first.
+
+Cross-preview / module-wide views are a follow-up once we have user
+signal on the per-preview flow.
+
+### Per-preview panel (v1)
+
+A "Preview History" drawer on each preview card:
+
+- Scrollable timeline for the one preview, newest first
 - Each row: thumbnail + timestamp + trigger reason + bytes-changed indicator
 - Click to expand: full PNG + metadata table
 - Select two rows + "Diff" button → runs `history/diff(mode:"pixel")`,
   shows the marked diff PNG inline
 - "Open in Editor" reveals the source file at `previewMetadata.sourceFile`
-- Filter dropdown: "all" / "only previews that changed" / "only saves
-  that came from <file>"
 
 Storage assumptions:
 - Daemon running → calls `history/list` over the existing JSON-RPC.
