@@ -133,6 +133,189 @@ internal object ComposePreviewTasks {
         extension,
       )
     }
+
+    registerDesktopDaemonStartTask(
+      project,
+      extension,
+      previewOutputDir,
+      sourceClassDirs,
+      dependencyConfigName,
+    )
+  }
+
+  /**
+   * Phase 1, Stream A — desktop counterpart of [AndroidPreviewSupport.registerAndroidTasks]'s
+   * `composePreviewDaemonStart` registration. Wires `:daemon:desktop` (which ships
+   * [ee.schimke.composeai.daemon.DaemonMain] for the `ImageComposeScene` render path) onto a
+   * [DaemonBootstrapTask][ ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask] so the VS Code
+   * extension's `daemonProcess.ts` and the MCP server's `SubprocessDaemonClientFactory` can launch
+   * the desktop daemon JVM directly, the same way they do for Android consumers — closing the gap
+   * called out in `:daemon:desktop`'s `DaemonMain.kt` kdoc and #314 ("desktop has no
+   * `composePreviewDaemonStart`").
+   *
+   * Gated on the in-repo `:daemon:desktop` source tree; the daemon module is intentionally NOT
+   * published to Maven yet (see the kdoc on its `build.gradle.kts`), so out-of-tree consumers don't
+   * get a registration. They still get the `DaemonExtension`-default `enabled = false` and the VS
+   * Code extension's "no descriptor → don't spawn" behaviour, just like the Android side before
+   * `:daemon:android` is published.
+   */
+  private fun registerDesktopDaemonStartTask(
+    project: Project,
+    extension: PreviewExtension,
+    previewOutputDir: Provider<Directory>,
+    sourceClassDirs: FileCollection,
+    dependencyConfigName: String,
+  ) {
+    val daemonProjectDir = project.rootDir.resolve("daemon/desktop")
+    val useLocalDaemon =
+      daemonProjectDir.resolve("build.gradle.kts").exists() ||
+        daemonProjectDir.resolve("build.gradle").exists()
+    if (!useLocalDaemon) {
+      project.logger.debug(
+        "compose-ai-tools: :daemon:desktop is not yet published; experimental.daemon only " +
+          "works with the in-repo source layout."
+      )
+      return
+    }
+
+    val daemonRendererConfig =
+      project.configurations.maybeCreate("composePreviewDesktopDaemon").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+      }
+    try {
+      project.dependencies.add(
+        daemonRendererConfig.name,
+        project.dependencies.project(mapOf("path" to ":daemon:desktop")),
+      )
+    } catch (e: org.gradle.api.UnknownProjectException) {
+      project.logger.debug("compose-ai-tools: :daemon:desktop project not found, skipping", e)
+      return
+    }
+
+    // Mirror the Android registration's eager-resolved values (see
+    // AndroidPreviewSupport.kt) so each MapProperty / ListProperty entry's Provider chain
+    // captures only serialisable references — `org.gradle.configuration-cache.problems=fail`
+    // refuses anything that captures `project` / `this` task / `extension`.
+    val previewsJsonProvider = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
+    val outputFileProvider = previewOutputDir.map { it.file("daemon-launch.json") }
+    val daemonFontsCacheDir =
+      project.layout.projectDirectory
+        .dir(".compose-preview-history")
+        .dir("fonts")
+        .asFile
+        .absolutePath
+    val daemonFontsOffline =
+      project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+    val daemonCheapSignalFiles =
+      collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
+        it.absolutePath
+      }
+    val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
+    // KMP / JVM / Desktop / KMP-Android compile output dirs — same set
+    // [registerDesktopTasks]'s `sourceClassDirs` searches, so the daemon's child
+    // URLClassLoader (CLASSLOADER.md) sees the user's compiled classes when a desktop module
+    // applies any of those plugins.
+    val daemonUserClassMarkers =
+      listOf(
+        "$consumerBuildDir/classes/kotlin/main",
+        "$consumerBuildDir/classes/kotlin/jvm/main",
+        "$consumerBuildDir/classes/kotlin/desktop/main",
+        "$consumerBuildDir/classes/kotlin/android/main",
+      )
+
+    project.tasks.register(
+      "composePreviewDaemonStart",
+      ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
+    ) {
+      modulePath.set(project.path)
+      // Desktop daemons have no AGP variant. The string is surfaced in `daemon-launch.json`'s
+      // `variant` field for debug/log purposes only — VS Code's `daemonProcess.ts` doesn't key
+      // off it.
+      variant.set("desktop")
+      daemonEnabled.set(extension.experimental.daemon.enabled)
+      maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
+      maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
+      warmSpare.set(extension.experimental.daemon.warmSpare)
+      // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
+      // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
+      // jar is FIRST on the classpath below, so this loads the Compose-Multiplatform path.
+      mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+      // Daemon module's classes FIRST so [mainClass] resolves before anything in the
+      // consumer's transitive graph shadows it. `:daemon:desktop` is a Kotlin-JVM module, so
+      // the default `org.gradle.usage=java-runtime` / `artifactType=jar` resolves directly to
+      // the produced JAR — no AGP-style attribute filter needed.
+      classpath.from(daemonRendererConfig)
+      // User's compiled classes — keeps the Kotlin classloader's class-data-sharing intact for
+      // the parent classloader before `UserClassLoaderHolder` constructs its child URL loader.
+      classpath.from(sourceClassDirs)
+      // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
+      project.configurations.findByName(dependencyConfigName)?.let { classpath.from(it) }
+
+      // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
+      // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
+      // ImageComposeScene-specific opens if profiling shows a need.
+      jvmArgs.add(extension.experimental.daemon.maxHeapMb.map { "-Xmx${it}m" })
+
+      // Desktop sysprops are a strict subset of the Android side — no Robolectric / Roborazzi
+      // keys. Per-key `put(...)` so each Provider chain captures only serialisable references
+      // (see Bug 1 fix in `AndroidPreviewSupport.kt` for the rationale).
+      systemProperties.put("composeai.daemon.protocolVersion", "1")
+      systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
+      systemProperties.put(
+        "composeai.daemon.maxHeapMb",
+        extension.experimental.daemon.maxHeapMb.map { it.toString() },
+      )
+      systemProperties.put(
+        "composeai.daemon.maxRendersPerSandbox",
+        extension.experimental.daemon.maxRendersPerSandbox.map { it.toString() },
+      )
+      systemProperties.put(
+        "composeai.daemon.warmSpare",
+        extension.experimental.daemon.warmSpare.map { it.toString() },
+      )
+      systemProperties.put("composeai.daemon.modulePath", project.path)
+      systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
+      systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+      systemProperties.put(
+        "composeai.daemon.userClassDirs",
+        this.classpath.elements.map { elements ->
+          elements
+            .map { it.asFile.absolutePath }
+            .filter { entry -> daemonUserClassMarkers.any { marker -> entry.startsWith(marker) } }
+            .joinToString(java.io.File.pathSeparator)
+        },
+      )
+      systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
+      systemProperties.put("composeai.daemon.previewsJsonPath", previewsJsonProvider)
+
+      workingDirectory.set(project.projectDir.absolutePath)
+      manifestPath.set(previewsJsonProvider)
+      outputFile.set(outputFileProvider)
+      group = "compose preview"
+      description =
+        "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
+    }
+  }
+
+  /**
+   * Tier-1 cheap-signal file set for the desktop daemon's [ClasspathFingerprint][
+   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Same set as [AndroidPreviewSupport]'s
+   * private `collectCheapSignalFiles` — duplicated rather than extracted into a shared helper to
+   * keep this PR scoped to the desktop registration; both call sites can be unified once both
+   * branches stabilise.
+   */
+  private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> {
+    val out = LinkedHashSet<java.io.File>()
+    val rootProject = project.rootProject
+    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
+    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
+      .forEach { out += rootProject.file(it) }
+    rootProject.allprojects.forEach { sub ->
+      out += sub.file("build.gradle.kts")
+      out += sub.file("build.gradle")
+    }
+    return out.filter { it.isFile }
   }
 
   /**
