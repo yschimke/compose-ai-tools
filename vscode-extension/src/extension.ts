@@ -18,6 +18,7 @@ import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
+import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -483,15 +484,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(doc => {
             if (!isSourceFile(doc.uri.fsPath)) { return; }
-            // Side-channel: when the daemon path is enabled and healthy for
-            // this file's module, push a fileChanged notification + focused
-            // renderNow so the daemon can update the visible preview within
-            // its sub-second hot-sandbox latency budget. This runs alongside
-            // (not instead of) the Gradle refresh — the daemon's renderFinished
-            // typically arrives first; Gradle's slower full-fidelity pass
-            // backstops anything the daemon doesn't cover. When the daemon is
-            // disabled (default) `notifyDaemonOfSave` is a no-op.
-            void notifyDaemonOfSave(doc.uri.fsPath);
+            // The daemon-vs-Gradle decision is made inside runRefreshExclusive
+            // — either path runs, never both. See `pickRefreshMode` for the
+            // health gate. When the daemon flag is off (default) the gate
+            // always returns 'gradle' so behaviour is byte-identical to today.
             if (!firstSaveSeen.has(doc.uri.fsPath) && !refreshInFlight && pendingSavePath === null) {
                 firstSaveSeen.add(doc.uri.fsPath);
                 invalidateModuleCache(doc.uri.fsPath);
@@ -653,10 +649,10 @@ function invalidateModuleCache(filePath: string): void {
  * the daemon is disabled or unhealthy, this is a complete no-op — the
  * existing Gradle path is the entire user-facing behaviour.
  */
-async function notifyDaemonOfSave(filePath: string): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return false; }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return; }
+    if (!module) { return false; }
 
     // Bootstrap (Gradle task + JVM spawn) happens once per module per
     // session. Normally it has already fired from the active-editor warm
@@ -671,20 +667,25 @@ async function notifyDaemonOfSave(filePath: string): Promise<void> {
     }
 
     const ok = await daemonScheduler.ensureModule(module);
-    if (!ok) { return; }
+    if (!ok) { return false; }
     await daemonScheduler.fileChanged(module, filePath);
 
     // Focus scope = the saved file's previews, derived from the most recent
     // manifest snapshot we got from Gradle's discoverPreviews. The daemon
     // reads this for queue ordering — focused first. If we don't yet have a
     // manifest for this module the focus call is skipped; the next refresh
-    // will populate moduleManifestCache.
+    // will populate moduleManifestCache. Returning true with no ids is
+    // intentional — the daemon already saw `fileChanged` so its internal
+    // discovery + render will catch any newly-discovered previews on its
+    // own; the caller just shouldn't escalate to a Gradle render in that
+    // case (the panel will repopulate via discover + the daemon's
+    // discoveryUpdated push).
     const filterFile = packageQualifiedSourcePath(filePath);
     const manifest = moduleManifestCache.get(module) ?? [];
     const ids = manifest.filter(p => p.sourceFile === filterFile).map(p => p.id);
-    if (ids.length === 0) { return; }
+    if (ids.length === 0) { return true; }
     await daemonScheduler.setFocus(module, ids);
-    await daemonScheduler.renderNow(module, ids, 'fast', 'save');
+    return await daemonScheduler.renderNow(module, ids, 'fast', 'save');
 }
 
 /**
@@ -802,6 +803,14 @@ function maybeFirePendingRefresh(): void {
  *  can tell whether to defer. On completion picks up anything that arrived
  *  during the run, re-applying the debounce-elapsed check.
  *
+ *  Picks daemon-vs-Gradle deliberately — never runs both for the same save.
+ *  When the daemon is healthy for the file's module, the save uses the
+ *  daemon's hot sandbox (sub-second updateImage via `renderFinished`); the
+ *  refresh itself is `forceRender=false` so Gradle does a cheap cached
+ *  discovery for the panel manifest only. When the daemon is disabled or
+ *  unhealthy, the refresh is `forceRender=true` and Gradle does a full
+ *  render as today.
+ *
  *  Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
  *  keep their previous PNG/GIF on disk and surface as stale in the panel —
  *  the user re-renders them on demand via the refresh command, which uses
@@ -809,11 +818,43 @@ function maybeFirePendingRefresh(): void {
 async function runRefreshExclusive(filePath: string): Promise<void> {
     refreshInFlight = true;
     try {
+        const mode = pickRefreshMode(filePath);
+        if (mode === 'daemon') {
+            // Daemon owns rendering for this save. Notify it about the
+            // change + focus the visible previews; Gradle does discovery
+            // only (cached) so the manifest is current without spinning up
+            // the slow renderPreviews task.
+            const accepted = await notifyDaemonOfSave(filePath);
+            if (accepted) {
+                await refresh(false, filePath);
+                return;
+            }
+            // Daemon was healthy at decision time but the actual call
+            // failed — race with channel close, sandbox died mid-save,
+            // gate unexpectedly returned null. Deliberate switch: run the
+            // Gradle render so the user still sees fresh previews.
+            logLine('daemon: rejected the work — falling back to Gradle render');
+        }
         await refresh(true, filePath, 'fast');
     } finally {
         refreshInFlight = false;
         maybeFirePendingRefresh();
     }
+}
+
+/**
+ * Decides which path handles a save. See `refreshMode.ts` for the pure
+ * predicate; this is the production wrapper that reads the live
+ * module-level state from the gate / gradle service.
+ */
+function pickRefreshMode(filePath: string): RefreshMode {
+    if (!daemonGate || !gradleService) { return 'gradle'; }
+    return pickRefreshModeFor(
+        filePath,
+        daemonGate.isEnabled(),
+        gradleService.resolveModule(filePath),
+        (m) => daemonGate!.isDaemonReady(m),
+    );
 }
 
 function sendModuleList() {
