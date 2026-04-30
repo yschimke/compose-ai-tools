@@ -35,6 +35,34 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
+ * Transport-agnostic session surface. Only the notification fan-out methods that subscribers /
+ * watchers / progress callers actually need; request handling stays inside the concrete transport
+ * (today: [McpSession] over stdio).
+ *
+ * Defining this interface — instead of typing [Subscriptions] on the concrete [McpSession] — lets a
+ * future HTTP / streamable-HTTP transport plug in its own per-connection session type without an
+ * unsafe `as?` cast in the supervisor's notification routing.
+ */
+interface Session {
+  /** Sends `notifications/resources/updated` for [uri]. */
+  fun notifyResourceUpdated(uri: String)
+
+  /** Sends `notifications/resources/list_changed`. */
+  fun notifyResourceListChanged()
+
+  /**
+   * Sends a `notifications/progress` for the request identified by [token]. No-op when the client
+   * didn't opt in (caller's responsibility to skip the call when the token is null).
+   */
+  fun notifyProgress(
+    token: kotlinx.serialization.json.JsonElement,
+    progress: Double,
+    total: Double? = null,
+    message: String? = null,
+  )
+}
+
+/**
  * A single MCP session over `Content-Length`-framed stdio (matching MCP's stdio transport spec).
  *
  * Conceptually this is one connected MCP client. v0 ships one session per server process; HTTP
@@ -55,7 +83,7 @@ class McpSession(
   private val serverInfo: Implementation,
   private val capabilities: ServerCapabilities,
   threadName: String = "mcp-session",
-) : Closeable {
+) : Closeable, Session {
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -82,15 +110,13 @@ class McpSession(
     sendFrame(json.encodeToString(McpNotification.serializer(), n))
   }
 
-  /** Sends `notifications/resources/updated` for [uri]. */
-  fun notifyResourceUpdated(uri: String) {
+  override fun notifyResourceUpdated(uri: String) {
     val params =
       json.encodeToJsonElement(ResourceUpdatedParams.serializer(), ResourceUpdatedParams(uri))
     notify("notifications/resources/updated", params)
   }
 
-  /** Sends `notifications/resources/list_changed`. */
-  fun notifyResourceListChanged() {
+  override fun notifyResourceListChanged() {
     notify("notifications/resources/list_changed")
   }
 
@@ -102,11 +128,11 @@ class McpSession(
    * the [token] argument is the verbatim value the client sent. [progress] is monotonic (caller's
    * responsibility); [total] is optional and may be unknown for streaming work.
    */
-  fun notifyProgress(
+  override fun notifyProgress(
     token: kotlinx.serialization.json.JsonElement,
     progress: Double,
-    total: Double? = null,
-    message: String? = null,
+    total: Double?,
+    message: String?,
   ) {
     val params =
       kotlinx.serialization.json.buildJsonObject {

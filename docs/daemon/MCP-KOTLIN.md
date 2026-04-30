@@ -423,27 +423,77 @@ client's. Three explicit transitions:
 
 ## Phasing
 
-**v0** — stdio only. Tools: `render_preview`. Resources: list + read,
-no subscriptions. Single-module supervisor. Goal: one MCP-aware agent
-can render previews via the existing daemon. No new agent capabilities
-yet — this is the wiring proof.
+**v0 — shipped (#309).** Stdio transport. Tools: `register_project`,
+`unregister_project`, `list_projects`, `render_preview`. Resources:
+list + read. Single MCP server can supervise per-(workspace, module)
+daemons across multiple distinct projects (the path-hashed
+`WorkspaceId` makes worktrees of the same repo distinct by
+construction).
 
-**v1** — subscriptions. Resource subscribe/unsubscribe; `renderFinished`
-→ `notifications/resources/updated`; `discoveryUpdated` →
-`notifications/resources/list_changed`. The push story. Add
-`discover_previews` and `list_modules` tools.
+**v1 — shipped (#317, #321, #328, this branch).** Subscriptions and
+the push story:
 
-**v2** — Ktor streamable-HTTP transport. Remote agents work. Auth /
-TLS / rate-limiting decisions land here as a sibling design (out of
-scope for v0/v1).
+- Resource subscribe / unsubscribe; `renderFinished` →
+  `notifications/resources/updated`; `discoveryUpdated` →
+  `notifications/resources/list_changed`.
+- `watch` / `unwatch` / `list_watches` tools: register an
+  area-of-interest set (workspace + module + FQN glob); the supervisor
+  expands to URIs and forwards as `setVisible` / `setFocus` to the
+  matched daemons. Re-expansion on `discoveryUpdated`.
+- `notify_file_changed` tool — forwards `fileChanged` to all daemons
+  in the matched workspace plus re-issues `renderNow` for any watched
+  / subscribed URI so the daemon produces fresh bytes that flow back
+  through the existing push path.
+- `set_visible` / `set_focus` explicit tools — direct passthrough to
+  the daemon for "render this one ahead of others" UX. Originally
+  filed as v4; landed early because the wiring was trivial once watch
+  + propagator were in place.
+- `notifications/progress` for slow renders. Clients opt in via
+  `_meta.progressToken` in the `resources/read` request; the server
+  schedules periodic beats during the render wait and self-cancels on
+  completion.
+- Multi-waiter `pendingRenders` dedup — concurrent reads of the same
+  URI all wake on the same `renderFinished`.
+- `classpathDirty` respawn: dropping the dying daemon, async spawn of
+  the replacement, in-flight read-waiter failure with a typed reason,
+  re-emit `setVisible` to the new daemon once its initial discovery
+  seeds. One-retry cap to prevent stale-descriptor thrashing.
+- Async daemon spawn from `watch` so the McpSession reader thread
+  never blocks on cold start (Robolectric ~5–10 s, desktop ~600 ms).
+- Real-daemon `RealMcpEndToEndTest` opt-in on `-Pmcp.real=true`,
+  driving a live desktop daemon JVM through edit → recompile →
+  `notify_file_changed` → re-read → `git checkout` → re-read.
 
-**v3** — sampling/elicitation hooks for cases where the server wants
-to ask the client mid-render (e.g. preview-parameter selection).
-Speculative; gate on actual demand.
+**v1.5 — shipped (#318, #322, this branch).** H6 history mapping.
+Daemon ships H1+H2 (`history/list` / `history/read` /
+`historyAdded`) and H3 metadata diff + H10a git-ref read. The MCP
+layer wires:
 
-**v4** — agent-driven priority via `set_focus` tool. Gate on observed
-agent-loop patterns; the implicit "most-recent-read = highest
-priority" heuristic may be enough.
+- New URI scheme `compose-preview-history://<workspace>/<module>/<previewFqn>/<entryId>`.
+- `history_list` and `history_diff` tools (METADATA mode only;
+  pixel mode reserved for daemon H5).
+- `resources/read` on a history URI → daemon `history/read` with
+  `inline = true`, falls back to disk read on git-ref sources.
+- `historyAdded` daemon notification → `notifications/resources/list_changed`
+  fired only to sessions subscribed to / watching the matching live URI
+  (not a global broadcast).
+
+**v2 — open.** Ktor streamable-HTTP transport. Remote agents work.
+Auth / TLS / rate-limiting decisions land here as a sibling design
+(out of scope for v0/v1). Once HTTP lands, `Subscriptions` already
+types its session refs against the [`Session`](
+../../mcp/src/main/kotlin/ee/schimke/composeai/mcp/McpServer.kt)
+interface (not the concrete `McpSession`), so an HTTP session type
+plugs in without an unsafe cast.
+
+**v3 — open.** Sampling/elicitation hooks for cases where the server
+wants to ask the client mid-render (e.g. preview-parameter
+selection). Speculative; gate on actual demand.
+
+**Pixel-mode history diff — open.** When daemon H5 lands the
+`mode = "pixel"` path, `history_diff` flips a flag from METADATA to
+PIXEL and surfaces the `diffPx` / `ssim` / `diffPngPath` fields the
+wire shape already reserves.
 
 ## Risks
 
