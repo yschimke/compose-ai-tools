@@ -35,6 +35,7 @@ class FakeClient {
 class FakeGate {
     public enabled = true;
     public client: FakeClient | null = new FakeClient();
+    public ready = false;
     public capturedEvents = new Map<string, {
         onRenderFinished?: (p: { id: string; pngPath: string; tookMs: number }) => void;
         onRenderFailed?: (p: { id: string; error: { message: string } }) => void;
@@ -43,9 +44,19 @@ class FakeGate {
     }>();
 
     isEnabled(): boolean { return this.enabled; }
+    isDaemonReady(_moduleId: string): boolean { return this.ready; }
     getOrSpawn(moduleId: string, events: unknown): Promise<FakeClient | null> {
         this.capturedEvents.set(moduleId, events as never);
         return Promise.resolve(this.client);
+    }
+}
+
+class FakeGradleService {
+    public bootstrapCalls: string[] = [];
+    public bootstrapShouldThrow: Error | null = null;
+    async runDaemonBootstrap(moduleId: string): Promise<void> {
+        this.bootstrapCalls.push(moduleId);
+        if (this.bootstrapShouldThrow) { throw this.bootstrapShouldThrow; }
     }
 }
 
@@ -260,5 +271,84 @@ describe('DaemonScheduler', () => {
         const ok = await scheduler.renderNow('mod', ['p1', 'pBad'], 'fast');
         assert.strictEqual(ok, true);
         assert.ok(log.some(l => l.includes('rejected pBad')), `expected rejected log, got: ${log.join(' / ')}`);
+    });
+
+    describe('warmModule', () => {
+        it('drives progress through bootstrapping → spawning → ready on the cold path', async () => {
+            const { scheduler } = build();
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(states, ['bootstrapping', 'spawning', 'ready']);
+            assert.deepStrictEqual(gradle.bootstrapCalls, ['mod']);
+        });
+
+        it('short-circuits to ready without re-bootstrapping when the daemon is already up', async () => {
+            const { gate, scheduler } = build();
+            gate.ready = true;
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(states, ['ready']);
+            assert.deepStrictEqual(gradle.bootstrapCalls, [], 'bootstrap should not run when daemon is ready');
+        });
+
+        it('reports fallback when the bootstrap task throws', async () => {
+            const { scheduler } = build();
+            const gradle = new FakeGradleService();
+            gradle.bootstrapShouldThrow = new Error('Gradle config-cache rejected');
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, false);
+            assert.deepStrictEqual(states, ['bootstrapping', 'fallback']);
+        });
+
+        it('reports fallback when the JVM spawn fails', async () => {
+            // Disabled gate makes ensureModule return false (caller falls
+            // back to Gradle); warmModule should mirror that as 'fallback'.
+            const { gate, scheduler } = build();
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            // After bootstrap the scheduler tries to spawn — flip the gate
+            // so spawn returns null on the second call only by clearing
+            // the client.
+            gate.client = null;
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, false);
+            assert.deepStrictEqual(states, ['bootstrapping', 'spawning', 'fallback']);
+        });
+
+        it('returns false without progress events when the gate is disabled', async () => {
+            const { gate, scheduler } = build();
+            gate.enabled = false;
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, false);
+            assert.deepStrictEqual(states, []);
+            assert.deepStrictEqual(gradle.bootstrapCalls, []);
+        });
     });
 });

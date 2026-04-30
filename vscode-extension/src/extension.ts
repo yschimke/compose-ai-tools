@@ -16,7 +16,7 @@ import { packageQualifiedSourcePath } from './sourcePath';
 import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
-import { DaemonScheduler } from './daemon/daemonScheduler';
+import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -29,6 +29,8 @@ const INIT_DELAY_MS = 1000;
 let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
+let daemonStatusItem: vscode.StatusBarItem | null = null;
+let daemonStatusClearTimer: NodeJS.Timeout | null = null;
 /** Tracks the most recent preview set per module for daemon focus computation.
  *  The daemon path doesn't re-issue `discoverPreviews` on every save — it
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
@@ -219,6 +221,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         },
     }, outputChannel);
 
+    // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
+    // off or no module is currently warming. Surfacing the cold-bootstrap
+    // pause (typically 2-4 s on first scope-in) avoids the "panel is stuck"
+    // perception on the experimental flag's first-time UX.
+    daemonStatusItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left, 90,
+    );
+    daemonStatusItem.command = 'workbench.action.output.toggleOutput';
+    context.subscriptions.push(daemonStatusItem);
+
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -372,6 +384,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // burns a Gradle invocation — all for a no-op.
                 if (filePath === currentScopeFile) { return; }
                 refresh(false, filePath);
+                // Pre-warm the daemon for this file's module so the first
+                // save in the session collapses to "kotlinc + render"
+                // instead of "Gradle bootstrap + JVM spawn + sandbox init
+                // + render". No-op when the daemon flag is off.
+                void warmDaemonForFile(filePath);
                 return;
             }
             // New active isn't a Kotlin editor (webview focus, Agent plan,
@@ -450,6 +467,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             const active = vscode.window.activeTextEditor;
             if (active?.document.languageId === 'kotlin') {
                 refresh(false, active.document.uri.fsPath);
+                void warmDaemonForFile(active.document.uri.fsPath);
             } else {
                 // No Kotlin file in focus — let refresh() emit the empty-state
                 // message without trying to load anything.
@@ -578,11 +596,16 @@ async function notifyDaemonOfSave(filePath: string): Promise<void> {
     const module = gradleService.resolveModule(filePath);
     if (!module) { return; }
 
-    // First time we hit a module with the daemon enabled: kick the bootstrap
-    // task so daemon-launch.json exists. Cheap on subsequent calls (cacheable).
+    // Bootstrap (Gradle task + JVM spawn) happens once per module per
+    // session. Normally it has already fired from the active-editor warm
+    // path; on the rare case where the user saves before scope-in (e.g.
+    // external file save, another editor split) we cover ourselves here.
     if (!daemonBootstrappedModules.has(module)) {
         daemonBootstrappedModules.add(module);
-        await daemonGate.bootstrap(gradleService, module);
+        await daemonScheduler.warmModule(
+            gradleService, module,
+            (state) => updateDaemonStatus(module, state),
+        );
     }
 
     const ok = await daemonScheduler.ensureModule(module);
@@ -600,6 +623,76 @@ async function notifyDaemonOfSave(filePath: string): Promise<void> {
     if (ids.length === 0) { return; }
     await daemonScheduler.setFocus(module, ids);
     await daemonScheduler.renderNow(module, ids, 'fast', 'save');
+}
+
+/**
+ * Eager pre-warm path: when the user navigates to a Kotlin file in a
+ * daemon-enabled module, kick off `composePreviewDaemonStart` + JVM spawn
+ * in the background so the first save in the session collapses to
+ * "kotlinc + render" instead of paying the cold-bootstrap latency on the
+ * user's interactive path. No-op when the daemon flag is off, when the
+ * file isn't in a preview module, or when the daemon is already up.
+ */
+async function warmDaemonForFile(filePath: string): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module) { return; }
+    if (daemonBootstrappedModules.has(module)) { return; }
+    daemonBootstrappedModules.add(module);
+    await daemonScheduler.warmModule(
+        gradleService, module,
+        (state) => updateDaemonStatus(module, state),
+    );
+}
+
+/**
+ * Drives the status-bar item through the warm-up state machine. The
+ * "ready" state holds for a few seconds so the user sees the transition
+ * from "warming" before the indicator fades; "fallback" holds longer so
+ * the user can see why their file was rendered via Gradle. Hidden any
+ * time no module is in flight.
+ */
+function updateDaemonStatus(module: string, state: WarmState): void {
+    if (!daemonStatusItem) { return; }
+    if (daemonStatusClearTimer) {
+        clearTimeout(daemonStatusClearTimer);
+        daemonStatusClearTimer = null;
+    }
+    switch (state) {
+        case 'bootstrapping':
+            daemonStatusItem.text = `$(loading~spin) Daemon: bootstrapping ${module}…`;
+            // Cold-build context: composePreviewDaemonStart itself is a
+            // small JSON-emit task, but it depends on the consumer's
+            // compileKotlin / variant resolution. On a fresh checkout
+            // (or after `gradlew clean`, or after a Compose version
+            // bump) this can take minutes while Gradle builds the
+            // renderer's classpath. Subsequent runs are cacheable and
+            // collapse to ~1 s on a warm Gradle daemon.
+            daemonStatusItem.tooltip = 'Running composePreviewDaemonStart. '
+                + 'On a cold build (fresh checkout, after clean, or after a '
+                + 'Compose version bump) this may take a few minutes while '
+                + 'Gradle compiles the renderer classpath. Cacheable on '
+                + 'subsequent runs.';
+            daemonStatusItem.show();
+            break;
+        case 'spawning':
+            daemonStatusItem.text = `$(loading~spin) Daemon: spawning ${module}…`;
+            daemonStatusItem.tooltip = 'Launching the preview daemon JVM and running initialize';
+            daemonStatusItem.show();
+            break;
+        case 'ready':
+            daemonStatusItem.text = `$(check) Daemon: ${module}`;
+            daemonStatusItem.tooltip = 'Preview daemon is up and serving renders';
+            daemonStatusItem.show();
+            daemonStatusClearTimer = setTimeout(() => daemonStatusItem?.hide(), 4000);
+            break;
+        case 'fallback':
+            daemonStatusItem.text = `$(warning) Daemon: ${module} (using Gradle)`;
+            daemonStatusItem.tooltip = 'Daemon spawn failed — using the Gradle render path. See Output → Compose Preview.';
+            daemonStatusItem.show();
+            daemonStatusClearTimer = setTimeout(() => daemonStatusItem?.hide(), 8000);
+            break;
+    }
 }
 
 /** Per-extension-session memo so bootstrap runs once per module. */
