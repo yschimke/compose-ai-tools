@@ -1,6 +1,9 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
+import ee.schimke.composeai.daemon.protocol.FileChangedParams
+import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -105,6 +108,19 @@ class DaemonClient(
     sendNotification(
       "setFocus",
       json.encodeToJsonElement(SetFocusParams.serializer(), SetFocusParams(ids = ids)),
+    )
+
+  fun fileChanged(
+    path: String,
+    kind: FileKind = FileKind.SOURCE,
+    changeType: ChangeType = ChangeType.MODIFIED,
+  ) =
+    sendNotification(
+      "fileChanged",
+      json.encodeToJsonElement(
+        FileChangedParams.serializer(),
+        FileChangedParams(path = path, kind = kind, changeType = changeType),
+      ),
     )
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */

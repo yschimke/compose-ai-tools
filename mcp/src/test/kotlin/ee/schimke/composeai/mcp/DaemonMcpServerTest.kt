@@ -96,6 +96,7 @@ class DaemonMcpServerTest {
         "watch",
         "unwatch",
         "list_watches",
+        "notify_file_changed",
       )
   }
 

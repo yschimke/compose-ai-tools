@@ -124,13 +124,45 @@ class DaemonSupervisor(
       onClose = { router.dispatchClose(supervised) },
     )
     runCatching {
-      spawn.client.initialize(
-        workspaceRoot = project.path.absolutePath,
-        moduleId = modulePath,
-        moduleProjectDir = descriptor.workingDirectory,
-      )
+      val result =
+        spawn.client.initialize(
+          workspaceRoot = project.path.absolutePath,
+          moduleId = modulePath,
+          moduleProjectDir = descriptor.workingDirectory,
+        )
+      // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes via
+      // `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
+      // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by reading
+      // that file and dispatching it through the router as if it were a wire-level event. This
+      // keeps every catalog-population code path (DaemonMcpServer.onDiscoveryUpdated) on a single
+      // shape rather than splitting "initial seed" vs "incremental".
+      synthesiseInitialDiscovery(supervised, result.manifest.path)
     }
     return supervised
+  }
+
+  private fun synthesiseInitialDiscovery(daemon: SupervisedDaemon, manifestPath: String) {
+    if (manifestPath.isBlank()) return
+    val file = File(manifestPath)
+    if (!file.isFile) return
+    val previews =
+      runCatching {
+          val text = file.readText()
+          val arr =
+            (Json.parseToJsonElement(text) as? JsonObject)?.get("previews")
+              as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
+          arr.mapNotNull { it as? JsonObject }
+        }
+        .getOrNull() ?: return
+    if (previews.isEmpty()) return
+    val params =
+      kotlinx.serialization.json.buildJsonObject {
+        put("added", kotlinx.serialization.json.JsonArray(previews))
+        put("removed", kotlinx.serialization.json.JsonArray(emptyList()))
+        put("changed", kotlinx.serialization.json.JsonArray(emptyList()))
+        put("totalPreviews", kotlinx.serialization.json.JsonPrimitive(previews.size))
+      }
+    router.dispatch(daemon, "discoveryUpdated", params)
   }
 }
 

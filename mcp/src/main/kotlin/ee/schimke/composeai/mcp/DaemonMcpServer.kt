@@ -1,5 +1,7 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.ChangeType
+import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
@@ -334,6 +336,27 @@ class DaemonMcpServer(
         description = "List the watches registered by the current session.",
         inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
       ),
+      ToolDef(
+        name = "notify_file_changed",
+        description =
+          "Tell every daemon in the matched workspace that a file changed. Forwards a `fileChanged` notification to the daemon so it can re-run discovery / mark previews stale. Use after editing source files outside the MCP server's view (e.g. via a coding agent that doesn't run a file watcher).",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "path":{"type":"string","description":"Absolute path of the changed file."},
+                "kind":{"type":"string","enum":["source","resource","classpath"],"default":"source"},
+                "changeType":{"type":"string","enum":["modified","created","deleted"],"default":"modified"}
+              },
+              "required":["workspaceId","path"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -350,6 +373,7 @@ class DaemonMcpServer(
       "watch" -> toolWatch(session, args)
       "unwatch" -> toolUnwatch(session, args)
       "list_watches" -> toolListWatches(session)
+      "notify_file_changed" -> toolNotifyFileChanged(args)
       else -> errorCallToolResult("unknown tool: $name")
     }
   }
@@ -426,18 +450,30 @@ class DaemonMcpServer(
       args["workspaceId"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("watch: missing 'workspaceId'")
     val workspaceId = WorkspaceId(ws)
-    if (supervisor.project(workspaceId) == null) {
-      return errorCallToolResult(
-        "watch: workspace '$ws' not registered. Call register_project first."
-      )
-    }
+    val project =
+      supervisor.project(workspaceId)
+        ?: return errorCallToolResult(
+          "watch: workspace '$ws' not registered. Call register_project first."
+        )
     val module = args["module"]?.jsonPrimitive?.contentOrNull
     val glob = args["fqnGlob"]?.jsonPrimitive?.contentOrNull
     val entry = WatchEntry(workspaceId = workspaceId, modulePath = module, fqnGlobPattern = glob)
     subscriptions.watch(session, entry)
+    // Eagerly spawn the daemons matching this watch so they begin emitting `discoveryUpdated`
+    // and the catalog populates without the client having to make a speculative `read` first.
+    // - With an explicit `module`, spawn just that one.
+    // - Without `module`, spawn every `knownModules` entry the workspace declared (typically
+    //   passed via `register_project`'s `modules` arg).
+    val toSpawn =
+      if (module != null) listOf(module)
+      else synchronized(project.knownModules) { project.knownModules.toList() }
+    toSpawn.forEach { mp ->
+      runCatching { supervisor.daemonFor(workspaceId, mp) }
+        .onFailure { System.err.println("watch: lazy spawn failed for $mp: ${it.message}") }
+    }
     // Recompute every daemon's view; the propagator skips daemons whose URI set didn't change.
-    supervisor.project(workspaceId)?.daemons?.values?.forEach { watchPropagator.recompute(it) }
-    return textCallToolResult("watching $entry")
+    project.daemons.values.forEach { watchPropagator.recompute(it) }
+    return textCallToolResult("watching $entry (spawned ${toSpawn.size} daemon(s))")
   }
 
   private fun toolUnwatch(session: McpSession, args: JsonObject): CallToolResult {
@@ -475,6 +511,70 @@ class DaemonMcpServer(
       }
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  private fun toolNotifyFileChanged(args: JsonObject): CallToolResult {
+    val ws =
+      args["workspaceId"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("notify_file_changed: missing 'workspaceId'")
+    val workspaceId = WorkspaceId(ws)
+    val project =
+      supervisor.project(workspaceId)
+        ?: return errorCallToolResult("notify_file_changed: unknown workspace '$ws'")
+    val path =
+      args["path"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("notify_file_changed: missing 'path'")
+    val kind =
+      when (args["kind"]?.jsonPrimitive?.contentOrNull) {
+        "resource" -> FileKind.RESOURCE
+        "classpath" -> FileKind.CLASSPATH
+        else -> FileKind.SOURCE
+      }
+    val changeType =
+      when (args["changeType"]?.jsonPrimitive?.contentOrNull) {
+        "created" -> ChangeType.CREATED
+        "deleted" -> ChangeType.DELETED
+        else -> ChangeType.MODIFIED
+      }
+    // Forward to every spawned daemon in the workspace. The daemon itself decides whether the
+    // file is in its module's source set; the supervisor doesn't try to be clever about
+    // dispatch. After the file change, also re-issue `renderNow` for every URI any session has
+    // watched/subscribed in this workspace, so the daemon produces fresh bytes that get pushed
+    // out via the existing `renderFinished` → `notifications/resources/updated` path.
+    var forwarded = 0
+    var rendered = 0
+    project.daemons.values.forEach { daemon ->
+      runCatching { daemon.client.fileChanged(path = path, kind = kind, changeType = changeType) }
+        .onSuccess { forwarded++ }
+      val byId = catalog[DaemonAddr(daemon.workspaceId, daemon.modulePath)] ?: return@forEach
+      // Build the candidate URI set for this daemon and intersect with current watches/subs.
+      val candidates =
+        byId.values.map { entry ->
+          PreviewUri(
+            workspaceId = daemon.workspaceId,
+            modulePath = daemon.modulePath,
+            previewFqn = entry.fqn,
+            config = entry.config,
+          )
+        }
+      val ofInterest = candidates.filter { uri ->
+        subscriptions.sessionsWatching(uri).isNotEmpty() ||
+          subscriptions.sessionsSubscribedTo(uri.toUri()).isNotEmpty()
+      }
+      if (ofInterest.isNotEmpty()) {
+        runCatching {
+          daemon.client.renderNow(
+            previews = ofInterest.map { it.previewFqn },
+            tier = RenderTier.FULL,
+            reason = "notify_file_changed:$path",
+          )
+        }
+        rendered += ofInterest.size
+      }
+    }
+    return textCallToolResult(
+      "fileChanged forwarded to $forwarded daemon(s); re-rendered $rendered watched preview(s)"
+    )
   }
 
   // -------------------------------------------------------------------------
