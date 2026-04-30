@@ -1,9 +1,10 @@
 # Layering — keeping CLI, daemon, and MCP additive
 
-> **Status:** design rule, not implementation. Pins the architectural
-> contract that lets [DESIGN.md](DESIGN.md), [MCP.md](MCP.md), and
-> [MCP-KOTLIN.md](MCP-KOTLIN.md) ship without making the existing
-> Gradle/CLI paths a mess.
+> **Status:** active architectural rule. The daemon and MCP server
+> ([DESIGN.md](DESIGN.md), [MCP.md](MCP.md), [MCP-KOTLIN.md](MCP-KOTLIN.md))
+> have shipped without entangling the existing Gradle/CLI paths because
+> these constraints held. Mandatory reading before adding a new
+> cross-layer hook.
 
 ## What this doc fixes
 
@@ -29,7 +30,7 @@ isolation rules that prevent that.
 ```
    ┌──────────────────────────────────────────────────────────────┐
    │ Layer 3 — MCP server                          [opt-in, v2+]  │
-   │   :daemon:mcp — separate module, separate process by         │
+   │   :mcp — top-level module, separate process by default.      │
    │   default. JSON-RPC client of Layer 2.                       │
    └─────────────────────────┬────────────────────────────────────┘
                              │  PROTOCOL.md JSON-RPC over stdio
@@ -131,9 +132,9 @@ What Layer 2 must **not** be consumed by:
 ## Layer 3 — what the MCP server owns
 
 The MCP server is a thin JSON-RPC ↔ MCP translation shim, in its own
-module `:daemon:mcp`. Constraints:
+module `:mcp`. Constraints:
 
-- **MCP code lives only in `:daemon:mcp`.** Neither
+- **MCP code lives only in `:mcp`.** Neither
   `:daemon:core` nor any per-target daemon module imports
   the Kotlin MCP SDK or Ktor. The daemon stays a JSON-RPC server
   with no MCP awareness.
@@ -151,7 +152,7 @@ module `:daemon:mcp`. Constraints:
   be:
   - A deliberate launch mode flag (`--embed-daemon` or equivalent),
     not the default.
-  - Implemented with the *same* `:daemon:mcp` ↔ daemon
+  - Implemented with the *same* `:mcp` ↔ daemon
     JSON-RPC link, just over an in-memory channel transport instead
     of stdio. The MCP-side code never reaches into daemon internals
     even when colocated.
@@ -184,7 +185,7 @@ not on this list is a layering violation.
 | `composePreview.experimental.daemon { enabled }` DSL | user → L1 | Gradle DSL property | L1 |
 | `composePreviewDaemonStart` task → launch descriptor JSON | L1 → L2 | file in `build/preview-daemon/launch.json` | L1 emits, L2 reads |
 | Daemon JSON-RPC over stdio | L2 ↔ extension/supervisor | `PROTOCOL.md` | L2 |
-| MCP wire format ↔ daemon JSON-RPC translation | L3 ↔ L2 | `:daemon:mcp` shim | L3 |
+| MCP wire format ↔ daemon JSON-RPC translation | L3 ↔ L2 | `:mcp` shim | L3 |
 | `:daemon:core` `Messages.kt` types | shared by L2 + L3 | Kotlin data classes | L2 |
 | `composePreviewDaemonStart` → spawn-daemon helper used by L3's `DaemonSupervisor` | L3 → L1 | shells out to Gradle | L3 |
 
@@ -198,14 +199,14 @@ in disguise.
 Each layer can be removed without breaking the layers below it.
 
 **Removing Layer 3 (MCP):**
-- Delete `:daemon:mcp` and its task wiring.
+- Delete `:mcp` and its task wiring.
 - No other module imports it. No other module references its types.
 - Daemon and Layer 1 unaffected.
 
 **Removing Layer 2 (daemon):**
 - Delete `:daemon:core`, `:daemon:android`,
   `:daemon:desktop`, `:daemon:harness`,
-  `:daemon:mcp`.
+  `:mcp`.
 - Remove the `experimental.daemon` DSL block and the
   `composePreviewDaemonStart` task registration from `:gradle-plugin`.
 - The base `composePreview { … }` DSL and `renderPreviews` task work
@@ -247,7 +248,7 @@ Concrete rules to keep the existing paths simple:
   daemon or MCP code. The plugin's footprint stays small.
 - A user who opts into the daemon for VS Code never compiles the
   MCP module.
-- An agent author who wants MCP gets it via `:daemon:mcp` —
+- An agent author who wants MCP gets it via `:mcp` —
   one extra module to publish, one extra process to spawn, no
   changes to anyone else's flow.
 - The "may eat your laundry" daemon rollout (see DESIGN § 17) doesn't

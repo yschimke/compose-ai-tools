@@ -1,44 +1,76 @@
 # Preview daemon — design docs
 
-Design and planning for an experimental persistent preview server that replaces the per-save Gradle invocation with a long-lived JVM holding a hot Robolectric sandbox.
+A persistent preview server that replaces the per-save Gradle invocation with a long-lived JVM holding a hot Robolectric (Android) or Compose-Desktop renderer. Plus an MCP server that exposes the daemon to MCP-aware agents.
 
-> **Status:** design only. No code shipped yet. v1 will land behind `composePreview.experimental.daemon=true` with a "may eat your laundry" warning.
+## What ships today
 
-## What this is
+- **`:daemon:core`** — renderer-agnostic JSON-RPC server, protocol types, preview index, classloader holder, classpath fingerprint, history manager.
+- **`:daemon:android`** — Robolectric backend; `RobolectricHost` holds a sandbox open across renders.
+- **`:daemon:desktop`** — Compose-Desktop backend; `DesktopHost` holds a warm render thread.
+- **`:daemon:harness`** — end-to-end harness driving real daemons over JSON-RPC; ten scenarios (S1–S10) covering lifecycle, drain, render-after-edit, visibility, failures, latency-record, classpath-dirty, history.
+- **`:mcp`** — top-level MCP server multiplexing per-(workspace, module) daemons behind one MCP surface; tools for project registration, watches, render, history; resource subscriptions for push.
 
-Today, every preview refresh in the VS Code extension runs the Gradle `renderPreviews` task: Gradle config + classpath up-to-date checks + JVM fork + Robolectric sandbox init + render. Cold this is 10–20s; warm with a no-code-change save it's still 5–10s, dominated by Gradle config and Robolectric bootstrap.
+The daemon ships behind `composePreview.experimental.daemon { enabled = true }`. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
 
-The daemon keeps the Robolectric sandbox alive between saves so the per-save hot path collapses to just kotlinc + N renders. Target: **sub-second refresh for a single focused preview after a no-classpath-change save.**
+## What's open
+
+- **B2.4 / B2.5 / B2.6** — sandbox recycle, warm spare, leak detection. Wire-format surface (`sandboxRecycle`, `daemonReady`, `daemonWarming`, `LeakDetectionMode`) is reserved in PROTOCOL.md but not yet emitted.
+- **B2.0c** — per-preview resource-read tracking (smart `fileChanged({ kind: "resource" })` invalidation).
+- **H4 / H5** — history auto-prune + pixel-mode `history/diff`.
+- **H10b / H11+** — gradle-plugin emission of `composeai.daemon.gitRefHistory`; `GitRefHistorySource` write modes; LFS / squash GC.
+- **P2.5.x** — predictive prefetch (multi-tier render queue, `setPredicted` IPC, scroll-ahead, filter-dropdown).
+- **STARTUP.md follow-ups** — machine-resident daemon (option A), AppCDS (B), instrumented-bytecode cache (C).
 
 ## Files
 
-- **[DESIGN.md](DESIGN.md)** — the full architecture: scope, module layout, staleness cascade, lifecycle, leak defense, validation strategy, decisions log.
-- **[PROTOCOL.md](PROTOCOL.md)** — locked JSON-RPC wire-format contract between the VS Code extension and the daemon. Stream B (daemon) and Stream C (extension) implement against this in parallel.
-- **[CONFIG.md](CONFIG.md)** — `composePreview.experimental.daemon { … }` DSL reference: defaults, ranges, and effects for `enabled` / `maxHeapMb` / `maxRendersPerSandbox` / `warmSpare`.
-- **[CLASSLOADER.md](CLASSLOADER.md)** — design for the disposable user classloader (B2.0). The save-loop blocker; without it the daemon's "warm render" numbers don't apply across recompiles. Compose Hot Reload prior-art analysis included.
-- **[CLASSLOADER-FORENSICS.md](CLASSLOADER-FORENSICS.md)** — design for the classloader / Robolectric-config dump tool that produces a diffable manifest of the working standalone vs broken daemon path. Empirical diagnostic for the Android S3.5 mystery — until we run the dumps we're guessing about which classloader skew is the actual blocker.
-- **[ROBOLECTRIC-PRIMER.md](ROBOLECTRIC-PRIMER.md)** — a primer on how Robolectric itself works: sandbox lifecycle, `SandboxClassLoader` delegation rules, bytecode instrumentation + shadows, `@Config` / qualifiers / native code. Read this when reasoning about classloader behaviour while debugging the daemon. Distinct from this project's design — it covers Robolectric upstream, not our integration with it.
-- **[MCP.md](MCP.md)** — overview design for exposing the daemon as an MCP server: resource subscriptions for push (no polling), tools for explicit render requests, three architecture options compared. Empirical answer to "can MCP push instead of poll?" — yes, via `notifications/resources/updated`.
-- **[MCP-KOTLIN.md](MCP-KOTLIN.md)** — concrete Kotlin/Ktor implementation design for the MCP server (Option A from MCP.md): module layout, code samples using `io.modelcontextprotocol:kotlin-sdk`, what an MCP server unlocks that the existing CLI can't.
-- **[LAYERING.md](LAYERING.md)** — the architectural rule that keeps Gradle/CLI, daemon, and MCP additive. Explicit module-boundary list, integration seams, removal procedures, and the "no `if (daemonAvailable) …`" complexity rule. Read after DESIGN if you want the whole picture; mandatory before adding a new cross-layer hook.
-- **[HISTORY.md](HISTORY.md)** — preview history design: on-disk schema, JSON-RPC API (`history/list`, `history/read`, `history/diff`), MCP and VS Code consumer mappings, branch + worktree provenance, pluggable `HistorySource` backends (LocalFs / `preview/<branch>` git refs / HTTP mirrors). Same archive consumed by Gradle, daemon, MCP, and VS Code; cross-worktree merging happens above Layer 2.
-- **[STARTUP.md](STARTUP.md)** — daemon startup latency analysis: where the time actually goes (JVM start / Robolectric instrumentation / android-all jar download), the in-flight `RobolectricHost.start()` blocking fix, and the menu of options to attack each cost (machine-resident daemon, AppCDS, instrumented-bytecode cache, JVM checkpoint/restore, Layoutlib swap). Plus the wire-format for the `StartupTimings` instrumentation that makes the timeline observable per-boot.
-- **[PREDICTIVE.md](PREDICTIVE.md)** — predictive prefetch design (v1.1+). Adds a multi-tier render queue + speculative renders on scroll-ahead / dropdown signals; observability built in.
-- **[TEST-HARNESS.md](TEST-HARNESS.md)** — the harness's design: what scenarios it covers, FakeHost vs real-mode, image-baseline strategy, CI workflow.
-- **[TODO.md](TODO.md)** — work breakdown with parallelisation guidance: which streams can run in parallel, which agents own what, definition-of-done per chunk.
+### Architecture
+
+- **[DESIGN.md](DESIGN.md)** — daemon architecture: scope, module layout, staleness cascade, lifecycle, leak defense, validation strategy, decisions log.
+- **[LAYERING.md](LAYERING.md)** — the rule that keeps Gradle/CLI, daemon, and MCP additive. Module-boundary list, integration seams, removal procedures.
+- **[PROTOCOL.md](PROTOCOL.md)** — locked v1 wire format between client (VS Code, harness, MCP shim) and daemon.
+- **[CONFIG.md](CONFIG.md)** — `composePreview.experimental.daemon { … }` DSL reference.
+
+### Subsystems
+
+- **[CLASSLOADER.md](CLASSLOADER.md)** — disposable user classloader (B2.0). The save-loop fix.
+- **[CLASSLOADER-FORENSICS.md](CLASSLOADER-FORENSICS.md)** — forensic-dump library used to diagnose the Android save-loop classloader-identity skew.
+- **[ROBOLECTRIC-PRIMER.md](ROBOLECTRIC-PRIMER.md)** — primer on Robolectric internals (sandbox lifecycle, classloader delegation, bytecode instrumentation, shadows). Read when reasoning about classloader behaviour while debugging.
+- **[STARTUP.md](STARTUP.md)** — daemon startup latency analysis. Where the time goes; menu of options to attack each cost.
+- **[HISTORY.md](HISTORY.md)** — preview history archive: on-disk schema, JSON-RPC API, MCP and VS Code mappings, branch/worktree provenance, pluggable `HistorySource` backends.
+
+### MCP
+
+- **[MCP.md](MCP.md)** — MCP server overview: how the daemon's JSON-RPC surface maps onto MCP resources, subscriptions, and tools.
+- **[MCP-KOTLIN.md](MCP-KOTLIN.md)** — concrete implementation reference for the `:mcp` module.
+
+### Future work
+
+- **[PREDICTIVE.md](PREDICTIVE.md)** — predictive prefetch design (v1.1+).
+- **[TEST-HARNESS.md](TEST-HARNESS.md)** — harness design: scenarios, FakeHost vs real-mode, image-baseline strategy, CI workflow.
+
+### Reference data
+
+- **[baseline-latency.md](baseline-latency.md)** + **[baseline-latency.csv](baseline-latency.csv)** — captured per-target / per-scenario timing baselines from the bench harnesses.
+- **[classloader-forensics-diff.md](classloader-forensics-diff.md)** + **[classloader-forensics-diff.json](classloader-forensics-diff.json)** — captured forensic dumps from the Android save-loop investigation.
+- **[protocol-fixtures/](protocol-fixtures/)** — golden JSON message corpus consumed by both the Kotlin and TypeScript test suites.
+
+### Planning
+
+- **[TODO.md](TODO.md)** — work breakdown. Most items are landed; remaining open work is enumerated in the "What's open" section above.
 
 ## Non-goals (v1)
 
-- Per-project (multi-module) sandbox sharing — deferred. Each module gets its own daemon.
-- CLI / MCP daemon mode — CLI keeps using the Gradle task.
+- Per-project (multi-module) sandbox sharing — each module gets its own daemon.
 - Replacing the Gradle `renderPreviews` task — kept as fallback and CI-canonical path indefinitely.
 - Hot kotlinc / compile daemon integration — v2.
 - Tier-3 dependency-graph reachability index — v1 ships with conservative "module-changed = all previews stale, filtered by visibility."
 
 ## How to use these docs
 
-If you're reviewing the proposal: read [DESIGN.md](DESIGN.md) end to end (~30 min).
+If you're reviewing the architecture: read [DESIGN.md](DESIGN.md) end to end (~30 min), then [LAYERING.md](LAYERING.md).
 
-If you're implementing or about to assign work to agents: read [DESIGN.md](DESIGN.md) for context, then drive the work from [TODO.md](TODO.md) which has the dependency graph and parallel work streams.
+If you're implementing or reviewing daemon code: [PROTOCOL.md](PROTOCOL.md) is the wire-format authority; [CLASSLOADER.md](CLASSLOADER.md) is the save-loop story.
 
-If you're triaging a daemon bug: future `docs/daemon/TROUBLESHOOTING.md` once the thing exists.
+If you're working on the MCP surface: [MCP.md](MCP.md) for the high-level mapping, [MCP-KOTLIN.md](MCP-KOTLIN.md) for the implementation specifics.
+
+If you're triaging a daemon bug: [`daemon/desktop/CONTRIBUTING.md`](../../daemon/desktop/CONTRIBUTING.md) has the no-mid-render-cancellation reviewer checklist.

@@ -1,6 +1,6 @@
 # Persistent preview server — design
 
-> **Status:** experimental design proposal. v1 ships behind `composePreview.experimental.daemon=true`. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
+> **Status:** v1 implemented and ships behind `composePreview.experimental.daemon=true`. Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
 
 ## 1. Goals & non-goals
 
@@ -13,7 +13,7 @@
 **Non-goals (v1)**
 
 - Per-project (cross-module) sandbox sharing — each consumer module gets its own daemon JVM.
-- CLI / MCP daemon mode — the `compose-preview` binary keeps using the Gradle task.
+- The `compose-preview` CLI binary keeps using the Gradle task. (MCP daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
 - Replacing `renderPreviews` — daemon fronts it for the editor loop only.
 - Hot kotlinc / compile-daemon integration — out of scope; we still let Gradle drive Kotlin compilation.
 - Tier-3 dependency-graph reachability index — v1 uses a conservative "module-changed = all previews stale, filtered by visibility" rule.
@@ -268,6 +268,13 @@ Enforced in code (so accidental cancellation can't sneak in):
 
 ### Recycle policy
 
+> **Not yet implemented (TODO B2.4 / B2.5 / B2.6).** The wire-format
+> surface (`sandboxRecycle`, `daemonWarming`, `daemonReady`,
+> `LeakDetectionMode`) is reserved in PROTOCOL.md but never emitted by
+> the daemon today. Sandbox age counters keep growing for the host's
+> lifetime. Designed shape below; implementation lands when the work
+> ships.
+
 Trigger on any:
 
 - **Heap (post-GC) >** `daemon.maxHeapMb` (default 1024). Hard ceiling.
@@ -311,6 +318,9 @@ Cheap (<5ms), in-band, emitted on `renderFinished`:
 Bench harness consumes this as CSV; CI soak test asserts bounded growth.
 
 ### Layer 2 — active leak detection (periodic, opt-in)
+
+> **Not yet implemented (TODO B2.4).** `ServerCapabilities.leakDetection`
+> on the wire is always `[]`. Designed shape below.
 
 Every Nth render (default 50) or via `--detect-leaks` daemon flag:
 
