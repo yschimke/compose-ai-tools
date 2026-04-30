@@ -55,12 +55,13 @@ class HistoryDiffTest {
   @Test(timeout = 30_000)
   fun same_hash_pngHashChanged_false() {
     runWith { _, manager, send, receive ->
-      // Two entries with identical pngHash for the same previewId. We force the same hash by
-      // writing the same bytes for both renders; LocalFsHistorySource dedups the PNG file but
-      // still writes two distinct sidecars + index lines (HISTORY.md § "Concurrency model"). We
-      // pin distinct timestamps so the entry ids differ (id = "<ts>-<shortHash>").
+      // Two entries with identical pngHash for the same previewId. The dedup ladder skips
+      // consecutive identical renders (tier 1), so we drive the A → B → A pattern: third render's
+      // bytes match the first's, and since the most-recent entry on disk (B) has a DIFFERENT
+      // hash, tier 1 doesn't fire and the third entry lands. We then diff first-A vs second-A.
       val ts1 = Instant.parse("2026-04-30T10:12:34Z")
       val ts2 = Instant.parse("2026-04-30T10:12:35Z")
+      val ts3 = Instant.parse("2026-04-30T10:12:36Z")
       val entry1 =
         manager.recordRender(
           "preview-A",
@@ -69,13 +70,20 @@ class HistoryDiffTest {
           renderTookMs = 1,
           timestamp = ts1,
         )!!
+      manager.recordRender(
+        "preview-A",
+        "different-bytes".toByteArray(),
+        trigger = "renderNow",
+        renderTookMs = 1,
+        timestamp = ts2,
+      )!!
       val entry2 =
         manager.recordRender(
           "preview-A",
           "same-bytes".toByteArray(),
           trigger = "renderNow",
           renderTookMs = 1,
-          timestamp = ts2,
+          timestamp = ts3,
         )!!
       assertEquals(entry1.pngHash, entry2.pngHash)
 

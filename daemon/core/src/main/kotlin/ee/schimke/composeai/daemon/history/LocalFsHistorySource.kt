@@ -32,11 +32,23 @@ import kotlinx.serialization.json.Json
  *     └── <utc-yyyyMMdd-HHmmss>-<8hex>.json
  * ```
  *
- * **Dedup-by-hash.** When [write] is called with bytes whose SHA-256 matches the most recent
- * entry's [HistoryEntry.pngHash] for the same `previewId`, the PNG file is NOT re-written; the
- * sidecar's `pngPath` points at the already-on-disk PNG. The sidecar + index line still land —
- * "same hash" means no visible change, but the render still happened, so the provenance entry is
- * useful (e.g. "agent re-ran, output unchanged"). HISTORY.md § "What this PR lands § H1".
+ * **Dedup-by-hash, two tiers:**
+ *
+ * 1. **Skip-on-most-recent-match.** When [write] is called with bytes whose SHA-256 matches the
+ *    most-recent existing entry for the same `previewId`, [write] returns
+ *    [WriteResult.SKIPPED_DUPLICATE] and writes nothing — no PNG, no sidecar, no index line. The
+ *    consumer's UI doesn't see a redundant entry for save-loops that produce identical pixels
+ *    (e.g. comment-only edits, sandbox warm-up renders against the same composition). Distinct
+ *    from tier 2 below: the rule is the *most recent* match, not any match — render history
+ *    A → B → A still keeps the third entry because going-back-to-A is a meaningful event.
+ *
+ * 2. **Pointer-on-any-match (fallback for non-consecutive matches).** When the new bytes don't
+ *    match the most-recent entry but DO match an earlier one (the A → B → A case), the new
+ *    sidecar's `pngPath` points at the older PNG and we don't re-write the bytes. The sidecar +
+ *    index line still land so the provenance entry exists.
+ *
+ * Both tiers reduce on-disk PNG copies; tier 1 additionally suppresses sidecar churn. HISTORY.md
+ * § "What this PR lands § H1" + § "Dedup".
  *
  * **Cross-restart correctness.** Dedup walks the per-preview directory listing for the most-recent
  * entry whose hash matches; this works whether that entry was written in the current daemon
@@ -59,19 +71,29 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     Files.createDirectories(historyDir)
   }
 
-  override fun write(entry: HistoryEntry, png: ByteArray) {
+  override fun write(entry: HistoryEntry, png: ByteArray): WriteResult {
     val sanitisedDir = PreviewIdSanitiser.sanitise(entry.previewId)
     val previewDir = historyDir.resolve(sanitisedDir)
     Files.createDirectories(previewDir)
+
+    // Tier 1 — skip-on-most-recent-match. If the absolute newest sidecar for this preview already
+    // has the same hash, this render is redundant from the consumer's perspective; skip everything.
+    // Different from tier 2 below: rule is "most recent", not "any match" — A → B → A keeps three
+    // entries (the third is a meaningful "we went back to A" event), but A → A → A keeps one.
+    val mostRecentHash = findMostRecentEntryHash(previewDir, exclude = entry.id)
+    if (mostRecentHash != null && mostRecentHash == entry.pngHash) {
+      return WriteResult.SKIPPED_DUPLICATE
+    }
 
     val pngFileName = "${entry.id}.png"
     val sidecarFileName = "${entry.id}.json"
     val pngFile = previewDir.resolve(pngFileName)
     val sidecarFile = previewDir.resolve(sidecarFileName)
 
-    // Dedup-by-hash. If the previous entry for this preview has the same pngHash, we point the
-    // new sidecar's `pngPath` at that older PNG and do NOT re-write the bytes. We still write
-    // the sidecar + index line so the render-event provenance is captured.
+    // Tier 2 — pointer-on-any-match. The bytes don't match the most-recent entry but DO match an
+    // earlier one (e.g. A → B → A). Point the new sidecar's `pngPath` at the older PNG so we
+    // don't write a duplicate file; the sidecar + index line still land because the entry itself
+    // is meaningful provenance.
     val dedupTarget = findMostRecentEntryWithHash(previewDir, entry.pngHash, exclude = entry.id)
     val effectivePngPath: String =
       if (dedupTarget != null) {
@@ -101,6 +123,43 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       StandardOpenOption.WRITE,
       StandardOpenOption.APPEND,
     )
+    return WriteResult.WRITTEN
+  }
+
+  /**
+   * Returns the [HistoryEntry.pngHash] of the absolute newest sidecar in [previewDir], or null
+   * when the dir is empty or all sidecars are unreadable. Used by tier 1 of the dedup ladder.
+   *
+   * Sidecar filenames lead with a UTC timestamp in `yyyyMMdd-HHmmss-<hash>` shape, so reverse
+   * lex sort = newest first. We don't need to parse the timestamp — string compare is enough.
+   */
+  private fun findMostRecentEntryHash(previewDir: Path, exclude: String): String? {
+    if (!Files.exists(previewDir)) return null
+    val newest =
+      try {
+        Files.list(previewDir).use { stream ->
+          stream
+            .filter { it.fileName.toString().endsWith(".json") }
+            .filter { it.fileName.toString().removeSuffix(".json") != exclude }
+            .max(Comparator.comparing { it.fileName.toString() })
+            .orElse(null)
+        }
+      } catch (_: Throwable) {
+        return null
+      } ?: return null
+    val text =
+      try {
+        newest.readText(StandardCharsets.UTF_8)
+      } catch (_: Throwable) {
+        return null
+      }
+    val parsed =
+      try {
+        JSON.decodeFromString(HistoryEntry.serializer(), text)
+      } catch (_: Throwable) {
+        return null
+      }
+    return parsed.pngHash
   }
 
   override fun list(filter: HistoryFilter): HistoryListPage {

@@ -74,6 +74,28 @@ data class HistoryReadResult(
 }
 
 /**
+ * Outcome of [HistorySource.write].
+ *
+ * `WRITTEN` — entry persisted (sidecar + index line, and either a fresh PNG or a dedup-by-hash
+ * pointer at an existing one).
+ *
+ * `SKIPPED_DUPLICATE` — the bytes match the most recent existing entry for this `previewId`, so the
+ * source skipped writing both the sidecar and the index line. `HistoryManager.recordRender` uses
+ * this to suppress `historyAdded` and avoid cluttering the consumer's UI with redundant entries
+ * for save-loops that produce identical pixels (e.g. saving a comment-only edit, repeated focus
+ * cycles, sandbox warm-up renders against the same composition state).
+ *
+ * The "most recent" rule is what distinguishes this from the dedup-by-hash PNG path (where any
+ * earlier matching hash means we re-use the file). If render history goes A → B → A, the third
+ * render is a meaningful event ("we went back to A") and is kept; render history A → A → A skips
+ * everything after the first.
+ */
+enum class WriteResult {
+  WRITTEN,
+  SKIPPED_DUPLICATE,
+}
+
+/**
  * Pluggable history backend — see HISTORY.md § "HistorySource interface".
  *
  * H1+H2 ships only [LocalFsHistorySource]. Future phases (H10 onward) will add
@@ -96,10 +118,15 @@ interface HistorySource {
    * Persists [entry] (and its associated PNG bytes) into the backing store. Throws when this source
    * isn't writable — gate via [supportsWrites] first.
    *
+   * Returns [WriteResult.WRITTEN] when the entry landed and [WriteResult.SKIPPED_DUPLICATE] when
+   * the bytes match the most recent existing entry for the same `previewId` and the source elected
+   * to suppress the write. Callers (notably [HistoryManager.recordRender]) use that to decide
+   * whether to fan out a `historyAdded` notification.
+   *
    * Failures here must NOT be load-bearing for the render itself — `HistoryManager.recordRender`
    * catches and logs, then continues. The render succeeded; history is observation, not state.
    */
-  fun write(entry: HistoryEntry, png: ByteArray)
+  fun write(entry: HistoryEntry, png: ByteArray): WriteResult
 
   /** Lists history entries newest-first, applying [filter] and paginating. */
   fun list(filter: HistoryFilter): HistoryListPage

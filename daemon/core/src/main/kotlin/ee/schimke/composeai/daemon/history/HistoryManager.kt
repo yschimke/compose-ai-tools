@@ -135,11 +135,19 @@ class HistoryManager(
       )
 
     var anyWritten = false
+    var anyAttempted = false
     for (source in sources) {
       if (!source.supportsWrites()) continue
+      anyAttempted = true
       try {
-        source.write(entry, pngBytes)
-        anyWritten = true
+        when (source.write(entry, pngBytes)) {
+          WriteResult.WRITTEN -> anyWritten = true
+          WriteResult.SKIPPED_DUPLICATE -> {
+            // Source decided this render's bytes match the most recent entry; nothing to do.
+            // We deliberately do NOT update previousByPreview — the previous still IS the most
+            // recent entry on disk, and its (id, pngHash) tuple is still correct.
+          }
+        }
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: HistoryManager.recordRender(${entry.id}): write to ${source.id} " +
@@ -147,7 +155,10 @@ class HistoryManager(
         )
       }
     }
-    if (!anyWritten) return null
+    // No writable source configured → return null (the disabled-by-default path).
+    // All writable sources skipped as duplicates → return null too; caller suppresses
+    // `historyAdded` and the consumer never sees a redundant entry for repeated identical renders.
+    if (!anyAttempted || !anyWritten) return null
 
     // Update the previousByPreview cache. CAS-loop so concurrent recordRender for the same
     // preview id stays consistent (though `JsonRpcServer.kt` runs history writes single-threaded

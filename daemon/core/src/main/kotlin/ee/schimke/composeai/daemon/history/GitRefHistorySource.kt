@@ -65,7 +65,7 @@ class GitRefHistorySource(
 
   override fun supportsWrites(): Boolean = false
 
-  override fun write(entry: HistoryEntry, png: ByteArray) {
+  override fun write(entry: HistoryEntry, png: ByteArray): WriteResult {
     error("GitRefHistorySource is read-only (ref=$ref); writes go to a writable source.")
   }
 

@@ -187,6 +187,35 @@ the unused VS Code Preview History panel. H1 daemon writes are the only writer, 
 reader does NOT have to tolerate PNG-only entries — every entry on disk has a sibling sidecar
 because the daemon wrote both atomically.
 
+### Dedup-by-hash on write — two tiers
+
+Identical renders produce noisy timelines. The on-write dedup ladder eliminates both physical
+duplicates (same PNG bytes on disk twice) and visual duplicates (consecutive sidecars showing the
+same image to a consumer).
+
+1. **Tier 1 — skip-on-most-recent-match.** If the absolute newest existing entry for this
+   `previewId` has the same `pngHash` as the new render, the source returns
+   `WriteResult.SKIPPED_DUPLICATE` and writes nothing — no PNG, no sidecar, no index line, no
+   `historyAdded` notification. Save-loops that produce identical pixels (comment-only edits,
+   sandbox warm-up renders, repeated focus cycles, tab toggles that re-trigger render but not
+   recomposition) don't accumulate redundant entries.
+
+2. **Tier 2 — pointer-on-any-match.** If the new bytes don't match the most-recent entry but DO
+   match an earlier one, the new sidecar's `pngPath` points at the older PNG and the bytes aren't
+   re-written. The sidecar + index line still land because the entry itself is meaningful
+   provenance. Render history A → B → A keeps three entries — the third is a "we went back to A"
+   event the consumer wants to see.
+
+Why "most recent" for tier 1, not "any match"? A → A → A keeps one entry; A → B → A keeps three.
+The user-visible timeline tracks state transitions, not render-event counts. If the daemon
+re-renders a preview that nothing changed about, that's noise; if the daemon re-renders something
+back to a prior state, that's signal.
+
+Cross-restart correctness: the most-recent-hash check walks the per-preview directory listing,
+not an in-memory cache. A daemon restart loses the in-memory `previousByPreview` cache, but the
+on-disk newest sidecar's hash is still authoritative — so tier 1 still fires for "save → daemon
+restart → identical save" without re-emitting an entry.
+
 ## Trigger taxonomy
 
 The `trigger` field documents *why* the daemon (or Gradle) rendered

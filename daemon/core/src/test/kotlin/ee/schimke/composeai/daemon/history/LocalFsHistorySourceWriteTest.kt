@@ -81,7 +81,7 @@ class LocalFsHistorySourceWriteTest {
   }
 
   @Test
-  fun dedup_by_hash_does_not_write_a_duplicate_png_but_writes_a_sidecar_pointing_at_the_first() {
+  fun consecutive_identical_render_returns_SKIPPED_DUPLICATE_and_writes_nothing() {
     val source = LocalFsHistorySource(historyDir = tmpDir)
     val previewId = "Foo"
     val bytes = byteArrayOf(0x10, 0x20, 0x30, 0x40)
@@ -101,69 +101,134 @@ class LocalFsHistorySourceWriteTest {
         hash = hash,
         size = bytes.size.toLong(),
       )
-    source.write(firstEntry, bytes)
-    source.write(secondEntry, bytes)
+    val firstResult = source.write(firstEntry, bytes)
+    val secondResult = source.write(secondEntry, bytes)
+
+    assertEquals(WriteResult.WRITTEN, firstResult)
+    assertEquals(
+      "Tier 1 dedup: most-recent hash matches → skip everything",
+      WriteResult.SKIPPED_DUPLICATE,
+      secondResult,
+    )
 
     val previewDir = tmpDir.resolve("Foo")
     val firstPng = previewDir.resolve("${firstEntry.id}.png")
+    val firstSidecar = previewDir.resolve("${firstEntry.id}.json")
     val secondPng = previewDir.resolve("${secondEntry.id}.png")
     val secondSidecar = previewDir.resolve("${secondEntry.id}.json")
 
     assertTrue("First PNG must exist", Files.exists(firstPng))
-    assertFalse("Second PNG must NOT exist (dedup)", Files.exists(secondPng))
-    assertTrue("Second sidecar must exist", Files.exists(secondSidecar))
+    assertTrue("First sidecar must exist", Files.exists(firstSidecar))
+    assertFalse("Second PNG must NOT exist (skipped)", Files.exists(secondPng))
+    assertFalse("Second sidecar must NOT exist (skipped)", Files.exists(secondSidecar))
 
-    // Second sidecar's pngPath should point at the first PNG's filename.
-    val sidecarText = Files.readString(secondSidecar)
-    val decoded = json.decodeFromString(HistoryEntry.serializer(), sidecarText)
-    assertEquals("${firstEntry.id}.png", decoded.pngPath)
-
-    // Index has both lines, both readable.
+    // Index has exactly one line — the second write didn't append.
     val indexLines =
       Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
         it.isNotBlank()
       }
-    assertEquals(2, indexLines.size)
+    assertEquals(1, indexLines.size)
   }
 
   @Test
-  fun dedup_survives_simulated_cross_restart() {
-    // Write entry 1 via source A; throw it away; create source B against the same dir; write entry
-    // 2 with the same bytes; assert dedup still hits.
+  fun A_then_B_then_A_keeps_three_entries_with_pngPath_pointer_on_third() {
+    // Tier 2 — non-consecutive matching hash. Render history A → B → A: the third entry IS a
+    // meaningful event ("we went back to A"), so a sidecar lands; but the PNG points at the
+    // first A's bytes rather than re-writing them.
+    val source = LocalFsHistorySource(historyDir = tmpDir)
+    val previewId = "Bouncy"
+    val bytesA = byteArrayOf(0x01, 0x02, 0x03)
+    val bytesB = byteArrayOf(0x09, 0x08, 0x07)
+    val hashA = LocalFsHistorySource.sha256Hex(bytesA)
+    val hashB = LocalFsHistorySource.sha256Hex(bytesB)
+
+    val firstA =
+      makeEntry(id = "20260430-100000-${hashA.take(8)}", previewId = previewId, hash = hashA, size = 3)
+    val midB =
+      makeEntry(id = "20260430-100001-${hashB.take(8)}", previewId = previewId, hash = hashB, size = 3)
+    val secondA =
+      makeEntry(id = "20260430-100002-${hashA.take(8)}", previewId = previewId, hash = hashA, size = 3)
+
+    assertEquals(WriteResult.WRITTEN, source.write(firstA, bytesA))
+    assertEquals(WriteResult.WRITTEN, source.write(midB, bytesB))
+    assertEquals(
+      "A → B → A: third write is meaningful, must land",
+      WriteResult.WRITTEN,
+      source.write(secondA, bytesA),
+    )
+
+    val previewDir = tmpDir.resolve("Bouncy")
+    val firstAPng = previewDir.resolve("${firstA.id}.png")
+    val midBPng = previewDir.resolve("${midB.id}.png")
+    val secondAPng = previewDir.resolve("${secondA.id}.png")
+    val secondASidecar = previewDir.resolve("${secondA.id}.json")
+
+    assertTrue("First A PNG exists", Files.exists(firstAPng))
+    assertTrue("Mid B PNG exists", Files.exists(midBPng))
+    assertFalse("Second A's PNG must NOT be rewritten — pointer-only", Files.exists(secondAPng))
+    assertTrue("Second A sidecar exists", Files.exists(secondASidecar))
+
+    val secondSidecarEntry =
+      json.decodeFromString(HistoryEntry.serializer(), Files.readString(secondASidecar))
+    assertEquals(
+      "Second A sidecar's pngPath points at first A's PNG",
+      "${firstA.id}.png",
+      secondSidecarEntry.pngPath,
+    )
+
+    val indexLines =
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
+    assertEquals(3, indexLines.size)
+  }
+
+  @Test
+  fun consecutive_identical_render_skip_survives_simulated_cross_restart() {
+    // Tier 1 dedup must hit even when the "first" entry was written by a previous daemon process
+    // and the in-memory cache is empty — the source walks the per-preview directory listing.
     val previewId = "Bar"
     val bytes = byteArrayOf(0x77, 0x77, 0x77)
     val hash = LocalFsHistorySource.sha256Hex(bytes)
     val firstEntry =
       makeEntry(
-        id = "old-${hash.take(8)}",
+        id = "20260430-101000-${hash.take(8)}",
         previewId = previewId,
         hash = hash,
         size = bytes.size.toLong(),
       )
-    LocalFsHistorySource(historyDir = tmpDir).write(firstEntry, bytes)
+    assertEquals(WriteResult.WRITTEN, LocalFsHistorySource(historyDir = tmpDir).write(firstEntry, bytes))
 
     val sourceB = LocalFsHistorySource(historyDir = tmpDir)
     val secondEntry =
       makeEntry(
-        id = "new-${hash.take(8)}",
+        id = "20260430-101005-${hash.take(8)}",
         previewId = previewId,
         hash = hash,
         size = bytes.size.toLong(),
       )
-    sourceB.write(secondEntry, bytes)
+    val secondResult = sourceB.write(secondEntry, bytes)
+
+    assertEquals(
+      "Cross-restart tier-1 dedup: most-recent hash on disk matches → SKIPPED_DUPLICATE",
+      WriteResult.SKIPPED_DUPLICATE,
+      secondResult,
+    )
 
     val previewDir = tmpDir.resolve("Bar")
     val firstPng = previewDir.resolve("${firstEntry.id}.png")
     val secondPng = previewDir.resolve("${secondEntry.id}.png")
+    val secondSidecar = previewDir.resolve("${secondEntry.id}.json")
     assertTrue(Files.exists(firstPng))
-    assertFalse("Cross-restart dedup must skip the duplicate PNG", Files.exists(secondPng))
+    assertFalse("Cross-restart skip must NOT write a duplicate PNG", Files.exists(secondPng))
+    assertFalse("Cross-restart skip must NOT write a sidecar", Files.exists(secondSidecar))
 
-    val sidecar =
-      json.decodeFromString(
-        HistoryEntry.serializer(),
-        Files.readString(previewDir.resolve("${secondEntry.id}.json")),
-      )
-    assertEquals("${firstEntry.id}.png", sidecar.pngPath)
+    // Index has exactly one line — the second write didn't append.
+    val indexLines =
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
+    assertEquals(1, indexLines.size)
   }
 
   @Test
