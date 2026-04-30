@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { HistoryReader } from './daemon/historyReader';
+import { CurrentRendersHistory } from './daemon/currentRendersHistory';
 import {
     HistoryAddedParams,
     HistoryListResult,
@@ -486,55 +487,82 @@ export interface HistoryScope {
 export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
     return {
         list: async (scope) => {
+            let result: HistoryListResult | null = null;
             if (opts.isDaemonReady(scope.moduleId)) {
                 try {
-                    return await opts.daemonList(scope);
+                    result = await opts.daemonList(scope);
                 } catch (err) {
                     opts.logger?.appendLine(
                         `[history] daemon list failed for ${scope.moduleId}, falling back to FS: ${(err as Error).message}`,
                     );
                 }
             }
-            return new HistoryReader(historyDirFor(scope)).list({
-                previewId: scope.previewId,
-            });
+            if (!result) {
+                result = new HistoryReader(historyDirFor(scope)).list({
+                    previewId: scope.previewId,
+                });
+            }
+            // Greenfield UX: when no recorded history exists yet (default
+            // path with the daemon disabled, or a freshly-warmed daemon
+            // that hasn't yet observed a render) but the Gradle render
+            // path has already produced PNGs, surface those as a single
+            // synthetic page so the panel isn't empty after the user's
+            // first render.
+            if (result.entries.length === 0) {
+                const synth = currentRendersFor(scope).list(scope.previewId);
+                if (synth.entries.length > 0) { return synth; }
+            }
+            return result;
         },
         read: async (id) => {
-            if (opts.currentScope) {
-                if (opts.isDaemonReady(opts.currentScope.moduleId)) {
-                    try {
-                        return await opts.daemonRead(id);
-                    } catch (err) {
-                        opts.logger?.appendLine(
-                            `[history] daemon read failed for ${id}, falling back to FS: ${(err as Error).message}`,
-                        );
-                    }
-                }
-                return new HistoryReader(historyDirFor(opts.currentScope)).read(id);
+            if (!opts.currentScope) { return null; }
+            if (CurrentRendersHistory.isSyntheticId(id)) {
+                return currentRendersFor(opts.currentScope).read(id);
             }
-            return null;
+            if (opts.isDaemonReady(opts.currentScope.moduleId)) {
+                try {
+                    return await opts.daemonRead(id);
+                } catch (err) {
+                    opts.logger?.appendLine(
+                        `[history] daemon read failed for ${id}, falling back to FS: ${(err as Error).message}`,
+                    );
+                }
+            }
+            return new HistoryReader(historyDirFor(opts.currentScope)).read(id);
         },
         diff: async (fromId, toId) => {
-            if (opts.currentScope) {
-                if (opts.isDaemonReady(opts.currentScope.moduleId)) {
-                    try {
-                        return await opts.daemonDiff(fromId, toId);
-                    } catch (err) {
-                        opts.logger?.appendLine(
-                            `[history] daemon diff failed, falling back to FS: ${(err as Error).message}`,
-                        );
-                    }
-                }
-                return new HistoryReader(historyDirFor(opts.currentScope))
-                    .diff(fromId, toId, 'metadata');
+            if (!opts.currentScope) { return null; }
+            // Synthetic "current render" entries don't have a stable prior
+            // — diffing them is meaningless. Fall through to null so the
+            // panel surfaces "Diff unavailable" instead of crashing.
+            if (CurrentRendersHistory.isSyntheticId(fromId)
+                || CurrentRendersHistory.isSyntheticId(toId)) {
+                return null;
             }
-            return null;
+            if (opts.isDaemonReady(opts.currentScope.moduleId)) {
+                try {
+                    return await opts.daemonDiff(fromId, toId);
+                } catch (err) {
+                    opts.logger?.appendLine(
+                        `[history] daemon diff failed, falling back to FS: ${(err as Error).message}`,
+                    );
+                }
+            }
+            return new HistoryReader(historyDirFor(opts.currentScope))
+                .diff(fromId, toId, 'metadata');
         },
     };
 }
 
 function historyDirFor(scope: HistoryScope): string {
     return `${scope.projectDir}/.compose-preview-history`;
+}
+
+function currentRendersFor(scope: HistoryScope): CurrentRendersHistory {
+    return new CurrentRendersHistory({
+        buildDir: `${scope.projectDir}/build/compose-previews`,
+        moduleId: scope.moduleId,
+    });
 }
 
 interface BuildSourceOptions {
