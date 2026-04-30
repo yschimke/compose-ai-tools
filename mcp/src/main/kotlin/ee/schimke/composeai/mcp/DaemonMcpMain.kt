@@ -99,6 +99,19 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
         add(javaBin)
         addAll(descriptor.jvmArgs)
         descriptor.systemProperties.forEach { (k, v) -> add("-D$k=$v") }
+        // Production daemon launches via the gradle-plugin descriptor don't set this; without it
+        // the desktop / Robolectric hosts fall back to stub PNG paths because
+        // `JsonRpcServer.handleRenderNow` only carries `previewId=<id>` in the payload, not the
+        // className+functionName the render engine needs. The previews.json the descriptor
+        // already points at via `manifestPath` is the exact shape `PreviewManifestRouter` expects
+        // (a `{"previews":[{id, className, functionName, …}]}` JSON), so wire it through here so
+        // real renders work without any plugin change.
+        if (
+          descriptor.manifestPath.isNotBlank() &&
+            !descriptor.systemProperties.containsKey("composeai.harness.previewsManifest")
+        ) {
+          add("-Dcomposeai.harness.previewsManifest=${descriptor.manifestPath}")
+        }
         add("-cp")
         add(cpString)
         add(descriptor.mainClass)
