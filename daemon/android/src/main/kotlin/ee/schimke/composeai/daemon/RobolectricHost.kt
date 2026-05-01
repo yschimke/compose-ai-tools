@@ -139,10 +139,12 @@ open class RobolectricHost(
       System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
         ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS
 
-    // SANDBOX-POOL.md — boot sandboxes sequentially, one worker at a time. Robolectric's
-    // bootstrap path doesn't tolerate a second concurrent boot while the first sandbox is alive
-    // (empirically observed on agent/sandbox-pool-multi-worker). Sequencing keeps total cold-start
-    // proportional to N × per-sandbox-boot, which on warm cache is 5–15s × N.
+    // SANDBOX-POOL.md — boot sandboxes sequentially, one worker at a time. We could in principle
+    // start them concurrently (each sandbox is independent now that the cache-key fix lands and
+    // `SandboxManager.getAndroidSandbox` is internally synchronized), but sequenced boots keep
+    // diagnosis simple if a future Robolectric upgrade reintroduces a global-state path. Total
+    // cold-start is proportional to N × per-sandbox-boot — on warm cache 5–15s × N — acceptable
+    // for typical pool sizes.
     var bootedThrough = -1
     try {
       for (i in 0 until sandboxCount) {
