@@ -1,11 +1,17 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * Test fixtures for [RenderEngineTest] / [JsonRpcDesktopIntegrationTest]. Lives in the test source
@@ -64,4 +70,37 @@ fun GreenSquare() {
 @Composable
 fun BoomComposable() {
   error("boom")
+}
+
+/**
+ * v2 interactive-mode fixture — fills red on first composition, flips to green when clicked. Used
+ * by `DesktopInteractiveSessionTest` to assert end-to-end that `interactive/input →
+ * DesktopInteractiveSession.dispatch → ImageComposeScene.sendPointerEvent → Modifier.clickable {}`
+ * actually mutates composition state. Without v2 (one-shot RenderEngine path), `remember` resets
+ * between renders and this preview always paints red — which is the negative-control assertion the
+ * v2 work needs to flip.
+ *
+ * The whole-card `Modifier.clickable {}` covers every click coord we'd plausibly send from the
+ * test, so the dispatch math doesn't have to be pixel-perfect; v2's wire shape carries
+ * image-natural pixels, and the click region is the entire scene.
+ */
+@Composable
+fun ClickToggleSquare() {
+  var clicked by remember { mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  // `awaitEachGesture { awaitFirstDown() }` is the simplest pointer-input shape that fires on a
+  // bare Press event — no tap-gesture timing, no slop check, no need for a matching Release.
+  // We deliberately avoid `Modifier.clickable {}` here because it sits on top of
+  // `detectTapGestures` whose coroutine timing is non-trivial under [ImageComposeScene]'s manual
+  // clock. The v2 wire-shape work just needs to prove "the dispatched pointer event reaches the
+  // composition"; that's what this fixture asserts.
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(color).pointerInput(Unit) {
+        awaitPointerEventScope {
+          awaitFirstDown()
+          clicked = true
+        }
+      }
+  )
 }

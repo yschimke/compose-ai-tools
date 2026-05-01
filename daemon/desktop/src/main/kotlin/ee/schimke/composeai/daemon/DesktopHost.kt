@@ -76,6 +76,19 @@ open class DesktopHost(
    * (testFixtures live on `java.class.path`).
    */
   override val userClassloaderHolder: UserClassLoaderHolder? = null,
+  /**
+   * v2 — resolves a `previewId` (the wire-side string the panel passes in `interactive/start`) to a
+   * concrete [RenderSpec] for the held interactive scene. Without a resolver,
+   * [acquireInteractiveSession] throws `UnsupportedOperationException` and `JsonRpcServer` falls
+   * back to the v1 stateless dispatch path; the panel still works, clicks just don't mutate
+   * composition state.
+   *
+   * `null` (the default) keeps every existing test's behaviour — the host advertises no interactive
+   * support. Production wiring in [DaemonMain] passes a resolver backed by [PreviewIndex], with
+   * sensible 320x320 / density 2.0 defaults for fields the index doesn't carry. See
+   * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).
+   */
+  private val previewSpecResolver: ((String) -> RenderSpec?)? = null,
 ) : RenderHost {
 
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
@@ -128,6 +141,42 @@ open class DesktopHost(
     // it as a `renderFailed` notification — the path the v1 `S5RenderFailedRealModeTest` covers.
     if (raw is Throwable) throw raw
     return raw as RenderResult
+  }
+
+  /**
+   * v2 — allocate a [DesktopInteractiveSession] holding a long-lived
+   * [androidx.compose.ui.ImageComposeScene] for [previewId]. The session resolves [previewId] to a
+   * [RenderSpec] via the [previewSpecResolver] supplied at construction; if no resolver is wired,
+   * or the resolver returns `null` (unknown previewId), this method throws
+   * [UnsupportedOperationException] which `JsonRpcServer` catches and falls back to the v1
+   * stateless dispatch path.
+   *
+   * The held scene composes with `LocalInspectionMode = false` so `Modifier.clickable {}` and other
+   * pointer-input modifiers fire on `interactive/input` notifications — the v2 payoff.
+   */
+  override fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+  ): InteractiveSession {
+    val resolver =
+      previewSpecResolver
+        ?: throw UnsupportedOperationException(
+          "DesktopHost has no previewSpecResolver; pass one at construction time to enable v2 " +
+            "interactive sessions"
+        )
+    val spec =
+      resolver(previewId)
+        ?: throw UnsupportedOperationException(
+          "DesktopHost.previewSpecResolver returned null for previewId='$previewId'; " +
+            "interactive session not allocated"
+        )
+    val state = engine.setUp(spec, classLoader, inspectionMode = false)
+    return DesktopInteractiveSession(
+      previewId = previewId,
+      engine = engine,
+      state = state,
+      sandboxStats = sandboxStats,
+    )
   }
 
   /**
