@@ -97,6 +97,11 @@
                 "command": "composePreview.restartDaemon",
                 "title": "Restart Preview Daemon (pick up rebuilt JAR)",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.diffAllVsMain",
+                "title": "Diff All Previews vs Main",
+                "category": "Compose Preview"
             }
         ],
         "configuration": {

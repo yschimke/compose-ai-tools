@@ -289,7 +289,13 @@ export type ExtensionToWebview =
           rightLabel: string;
           rightImage: string;
       }
-    | { command: 'previewDiffError'; previewId: string; against: 'head' | 'main'; message: string };
+    | { command: 'previewDiffError'; previewId: string; against: 'head' | 'main'; message: string }
+    /**
+     * Programmatic open of a preview in focus mode + immediate diff
+     * request. Used by the "Diff All vs Main" command so picking an item
+     * from its quick-pick lands the user directly on the diff result.
+     */
+    | { command: 'focusAndDiff'; previewId: string; against: 'head' | 'main' };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =

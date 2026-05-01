@@ -1787,6 +1787,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     showDiffOverlay(card, msg.against, null, msg.message || 'Diff unavailable.');
                     break;
                 }
+                case 'focusAndDiff': {
+                    const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
+                    if (!card) break;
+                    focusOnCard(card);
+                    showDiffOverlay(card, msg.against, null, null);
+                    vscode.postMessage({
+                        command: 'requestPreviewDiff',
+                        previewId: msg.previewId,
+                        against: msg.against,
+                    });
+                    break;
+                }
             }
         });
 
