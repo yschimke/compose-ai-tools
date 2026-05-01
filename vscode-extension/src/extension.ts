@@ -16,6 +16,7 @@ import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
 import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
+import { formatRenderErrorMessage } from './renderError';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
@@ -1092,6 +1093,7 @@ function readCompileErrors(filePath: string): CompileError[] {
     return extractCompileErrors(filePath, diagnostics as unknown as readonly DiagnosticLike[]);
 }
 
+
 /**
  * Auto-retry the refresh when the LSP republishes diagnostics that
  * clear the currently-gated file. See the listener registration site
@@ -1650,14 +1652,27 @@ async function refresh(
                             });
                         } else if (forceRender) {
                             // Render task completed but produced no PNG for this
-                            // capture — a per-capture failure that didn't fail the
-                            // whole task. Surface it on the card; root-cause log is
-                            // in Output ▸ Compose Preview.
+                            // capture. Look for the per-preview error sidecar
+                            // the renderer drops next to the would-be PNG; if
+                            // found, surface the structured exception detail
+                            // (class, message, top app frame). Falls back to
+                            // the generic "see Output" message when the
+                            // sidecar is absent — that's the case for the
+                            // Android Robolectric path which doesn't yet
+                            // write sidecars (planned follow-up).
+                            const renderError = await gradleService!.readPreviewRenderError(
+                                mod, capture.renderOutput,
+                            );
+                            if (abort.signal.aborted || !panel) { return; }
+                            const message = renderError
+                                ? formatRenderErrorMessage(renderError)
+                                : 'Render failed — see Output ▸ Compose Preview';
                             panel.postMessage({
                                 command: 'setImageError',
                                 previewId: preview.id,
                                 captureIndex: idx,
-                                message: 'Render failed — see Output ▸ Compose Preview',
+                                message,
+                                renderError,
                             });
                         }
                         // else: discover-only pass, PNG not produced yet. Leave

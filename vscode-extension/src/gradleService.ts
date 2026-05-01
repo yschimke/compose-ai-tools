@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, ResourceManifest } from './types';
+import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, PreviewRenderError, ResourceManifest } from './types';
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 import { KotlinCompileError, KotlinCompileErrorDetector } from './kotlinCompileErrorDetector';
@@ -399,6 +399,42 @@ export class GradleService {
             const data = await fs.promises.readFile(pngPath);
             return data.toString('base64');
         } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Read the per-preview runtime-error sidecar — written by the
+     * renderer next to where the PNG would have gone, with `.error.json`
+     * appended. Returns `null` when the file is absent (preview rendered
+     * fine, or the renderer doesn't yet support the sidecar) or when the
+     * JSON is malformed / has an unknown schema version.
+     *
+     * Sibling placement keeps the renderer's filesystem layout self-
+     * contained — no aggregation step in the gradle plugin — and the
+     * extension finds the sidecar by trivial string-concat on the
+     * manifest's existing `renderOutput` path.
+     */
+    async readPreviewRenderError(module: string, renderOutput: string): Promise<PreviewRenderError | null> {
+        const sidecarPath = path.join(
+            this.workspaceRoot, module, 'build', 'compose-previews', `${renderOutput}.error.json`,
+        );
+        try {
+            const text = await fs.promises.readFile(sidecarPath, 'utf-8');
+            const parsed = JSON.parse(text) as PreviewRenderError;
+            if (!parsed.schema?.startsWith('compose-preview-error/')) {
+                this.logger.appendLine(`[render-error] unexpected schema in ${sidecarPath}: ${parsed.schema}`);
+                return null;
+            }
+            return parsed;
+        } catch (e: unknown) {
+            // ENOENT is the common case (no error sidecar) — silent.
+            // Anything else is logged so a malformed file is debuggable
+            // without surprising the user with a generic banner.
+            const err = e as NodeJS.ErrnoException;
+            if (err && err.code !== 'ENOENT') {
+                this.logger.appendLine(`[render-error] failed to read ${sidecarPath}: ${err.message ?? err}`);
+            }
             return null;
         }
     }
