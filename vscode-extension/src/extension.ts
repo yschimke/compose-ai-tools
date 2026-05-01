@@ -21,6 +21,7 @@ import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
 import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
+import { watchPreviewMainRef } from './previewMainWatcher';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
@@ -376,6 +377,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     }
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(PreviewPanel.viewId, panel),
+    );
+
+    // Watch the preview_main ref for fetch-driven changes. When the ref
+    // moves, any open "Diff vs main" overlay in the live panel needs to
+    // re-issue against the new bytes. The watcher coalesces fetch bursts
+    // internally; we just message the live panel and let it reissue.
+    context.subscriptions.push(
+        watchPreviewMainRef(workspaceRoot, () => {
+            panel?.postMessage({ command: 'previewMainRefChanged' });
+        }),
     );
 
     // Phase H7 — Preview History panel (HISTORY.md § "VS Code integration").
