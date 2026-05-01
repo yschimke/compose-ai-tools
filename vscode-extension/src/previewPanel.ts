@@ -54,7 +54,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 <body>
     <div id="progress-bar" class="progress-bar" role="progressbar"
          aria-label="Refresh progress"
-         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="progress-label" id="progress-label"></div>
         <div class="progress-track">
             <div class="progress-fill"></div>
@@ -133,25 +133,32 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const progressBar = document.getElementById('progress-bar');
         const progressFill = progressBar.querySelector('.progress-fill');
         const progressLabel = document.getElementById('progress-label');
-        // Auto-hide timer for the bar after it lands at 100%. Holds for a
-        // beat so the user sees the completed state, then fades the strip
-        // out so it doesn't permanently occupy a row of UI.
+        // Auto-reset-to-idle timer for the bar after it lands at 100%.
+        // Holds for a beat so the user sees the completed state, then
+        // resets the fill + label to their idle look. The strip itself
+        // stays mounted — see notes in setProgress().
         let progressHideTimer = null;
-        // Deferred-mount state. The bar isn't shown until [PROGRESS_MOUNT_DELAY_MS]
-        // of in-flight work has accumulated — warm-cache refreshes that finish
-        // in <200ms never mount it at all, avoiding the "flash on, flash off"
-        // glitch. progressVisible flips true once we've actually rendered
-        // something into the DOM; subsequent setProgress updates within the
-        // same refresh apply directly without re-deferring.
-        const PROGRESS_MOUNT_DELAY_MS = 200;
-        let progressMountTimer = null;
-        let progressVisible = false;
+        // Deferred-paint state. We don't paint a fill until ~200ms of
+        // in-flight work has accumulated, so warm-cache refreshes never
+        // pulse the bar. The strip itself is ALWAYS mounted (no
+        // display:none toggle), so deferring the paint keeps the layout
+        // identical between idle and pending — only the fill width and
+        // label text change once the deferral elapses.
+        const PROGRESS_PAINT_DELAY_MS = 200;
+        let progressPaintTimer = null;
+        let progressActive = false;
         let pendingProgressState = null;
+
+        function resetProgressVisuals() {
+            progressBar.classList.remove('progress-finishing', 'progress-slow');
+            progressFill.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', '0');
+            progressLabel.textContent = '';
+        }
 
         function applyProgressState(state) {
             const pct = Math.max(0, Math.min(1, state.percent));
-            progressBar.hidden = false;
-            progressVisible = true;
+            progressActive = true;
             progressBar.classList.remove('progress-finishing');
             progressBar.classList.toggle('progress-slow', !!state.slow);
             progressFill.style.width = (pct * 100).toFixed(1) + '%';
@@ -163,11 +170,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (pct >= 1) {
                 progressBar.classList.add('progress-finishing');
                 progressHideTimer = setTimeout(() => {
-                    progressBar.hidden = true;
-                    progressVisible = false;
-                    progressBar.classList.remove('progress-finishing', 'progress-slow');
-                    progressFill.style.width = '0%';
-                    progressLabel.textContent = '';
+                    progressActive = false;
+                    resetProgressVisuals();
                     progressHideTimer = null;
                 }, 600);
             }
@@ -179,27 +183,28 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 progressHideTimer = null;
             }
             const state = { label: label || '', percent, slow: !!slow };
-            // Already visible (or mid-fade) — apply directly.
-            if (progressVisible) {
+            // Already painting — apply directly so the bar stays in lockstep
+            // with the tracker rather than re-entering the deferral window.
+            if (progressActive) {
                 applyProgressState(state);
                 return;
             }
-            // Latched state for whenever the deferral timer fires.
+            // Latched state for when the deferral timer fires.
             pendingProgressState = state;
-            // Already terminal — show immediately so the brief flash isn't
-            // missed (rare path: tracker emits an immediate done=100% before
-            // any phase work happens, e.g. up-to-date discover).
+            // Terminal state: paint immediately so the user gets a visible
+            // completion even on instant refreshes (rare path — tracker
+            // emits an immediate done=100% on an up-to-date discover).
             if (state.percent >= 1) {
                 applyProgressState(state);
                 return;
             }
-            if (progressMountTimer === null) {
-                progressMountTimer = setTimeout(() => {
-                    progressMountTimer = null;
+            if (progressPaintTimer === null) {
+                progressPaintTimer = setTimeout(() => {
+                    progressPaintTimer = null;
                     if (pendingProgressState) {
                         applyProgressState(pendingProgressState);
                     }
-                }, PROGRESS_MOUNT_DELAY_MS);
+                }, PROGRESS_PAINT_DELAY_MS);
             }
         }
 
@@ -208,16 +213,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 clearTimeout(progressHideTimer);
                 progressHideTimer = null;
             }
-            if (progressMountTimer) {
-                clearTimeout(progressMountTimer);
-                progressMountTimer = null;
+            if (progressPaintTimer) {
+                clearTimeout(progressPaintTimer);
+                progressPaintTimer = null;
             }
             pendingProgressState = null;
-            progressVisible = false;
-            progressBar.hidden = true;
-            progressBar.classList.remove('progress-finishing', 'progress-slow');
-            progressFill.style.width = '0%';
-            progressLabel.textContent = '';
+            progressActive = false;
+            resetProgressVisuals();
         }
 
         // Compile-error banner state. Cards stay rendered while the banner
