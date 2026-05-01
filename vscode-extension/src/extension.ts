@@ -312,7 +312,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 if (!client) { throw new Error('daemon unavailable'); }
                 return client.historyDiff({ from: fromId, to: toId, mode: 'metadata' });
             },
-            currentScope: historyScopeRef.current,
+            getCurrentScope: () => historyScopeRef.current,
             logger: outputChannel,
         }),
     );
