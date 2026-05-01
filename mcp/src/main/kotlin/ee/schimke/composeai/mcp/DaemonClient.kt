@@ -20,6 +20,7 @@ import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.Options
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
@@ -148,10 +149,12 @@ class DaemonClient(
     previews: List<String>,
     tier: RenderTier = RenderTier.FULL,
     reason: String? = null,
+    overrides: PreviewOverrides? = null,
     timeout: Duration = 30.seconds,
   ): RenderNowResult {
     val id = nextId.getAndIncrement()
-    val params = RenderNowParams(previews = previews, tier = tier, reason = reason)
+    val params =
+      RenderNowParams(previews = previews, tier = tier, reason = reason, overrides = overrides)
     val request =
       JsonRpcRequest(
         id = id,

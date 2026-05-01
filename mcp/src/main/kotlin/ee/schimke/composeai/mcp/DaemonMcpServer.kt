@@ -2,7 +2,10 @@ package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
 import ee.schimke.composeai.mcp.protocol.Implementation
@@ -282,6 +285,7 @@ class DaemonMcpServer(
     uri: PreviewUri,
     session: McpSession? = null,
     progressToken: JsonElement? = null,
+    overrides: PreviewOverrides? = null,
   ): ByteArray {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
     val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
@@ -302,7 +306,7 @@ class DaemonMcpServer(
     // single-daemon path.
     daemon
       .clientForRender(uri.previewFqn)
-      .renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL)
+      .renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL, overrides = overrides)
     // Optional `notifications/progress` beat: when the client opted in via
     // `_meta.progressToken`, fire periodic monotonic progress notifications so a UI can show a
     // spinner / progress bar while the slow render completes. Beat thread is daemon-flagged
@@ -375,14 +379,29 @@ class DaemonMcpServer(
       ToolDef(
         name = "render_preview",
         description =
-          "Force-render a preview by URI, bypassing any cache. Returns the rendered PNG inline.",
+          "Force-render a preview by URI, bypassing any cache. Returns the rendered PNG inline. " +
+            "Optional `overrides` apply per-call display-property overrides (size, density, " +
+            "locale, fontScale, uiMode, orientation) — see PROTOCOL.md § 5 (`renderNow.overrides`).",
         inputSchema =
           parseSchema(
             """
             {
               "type":"object",
               "properties":{
-                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"}
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "overrides":{
+                  "type":"object",
+                  "description":"Per-call display overrides. Each field is optional; nulls fall back to the discovery-time RenderSpec. Backends that don't model a field (e.g. desktop has no Android resource qualifier system) ignore it.",
+                  "properties":{
+                    "widthPx":{"type":"integer","description":"Sandbox width in pixels."},
+                    "heightPx":{"type":"integer","description":"Sandbox height in pixels."},
+                    "density":{"type":"number","description":"Display density (1.0 = mdpi, 2.0 = xhdpi, etc.)."},
+                    "localeTag":{"type":"string","description":"BCP-47 locale tag (e.g. 'en-US', 'fr', 'ja-JP'). Android-only today."},
+                    "fontScale":{"type":"number","description":"Font scale multiplier (1.0 = system default)."},
+                    "uiMode":{"type":"string","enum":["light","dark"],"description":"Light/dark mode override. Android-only today."},
+                    "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."}
+                  }
+                }
               },
               "required":["uri"]
             }
@@ -713,11 +732,71 @@ class DaemonMcpServer(
       args["uri"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("render_preview: missing 'uri'")
     val uri = PreviewUri.parseOrNull(uriStr) ?: return errorCallToolResult("invalid uri: $uriStr")
+    val overrides =
+      args["overrides"]?.let {
+        runCatching { decodePreviewOverrides(it) }
+          .getOrElse { e ->
+            return errorCallToolResult("render_preview: invalid overrides: ${e.message}")
+          }
+      }
     return runCatching {
-        val bytes = renderAndReadBytes(uri)
+        val bytes = renderAndReadBytes(uri, overrides = overrides)
         pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Translates the MCP `render_preview.overrides` JSON sub-object into a typed [PreviewOverrides]
+   * for the daemon RPC. Only the fields PROTOCOL.md § 5 documents are accepted; unknown keys are
+   * ignored (forward-compatible with future fields). Throws on malformed primitives so the caller
+   * surfaces "invalid overrides: …" rather than rendering with surprising defaults.
+   */
+  private fun decodePreviewOverrides(elem: JsonElement): PreviewOverrides {
+    val obj = (elem as? JsonObject) ?: error("overrides must be an object")
+    fun int(name: String): Int? =
+      obj[name]
+        ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?.jsonPrimitive
+        ?.content
+        ?.toInt()
+    fun float(name: String): Float? =
+      obj[name]
+        ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?.jsonPrimitive
+        ?.content
+        ?.toFloat()
+    fun str(name: String): String? =
+      obj[name]
+        ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.takeIf { it.isNotBlank() }
+    val uiMode =
+      str("uiMode")?.let {
+        when (it.lowercase()) {
+          "light" -> UiMode.LIGHT
+          "dark" -> UiMode.DARK
+          else -> error("uiMode must be 'light' or 'dark', got '$it'")
+        }
+      }
+    val orientation =
+      str("orientation")?.let {
+        when (it.lowercase()) {
+          "portrait" -> Orientation.PORTRAIT
+          "landscape" -> Orientation.LANDSCAPE
+          else -> error("orientation must be 'portrait' or 'landscape', got '$it'")
+        }
+      }
+    return PreviewOverrides(
+      widthPx = int("widthPx"),
+      heightPx = int("heightPx"),
+      density = float("density"),
+      localeTag = str("localeTag"),
+      fontScale = float("fontScale"),
+      uiMode = uiMode,
+      orientation = orientation,
+    )
   }
 
   private fun toolWatch(session: McpSession, args: JsonObject): CallToolResult {

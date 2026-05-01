@@ -35,6 +35,8 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.JsonRpcResponse
 import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
+import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderFinishedParams
@@ -45,6 +47,7 @@ import ee.schimke.composeai.daemon.protocol.RenderStartedParams
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
+import ee.schimke.composeai.daemon.protocol.UiMode
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -290,6 +293,16 @@ class JsonRpcServer(
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
   private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
+
+  /**
+   * Preview ids currently in-flight for an override-bearing render. PROTOCOL.md § 5
+   * (`renderNow.overrides`) — when a second override-bearing `renderNow` arrives for a previewId
+   * already in this set, we reject with `coalesced` rather than queue it. This is the daemon-side
+   * half of "don't drown the queue when the user is dragging a slider"; the panel / MCP client is
+   * responsible for retrying on the next `renderFinished` if the latest override values still
+   * differ from what was rendered (see docs/daemon/INTERACTIVE.md § "Display overrides").
+   */
+  private val previewIdsWithOverridesInFlight = ConcurrentHashMap.newKeySet<String>()
 
   private val writerThread =
     Thread({ writerLoop() }, "compose-ai-daemon-writer").apply { isDaemon = false }
@@ -552,11 +565,26 @@ class JsonRpcServer(
     val queued = mutableListOf<String>()
     val rejected = mutableListOf<RejectedRender>()
     val now = System.currentTimeMillis()
+    val overrides = params.overrides
     for (previewId in params.previews) {
       // Stub policy for B1.5: accept any non-blank id. UnknownPreview (-32004)
       // requires a real discovery set, which lands with B2.2.
       if (previewId.isBlank()) {
         rejected.add(RejectedRender(id = previewId, reason = "blank preview id"))
+        continue
+      }
+      // Coalesce a slider-drag burst: if an override-bearing render is still in-flight for this
+      // previewId, drop the new one and let the client resubmit on `renderFinished`. Without this
+      // a fast drag fans out to N parallel sandbox renders that all serialise on the same slot.
+      // No coalescing on plain (no-overrides) `renderNow` so the existing save-debounce loop is
+      // unaffected.
+      if (overrides != null && !previewIdsWithOverridesInFlight.add(previewId)) {
+        rejected.add(
+          RejectedRender(
+            id = previewId,
+            reason = "coalesced: override-bearing render already in flight for this previewId",
+          )
+        )
         continue
       }
       val hostId = RenderHost.nextRequestId()
@@ -566,14 +594,14 @@ class JsonRpcServer(
       // Submit to host on a worker thread so we don't block the read loop.
       // submit() returns when the host returns a result; the watcher thread
       // demuxes the result back into renderFinished.
-      submitRenderAsync(hostId)
+      submitRenderAsync(hostId, overrides)
       queued.add(previewId)
     }
     val result = RenderNowResult(queued = queued, rejected = rejected)
     sendResponse(req.id, encode(RenderNowResult.serializer(), result))
   }
 
-  private fun submitRenderAsync(hostId: Long) {
+  private fun submitRenderAsync(hostId: Long, overrides: PreviewOverrides? = null) {
     // Fire-and-forget: the watcher thread polls the result and emits the
     // notification. We use a fresh thread (cheap; we expect O(visible) renders
     // queued at a time) rather than a pool to keep wiring trivial — B1.4 will
@@ -588,7 +616,7 @@ class JsonRpcServer(
     // the RenderRequest shape. B-desktop.1.4 will replace this with a typed
     // field; until then this is the documented workaround.
     val previewId = hostIdToPreviewId[hostId] ?: ""
-    val payload = if (previewId.isNotEmpty()) "previewId=$previewId" else ""
+    val payload = encodeRenderPayload(previewId, overrides)
     Thread(
         {
           try {
@@ -613,6 +641,67 @@ class JsonRpcServer(
       )
       .apply { isDaemon = true }
       .start()
+  }
+
+  /**
+   * Encodes the host-bound `RenderRequest.Render.payload` string. Today this carries:
+   *
+   * - `previewId=<id>` — the discovery-time identifier the per-backend `PreviewManifestRouter`
+   *   resolves into a [RenderSpec] before dispatch.
+   * - Optional `widthPx`, `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`
+   *   — the [PreviewOverrides] from this `renderNow` call. Routers preserve these when rewriting
+   *   the payload, and they win over the manifest entry's per-preview defaults.
+   *
+   * `;`-delimited so the existing `RenderSpec.parseFromPayload(OrNull)` parsers read each pair
+   * directly. See PROTOCOL.md § 5 (`renderNow.overrides`) for the wire-level shape.
+   */
+  private fun encodeRenderPayload(previewId: String, overrides: PreviewOverrides?): String {
+    return buildString {
+      if (previewId.isNotEmpty()) append("previewId=").append(previewId)
+      if (overrides == null) return@buildString
+      overrides.widthPx?.let {
+        if (isNotEmpty()) append(';')
+        append("widthPx=").append(it)
+      }
+      overrides.heightPx?.let {
+        if (isNotEmpty()) append(';')
+        append("heightPx=").append(it)
+      }
+      overrides.density?.let {
+        if (isNotEmpty()) append(';')
+        append("density=").append(it)
+      }
+      overrides.localeTag
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          if (isNotEmpty()) append(';')
+          append("localeTag=").append(it)
+        }
+      overrides.fontScale?.let {
+        if (isNotEmpty()) append(';')
+        append("fontScale=").append(it)
+      }
+      overrides.uiMode?.let {
+        if (isNotEmpty()) append(';')
+        append("uiMode=")
+        append(
+          when (it) {
+            UiMode.LIGHT -> "light"
+            UiMode.DARK -> "dark"
+          }
+        )
+      }
+      overrides.orientation?.let {
+        if (isNotEmpty()) append(';')
+        append("orientation=")
+        append(
+          when (it) {
+            Orientation.PORTRAIT -> "portrait"
+            Orientation.LANDSCAPE -> "landscape"
+          }
+        )
+      }
+    }
   }
 
   private val renderResultsQueue = LinkedBlockingQueue<Any>()
@@ -687,6 +776,7 @@ class JsonRpcServer(
       recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     }
     inFlightRenders.remove(result.id)
+    previewIdsWithOverridesInFlight.remove(previewId)
     // Save-after-render invariant: a `fileChanged({kind:source})` queued discovery work that has
     // been waiting for this render to ship. The writer queue is FIFO and `renderFinished` is
     // already in it — kicking the discovery scan now guarantees its `discoveryUpdated`
@@ -1072,6 +1162,7 @@ class JsonRpcServer(
     val previewId = hostIdToPreviewId.remove(failure.hostId) ?: failure.hostId.toString()
     acceptedAtMs.remove(failure.hostId)
     inFlightRenders.remove(failure.hostId)
+    previewIdsWithOverridesInFlight.remove(previewId)
     // Minimal renderFailed; B1.4 widens this to the real RenderError shape.
     val payload = buildJsonObject {
       put("id", JsonPrimitive(previewId))

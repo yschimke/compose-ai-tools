@@ -40,6 +40,10 @@ class MessagesTest {
 
   @Test fun roundTripRenderNowParams() = roundTrip<RenderNowParams>("client-renderNow.json")
 
+  @Test
+  fun roundTripRenderNowParamsWithOverrides() =
+    roundTrip<RenderNowParams>("client-renderNow-overrides.json")
+
   @Test fun roundTripRenderNowResult() = roundTrip<RenderNowResult>("daemon-renderNowResult.json")
 
   @Test
@@ -126,6 +130,7 @@ class MessagesTest {
         "client-setFocus.json",
         "client-fileChanged.json",
         "client-renderNow.json",
+        "client-renderNow-overrides.json",
         "daemon-renderNowResult.json",
         "daemon-discoveryUpdated.json",
         "daemon-renderStarted.json",

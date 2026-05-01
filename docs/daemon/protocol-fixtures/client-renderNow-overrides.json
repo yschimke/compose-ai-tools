@@ -1,0 +1,14 @@
+{
+  "previews": ["com.example.HomeKt#HomePreview"],
+  "tier": "fast",
+  "reason": "user dragged width slider",
+  "overrides": {
+    "widthPx": 600,
+    "heightPx": 800,
+    "density": 2.0,
+    "localeTag": "fr-FR",
+    "fontScale": 1.3,
+    "uiMode": "dark",
+    "orientation": "portrait"
+  }
+}

@@ -144,8 +144,11 @@ class RenderEngine(
       heightDp = pxToDp(spec.heightPx, spec.density),
       density = spec.density,
       isRound = isRound,
+      localeTag = spec.localeTag,
+      uiMode = spec.uiMode,
+      orientation = spec.orientation,
     )
-    org.robolectric.RuntimeEnvironment.setFontScale(1.0f)
+    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
 
     // Activity registration mirrors `RobolectricRenderTest.renderDefault` — Robolectric 4.13+
     // requires the activity to be resolvable through `ShadowPackageManager` before
@@ -261,25 +264,59 @@ class RenderEngine(
   }
 
   /**
-   * Subset of `RobolectricRenderTest.applyPreviewQualifiers` — only the size / density / round
-   * qualifiers the daemon's v1 surface exercises. Locale / uiMode / orientation come from
-   * `@Preview` annotation fields the daemon doesn't yet thread through. Same `RuntimeEnvironment`
-   * entrypoints as the renderer — output dimensions match Studio's preview pane. Qualifier order
-   * follows Robolectric's strict grammar (locale, width, height, round, orientation, …, density).
+   * Builds and applies the Robolectric resource qualifier string for one render. Same
+   * `RuntimeEnvironment` entrypoint as `RobolectricRenderTest.applyPreviewQualifiers`; the
+   * difference is that the daemon takes locale / uiMode / orientation as overrides on the
+   * [RenderSpec] (see PROTOCOL.md § 5 `renderNow.overrides`) rather than reading them off
+   * `@Preview` annotation fields. Qualifier grammar is order-sensitive — locale, width, height,
+   * round, orientation, uiMode (notnight/night), density.
    */
-  private fun applyPreviewQualifiers(widthDp: Int, heightDp: Int, density: Float, isRound: Boolean) {
+  private fun applyPreviewQualifiers(
+    widthDp: Int,
+    heightDp: Int,
+    density: Float,
+    isRound: Boolean,
+    localeTag: String?,
+    uiMode: RenderSpec.SpecUiMode?,
+    orientation: RenderSpec.SpecOrientation?,
+  ) {
     val qualifiers = buildList {
+      if (!localeTag.isNullOrBlank()) add(localeTagToQualifier(localeTag))
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
       if (isRound) add("round")
-      if (widthDp > 0 && heightDp > 0) {
-        add(if (widthDp > heightDp) "land" else "port")
+      val derivedOrientation =
+        when (orientation) {
+          RenderSpec.SpecOrientation.PORTRAIT -> "port"
+          RenderSpec.SpecOrientation.LANDSCAPE -> "land"
+          null ->
+            if (widthDp > 0 && heightDp > 0) {
+              if (widthDp > heightDp) "land" else "port"
+            } else null
+        }
+      if (derivedOrientation != null) add(derivedOrientation)
+      when (uiMode) {
+        RenderSpec.SpecUiMode.LIGHT -> add("notnight")
+        RenderSpec.SpecUiMode.DARK -> add("night")
+        null -> {}
       }
       if (density > 0f) add("${(density * 160).toInt()}dpi")
     }
     if (qualifiers.isNotEmpty()) {
       org.robolectric.RuntimeEnvironment.setQualifiers("+${qualifiers.joinToString("-")}")
     }
+  }
+
+  /**
+   * Translates a BCP-47 locale tag (`en-US`, `fr`, `ja-JP`) to Robolectric's BCP-47 qualifier
+   * spelling (`b+en+US`, `b+fr`, `b+ja+JP`). Robolectric matches Android's resource framework: the
+   * `b+` prefix is mandatory for tags with non-empty regions or scripts; we use it unconditionally
+   * for simplicity — single-tag forms like `b+en` are accepted.
+   */
+  private fun localeTagToQualifier(tag: String): String {
+    val parts = tag.split('-', '_').filter { it.isNotBlank() }
+    if (parts.isEmpty()) return ""
+    return "b+${parts.joinToString("+")}"
   }
 
   companion object {
@@ -357,14 +394,40 @@ data class RenderSpec(
   val device: String? = null,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
+  /**
+   * BCP-47 locale tag — overrides the default qualifier set when non-null. Threaded through the
+   * `+` qualifier prefix as `b+lang+region` (Robolectric grammar; see `applyPreviewQualifiers`).
+   */
+  val localeTag: String? = null,
+  /**
+   * Font scale multiplier. Null means "use whatever Robolectric defaults to" (1.0). Non-null
+   * routes through `RuntimeEnvironment.setFontScale` — same `Configuration` knob `RoborazziCompose
+   * FontScaleOption` uses.
+   */
+  val fontScale: Float? = null,
+  /** Light/dark mode override → `notnight` / `night` qualifier. */
+  val uiMode: SpecUiMode? = null,
+  /** Portrait/landscape override → `port` / `land` qualifier. Overrides the size-derived guess. */
+  val orientation: SpecOrientation? = null,
 ) {
+
+  enum class SpecUiMode {
+    LIGHT,
+    DARK,
+  }
+
+  enum class SpecOrientation {
+    PORTRAIT,
+    LANDSCAPE,
+  }
 
   companion object {
 
     /**
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
-     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`. `className` and
+     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
+     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`). `className` and
      * `functionName` are required; everything else falls back to the defaults on this data class.
      * Returns `null` when the payload doesn't carry a `className=` token (the discriminator the
      * host uses to route legacy stub-payload requests through the classloader-identity path).
@@ -392,6 +455,20 @@ data class RenderSpec(
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
+        localeTag = map["localeTag"]?.takeIf { it.isNotBlank() },
+        fontScale = map["fontScale"]?.toFloatOrNull(),
+        uiMode =
+          when (map["uiMode"]?.lowercase()) {
+            "light" -> SpecUiMode.LIGHT
+            "dark" -> SpecUiMode.DARK
+            else -> null
+          },
+        orientation =
+          when (map["orientation"]?.lowercase()) {
+            "portrait" -> SpecOrientation.PORTRAIT
+            "landscape" -> SpecOrientation.LANDSCAPE
+            else -> null
+          },
       )
     }
   }
