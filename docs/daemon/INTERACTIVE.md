@@ -284,6 +284,49 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
    to false during interactive frames and dispatches the pixel coords
    into the active `ImageComposeScene`.
 
+## 8a. Display overrides
+
+Per-render display properties — **size**, **density**, **locale**,
+**fontScale**, **uiMode** (light/dark), **orientation** — ride on the existing
+`renderNow` request via the optional `overrides` field documented in
+[PROTOCOL.md § 5](PROTOCOL.md#renderNow). They are not interactive-only: any
+caller (panel, MCP, future RPC) can attach overrides to a single `renderNow`
+to get a one-off render with a different qualifier set. A subsequent
+`renderNow` without `overrides` reverts to the discovery-time `RenderSpec` —
+overrides are call-scoped, not session-scoped.
+
+**Why not interactive-only.** Size/density/locale/fontScale/uiMode/orientation
+are all the same Robolectric qualifier knob (`setQualifiers` +
+`setFontScale`) under the hood. Splitting "size lives on `interactive/*`" vs
+"the rest live on `renderNow`" duplicates the plumbing for no payoff, and the
+MCP use case is overwhelmingly static ("render this at width=400, locale=fr,
+dark") so MCP needs them on the static path regardless. Interactive mode is
+just "auto-fire `renderNow` with the current overrides whenever the user
+moves a slider."
+
+**Coalescing.** When the user drags a width slider you don't want every
+intermediate value to queue a Robolectric render. The daemon coalesces:
+when an override-bearing `renderNow` arrives for a previewId that already
+has an override-bearing render in-flight, the new one is rejected with
+`reason = "coalesced: …"`. The panel / MCP client resubmits on the next
+`renderFinished` if the latest override values still differ from what was
+rendered. Plain (no-overrides) `renderNow` is unaffected — the save-debounce
+loop continues to coalesce upstream.
+
+**MCP surface.** The `render_preview` tool accepts the same `overrides`
+sub-object verbatim — see `mcp/src/main/kotlin/.../DaemonMcpServer.kt` (tool
+definition + `decodePreviewOverrides`). Agents asking "show me this preview
+in dark mode at width 400" route through the static path; no live-mode
+toggle required.
+
+**Backend fidelity.** The Android renderer applies all seven fields via
+`applyPreviewQualifiers` + `RuntimeEnvironment.setFontScale`. The desktop
+renderer applies size/density only; `uiMode` / `localeTag` / `fontScale` /
+`orientation` ride on the wire for parity but are no-ops on plain Skiko
+today (Compose Desktop has no Android-style resource qualifier system —
+they'd need to thread through `LocalConfiguration` /
+`androidx.compose.ui.text.intl.Locale.current`, which is a follow-up).
+
 ## 9. v2 — click dispatch into composition
 
 > **Status:** design only. v1 ships the wire shape; v2 makes

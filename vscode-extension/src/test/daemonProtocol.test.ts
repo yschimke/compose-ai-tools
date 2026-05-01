@@ -97,6 +97,18 @@ describe('daemon protocol — golden fixtures', () => {
         assert.strictEqual(params.tier, 'fast');
         assert.ok(params.previews.length >= 1);
     });
+
+    it('parses client-renderNow-overrides.json with display-property overrides', () => {
+        // PROTOCOL.md § 5 — `renderNow.overrides` extends the request shape with optional
+        // per-call display overrides. The Kotlin counterpart round-trips the same fixture in
+        // MessagesTest, which is the cross-language source of truth for this feature.
+        const params = readFixture<RenderNowParams>('client-renderNow-overrides.json');
+        assert.strictEqual(params.tier, 'fast');
+        assert.ok(params.overrides);
+        assert.strictEqual(params.overrides!.widthPx, 600);
+        assert.strictEqual(params.overrides!.uiMode, 'dark');
+        assert.strictEqual(params.overrides!.localeTag, 'fr-FR');
+    });
 });
 
 describe('daemon launch descriptor', () => {

@@ -185,7 +185,50 @@ data class RenderNowParams(
   val previews: List<String>,
   val tier: RenderTier,
   val reason: String? = null,
+  /**
+   * Optional per-call display-property overrides. Applied to every preview in [previews] for this
+   * call only; a subsequent `renderNow` without `overrides` reverts to the discovery-time
+   * `RenderSpec` from `previews.json`. See PROTOCOL.md § 5 ("renderNow") and
+   * docs/daemon/INTERACTIVE.md § "Display overrides".
+   */
+  val overrides: PreviewOverrides? = null,
 )
+
+/**
+ * Per-render display-property overrides, threaded through to each backend's `RenderEngine`. Every
+ * field is optional — fields left null fall back to the discovery-time `RenderSpec`. Backends that
+ * don't model a particular field (e.g. desktop has no `uiMode` resource qualifier) ignore it. See
+ * PROTOCOL.md § 5 ("renderNow.overrides").
+ */
+@Serializable
+data class PreviewOverrides(
+  /** Sandbox width in pixels. Mirrors `@Preview(widthDp=…)` × density. */
+  val widthPx: Int? = null,
+  /** Sandbox height in pixels. */
+  val heightPx: Int? = null,
+  /** Display density (1.0 = mdpi/160dpi, 2.0 = xhdpi/320dpi, etc.). */
+  val density: Float? = null,
+  /** BCP-47 locale tag (e.g. `"en-US"`, `"fr"`, `"ja-JP"`). Android-only today. */
+  val localeTag: String? = null,
+  /** Font scale multiplier (1.0 = system default, 1.3 = "large", 2.0 = max accessibility). */
+  val fontScale: Float? = null,
+  /** Light/dark mode override. Android-only today. */
+  val uiMode: UiMode? = null,
+  /** Portrait/landscape override. Android-only today. */
+  val orientation: Orientation? = null,
+)
+
+@Serializable
+enum class UiMode {
+  @SerialName("light") LIGHT,
+  @SerialName("dark") DARK,
+}
+
+@Serializable
+enum class Orientation {
+  @SerialName("portrait") PORTRAIT,
+  @SerialName("landscape") LANDSCAPE,
+}
 
 @Serializable
 enum class RenderTier {

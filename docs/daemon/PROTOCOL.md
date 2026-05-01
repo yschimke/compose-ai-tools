@@ -189,16 +189,32 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
   previews: string[];                // preview IDs; empty = render all visible-and-stale
   tier: "fast" | "full";             // "fast" = single best-effort frame; "full" = full advanceTimeBy loop
   reason?: string;                   // free-form, surfaces in logs (e.g. "user clicked refresh")
+  overrides?: PreviewOverrides;      // optional per-call display-property overrides
+}
+
+// PreviewOverrides — every field optional; null falls back to the discovery-time RenderSpec.
+{
+  widthPx?: number;
+  heightPx?: number;
+  density?: number;                  // 1.0 = mdpi/160dpi, 2.0 = xhdpi/320dpi
+  localeTag?: string;                // BCP-47 (e.g. "en-US", "fr", "ja-JP"). Android-only today.
+  fontScale?: number;                // 1.0 = system default
+  uiMode?: "light" | "dark";         // Android-only today.
+  orientation?: "portrait" | "landscape";  // Android-only today.
 }
 
 // result
 {
   queued: string[];                  // IDs accepted into the render queue
-  rejected: { id: string; reason: string }[];   // unknown preview, etc.
+  rejected: { id: string; reason: string }[];   // unknown preview, coalesced, etc.
 }
 ```
 
 The result resolves as soon as the request is queued, **not** when rendering completes. Per-render progress arrives as `renderStarted` / `renderFinished` / `renderFailed` notifications keyed by ID.
+
+`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop has no Android resource qualifier system, so `uiMode` / `localeTag` / `orientation` are no-ops on the desktop render path today).
+
+**Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
 Errors:
 - `ClasspathDirty` (-32002) — daemon will not render until restarted.

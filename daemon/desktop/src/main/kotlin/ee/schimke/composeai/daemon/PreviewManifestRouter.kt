@@ -49,7 +49,8 @@ class PreviewManifestRouter(
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
-    val previewId = parsePreviewId(typed.payload)
+    val inbound = parseInboundPayload(typed.payload)
+    val previewId = inbound["previewId"]
     val entry =
       previewId?.let { byId[it] }
         ?: error(
@@ -64,9 +65,10 @@ class PreviewManifestRouter(
           buildString {
             append("className=").append(entry.className).append(';')
             append("functionName=").append(entry.functionName).append(';')
-            append("widthPx=").append(resolved.widthPx).append(';')
-            append("heightPx=").append(resolved.heightPx).append(';')
-            append("density=").append(resolved.density).append(';')
+            // Inbound override wins over the per-preview manifest default.
+            append("widthPx=").append(inbound["widthPx"] ?: resolved.widthPx).append(';')
+            append("heightPx=").append(inbound["heightPx"] ?: resolved.heightPx).append(';')
+            append("density=").append(inbound["density"] ?: resolved.density).append(';')
             append("showBackground=").append(resolved.showBackground).append(';')
             if (resolved.backgroundColor != 0L) {
               append("backgroundColor=").append(resolved.backgroundColor).append(';')
@@ -74,18 +76,32 @@ class PreviewManifestRouter(
             resolved.device
               ?.takeIf { it.isNotBlank() }
               ?.let { append("device=").append(it).append(';') }
+            // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
+            // pass straight through. Desktop's `RenderEngine` ignores everything except size /
+            // density today (see RenderEngine.kt), but the fields ride along for parity with the
+            // android router so a single payload string drives both backends.
+            inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
+            inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
+            inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
+            inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
             append("outputBaseName=").append(resolved.outputBaseName)
           },
       )
     return super.submit(routed, timeoutMs)
   }
 
-  private fun parsePreviewId(payload: String): String? {
+  private fun parseInboundPayload(payload: String): Map<String, String> {
+    val map = mutableMapOf<String, String>()
     for (entry in payload.split(';')) {
       val trimmed = entry.trim()
-      if (trimmed.startsWith("previewId=")) return trimmed.substring("previewId=".length).trim()
+      if (trimmed.isEmpty()) continue
+      val eq = trimmed.indexOf('=')
+      if (eq <= 0) continue
+      val k = trimmed.substring(0, eq).trim()
+      val v = trimmed.substring(eq + 1).trim()
+      if (v.isNotEmpty()) map[k] = v
     }
-    return null
+    return map
   }
 
   companion object {

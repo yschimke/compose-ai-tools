@@ -210,14 +210,41 @@ data class RenderSpec(
   val device: String? = null,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
+  /**
+   * BCP-47 locale tag override. Carried on the wire for parity with `:daemon:android`'s
+   * `RenderSpec`; Compose Desktop has no Android-style resource qualifier system so this is a no-op
+   * on the desktop render path today. A future change can route it into `LocalConfiguration` /
+   * `androidx.compose.ui.text.intl.Locale.current` if a desktop consumer needs it.
+   */
+  val localeTag: String? = null,
+  /**
+   * Font scale multiplier override. No-op on desktop today (would route through `LocalDensity`'s
+   * `fontScale` field); carried for wire parity with `:daemon:android`.
+   */
+  val fontScale: Float? = null,
+  /** Light/dark mode override. No-op on desktop today; carried for wire parity. */
+  val uiMode: SpecUiMode? = null,
+  /** Portrait/landscape override. Desktop only honours derived size; carried for wire parity. */
+  val orientation: SpecOrientation? = null,
 ) {
+
+  enum class SpecUiMode {
+    LIGHT,
+    DARK,
+  }
+
+  enum class SpecOrientation {
+    PORTRAIT,
+    LANDSCAPE,
+  }
 
   companion object {
 
     /**
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
-     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`. `className` and
+     * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
+     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`). `className` and
      * `functionName` are required; everything else falls back to the defaults on this data class.
      *
      * Keeping this stringly-typed for v1 is deliberate (per the task brief). When `RenderRequest`
@@ -250,6 +277,20 @@ data class RenderSpec(
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
+        localeTag = map["localeTag"]?.takeIf { it.isNotBlank() },
+        fontScale = map["fontScale"]?.toFloatOrNull(),
+        uiMode =
+          when (map["uiMode"]?.lowercase()) {
+            "light" -> SpecUiMode.LIGHT
+            "dark" -> SpecUiMode.DARK
+            else -> null
+          },
+        orientation =
+          when (map["orientation"]?.lowercase()) {
+            "portrait" -> SpecOrientation.PORTRAIT
+            "landscape" -> SpecOrientation.LANDSCAPE
+            else -> null
+          },
       )
     }
   }

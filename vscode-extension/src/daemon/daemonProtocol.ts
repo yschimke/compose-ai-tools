@@ -144,10 +144,26 @@ export interface FileChangedParams {
 
 export type RenderTier = 'fast' | 'full';
 
+/**
+ * Per-render display-property overrides — see PROTOCOL.md § 5 (`renderNow.overrides`).
+ * Backends that don't model a particular field (e.g. desktop has no `uiMode` resource qualifier)
+ * ignore it.
+ */
+export interface PreviewOverrides {
+    widthPx?: number;
+    heightPx?: number;
+    density?: number;
+    localeTag?: string;
+    fontScale?: number;
+    uiMode?: 'light' | 'dark';
+    orientation?: 'portrait' | 'landscape';
+}
+
 export interface RenderNowParams {
     previews: string[];
     tier: RenderTier;
     reason?: string;
+    overrides?: PreviewOverrides;
 }
 
 export interface RenderNowResult {
