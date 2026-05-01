@@ -27,6 +27,12 @@ import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
 import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
+import {
+    collectAndroidApplicationModules,
+    findAndroidSdkRoot,
+    resolveAdbPath,
+    runAdb,
+} from './launchOnDevice';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -608,6 +614,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             );
         }),
         vscode.commands.registerCommand('composePreview.diffAllVsMain', () => diffAllVsMain()),
+        vscode.commands.registerCommand('composePreview.launchOnDevice',
+            (previewId?: string) => launchOnDevice(previewId)),
     );
     // Refresh applied-markers in the background, then replay the doctor refresh
     // so it picks up any modules that only become visible via the authoritative
@@ -1920,6 +1928,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case 'requestPreviewDiff':
             void runLivePreviewDiff(msg.previewId, msg.against);
             break;
+        case 'requestLaunchOnDevice':
+            if (msg.previewId) {
+                void launchOnDevice(msg.previewId);
+            }
+            break;
     }
 }
 
@@ -2137,6 +2150,125 @@ async function runLivePreviewDiff(
  * scaling that up to per-preview stats is N PNG decodes which we skip
  * for the dashboard until performance demands it.
  */
+/**
+ * Builds and installs the consumer module's debug APK and launches its
+ * launcher activity on a connected Android device. Wired up to the
+ * "Launch on Device" panel button (focus-mode toolbar) and the
+ * `composePreview.launchOnDevice` command (view title bar).
+ *
+ * Module resolution, in order:
+ *   1. The owner of [focusedPreviewId], when supplied (the panel button).
+ *   2. The active file's module via [GradleService.resolveModule].
+ *   3. A quick-pick across every Android-application module that applies
+ *      the preview plugin.
+ *
+ * Modules without `id("com.android.application")` (CMP shared, libraries,
+ * Desktop, …) don't have an `installDebug` task, so they're filtered out
+ * before the resolution falls through. When no Android-application module
+ * is found at all, the user gets an explanatory information message
+ * rather than a Gradle "task not found" failure.
+ *
+ * The launch step uses `adb shell monkey -p <id> -c LAUNCHER 1` so the
+ * activity name doesn't need to be hard-coded — `monkey` discovers the
+ * declared launcher activity from the installed package. This is the
+ * same trick AGP's own `:app:run` task uses internally.
+ */
+async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
+    if (!gradleService) {
+        vscode.window.showInformationMessage('Compose Preview is not ready yet.');
+        return;
+    }
+    const previewModules = gradleService.findPreviewModules();
+    const candidates = collectAndroidApplicationModules(
+        gradleService.workspaceRoot, previewModules,
+    );
+    if (candidates.length === 0) {
+        vscode.window.showInformationMessage(
+            'Compose Preview: no Android application module to launch. '
+            + 'Apply id("com.android.application") with an applicationId to a preview module.',
+        );
+        return;
+    }
+
+    let target: { module: string; applicationId: string } | undefined;
+    if (focusedPreviewId) {
+        const owner = previewModuleMap.get(focusedPreviewId);
+        if (owner) { target = candidates.find(c => c.module === owner); }
+    }
+    if (!target && currentScopeFile) {
+        const scoped = gradleService.resolveModule(currentScopeFile);
+        if (scoped) { target = candidates.find(c => c.module === scoped); }
+    }
+    if (!target) {
+        if (candidates.length === 1) {
+            target = candidates[0];
+        } else {
+            const picked = await vscode.window.showQuickPick(
+                candidates.map(c => ({
+                    label: c.module,
+                    description: c.applicationId,
+                    candidate: c,
+                })),
+                { placeHolder: 'Pick an Android application module to launch' },
+            );
+            if (!picked) { return; }
+            target = picked.candidate;
+        }
+    }
+
+    const { module, applicationId } = target;
+    logLine(`launchOnDevice: ${module} (${applicationId})`);
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Compose Preview: launching ${applicationId} on device`,
+            cancellable: false,
+        },
+        async (progress) => {
+            progress.report({ message: 'Building & installing (installDebug)…' });
+            try {
+                await gradleService!.installDebug(module);
+            } catch (e: unknown) {
+                if (e instanceof TaskCancelledError) { return; }
+                const m = e instanceof Error ? e.message : String(e);
+                vscode.window.showErrorMessage(
+                    `Compose Preview: installDebug failed — ${m}`,
+                );
+                return;
+            }
+
+            progress.report({ message: 'Starting launcher activity (adb)…' });
+            const sdkRoot = findAndroidSdkRoot(gradleService!.workspaceRoot);
+            const adbPath = resolveAdbPath(sdkRoot);
+            try {
+                const result = await runAdb(adbPath, [
+                    'shell', 'monkey', '-p', applicationId,
+                    '-c', 'android.intent.category.LAUNCHER', '1',
+                ]);
+                if (result.code !== 0) {
+                    const detail = (result.stderr || result.stdout || '').trim();
+                    vscode.window.showErrorMessage(
+                        `Compose Preview: adb failed to start ${applicationId}` +
+                        (detail ? ` — ${detail}` : '.'),
+                    );
+                    return;
+                }
+            } catch (e: unknown) {
+                const m = e instanceof Error ? e.message : String(e);
+                vscode.window.showErrorMessage(
+                    `Compose Preview: could not run adb (${adbPath}) — ${m}. ` +
+                    'Set ANDROID_HOME or sdk.dir in local.properties.',
+                );
+                return;
+            }
+            vscode.window.showInformationMessage(
+                `Compose Preview: launched ${applicationId} on device.`,
+            );
+        },
+    );
+}
+
 async function diffAllVsMain(): Promise<void> {
     if (!gradleService || !panel || !historySource) {
         vscode.window.showInformationMessage('Compose Preview is not ready yet.');

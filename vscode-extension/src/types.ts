@@ -416,4 +416,13 @@ export type WebviewToExtension =
      * `.compose-preview-history/` for this preview; `main` = same, filtered
      * to entries whose `git.branch` is `main`.
      */
-    | { command: 'requestPreviewDiff'; previewId: string; against: 'head' | 'main' };
+    | { command: 'requestPreviewDiff'; previewId: string; against: 'head' | 'main' }
+    /**
+     * Click on the "Launch on Device" button in the focus-mode toolbar.
+     * The extension uses [previewId] to bias module selection (the owner
+     * of the focused preview), then runs the consumer module's
+     * `installDebug` task and starts its launcher activity via `adb`.
+     * Falls back to a quick-pick when more than one Android-application
+     * module applies the plugin.
+     */
+    | { command: 'requestLaunchOnDevice'; previewId: string };

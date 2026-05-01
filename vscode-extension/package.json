@@ -102,8 +102,28 @@
                 "command": "composePreview.diffAllVsMain",
                 "title": "Diff All Previews vs Main",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.launchOnDevice",
+                "title": "Launch on Device",
+                "category": "Compose Preview",
+                "icon": "$(device-mobile)"
             }
         ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "composePreview.launchOnDevice",
+                    "when": "view == composePreview.panel",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "composePreview.refresh",
+                    "when": "view == composePreview.panel",
+                    "group": "navigation@2"
+                }
+            ]
+        },
         "configuration": {
             "title": "Compose Preview",
             "properties": {
