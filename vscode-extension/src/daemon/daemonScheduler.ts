@@ -296,6 +296,14 @@ export class DaemonScheduler {
             // same preview can re-render via the reactive path.
             this.speculated.delete(specKey(moduleId, params.id));
 
+            // INTERACTIVE.md § 5 frame dedup. Daemon already determined the bytes are
+            // byte-identical to the prior frame; skip the disk read + base64 + postMessage
+            // hop. The card stays painted with the bytes it's already showing — that's the
+            // whole point of the dedup signal.
+            if (params.unchanged === true) {
+                return;
+            }
+
             // Stub-render path: until B1.4 lands `RenderEngine` in the
             // daemon, every "successful" render returns
             // `<historyDir>/daemon-stub-<id>.{png,gif}` with no bytes

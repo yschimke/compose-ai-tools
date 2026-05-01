@@ -258,6 +258,39 @@ class JsonRpcServer(
    */
   private val subscriptions = ConcurrentHashMap<String, MutableSet<String>>()
 
+  // ----------------------------------------------------------------------
+  // Interactive (live-stream) mode state — see docs/daemon/INTERACTIVE.md.
+  //
+  // [interactiveTargets] is the set of currently-active interactive streams, keyed by
+  // [InteractiveTarget.frameStreamId]. The wire shape is multi-target by design: each
+  // `interactive/start` registers a fresh slot and returns a unique stream id; concurrent
+  // streams targeting different (or even the same) preview ids coexist. Inputs route by
+  // stream id, so a stale id from a `stop`'d or never-started stream is dropped without
+  // touching live targets.
+  //
+  // The current panel UI is single-target — only one card carries `.live` at a time —
+  // but the protocol does not require that. Lifting it on the wire keeps the daemon
+  // useful for hypothetical programmatic clients (side-by-side comparison views, CI
+  // agents driving multiple previews over one stdio pair) without any contract change.
+  //
+  // [lastFrameHashes] is a per-previewId cache of the SHA-256 of the most recently
+  // notified PNG bytes. Populated on every `renderFinished` that the watcher actually
+  // emits; consulted to set `unchanged: true` (and skip history) when the next render
+  // produces byte-identical output. Always tracked, not just when interactive mode is
+  // on — the dedup is generally useful (a save that doesn't move pixels shouldn't burn
+  // IPC + a panel repaint). Per-preview key, not per-stream: two streams targeting the
+  // same preview share dedup state, which is what we want — the bytes are the same
+  // bytes regardless of which stream's input triggered the render.
+  // ----------------------------------------------------------------------
+
+  private data class InteractiveTarget(val previewId: String, val frameStreamId: String)
+
+  private val interactiveTargets = ConcurrentHashMap<String, InteractiveTarget>()
+
+  private val lastFrameHashes = ConcurrentHashMap<String, String>()
+
+  private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
+
   private val writerThread =
     Thread({ writerLoop() }, "compose-ai-daemon-writer").apply { isDaemon = false }
 
@@ -403,6 +436,7 @@ class JsonRpcServer(
       "data/fetch" -> handleDataFetch(req)
       "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
       "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
+      "interactive/start" -> handleInteractiveStart(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -624,15 +658,34 @@ class JsonRpcServer(
     // null until B2.3 wires the cost-model collection path.
     val tookMs = result.metrics?.get("tookMs") ?: 0L
     val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
-    sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), finished))
+
+    // INTERACTIVE.md § 5 / live-stream dedup: hash the rendered PNG bytes and compare against
+    // the prior frame this preview emitted. On match, swap in `unchanged: true`, skip history,
+    // and let the client short-circuit the file-read + base64 + repaint hop. Track always (not
+    // just under interactive mode): a save that doesn't move pixels is just as redundant as an
+    // input that doesn't change state.
+    val frameHash = hashFrameBytes(result.pngPath)
+    val isUnchanged =
+      frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
+    val outboundFinished = if (isUnchanged) finished.copy(unchanged = true) else finished
+    sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), outboundFinished))
     if (firstRenderFinishedSeen.compareAndSet(false, true)) {
       StartupTimings.mark("first renderFinished sent")
       StartupTimings.summary()
     }
+    if (frameHash != null) {
+      lastFrameHashes[previewId] = frameHash
+    }
     // H1 — record the render to history, if configured. Wrapped in a fail-open try/catch so a
     // history write failure never blocks the renderFinished wire-format. The render's notification
     // has already been sent above; history is observation, not state.
-    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
+    //
+    // Skip history when the frame is byte-identical to the prior one for this preview — there's
+    // nothing new to archive, and a duplicate sidecar would inflate `history/list` results
+    // without changing what the user sees on disk.
+    if (!isUnchanged) {
+      recordHistoryForRender(previewId = previewId, result = result, finished = finished)
+    }
     inFlightRenders.remove(result.id)
     // Save-after-render invariant: a `fileChanged({kind:source})` queued discovery work that has
     // been waiting for this render to ship. The writer queue is FIFO and `renderFinished` is
@@ -1052,6 +1105,38 @@ class JsonRpcServer(
    * (the B1.5-era stub hosts that don't measure anything) keep the pre-B2.3 `metrics: null`
    * behaviour.
    */
+  /**
+   * SHA-256 hex of the bytes at [pngPath], or null when the file is unreadable / missing / a
+   * B1.5-era stub placeholder. Cheap on the typical preview size (sub-MB PNGs); the cost is
+   * dominated by the file read which is already in OS page cache because the daemon just wrote it.
+   * Returning null when the file isn't there is the right call — without bytes we can't dedup, so
+   * we treat it as "definitely changed" and emit normally.
+   */
+  private fun hashFrameBytes(pngPath: String?): String? {
+    if (pngPath == null) return null
+    val path =
+      try {
+        Path.of(pngPath)
+      } catch (_: Throwable) {
+        return null
+      }
+    if (!Files.exists(path)) return null
+    val bytes =
+      try {
+        Files.readAllBytes(path)
+      } catch (_: Throwable) {
+        return null
+      }
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+    return buildString(digest.size * 2) {
+      for (b in digest) {
+        val v = b.toInt() and 0xFF
+        if (v < 0x10) append('0')
+        append(v.toString(16))
+      }
+    }
+  }
+
   private fun renderFinishedFromResult(
     previewId: String,
     result: RenderResult,
@@ -1194,6 +1279,90 @@ class JsonRpcServer(
     for (id in toDrop) subscriptions.remove(id)
   }
 
+  // --------------------------------------------------------------------------
+  // Interactive (live-stream) mode — docs/daemon/INTERACTIVE.md § 8.
+  //
+  // Multi-target on the wire: the server keeps a `streamId → (previewId, streamId)` map and
+  // each `interactive/start` registers a fresh slot. Concurrent streams targeting different
+  // (or even the same) preview ids coexist; inputs route by `frameStreamId` so a stop on
+  // one stream leaves the others untouched. Inputs are fire-and-forget — we synthesise an
+  // internal `renderNow` against the target preview so the client gets a fresh
+  // `renderFinished` (subject to the byte-identical dedup applied in [emitRenderFinished]).
+  // --------------------------------------------------------------------------
+
+  private fun handleInteractiveStart(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.InteractiveStartParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid interactive/start params: ${e.message}",
+        )
+        return
+      }
+    if (params.previewId.isBlank()) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "interactive/start: previewId is blank",
+      )
+      return
+    }
+    val streamId = "stream-${nextStreamIdCounter.getAndIncrement()}"
+    interactiveTargets[streamId] =
+      InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
+    // Wipe any cached hash for this preview so the first interactive frame always paints.
+    // Without this a `start` after a previous identical render would suppress the bootstrap
+    // frame and the client's LIVE chip would have nothing to paint until the user clicks.
+    // Per-preview wipe (not per-stream): two streams targeting the same preview both want a
+    // fresh first frame, and the dedup state is shared by design.
+    lastFrameHashes.remove(params.previewId)
+    sendResponse(
+      req.id,
+      encode(
+        ee.schimke.composeai.daemon.protocol.InteractiveStartResult.serializer(),
+        ee.schimke.composeai.daemon.protocol.InteractiveStartResult(frameStreamId = streamId),
+      ),
+    )
+  }
+
+  private fun handleInteractiveStop(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveStopParams
+  ) {
+    // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 8 — `remove` is a no-op
+    // when the key isn't present, which is exactly the contract we want.
+    interactiveTargets.remove(params.frameStreamId)
+  }
+
+  private fun handleInteractiveInput(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+  ) {
+    val target =
+      interactiveTargets[params.frameStreamId]
+        ?: return // Stale or unknown stream id (never started, already stopped, or typo'd
+    // by a programmatic client). Drop silently — resending after stop is a documented
+    // client-allowed pattern.
+    if (classpathDirtyEmitted.get() || shutdownRequested.get()) {
+      return
+    }
+    // v1 dispatch model: each input enqueues a fresh render of the target preview. The render
+    // body itself does not yet route the click into the composition (LocalInspectionMode is
+    // still true; that's the v2 follow-up — see INTERACTIVE.md § 8 "Open questions"). What
+    // this DOES validate end-to-end: the input → renderNow → renderFinished round-trip plus
+    // the byte-identical dedup, which together let a future click-aware engine slot in
+    // without changing the wire shape.
+    val hostId = RenderHost.nextRequestId()
+    hostIdToPreviewId[hostId] = target.previewId
+    acceptedAtMs[hostId] = System.currentTimeMillis()
+    inFlightRenders.add(hostId)
+    submitRenderAsync(hostId)
+  }
+
   private fun handleShutdown(req: JsonRpcRequest) {
     shutdownRequested.set(true)
     // Drain in-flight renders before responding, per PROTOCOL.md § 3 and
@@ -1218,6 +1387,14 @@ class JsonRpcServer(
         tryDecode(SetVisibleParams.serializer(), n) { pruneSubscriptionsToVisible(it.ids.toSet()) }
       "setFocus" -> tryDecode(SetFocusParams.serializer(), n) { /* no-op for B1.5 */ }
       "fileChanged" -> tryDecode(FileChangedParams.serializer(), n) { handleFileChanged(it) }
+      "interactive/stop" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveStopParams.serializer(), n) {
+          handleInteractiveStop(it)
+        }
+      "interactive/input" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveInputParams.serializer(), n) {
+          handleInteractiveInput(it)
+        }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
     }
   }

@@ -1949,12 +1949,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             void handleSetInteractive(msg.previewId, msg.enabled);
             break;
         case 'recordInteractiveClick':
-            // v0 — log only. Once `interactive/input` ships (INTERACTIVE.md
-            // § 7) the same payload feeds the daemon notification.
             logLine(
                 `[interactive] click ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
                 + `image=${msg.imageWidth}x${msg.imageHeight}`,
             );
+            void forwardInteractiveClick(msg.previewId, msg.pixelX, msg.pixelY);
             break;
     }
 }
@@ -2527,15 +2526,15 @@ function lookupPreviewLabel(previewId: string): string | undefined {
 
 /**
  * Live-stream (interactive) mode entry/exit handler. See
- * docs/daemon/INTERACTIVE.md § 4 for the full lifecycle. v0 reuses the
- * existing setFocus + renderNow path — the panel-side LIVE chip is the
- * only user-visible difference. When the future `interactive/start` RPC
- * lands the daemon-side warm-sandbox lock plugs in here without touching
- * the panel.
+ * docs/daemon/INTERACTIVE.md § 4 for the full lifecycle. Calls
+ * `interactive/start` on the daemon to register the previewId as the
+ * priority target and stash the returned `frameStreamId` for click
+ * forwarding via [activeInteractiveStreams]. Exit calls `interactive/stop`
+ * (notification, drop-and-go) and clears the cached stream id.
  *
- * Exit (`enabled = false`) does not cancel anything daemon-side; it just
- * lets the next save-driven setFocus take over. Sending an explicit
- * setFocus([]) here would race with concurrent saves.
+ * Always falls back to the original setFocus + renderNow path so cards
+ * still receive a fresh first frame — `interactive/start` itself does
+ * not trigger a render, it just pins the slot.
  */
 async function handleSetInteractive(previewId: string, enabled: boolean): Promise<void> {
     if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
@@ -2545,11 +2544,21 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         return;
     }
     if (!enabled) {
+        const stream = activeInteractiveStreams.get(previewId);
+        if (stream) {
+            activeInteractiveStreams.delete(previewId);
+            const client = await daemonGate?.getOrSpawn(
+                moduleId, daemonScheduler.daemonEvents(moduleId),
+            );
+            client?.interactiveStop({ frameStreamId: stream });
+        }
         logLine(`[interactive] live mode off for ${previewId}`);
         return;
     }
-    const ok = await daemonScheduler.ensureModule(moduleId);
-    if (!ok) {
+    const client = await daemonGate?.getOrSpawn(
+        moduleId, daemonScheduler.daemonEvents(moduleId),
+    );
+    if (!client) {
         // The webview already saw the toggle disabled — but the user could
         // have flipped settings between toggle render and click. Push a
         // fresh availability ping so the chip reverts cleanly.
@@ -2559,9 +2568,59 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         });
         return;
     }
+    try {
+        const result = await client.interactiveStart({ previewId });
+        activeInteractiveStreams.set(previewId, result.frameStreamId);
+        logLine(
+            `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
+            `streamId=${result.frameStreamId})`,
+        );
+    } catch (err) {
+        // MethodNotFound on a daemon that predates the interactive RPC — fall through
+        // to the focus + renderNow path so the card still gets a fresh first frame.
+        logLine(
+            `[interactive] interactive/start unsupported for ${moduleId}: ` +
+            `${(err as Error).message}; falling back to setFocus + renderNow`,
+        );
+    }
     await daemonScheduler.setFocus(moduleId, [previewId]);
     await daemonScheduler.renderNow(moduleId, [previewId], 'fast', 'interactive-on');
-    logLine(`[interactive] live mode on for ${previewId} (module=${moduleId})`);
+}
+
+/**
+ * previewId → frameStreamId for currently-active interactive streams. Populated by
+ * [handleSetInteractive] on enter, cleared on exit. Click forwarding consults this
+ * to look up the stream id the daemon expects on `interactive/input` notifications;
+ * a missing entry means "interactive/start either wasn't issued, was rejected
+ * (MethodNotFound), or has already been stopped" — drop the click.
+ */
+const activeInteractiveStreams = new Map<string, string>();
+
+/**
+ * Forward a panel-side click on a live preview to the daemon's `interactive/input`
+ * notification. Drops silently when the previewId isn't currently in interactive mode
+ * — callers don't need to coordinate with the start/stop dance.
+ */
+async function forwardInteractiveClick(
+    previewId: string,
+    pixelX: number,
+    pixelY: number,
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    const streamId = activeInteractiveStreams.get(previewId);
+    if (!streamId) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) { return; }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId, daemonScheduler.daemonEvents(moduleId),
+    );
+    if (!client) { return; }
+    client.interactiveInput({
+        frameStreamId: streamId,
+        kind: 'click',
+        pixelX,
+        pixelY,
+    });
 }
 
 /**
