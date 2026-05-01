@@ -2,10 +2,11 @@ name: A11y Report
 
 # Demo of the accessibility-checking pipeline on `samples:wear`. Mirrors the
 # preview-baselines / preview-comment split: pushes to `main` refresh the
-# `a11y_main` baseline branch; PRs render their own report on the shared
-# `a11y_pr` branch and post a comment with the findings table. Wired only
-# for `samples:wear` for now — the deliberately-broken `BadWearButtonPreview`
-# is what makes the annotated overlay non-empty.
+# `compose-preview/a11y/main` baseline branch; PRs render their own report
+# on the shared `compose-preview/a11y/pr` branch and post a comment with
+# the findings table. Wired only for `samples:wear` for now — the
+# deliberately-broken `BadWearButtonPreview` is what makes the annotated
+# overlay non-empty.
 
 on:
   push:
@@ -31,8 +32,8 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
-      # Composite action appends a commit to the long-lived `a11y_main`
-      # branch.
+      # Composite action appends a commit to the long-lived
+      # `compose-preview/a11y/main` branch.
       contents: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -48,8 +49,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      # Push annotated PNGs to the shared `a11y_pr` branch and upsert a
-      # comment on the PR.
+      # Push annotated PNGs to the shared `compose-preview/a11y/pr` branch
+      # and upsert a comment on the PR.
       contents: write
       pull-requests: write
     steps:

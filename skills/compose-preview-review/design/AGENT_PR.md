@@ -125,20 +125,22 @@ destination before acting:
   somewhere in the global/local chain (used only as the commit
   identity in the throwaway clone).
 - **Dedicated branch in the repo** (`compose-preview publish-images
-  DIR [--branch preview_pr] [--remote origin] [--pr-number N] [--json]`).
-  Pushes the staging directory's contents as a single commit on the
-  shared `preview_pr` branch, mirroring what the `preview-comment` CI
-  integration does — same retry-on-race loop for parallel pushes from
-  sibling PRs. Output is the resulting commit SHA and a raw URL pattern
-  (`https://raw.githubusercontent.com/<owner>/<repo>/<sha>/{path}`)
-  that pins images to the SHA so they survive merges. `--json` emits a
+  DIR [--branch compose-preview/pr] [--remote origin] [--pr-number N]
+  [--json]`). Pushes the staging directory's contents as a single commit
+  on the shared `compose-preview/pr` branch, mirroring what the
+  `preview-comment` CI integration does — same retry-on-race loop for
+  parallel pushes from sibling PRs. Output is the resulting commit SHA
+  and a raw URL pattern
+  (`https://raw.githubusercontent.com/<owner>/<repo>/<sha>/{path}`) that
+  pins images to the SHA so they survive merges. `--json` emits a
   `compose-preview-publish-images/v1` envelope. Prefer this over the
   gist when you want clean GitHub-hosted URLs and the user's confirmed
   they want a branch created — the CLI does NOT auto-detect prior
-  consent; it just runs the push. Branch names must match `preview_*`
-  by default; `--allow-non-preview-branch` opts into a custom name.
-  Mainline / release branches (`main`, `master`, `develop`, `trunk`,
-  `HEAD`, `release/*`) are hard-blocked regardless of the flag.
+  consent; it just runs the push. Branch names must match the preview
+  allowlist by default (`compose-preview/*` or the legacy `preview_*`);
+  `--allow-non-preview-branch` opts into a custom name. Mainline /
+  release branches (`main`, `master`, `develop`, `trunk`, `HEAD`,
+  `release/*`) are hard-blocked regardless of the flag.
 - **Issue/PR attachment upload** — not reliably available via `gh`; skip.
 
 Never use inline base64 or data URIs — GitHub strips them. Never push images
@@ -197,8 +199,8 @@ surfaces:
 A small number of repos wire up the `preview-comment` GitHub Action (see
 [CI_PREVIEWS.md](CI_PREVIEWS.md)). When it's installed, it posts a sticky
 comment keyed by `<!-- preview-diff -->` with before/after images hosted
-on a shared `preview_pr` branch, pinned to commit SHAs so they survive
-merge.
+on a shared `compose-preview/pr` branch, pinned to commit SHAs so they
+survive merge.
 
 Only do this if you've already confirmed it exists:
 

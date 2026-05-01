@@ -4,8 +4,9 @@
 Reads the per-module ``previews.json`` (from the Gradle plugin) and its
 sidecar ``accessibility.json`` (written by ``verifyAccessibility``), filters
 each preview function down to a single canonical Wear variant, and emits
-either a browsable ``README.md`` for the ``a11y_main`` baseline branch or a
-Markdown PR comment body for the ``a11y_pr`` branch.
+either a browsable ``README.md`` for the ``compose-preview/a11y/main``
+baseline branch or a Markdown PR comment body for the
+``compose-preview/a11y/pr`` branch.
 
 Subcommands
 -----------
@@ -382,7 +383,7 @@ def cmd_comment(args: argparse.Namespace) -> int:
     payload = json.loads(findings_path.read_text())
     entries: list[dict] = payload.get("entries", [])
 
-    # When a baseline (the on-`a11y_main` findings.json) is provided, stay
+    # When a baseline (the on-`compose-preview/a11y/main` findings.json) is provided, stay
     # silent if nothing has changed — the workflow runs on every PR and a
     # comment that says "no findings" on PRs that don't touch a11y was
     # noted as distracting in user feedback. Empty stdout signals the
@@ -482,13 +483,13 @@ def main() -> int:
     cm.add_argument("--repo", required=True)
     cm.add_argument(
         "--head-ref", required=True,
-        help="a11y_pr commit SHA (or branch) for image URLs",
+        help="compose-preview/a11y/pr commit SHA (or branch) for image URLs",
     )
     cm.add_argument(
         "--baseline", default=None,
-        help="Optional baseline findings.json (from a11y_main). When set, "
-             "the comment subcommand emits empty stdout if findings haven't "
-             "changed vs the baseline — the action takes that as 'skip'.",
+        help="Optional baseline findings.json (from compose-preview/a11y/main). "
+             "When set, the comment subcommand emits empty stdout if findings "
+             "haven't changed vs the baseline — the action takes that as 'skip'.",
     )
 
     args = ap.parse_args()

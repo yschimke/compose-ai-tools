@@ -186,8 +186,8 @@ Loaded on demand. Read only what the current task needs.
 PR-review and CI workflows live in the sibling
 [**compose-preview-review** skill](../compose-preview-review/SKILL.md):
 authoring agent-opened PRs, reviewing UI PRs locally (base + head render,
-diff, text comment), and wiring `preview_main` baselines + PR-comment
-GitHub Actions. The bootstrap installer
+diff, text comment), and wiring `compose-preview/main` baselines +
+PR-comment GitHub Actions. The bootstrap installer
 ([`scripts/install.sh`](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh))
 sets up both skills together.
 

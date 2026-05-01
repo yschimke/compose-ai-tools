@@ -297,10 +297,11 @@ export type ExtensionToWebview =
      */
     | { command: 'focusAndDiff'; previewId: string; against: 'head' | 'main' }
     /**
-     * `origin/preview_main` (or the local `preview_main` branch / packed
-     * refs) just changed on disk — typically because a `git fetch` landed
-     * a new baseline. The live panel re-issues any open "Diff vs main"
-     * overlay so the user sees the new bytes without manually clicking.
+     * `origin/compose-preview/main` (or the local `compose-preview/main`
+     * branch, the legacy `preview_main` flat refs, or `packed-refs`) just
+     * changed on disk — typically because a `git fetch` landed a new
+     * baseline. The live panel re-issues any open "Diff vs main" overlay
+     * so the user sees the new bytes without manually clicking.
      */
     | { command: 'previewMainRefChanged' };
 

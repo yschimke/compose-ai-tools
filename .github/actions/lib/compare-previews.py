@@ -45,12 +45,12 @@ def _load_baselines(path: Path) -> dict:
     truncates `path` to zero bytes BEFORE the command runs — so when the
     target file doesn't exist on the base branch (the typical case for the
     first run after a new baseline file is added, e.g. `resource-baselines.json`
-    landing on `preview_main`), the action ends up with an existing-but-empty
-    file. `json.loads("")` then raises `JSONDecodeError`, breaking the
-    diff-on-PR comment for everyone — including the composable side, which
-    has historically dodged this only because the composable `baselines.json`
-    has been on `preview_main` for so long that nobody re-runs the
-    bootstrap path.
+    landing on `compose-preview/main`), the action ends up with an
+    existing-but-empty file. `json.loads("")` then raises `JSONDecodeError`,
+    breaking the diff-on-PR comment for everyone — including the composable
+    side, which has historically dodged this only because the composable
+    `baselines.json` has been on `compose-preview/main` for so long that
+    nobody re-runs the bootstrap path.
 
     Treat any of (missing path, empty file, unparseable JSON, non-dict
     payload) as "no baselines to compare against" — strictly more permissive
@@ -563,7 +563,7 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
 # Sibling of `generate`. Reads `compose-preview show-resources --json` output
 # and copies each rendered PNG / GIF into
 # `<output_dir>/renders/<module>/resources/<...>` so they land in
-# `preview_resources_main` alongside the existing composable baselines.
+# `compose-preview/resources/main` alongside the existing composable baselines.
 # Writes `resource-baselines.json` and appends a section to the README.
 #
 # Mirrors the composable side's `cmd_generate` shape — a single CLI envelope
@@ -590,7 +590,7 @@ def load_resource_results(cli_json_path: Path) -> dict[str, dict]:
 
     Key shape: `<module>::<resourceId>::<renderOutput>` — same convention the
     earlier filesystem-walk variant used, so existing
-    `resource-baselines.json` files on `preview_resources_main` keep
+    `resource-baselines.json` files on `compose-preview/resources/main` keep
     matching. Module identifiers in the envelope are gradle paths
     (`samples:android`); we translate `:` → `/` so the rendered tree under
     `renders/<module>/...` keeps its filesystem-friendly layout.
@@ -737,18 +737,18 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
     ones into `<output>/renders/<module>/resources/<...>`.
 
     Output layout matches [cmd_generate_resources] so the push to
-    `preview_resources_pr` lands these PNGs at paths the comment markdown
-    can `_resource_url` to. Empty CLI envelope (no Android modules) is a
-    silent no-op — same behaviour as `cmd_generate_resources`.
+    `compose-preview/resources/pr` lands these PNGs at paths the comment
+    markdown can `_resource_url` to. Empty CLI envelope (no Android modules)
+    is a silent no-op — same behaviour as `cmd_generate_resources`.
 
     When ``--baseline-renders`` points at the extracted
-    `preview_resources_main/renders/` tree, sha-mismatched pairs run through
-    the same pixelmatch-based perceptual filter as the composable side
-    (issue #190 / PR #270). Adaptive icons are particularly susceptible to
-    sub-pixel jitter from the AA mask + ``PorterDuff.SRC_IN`` composite, so
-    skipping the filter for resources made every adaptive-icon capture a
+    `compose-preview/resources/main/renders/` tree, sha-mismatched pairs run
+    through the same pixelmatch-based perceptual filter as the composable
+    side (issue #190 / PR #270). Adaptive icons are particularly susceptible
+    to sub-pixel jitter from the AA mask + ``PorterDuff.SRC_IN`` composite,
+    so skipping the filter for resources made every adaptive-icon capture a
     likely false positive. Falls back to strict-bytes when the flag isn't
-    passed (e.g. first-ever PR before `preview_resources_main` exists).
+    passed (e.g. first-ever PR before `compose-preview/resources/main` exists).
     """
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
@@ -950,19 +950,19 @@ def main() -> int:
     gen.add_argument("cli_json", help="Path to compose-preview show --json output")
     gen.add_argument("--output-dir", required=True)
     gen.add_argument("--repo", required=True, help="owner/repo")
-    gen.add_argument("--branch", default="preview_main")
+    gen.add_argument("--branch", default="compose-preview/main")
 
     cmp = sub.add_parser("compare", help="Compare CLI output against baselines")
     cmp.add_argument("cli_json", help="Path to compose-preview show --json output")
     cmp.add_argument("--baselines", required=True, help="Path to baselines.json")
     cmp.add_argument("--repo", required=True)
     # SHA-pin both sides so the PR comment's images keep resolving after
-    # `preview_main` advances and after the PR merges. Branch names are
-    # accepted as a first-run fallback when no commit exists yet.
-    cmp.add_argument("--base-ref", default="preview_main",
-                     help="preview_main commit SHA (or branch name) for Before URLs")
+    # `compose-preview/main` advances and after the PR merges. Branch names
+    # are accepted as a first-run fallback when no commit exists yet.
+    cmp.add_argument("--base-ref", default="compose-preview/main",
+                     help="compose-preview/main commit SHA (or branch name) for Before URLs")
     cmp.add_argument("--head-ref", required=True,
-                     help="preview_pr commit SHA (or branch name) for After URLs")
+                     help="compose-preview/pr commit SHA (or branch name) for After URLs")
     # Optional. When supplied, sha-mismatched pairs run through pixelmatch
     # before being flagged as Changed so renderer-side AA noise (issue #190)
     # doesn't appear in the comment. Falls back to strict-bytes when omitted.
@@ -993,7 +993,7 @@ def main() -> int:
     cp_res.add_argument("cli_json",
                         help="Path to compose-preview show-resources --json output")
     cp_res.add_argument("--baselines", required=True,
-                        help="Path to resource-baselines.json (fetched from preview_resources_main)")
+                        help="Path to resource-baselines.json (fetched from compose-preview/resources/main)")
     cp_res.add_argument("--output-dir", required=True)
     # Same perceptual-filter knob as `copy-changed` — when provided,
     # sha-mismatched pairs run through pixelmatch before being copied as
@@ -1011,9 +1011,9 @@ def main() -> int:
     cmp_res.add_argument("cli_json",
                          help="Path to compose-preview show-resources --json output")
     cmp_res.add_argument("--baselines", required=True,
-                         help="Path to resource-baselines.json (fetched from preview_resources_main)")
+                         help="Path to resource-baselines.json (fetched from compose-preview/resources/main)")
     cmp_res.add_argument("--repo", required=True)
-    cmp_res.add_argument("--base-ref", default="preview_resources_main")
+    cmp_res.add_argument("--base-ref", default="compose-preview/resources/main")
     cmp_res.add_argument("--head-ref", required=True)
     cmp_res.add_argument("--baseline-renders",
                          help="Directory containing baseline resource PNGs "

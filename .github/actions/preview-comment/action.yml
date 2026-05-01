@@ -1,9 +1,10 @@
 name: 'Compose Preview Comment'
 description: >
-  Render previews on a PR, compare against the baselines on preview_main,
-  and post a before/after comment. Changed PNGs are appended as a new
-  commit on the shared preview_pr branch; the PR comment pins Before/After
-  URLs to commit SHAs so the images keep resolving after merge.
+  Render previews on a PR, compare against the baselines on
+  compose-preview/main, and post a before/after comment. Changed PNGs
+  are appended as a new commit on the shared compose-preview/pr branch;
+  the PR comment pins Before/After URLs to commit SHAs so the images
+  keep resolving after merge.
 
 inputs:
   cli-version:
@@ -23,26 +24,26 @@ inputs:
     default: '600'
   base-branch:
     description: 'Branch name for composable @Preview baselines.'
-    default: 'preview_main'
+    default: 'compose-preview/main'
   resource-base-branch:
     description: >
       Branch name for Android XML resource baselines. Kept separate from
       `base-branch` because resource and composable previews are disjoint
       workflows (sibling sticky comments, sibling baseline branches). Set
       to '' to skip the resource compare entirely.
-    default: 'preview_resources_main'
+    default: 'compose-preview/resources/main'
   head-branch:
     description: 'Shared branch that accumulates per-PR composable render commits.'
-    default: 'preview_pr'
+    default: 'compose-preview/pr'
   resource-head-branch:
     description: >
       Shared branch that accumulates per-PR Android XML resource render
       commits. Sibling of `head-branch` for the resource pipeline — the After
       URLs in the resource sticky comment pin to commits on this branch, so
-      it stays disjoint from `preview_pr` for the same reason
-      `preview_resources_main` is disjoint from `preview_main`. Set to '' to
-      skip the resource push entirely.
-    default: 'preview_resources_pr'
+      it stays disjoint from `compose-preview/pr` for the same reason
+      `compose-preview/resources/main` is disjoint from `compose-preview/main`.
+      Set to '' to skip the resource push entirely.
+    default: 'compose-preview/resources/pr'
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted).'
     default: ''
@@ -126,7 +127,7 @@ runs:
           # Extract the baseline renders/ tree alongside baselines.json so
           # the pixelmatch-based perceptual filter in compare-previews.py
           # has both PNGs to diff. `git archive` writes to stdout so the
-          # working tree is left untouched; failures (e.g. preview_main
+          # working tree is left untouched; failures (e.g. compose-preview/main
           # has no renders/ tree yet) fall back to the strict-bytes path.
           git archive "origin/${BASE_BRANCH}" renders 2>/dev/null \
             | tar -x -C _baselines/ 2>/dev/null || true
@@ -134,15 +135,16 @@ runs:
           echo "No $BASE_BRANCH branch yet — treating all previews as new."
         fi
         # Resource baselines live on their own branch (default
-        # `preview_resources_main`) — disjoint workflow from the composable
-        # `preview_main`. First-ever resource render on a project hasn't
-        # populated it yet; absent branch falls back to "treat every
-        # resource as new". Resource renders extract to a sibling directory
-        # so the two trees can't shadow each other (preview_main and
-        # preview_resources_main both lay PNGs out as `renders/<module>/...`,
-        # and even though resource paths carry a `resources/` segment after
-        # the module, keeping the staging dirs separate avoids any chance
-        # of cross-branch tar extraction stomping on a composable render).
+        # `compose-preview/resources/main`) — disjoint workflow from the
+        # composable `compose-preview/main`. First-ever resource render on
+        # a project hasn't populated it yet; absent branch falls back to
+        # "treat every resource as new". Resource renders extract to a
+        # sibling directory so the two trees can't shadow each other
+        # (compose-preview/main and compose-preview/resources/main both
+        # lay PNGs out as `renders/<module>/...`, and even though resource
+        # paths carry a `resources/` segment after the module, keeping the
+        # staging dirs separate avoids any chance of cross-branch tar
+        # extraction stomping on a composable render).
         mkdir -p _resource_baselines
         if [ -n "$RESOURCE_BASE_BRANCH" ] && \
            git ls-remote --exit-code origin "$RESOURCE_BASE_BRANCH" >/dev/null 2>&1; then
@@ -180,23 +182,24 @@ runs:
         GITHUB_TOKEN_INLINE: ${{ github.token }}
       run: |
         set -euo pipefail
-        # Pin Before URLs to the current preview_main tip SHA. Because the
-        # preview-baselines action now appends to history rather than
-        # force-pushing fresh orphans, this SHA stays reachable forever.
+        # Pin Before URLs to the current compose-preview/main tip SHA.
+        # Because the preview-baselines action now appends to history
+        # rather than force-pushing fresh orphans, this SHA stays
+        # reachable forever.
         BASE_SHA=$(git ls-remote \
           "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
           "refs/heads/${BASE_BRANCH}" | awk '{print $1}')
         if [ -z "$BASE_SHA" ]; then
-          # First-ever run (no preview_main yet). Fall back to the branch
-          # name; Before images will 404 until the first baseline push lands,
-          # after which new PR comments resolve to a SHA.
+          # First-ever run (no compose-preview/main yet). Fall back to the
+          # branch name; Before images will 404 until the first baseline
+          # push lands, after which new PR comments resolve to a SHA.
           BASE_SHA="$BASE_BRANCH"
         fi
         echo "$BASE_SHA" > _base_sha
         # Sibling Before SHA for the resources comment — pins to its own
-        # branch (default `preview_resources_main`). When the input is
-        # blank the resources comment is skipped further down anyway, so
-        # we also blank `_resource_base_sha` to be defensive.
+        # branch (default `compose-preview/resources/main`). When the input
+        # is blank the resources comment is skipped further down anyway,
+        # so we also blank `_resource_base_sha` to be defensive.
         if [ -n "$RESOURCE_BASE_BRANCH" ]; then
           RESOURCE_BASE_SHA=$(git ls-remote \
             "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
@@ -219,12 +222,12 @@ runs:
           --baseline-renders _baselines/renders \
           --output-dir _pr_renders
         # Resource captures stage into a sibling tree (`_pr_resource_renders/`)
-        # so they push to a separate branch (`preview_resources_pr` by
-        # default). Same disjoint-workflow rationale as the
-        # `preview_main` / `preview_resources_main` baseline split: each
-        # kind of preview gets its own per-PR After-URL history, separate
-        # bisect lineage, separate sticky comment. Silent no-op when the
-        # `_resources.json` envelope has no Android modules.
+        # so they push to a separate branch (`compose-preview/resources/pr`
+        # by default). Same disjoint-workflow rationale as the
+        # `compose-preview/main` / `compose-preview/resources/main` baseline
+        # split: each kind of preview gets its own per-PR After-URL history,
+        # separate bisect lineage, separate sticky comment. Silent no-op
+        # when the `_resources.json` envelope has no Android modules.
         python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
           _resources.json \
           --baselines _baselines/resource-baselines.json \
@@ -398,14 +401,14 @@ runs:
         # be edited / scrolled past independently. Empty stdout when nothing
         # diffed; the post step below skips emitting an empty comment.
         # Before URL pins to the resource base branch (default
-        # `preview_resources_main`), distinct from the composable BASE_REF
-        # so the markdown image links resolve to the right tree.
+        # `compose-preview/resources/main`), distinct from the composable
+        # BASE_REF so the markdown image links resolve to the right tree.
         RESOURCE_BASE_REF=$(cat _resource_base_sha 2>/dev/null || true)
         if [ -z "$RESOURCE_BASE_REF" ]; then
           RESOURCE_BASE_REF="$BASE_REF"
         fi
         # After URL pins to the resource PR-renders branch (default
-        # `preview_resources_pr`) — sibling of HEAD_REF for resources.
+        # `compose-preview/resources/pr`) — sibling of HEAD_REF for resources.
         # Falls back to the branch name when nothing was pushed (the
         # comment body won't contain any new/changed image tags in that
         # case so the unresolved ref doesn't matter).

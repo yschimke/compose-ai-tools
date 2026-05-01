@@ -6,11 +6,14 @@ import * as path from 'path';
  * coalesced callback whenever any of them changes — typically after a
  * `git fetch` lands new objects, but also on local commit/branch ops.
  *
- * Targets:
- *   - `.git/refs/remotes/origin/preview_main` — post-fetch view of the
- *     remote baseline branch (the most common trigger).
- *   - `.git/refs/heads/preview_main` — local branch, for repos that
- *     publish baselines locally.
+ * Targets (new convention first; the legacy `preview_main` flat ref is
+ * still watched so repos that haven't migrated keep auto-refreshing):
+ *   - `.git/refs/remotes/origin/compose-preview/main` — post-fetch view of
+ *     the remote baseline branch (the most common trigger).
+ *   - `.git/refs/heads/compose-preview/main` — local branch, for repos
+ *     that publish baselines locally.
+ *   - `.git/refs/remotes/origin/preview_main`, `.git/refs/heads/preview_main`
+ *     — legacy flat refs, kept for back-compat.
  *   - `.git/packed-refs` — git packs loose refs into this file via
  *     `git pack-refs` / `git gc`; when packed, the per-file refs above
  *     disappear and updates land here instead.
@@ -46,6 +49,13 @@ export function watchPreviewMainRef(
         filenames: Set<string>;
     }
     const dirs: DirWatch[] = [
+        // New convention: nested under `compose-preview/`. Watch the parent
+        // dir for `main` filename — the parent itself may not exist yet on
+        // first checkout, in which case the existsSync check below skips
+        // until the first fetch creates it.
+        { dir: path.join(gitDir, 'refs', 'remotes', 'origin', 'compose-preview'), filenames: new Set(['main']) },
+        { dir: path.join(gitDir, 'refs', 'heads', 'compose-preview'), filenames: new Set(['main']) },
+        // Legacy flat refs — kept so repos that haven't migrated keep working.
         { dir: path.join(gitDir, 'refs', 'remotes', 'origin'), filenames: new Set(['preview_main']) },
         { dir: path.join(gitDir, 'refs', 'heads'), filenames: new Set(['preview_main']) },
         { dir: gitDir, filenames: new Set(['packed-refs']) },

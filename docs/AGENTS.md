@@ -23,9 +23,9 @@ Two audiences, two doc trees. Don't conflate them:
   - [`REMOTE_COMPOSE.md`](../skills/compose-preview/design/REMOTE_COMPOSE.md) — Remote Compose (RemoteDocument byte stream for watch faces, tiles, widgets)
   - [`RESOURCE_PREVIEWS.md`](../skills/compose-preview/design/RESOURCE_PREVIEWS.md) — Android XML resource captures (`<vector>`, `<adaptive-icon>`)
   - [`VSCODE.md`](../skills/compose-preview/design/VSCODE.md) — VS Code extension (humans, not agents)
-- **[`skills/compose-preview-review/`](../skills/compose-preview-review/)** — sibling skill covering the PR-review surface: authoring agent-opened PRs, reviewing UI PRs locally (base + head render, diff, comment), and wiring `preview_main` baselines + PR-comment GitHub Actions.
+- **[`skills/compose-preview-review/`](../skills/compose-preview-review/)** — sibling skill covering the PR-review surface: authoring agent-opened PRs, reviewing UI PRs locally (base + head render, diff, comment), and wiring `compose-preview/main` baselines + PR-comment GitHub Actions.
   - [`AGENT_PR.md`](../skills/compose-preview-review/design/AGENT_PR.md) — authoring agent-opened PRs and reviewing PRs opened by other agents
-  - [`CI_PREVIEWS.md`](../skills/compose-preview-review/design/CI_PREVIEWS.md) — maintaining a `preview_main` branch with rendered PNGs and a `baselines.json` for diff-on-PR workflows
+  - [`CI_PREVIEWS.md`](../skills/compose-preview-review/design/CI_PREVIEWS.md) — maintaining a `compose-preview/main` branch with rendered PNGs and a `baselines.json` for diff-on-PR workflows
 
 Each skill is bundled into its own `<name>-skill-<ver>.tar.gz` at release time and ends up under `~/.claude/skills/<name>/` after `scripts/install.sh` runs — so anything you change in `skills/` is what consumers (and their agents) see, not what contributors editing this repo see. When you change consumer-facing behaviour (a new flag, a network requirement, a setup-script step), update `skills/...`, not this file. Cross-link from here when contributors need the same information for sandbox setup (e.g. the Android SDK bootstrap referenced from "Bringing up a fresh sandbox" below).
 

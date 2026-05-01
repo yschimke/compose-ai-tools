@@ -1,10 +1,11 @@
 name: 'Compose Preview Baselines'
 description: >
   Render all @Preview functions via the compose-preview CLI and push
-  PNGs + baselines.json as a new commit on the preview_main branch. The
-  branch is browsable on GitHub (README with inline images) and serves as
-  the "before" state for PR diff comments — old commit SHAs stay reachable
-  so PR comments pinned to a past baseline keep resolving forever.
+  PNGs + baselines.json as a new commit on the compose-preview/main
+  branch. The branch is browsable on GitHub (README with inline images)
+  and serves as the "before" state for PR diff comments — old commit
+  SHAs stay reachable so PR comments pinned to a past baseline keep
+  resolving forever.
 
 inputs:
   cli-version:
@@ -24,7 +25,7 @@ inputs:
     default: '600'
   branch:
     description: 'Branch name for composable @Preview baselines.'
-    default: 'preview_main'
+    default: 'compose-preview/main'
   resource-branch:
     description: >
       Branch name for Android XML resource baselines (vector / animated-vector /
@@ -32,7 +33,7 @@ inputs:
       previews are disjoint workflows — independent push cadence, independent
       bisect history, independent diff comments. Set to '' to skip the resource
       push entirely.
-    default: 'preview_resources_main'
+    default: 'compose-preview/resources/main'
 
 runs:
   using: 'composite'
@@ -122,8 +123,9 @@ runs:
 
         # Fetch the existing tip (if any) so the new commit lands on top of
         # history rather than force-pushing a fresh orphan commit each run.
-        # Keeping history means a PR comment pinned to any past preview_main
-        # SHA stays resolvable: the blob is reachable via the branch chain.
+        # Keeping history means a PR comment pinned to any past
+        # compose-preview/main SHA stays resolvable: the blob is reachable
+        # via the branch chain.
         PARENT=""
         if git fetch --depth=1 --quiet origin "$BASELINE_BRANCH" 2>/dev/null; then
           PARENT=$(git rev-parse FETCH_HEAD)
@@ -147,7 +149,7 @@ runs:
         git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"
 
     # ─── Android XML resource previews ────────────────────────────────────
-    # Sibling pipeline pushing to its own branch (default `preview_resources_main`).
+    # Sibling pipeline pushing to its own branch (default `compose-preview/resources/main`).
     # Workflows are disjoint from composable @Preview, so we keep the histories
     # separate — independent bisect, independent diff comments, independent
     # push cadence. See the `resource-branch` input docstring above.
