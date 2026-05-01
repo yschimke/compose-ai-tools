@@ -117,7 +117,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 await this.refresh();
                 break;
             case 'loadImage':
-                if (msg.id) { await this.sendImage(msg.id); }
+                if (msg.id) { await this.sendImage(msg.id, 'expansion'); }
+                break;
+            case 'loadThumb':
+                if (msg.id) { await this.sendImage(msg.id, 'thumb'); }
                 break;
             case 'openSource':
                 if (msg.sourceFile) {
@@ -133,22 +136,24 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         }
     }
 
-    private async sendImage(id: string): Promise<void> {
+    private async sendImage(id: string, kind: 'expansion' | 'thumb'): Promise<void> {
         if (!this.view) { return; }
+        const readyCmd = kind === 'thumb' ? 'thumbReady' : 'imageReady';
+        const errorCmd = kind === 'thumb' ? 'thumbError' : 'imageError';
         try {
             const result = await this.source.read(id);
             if (!result) {
-                this.view.webview.postMessage({ command: 'imageError', id, message: 'Entry not found.' });
+                this.view.webview.postMessage({ command: errorCmd, id, message: 'Entry not found.' });
                 return;
             }
             const bytes = result.pngBytes
                 ?? (await fs.promises.readFile(result.pngPath)).toString('base64');
             this.view.webview.postMessage({
-                command: 'imageReady', id, imageData: bytes, entry: result.entry,
+                command: readyCmd, id, imageData: bytes, entry: result.entry,
             });
         } catch (err) {
             this.view.webview.postMessage({
-                command: 'imageError', id, message: (err as Error).message,
+                command: errorCmd, id, message: (err as Error).message,
             });
         }
     }
@@ -260,6 +265,23 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         let entries = [];
         let selectedIds = new Set();
         let expandedId = null;
+        // Thumbnail cache + dedup so each entry's PNG is fetched at most once
+        // per panel session even if scrolling brings the same row back into
+        // view repeatedly.
+        const thumbCache = new Map();
+        const thumbRequested = new Set();
+        const thumbObserver = ('IntersectionObserver' in window)
+            ? new IntersectionObserver((items) => {
+                for (const item of items) {
+                    if (!item.isIntersecting) continue;
+                    const el = item.target;
+                    const id = el.dataset.id;
+                    if (!id || thumbRequested.has(id)) continue;
+                    thumbRequested.add(id);
+                    vscode.postMessage({ command: 'loadThumb', id });
+                }
+            }, { root: null, rootMargin: '64px', threshold: 0 })
+            : null;
 
         btnRefreshEl.addEventListener('click', () => {
             vscode.postMessage({ command: 'refresh' });
@@ -315,6 +337,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         }
 
         function renderTimeline() {
+            // Thumbnails not yet loaded for the new entry set should retry —
+            // disconnect the old observer and rebuild against the new rows.
+            if (thumbObserver) thumbObserver.disconnect();
+            thumbRequested.clear();
             timelineEl.innerHTML = '';
             for (const entry of entries) {
                 const row = document.createElement('div');
@@ -326,22 +352,34 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
 
                 const thumb = document.createElement('div');
                 thumb.className = 'thumb';
+                thumb.dataset.id = entry.id || '';
+                if (thumbCache.has(entry.id)) {
+                    populateThumb(thumb, thumbCache.get(entry.id));
+                } else if (thumbObserver) {
+                    thumbObserver.observe(thumb);
+                }
                 row.appendChild(thumb);
 
                 const meta = document.createElement('div');
                 meta.className = 'meta';
                 const ts = document.createElement('div');
                 ts.className = 'ts';
-                ts.textContent = entry.timestamp || '(no timestamp)';
+                ts.textContent = formatRelative(entry.timestamp);
+                ts.title = entry.timestamp || '';
                 meta.appendChild(ts);
 
                 const sub = document.createElement('div');
                 sub.className = 'sub';
                 const dot = (entry.deltaFromPrevious && entry.deltaFromPrevious.pngHashChanged)
                     ? '<span class="changed-dot" title="bytes changed vs previous"></span>' : '';
+                const absolute = formatAbsolute(entry.timestamp);
                 const trigger = entry.trigger ? entry.trigger : '—';
                 const branch = (entry.git && entry.git.branch) || '';
-                sub.innerHTML = dot + escapeHtml(trigger) + (branch ? ' · ' + escapeHtml(branch) : '');
+                const subParts = [];
+                if (absolute) subParts.push(escapeHtml(absolute));
+                subParts.push(escapeHtml(trigger));
+                if (branch) subParts.push(escapeHtml(branch));
+                sub.innerHTML = dot + subParts.join(' · ');
                 meta.appendChild(sub);
                 row.appendChild(meta);
 
@@ -411,11 +449,14 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 actions.appendChild(open);
             }
             expansion.appendChild(actions);
+        }
 
-            const meta = document.createElement('pre');
-            meta.className = 'metadata';
-            meta.textContent = JSON.stringify(entry, null, 2);
-            expansion.appendChild(meta);
+        function populateThumb(thumbEl, imageData) {
+            thumbEl.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = 'data:image/png;base64,' + imageData;
+            img.alt = '';
+            thumbEl.appendChild(img);
         }
 
         function showDiff(fromId, toId, result) {
@@ -441,6 +482,37 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         }
         function cssEscape(s) {
             return String(s).replace(/[\\\\"']/g, '\\\\$&');
+        }
+
+        function formatRelative(iso) {
+            if (!iso) return '(no timestamp)';
+            const t = Date.parse(iso);
+            if (isNaN(t)) return iso;
+            const s = Math.round((Date.now() - t) / 1000);
+            if (s < 5) return 'just now';
+            if (s < 60) return s + 's ago';
+            const m = Math.round(s / 60);
+            if (m < 60) return m + 'm ago';
+            const h = Math.round(m / 60);
+            if (h < 24) return h + 'h ago';
+            const d = Math.round(h / 24);
+            if (d < 30) return d + 'd ago';
+            const mo = Math.round(d / 30);
+            if (mo < 12) return mo + 'mo ago';
+            return Math.round(mo / 12) + 'y ago';
+        }
+
+        function formatAbsolute(iso) {
+            if (!iso) return '';
+            const t = Date.parse(iso);
+            if (isNaN(t)) return '';
+            try {
+                return new Date(t).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                });
+            } catch (_) {
+                return '';
+            }
         }
 
         window.addEventListener('message', event => {
@@ -485,6 +557,18 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                     if (expansion) expansion.textContent = 'Failed to load image: ' + (msg.message || '(no detail)');
                     break;
                 }
+                case 'thumbReady': {
+                    thumbCache.set(msg.id, msg.imageData);
+                    const thumbEl = timelineEl.querySelector('.thumb[data-id="' + cssEscape(msg.id) + '"]');
+                    if (thumbEl) populateThumb(thumbEl, msg.imageData);
+                    break;
+                }
+                case 'thumbError':
+                    // Drop the dedup so a future re-render can retry. Leave
+                    // the gray box in place; surfacing per-entry errors at
+                    // the thumb scale would just be noisy.
+                    thumbRequested.delete(msg.id);
+                    break;
                 case 'diffResult':
                     showDiff(msg.fromId, msg.toId, msg.result);
                     break;
