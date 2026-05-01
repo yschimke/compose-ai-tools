@@ -840,6 +840,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 renderOutput: c.renderOutput || '',
                 imageData: null,
                 errorMessage: null,
+                renderError: null,
             })));
 
             const header = document.createElement('div');
@@ -984,6 +985,75 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             showFrame(card, next);
         }
 
+        /**
+         * Build the error overlay DOM for a failing capture. When
+         * renderError is non-null the panel has structured detail:
+         * exception class, message, a clickable file:line frame, and a
+         * collapsible stack trace. Otherwise it falls back to the plain
+         * one-line message (the case for renderers that don't yet
+         * produce a sidecar, or when the sidecar was unreadable).
+         *
+         * Click on the frame button posts an openSourceFile message;
+         * the extension resolves the stack-trace basename to an
+         * absolute path via workspace.findFiles. The disclosure for
+         * the full trace is a native details element -- no JS state
+         * to manage, browser handles the toggle.
+         */
+        function buildErrorPanel(message, renderError) {
+            const panel = document.createElement('div');
+            panel.className = 'error-message render-error';
+            panel.setAttribute('role', 'alert');
+            if (!renderError) {
+                panel.textContent = message || '';
+                return panel;
+            }
+            const cls = (renderError.exception || '').split('.').pop()
+                || renderError.exception || 'Error';
+            const head = document.createElement('div');
+            head.className = 'render-error-class';
+            head.textContent = cls;
+            panel.appendChild(head);
+
+            if (renderError.message) {
+                const msg = document.createElement('div');
+                msg.className = 'render-error-msg';
+                msg.textContent = renderError.message;
+                panel.appendChild(msg);
+            }
+
+            const frame = renderError.topAppFrame;
+            if (frame && frame.file) {
+                const link = document.createElement('button');
+                link.className = 'render-error-frame';
+                link.type = 'button';
+                const fnSuffix = frame.function ? ' in ' + frame.function : '';
+                const lineSuffix = frame.line > 0 ? ':' + frame.line : '';
+                link.textContent = frame.file + lineSuffix + fnSuffix;
+                link.title = 'Open ' + frame.file + lineSuffix;
+                link.addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'openSourceFile',
+                        fileName: frame.file,
+                        line: frame.line,
+                    });
+                });
+                panel.appendChild(link);
+            }
+
+            if (renderError.stackTrace) {
+                const details = document.createElement('details');
+                details.className = 'render-error-stack';
+                const summary = document.createElement('summary');
+                summary.textContent = 'Stack trace';
+                details.appendChild(summary);
+                const pre = document.createElement('pre');
+                pre.textContent = renderError.stackTrace;
+                details.appendChild(pre);
+                panel.appendChild(details);
+            }
+            return panel;
+        }
+
         function showFrame(card, index) {
             const caps = cardCaptures.get(card.dataset.previewId);
             if (!caps) return;
@@ -1006,8 +1076,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 }
                 img.src = 'data:' + mimeFor(capture.renderOutput) + ';base64,' + capture.imageData;
                 img.className = 'fade-in';
-            } else if (capture.errorMessage) {
-                container.innerHTML = '<div class="error-message" role="alert">' + escapeHtml(capture.errorMessage) + '</div>';
+            } else if (capture.errorMessage || capture.renderError) {
+                const existingErr = container.querySelector('.error-message');
+                if (existingErr) existingErr.remove();
+                container.appendChild(buildErrorPanel(capture.errorMessage, capture.renderError));
                 card.classList.add('has-error');
             } else {
                 // No data for this capture yet — render will fill it in later.
@@ -1062,6 +1134,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 renderOutput: nc.renderOutput || '',
                 imageData: prior[i]?.imageData ?? null,
                 errorMessage: prior[i]?.errorMessage ?? null,
+                renderError: prior[i]?.renderError ?? null,
             }));
             cardCaptures.set(p.id, mergedCaps);
             const curIdx = parseInt(card.dataset.currentIndex || '0', 10);
@@ -1470,6 +1543,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (caps && caps[captureIndex]) {
                 caps[captureIndex].imageData = imageData;
                 caps[captureIndex].errorMessage = null;
+                caps[captureIndex].renderError = null;
             }
 
             // Only paint the <img> if the currently-displayed capture is the
@@ -1763,9 +1837,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         // (captureIndex defaulted to 0) — applies to the
                         // representative image container only.
                         const captureIndex = msg.command === 'setImageError' ? (msg.captureIndex || 0) : 0;
+                        const renderError = msg.command === 'setImageError' ? (msg.renderError || null) : null;
                         const caps = cardCaptures.get(msg.previewId);
                         if (caps && caps[captureIndex]) {
                             caps[captureIndex].errorMessage = msg.message;
+                            caps[captureIndex].renderError = renderError;
                             caps[captureIndex].imageData = null;
                         }
                         const cur = parseInt(errCard.dataset.currentIndex || '0', 10);
@@ -1773,15 +1849,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
                         errCard.classList.add('has-error');
                         const container = errCard.querySelector('.image-container');
-                        // Keep existing image visible under the error for setImageError
-                        if (msg.command === 'setImageError') {
-                            const existing = container.querySelector('img');
-                            if (!existing) {
-                                container.innerHTML = '<div class="error-message" role="alert">' + escapeHtml(msg.message) + '</div>';
-                            }
-                        } else {
-                            container.innerHTML = '<div class="error-message" role="alert">' + escapeHtml(msg.message) + '</div>';
+                        const previousErr = container.querySelector('.error-message');
+                        if (previousErr) previousErr.remove();
+                        // setImageError keeps any existing rendered <img>
+                        // visible underneath the error overlay so the user
+                        // still has the previous render as a reference.
+                        // setError is the preview-wide path — wipe everything
+                        // and replace with just the error.
+                        if (msg.command === 'setError') {
+                            const existingImg = container.querySelector('img');
+                            if (existingImg) existingImg.remove();
+                            const skeleton = container.querySelector('.skeleton');
+                            if (skeleton) skeleton.remove();
                         }
+                        container.appendChild(buildErrorPanel(msg.message, renderError));
                     }
                     break;
                 }

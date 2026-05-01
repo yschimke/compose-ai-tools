@@ -745,6 +745,95 @@ body {
     border-color: var(--vscode-errorForeground);
 }
 
+/* -- Structured runtime-error overlay --------------------------------
+ * Layered on top of the rendered preview when a @Preview function
+ * threw at render time and the renderer wrote a structured
+ * `<png>.error.json` sidecar. Reads top-down: exception class,
+ * message, click-to-open frame, collapsible stack trace.
+ *
+ * Background is mostly opaque (not fully) so a previously-rendered
+ * image is faintly visible underneath — the panel sits flush to the
+ * top so the image's interesting region (usually the bottom half of
+ * a Compose preview) stays readable for context.
+ */
+.render-error {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    overflow: auto;
+    padding: 10px 12px;
+    text-align: left;
+    line-height: 1.4;
+}
+
+.render-error-class {
+    font-weight: 700;
+    color: var(--vscode-errorForeground);
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-font-size);
+    margin-bottom: 2px;
+    word-break: break-all;
+}
+
+.render-error-msg {
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    margin-bottom: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.render-error-frame {
+    display: inline-block;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--vscode-textLink-foreground);
+    text-decoration: underline;
+    cursor: pointer;
+    font-family: var(--vscode-editor-font-family);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    text-align: left;
+    margin-bottom: 6px;
+}
+.render-error-frame:hover {
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+.render-error-frame:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+/* Stack-trace disclosure — native <details>. Closed by default since
+   most users only want the top-level message + frame; expanding gets
+   the full trace for the rare case where the top frame heuristic
+   missed the right call site. */
+.render-error-stack {
+    margin-top: 4px;
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+.render-error-stack > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    user-select: none;
+}
+.render-error-stack > summary:hover {
+    color: var(--text-primary);
+}
+.render-error-stack > pre {
+    margin: 4px 0 0;
+    padding: 6px 8px;
+    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text-secondary);
+}
+
 /* Stale heavy capture: dim the rendered image so the user notices it isn't
    fresh, and tint the warning icon. The badge button itself is the only
    click target — clicking re-runs render at tier=full for this module. */

@@ -396,6 +396,17 @@ export type WebviewToExtension =
      */
     | { command: 'openCompileError'; sourceFile: string; line: number; column: number }
     /**
+     * Click on a runtime-error card's "top app frame" link. Unlike the
+     * compile-error path, runtime errors only carry the source-file
+     * basename (from the stack trace's `StackTraceElement.fileName`) —
+     * so the extension does a workspace `findFiles('**\/<fileName>')`
+     * to resolve it, biased to the first match outside `**\/build/**`.
+     * Ambiguous matches across same-named files in different modules
+     * fall back to the first hit; a richer disambiguation could use
+     * the function name, but that's a follow-up.
+     */
+    | { command: 'openSourceFile'; fileName: string; line: number }
+    /**
      * Live panel asks the extension to compute a diff for the focused
      * preview against an anchor. `head` = latest archived render in
      * `.compose-preview-history/` for this preview; `main` = same, filtered
