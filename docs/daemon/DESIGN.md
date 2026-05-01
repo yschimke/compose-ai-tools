@@ -485,6 +485,7 @@ Resolved during design discussion:
 - **Plugin helper extraction:** `buildTestClasspath` and `buildJvmArgs` hoisted into package-private helpers so daemon and existing test task share the same logic. Behaviour byte-identical, callers unchanged.
 - **Tier-3 dependency index:** deferred to v2. v1 uses conservative module-stale + visibility filter.
 - **kotlinc / compile-daemon integration:** out of scope. We let Gradle drive Kotlin compilation as today.
+- **Roborazzi as `compileOnly`, not bundled in a published `daemon-android`:** when the daemon ships as a Maven artifact (planning track), it stays runtime-supplied — the consumer's existing Compose + Roborazzi pair is what gets loaded. Same pattern the daemon already uses for `compose-ui-test-junit4`, `activity-compose`, etc. (`daemon/android/build.gradle.kts:90-100`). Avoids the per-Compose-BOM artifact matrix Architecture C would have required. Public Roborazzi surface used by `RenderEngine` is small (`captureRoboImage`, `RoborazziOptions`, `RoborazziOptions.RecordOptions(applyDeviceCrop = …)`) and has been binary-stable across the Roborazzi 1.x line. Documented version-compatibility range goes in `docs/RENDERER_COMPATIBILITY.md` when publishing lands. Fallback if Roborazzi's API ever does break: § 19.
 
 ## 18. Future work (v2+)
 
@@ -494,3 +495,26 @@ Resolved during design discussion:
 - CLI / MCP daemon mode for batch rendering without Gradle.
 - Direct kotlinc-daemon integration to skip the Gradle compile step.
 - Resource-edit precision: parse changed XML, cross-reference Compose's resolved-resource cache.
+
+## 19. Roborazzi compatibility & captureToImage fallback
+
+The decision in § 17 to keep Roborazzi as a `compileOnly` dep rather than bundling per-Compose-BOM `daemon-android` variants rests on Roborazzi's public-API binary stability across the Roborazzi 1.x line. If a future Roborazzi release breaks that — by removing `RoborazziOptions.RecordOptions(applyDeviceCrop)`, changing `captureRoboImage`'s signature, or moving classes between packages — the daemon has a documented migration path that does not require shipping multiple JARs.
+
+**Replacement: `androidx.compose.ui.test.captureToImage()`.** This is the upstream Compose UI Test API. It walks the same `HardwareRenderer` path Roborazzi does under `@GraphicsMode(NATIVE)` (already required by `RobolectricHost.SandboxRunner`, see KDoc on the `@GraphicsMode` annotation), so the Robolectric prerequisite is unchanged. The replacement is local to `RenderEngine.render()`:
+
+```kotlin
+// Before (Roborazzi):
+val opts = RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
+rule.onRoot().captureRoboImage(file = outputFile, roborazziOptions = opts)
+
+// After (captureToImage):
+val captured = rule.onRoot().captureToImage().asAndroidBitmap()
+val final = if (isRound) applyCircularCrop(captured) else captured
+FileOutputStream(outputFile).use { final.compress(Bitmap.CompressFormat.PNG, 100, it) }
+```
+
+`applyCircularCrop` is a ~20-line Bitmap+Canvas+BitmapShader helper replacing Roborazzi's `applyDeviceCrop`. (Wear-round handling tracked separately.)
+
+**What this fallback does NOT cover.** Roborazzi's richer features used by `:renderer-android`'s `RobolectricRenderTest` — `RoborazziComposeOptions` builders, animated/scroll/GIF stitching, accessibility tree extraction, `roborazzi-accessibility-check` — are out of scope for the daemon (per `RenderEngine.kt`'s class KDoc: "single static previews"). If `:renderer-android` needs to migrate too, that's a much larger project; this fallback only addresses the daemon's Roborazzi surface.
+
+**Status.** Investigated, not implemented. A 50-line spike replacing the three Roborazzi imports with the captureToImage path was prepared but reverted in favour of the `compileOnly` plan. Re-running that spike is the first step if Roborazzi compatibility ever forces our hand.
