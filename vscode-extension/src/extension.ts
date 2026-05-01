@@ -1218,16 +1218,32 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             // module — the panel shows every preview's history.
             if (!historyScopeRef.current) { break; }
             const requested = msg.previewId ?? undefined;
-            if (historyScopeRef.current.previewId === requested) { break; }
+            const requestedLabel = requested ? lookupPreviewLabel(requested) : undefined;
+            if (historyScopeRef.current.previewId === requested
+                && historyScopeRef.current.previewLabel === requestedLabel) {
+                break;
+            }
             const newScope: HistoryScope = {
                 ...historyScopeRef.current,
                 previewId: requested,
+                previewLabel: requestedLabel,
             };
             historyScopeRef.current = newScope;
             historyPanel?.setScope(newScope);
             break;
         }
     }
+}
+
+function lookupPreviewLabel(previewId: string): string | undefined {
+    const mod = previewModuleMap.get(previewId);
+    if (!mod) { return undefined; }
+    const manifest = moduleManifestCache.get(mod);
+    const info = manifest?.find(p => p.id === previewId);
+    if (!info) { return undefined; }
+    return info.params.name
+        ? `${info.functionName} — ${info.params.name}`
+        : info.functionName;
 }
 
 async function notifyDaemonViewport(visible: string[], predicted: string[]): Promise<void> {

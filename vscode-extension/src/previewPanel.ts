@@ -85,6 +85,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-next" title="Next preview" aria-label="Next preview">
             <i class="codicon codicon-arrow-right" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
+            <i class="codicon codicon-close" aria-hidden="true"></i>
+        </button>
     </div>
     <div id="preview-grid" class="preview-grid" role="list" aria-label="Preview cards"></div>
 
@@ -101,6 +104,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const focusControls = document.getElementById('focus-controls');
         const btnPrev = document.getElementById('btn-prev');
         const btnNext = document.getElementById('btn-next');
+        const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
 
         let allPreviews = [];
@@ -111,6 +115,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // Tracked here so we don't spam the History panel with redundant
         // re-scopes (e.g. layout reapplies on every filter tweak).
         let lastScopedPreviewId = null;
+        // Layout to fall back to when the user exits focus mode. Captured
+        // whenever we transition into focus from another layout (dropdown
+        // change, dblclick on a card). Defaults to grid so the very first
+        // exit lands somewhere sensible.
+        let previousLayout = state.layout && state.layout !== 'focus' ? state.layout : 'grid';
 
         // Restore layout preference
         if (state.layout && ['grid', 'flow', 'column', 'focus'].includes(state.layout)) {
@@ -126,6 +135,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         message.dataset.owner = 'fallback';
 
         layoutMode.addEventListener('change', () => {
+            if (layoutMode.value === 'focus' && state.layout !== 'focus') {
+                previousLayout = state.layout || 'grid';
+            }
             state.layout = layoutMode.value;
             vscode.setState(state);
             applyLayout();
@@ -133,6 +145,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         btnPrev.addEventListener('click', () => navigateFocus(-1));
         btnNext.addEventListener('click', () => navigateFocus(1));
+        btnExitFocus.addEventListener('click', () => exitFocus());
 
         for (const sel of [filterFunction, filterGroup]) {
             sel.addEventListener('change', () => {
@@ -256,6 +269,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     card.classList.remove('focused', 'hidden-by-focus');
                 });
             }
+            const tooltip = mode === 'focus' ? 'Double-click to exit focus' : 'Double-click to focus';
+            document.querySelectorAll('.image-container').forEach(c => c.title = tooltip);
             publishScopedPreview();
         }
 
@@ -300,10 +315,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (idx === -1) return;
             focusIndex = idx;
             if (layoutMode.value !== 'focus') {
+                previousLayout = layoutMode.value;
                 layoutMode.value = 'focus';
                 state.layout = 'focus';
                 vscode.setState(state);
             }
+            applyLayout();
+        }
+
+        function exitFocus() {
+            if (layoutMode.value !== 'focus') return;
+            layoutMode.value = previousLayout;
+            state.layout = previousLayout;
+            vscode.setState(state);
             applyLayout();
         }
 
@@ -421,6 +445,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
             const imgContainer = document.createElement('div');
             imgContainer.className = 'image-container';
+            imgContainer.title = 'Double-click to focus';
             const skeleton = document.createElement('div');
             skeleton.className = 'skeleton';
             skeleton.setAttribute('aria-label', 'Loading preview');
@@ -428,14 +453,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             card.appendChild(imgContainer);
 
             // Double-click the image to jump straight to focus mode on this
-            // preview. Useful when you spot something interesting in a grid
-            // and want a closer look without manually toggling the layout
-            // dropdown and arrowing through siblings. The dblclick handler
-            // stays on the image so single-clicks remain free for future
-            // selection affordances and don't interfere with the existing
-            // title / stale-badge / carousel buttons.
+            // preview, or back out of it. The dblclick handler stays on the
+            // image so single-clicks remain free for future selection
+            // affordances and don't interfere with the existing title /
+            // stale-badge / carousel buttons.
             imgContainer.addEventListener('dblclick', () => {
-                focusOnCard(card);
+                if (layoutMode.value === 'focus') {
+                    exitFocus();
+                } else {
+                    focusOnCard(card);
+                }
             });
 
             // ATF legend + overlay layer — rendered in the webview (not

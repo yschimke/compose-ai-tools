@@ -272,6 +272,11 @@ body {
     align-items: center;
     justify-content: center;
     background: var(--skeleton-bg);
+    cursor: zoom-in;
+}
+
+.preview-grid.layout-focus .preview-card.focused .image-container {
+    cursor: zoom-out;
 }
 
 .image-container img {
