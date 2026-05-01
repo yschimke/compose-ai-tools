@@ -127,7 +127,7 @@ object DaemonMcpMain {
 class SubprocessDaemonClientFactory : DaemonClientFactory {
   override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     require(descriptor.enabled) {
-      "daemon disabled for ${descriptor.modulePath} — set composePreview.experimental.daemon.enabled = true"
+      "daemon disabled for ${descriptor.modulePath} — remove `composePreview { daemon { disabled = true } }` from build.gradle.kts to re-enable"
     }
     val javaBin =
       descriptor.javaLauncher ?: File(System.getProperty("java.home"), "bin/java").absolutePath

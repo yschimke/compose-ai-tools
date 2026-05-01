@@ -1,6 +1,6 @@
 # Persistent preview server — design
 
-> **Status:** v1 implemented and ships behind `composePreview.experimental.daemon=true`. Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
+> **Status:** v1 implemented and available by default in any project that applies the Compose Preview Gradle plugin (opt out via `composePreview { daemon { disabled = true } }`). Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
 
 ## 1. Goals & non-goals
 
@@ -133,7 +133,7 @@ daemon/desktop/             NEW — depends on renderer-desktop + core
 gradle-plugin/                       ADDITIVE ONLY (one helper extraction)
   src/main/kotlin/.../plugin/daemon/
     DaemonBootstrapTask.kt           Emits launch-descriptor JSON
-    DaemonExtension.kt               composePreview.experimental.daemon { … }
+    DaemonExtension.kt               composePreview.daemon { … }
     DaemonClasspathDescriptor.kt     Serialises the JVM launch spec
                                      (target-aware: picks android-daemon vs
                                      desktop-daemon classpath based on the
@@ -159,7 +159,7 @@ samples/
 
 **`RobolectricRenderTest.kt` itself is NOT a dependency.** The per-preview render body (qualifiers + `setContent` + `advanceTimeBy` + `captureRoboImage`) is **duplicated** into `RenderEngine.kt` for v1, because:
 
-- The daemon path is experimental; if it diverges, the JUnit path is untouched.
+- The daemon path is newer; if it diverges, the JUnit path is untouched.
 - Extracting the render body from a 1500-line test class into a shared helper is a real refactor that risks the working path. Not worth it before the daemon proves itself.
 - Reconciliation is a v2 task: once the daemon is stable for a release or two, extract the shared body into `renderer-android` and have the test class call into it. CI gate: byte-identical PNGs from both paths against `samples/android`.
 
@@ -418,7 +418,7 @@ const renderer = daemonGate.isEnabled(config)
 await renderer.renderPreviews(module, tier);
 ```
 
-`daemonGate` checks `composePreview.experimental.daemon` and verifies daemon health. On daemon failure, falls back to `gradleService` automatically and surfaces a notification. Existing `gradleService.ts`, file watcher, and debouncer in `extension.ts` are untouched — the daemon client receives the same calls, plus visibility/focus signals from the webview.
+`daemonGate` checks `composePreview.daemon.enabled` and verifies daemon health. On daemon failure, falls back to `gradleService` automatically and surfaces a notification. Existing `gradleService.ts`, file watcher, and debouncer in `extension.ts` are untouched — the daemon client receives the same calls, plus visibility/focus signals from the webview.
 
 ## 13. Latency budget
 

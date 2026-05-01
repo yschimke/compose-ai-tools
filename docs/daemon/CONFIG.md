@@ -1,33 +1,29 @@
 # Preview daemon — configuration
 
-> **Status:** v1, experimental. Defaults are conservative; only the master switch defaults to "off."
+> **Status:** v1. The daemon is available by default; defaults for the lifecycle knobs are conservative.
 
-The preview daemon's behaviour is configured through a nested DSL block in the consumer module's `build.gradle.kts`:
+The preview daemon's behaviour is configured through a DSL block in the consumer module's `build.gradle.kts`:
 
 ```kotlin
 composePreview {
-  experimental {
-    daemon {
-      enabled = true
-      maxHeapMb = 1024
-      maxRendersPerSandbox = 1000
-      warmSpare = true
-    }
+  daemon {
+    // disabled = false        // (default) daemon available
+    maxHeapMb = 1024
+    maxRendersPerSandbox = 1000
+    warmSpare = true
   }
 }
 ```
 
-The block lives under `experimental` because the entire daemon path is opt-in for the v1 release cycle — see [DESIGN.md § 1](DESIGN.md#1-goals--non-goals) on the "may eat your laundry" framing. The `experimental` namespace makes the experimental status visible at every call site.
-
 ## Fields
 
-### `enabled: Boolean`
+### `disabled: Boolean`
 
 | | |
 |-|-|
-| **Default** | `false` |
+| **Default** | `false` (daemon available) |
 | **Range** | `true` / `false` |
-| **Effect** | Master switch. When `false`, `composePreviewDaemonStart` still runs and writes a descriptor with `"enabled": false` so VS Code can sniff that the consumer ran the task — but the extension MUST refuse to spawn the daemon JVM. When `true`, the descriptor's `"enabled": true` flag is set and the VS Code extension may launch the daemon per its own `composePreview.experimental.daemon` setting. |
+| **Effect** | Build-side kill switch. When `false` (the default), `composePreviewDaemonStart` writes a descriptor with `"enabled": true` and clients (VS Code, MCP) may spawn the daemon JVM. When `true`, the descriptor's `"enabled": false` flag is set and clients MUST refuse to spawn — the existing Gradle `renderPreviews` path remains the only way to render previews for this module. |
 
 The flag does NOT control task registration: the task is always registered so the file-presence check on the VS Code side has a stable signal.
 
@@ -86,7 +82,7 @@ to `sandboxCount = 1` with a stderr warning.
 
 ## Gradle properties
 
-There is intentionally NO `-PcomposePreview.experimental.daemon.enabled=...` property override in v1. Gradle property reads at config time key the configuration cache, and the daemon flag is one consumers will flip frequently from VS Code — a property override would force a ~5–10s reconfigure on every toggle. Flip via build script and rely on Gradle's incremental task graph, or use VS Code's own setting (which gates the spawn without re-running `composePreviewDaemonStart`).
+There is intentionally NO `-PcomposePreview.daemon.disabled=...` property override. Gradle property reads at config time key the configuration cache, and the daemon flag is one consumers will flip frequently from VS Code — a property override would force a ~5–10s reconfigure on every toggle. Flip via build script and rely on Gradle's incremental task graph, or use the VS Code `composePreview.daemon.enabled` setting (which gates the spawn without re-running `composePreviewDaemonStart`).
 
 ## Schema
 

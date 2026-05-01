@@ -1,6 +1,6 @@
 package ee.schimke.composeai.plugin
 
-import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
+import ee.schimke.composeai.plugin.daemon.DaemonExtension
 import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.model.ObjectFactory
@@ -113,15 +113,14 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   }
 
   /**
-   * Namespace for in-progress / experimental features whose DSL shape may change. Today: just the
-   * preview-daemon block (`experimental.daemon { … }` — see `docs/daemon/CONFIG.md`). Kept as a
-   * nested block so consumers see "this is experimental" both in the build script and in IDE
-   * autocomplete.
+   * Preview-daemon configuration. The daemon is available by default — see [DaemonExtension] and
+   * `docs/daemon/CONFIG.md` for the per-field semantics, and `docs/daemon/DESIGN.md` for the
+   * rationale. Set `daemon { disabled = true }` to opt out at the build level.
    */
-  val experimental: ExperimentalExtension = objects.newInstance(ExperimentalExtension::class.java)
+  val daemon: DaemonExtension = objects.newInstance(DaemonExtension::class.java)
 
-  fun experimental(action: Action<ExperimentalExtension>) {
-    action.execute(experimental)
+  fun daemon(action: Action<DaemonExtension>) {
+    action.execute(daemon)
   }
 }
 

@@ -19,10 +19,10 @@ re-render → revert flow:
 
 Prerequisites (all live on the host):
 
-- ``./gradlew :samples:cmp:composePreviewDaemonStart -PcomposePreview.experimental.daemon.enabled=true``
-  has been run.
-- The descriptor's ``enabled`` flag must be ``true`` (use ``sed`` to flip it
-  if your build hasn't wired the gradle property; see issue #314 follow-up).
+- ``./gradlew :samples:cmp:composePreviewDaemonStart`` has been run.
+- The descriptor's ``enabled`` flag must be ``true``. The default is ``true``;
+  if a build sets ``composePreview { daemon { disabled = true } }`` it flips
+  to ``false`` and clients refuse to spawn (see issue #314 follow-up).
 - ``./gradlew :samples:cmp:discoverPreviews`` has been run so
   ``previews.json`` exists.
 - ``./gradlew :mcp:jar :daemon:core:jar`` has been built.

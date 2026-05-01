@@ -63,9 +63,9 @@ the contract for "the simple way". Constraints:
 
 - **No new required configuration** in `composePreview { … }` to
   reach the existing behaviour. The DSL block keeps working with the
-  fields it had before the daemon work started; new fields live in
-  the `experimental.daemon { … }` sub-block and default to the no-op
-  setting (`enabled = false`).
+  fields it had before the daemon work started; lifecycle knobs live
+  in the `daemon { … }` sub-block. Builds that don't want the daemon
+  path at all opt out via `daemon { disabled = true }`.
 - **No daemon code on the Layer 1 classpath.** `:gradle-plugin` does
   not depend on `:daemon:core`. The daemon-bootstrap task
   the plugin registers (`composePreviewDaemonStart`) emits a
@@ -79,18 +79,19 @@ the contract for "the simple way". Constraints:
   `renderPreviews` remains the canonical render path for golden-image
   baselines, regression tests, and release builds.
 
-What Layer 1 *may* gain (additively, behind opt-in):
+What Layer 1 *may* gain (additively):
 
-- A `composePreview.experimental.daemon { enabled = true ; … }` DSL
-  block that, when set, registers `composePreviewDaemonStart`. When
-  unset, that task is not registered and the descriptor file is not
-  written.
+- A `composePreview.daemon { … }` DSL block surfacing lifecycle knobs
+  (`disabled`, `maxHeapMb`, `maxRendersPerSandbox`, `warmSpare`).
+  `composePreviewDaemonStart` is always registered; the descriptor's
+  `enabled` field is `!disabled`.
 - A new task `composePreviewDaemonStop` symmetric to `…Start`.
   Optional; only makes sense when the user opts in.
 
 What Layer 1 must **not** gain:
 
-- Auto-spawning a daemon "if helpful". User opts in explicitly.
+- Auto-spawning a daemon "if helpful". The Gradle plugin only writes
+  the descriptor; clients (VS Code, MCP) decide whether to spawn.
 - Reading from a daemon to satisfy `renderPreviews`. The Gradle path
   renders from cold, every time — that is its purpose.
 
@@ -182,7 +183,7 @@ not on this list is a layering violation.
 
 | Seam | Direction | Mechanism | Owner |
 |------|-----------|-----------|-------|
-| `composePreview.experimental.daemon { enabled }` DSL | user → L1 | Gradle DSL property | L1 |
+| `composePreview.daemon { disabled }` DSL | user → L1 | Gradle DSL property | L1 |
 | `composePreviewDaemonStart` task → launch descriptor JSON | L1 → L2 | file in `build/preview-daemon/launch.json` | L1 emits, L2 reads |
 | Daemon JSON-RPC over stdio | L2 ↔ extension/supervisor | `PROTOCOL.md` | L2 |
 | MCP wire format ↔ daemon JSON-RPC translation | L3 ↔ L2 | `:mcp` shim | L3 |
@@ -207,7 +208,7 @@ Each layer can be removed without breaking the layers below it.
 - Delete `:daemon:core`, `:daemon:android`,
   `:daemon:desktop`, `:daemon:harness`,
   `:mcp`.
-- Remove the `experimental.daemon` DSL block and the
+- Remove the `daemon` DSL block and the
   `composePreviewDaemonStart` task registration from `:gradle-plugin`.
 - The base `composePreview { … }` DSL and `renderPreviews` task work
   unchanged. CI still passes.
@@ -262,5 +263,5 @@ Concrete rules to keep the existing paths simple:
   Option A's recommendation as the layering-correct choice.
 - [MCP-KOTLIN.md](MCP-KOTLIN.md) — Layer 3 Kotlin/Ktor implementation.
 - [PROTOCOL.md](PROTOCOL.md) — the L2 ↔ L3 wire contract.
-- [CONFIG.md](CONFIG.md) — `experimental.daemon { … }` DSL reference,
+- [CONFIG.md](CONFIG.md) — `daemon { … }` DSL reference,
   the user-visible Layer 1 ↔ Layer 2 seam.

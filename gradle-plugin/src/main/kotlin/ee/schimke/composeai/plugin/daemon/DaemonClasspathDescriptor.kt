@@ -37,10 +37,11 @@ internal data class DaemonClasspathDescriptor(
   /** AGP variant the daemon was bootstrapped against, e.g. `debug`. */
   val variant: String,
   /**
-   * `enabled` mirror of [DaemonExtension.enabled]. When `false`, VS Code reads the descriptor (so
-   * it knows the consumer ran the task) but does NOT spawn the daemon JVM. The remaining fields are
-   * still populated honestly so a later flip to `true` doesn't require another Gradle round-trip —
-   * just a fresh `composePreviewDaemonStart` to refresh stale paths.
+   * Inverse of [DaemonExtension.disabled]. `true` (default) means clients may spawn the daemon JVM.
+   * When `false` (the build set `daemon { disabled = true }`), VS Code reads the descriptor — so it
+   * knows the consumer ran the task — but does NOT spawn. Remaining fields are still populated
+   * honestly so a later flip back doesn't require another Gradle round-trip; a fresh
+   * `composePreviewDaemonStart` to refresh stale paths is enough.
    */
   val enabled: Boolean,
   /**

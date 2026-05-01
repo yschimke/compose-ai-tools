@@ -4,18 +4,17 @@ import { LogFilter } from '../logFilter';
 import { DaemonClient, DaemonClientEvents, DaemonClientLogger } from './daemonClient';
 import { readLaunchDescriptor, spawnDaemon, SpawnedDaemon } from './daemonProcess';
 
-const SETTING_ENABLED = 'experimental.daemon.enabled';
+const SETTING_ENABLED = 'daemon.enabled';
 
 /**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
  *
- * Controlled by the `composePreview.experimental.daemon.enabled` setting
- * (true by default). Even when enabled, the gate falls back to
- * `gradleService.renderPreviews` whenever the daemon isn't healthy:
- * descriptor missing, descriptor disabled by the build config, JVM died,
- * classpath dirty, or RPC failed. Failures are logged but never thrown to
- * the caller — the rest of the extension is unaware whether a render came
- * from the daemon or from Gradle.
+ * Controlled by the `composePreview.daemon.enabled` setting (true by default).
+ * Even when enabled, the gate falls back to `gradleService.renderPreviews`
+ * whenever the daemon isn't healthy: descriptor missing, descriptor disabled
+ * by the build config, JVM died, classpath dirty, or RPC failed. Failures
+ * are logged but never thrown to the caller — the rest of the extension is
+ * unaware whether a render came from the daemon or from Gradle.
  *
  * One daemon per Gradle module (per `:samples:android`, etc.). Modules are
  * spawned lazily on first use and shut down on extension dispose.
@@ -71,7 +70,7 @@ export class DaemonGate {
         if (!descriptor.enabled) {
             this.logger.appendLine(
                 `[daemon] descriptor for ${moduleId} has enabled=false; ` +
-                'set composePreview.experimental.daemon.enabled = true in build.gradle.kts',
+                'remove `composePreview { daemon { disabled = true } }` from build.gradle.kts to re-enable',
             );
             return null;
         }

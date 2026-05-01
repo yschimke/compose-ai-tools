@@ -60,25 +60,24 @@ manually:)
 For each Android module:
 
 ```bash
-./gradlew :samples:wear:composePreviewDaemonStart \
-  -PcomposePreview.experimental.daemon.enabled=true
+./gradlew :samples:wear:composePreviewDaemonStart
 ```
 
 For each Compose-Desktop module:
 
 ```bash
-./gradlew :samples:cmp:composePreviewDaemonStart \
-  -PcomposePreview.experimental.daemon.enabled=true
+./gradlew :samples:cmp:composePreviewDaemonStart
 ```
 
 The task writes
 `<module>/build/compose-previews/daemon-launch.json` — a JSON descriptor
 with the classpath, JVM args, and system properties the supervisor needs
-to launch the daemon JVM. The descriptor's `enabled: false` field is
-load-bearing — flip it to `true` either in the build script
-(`composePreview { experimental { daemon { enabled = true } } }`) or by
-editing the JSON directly. (Direct `-P` propagation is intentionally not
-wired; see `DaemonExtension.kt` KDoc for rationale.)
+to launch the daemon JVM. The descriptor's `enabled` field is `true` by
+default. If a build sets `composePreview { daemon { disabled = true } }`
+the descriptor will carry `enabled: false` and clients must refuse to
+spawn — flip the build script back (or edit the JSON directly) to
+re-enable. (Direct `-P` propagation for the disable flag is intentionally
+not wired; see `DaemonExtension.kt` KDoc for rationale.)
 
 Also run `discoverPreviews` so `previews.json` exists alongside:
 
@@ -219,11 +218,11 @@ equivalent that integrates with `:mcp:test`.
 ## Operational notes
 
 - **Daemon enabled flag.** `composePreviewDaemonStart` always runs and
-  writes a descriptor; `enabled: false` is the default and the
-  supervisor's `SubprocessDaemonClientFactory` refuses to spawn a
-  daemon unless the descriptor reports `enabled: true`. Flip via
-  `composePreview.experimental.daemon { enabled = true }` in the
-  consumer's build script.
+  writes a descriptor; `enabled: true` is the default. The supervisor's
+  `SubprocessDaemonClientFactory` refuses to spawn a daemon if the
+  descriptor reports `enabled: false`, which only happens when the
+  consumer set `composePreview { daemon { disabled = true } }` —
+  remove that line to re-enable.
 - **Multi-session.** A single MCP server process can serve N agents
   over N stdio connections (HTTP transport later may multiplex).
   Daemons are shared across sessions when they target the same

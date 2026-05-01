@@ -290,8 +290,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         return args;
     }, logFilter);
 
-    // Daemon path is controlled by composePreview.experimental.daemon.enabled
-    // (true by default). When disabled the gate's `isEnabled()` returns false
+    // Daemon path is controlled by composePreview.daemon.enabled (true by
+    // default). When disabled the gate's `isEnabled()` returns false
     // and the scheduler is never asked to spawn anything — the Gradle path is
     // the entire user-facing behaviour. When enabled, the scheduler runs
     // *alongside* the existing refresh logic: saves and viewport changes push
@@ -390,7 +390,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     );
 
     // Phase H7 — Preview History panel (HISTORY.md § "VS Code integration").
-    // Live when `composePreview.experimental.daemon.enabled` is true; falls
+    // Live when `composePreview.daemon.enabled` is true; falls
     // back to reading `<projectDir>/.compose-preview-history/index.jsonl` +
     // sidecars when the daemon isn't healthy. View shows up unconditionally
     // — the view container is contributed in package.json — but its content

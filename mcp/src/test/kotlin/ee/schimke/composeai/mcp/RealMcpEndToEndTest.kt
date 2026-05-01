@@ -69,9 +69,9 @@ class RealMcpEndToEndTest {
     )
     Assume.assumeTrue(
       "Skipping RealMcpEndToEndTest — '$descriptorJson' missing. Run " +
-        "`./gradlew :samples:cmp:composePreviewDaemonStart -PcomposePreview.experimental.daemon.enabled=true` " +
-        "first; if the descriptor reports `enabled: false`, also enable the experimental flag in " +
-        "the sample's build.gradle.kts (see DaemonExtension.kt KDoc).",
+        "`./gradlew :samples:cmp:composePreviewDaemonStart` first; if the descriptor reports " +
+        "`enabled: false`, the sample's build.gradle.kts has `composePreview { daemon { " +
+        "disabled = true } }` set — remove it to re-enable (see DaemonExtension.kt KDoc).",
       descriptorJson.isFile && descriptorJson.readText().contains("\"enabled\": true"),
     )
     Assume.assumeTrue(

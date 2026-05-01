@@ -756,16 +756,14 @@ internal object AndroidPreviewSupport {
         project.logger.debug("compose-ai-tools: :daemon:android project not found, skipping", e)
       }
     } else {
-      // External mode is intentionally a no-op while the daemon is
-      // experimental and unpublished. The daemon stays disabled by
-      // default (DaemonExtension.enabled = false), so a consumer outside
-      // this repo who flips it on will see VS Code surface a clear
-      // ClassNotFoundException rather than silently picking a stale path.
-      // When publishing of :daemon:android lands, replace this
-      // log with the same coords shape used for rendererConfig above.
+      // External mode is intentionally a no-op while `:daemon:android` is unpublished.
+      // The descriptor's `enabled: true` will still be written for default builds, but a
+      // consumer outside this repo will see VS Code surface a clear ClassNotFoundException
+      // rather than silently picking a stale path. When publishing of :daemon:android
+      // lands, replace this log with the same coords shape used for rendererConfig above.
       project.logger.debug(
         "compose-ai-tools: :daemon:android is not yet published; " +
-          "experimental.daemon only works with the in-repo source layout."
+          "the daemon path only works with the in-repo source layout."
       )
     }
 
@@ -1186,8 +1184,9 @@ internal object AndroidPreviewSupport {
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
     // unconditionally so the VS Code extension can sniff the output file
-    // even when `experimental.daemon.enabled = false` (it then refuses to
-    // launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
+    // even when the build opts out via `daemon { disabled = true }` (the
+    // descriptor then carries `enabled: false` and the extension refuses
+    // to launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
     // renderPreviews task's so the spawned daemon JVM is byte-for-byte
     // equivalent. See `docs/daemon/DESIGN.md` § 4 / § 6.
     //
@@ -1233,10 +1232,10 @@ internal object AndroidPreviewSupport {
 
       this.modulePath.set(project.path)
       this.variant.set(variantName)
-      this.daemonEnabled.set(extension.experimental.daemon.enabled)
-      this.maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
-      this.maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
-      this.warmSpare.set(extension.experimental.daemon.warmSpare)
+      this.daemonEnabled.set(extension.daemon.disabled.map { !it })
+      this.maxHeapMb.set(extension.daemon.maxHeapMb)
+      this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
+      this.warmSpare.set(extension.daemon.warmSpare)
       // Conventional entry-point name — `daemon/android` / Stream B
       // (task B1.1) will provide the implementation. Surfacing it as a
       // Property leaves room for future variants (foreground / debug) without
@@ -1280,7 +1279,7 @@ internal object AndroidPreviewSupport {
       // (e.g. `-ea` and JUnit-internal opens) and may collide with the
       // daemon's own runner. Stream B can opt back in if needed.
       this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
-      this.jvmArgs.add(extension.experimental.daemon.maxHeapMb.map { "-Xmx${it}m" })
+      this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
       // Same path-bearing system properties the renderPreviews Test task uses, plus
       // daemon-specific keys for [DaemonExtension] config the daemon reads at startup.
       //
@@ -1304,15 +1303,15 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(
         "composeai.daemon.maxHeapMb",
-        extension.experimental.daemon.maxHeapMb.map { it.toString() },
+        extension.daemon.maxHeapMb.map { it.toString() },
       )
       this.systemProperties.put(
         "composeai.daemon.maxRendersPerSandbox",
-        extension.experimental.daemon.maxRendersPerSandbox.map { it.toString() },
+        extension.daemon.maxRendersPerSandbox.map { it.toString() },
       )
       this.systemProperties.put(
         "composeai.daemon.warmSpare",
-        extension.experimental.daemon.warmSpare.map { it.toString() },
+        extension.daemon.warmSpare.map { it.toString() },
       )
       this.systemProperties.put("composeai.daemon.modulePath", project.path)
       // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the

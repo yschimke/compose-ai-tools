@@ -320,8 +320,8 @@ def main() -> int:
     descriptor = json.loads(descriptor_path.read_text())
     if not descriptor.get("enabled"):
         print(
-            "[daemon-roundtrip] descriptor.enabled=false — set "
-            "composePreview.experimental.daemon.enabled=true. Skipping.",
+            "[daemon-roundtrip] descriptor.enabled=false — remove "
+            "composePreview { daemon { disabled = true } } from build.gradle.kts. Skipping.",
             file=sys.stderr,
         )
         return 2

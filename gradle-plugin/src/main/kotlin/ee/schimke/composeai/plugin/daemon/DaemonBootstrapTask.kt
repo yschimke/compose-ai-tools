@@ -35,9 +35,9 @@ import org.gradle.api.tasks.TaskAction
  * **Pending Stream B integration.** The daemon's own renderer JAR (`daemon/android`, Phase 1 task
  * B1.1) is NOT yet on disk in this worktree. When it lands, `registerAndroidTasks` should prepend
  * that configuration's resolved files to [classpath] so [DaemonClasspathDescriptor.mainClass]
- * (`ee.schimke.composeai.daemon.DaemonMain`) is loadable by the launched JVM. Until then, the
- * descriptor's [DaemonClasspathDescriptor.enabled] field defaults to `false` and the VS Code
- * extension MUST refuse to launch.
+ * (`ee.schimke.composeai.daemon.DaemonMain`) is loadable by the launched JVM. Until then, builds
+ * that explicitly opt out via `daemon { disabled = true }` write the descriptor with `enabled:
+ * false` and the VS Code extension refuses to launch.
  *
  * **Caching.** `@CacheableTask` because the only output is a small JSON derivable from declared
  * inputs — the entire body is deterministic. The classpath is `@Classpath` (not `@InputFiles`) so a
@@ -54,9 +54,9 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   @get:Input abstract val variant: Property<String>
 
   /**
-   * Mirror of [DaemonExtension.enabled]. When `false`, [outputFile] is still written (so VS Code
-   * can sniff the descriptor) but its `enabled: false` flag tells the extension not to spawn the
-   * JVM.
+   * Computed from `!`[DaemonExtension.disabled]. When `false`, [outputFile] is still written (so VS
+   * Code can sniff the descriptor) but its `enabled: false` flag tells the extension not to spawn
+   * the JVM.
    *
    * Named `daemonEnabled` rather than `enabled` to avoid colliding with `Task.enabled` — Gradle's
    * class generator rejects abstract `getEnabled()` accessors on subclasses because the parent

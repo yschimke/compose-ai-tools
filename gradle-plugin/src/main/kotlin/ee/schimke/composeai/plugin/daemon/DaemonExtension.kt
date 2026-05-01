@@ -5,36 +5,32 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 
 /**
- * `composePreview.experimental.daemon { … }` block. See `docs/daemon/CONFIG.md` for field
- * semantics, defaults, and ranges, and `docs/daemon/DESIGN.md` § 9 for the lifecycle policy these
- * knobs feed into.
+ * `composePreview.daemon { … }` block. See `docs/daemon/CONFIG.md` for field semantics, defaults,
+ * and ranges, and `docs/daemon/DESIGN.md` § 9 for the lifecycle policy these knobs feed into.
  *
- * This block is read by [DaemonBootstrapTask] (Phase 1, Stream A) at config time and baked into
- * `daemon-launch.json`. The daemon JVM reads the same values back at startup; a value change
- * requires re-running `composePreviewDaemonStart` (and the existing daemon process exiting via
- * `classpathDirty`-style restart, since heap size and recycle thresholds can't be changed
- * in-flight).
+ * This block is read by [DaemonBootstrapTask] at config time and baked into `daemon-launch.json`.
+ * The daemon JVM reads the same values back at startup; a value change requires re-running
+ * `composePreviewDaemonStart` (and the existing daemon process exiting via `classpathDirty`-style
+ * restart, since heap size and recycle thresholds can't be changed in-flight).
  *
- * Defaults are [DESIGN.md § 9]; intentionally conservative for v1 — the daemon is opt-in behind
- * [enabled] anyway.
+ * The daemon is available by default. Set [disabled] to `true` to turn the build-side path off
+ * entirely — the descriptor then carries `enabled: false` and clients (VS Code, MCP) must refuse to
+ * spawn the JVM.
  */
 abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
   /**
-   * Master switch. Default: `false`.
+   * Build-side kill switch. Default: `false` (daemon available).
    *
-   * When `false`, `composePreviewDaemonStart` still runs and writes a descriptor with `enabled:
-   * false` so the VS Code extension can sniff the file and learn the user explicitly opted out —
-   * but the extension must NOT spawn the daemon JVM in that case.
+   * When `false`, `composePreviewDaemonStart` writes a descriptor with `enabled: true` and clients
+   * may spawn the daemon JVM. When `true`, the descriptor's `enabled: false` flag is set and
+   * clients must NOT spawn — the existing Gradle `renderPreviews` path remains the only way to
+   * render previews for this module.
    *
-   * When `true`, the descriptor's `enabled: true` flag is set and the VS Code extension may launch
-   * the daemon per its `composePreview.experimental.daemon` setting.
-   *
-   * Flip via build script (`composePreview { experimental { daemon { enabled = true } } }`), or
-   * transiently via `-PcomposePreview.experimental.daemon.enabled=true`. The Gradle property
-   * override is intentionally NOT wired here — it would key the config cache on a property that VS
-   * Code flips frequently. See `CONFIG.md`.
+   * Flip via build script (`composePreview { daemon { disabled = true } }`). There is intentionally
+   * no Gradle property override — that would key the configuration cache on a value users flip
+   * frequently from VS Code. See `docs/daemon/CONFIG.md`.
    */
-  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+  val disabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
   /**
    * Maximum heap (post-GC) the daemon JVM may use, in MiB. Default: `1024`.
