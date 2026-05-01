@@ -401,11 +401,15 @@ export type WebviewToExtension =
      * basename (from the stack trace's `StackTraceElement.fileName`) —
      * so the extension does a workspace `findFiles('**\/<fileName>')`
      * to resolve it, biased to the first match outside `**\/build/**`.
-     * Ambiguous matches across same-named files in different modules
-     * fall back to the first hit; a richer disambiguation could use
-     * the function name, but that's a follow-up.
+     *
+     * Optional `className` is the FQN of the preview's compiled class
+     * (e.g. `com.example.app.PreviewsKt`) which the extension uses to
+     * disambiguate workspaces with same-named files across modules. If
+     * the basename of the class-derived path matches `fileName` we look
+     * for that exact path first; on no hit (or no `className`) we fall
+     * back to the basename glob.
      */
-    | { command: 'openSourceFile'; fileName: string; line: number }
+    | { command: 'openSourceFile'; fileName: string; line: number; className?: string }
     /**
      * Live panel asks the extension to compute a diff for the focused
      * preview against an anchor. `head` = latest archived render in

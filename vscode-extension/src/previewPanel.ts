@@ -999,7 +999,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
          * the full trace is a native details element -- no JS state
          * to manage, browser handles the toggle.
          */
-        function buildErrorPanel(message, renderError) {
+        function buildErrorPanel(message, renderError, className) {
             const panel = document.createElement('div');
             panel.className = 'error-message render-error';
             panel.setAttribute('role', 'alert');
@@ -1035,6 +1035,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         command: 'openSourceFile',
                         fileName: frame.file,
                         line: frame.line,
+                        // className lets the extension disambiguate same-
+                        // named files across modules — when the throw is
+                        // in this preview's own file, the class-derived
+                        // path matches and we pick the right one without
+                        // a workspace-wide first-hit guess.
+                        className: className || undefined,
                     });
                 });
                 panel.appendChild(link);
@@ -1079,7 +1085,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             } else if (capture.errorMessage || capture.renderError) {
                 const existingErr = container.querySelector('.error-message');
                 if (existingErr) existingErr.remove();
-                container.appendChild(buildErrorPanel(capture.errorMessage, capture.renderError));
+                container.appendChild(
+                    buildErrorPanel(capture.errorMessage, capture.renderError, card.dataset.className),
+                );
                 card.classList.add('has-error');
             } else {
                 // No data for this capture yet — render will fill it in later.
@@ -1862,7 +1870,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                             const skeleton = container.querySelector('.skeleton');
                             if (skeleton) skeleton.remove();
                         }
-                        container.appendChild(buildErrorPanel(msg.message, renderError));
+                        container.appendChild(
+                            buildErrorPanel(msg.message, renderError, errCard.dataset.className),
+                        );
                     }
                     break;
                 }
