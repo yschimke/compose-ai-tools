@@ -81,9 +81,9 @@ data class HistoryReadResult(
  *
  * `SKIPPED_DUPLICATE` — the bytes match the most recent existing entry for this `previewId`, so the
  * source skipped writing both the sidecar and the index line. `HistoryManager.recordRender` uses
- * this to suppress `historyAdded` and avoid cluttering the consumer's UI with redundant entries
- * for save-loops that produce identical pixels (e.g. saving a comment-only edit, repeated focus
- * cycles, sandbox warm-up renders against the same composition state).
+ * this to suppress `historyAdded` and avoid cluttering the consumer's UI with redundant entries for
+ * save-loops that produce identical pixels (e.g. saving a comment-only edit, repeated focus cycles,
+ * sandbox warm-up renders against the same composition state).
  *
  * The "most recent" rule is what distinguishes this from the dedup-by-hash PNG path (where any
  * earlier matching hash means we re-use the file). If render history goes A → B → A, the third
