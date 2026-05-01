@@ -33,15 +33,19 @@ class DaemonSupervisor(
    * launch descriptor; the daemon's
    * [`RobolectricHost`][ee.schimke.composeai.daemon.RobolectricHost] boots that many in-JVM
    * Robolectric sandboxes and dispatches concurrent `renderNow` requests across them.
-   * `replicasPerDaemon = 0` (the default) keeps the daemon at sandboxCount=1 — bit-identical with
-   * the pre-pool single-sandbox path on disk.
+   *
+   * **Default 3** — the daemon comes up with **4** in-JVM sandboxes (1 + 3) so a typical preview
+   * grid can render in parallel without the user opting in. This is cheap thanks to Layer 3: extra
+   * sandboxes share the JVM baseline + native heap, so the marginal cost per slot is the sandbox
+   * classloader's instrumented bytecode (~ a few hundred MB each at peak). `0` opts out and keeps a
+   * single sandbox — bit-identical with the pre-pool path on disk.
    *
    * Pre-Layer-3 this knob spawned N additional **JVM subprocesses**; that wasted ~2 GB per replica
    * on shared per-JVM cost (native heap, JVM baseline, instrumented framework). Layer 3 collapses
    * those into a single daemon JVM with N sandbox classloaders. Wire-protocol-visible behaviour
    * (initialize, renderNow, fileChanged fan-out) is unchanged from the consumer's perspective.
    */
-  private val replicasPerDaemon: Int = 0,
+  private val replicasPerDaemon: Int = DEFAULT_REPLICAS_PER_DAEMON,
 ) {
 
   init {
@@ -216,6 +220,17 @@ class DaemonSupervisor(
         put("totalPreviews", kotlinx.serialization.json.JsonPrimitive(previews.size))
       }
     router.dispatch(daemon, "discoveryUpdated", params)
+  }
+
+  companion object {
+    /**
+     * Out-of-the-box value for [replicasPerDaemon]. Picked so a typical preview grid renders
+     * concurrently without the user opting in: 4 sandboxes per daemon (1 primary + 3 replicas). The
+     * marginal cost is per-sandbox instrumented bytecode in one shared JVM, not a whole extra JVM
+     * each — see SANDBOX-POOL.md Layer 3 for the memory math. Override via the MCP CLI's
+     * `--replicas-per-daemon N` flag or the `composeai.mcp.replicasPerDaemon` system property.
+     */
+    const val DEFAULT_REPLICAS_PER_DAEMON: Int = 3
   }
 }
 

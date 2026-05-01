@@ -9,8 +9,9 @@
 > - **Layer 3** — `DaemonSupervisor` passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon`
 >   on the launch descriptor instead of spawning N+1 JVM subprocesses. The supervisor's public
 >   surface (`SupervisedDaemon.client`, `allClients`, `clientForRender`) is unchanged; the daemon
->   handles render fan-out internally. `replicasPerDaemon = 0` (default) preserves bit-identical
->   pre-pool behaviour on disk.
+>   handles render fan-out internally. **Default `replicasPerDaemon = 3`** — out of the box every
+>   daemon comes up with 4 in-JVM sandboxes so a typical preview grid renders in parallel without
+>   the user opting in. Set `0` to opt out and keep a single sandbox per daemon.
 >
 > Memory math (replicasPerDaemon = 4 on one module): pre-Layer-3 ~8 GB across 5 JVMs;
 > post-Layer-3 ~5 GB in one JVM with 5 sandbox classloaders.
