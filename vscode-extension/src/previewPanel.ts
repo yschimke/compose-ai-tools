@@ -110,6 +110,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-launch-device" title="Launch on connected Android device" aria-label="Launch on device">
             <i class="codicon codicon-device-mobile" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-a11y-overlay" title="Show accessibility overlay"
+                aria-label="Toggle accessibility overlay" aria-pressed="false">
+            <i class="codicon codicon-eye" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-interactive" title="Daemon not ready — live mode unavailable"
                 aria-label="Toggle live (interactive) mode" aria-pressed="false" disabled hidden>
             <i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>
@@ -136,8 +140,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnDiffHead = document.getElementById('btn-diff-head');
         const btnDiffMain = document.getElementById('btn-diff-main');
         const btnLaunchDevice = document.getElementById('btn-launch-device');
+        const btnA11yOverlay = document.getElementById('btn-a11y-overlay');
         const btnInteractive = document.getElementById('btn-interactive');
         const btnExitFocus = document.getElementById('btn-exit-focus');
+        // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
+        // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
+        // Also gates the panel-side hierarchy overlay so the existing finding overlay (which
+        // can also arrive via the Gradle sidecar path) doesn't appear without an explicit
+        // user gesture. State is per-previewId because hopping between focused cards re-applies
+        // the toggle to the new target.
+        let a11yOverlayPreviewId = null;
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
         const progressFill = progressBar.querySelector('.progress-fill');
@@ -338,6 +350,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnDiffHead.addEventListener('click', () => requestFocusedDiff('head'));
         btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
         btnLaunchDevice.addEventListener('click', () => requestLaunchOnDevice());
+        btnA11yOverlay.addEventListener('click', () => toggleA11yOverlay());
         btnInteractive.addEventListener('click', () => toggleInteractive());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
@@ -400,6 +413,52 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             btnInteractive.innerHTML = live
                 ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
                 : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+        }
+
+        // D2 — keep the a11y-overlay toggle in lockstep with focus-mode + the focused card
+        // identity. Outside focus mode the button hides; inside focus mode aria-pressed
+        // tracks whether the currently focused preview has the overlay subscription on.
+        function applyA11yOverlayButtonState() {
+            const inFocus = layoutMode.value === 'focus';
+            btnA11yOverlay.hidden = !inFocus;
+            if (!inFocus) {
+                btnA11yOverlay.setAttribute('aria-pressed', 'false');
+                return;
+            }
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            const on = previewId !== null && previewId === a11yOverlayPreviewId;
+            btnA11yOverlay.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btnA11yOverlay.title = on
+                ? 'Hide accessibility overlay'
+                : 'Show accessibility overlay';
+            btnA11yOverlay.classList.toggle('a11y-overlay-on', on);
+        }
+
+        // D2 — clicking the a11y toggle subscribes/unsubscribes via the extension. When
+        // turning OFF, the extension also pushes an empty updateA11y so the cached overlay
+        // tears down immediately rather than waiting for a next render. When turning ON for a
+        // different preview, first turn the previous one off so the wire stays clean.
+        function toggleA11yOverlay() {
+            if (layoutMode.value !== 'focus') return;
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            if (!previewId) return;
+            const turningOn = previewId !== a11yOverlayPreviewId;
+            if (a11yOverlayPreviewId && a11yOverlayPreviewId !== previewId) {
+                vscode.postMessage({
+                    command: 'setA11yOverlay',
+                    previewId: a11yOverlayPreviewId,
+                    enabled: false,
+                });
+            }
+            a11yOverlayPreviewId = turningOn ? previewId : null;
+            vscode.postMessage({
+                command: 'setA11yOverlay',
+                previewId,
+                enabled: turningOn,
+            });
+            applyA11yOverlayButtonState();
         }
 
         function applyLiveBadge() {
@@ -655,7 +714,23 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     applyLiveBadge();
                 }
             }
+            // D2 — same teardown for the a11y overlay: navigating off the previewed card
+            // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
+            // user isn't looking at.
+            if (a11yOverlayPreviewId) {
+                const visible = getVisibleCards();
+                const card = mode === 'focus' ? visible[focusIndex] : null;
+                if (!card || card.dataset.previewId !== a11yOverlayPreviewId) {
+                    vscode.postMessage({
+                        command: 'setA11yOverlay',
+                        previewId: a11yOverlayPreviewId,
+                        enabled: false,
+                    });
+                    a11yOverlayPreviewId = null;
+                }
+            }
             applyInteractiveButtonState();
+            applyA11yOverlayButtonState();
         }
 
         // Compute the previewId the panel is currently narrowed to, if any:
@@ -1832,8 +1907,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // check both. Findings are stashed at setPreviews time via the
             // renderPreviews pipeline.
             const findings = cardA11yFindings.get(previewId);
-            if (findings && findings.length > 0) {
-                const apply = () => buildA11yOverlay(card, findings, img);
+            const nodes = cardA11yNodes.get(previewId);
+            if ((findings && findings.length > 0) || (nodes && nodes.length > 0)) {
+                const apply = () => {
+                    if (findings && findings.length > 0) buildA11yOverlay(card, findings, img);
+                    if (nodes && nodes.length > 0) applyHierarchyOverlay(card, nodes, img);
+                };
                 if (img.complete && img.naturalWidth > 0) {
                     apply();
                 } else {
@@ -1846,6 +1925,102 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // re-read the list on every image (re)load without re-querying the
         // DOM for data attributes.
         const cardA11yFindings = new Map();
+
+        // D2 — previewId -> nodes for the daemon-attached a11y/hierarchy payload. Drives
+        // the local hierarchy overlay (translucent rectangles + label/role/states tooltip
+        // on hover) drawn on top of the existing finding overlay. Populated by
+        // applyA11yUpdate and re-read on each image (re)load via applyHierarchyOverlay.
+        const cardA11yNodes = new Map();
+
+        // D2 — handles updateA11y from the extension (daemon-attached a11y data products).
+        // Updates the per-preview caches and re-applies whichever overlays are now relevant
+        // without rebuilding the whole card. Findings -> legend + finding overlay; nodes ->
+        // hierarchy overlay. Either argument may be omitted to leave that side untouched.
+        function applyA11yUpdate(previewId, findings, nodes) {
+            const card = document.getElementById('preview-' + sanitizeId(previewId));
+            if (!card) return;
+            const container = card.querySelector('.image-container');
+            const img = container && container.querySelector('img');
+            if (findings !== undefined) {
+                if (findings && findings.length > 0) {
+                    cardA11yFindings.set(previewId, findings);
+                    if (container && !container.querySelector('.a11y-overlay')) {
+                        const overlay = document.createElement('div');
+                        overlay.className = 'a11y-overlay';
+                        overlay.setAttribute('aria-hidden', 'true');
+                        container.appendChild(overlay);
+                    }
+                    const existingLegend = card.querySelector('.a11y-legend');
+                    if (existingLegend) existingLegend.remove();
+                    const p = allPreviews.find(pp => pp.id === previewId);
+                    if (p) {
+                        p.a11yFindings = findings;
+                        card.appendChild(buildA11yLegend(p));
+                    }
+                    if (img && img.complete && img.naturalWidth > 0) {
+                        buildA11yOverlay(card, findings, img);
+                    }
+                } else {
+                    cardA11yFindings.delete(previewId);
+                    const overlay = card.querySelector('.a11y-overlay');
+                    if (overlay) overlay.remove();
+                    const legend = card.querySelector('.a11y-legend');
+                    if (legend) legend.remove();
+                }
+            }
+            if (nodes !== undefined) {
+                if (nodes && nodes.length > 0) {
+                    cardA11yNodes.set(previewId, nodes);
+                    ensureHierarchyOverlay(container);
+                    if (img && img.complete && img.naturalWidth > 0) {
+                        applyHierarchyOverlay(card, nodes, img);
+                    }
+                } else {
+                    cardA11yNodes.delete(previewId);
+                    const layer = card.querySelector('.a11y-hierarchy-overlay');
+                    if (layer) layer.remove();
+                }
+            }
+        }
+
+        function ensureHierarchyOverlay(container) {
+            if (!container) return;
+            if (container.querySelector('.a11y-hierarchy-overlay')) return;
+            const layer = document.createElement('div');
+            layer.className = 'a11y-hierarchy-overlay';
+            layer.setAttribute('aria-hidden', 'true');
+            container.appendChild(layer);
+        }
+
+        // D2 — draws one translucent rectangle per accessibility-relevant node. Uses the
+        // same boundsInScreen parsing as the finding overlay so the math stays trivial.
+        // Each box gets a title attribute summarising label / role / states so a hover
+        // yields the same data TalkBack would announce, without baking any of it into
+        // the PNG.
+        function applyHierarchyOverlay(card, nodes, img) {
+            const overlay = card.querySelector('.a11y-hierarchy-overlay');
+            if (!overlay) return;
+            overlay.innerHTML = '';
+            const natW = img.naturalWidth;
+            const natH = img.naturalHeight;
+            if (!natW || !natH) return;
+            nodes.forEach((n) => {
+                const bounds = parseBounds(n.boundsInScreen);
+                if (!bounds) return;
+                const box = document.createElement('div');
+                box.className = 'a11y-hierarchy-box' + (n.merged ? '' : ' a11y-hierarchy-unmerged');
+                box.style.left = (bounds.left / natW * 100) + '%';
+                box.style.top = (bounds.top / natH * 100) + '%';
+                box.style.width = ((bounds.right - bounds.left) / natW * 100) + '%';
+                box.style.height = ((bounds.bottom - bounds.top) / natH * 100) + '%';
+                const tooltipParts = [];
+                if (n.label) tooltipParts.push(n.label);
+                if (n.role) tooltipParts.push(n.role);
+                if (n.states && n.states.length) tooltipParts.push(n.states.join(', '));
+                if (tooltipParts.length) box.title = tooltipParts.join(' · ');
+                overlay.appendChild(box);
+            });
+        }
 
         // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
         // Webview owns the geometry. Extension's daemon scheduler consumes
@@ -2004,6 +2179,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
                 case 'updateImage':
                     updateImage(msg.previewId, msg.captureIndex || 0, msg.imageData);
+                    break;
+
+                case 'updateA11y':
+                    // D2 — daemon-attached a11y data products landed for one preview. Refresh
+                    // the per-card caches and re-apply the overlays in place; no full re-render
+                    // of the grid. findings/nodes left undefined means leave that side alone.
+                    applyA11yUpdate(msg.previewId, msg.findings, msg.nodes);
                     break;
 
                 case 'setModules':

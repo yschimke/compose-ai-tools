@@ -91,6 +91,27 @@ export interface PreviewInfo {
     a11yFindings?: AccessibilityFinding[] | null;
     /** Absolute path to the annotated screenshot (clean PNG + overlay legend), when findings exist. */
     a11yAnnotatedPath?: string | null;
+    /**
+     * D2 — accessibility-relevant nodes from the rendered tree (label, role,
+     * states, bounds). Daemon-attached via the `a11y/hierarchy` data product;
+     * VS Code draws a local overlay from this rather than reading the
+     * baked-into-PNG annotated screenshot. See
+     * `docs/daemon/DATA-PRODUCTS.md` § "Worked example".
+     */
+    a11yNodes?: AccessibilityNode[] | null;
+}
+
+/**
+ * Per-node entry in the `a11y/hierarchy` data product. Mirrors the renderer-side
+ * `AccessibilityNode` (in `renderer-android/.../RenderManifest.kt`).
+ */
+export interface AccessibilityNode {
+    label: string;
+    role?: string | null;
+    states: string[];
+    merged: boolean;
+    /** `left,top,right,bottom` in source-bitmap pixels. */
+    boundsInScreen: string;
 }
 
 export interface PreviewManifest {
@@ -285,6 +306,18 @@ export type ExtensionToWebview =
     /** `captureIndex` addresses which capture within an animated preview the
      *  image belongs to. Static previews have a single capture at index 0. */
     | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
+    /**
+     * D2 — daemon-attached `a11y/atf` (findings) and/or `a11y/hierarchy` (nodes) for one
+     * preview. The webview updates its in-memory caches and re-applies the existing finding
+     * overlay; the hierarchy overlay draws translucent bounds for every accessibility-relevant
+     * node when present. Either field may be undefined to leave the current state untouched.
+     */
+    | {
+          command: 'updateA11y';
+          previewId: string;
+          findings?: AccessibilityFinding[] | null;
+          nodes?: AccessibilityNode[] | null;
+      }
     | {
           command: 'setImageError';
           previewId: string;
@@ -458,4 +491,13 @@ export type WebviewToExtension =
           pixelY: number;
           imageWidth: number;
           imageHeight: number;
-      };
+      }
+    /**
+     * D2 — focus-mode toggle for the local a11y overlay. When `enabled`, the
+     * extension `data/subscribe`s to `a11y/atf` + `a11y/hierarchy` for
+     * [previewId]; subsequent renders attach the payload and the panel paints
+     * the overlay locally. When `enabled = false`, the extension unsubscribes
+     * and tells the webview to drop the cached nodes/findings. Idempotent on
+     * both sides.
+     */
+    | { command: 'setA11yOverlay'; previewId: string; enabled: boolean };

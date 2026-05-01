@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { GradleService } from '../gradleService';
 import { DaemonGate } from './daemonGate';
 import {
+    DataProductAttachment,
     DiscoveryUpdatedParams,
     FileChangeType,
     FileKind,
@@ -26,6 +27,20 @@ export interface SchedulerEvents {
         imageBase64: string,
         pngPath: string,
     ) => void;
+    /**
+     * D2 — `renderFinished` arrived with `dataProducts: [{kind, payload? | path?}]`.
+     * Fires once per render, after the PNG has been read; consumers route each kind
+     * into the registry / webview / diagnostics surface.
+     *
+     * Optional because tests may not wire it. Only fires when the daemon attaches
+     * data products (i.e. the client subscribed via `dataSubscribe` for one of the
+     * `(previewId, kind)` pairs, or attached one globally at `initialize`).
+     */
+    onDataProductsAttached?: (
+        moduleId: string,
+        previewId: string,
+        dataProducts: DataProductAttachment[],
+    ) => void;
     onRenderFailed: (moduleId: string, previewId: string, message: string) => void;
     /**
      * Daemon told us the classpath drifted (e.g. `libs.versions.toml`
@@ -47,6 +62,13 @@ export interface SchedulerEvents {
 }
 
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
+
+/**
+ * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
+ * so the local finding + hierarchy overlays light up together; a future panel that wants to
+ * subscribe to other kinds (`compose/recomposition`, `layout/tree`) will export its own list.
+ */
+export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
 /**
  * Cards we'll pre-render ahead of the visible viewport on each scroll-ahead
  * push from the webview. Bounded so a fast scroll past 50 cards doesn't
@@ -77,6 +99,13 @@ export class DaemonScheduler {
     private lastVisible = new Map<string, string[]>();
     /** Last `setFocus` per module so editor refocus on the same file is a no-op. */
     private lastFocus = new Map<string, string[]>();
+    /**
+     * D2 — `(moduleId, previewId)` pairs we've already issued `data/subscribe` for. Subscribed kinds
+     * are pinned at [DEFAULT_SUBSCRIBED_KINDS] today; per-kind tracking moves here when the panel
+     * grows a runtime "show a11y" toggle. Daemon prunes its side automatically when a previewId
+     * leaves `setVisible`, so we only need to dedup re-subscribes.
+     */
+    private readonly subscribedPairs = new Set<string>();
     /** Cards we've already speculatively requested so scrolling back over
      *  them doesn't re-queue identical work. Keyed by `${moduleId}::${id}`. */
     private speculated = new Set<string>();
@@ -192,6 +221,21 @@ export class DaemonScheduler {
         if (!client) { return; }
         client.setVisible({ ids: visible });
 
+        // D2 — drop bookkeeping for previews that fell out of view. The daemon already
+        // pruned its side on the same `setVisible`, so this just keeps our local dedup
+        // set in sync. Subscriptions themselves are now opt-in per focused preview via
+        // [setDataProductSubscription]; the panel calls in when the user toggles the
+        // a11y overlay in focus mode.
+        const visibleSetForSub = new Set(visible);
+        const modulePrefix = `${moduleId}::`;
+        for (const key of [...this.subscribedPairs]) {
+            if (!key.startsWith(modulePrefix)) { continue; }
+            const rest = key.slice(modulePrefix.length);
+            const sep = rest.indexOf('::');
+            const id = sep < 0 ? rest : rest.slice(0, sep);
+            if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
+        }
+
         if (predicted.length === 0) { return; }
         // Bound the speculative request so a flick-scroll past 50 cards
         // doesn't queue 50 renders. Visible IDs trump predicted ones —
@@ -213,6 +257,54 @@ export class DaemonScheduler {
             this.logger.appendLine(
                 `[daemon] scroll-ahead renderNow failed for ${moduleId}: ${(err as Error).message}`,
             );
+        }
+    }
+
+    /**
+     * D2 — explicit per-`(previewId, kind)` subscription toggle. Wired to the focus-mode a11y
+     * overlay button: enabling subscribes to `a11y/atf` + `a11y/hierarchy` (or whatever the
+     * caller passes) so the next render attaches the payload; disabling unsubscribes. Idempotent
+     * on both sides.
+     *
+     * We deliberately keep the auto-subscribe out of `setVisible` so the wire stays quiet for
+     * unfocused previews — the design doc's "Default = nothing attached" stance with a per-panel
+     * opt-in.
+     */
+    async setDataProductSubscription(
+        moduleId: string,
+        previewId: string,
+        kinds: readonly string[],
+        enabled: boolean,
+    ): Promise<void> {
+        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
+        if (!client) { return; }
+        for (const kind of kinds) {
+            const subKey = `${moduleId}::${previewId}::${kind}`;
+            const already = this.subscribedPairs.has(subKey);
+            if (enabled === already) { continue; }
+            if (enabled) {
+                this.subscribedPairs.add(subKey);
+                client.dataSubscribe({ previewId, kind }).catch((err) => {
+                    // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
+                    // expected, not noise — log to the daemon channel and roll back the
+                    // bookkeeping so a later daemon spawn re-issues.
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataSubscribe(${previewId}, ${kind}) failed: ${msg}`,
+                    );
+                    this.subscribedPairs.delete(subKey);
+                });
+            } else {
+                this.subscribedPairs.delete(subKey);
+                client.dataUnsubscribe({ previewId, kind }).catch((err) => {
+                    // Unsubscribe rejection is purely informational — the daemon already
+                    // cleaned up on its side, our bookkeeping is gone, no rollback needed.
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataUnsubscribe(${previewId}, ${kind}) failed: ${msg}`,
+                    );
+                });
+            }
         }
     }
 
@@ -285,6 +377,12 @@ export class DaemonScheduler {
                 for (const k of [...this.speculated]) {
                     if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
                 }
+                // D2 — wipe data-product subscription state so the next daemon spawn re-issues
+                // `data/subscribe` against the fresh JVM. Subscriptions don't survive daemon
+                // restarts (PROTOCOL.md / DATA-PRODUCTS.md § "Wire surface").
+                for (const k of [...this.subscribedPairs]) {
+                    if (k.startsWith(`${moduleId}::`)) { this.subscribedPairs.delete(k); }
+                }
             },
         };
     }
@@ -333,6 +431,13 @@ export class DaemonScheduler {
                 buf.toString('base64'),
                 params.pngPath,
             );
+            // D2 — forward attached data products. The dispatcher already filtered to the
+            // `(previewId, kind)` pairs the client subscribed to, so any non-empty list is a
+            // payload the panel asked for. Empty / absent → nothing to do; we DON'T fire the
+            // event in that case to keep the consumer-side dispatch trivial.
+            if (params.dataProducts && params.dataProducts.length > 0) {
+                this.events.onDataProductsAttached?.(moduleId, params.id, params.dataProducts);
+            }
         } catch (err) {
             this.logger.appendLine(
                 `[daemon] failed to read ${params.pngPath} for ${params.id}: ${(err as Error).message}`,

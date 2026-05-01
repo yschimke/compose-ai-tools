@@ -13,11 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.renderer.AccessibilityChecker
 import java.io.File
 
 /**
@@ -72,7 +74,18 @@ class RenderEngine(
     File(
       System.getProperty(OUTPUT_DIR_PROP)
         ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
-    )
+    ),
+  /**
+   * D2 — root of the per-preview data-product output tree
+   * (`<dataDir>/<previewId>/a11y-{atf,hierarchy}.json`). Defaults to `${outputDir.parent}/data` so
+   * the layout sits next to the renders dir, matching the design doc's
+   * `build/compose-previews/data/<id>/<kind>.json` convention. Unit tests override to a temp dir.
+   *
+   * `null` disables the a11y-on-render path entirely — useful for the harness fake-mode runs that
+   * don't exercise the producer.
+   */
+  private val dataDir: File? =
+    (outputDir.parentFile ?: outputDir).resolve("data"),
 ) {
 
   /**
@@ -98,6 +111,19 @@ class RenderEngine(
      * with a sandbox-age that resets per test render.
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
+    /**
+     * D2 — when true, render in a11y mode (`LocalInspectionMode = false`) and dump
+     * `a11y-atf.json` + `a11y-hierarchy.json` under [dataDir] so the daemon's data-product
+     * registry can surface them as `a11y/atf` + `a11y/hierarchy`. Mirrors the design doc's
+     * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
+     * render, traded for simpler implementation than per-render kind threading.
+     *
+     * Defaults to the [ATTACH_A11Y_PROP] system property — `composeai.daemon.attachA11y=true` set
+     * by [DaemonMain] when the a11y data-product registry is wired. False (the default) keeps the
+     * pre-D2 paused-clock + `LocalInspectionMode = true` fast path used by the harness's fake-mode
+     * tests.
+     */
+    runAccessibility: Boolean = System.getProperty(ATTACH_A11Y_PROP) == "true",
   ): RenderResult {
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
@@ -182,7 +208,12 @@ class RenderEngine(
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bgArgb) }
 
             rule.setContent {
-              CompositionLocalProvider(LocalInspectionMode provides true) {
+              // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
+              // accessibility semantics (mergeMode, contentDescription, role) for ATF + the
+              // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
+              // through rather than parking under the paused clock — same trade
+              // `RobolectricRenderTest.renderWithA11y` already pays.
+              CompositionLocalProvider(LocalInspectionMode provides !runAccessibility) {
                 Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
               }
             }
@@ -202,6 +233,30 @@ class RenderEngine(
             rule
               .onRoot()
               .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+
+            // D2 — a11y data products. Walk the same `ViewRootForTest` ATF can populate, dump
+            // `a11y-atf.json` (findings) and `a11y-hierarchy.json` (nodes) next to the PNG. The
+            // dispatcher reads these on `data/fetch` / `data/subscribe` attachment via
+            // `AccessibilityDataProductRegistry`. Wrapped in try/catch so an a11y failure does
+            // not strand the PNG the user already cares about — the registry sees a missing
+            // file as "no attachment for this kind on this render".
+            if (runAccessibility && dataDir != null) {
+              try {
+                val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
+                val a11yResult = AccessibilityChecker.analyze(spec.outputBaseName, view)
+                AccessibilityDataProducer.writeArtifacts(
+                  rootDir = dataDir,
+                  previewId = spec.outputBaseName,
+                  findings = a11yResult.findings,
+                  nodes = a11yResult.nodes,
+                )
+              } catch (t: Throwable) {
+                System.err.println(
+                  "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}"
+                )
+              }
+            }
           } finally {
             // DESIGN § 9 + § 10 cleanup epilogue. The Compose test rule does not allow a second
             // `setContent` on the same `ComponentActivity`, so we can't drive the
@@ -325,6 +380,14 @@ class RenderEngine(
      * side uses; the gradle plugin's daemon launch descriptor sets it once at JVM start.
      */
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
+
+    /**
+     * D2 — when set to `"true"` (by [DaemonMain] after wiring the a11y data-product registry)
+     * each render runs in a11y mode and writes `a11y-{atf,hierarchy}.json` artefacts under
+     * `<outputDir.parent>/data/<previewId>/`. Tests / pre-D2 callers leave it unset and the
+     * fast path stays unchanged.
+     */
+    const val ATTACH_A11Y_PROP: String = "composeai.daemon.attachA11y"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.

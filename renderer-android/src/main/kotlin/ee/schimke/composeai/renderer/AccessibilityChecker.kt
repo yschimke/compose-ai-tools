@@ -28,7 +28,12 @@ import org.robolectric.shadows.ShadowBuild
  * directly against the view we snapshot through [LocalView] avoids paying the
  * `createComposeRule()` tax on every render.
  */
-internal object AccessibilityChecker {
+// D2 — promoted from `internal` so `:daemon:android`'s RenderEngine can run the
+// same ATF + hierarchy walk this object performs and drive the daemon's
+// `a11y/atf` + `a11y/hierarchy` data products. The `:cli` and Gradle paths
+// continue to use it via `RobolectricRenderTest`. See
+// docs/daemon/DATA-PRODUCTS.md § "Worked example: a11y/hierarchy".
+object AccessibilityChecker {
 
     private val json = Json { prettyPrint = true; encodeDefaults = true }
 

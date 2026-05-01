@@ -537,6 +537,12 @@ body {
     color: var(--vscode-errorForeground, #f55);
 }
 
+/* D2 — a11y-overlay toggle pressed state. Blue glyph echoes the hierarchy
+ * overlay's box border colour so the toolbar tells you which layer is on. */
+.icon-button.a11y-overlay-on {
+    color: rgba(80, 160, 255, 1);
+}
+
 /* Diff overlay — covers the focused image with a side-by-side comparison
    when the user clicks Diff vs HEAD / vs main. Lives inside the
    .image-container so it inherits the card's bounds and exits cleanly via
@@ -990,6 +996,37 @@ body {
     inset: 0;
     pointer-events: none;
     z-index: 2;
+}
+/* D2 — daemon-attached `a11y/hierarchy` overlay. Sits BELOW the finding overlay so
+ * findings stay legible (numbered badges + coloured borders win); shows every
+ * accessibility-relevant node with a thin dotted border + translucent fill so the
+ * full TalkBack-visible tree is laid out without obscuring the design. Pointer-events
+ * are auto on the boxes so the `title` tooltip fires on hover. */
+.a11y-hierarchy-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+.a11y-hierarchy-box {
+    position: absolute;
+    border: 1px dashed rgba(80, 160, 255, 0.7);
+    background: rgba(80, 160, 255, 0.06);
+    border-radius: 1px;
+    pointer-events: auto;
+    transition: background 120ms ease;
+}
+.a11y-hierarchy-box:hover {
+    background: rgba(80, 160, 255, 0.18);
+    border-color: rgba(80, 160, 255, 1);
+}
+/* Nodes sitting under a focusable ancestor that already carries its own
+ * contentDescription — TalkBack reads only the ancestor. Shown with a lighter
+ * border so reviewers can see the structure without confusing it for "two
+ * separate stops". */
+.a11y-hierarchy-box.a11y-hierarchy-unmerged {
+    border-style: dotted;
+    border-color: rgba(160, 200, 255, 0.5);
 }
 .a11y-box {
     position: absolute;

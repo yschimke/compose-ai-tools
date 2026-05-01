@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { PreviewInfo } from './types';
+import { AccessibilityFinding, AccessibilityNode, PreviewInfo } from './types';
 
 export interface RegistryEntry {
     preview: PreviewInfo;
@@ -43,6 +43,22 @@ export class PreviewRegistry {
         const entry = this.byId.get(previewId);
         if (!entry) { return; }
         entry.imageBase64 = imageBase64;
+        this._onDidChange.fire();
+    }
+
+    /**
+     * D2 — daemon-attached `a11y/atf` payload routed in by the scheduler. Replaces what the
+     * Gradle sidecar path used to populate via [GradleService.readA11yById]. Either argument may
+     * be omitted to leave the existing field untouched.
+     */
+    setA11y(
+        previewId: string,
+        opts: { findings?: AccessibilityFinding[]; nodes?: AccessibilityNode[] },
+    ): void {
+        const entry = this.byId.get(previewId);
+        if (!entry) { return; }
+        if (opts.findings !== undefined) { entry.preview.a11yFindings = opts.findings; }
+        if (opts.nodes !== undefined) { entry.preview.a11yNodes = opts.nodes; }
         this._onDidChange.fire();
     }
 
