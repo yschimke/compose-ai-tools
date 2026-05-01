@@ -82,6 +82,33 @@ interface RenderHost {
     userClassloaderHolder?.swap()
   }
 
+  /**
+   * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
+   * documented in
+   * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).
+   *
+   * Hosts that support interactive mode (today: `:daemon:desktop`'s `DesktopHost` once PR 2 lands)
+   * override and return a session holding a warm `ImageComposeScene` (or per-host equivalent) so
+   * `remember`'d state survives across `interactive/input` notifications.
+   *
+   * The default body throws [UnsupportedOperationException] — which
+   * [JsonRpcServer.handleInteractiveStart] translates to `MethodNotFound (-32601)` on the wire. v1
+   * panels handle that by falling back to the legacy `setFocus + renderNow` path; v2 panels surface
+   * a status-bar hint. The default keeps every existing host (`FakeHost` in `:daemon:harness`,
+   * `RobolectricHost` in `:daemon:android`, the in-test
+   * [JsonRpcServerIntegrationTest.FakeRenderHost]) on the v1 behaviour without any code change.
+   *
+   * @param classLoader the disposable child loader from [UserClassLoaderHolder.currentChildLoader]
+   *   (B2.0 — see [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). The session
+   *   resolves the preview's class against this loader so a recompile during the session's lifetime
+   *   doesn't drag stale bytecode into the held scene — the next `interactive/start` after a save
+   *   gets a fresh loader.
+   */
+  fun acquireInteractiveSession(previewId: String, classLoader: ClassLoader): InteractiveSession =
+    throw UnsupportedOperationException(
+      "interactive mode unsupported by ${this::class.simpleName ?: this::class.java.name}"
+    )
+
   companion object {
     /**
      * Monotonic id source shared across [JsonRpcServer] (which assigns ids to incoming render
