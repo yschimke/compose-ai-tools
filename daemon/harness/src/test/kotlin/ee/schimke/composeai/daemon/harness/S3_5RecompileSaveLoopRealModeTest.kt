@@ -106,24 +106,30 @@ class S3_5RecompileSaveLoopRealModeTest {
             "the testFixtures dependency must expose it"
         )
 
-    val v1Bytes =
-      cloneAsMutableSquare(
-        sourceBytes,
-        sourceInternal = sourceInternal,
-        targetInternal = mutableInternalName,
-        sourceMethod = "RedSquare",
-        targetMethod = "MutableSquare",
-      )
-    val v2Bytes =
-      cloneAsMutableSquare(
-        sourceBytes,
-        sourceInternal = sourceInternal,
-        targetInternal = mutableInternalName,
-        sourceMethod = "BlueSquare",
-        targetMethod = "MutableSquare",
-      )
-
-    mutableClassPath.writeBytes(v1Bytes)
+    // Multi-iteration cycle exposes the "first edit updates, subsequent edits stick" failure mode
+    // — a single recompile pass (red → blue) was sufficient to verify the disposable child loader
+    // swap in B2.0, but it can't see a regression where only the *first* swap takes hold and a
+    // stale loader / cached `Class<?>` survives subsequent swaps. Cycling red → blue → red → blue
+    // across four versions forces the swap path to work repeatedly; the assertion at every step
+    // catches a failure the moment it happens rather than letting a hidden cache mask it.
+    val versions: List<Pair<String, ByteArray>> =
+      listOf(
+          "RedSquare" to "RedSquare",
+          "BlueSquare" to "BlueSquare",
+          "RedSquare" to "RedSquare",
+          "BlueSquare" to "BlueSquare",
+        )
+        .map { (label, sourceMethod) ->
+          label to
+            cloneAsMutableSquare(
+              sourceBytes,
+              sourceInternal = sourceInternal,
+              targetInternal = mutableInternalName,
+              sourceMethod = sourceMethod,
+              targetMethod = "MutableSquare",
+            )
+        }
+    mutableClassPath.writeBytes(versions[0].second)
 
     val rendersDir =
       File("build/daemon-harness/renders/s3.5").apply {
@@ -187,71 +193,87 @@ class S3_5RecompileSaveLoopRealModeTest {
         }
       }
 
-    val firstStart = System.currentTimeMillis()
     val client = HarnessClient.start(launcher)
+    val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
+    val perIterationBytes = mutableListOf<ByteArray>()
     try {
       assertEquals(1, client.initialize().protocolVersion)
       client.sendInitialized()
 
-      // 1. First render — MutableSquare cloned from RedSquare. Expect red.
-      val rn1 = client.renderNow(previews = listOf("mutable-square"), tier = RenderTier.FAST)
-      assertEquals(listOf("mutable-square"), rn1.queued)
-      val finished1 = client.pollRenderFinishedFor("mutable-square", timeout = 120.seconds)
-      val firstFinishedAt = System.currentTimeMillis()
-      val redPath =
-        finished1["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
-          ?: error("renderFinished missing pngPath: $finished1")
-      val redBytes = File(redPath).readBytes()
+      versions.forEachIndexed { index, (label, bytes) ->
+        // First iteration uses the bytes already written to disk + the daemon's initial loader; no
+        // fileChanged needed. Subsequent iterations are the post-recompile save-loop step we want
+        // to verify: overwrite the .class on disk → notify the daemon → next render must reflect
+        // the new bytecode.
+        if (index > 0) {
+          mutableClassPath.writeBytes(bytes)
+          client.fileChanged(path = mutableClassPath.absolutePath, kind = FileKind.SOURCE)
+        }
 
-      // 2. Recompile — overwrite MutableSquare.class with BlueSquare bytes. Notify the daemon.
-      mutableClassPath.writeBytes(v2Bytes)
-      client.fileChanged(path = mutableClassPath.absolutePath, kind = FileKind.SOURCE)
+        val iterationStart = System.currentTimeMillis()
+        val rn = client.renderNow(previews = listOf("mutable-square"), tier = RenderTier.FAST)
+        assertEquals(listOf("mutable-square"), rn.queued)
+        val finished = client.pollRenderFinishedFor("mutable-square", timeout = 120.seconds)
+        val iterationFinishedAt = System.currentTimeMillis()
+        val pngPath =
+          finished["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
+            ?: error("renderFinished missing pngPath: $finished")
+        val rendered = File(pngPath).readBytes()
+        perIterationBytes += rendered
 
-      // 3. Second render — MutableSquare cloned from BlueSquare. Expect blue.
-      val secondStart = System.currentTimeMillis()
-      val rn2 = client.renderNow(previews = listOf("mutable-square"), tier = RenderTier.FAST)
-      assertEquals(listOf("mutable-square"), rn2.queued)
-      val finished2 = client.pollRenderFinishedFor("mutable-square", timeout = 120.seconds)
-      val secondFinishedAt = System.currentTimeMillis()
-      val bluePath =
-        finished2["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
-          ?: error("renderFinished missing pngPath: $finished2")
-      val blueBytes = File(bluePath).readBytes()
+        // Same-version iterations must produce byte-identical PNGs (renderer is deterministic
+        // when the bytecode is the same); different-version iterations must differ. The pattern
+        // [Red, Blue, Red, Blue] gives us both shapes — iterations 0/2 must match, 1/3 must
+        // match, but 0 vs 1 and 2 vs 3 must differ. The "stuck after first edit" bug shows up as
+        // index 2 matching index 1 (still blue) instead of index 0 (red again).
+        for (priorIndex in 0 until index) {
+          val priorBytes = perIterationBytes[priorIndex]
+          val priorLabel = versions[priorIndex].first
+          val sameLabel = priorLabel == label
+          val diff = PixelDiff.compare(actual = rendered, expected = priorBytes)
+          if (sameLabel && !diff.ok) {
+            PixelDiff.writeDiffArtefacts(
+              actual = rendered,
+              expected = priorBytes,
+              outDir = File(reportsDir, "iter-$index-vs-$priorIndex"),
+            )
+            throw AssertionError(
+              "S3.5 [$target]: iteration $index ($label) produced different bytes than " +
+                "iteration $priorIndex ($priorLabel) — same bytecode should render identical PNGs. " +
+                "${diff.message}. Stderr=\n${client.dumpStderr()}"
+            )
+          }
+          if (!sameLabel && diff.ok) {
+            PixelDiff.writeDiffArtefacts(
+              actual = rendered,
+              expected = priorBytes,
+              outDir = File(reportsDir, "iter-$index-vs-$priorIndex"),
+            )
+            throw AssertionError(
+              "S3.5 [$target]: iteration $index ($label) produced identical bytes to " +
+                "iteration $priorIndex ($priorLabel) — daemon served stale user-classloader " +
+                "bytecode after a recompile-and-fileChanged. " +
+                "${if (priorIndex == 0) "B2.0's disposable child loader is not swapping at all." else "Disposable child loader works for the first edit but not subsequent edits — the failure mode this multi-iteration cycle was added to expose."} " +
+                "Stderr=\n${client.dumpStderr()}"
+            )
+          }
+        }
 
-      // 4. The load-bearing assertion: red and blue must differ. Pre-B2.0 the second render
-      //    returned the cached red bytecode and the bytes were identical — exactly the staleness
-      //    failure mode B2.0 fixes.
-      val diff = PixelDiff.compare(actual = redBytes, expected = blueBytes)
-      if (diff.ok) {
-        PixelDiff.writeDiffArtefacts(actual = redBytes, expected = blueBytes, outDir = reportsDir)
-        throw AssertionError(
-          "S3.5 [$target]: post-fileChanged render produced identical bytes — daemon served stale " +
-            "user-classloader bytecode. B2.0's disposable child loader is not swapping. " +
-            "Stderr=\n${client.dumpStderr()}"
+        recorder.record(
+          scenario = "s3.5-real-$target",
+          preview = "mutable-square@iter$index-$label",
+          actualMs = iterationFinishedAt - iterationStart,
+          notes = "S3.5 real $target: iteration $index ($label)",
+        )
+        assertTrue(
+          "S3.5 iteration $index render took unreasonably long (>120s); B2.0 child-loader swap may be stalling.",
+          iterationFinishedAt - iterationStart < 120_000,
         )
       }
 
-      // 5. Clean shutdown.
+      // Clean shutdown.
       val exitCode = client.shutdownAndExit(timeout = 30.seconds)
       assertEquals("Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
-
-      val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
-      recorder.record(
-        scenario = "s3.5-real-$target",
-        preview = "mutable-square@v1",
-        actualMs = firstFinishedAt - firstStart,
-        notes = "S3.5 real $target: pre-recompile render (red)",
-      )
-      recorder.record(
-        scenario = "s3.5-real-$target",
-        preview = "mutable-square@v2",
-        actualMs = secondFinishedAt - secondStart,
-        notes = "S3.5 real $target: post-recompile render (blue, after fileChanged swap)",
-      )
-      assertTrue(
-        "S3.5 second render took unreasonably long (>120s); B2.0 child-loader swap may be stalling.",
-        secondFinishedAt - secondStart < 120_000,
-      )
     } catch (t: Throwable) {
       System.err.println(
         "S3_5RecompileSaveLoopRealModeTest [$target] failed; daemon stderr:\n${client.dumpStderr()}"

@@ -96,6 +96,18 @@ class RenderEngine(
     val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
 
+    // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
+    // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
+    // [UserClassLoaderHolder]. If `classFile` doesn't advance across saves the daemon is
+    // re-rendering against bytecode that wasn't actually recompiled.
+    val fingerprint =
+      UserClassLoaderHolder.classFileFingerprint(classLoader, spec.className)
+        ?: "fingerprint unavailable (class not on a file: URL)"
+    System.err.println(
+      "compose-ai-daemon: [render] ${spec.className}#${spec.functionName} " +
+        "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint"
+    )
+
     // Install the child classloader as the context classloader for the duration of the render
     // dispatch. Compose's reflection paths (notably PreviewParameter providers — see
     // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would

@@ -89,6 +89,14 @@ class UserClassLoaderHolder(
   fun swap() {
     synchronized(lock) {
       current = null
+      // Self-diagnostic log — surfaces as `[daemon stderr] [classloader] swap …` in the VS Code
+      // extension's Compose Preview output channel. Pairs with the `allocate` line emitted on the
+      // next currentChildLoader() read; if a save loop produces "swap" but never the matching
+      // "allocate" the host's render thread isn't picking up the swap, and if "allocate" fires but
+      // the .class fingerprint doesn't move across saves the disk hasn't actually been recompiled.
+      System.err.println(
+        "compose-ai-daemon: [classloader] swap requested urlCount=${urls.size} liveLoaders=${trackedLoaders.size}"
+      )
       // Force the next currentChildLoader read to do the allocation; we deliberately don't
       // pre-allocate here because the next render is what cares, and pre-allocating would
       // double the loader objects in flight when fileChanged arrives faster than renders.
@@ -131,6 +139,14 @@ class UserClassLoaderHolder(
     val fresh = ChildFirstURLClassLoader(urls.toTypedArray(), resolvedParent)
     current = fresh
     trackedLoaders.add(WeakReference(fresh))
+    // Self-diagnostic log — pairs with `swap requested` above. Surfaces the URL list so we can see
+    // exactly which directories the next render's findClass walks. The `urlsSummary` helper
+    // reports the directory mtime for each entry; an mtime that doesn't advance across saves means
+    // `compileKotlin` didn't actually rewrite anything (Gradle up-to-date, no-op edit, etc.).
+    System.err.println(
+      "compose-ai-daemon: [classloader] allocate child loader parent=${resolvedParent.javaClass.name} " +
+        "loaderId=${System.identityHashCode(fresh).toString(16)} urls=${urlsSummary(urls)}"
+    )
     onSwap?.invoke(fresh)
     return fresh
   }
@@ -215,6 +231,65 @@ class UserClassLoaderHolder(
         .map { java.io.File(it) }
         .filter { it.exists() }
         .map { it.toURI().toURL() }
+    }
+
+    /**
+     * Compact one-line dump of [urls] suitable for stderr — each entry is `<path>(mtime=…)` so the
+     * directory's most-recent write is visible at a glance. Only `file:` URLs are statted; other
+     * schemes are reported by URL string only.
+     */
+    internal fun urlsSummary(urls: List<URL>): String =
+      urls.joinToString(prefix = "[", postfix = "]") { url ->
+        if (url.protocol == "file") {
+          val file = java.io.File(url.toURI())
+          val mtime =
+            if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+            else "missing"
+          "${file.absolutePath}(mtime=$mtime)"
+        } else {
+          url.toString()
+        }
+      }
+
+    /**
+     * Resolves [className] to its on-disk `.class` file via [loader]'s resource lookup and returns
+     * a compact `path=… mtime=… size=… sha=…` string. Returns `null` if the class isn't on a
+     * `file:` URL (jar entry, network, missing) — we only fingerprint disk-backed user classes
+     * since those are the ones that should change across save → recompile cycles.
+     *
+     * The SHA is the first 6 bytes of SHA-256 hex (12 chars) — enough to disambiguate consecutive
+     * recompiles in a save loop without bloating each log line.
+     */
+    fun classFileFingerprint(loader: ClassLoader, className: String): String? {
+      val resourceName = className.replace('.', '/') + ".class"
+      val url = loader.getResource(resourceName) ?: return null
+      if (url.protocol != "file") return null
+      val file =
+        try {
+          java.io.File(url.toURI())
+        } catch (_: Throwable) {
+          return null
+        }
+      if (!file.exists()) return null
+      val mtime = java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+      return "path=${file.absolutePath} mtime=$mtime size=${file.length()} sha=${sha256Short(file)}"
+    }
+
+    private fun sha256Short(file: java.io.File): String {
+      val md = java.security.MessageDigest.getInstance("SHA-256")
+      try {
+        file.inputStream().use { input ->
+          val buffer = ByteArray(8192)
+          while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            md.update(buffer, 0, read)
+          }
+        }
+      } catch (_: Throwable) {
+        return "unreadable"
+      }
+      return md.digest().take(6).joinToString("") { "%02x".format(it) }
     }
   }
 }
