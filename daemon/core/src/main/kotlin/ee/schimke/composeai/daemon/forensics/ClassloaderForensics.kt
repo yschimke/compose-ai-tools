@@ -105,8 +105,8 @@ object ClassloaderForensics {
   fun diff(a: File, b: File, mdOut: File, jsonOut: File) {
     val aRoot = json.parseToJsonElement(a.readText()).asObject()
     val bRoot = json.parseToJsonElement(b.readText()).asObject()
-    val aClasses = aRoot["classes"]!!.asArray().map { it.asObject() }.associateBy { it.fqn() }
-    val bClasses = bRoot["classes"]!!.asArray().map { it.asObject() }.associateBy { it.fqn() }
+    val aClasses = aRoot.classesArray(a).map { it.asObject() }.associateBy { it.fqn() }
+    val bClasses = bRoot.classesArray(b).map { it.asObject() }.associateBy { it.fqn() }
 
     val onlyInA = aClasses.keys - bClasses.keys
     val onlyInB = bClasses.keys - aClasses.keys
@@ -643,6 +643,10 @@ object ClassloaderForensics {
   private fun JsonElement.asObject(): JsonObject = this as JsonObject
 
   private fun JsonElement.asArray() = (this as kotlinx.serialization.json.JsonArray)
+
+  private fun JsonObject.classesArray(source: File): kotlinx.serialization.json.JsonArray =
+    this["classes"] as? kotlinx.serialization.json.JsonArray
+      ?: error("Forensics capture ${source.absolutePath} is missing the 'classes' array")
 
   private fun JsonObject.fqn(): String =
     (this["fqn"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""

@@ -43,8 +43,8 @@ internal fun compareSemver(a: String, b: String): Int {
   fun parts(v: String): Pair<List<Int>, Boolean> {
     val (head, suffix) = v.split('-', limit = 2).let { it[0] to (it.getOrNull(1) ?: "") }
     val nums = head.split('.').map { it.toIntOrNull() }
-    val parsed = nums.all { it != null }
-    return (if (parsed) nums.map { it!! } else emptyList()) to suffix.isNotEmpty()
+    val parsed = nums.none { it == null }
+    return (if (parsed) nums.filterNotNull() else emptyList()) to suffix.isNotEmpty()
   }
   val (aNums, aPre) = parts(a)
   val (bNums, bPre) = parts(b)
