@@ -119,8 +119,8 @@
                 },
                 "composePreview.experimental.daemon.enabled": {
                     "type": "boolean",
-                    "default": false,
-                    "description": "EXPERIMENTAL. Use the persistent preview daemon for sub-second refresh on saves to files the user has open, plus scroll-ahead speculative renders. Requires `composePreview { experimental { daemon { enabled = true } } }` in the consumer's build.gradle.kts. When the daemon isn't healthy, the extension silently falls back to the Gradle `renderPreviews` task. See docs/daemon/DESIGN.md for status and caveats."
+                    "default": true,
+                    "description": "Use the persistent preview daemon for sub-second refresh on saves to files the user has open, plus scroll-ahead speculative renders. Requires `composePreview { experimental { daemon { enabled = true } } }` in the consumer's build.gradle.kts. When the daemon isn't healthy, the extension silently falls back to the Gradle `renderPreviews` task. See docs/daemon/DESIGN.md for caveats."
                 },
                 "composePreview.logging.level": {
                     "type": "string",
