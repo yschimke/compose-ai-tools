@@ -15,4 +15,10 @@ Fixture inventory (added in B1.2):
 - `daemon-discoveryUpdated.json`, `daemon-renderStarted.json`, `daemon-renderFinished.json`, `daemon-renderFailed.json`, `daemon-classpathDirty.json`, `daemon-sandboxRecycle.json`, `daemon-daemonWarming.json`, `daemon-daemonReady.json`, `daemon-log.json` — daemon → client notifications (§ 6).
 - `envelope-request.json`, `envelope-response.json`, `envelope-notification.json`, `envelope-errorResponse.json` — JSON-RPC envelope shapes (§ 2).
 
+D1 (data products — see [../DATA-PRODUCTS.md](../DATA-PRODUCTS.md)):
+
+- `client-dataFetch.json`, `daemon-dataFetchResult.json` — `data/fetch` request and response (§ "Wire surface").
+- `client-dataSubscribe.json`, `daemon-dataSubscribeResult.json` — `data/subscribe` (and the symmetric `data/unsubscribe`, same shape) request and response.
+- `daemon-renderFinished-withDataProducts.json` — `renderFinished` carrying a populated `dataProducts` field; the existing `daemon-renderFinished.json` continues to cover the "no attachments" case.
+
 Stream C (TypeScript) loads the same files in C1.1.

@@ -53,6 +53,10 @@ Standard JSON-RPC codes plus daemon-specific extensions in the reserved `-32000.
 | -32010   | HistoryEntryNotFound  | `history/read` or `history/diff` referenced a missing entry id. |
 | -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews. |
 | -32012   | HistoryPixelNotImplemented | `history/diff` was called with `mode = "pixel"`; reserved for phase H5. |
+| -32020   | DataProductUnknown    | `data/*` referenced a kind not advertised by the daemon. See [DATA-PRODUCTS.md](DATA-PRODUCTS.md). |
+| -32021   | DataProductNotAvailable | `data/fetch` against a preview that has never rendered. |
+| -32022   | DataProductFetchFailed  | `data/fetch` re-render or projection failed; details in `data`. |
+| -32023   | DataProductBudgetExceeded | `data/fetch` re-render budget tripped before the payload landed. |
 
 `error.data` is an object; daemon-specific errors include `data.kind: string` for machine-routable subcategories.
 
@@ -289,6 +293,17 @@ Errors:
 - `HistoryPixelNotImplemented` (-32012) — `mode = "pixel"` was requested but the pixel pass is
   reserved for phase H5.
 
+### `data/fetch`, `data/subscribe`, `data/unsubscribe` (phase D1)
+
+Surfaces structured per-render data (a11y findings + hierarchy, layout
+tree, recomposition counts, …) without baking it into the PNG. The full
+spec — wire shape per method, transports, re-render budgets,
+on-disk layout — lives in [DATA-PRODUCTS.md](DATA-PRODUCTS.md). Default
+behaviour: a daemon advertising no kinds (pre-D2) rejects every
+`data/fetch` and `data/subscribe` with `DataProductUnknown` (-32020); the
+methods exist so clients can probe capability without a `protocolVersion`
+bump.
+
 ### `history/prune` (phase H4)
 
 ```ts
@@ -382,6 +397,12 @@ Emitted after every Tier-2 incremental discovery that changed the set.
 ```
 
 `metrics` is present iff the client set `capabilities.metrics: true` in `initialize`.
+
+`dataProducts` (phase D1, additive) carries per-kind structured payloads
+for the `(id, kind)` pairs the client subscribed to via `data/subscribe`,
+plus everything in `initialize.options.attachDataProducts`. Absent and
+empty are interchangeable on the wire. See
+[DATA-PRODUCTS.md](DATA-PRODUCTS.md) for the per-kind shapes.
 
 ### `renderFailed`
 

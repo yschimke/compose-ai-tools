@@ -5,7 +5,25 @@
   "capabilities": {
     "incrementalDiscovery": false,
     "sandboxRecycle": true,
-    "leakDetection": ["light", "heavy"]
+    "leakDetection": ["light", "heavy"],
+    "dataProducts": [
+      {
+        "kind": "a11y/atf",
+        "schemaVersion": 1,
+        "transport": "inline",
+        "attachable": true,
+        "fetchable": true,
+        "requiresRerender": false
+      },
+      {
+        "kind": "a11y/hierarchy",
+        "schemaVersion": 1,
+        "transport": "path",
+        "attachable": true,
+        "fetchable": true,
+        "requiresRerender": false
+      }
+    ]
   },
   "classpathFingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "manifest": {

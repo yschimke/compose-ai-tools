@@ -4,6 +4,14 @@ import * as path from 'path';
 import {
     DAEMON_DESCRIPTOR_SCHEMA_VERSION,
     DaemonLaunchDescriptor,
+    DataFetchParams,
+    DataFetchResult,
+    DataSubscribeParams,
+    DataSubscribeResult,
+    ERROR_DATA_PRODUCT_BUDGET_EXCEEDED,
+    ERROR_DATA_PRODUCT_FETCH_FAILED,
+    ERROR_DATA_PRODUCT_NOT_AVAILABLE,
+    ERROR_DATA_PRODUCT_UNKNOWN,
     ERROR_HISTORY_DIFF_MISMATCH,
     ERROR_HISTORY_ENTRY_NOT_FOUND,
     ERROR_HISTORY_PIXEL_NOT_IMPLEMENTED,
@@ -216,5 +224,66 @@ describe('history protocol shapes', () => {
         };
         const round = JSON.parse(JSON.stringify(params)) as HistoryAddedParams;
         assert.deepStrictEqual(round, params);
+    });
+});
+
+/**
+ * D1 — data product wire shapes. See `docs/daemon/DATA-PRODUCTS.md` and
+ * the round-trip golden fixtures under `docs/daemon/protocol-fixtures/`.
+ */
+describe('data product protocol shapes', () => {
+    it('error codes match DATA-PRODUCTS.md § "Error codes"', () => {
+        assert.strictEqual(ERROR_DATA_PRODUCT_UNKNOWN, -32020);
+        assert.strictEqual(ERROR_DATA_PRODUCT_NOT_AVAILABLE, -32021);
+        assert.strictEqual(ERROR_DATA_PRODUCT_FETCH_FAILED, -32022);
+        assert.strictEqual(ERROR_DATA_PRODUCT_BUDGET_EXCEEDED, -32023);
+    });
+
+    it('parses client-dataFetch.json into DataFetchParams shape', () => {
+        const params = readFixture<DataFetchParams>('client-dataFetch.json');
+        assert.strictEqual(params.kind, 'a11y/hierarchy');
+        assert.strictEqual(params.previewId, 'com.example.HomeKt#HomePreview');
+        // `inline` defaults to false on the wire; the fixture omits it so the
+        // Kotlin round-trip with `encodeDefaults = false` stays clean.
+        assert.strictEqual(params.inline, undefined);
+    });
+
+    it('parses daemon-dataFetchResult.json into DataFetchResult shape', () => {
+        const result = readFixture<DataFetchResult>('daemon-dataFetchResult.json');
+        assert.strictEqual(result.kind, 'a11y/hierarchy');
+        assert.strictEqual(result.schemaVersion, 1);
+        assert.ok(result.path && result.path.endsWith('a11y-hierarchy.json'));
+        assert.strictEqual(result.payload, undefined);
+        assert.strictEqual(result.bytes, undefined);
+    });
+
+    it('subscribe / unsubscribe share params shape', () => {
+        const params = readFixture<DataSubscribeParams>('client-dataSubscribe.json');
+        assert.strictEqual(params.kind, 'a11y/hierarchy');
+        assert.strictEqual(params.previewId, 'com.example.HomeKt#HomePreview');
+        const result = readFixture<DataSubscribeResult>('daemon-dataSubscribeResult.json');
+        assert.strictEqual(result.ok, true);
+    });
+
+    it('initialize result advertises data product capabilities', () => {
+        // Lock the field's wire spelling — the renderFinished attach path
+        // depends on the daemon listing each kind it can produce here.
+        const result = readFixture<InitializeResult>('daemon-initializeResult.json');
+        assert.ok(Array.isArray(result.capabilities.dataProducts));
+        const kinds = result.capabilities.dataProducts.map((c) => c.kind);
+        assert.ok(kinds.includes('a11y/atf'));
+        assert.ok(kinds.includes('a11y/hierarchy'));
+    });
+
+    it('renderFinished can carry per-kind data product attachments', () => {
+        const params = readFixture<RenderFinishedParams>(
+            'daemon-renderFinished-withDataProducts.json',
+        );
+        assert.ok(Array.isArray(params.dataProducts));
+        const atf = params.dataProducts!.find((p) => p.kind === 'a11y/atf');
+        const hierarchy = params.dataProducts!.find((p) => p.kind === 'a11y/hierarchy');
+        // Inline payload for atf, path for hierarchy — exercises both transports.
+        assert.ok(atf?.payload);
+        assert.ok(hierarchy?.path);
     });
 });

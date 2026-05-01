@@ -1,0 +1,101 @@
+package ee.schimke.composeai.daemon
+
+import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.daemon.protocol.DataProductAttachment
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import kotlinx.serialization.json.JsonElement
+
+/**
+ * Producer-side seam for the D1 data-product surface (see
+ * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)).
+ *
+ * The dispatcher ([JsonRpcServer]) doesn't know how to build any payload itself — it just routes
+ * `data/fetch`, `data/subscribe`, `data/unsubscribe`, and the attach-on-`renderFinished` path
+ * through this registry. A default-empty implementation ([Empty]) keeps the protocol surface open
+ * while no kind is wired (the D1 contract: methods exist, every kind is `DataProductUnknown`).
+ *
+ * Real implementations live next to the renderer-side machinery that produces the data — the
+ * Android-side a11y producer (`renderer-android`) is the first concrete consumer in D2. They
+ * register at daemon-main construction time, not here.
+ */
+interface DataProductRegistry {
+  /**
+   * Kinds the daemon can produce. Surfaced via `initialize.capabilities.dataProducts` so clients
+   * can grey out unavailable panels at handshake time.
+   */
+  val capabilities: List<DataProductCapability>
+
+  /**
+   * Fast-path lookup: does the registry know this kind at all? Used by the subscribe path to reject
+   * unknown kinds before bookkeeping takes any memory. Default scans [capabilities]; producers with
+   * many kinds may override with a hash lookup.
+   */
+  fun isKnown(kind: String): Boolean = capabilities.any { it.kind == kind }
+
+  /**
+   * Pull-on-demand fetch for one `(previewId, kind)` pair against the latest render. The dispatcher
+   * catches the four documented failure shapes via [Outcome] and translates each to its wire-error
+   * code.
+   *
+   * `params` carries per-kind options (e.g. `nodeId` for `layout/tree`); `inline` mirrors the
+   * `data/fetch.inline` flag — `true` asks the registry to inline the payload (or `bytes` for blob
+   * kinds), `false` lets it return a `path` for cheap local-client read-from-disk.
+   */
+  fun fetch(previewId: String, kind: String, params: JsonElement?, inline: Boolean): Outcome
+
+  /**
+   * Build the attachment list for [previewId]'s pending `renderFinished` across the supplied
+   * [kinds] (the union of the client's subscriptions for this preview plus the global
+   * `attachDataProducts` set). Returns an empty list when nothing's available — kinds that have no
+   * on-disk artefact for this render simply drop out of the attachment.
+   *
+   * Always called *after* the render produced the PNG, so producers can read whatever the renderer
+   * wrote to disk during the same pass.
+   */
+  fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment>
+
+  /**
+   * Tagged outcome of a [fetch]. The dispatcher maps each case to its wire-error counterpart in
+   * `JsonRpcServer.handleDataFetch`.
+   */
+  sealed interface Outcome {
+    data class Ok(val result: DataFetchResult) : Outcome
+
+    /** Kind not advertised by this registry → `DataProductUnknown` (-32020). */
+    data object Unknown : Outcome
+
+    /** Preview has never rendered → `DataProductNotAvailable` (-32021). */
+    data object NotAvailable : Outcome
+
+    /** Producer-side failure → `DataProductFetchFailed` (-32022). */
+    data class FetchFailed(val message: String, val errorKind: String? = null) : Outcome
+
+    /** Re-render budget tripped → `DataProductBudgetExceeded` (-32023). */
+    data object BudgetExceeded : Outcome
+  }
+
+  companion object {
+    /**
+     * The pre-D2 default — daemon advertises no kinds, every `data/fetch` returns
+     * [Outcome.Unknown], every `data/subscribe` short-circuits to the same. Used by in-process
+     * tests, the harness's fake-mode scenarios, and the daemon-main path when no producer has been
+     * wired yet (during D1 rollout).
+     */
+    val Empty: DataProductRegistry =
+      object : DataProductRegistry {
+        override val capabilities: List<DataProductCapability> = emptyList()
+
+        override fun fetch(
+          previewId: String,
+          kind: String,
+          params: JsonElement?,
+          inline: Boolean,
+        ): Outcome = Outcome.Unknown
+
+        override fun attachmentsFor(
+          previewId: String,
+          kinds: Set<String>,
+        ): List<DataProductAttachment> = emptyList()
+      }
+  }
+}
