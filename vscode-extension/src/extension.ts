@@ -49,6 +49,78 @@ const historyScopeRef: { current: HistoryScope | null } = { current: null };
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
  *  scoped focus signals can map "active file → preview IDs" without an
  *  extension-side discovery round-trip. */
+/**
+ * Returns the mtime (ms since epoch) of the oldest on-disk PNG referenced by
+ * any rendered capture in [previews] across [modules], or null if none of the
+ * paths exist. Cheap stat call per capture; results are not cached because
+ * renders rewrite these files on every save.
+ */
+async function oldestRenderMtime(
+    previews: PreviewInfo[],
+    modules: string[],
+): Promise<number | null> {
+    if (!gradleService) { return null; }
+    let oldest: number | null = null;
+    for (const preview of previews) {
+        for (const capture of preview.captures) {
+            if (!capture.renderOutput) { continue; }
+            // Match the path the readPreviewImage resolver builds.
+            const mod = modules.find(m => previewModuleMap.get(preview.id) === m) ?? modules[0];
+            const pngPath = path.join(
+                gradleService.workspaceRoot, mod,
+                'build', 'compose-previews', capture.renderOutput,
+            );
+            try {
+                const stat = await fs.promises.stat(pngPath);
+                const mtime = stat.mtimeMs;
+                if (oldest == null || mtime < oldest) { oldest = mtime; }
+            } catch {
+                // File missing — discover-only pass on a never-rendered preview.
+                // Don't count toward oldest; the banner reflects what the user
+                // is actually seeing on screen.
+            }
+        }
+    }
+    return oldest;
+}
+
+/** Stat the source file and return its mtime, or null on any error. The
+ *  banner uses this as the "freshness reference" — `.kt` newer than the
+ *  oldest PNG = renders are stale relative to the source. */
+async function sourceFileMtime(filePath: string): Promise<number | null> {
+    try {
+        const stat = await fs.promises.stat(filePath);
+        return stat.mtimeMs;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * "5 minutes ago", "2 hours ago", "3 days ago". Coarse — the banner exists to
+ * communicate "this is old", not to time-stamp anything.
+ */
+function formatRelativeAge(ageMs: number): string {
+    const seconds = Math.floor(ageMs / 1000);
+    if (seconds < 60) { return `${seconds}s ago`; }
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) { return `${minutes}m ago`; }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) { return `${hours}h ago`; }
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
+/**
+ * True when the panel currently shows a "Showing previews from <ago>, but
+ * <file> has changed since" banner the extension posted because the active
+ * source file's mtime is newer than the oldest on-disk PNG. Used so we only
+ * clear the banner when one *we* set is up — not a build-error or
+ * filter-empty notice. Cleared when a fresh `updateImage` arrives from the
+ * daemon, or when a forceRender refresh completes.
+ */
+let staleBannerShown = false;
+
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
 let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
@@ -231,6 +303,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
+            // Fresh daemon render arriving — if a stale banner is up, this is
+            // the moment to retire it. Guarded by staleBannerShown so we only
+            // clear a banner we set ourselves; legitimate showMessage banners
+            // (build error, filter-empty notice) are left alone.
+            if (staleBannerShown) {
+                panel.postMessage({ command: 'showMessage', text: '' });
+                staleBannerShown = false;
+            }
             // Capture index 0 — the daemon's v1 renderFinished targets the
             // representative capture only. Multi-capture (animated) renders
             // still come through the Gradle path; the daemon's predictive
@@ -599,8 +679,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         setTimeout(() => {
             const active = vscode.window.activeTextEditor;
             if (active?.document.languageId === 'kotlin') {
-                refresh(false, active.document.uri.fsPath);
-                void warmDaemonForFile(active.document.uri.fsPath);
+                void runActivationRefresh(active.document.uri.fsPath);
             } else {
                 // No Kotlin file in focus — let refresh() emit the empty-state
                 // message without trying to load anything.
@@ -761,6 +840,42 @@ async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
     if (ids.length === 0) { return true; }
     await daemonScheduler.setFocus(module, ids);
     return await daemonScheduler.renderNow(module, ids, 'fast', 'save');
+}
+
+/**
+ * Activation-time refresh sequence. Three phases, one after the other:
+ *
+ *   1. `refresh(false, filePath)` — populates the panel from on-disk PNGs so
+ *      the user sees *something* immediately (cards with cached images, plus
+ *      the "Showing previews from <ago>" banner if those PNGs are stale
+ *      relative to the source file).
+ *   2. `warmDaemonForFile(filePath)` — runs `composePreviewDaemonStart` and
+ *      spawns the daemon JVM. No-op if the daemon flag is off.
+ *   3. If the daemon is healthy by the time it's done warming, fire a
+ *      `notifyDaemonOfSave`-equivalent so the panel gets a fresh render even
+ *      without the user touching the file. Catches the "edited a file in
+ *      another module / `git pull`'d / agent rewrote a Composable" case
+ *      where the on-disk PNGs are stale relative to source even though the
+ *      source file the user is currently looking at is itself unchanged.
+ *      The banner from phase 1 stays up only long enough for phase 3's
+ *      first updateImage to clear it; on a hot daemon that's a couple of
+ *      seconds, on a cold spawn 5-10s.
+ *
+ * Failures in phases 2 or 3 silently fall back: phase 1 already gave the
+ * user something to look at, and the next save will re-trigger the whole
+ * pipeline through `runRefreshExclusive`.
+ */
+async function runActivationRefresh(filePath: string): Promise<void> {
+    await refresh(false, filePath);
+    await warmDaemonForFile(filePath);
+    if (!gradleService || !daemonGate) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module || !daemonGate.isDaemonReady(module)) { return; }
+    // Phase 3 — kick off a fresh render through the daemon. Reuses the same
+    // notify path the save-driven flow uses; the daemon does the swap +
+    // renderNow + the panel updates via the existing onPreviewImageReady
+    // wiring. No need for a separate code path.
+    await notifyDaemonOfSave(filePath);
 }
 
 /**
@@ -1360,6 +1475,44 @@ async function refresh(
         // showMessage would also clobber legitimate extension-set messages
         // (filter empty notice, build errors), which was the original
         // "populate then go blank" regression.
+        //
+        // Stale-banner posting / clearing. Compare the active source file's
+        // mtime against the oldest visible PNG: if the source has been edited
+        // since the renders were written, the user is looking at a render
+        // that doesn't reflect their current source. An absolute "older than
+        // X" threshold is wrong because a steady-state save loop produces
+        // PNGs seconds old that are nonetheless current — what matters is
+        // "did the source move since".
+        //
+        //   - forceRender=true → user explicitly re-rendered, anything stale
+        //     was just rewritten; clear any prior banner.
+        //   - forceRender=false → check source vs PNG; banner if source is
+        //     newer. Cleared on the first daemon `updateImage` (see
+        //     daemonScheduler events) or on the next forceRender.
+        if (forceRender && staleBannerShown) {
+            panel.postMessage({ command: 'showMessage', text: '' });
+            staleBannerShown = false;
+        } else if (!forceRender) {
+            const [sourceMtime, oldestMtime] = await Promise.all([
+                sourceFileMtime(activeFile),
+                oldestRenderMtime(visiblePreviews, modules),
+            ]);
+            const sourceIsNewer =
+                sourceMtime != null && oldestMtime != null && sourceMtime > oldestMtime;
+            if (sourceIsNewer) {
+                const ago = formatRelativeAge(Date.now() - oldestMtime!);
+                panel.postMessage({
+                    command: 'showMessage',
+                    text:
+                        `Showing previews from ${ago}, but ${path.basename(activeFile)} ` +
+                        'has changed since (save to render fresh, or run "Compose Preview: Refresh").',
+                });
+                staleBannerShown = true;
+            } else if (staleBannerShown) {
+                panel.postMessage({ command: 'showMessage', text: '' });
+                staleBannerShown = false;
+            }
+        }
         return abort.signal.aborted ? 'cancelled' : 'completed';
     } catch (err: unknown) {
         if (abort.signal.aborted) { return 'cancelled'; }
