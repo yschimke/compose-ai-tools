@@ -967,6 +967,282 @@ class DaemonMcpServerTest {
     runCatching { session2.close() }
   }
 
+  @Test
+  fun `get_preview_data hits cache from renderFinished attachments without round-tripping`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/atf",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      // Configure dataFetch to fail loudly — the cache hit MUST serve without ever touching the
+      // wire. If our cache short-circuit is broken, the test will fall through to this branch
+      // and the assertion on payload contents will fail.
+      daemon.dataFetchHandler = { _, _, _, _ ->
+        FakeDaemon.DataFetchOutcome.FetchFailed("cache-miss-must-not-happen")
+      }
+    }
+    val previewId = "com.example.Red"
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // Subscribe so the resources/updated notification is our sync point: the supervisor finished
+    // processing the renderFinished (including caching attachments) before we move on.
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.request("resources/subscribe", buildJsonObject { put("uri", uri) })
+
+    // Daemon ships an attached payload on a renderFinished — simulating the post-subscribe
+    // attach-on-render path. The supervisor caches it.
+    daemon.emitRenderFinishedWithDataProducts(
+      previewId,
+      "/tmp/red.png",
+      listOf(
+        buildJsonObject {
+          put("kind", "a11y/atf")
+          put("schemaVersion", 1)
+          putJsonObject("payload") {
+            putJsonArray("findings") { add(JsonPrimitive("missing-content-description")) }
+          }
+        }
+      ),
+    )
+    client.expectNotification("notifications/resources/updated", 2_000)
+
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/atf")
+        },
+      )
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(payload["cached"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(payload["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("a11y/atf")
+    val findings = payload["payload"]?.jsonObject?.get("findings")?.jsonArray
+    assertThat(findings?.single()?.jsonPrimitive?.content).isEqualTo("missing-content-description")
+  }
+
+  @Test
+  fun `cache evicts stale kinds when next renderFinished omits them`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/atf",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      // After the cache evicts, dataFetch is the fallback path — return a distinguishable Ok so
+      // we can assert that the second call went through the wire (not the cache).
+      daemon.dataFetchHandler = { _, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 1,
+          payload = buildJsonObject { put("source", "wire") },
+        )
+      }
+    }
+    val previewId = "com.example.Red"
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // Subscribe to the URI so we get a `resources/updated` notification per renderFinished —
+    // those notifications act as our synchronization point that the supervisor finished processing
+    // each render (and updating the cache) before we move on.
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.request("resources/subscribe", buildJsonObject { put("uri", uri) })
+
+    // First render: a11y/atf is attached. Cache is warm.
+    daemon.emitRenderFinishedWithDataProducts(
+      previewId,
+      "/tmp/red-1.png",
+      listOf(
+        buildJsonObject {
+          put("kind", "a11y/atf")
+          put("schemaVersion", 1)
+          putJsonObject("payload") { put("source", "cache") }
+        }
+      ),
+    )
+    client.expectNotification("notifications/resources/updated", 2_000)
+
+    // Second render: NO data products attached (e.g. session unsubscribed in between). Cache for
+    // a11y/atf must be evicted so a follow-up get_preview_data falls through to the wire.
+    daemon.emitRenderFinishedWithDataProducts(
+      previewId,
+      "/tmp/red-2.png",
+      attachments = emptyList(),
+    )
+    client.expectNotification("notifications/resources/updated", 2_000)
+
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/atf")
+        },
+      )
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    // No `cached: true` field on a wire-served payload.
+    assertThat(payload["cached"]?.jsonPrimitive?.contentOrNull).isNull()
+    assertThat(payload["payload"]?.jsonObject?.get("source")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("wire")
+  }
+
+  @Test
+  fun `cache miss when caller passes per-kind params skips the cache`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "layout/tree",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      daemon.dataFetchHandler = { _, kind, perKindParams, _ ->
+        // The wire call must receive the params verbatim — that's how kinds with sub-views (e.g.
+        // layout/tree filtered by nodeId) work.
+        val nodeId = perKindParams?.get("nodeId")?.jsonPrimitive?.contentOrNull ?: "?"
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 1,
+          payload = buildJsonObject { put("nodeId", nodeId) },
+        )
+      }
+    }
+    val previewId = "com.example.Red"
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.request("resources/subscribe", buildJsonObject { put("uri", uri) })
+
+    // Warm the cache with the no-params variant.
+    daemon.emitRenderFinishedWithDataProducts(
+      previewId,
+      "/tmp/red.png",
+      listOf(
+        buildJsonObject {
+          put("kind", "layout/tree")
+          put("schemaVersion", 1)
+          putJsonObject("payload") { put("nodeId", "root") }
+        }
+      ),
+    )
+    client.expectNotification("notifications/resources/updated", 2_000)
+
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "layout/tree")
+          putJsonObject("params") { put("nodeId", "node-42") }
+        },
+      )
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    // params present → skip cache → wire call → response carries the param-filtered nodeId, not
+    // the cached "root".
+    assertThat(payload["cached"]?.jsonPrimitive?.contentOrNull).isNull()
+    assertThat(payload["payload"]?.jsonObject?.get("nodeId")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("node-42")
+  }
+
+  @Test
+  fun `globalAttachDataProducts forwards through initialize to the daemon`() {
+    // Build a separate supervisor + server with the global attach list set, so we can assert the
+    // exact parameters reach the daemon's initialize handler.
+    val factoryLocal = FakeDaemonClientFactory()
+    val capturedParams = java.util.concurrent.LinkedBlockingQueue<JsonObject>(/* capacity */ 4)
+    factoryLocal.daemonConfigurer = { daemon ->
+      daemon.onInitializeReceived = { params -> capturedParams.offer(params) }
+    }
+    val supervisorLocal =
+      DaemonSupervisor(
+        descriptorProvider = FakeDescriptorProvider(),
+        clientFactory = factoryLocal,
+        globalAttachDataProducts = listOf("a11y/atf", "layout/tree"),
+      )
+    try {
+      val projectDir = tmp.newFolder("workspace-attach")
+      tmp.newFolder("workspace-attach", "module")
+      val project = supervisorLocal.registerProject(projectDir, "demo-attach")
+      // Trigger spawn — this sends initialize with attachDataProducts under options.
+      supervisorLocal.daemonFor(project.workspaceId, ":module")
+
+      val params = capturedParams.poll(3_000, TimeUnit.MILLISECONDS)
+      assertThat(params).isNotNull()
+      val attached = params!!["options"]?.jsonObject?.get("attachDataProducts")?.jsonArray
+      assertThat(attached?.map { it.jsonPrimitive.content })
+        .containsExactly("a11y/atf", "layout/tree")
+        .inOrder()
+    } finally {
+      runCatching { supervisorLocal.shutdown() }
+    }
+  }
+
+  @Test
+  fun `empty globalAttachDataProducts omits the options field entirely`() {
+    val factoryLocal = FakeDaemonClientFactory()
+    val capturedParams = java.util.concurrent.LinkedBlockingQueue<JsonObject>(/* capacity */ 4)
+    factoryLocal.daemonConfigurer = { daemon ->
+      daemon.onInitializeReceived = { params -> capturedParams.offer(params) }
+    }
+    val supervisorLocal =
+      DaemonSupervisor(
+        descriptorProvider = FakeDescriptorProvider(),
+        clientFactory = factoryLocal,
+        // Empty list (the default) — supervisor must NOT send an options object with an empty
+        // attachDataProducts array (encodeDefaults = false on the wire keeps the field absent;
+        // an explicit empty array would be an unnecessary protocol diff).
+      )
+    try {
+      val projectDir = tmp.newFolder("workspace-no-attach")
+      tmp.newFolder("workspace-no-attach", "module")
+      val project = supervisorLocal.registerProject(projectDir, "demo-no-attach")
+      supervisorLocal.daemonFor(project.workspaceId, ":module")
+      val params = capturedParams.poll(3_000, TimeUnit.MILLISECONDS)
+      assertThat(params).isNotNull()
+      assertThat(params!!.containsKey("options")).isFalse()
+    } finally {
+      runCatching { supervisorLocal.shutdown() }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------

@@ -81,6 +81,13 @@ class FakeDaemon : DaemonSpawn {
   val dataUnsubscribes = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
 
   /**
+   * Optional capture hook for the params object the fake received on `initialize`. Tests use this
+   * to assert what the supervisor passes through (e.g. `options.attachDataProducts`). Default is a
+   * no-op.
+   */
+  @Volatile var onInitializeReceived: (JsonObject) -> Unit = {}
+
+  /**
    * Outcome the fake's `data/fetch` handler returns. Mirrors the daemon's
    * [`DataProductRegistry.Outcome`] but deliberately decouples — the fake doesn't depend on the
    * registry interface.
@@ -191,6 +198,28 @@ class FakeDaemon : DaemonSpawn {
     return pngPath
   }
 
+  /**
+   * Pushes a `renderFinished` notification carrying the given [attachments] under the wire's
+   * `dataProducts` field. Each attachment is `(kind, schemaVersion, payload?, path?)` matching the
+   * D1 wire shape (DATA-PRODUCTS.md). Used by tests that exercise the supervisor's
+   * `dataProductCache` — the MCP server reads attachments off this notification, caches them, and
+   * `get_preview_data` cache-hits them.
+   */
+  fun emitRenderFinishedWithDataProducts(
+    previewId: String,
+    pngPath: String,
+    attachments: List<JsonObject>,
+  ): String {
+    val params = buildJsonObject {
+      put("id", previewId)
+      put("pngPath", pngPath)
+      put("tookMs", 50L)
+      putJsonArray("dataProducts") { attachments.forEach { add(it) } }
+    }
+    sendNotification("renderFinished", params)
+    return pngPath
+  }
+
   // -------------------------------------------------------------------------
   // Daemon-side reader: read framed JSON-RPC from the MCP shim, respond.
   // -------------------------------------------------------------------------
@@ -217,6 +246,7 @@ class FakeDaemon : DaemonSpawn {
   private fun handleRequest(id: Long, method: String, params: JsonObject?) {
     when (method) {
       "initialize" -> {
+        if (params != null) runCatching { onInitializeReceived(params) }
         val result =
           InitializeResult(
             protocolVersion = 1,

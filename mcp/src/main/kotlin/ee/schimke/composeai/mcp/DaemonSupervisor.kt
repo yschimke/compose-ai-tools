@@ -47,6 +47,13 @@ class DaemonSupervisor(
    * (initialize, renderNow, fileChanged fan-out) is unchanged from the consumer's perspective.
    */
   private val replicasPerDaemon: Int = DEFAULT_REPLICAS_PER_DAEMON,
+  /**
+   * D1 — kinds the supervisor passes through `initialize.options.attachDataProducts` to every
+   * spawned daemon. Configures "always-on" data products (e.g. `a11y/atf` for ambient diagnostic
+   * squigglies). Empty list (the default) keeps the wire absent — no global attach. Wired from the
+   * `--attach-data-product KIND` flag on [DaemonMcpMain].
+   */
+  private val globalAttachDataProducts: List<String> = emptyList(),
 ) {
 
   init {
@@ -187,6 +194,7 @@ class DaemonSupervisor(
           workspaceRoot = project.path.absolutePath,
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
+          attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
         )
       // D1 — surface the daemon's advertised data-product kinds so the MCP server's
       // `list_data_products` tool can answer without a wire round-trip. Empty list on pre-D2
