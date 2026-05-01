@@ -77,10 +77,38 @@ open class RobolectricHost(
    * InstrumentingClassLoader resolves them.
    */
   override val userClassloaderHolder: UserClassLoaderHolder? = null,
+  /**
+   * Number of Robolectric sandboxes to host in parallel — see
+   * [SANDBOX-POOL.md](../../../../../../docs/daemon/SANDBOX-POOL.md). Default `1` preserves the
+   * pre-pool single-sandbox behaviour bit-for-bit. `> 1` is **experimental and currently broken
+   * via the JUnit-runner approach**: see SANDBOX-POOL.md "Layer 2 — empirical finding" for the
+   * stall on the second sandbox's bootstrap.
+   *
+   * When [sandboxCount] > 1, [start] sequences boots, sets [SandboxHoldingHints.workerIndex] per
+   * worker so each sandbox lands on a distinct cache key, and dumps every thread's stack to
+   * stderr if any slot misses its ready latch — the diagnostic that informs the pivot to
+   * Robolectric's lower-level `Sandbox` API.
+   *
+   * **Restricted in v1:** [sandboxCount] > 1 requires [userClassloaderHolder] to be `null`.
+   */
+  val sandboxCount: Int = 1,
 ) : RenderHost {
 
-  private val workerThread =
-    Thread({ runJUnit() }, "compose-ai-daemon-host").apply { isDaemon = false }
+  init {
+    require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
+    require(sandboxCount == 1 || userClassloaderHolder == null) {
+      "sandboxCount > 1 with a non-null userClassloaderHolder is not supported in v1: per-slot " +
+        "child URLClassLoaders need separate work (SANDBOX-POOL.md). Got sandboxCount=$sandboxCount."
+    }
+  }
+
+  private val workerThreads: List<Thread> =
+    (0 until sandboxCount).map { i ->
+      Thread({ runJUnit(workerIndex = i) }, threadName(i)).apply { isDaemon = false }
+    }
+
+  private fun threadName(i: Int): String =
+    if (sandboxCount == 1) "compose-ai-daemon-host" else "compose-ai-daemon-host-$i"
 
   /**
    * Starts the host thread AND blocks until the Robolectric sandbox is fully bootstrapped.
@@ -106,25 +134,84 @@ open class RobolectricHost(
   override fun start() {
     StartupTimings.mark("RobolectricHost.start() entered")
     DaemonHostBridge.reset()
-    // B2.0-followup — do NOT pre-publish the child loader here. The holder's `parentSupplier`
-    // resolves to the sandbox classloader via `DaemonHostBridge.sandboxClassLoaderRef`, which is
-    // set inside `SandboxRunner.holdSandboxOpen` once the sandbox boots. Calling
-    // `holder.currentChildLoader()` here would race the sandbox boot and throw — or worse, allocate
-    // with a fallback parent. We block on the sandbox-ready latch below; publishing then happens
-    // lazily in [publishChildLoader] from a hot sandbox.
-    workerThread.start()
-    StartupTimings.mark("worker thread launched (Robolectric init begins)")
+    DaemonHostBridge.configureSlotCount(sandboxCount)
     val timeoutMs =
       System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
         ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS
-    val ready = DaemonHostBridge.awaitSandboxReady(timeoutMs = timeoutMs)
-    check(ready) {
-      "Robolectric sandbox failed to bootstrap within ${timeoutMs}ms — holdSandboxOpen never " +
-        "set sandboxClassLoaderRef. On a cold cache the instrumented android-all jar download " +
-        "can dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>. Otherwise check " +
-        "the SandboxHoldingRunner / Robolectric sandbox bootstrap logs for a real failure."
+
+    // SANDBOX-POOL.md — boot sandboxes sequentially, one worker at a time. We could in principle
+    // start them concurrently (each sandbox is independent now that the cache-key fix lands and
+    // `SandboxManager.getAndroidSandbox` is internally synchronized), but sequenced boots keep
+    // diagnosis simple if a future Robolectric upgrade reintroduces a global-state path. Total
+    // cold-start is proportional to N × per-sandbox-boot — on warm cache 5–15s × N — acceptable
+    // for typical pool sizes.
+    var bootedThrough = -1
+    try {
+      for (i in 0 until sandboxCount) {
+        workerThreads[i].start()
+        StartupTimings.mark(
+          if (sandboxCount == 1) "worker thread launched (Robolectric init begins)"
+          else "worker $i launched (Robolectric init begins)"
+        )
+        val slot = DaemonHostBridge.slot(i)
+        val ready = slot.awaitSandboxReady(timeoutMs)
+        if (!ready) {
+          if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
+          error(
+            "Robolectric sandbox slot $i failed to bootstrap within ${timeoutMs}ms — " +
+              "holdSandboxOpen never registered. On a cold cache the instrumented android-all " +
+              "jar download can dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>." +
+              " Otherwise check the SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
+          )
+        }
+        bootedThrough = i
+      }
+    } catch (t: Throwable) {
+      runCatching { abortPartialStart(bootedThrough) }
+      throw t
     }
-    StartupTimings.mark("sandbox-ready latch fired")
+    StartupTimings.mark(
+      if (sandboxCount == 1) "sandbox-ready latch fired" else "all sandbox-ready latches fired"
+    )
+  }
+
+  /**
+   * Cleanup helper for [start] failures. Sets the shared shutdown flag, poisons every (already
+   * configured) slot's request queue, and joins each booted worker with a short bounded wait. A
+   * worker still stuck inside Robolectric bootstrap won't see the poison pill — those threads
+   * remain orphaned in this JVM, which is the best we can do without forcibly killing them.
+   */
+  private fun abortPartialStart(bootedThrough: Int) {
+    DaemonHostBridge.shutdown.set(true)
+    val slots = DaemonHostBridge.slots()
+    for ((i, slot) in slots.withIndex()) {
+      if (i <= bootedThrough) runCatching { slot.requests.put(RenderRequest.Shutdown) }
+    }
+    for ((i, t) in workerThreads.withIndex()) {
+      if (i <= bootedThrough) runCatching { t.join(2_000) }
+    }
+  }
+
+  /**
+   * SANDBOX-POOL.md (Layer 2) diagnostic — dumps every thread's stack to stderr when a sandbox
+   * slot misses its ready latch. The dump is the load-bearing input for choosing between a
+   * Robolectric workaround (if a fixable lock is identifiable) and the lower-level Sandbox API
+   * pivot. Always-on so the diagnostic is a first-class artifact of pool failures.
+   */
+  private fun dumpAllThreadsToStderr(slot: Int, timeoutMs: Long) {
+    val sb = StringBuilder()
+    sb.append(
+      "===== sandbox-pool stall diagnostic — slot $slot did not boot within ${timeoutMs}ms =====\n"
+    )
+    val all = Thread.getAllStackTraces()
+    for ((thread, stack) in all.entries.sortedBy { it.key.name }) {
+      sb.append("[${thread.name}] state=${thread.state} daemon=${thread.isDaemon}\n")
+      for (frame in stack) sb.append("    at $frame\n")
+      sb.append("\n")
+    }
+    sb.append("===== end stall diagnostic =====\n")
+    System.err.print(sb)
+    System.err.flush()
   }
 
   /**
@@ -160,7 +247,13 @@ open class RobolectricHost(
     // on first read after a swap, so this also amortises the allocation onto the host thread
     // rather than the render thread.
     publishChildLoader()
-    DaemonHostBridge.requests.put(typed)
+    // SANDBOX-POOL.md — slot dispatch. Hash the request id to a slot so concurrent submits with
+    // distinct ids fan out across the pool. With sandboxCount=1 this collapses to slot 0, which
+    // is byte-identical with the pre-pool path (slot 0's `requests` queue is the same instance as
+    // the legacy top-level queue).
+    val slotIdx = Math.floorMod(typed.id, sandboxCount.toLong()).toInt()
+    val slot = DaemonHostBridge.slot(slotIdx)
+    slot.requests.put(typed)
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
     val raw =
       resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
@@ -240,24 +333,37 @@ open class RobolectricHost(
 
   override fun shutdown(timeoutMs: Long) {
     DaemonHostBridge.shutdown.set(true)
-    // Belt-and-braces: also enqueue a Shutdown so the worker wakes from
+    // Belt-and-braces: also enqueue a Shutdown on every slot's queue so each worker wakes from
     // poll() promptly rather than waiting out the 100ms cycle.
-    DaemonHostBridge.requests.put(RenderRequest.Shutdown)
-    workerThread.join(timeoutMs)
-    if (workerThread.isAlive) {
-      error("RobolectricHost worker did not exit within ${timeoutMs}ms after shutdown")
+    DaemonHostBridge.slots().forEach { runCatching { it.requests.put(RenderRequest.Shutdown) } }
+    workerThreads.forEach { it.join(timeoutMs) }
+    val stuck = workerThreads.filter { it.isAlive }
+    if (stuck.isNotEmpty()) {
+      error(
+        "RobolectricHost worker(s) did not exit within ${timeoutMs}ms after shutdown: " +
+          stuck.joinToString(", ") { it.name }
+      )
     }
   }
 
-  private fun runJUnit() {
-    val result = JUnitCore.runClasses(SandboxRunner::class.java)
-    if (!result.wasSuccessful()) {
-      // Surface to stderr; the caller's shutdown() join will time out and
-      // explicit logging helps diagnostics.
-      for (failure in result.failures) {
-        System.err.println("RobolectricHost SandboxRunner failed: ${failure.message}")
-        failure.exception?.printStackTrace()
+  private fun runJUnit(workerIndex: Int) {
+    // Pin the worker-index hint on this thread before invoking JUnit. SandboxHoldingRunner reads
+    // it in `createClassLoaderConfig` to add a synthetic `doNotAcquirePackage` discriminator,
+    // forcing Robolectric to allocate a distinct sandbox per worker. Skip for sandboxCount=1 so
+    // the legacy single-sandbox bootstrap path stays bit-identical with pre-pool code.
+    if (sandboxCount > 1) SandboxHoldingHints.workerIndex.set(workerIndex)
+    try {
+      val result = JUnitCore.runClasses(SandboxRunner::class.java)
+      if (!result.wasSuccessful()) {
+        for (failure in result.failures) {
+          System.err.println(
+            "RobolectricHost SandboxRunner[$workerIndex] failed: ${failure.message}"
+          )
+          failure.exception?.printStackTrace()
+        }
       }
+    } finally {
+      if (sandboxCount > 1) SandboxHoldingHints.workerIndex.remove()
     }
   }
 
@@ -313,11 +419,14 @@ open class RobolectricHost(
       // primitive `Class` objects, which don't apply here — `SandboxRunner` is
       // loaded by Robolectric's `InstrumentingClassLoader`). Assert non-null
       // so the new strict Kotlin platform-type checks stop warning.
-      DaemonHostBridge.setSandboxClassLoader(this.javaClass.classLoader!!)
+      // SANDBOX-POOL.md — registerSandbox CASs the first free slot and returns its index. For
+      // sandboxCount=1 this resolves to slot 0 (aliased to the legacy top-level fields), so the
+      // single-sandbox path stays bit-identical with the pre-pool registration.
+      val slotIndex = DaemonHostBridge.registerSandbox(this.javaClass.classLoader!!)
+      val slot = DaemonHostBridge.slot(slotIndex)
 
       while (!DaemonHostBridge.shutdown.get()) {
-        val request =
-          DaemonHostBridge.requests.poll(100, TimeUnit.MILLISECONDS) ?: continue
+        val request = slot.requests.poll(100, TimeUnit.MILLISECONDS) ?: continue
         // Match by simple class name rather than `is` so a future
         // classloader-rule change reintroducing instrumentation of
         // `RenderRequest` is observable as a clean failure rather than a
