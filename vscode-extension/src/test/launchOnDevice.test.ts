@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+    buildPreviewActivityAmStartArgs,
     collectAndroidApplicationModules,
     findAndroidSdkRoot,
     parseAndroidApplicationInfo,
@@ -154,6 +155,35 @@ describe('findAndroidSdkRoot', () => {
             fs.rmSync(fakePropsSdk, { recursive: true, force: true });
         }
     }));
+});
+
+describe('buildPreviewActivityAmStartArgs', () => {
+    it('targets PreviewActivity with the composable FQN', () => {
+        const args = buildPreviewActivityAmStartArgs({
+            applicationId: 'com.example.app',
+            composableFqn: 'com.example.PreviewsKt.MyPreview',
+            parameterProviderClassName: null,
+        });
+        assert.deepStrictEqual(args, [
+            'shell', 'am', 'start',
+            '-n', 'com.example.app/androidx.compose.ui.tooling.PreviewActivity',
+            '--es', 'composable', 'com.example.PreviewsKt.MyPreview',
+        ]);
+    });
+
+    it('forwards parameterProviderClassName when present', () => {
+        const args = buildPreviewActivityAmStartArgs({
+            applicationId: 'com.example.app',
+            composableFqn: 'com.example.PreviewsKt.ParamPreview',
+            parameterProviderClassName: 'com.example.PreviewsKt$ToggleProvider',
+        });
+        assert.deepStrictEqual(args, [
+            'shell', 'am', 'start',
+            '-n', 'com.example.app/androidx.compose.ui.tooling.PreviewActivity',
+            '--es', 'composable', 'com.example.PreviewsKt.ParamPreview',
+            '--es', 'parameterProviderClassName', 'com.example.PreviewsKt$ToggleProvider',
+        ]);
+    });
 });
 
 describe('collectAndroidApplicationModules', () => {

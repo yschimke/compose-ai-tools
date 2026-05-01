@@ -135,6 +135,38 @@ export function runAdb(adbPath: string, args: string[]): Promise<AdbResult> {
 }
 
 /**
+ * Build the `adb shell am start` argv that hands a single preview to
+ * `androidx.compose.ui.tooling.PreviewActivity` — the same activity
+ * Android Studio drives for "Deploy Preview to Device". The activity
+ * ships in `androidx.compose.ui:ui-tooling` (typically pulled in as
+ * `debugImplementation`) and reflects on the FQN passed via the
+ * `composable` extra to render that one composable on screen.
+ *
+ * Extras key contract (matches Android Studio's deploy-preview path):
+ *
+ *   - `composable` — fully qualified function name including the file
+ *     class, e.g. `com.example.PreviewsKt.MyPreview`.
+ *   - `parameterProviderClassName` — FQN of the
+ *     `PreviewParameterProvider` for `@PreviewParameter` previews.
+ *     Omitted for static previews. We don't pass `parameterProviderIndex`
+ *     here because our preview manifest IDs encode the suffix in the
+ *     filename, not the integer index — landing on index 0 (the default)
+ *     is the closest reproducible behaviour.
+ */
+export function buildPreviewActivityAmStartArgs(opts: {
+    applicationId: string;
+    composableFqn: string;
+    parameterProviderClassName: string | null;
+}): string[] {
+    const component = `${opts.applicationId}/androidx.compose.ui.tooling.PreviewActivity`;
+    const args = ['shell', 'am', 'start', '-n', component, '--es', 'composable', opts.composableFqn];
+    if (opts.parameterProviderClassName) {
+        args.push('--es', 'parameterProviderClassName', opts.parameterProviderClassName);
+    }
+    return args;
+}
+
+/**
  * Filter [modules] to those whose `build.gradle.kts` applies the
  * Android-application plugin and declares an `applicationId`. Returns a
  * sorted list of `{module, applicationId}` pairs. Modules that can't be
