@@ -17,9 +17,13 @@ import org.junit.Test
  *    dispatch in [RobolectricHost.submit] is stable — `Math.floorMod(id, sandboxCount)` is keyed
  *    on the request id which is monotonic per process).
  *
- * **Why ids are bucketed by `id and 1`**: [RobolectricHost.submit] dispatches via
- * `Math.floorMod(id, sandboxCount.toLong())`. With sandboxCount=2 that's `id mod 2 = id and 1`.
- * Result.id matches the request id, so we bucket the observed results that way.
+ * **Why ids are bucketed by `id and 1`**: when the payload doesn't carry a `previewId=` key
+ * (legacy stub payloads like `render-N`), [RobolectricHost.submit] hashes the request id instead.
+ * For small positive Long ids `Long.hashCode()` is the low 32 bits as a signed int, so its parity
+ * matches `id and 1L`; bucketing by that aligns with the actual dispatch path.
+ *
+ * Affinity-aware dispatch (`previewId=<id>` in the payload) is covered by
+ * [samePreviewIdAlwaysLandsOnSameSlot] below.
  *
  * **Why `legacyStubPayload` and not real RenderSpecs**: [RobolectricHostTest] already submits the
  * `payload="render-N"` shape that the B1.3-era stub path was built for. Reusing that path keeps
@@ -82,6 +86,54 @@ class RobolectricHostPoolTest {
           cl.contains("Instrument") || cl.contains("Sandbox") || cl.contains("Robolectric"),
         )
       }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun samePreviewIdAlwaysLandsOnSameSlot() {
+    // SANDBOX-POOL-FOLLOWUPS.md (#3, affinity-aware dispatch). Same previewId across many
+    // submits must hit the same sandbox slot every time so per-sandbox Compose snapshot caches +
+    // Robolectric shadow caches accumulate as intended; without this, repeat renders of the same
+    // preview never warm a single sandbox.
+    val host = RobolectricHost(sandboxCount = 2)
+    try {
+      host.start()
+
+      // Use many previewIds so at least one lands on each slot regardless of how the hash
+      // distributes — the per-previewId stability assertion below is the load-bearing one,
+      // independent of which slot any individual id lands on.
+      val previewIds = (0 until 16).map { i -> "com.example.preview.Foo$i.method" }
+      val rendersPerPreview = 4
+      val byPreview =
+        previewIds.associateWith { previewId ->
+          (1..rendersPerPreview).map { _ ->
+            host.submit(RenderRequest.Render(payload = "previewId=$previewId"))
+          }
+        }
+
+      // Load-bearing: each previewId's renders all land on a single classloader (= same slot).
+      for ((previewId, results) in byPreview) {
+        val classloaderHashes = results.map { it.classLoaderHashCode }.toSet()
+        assertEquals(
+          "previewId='$previewId' should always land on one slot, saw $classloaderHashes",
+          1,
+          classloaderHashes.size,
+        )
+      }
+
+      // Sanity: across 16 previewIds, at least both slots got something. If everything pinned to
+      // slot 0 the test would silently pass the per-id stability assertion on a degenerate hash.
+      val allClassloaderHashes =
+        previewIds
+          .flatMap { previewId -> byPreview.getValue(previewId).map { it.classLoaderHashCode } }
+          .toSet()
+      assertEquals(
+        "16 previewIds should spread across both slots, saw $allClassloaderHashes",
+        2,
+        allClassloaderHashes.size,
+      )
     } finally {
       host.shutdown()
     }
