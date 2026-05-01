@@ -255,7 +255,16 @@ export type ExtensionToWebview =
     | { command: 'showMessage'; text: string }
     | { command: 'clearAll' }
     | { command: 'setModules'; modules: string[]; selected: string }
-    | { command: 'setFunctionFilter'; functionName: string };
+    | { command: 'setFunctionFilter'; functionName: string }
+    /**
+     * Drives the slim progress bar at the top of the panel. `percent` is
+     * monotonic within a refresh and clamped to [0, 1]; `label` is the
+     * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).
+     * The webview hides the bar on its own when `percent` reaches 1.
+     */
+    | { command: 'setProgress'; phase: string; label: string; percent: number }
+    /** Force-clear the progress bar (e.g. on cancellation or fatal error). */
+    | { command: 'clearProgress' };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =

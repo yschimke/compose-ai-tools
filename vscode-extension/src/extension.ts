@@ -20,6 +20,7 @@ import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
+import { mergeCalibration, PhaseDurations, ProgressState } from './buildProgress';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -74,6 +75,11 @@ let debounceElapsed = true;
 let refreshInFlight = false;
 /** Workspace-state key that suppresses the "plugin not applied" notification. */
 const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
+/** Workspace-state key for per-module phase-duration calibration. Shape:
+ *  `Record<moduleId, PhaseDurations>`. Updated after every successful refresh
+ *  so the progress bar's animation rate matches what each module actually
+ *  takes (a Wear OS sample with Robolectric is much slower than a CMP one). */
+const PROGRESS_CALIBRATION_KEY = 'composePreview.progressCalibration';
 /** Captured in activate() so notification helpers can reach workspaceState. */
 let extensionContext: vscode.ExtensionContext | null = null;
 /** Module-scoped logger wired up in activate() so refresh() can trace state
@@ -829,6 +835,25 @@ function updateDaemonStatus(module: string, state: WarmState): void {
 /** Per-extension-session memo so bootstrap runs once per module. */
 const daemonBootstrappedModules = new Set<string>();
 
+/** Read calibrated phase durations for `module` from workspace state. Empty
+ *  on first run; the tracker falls back to its built-in phase defaults. */
+function readCalibration(module: string): PhaseDurations {
+    if (!extensionContext) { return {}; }
+    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
+        PROGRESS_CALIBRATION_KEY, {});
+    return all[module] ?? {};
+}
+
+/** Persist updated calibration for `module`, blending into prior samples via
+ *  EMA so a single anomalous run doesn't dominate. */
+function writeCalibration(module: string, latest: PhaseDurations): void {
+    if (!extensionContext) { return; }
+    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
+        PROGRESS_CALIBRATION_KEY, {});
+    all[module] = mergeCalibration(all[module] ?? {}, latest);
+    void extensionContext.workspaceState.update(PROGRESS_CALIBRATION_KEY, all);
+}
+
 /**
  * Coalesce save-driven refreshes. The next refresh fires when BOTH:
  *   1. `DEBOUNCE_MS` has elapsed since the last save (absorbs bursts), and
@@ -1083,6 +1108,25 @@ async function refresh(
     lastLoadedModules = modules;
     gradleService.cancel();
 
+    // Forward progress-bar updates to the webview. Single tracker per refresh
+    // — same instance feeds the Gradle phase signals (compile/discover/render)
+    // and the post-task `loading` phase the extension drives itself once
+    // Gradle returns. The webview hides the bar on its own once percent=1.
+    const onProgress = (state: ProgressState) => {
+        if (abort.signal.aborted) { return; }
+        panel?.postMessage({
+            command: 'setProgress',
+            phase: state.phase,
+            label: state.label,
+            percent: state.percent,
+        });
+    };
+    const taskOpts = {
+        progressCalibration: readCalibration(module),
+        onProgress,
+        onCalibration: (durations: PhaseDurations) => writeCalibration(module, durations),
+    };
+
     try {
         const allPreviews: PreviewInfo[] = [];
         previewModuleMap.clear();
@@ -1091,8 +1135,8 @@ async function refresh(
             if (abort.signal.aborted) { return 'cancelled'; }
 
             const manifest = forceRender
-                ? await gradleService.renderPreviews(mod, tier)
-                : await gradleService.discoverPreviews(mod);
+                ? await gradleService.renderPreviews(mod, tier, taskOpts)
+                : await gradleService.discoverPreviews(mod, taskOpts);
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
@@ -1138,6 +1182,7 @@ async function refresh(
             // message isn't overlaid on old content from a prior scope.
             panel.postMessage({ command: 'clearAll' });
             panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found in this module' });
+            panel.postMessage({ command: 'clearProgress' });
             hasPreviewsLoaded = false;
             logLine('done — module has no previews');
             return 'completed';
@@ -1158,6 +1203,7 @@ async function refresh(
                 command: 'showMessage',
                 text: `No @Preview functions in this file (${otherFiles} in other files in this module).`,
             });
+            panel.postMessage({ command: 'clearProgress' });
             hasPreviewsLoaded = false;
             logLine(`done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`);
             return 'completed';
@@ -1182,6 +1228,15 @@ async function refresh(
         });
         hasPreviewsLoaded = true;
         logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
+
+        // Gradle is done; the rest of the work (reading PNGs, base64-encoding,
+        // pushing to webview) is extension-side. Push the bar into a "Loading
+        // images" phase with a known weight so the user sees the bar continue
+        // to advance instead of sitting stuck at the end of `rendering` while
+        // images stream in.
+        if (!abort.signal.aborted) {
+            onProgress({ phase: 'loading', label: 'Loading images', percent: 0.92 });
+        }
 
         // Load images in parallel. Animated previews have multiple captures
         // in `preview.captures`; one updateImage message per capture. The
@@ -1239,6 +1294,9 @@ async function refresh(
             }
         }
         await Promise.all(imageJobs);
+        if (!abort.signal.aborted) {
+            onProgress({ phase: 'done', label: 'Done', percent: 1 });
+        }
 
         // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
         // renderPreviews() clears the 'loading' Building… banner the moment
@@ -1254,6 +1312,7 @@ async function refresh(
         // would be misleading and noisy.
         if (err instanceof TaskCancelledError) {
             logLine(`cancelled — superseded by a newer refresh`);
+            panel.postMessage({ command: 'clearProgress' });
             return 'cancelled';
         }
         if (err instanceof JdkImageError) {
@@ -1262,6 +1321,7 @@ async function refresh(
                 command: 'showMessage',
                 text: 'Gradle is running on a JRE without jlink. Configure a full JDK to render previews.',
             });
+            panel.postMessage({ command: 'clearProgress' });
             showJdkImageRemediation(err);
             return 'failed';
         }
@@ -1271,6 +1331,7 @@ async function refresh(
             command: 'showMessage',
             text: message,
         });
+        panel.postMessage({ command: 'clearProgress' });
         return 'failed';
     } finally {
         if (pendingRefresh === abort) { pendingRefresh = null; }

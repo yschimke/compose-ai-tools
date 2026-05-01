@@ -20,6 +20,61 @@ body {
     color: var(--text-primary);
 }
 
+/* -- Top progress bar -------------------------------------------------
+ * Slim 2px strip pinned to the very top of the panel, animating during a
+ * refresh. Mirrors the affordance native VS Code views (Extensions, Source
+ * Control) use for background work — visible-but-quiet, with a label that
+ * names the current build phase. Hidden when no refresh is in flight.
+ */
+.progress-bar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: transparent;
+    z-index: 10;
+    overflow: visible;
+}
+.progress-bar[hidden] { display: none; }
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+    transition: width 200ms ease-out;
+}
+
+/* Phase label: tiny, lives just below the strip. Right-aligned so it
+ * doesn't fight with the toolbar selects on the left. Pointer-events
+ * disabled so the toolbar stays clickable through it. */
+.progress-label {
+    position: absolute;
+    top: 2px;
+    right: 8px;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    color: var(--text-secondary);
+    background: var(--vscode-editor-background);
+    padding: 0 4px;
+    border-radius: 0 0 3px 3px;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+    opacity: 0.85;
+}
+
+/* Final-state flash before fade-out. Brightens the strip momentarily so
+ * the eye registers the transition from "in-flight" to "done". */
+.progress-bar.progress-finishing .progress-fill {
+    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+    transition: width 200ms ease-out, opacity 500ms ease-out 100ms;
+    opacity: 0;
+}
+.progress-bar.progress-finishing .progress-label {
+    transition: opacity 500ms ease-out 100ms;
+    opacity: 0;
+}
+
 /* -- Toolbar ---------------------------------------------------------- */
 
 .toolbar {

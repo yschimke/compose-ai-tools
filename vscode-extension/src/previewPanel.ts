@@ -52,6 +52,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
+    <div id="progress-bar" class="progress-bar" role="progressbar"
+         aria-label="Refresh progress"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div class="progress-fill"></div>
+        <div class="progress-label" id="progress-label"></div>
+    </div>
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="Preview filters">
         <div class="select-wrapper">
             <select id="filter-function" title="Filter by function" aria-label="Function filter">
@@ -106,6 +112,49 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnNext = document.getElementById('btn-next');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
+        const progressBar = document.getElementById('progress-bar');
+        const progressFill = progressBar.querySelector('.progress-fill');
+        const progressLabel = document.getElementById('progress-label');
+        // Auto-hide timer for the bar after it lands at 100%. Holds for a
+        // beat so the user sees the completed state, then fades the strip
+        // out so it doesn't permanently occupy a row of UI.
+        let progressHideTimer = null;
+
+        function setProgress(label, percent) {
+            if (progressHideTimer) {
+                clearTimeout(progressHideTimer);
+                progressHideTimer = null;
+            }
+            const pct = Math.max(0, Math.min(1, percent));
+            progressBar.hidden = false;
+            progressBar.classList.remove('progress-finishing');
+            progressFill.style.width = (pct * 100).toFixed(1) + '%';
+            progressBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+            progressLabel.textContent = label
+                ? label + ' · ' + Math.round(pct * 100) + '%'
+                : '';
+            if (pct >= 1) {
+                progressBar.classList.add('progress-finishing');
+                progressHideTimer = setTimeout(() => {
+                    progressBar.hidden = true;
+                    progressBar.classList.remove('progress-finishing');
+                    progressFill.style.width = '0%';
+                    progressLabel.textContent = '';
+                    progressHideTimer = null;
+                }, 600);
+            }
+        }
+
+        function clearProgress() {
+            if (progressHideTimer) {
+                clearTimeout(progressHideTimer);
+                progressHideTimer = null;
+            }
+            progressBar.hidden = true;
+            progressBar.classList.remove('progress-finishing');
+            progressFill.style.width = '0%';
+            progressLabel.textContent = '';
+        }
 
         let allPreviews = [];
         let moduleDir = '';
@@ -1252,13 +1301,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                                 container.appendChild(overlay);
                             }
                         }
-                    } else {
-                        // 'loading' (not 'extension') so renderPreviews can
-                        // clear it the moment cards arrive — otherwise the
-                        // banner sits on top of skeleton cards while images
-                        // stream in, which looks like the build is stuck.
-                        setMessage('Building…', 'loading');
                     }
+                    // Whole-panel loading state is now carried by the slim
+                    // progress bar at the top of the view (setProgress).
+                    // Avoid double-signalling with a "Building…" banner —
+                    // it competes with the bar for visual attention.
+                    break;
+
+                case 'setProgress':
+                    setProgress(msg.label || '', msg.percent || 0);
+                    break;
+
+                case 'clearProgress':
+                    clearProgress();
                     break;
 
                 case 'setError':
