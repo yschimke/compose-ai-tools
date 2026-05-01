@@ -78,8 +78,9 @@ class FakeHarnessLauncher(
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         // Save-after-render ordering: tests that don't drive a render between `fileChanged` and
         // their `discoveryUpdated` assertion lean on the watchdog. Production default is 1500ms;
-        // the fake-mode harness shortens it so scenarios stay sub-second.
-        add("-Dcomposeai.daemon.discoveryWatchdogMs=200")
+        // the fake-mode harness shortens it so scenarios stay sub-second. 500ms gives the cold
+        // ClassGraph scan enough JIT-warmup margin not to flake under CI load.
+        add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
         if (historyDir != null) add("-Dcomposeai.daemon.historyDir=${historyDir.absolutePath}")
         if (workspaceRoot != null)
           add("-Dcomposeai.daemon.workspaceRoot=${workspaceRoot.absolutePath}")
@@ -166,7 +167,7 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.harness.previewsManifest=${previewsManifest.absolutePath}")
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         // Save-after-render ordering watchdog — same justification as `FakeHarnessLauncher` above.
-        add("-Dcomposeai.daemon.discoveryWatchdogMs=200")
+        add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)

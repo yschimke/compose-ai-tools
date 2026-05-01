@@ -105,9 +105,24 @@ class S3RenderAfterEditTest {
           changeType = ChangeType.MODIFIED,
         )
 
-        // 4. Assert the daemon emits `discoveryUpdated`. B2.2 phase 2 — pre-phase-2 this assertion
-        //    was the *absence* of the notification (the regression marker). Now we tighten.
-        val discovery = client.pollNotification("discoveryUpdated", 2.seconds)
+        // 4. Second render — must serve v2.
+        //    The new save-after-render invariant gates `discoveryUpdated` on the next
+        //    `renderFinished`, so the test asserts the render lands first (matching what a real
+        //    editor's save loop would do) and only then polls for the deferred metadata
+        //    notification.
+        val secondStart = System.currentTimeMillis()
+        val rn2 = client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
+        assertEquals(listOf(previewId), rn2.queued)
+        val finished2 = client.pollRenderFinishedFor(previewId, timeout = 15.seconds)
+        val secondFinishedAt = System.currentTimeMillis()
+        val v2ReportedPath =
+          finished2["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
+            ?: error("renderFinished missing pngPath: $finished2")
+
+        // 5. Assert the daemon emits `discoveryUpdated` AFTER the render finished. B2.2 phase 2 —
+        //    pre-phase-2 this assertion was the *absence* of the notification (the regression
+        //    marker); now we tighten and pin the new render-before-metadata ordering.
+        val discovery = client.pollNotification("discoveryUpdated", 5.seconds)
         val params =
           discovery["params"]?.jsonObject ?: error("discoveryUpdated missing params: $discovery")
         val removedIds =
@@ -120,15 +135,6 @@ class S3RenderAfterEditTest {
         assertEquals(emptyList<Any?>(), params["added"]?.jsonArray?.toList() ?: emptyList<Any?>())
         assertEquals(0, params["totalPreviews"]?.jsonPrimitive?.intOrNull)
 
-        // 5. Second render — must serve v2.
-        val secondStart = System.currentTimeMillis()
-        val rn2 = client.renderNow(previews = listOf(previewId), tier = RenderTier.FAST)
-        assertEquals(listOf(previewId), rn2.queued)
-        val finished2 = client.pollRenderFinishedFor(previewId, timeout = 15.seconds)
-        val secondFinishedAt = System.currentTimeMillis()
-        val v2ReportedPath =
-          finished2["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
-            ?: error("renderFinished missing pngPath: $finished2")
         val v2Actual = File(v2ReportedPath).readBytes()
         val diffV2 = PixelDiff.compare(actual = v2Actual, expected = v2Bytes)
         if (!diffV2.ok) {
