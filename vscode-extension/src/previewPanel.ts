@@ -1508,6 +1508,24 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
             if (caps) updateFrameIndicator(card);
 
+            // If a diff overlay is open on this card and uses the live render
+            // as its left anchor (head / main / current), the bytes the
+            // overlay is showing just went stale. Re-issue so the user sees
+            // the new render without clicking — symmetric with the
+            // preview_main ref watcher's auto-refresh on the right anchor.
+            const openDiff = container.querySelector('.preview-diff-overlay');
+            if (openDiff) {
+                const against = openDiff.dataset.against;
+                if (against === 'head' || against === 'main') {
+                    showDiffOverlay(card, against, null, null);
+                    vscode.postMessage({
+                        command: 'requestPreviewDiff',
+                        previewId,
+                        against,
+                    });
+                }
+            }
+
             // Re-build the a11y overlay once the image natural dimensions
             // are known. Data-URL srcs may resolve synchronously; in that
             // case img.complete is true and load will not fire, so we
