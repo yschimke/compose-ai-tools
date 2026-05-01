@@ -963,12 +963,102 @@ async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
 }
 
 /**
- * Activation-time refresh sequence. Three phases, one after the other:
+ * Paint the panel from the previously-rendered `previews.json` + PNGs on disk
+ * before kicking the activation Gradle round-trip. Without this the panel
+ * spends the first ~1–2 s of every session on a "Loading Compose previews…"
+ * placeholder while `discoverPreviews` configures Gradle — even when a perfect
+ * set of cached cards is sitting in `build/compose-previews/`.
  *
- *   1. `refresh(false, filePath)` — populates the panel from on-disk PNGs so
- *      the user sees *something* immediately (cards with cached images, plus
- *      the "Showing previews from <ago>" banner if those PNGs are stale
- *      relative to the source file).
+ * The cached cards are decorated through the existing `markAllLoading`
+ * overlay path so it's visually clear they may be stale; the
+ * BuildProgressTracker that `refresh()` boots immediately afterwards owns
+ * the progress bar, so the user gets the standard phase-by-phase progress
+ * feedback (Compiling → Discovering → …) on top of the painted cards. The
+ * follow-up `refresh(false, filePath)` will stream replacement images on
+ * top of these cards as they arrive.
+ *
+ * Returns `true` when something was painted (caller can short-circuit any
+ * "first launch" empty-state logic), `false` when no usable manifest existed.
+ */
+async function preloadCachedPreviews(filePath: string): Promise<boolean> {
+    if (!gradleService || !panel) { return false; }
+    if (!isPreviewSourceFile(filePath)) { return false; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module) { return false; }
+    const manifest = gradleService.readManifest(module);
+    if (!manifest || manifest.previews.length === 0) { return false; }
+
+    const filterFile = packageQualifiedSourcePath(filePath);
+    const visiblePreviews = manifest.previews.filter(p => p.sourceFile === filterFile);
+    if (visiblePreviews.length === 0) { return false; }
+
+    for (const p of visiblePreviews) {
+        for (const capture of p.captures) {
+            capture.label = captureLabel(capture);
+        }
+        previewModuleMap.set(p.id, module);
+    }
+
+    panel.postMessage({
+        command: 'setPreviews',
+        previews: visiblePreviews,
+        moduleDir: module,
+        heavyStaleIds: [],
+    });
+
+    const imageJobs: Promise<void>[] = [];
+    for (const preview of visiblePreviews) {
+        for (let idx = 0; idx < preview.captures.length; idx++) {
+            const capture = preview.captures[idx];
+            if (!capture.renderOutput) { continue; }
+            const captureIndex = idx;
+            imageJobs.push((async () => {
+                const imageData = await gradleService!
+                    .readPreviewImage(module, capture.renderOutput);
+                if (!imageData || !panel) { return; }
+                if (captureIndex === 0) {
+                    registry.setImage(preview.id, imageData);
+                }
+                panel.postMessage({
+                    command: 'updateImage',
+                    previewId: preview.id,
+                    captureIndex,
+                    imageData,
+                });
+            })());
+        }
+    }
+    await Promise.all(imageJobs);
+
+    // Drop the spinner overlay over every painted card. The escalation timer
+    // in the webview promotes the corner spinner to the dim-and-blur
+    // `.subtle` variant after 500 ms so the user reads "stale render,
+    // updating in the background" rather than "fresh render, why is it
+    // spinning". On a hot daemon, the first updateImage from the refresh
+    // path lands inside that 500 ms window and the overlay never escalates.
+    panel.postMessage({ command: 'markAllLoading' });
+
+    // Sync the extension-side state the upcoming refresh() reads so it
+    // takes the stealth-refresh path (markAllLoading, no clearAll) rather
+    // than tearing down what we just painted.
+    hasPreviewsLoaded = true;
+    lastLoadedModules = [module];
+    moduleManifestCache.set(module, visiblePreviews);
+    currentScopeFile = filePath;
+    return true;
+}
+
+/**
+ * Activation-time refresh sequence. Phases run in order:
+ *
+ *   0. `preloadCachedPreviews(filePath)` — paints the previously-rendered
+ *      cards from `build/compose-previews/` with a stale-render overlay so
+ *      the panel never opens onto an empty screen while Gradle warms up.
+ *      Skipped silently when no usable manifest exists.
+ *   1. `refresh(false, filePath)` — runs `discoverPreviews` and reconciles
+ *      the panel with whatever's currently on disk. With phase 0 having
+ *      painted, this stage swaps to the stealth-refresh path (per-card
+ *      overlays, no full-screen takeover).
  *   2. `warmDaemonForFile(filePath)` — runs `composePreviewDaemonStart` and
  *      spawns the daemon JVM. No-op if the daemon flag is off.
  *   3. If the daemon is healthy by the time it's done warming, fire a
@@ -977,15 +1067,16 @@ async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
  *      another module / `git pull`'d / agent rewrote a Composable" case
  *      where the on-disk PNGs are stale relative to source even though the
  *      source file the user is currently looking at is itself unchanged.
- *      The banner from phase 1 stays up only long enough for phase 3's
+ *      The overlay from phases 0/1 stays up only long enough for phase 3's
  *      first updateImage to clear it; on a hot daemon that's a couple of
  *      seconds, on a cold spawn 5-10s.
  *
- * Failures in phases 2 or 3 silently fall back: phase 1 already gave the
+ * Failures in phases 2 or 3 silently fall back: phases 0/1 already gave the
  * user something to look at, and the next save will re-trigger the whole
  * pipeline through `runRefreshExclusive`.
  */
 async function runActivationRefresh(filePath: string): Promise<void> {
+    await preloadCachedPreviews(filePath);
     await refresh(false, filePath);
     await warmDaemonForFile(filePath);
     if (!gradleService || !daemonGate) { return; }
