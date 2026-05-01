@@ -473,6 +473,63 @@ body {
     animation: fadeIn 0.2s ease-in;
 }
 
+/* Diff overlay — covers the focused image with a side-by-side comparison
+   when the user clicks Diff vs HEAD / vs main. Lives inside the
+   .image-container so it inherits the card's bounds and exits cleanly via
+   its own close button. */
+.preview-diff-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--vscode-editor-background);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 8px 8px;
+    gap: 6px;
+    overflow: auto;
+    cursor: default;
+}
+.preview-diff-close {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+}
+.preview-diff-loading,
+.preview-diff-error {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    padding: 12px;
+}
+.preview-diff-error { color: var(--vscode-errorForeground); }
+.preview-diff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    min-width: 0;
+}
+.preview-diff-pane { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.preview-diff-pane-label {
+    font-size: 90%;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.preview-diff-pane img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    background: var(--card-bg);
+}
+.preview-diff-pane-empty {
+    font-size: 90%;
+    padding: 12px;
+    text-align: center;
+    color: var(--text-secondary);
+    background: var(--card-bg);
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
