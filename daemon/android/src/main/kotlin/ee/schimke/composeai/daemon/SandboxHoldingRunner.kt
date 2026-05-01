@@ -31,6 +31,23 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
     val builder =
       InstrumentationConfiguration.Builder(super.createClassLoaderConfig(method))
         .doNotAcquirePackage("ee.schimke.composeai.daemon.bridge")
+    // SANDBOX-POOL.md (Layer 2) — pool worker index hint. When set, force a unique sandbox by
+    // adding a synthetic discriminator. Read here on the calling worker thread because
+    // `createClassLoaderConfig` runs synchronously inside `JUnitCore.runClasses`, before the
+    // sandbox bootstrap proper.
+    //
+    // **Why doNotAcquireClass and not doNotAcquirePackage.** Robolectric's
+    // [InstrumentationConfiguration.equals] checks `classesToNotAcquire` but NOT
+    // `packagesToNotAcquire` — verified empirically via `javap -c` on Robolectric 4.16.1, see
+    // SANDBOX-POOL.md "Layer 2 — empirical finding". Using a per-worker package-level
+    // discriminator silently collides on the cache key and Robolectric returns the SAME cached
+    // sandbox for every worker; using a class-level discriminator differs in equals as expected.
+    // The class name itself is synthetic — never matches a real class — and only exists to break
+    // the cache key.
+    val workerIdx = SandboxHoldingHints.workerIndex.get()
+    if (workerIdx != null) {
+      builder.doNotAcquireClass("composeai.sandbox.uniq.Worker$workerIdx")
+    }
     // B2.0: optional user-package exclusion. Empty when sysprop is unset; existing in-process
     // tests that rely on the default sandbox-classpath path are unaffected.
     val raw = System.getProperty("composeai.daemon.userClassPackages")
@@ -42,4 +59,23 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
     }
     return builder.build()
   }
+}
+
+/**
+ * Cross-thread hints consumed by [SandboxHoldingRunner] during sandbox bootstrap. Lives at file
+ * scope (not on a companion) so set/get is cheap and readable without instantiating a runner.
+ *
+ * Used by SANDBOX-POOL.md (Layer 2) — the host's pool worker thread sets [workerIndex] before
+ * calling `JUnitCore.runClasses` so each pool worker bootstraps a distinct Robolectric sandbox
+ * (otherwise the sandbox cache key — which includes the [InstrumentationConfiguration] — matches
+ * across workers and the pool collapses to a single cached sandbox).
+ */
+internal object SandboxHoldingHints {
+  /**
+   * Worker index hint. Non-null on the pool worker thread between
+   * [ee.schimke.composeai.daemon.RobolectricHost.runJUnit]'s `set` and `remove` calls; null
+   * otherwise so the pre-pool single-sandbox bootstrap path keeps its historical
+   * [InstrumentationConfiguration] (and therefore Robolectric's sandbox cache hits across runs).
+   */
+  val workerIndex: ThreadLocal<Int?> = ThreadLocal()
 }

@@ -1,9 +1,13 @@
 # Preview daemon — in-JVM sandbox pool
 
 > **Status:** Layer 1 (bridge multi-slot foundation) landed. Layer 2 (RobolectricHost as a sandbox
-> pool) was attempted and **blocked at the Robolectric layer** — see "Layer 2 — empirical
-> finding" below for what we tried and why it stalled. The next attempt needs to bypass the JUnit
-> runner and drive Robolectric's lower-level `Sandbox` API directly.
+> pool) is now **partially unblocked**: the cache-key bug that collapsed the pool to a single
+> shared sandbox is fixed (use `doNotAcquireClass` not `doNotAcquirePackage` — see "Layer 2 —
+> empirical finding" below), and two distinct sandbox classloaders now bootstrap. A second
+> blocker remains: `Looper.sMainLooper` appears non-null when sandbox B's
+> `AndroidTestEnvironment.setUpApplicationState` runs, even though the class is sandbox-loaded.
+> Root cause not yet pinned; needs deeper Robolectric source reading or a thread-dump-of-the-other-sandbox
+> diagnostic.
 
 ## Motivation
 
@@ -62,54 +66,98 @@ latch. `slot 0` = today's single-sandbox path; the bridge surface stays source-c
 existing `RobolectricHost.submit` and `SandboxRunner.holdSandboxOpen` call sites that don't yet
 opt into multi-slot.
 
-### Layer 2 — RobolectricHost as a sandbox pool — empirical finding [blocked]
+### Layer 2 — RobolectricHost as a sandbox pool — empirical finding [partial]
 
 The straightforward shape — `RobolectricHost(sandboxCount: Int = 1)` spinning up N worker threads,
-each running `JUnitCore.runClasses(SandboxRunner::class.java)` with a synthetic
-`doNotAcquirePackage` discriminator on the `InstrumentationConfiguration` to defeat Robolectric's
-sandbox cache — was prototyped end-to-end on `agent/sandbox-pool-multi-worker`. Concrete shape:
+each running `JUnitCore.runClasses(SandboxRunner::class.java)` with a synthetic discriminator on
+the `InstrumentationConfiguration` so Robolectric's sandbox cache builds a fresh sandbox per
+worker — is prototyped on this branch. Concrete shape:
 
 - `RobolectricHost(sandboxCount = N)`, `submit` hashes `id` to a slot, `shutdown` poisons every
   slot's queue.
 - `SandboxRunner.holdSandboxOpen` calls `DaemonHostBridge.registerSandbox(this.javaClass.classLoader)`
   and polls `slot.requests`.
 - `SandboxHoldingHints.workerIndex` ThreadLocal carries each worker's index into
-  `SandboxHoldingRunner.createClassLoaderConfig`, which adds a unique
-  `composeai.sandbox.uniq.worker<N>` `doNotAcquirePackage` so the cache key differs per worker.
+  `SandboxHoldingRunner.createClassLoaderConfig`, which adds a unique discriminator so the cache
+  key differs per worker.
 
-**It does not work.** Even with **sequenced boots** (start worker 0, await its ready latch, then
-start worker 1) the second sandbox's bootstrap stalls indefinitely while the first is alive in its
-hold-open poll loop. Slot 0 boots and registers in ~4s; slot 1 never reaches `holdSandboxOpen` —
-host.start times out at the configured `composeai.daemon.sandboxBootTimeoutMs` deadline.
+#### The cache-key bug, fixed
 
-The leftover-thread side effect is brutal: when slot 1's await throws, slot 0's worker is still
-non-daemon and pinned in `holdSandboxOpen`, slot 1's worker is wedged in Robolectric internals. Any
-test class that runs next in the same Gradle test JVM inherits the poisoned Robolectric state and
-also fails to bootstrap a sandbox. That's an operational hazard worth flagging.
-
-**Diagnosis.** With one sandbox alive in its hold-open poll loop, Robolectric's bootstrap path for
-a second sandbox can't make progress. Likely culprits (not yet pinned with a thread dump): the
-JUnit runner's parallel-universe lock, an internal Robolectric global, or a classloader-graph
-ordering constraint. The discriminator strategy is fine — the cache key change is provable — but
-sandbox **construction**, not just lookup, doesn't tolerate a co-resident live sandbox.
-
-**Pivot.** The next attempt needs to bypass `RobolectricTestRunner` and `JUnitCore.runClasses`
-entirely and drive Robolectric's lower-level `Sandbox` API directly:
+The first attempt used `doNotAcquirePackage("composeai.sandbox.uniq.workerN")` as the
+discriminator. **This was wrong** — confirmed empirically via `javap -c` on Robolectric 4.16.1:
 
 ```
-val sandbox = SandboxBuilder.build(instrumentationConfig, sdkConfig, …)
+InstrumentationConfiguration.equals  → checks classNameTranslations, classesToNotAcquire,
+                                        instrumentedPackages, instrumentedClasses,
+                                        interceptedMethods
+                                      → does NOT check packagesToNotAcquire
+InstrumentationConfiguration.hashCode → same set of fields; packagesToNotAcquire ignored
+```
+
+So workers with different `doNotAcquirePackage` values produce `.equals()` configurations →
+`SandboxManager.getAndroidSandbox` returns the **same cached sandbox** for every worker. The
+first symptom was both workers' `holdSandboxOpen` queueing on a single sandbox's main-thread
+executor (one `[SDK 35 Main Thread]` in the diagnostic dump, both worker JUnit threads stuck on
+`FutureTask.get`).
+
+**Fix:** use `doNotAcquireClass("composeai.sandbox.uniq.WorkerN")` instead — `classesToNotAcquire`
+**is** in `equals`, so the configs become unequal and the cache builds a fresh sandbox per worker.
+The synthetic class name never matches a real class; it's purely a cache-key discriminator.
+
+#### The remaining blocker — `Looper.sMainLooper` cross-sandbox
+
+With the cache fix in place, sandbox B (slot 1) now genuinely bootstraps a separate
+`InstrumentingClassLoader` and a separate `SDK Main Thread`. But its setup fails:
+
+```
+RobolectricHost SandboxRunner[1] failed: The main Looper has already been prepared.
+java.lang.IllegalStateException: The main Looper has already been prepared.
+    at android.os.Looper.prepareMainLooper(Looper.java:134)
+    at org.robolectric.shadows.ShadowPausedLooper.prepareMainLooper(ShadowPausedLooper.java:431)
+    at org.robolectric.shadows.ShadowPausedLooper.createMainThreadAndLooperIfNotAlive(...)
+    at org.robolectric.shadows.ShadowPausedLooper.resetLoopers(ShadowPausedLooper.java:336)
+    at org.robolectric.android.internal.AndroidTestEnvironment.setUpApplicationState(...)
+    at org.robolectric.RobolectricTestRunner.beforeTest(RobolectricTestRunner.java:309)
+```
+
+This is surprising — `android.os.Looper` is in the instrumented set and **should** be loaded
+per-sandbox (sandbox B's `Looper.class` is a different `Class<?>` than sandbox A's). Sandbox B's
+`Looper.sMainLooper` should be null until `prepareMainLooper` runs for the first time on sandbox
+B's class. The throw at line 9 of `$$robo$$prepareMainLooper` (`if (sMainLooper != null) throw`)
+indicates it isn't.
+
+Hypotheses to investigate next, in priority order:
+
+1. **Reflector caching across sandboxes.** `org.robolectric.util.reflector.Reflector` is in
+   `PACKAGES_TO_NEVER_ACQUIRE` so the class is shared across sandboxes. If Reflector caches
+   `MethodHandle`s in a static map and the cache key isn't classloader-aware, sandbox B's call
+   could route to sandbox A's `Looper.prepareMainLooper`. Verify by inspecting `Reflector` source.
+2. **Robolectric instrumentation hook setting state at class-init time.** `Looper`'s `<clinit>`
+   calls `RobolectricInternals.classInitializing(Class)`. That hook may invoke shadow setup paths
+   that touch `Looper.sMainLooper` indirectly. Verify by adding instrumentation to log every
+   write to `sMainLooper`.
+3. **`AndroidTestEnvironment` static state.** Despite being per-sandbox, `AndroidTestEnvironment`
+   may inadvertently share state through its dependencies (e.g. `RuntimeEnvironment` which is in
+   `org.robolectric` — not sure which package set).
+
+Captured by the always-on thread-dump diagnostic in `RobolectricHost.start` and the dedicated
+`SandboxPoolDiagnosticTest` so the next session has a reproducible artefact to attack.
+
+#### Pivot, if the Looper blocker proves fundamental
+
+The escape valve `RobolectricHost.kt`'s KDoc has flagged since v1: bypass
+`RobolectricTestRunner` / `JUnitCore.runClasses` and drive Robolectric's lower-level `Sandbox`
+API directly:
+
+```
+val sandbox = sandboxManager.getAndroidSandbox(instrumentationConfig, sdk, …)
 sandbox.runOnMainThread { /* render here */ }
 ```
 
-That removes the dummy-`@Test`-holds-the-sandbox-open trick and gives us a sandbox object we can
-hand work to without keeping a worker thread blocked inside JUnit. It's the escalation path
-RobolectricHost.kt's KDoc has flagged since v1 ("if this pattern fails for any reason we escalate
-rather than silently switching to Robolectric's lower-level Sandbox API"); empirically that escalation
-is now warranted.
-
-That's a substantial rewrite — separate PR, with its own risk surface (sandbox lifecycle, error
-paths, Compose/Looper threading inside the sandbox) — so this layer is parked at the design-doc
-level until the lower-level approach is prototyped.
+That gives us a `Sandbox` object whose lifecycle is decoupled from the JUnit runner — we hand
+work to it via its main-thread executor without needing a `@Test` body to keep it alive. We'd
+also reimplement `setUpApplicationState`'s essentials by hand (or call into `AndroidTestEnvironment`
+directly). Substantial rewrite, but it sidesteps the runner's lifecycle assumptions.
 
 ### Layer 3 — supervisor wire-up [follow-up]
 
