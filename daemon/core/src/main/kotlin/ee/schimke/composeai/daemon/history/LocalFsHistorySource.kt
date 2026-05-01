@@ -207,8 +207,8 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
 
   /**
    * H4 — applies the pruning policy from HISTORY.md § "Pruning policy". Loads the index newest-
-   * first, runs the three-pass cascade (age → per-preview count → total size), enforces the
-   * "never drop the most recent entry per preview" floor, then either:
+   * first, runs the three-pass cascade (age → per-preview count → total size), enforces the "never
+   * drop the most recent entry per preview" floor, then either:
    *
    * - **Dry run** ([dryRun] = true): returns the would-remove set + freed bytes; does NOT touch
    *   disk.
@@ -236,13 +236,12 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     // Compute the "must always survive" set: most recent entry per previewId. This floor applies
     // throughout — every pruning pass intersects against this set so a violator who happens to be
     // the only/most-recent entry for its preview survives.
-    val mostRecentPerPreview: Map<String, String> =
-      buildMap {
-        // `all` is newest-first, so the FIRST occurrence of each previewId is the most recent.
-        for (entry in all) {
-          if (!containsKey(entry.previewId)) put(entry.previewId, entry.id)
-        }
+    val mostRecentPerPreview: Map<String, String> = buildMap {
+      // `all` is newest-first, so the FIRST occurrence of each previewId is the most recent.
+      for (entry in all) {
+        if (!containsKey(entry.previewId)) put(entry.previewId, entry.id)
       }
+    }
 
     // Tracks ids marked for removal. Uses LinkedHashSet for stable iteration (= test-friendly).
     val toRemove = LinkedHashSet<String>()
@@ -310,17 +309,13 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     // sidecar with that pngPath survives.
     val survivingPngPaths: Set<Pair<String, String>> = // (sanitisedPreviewDir, pngPath)
       survivors.mapTo(HashSet()) { PreviewIdSanitiser.sanitise(it.previewId) to it.pngPath }
-    val freedBytes =
-      removedEntries.sumOf { entry ->
-        val key = PreviewIdSanitiser.sanitise(entry.previewId) to entry.pngPath
-        if (key in survivingPngPaths) 0L else entry.pngSize
-      }
+    val freedBytes = removedEntries.sumOf { entry ->
+      val key = PreviewIdSanitiser.sanitise(entry.previewId) to entry.pngPath
+      if (key in survivingPngPaths) 0L else entry.pngSize
+    }
 
     if (dryRun) {
-      return PruneResult(
-        removedEntryIds = removedEntries.map { it.id },
-        freedBytes = freedBytes,
-      )
+      return PruneResult(removedEntryIds = removedEntries.map { it.id }, freedBytes = freedBytes)
     }
 
     // -----------------------------------------------------------------------------------
@@ -404,10 +399,7 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       }
     }
 
-    return PruneResult(
-      removedEntryIds = removedEntries.map { it.id },
-      freedBytes = freedBytes,
-    )
+    return PruneResult(removedEntryIds = removedEntries.map { it.id }, freedBytes = freedBytes)
   }
 
   /**

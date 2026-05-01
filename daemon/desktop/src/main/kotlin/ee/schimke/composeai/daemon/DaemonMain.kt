@@ -160,21 +160,20 @@ fun main(args: Array<String>) {
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
   // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
   val pruneConfig = HistoryPruneConfig.fromSysprops()
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println(
-        "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
-          "gitRefs=${gitRefHistoryRefs}, pruneConfig=$pruneConfig)"
-      )
-      HistoryManager.forLocalFsAndGitRefs(
-        historyDir = Path.of(dir),
-        module = System.getProperty(MODULE_ID_PROP) ?: "",
-        gitProvenance = gitProvenance,
-        gitRefs = gitRefHistoryRefs,
-        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-        pruneConfig = pruneConfig,
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println(
+      "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
+        "gitRefs=${gitRefHistoryRefs}, pruneConfig=$pruneConfig)"
+    )
+    HistoryManager.forLocalFsAndGitRefs(
+      historyDir = Path.of(dir),
+      module = System.getProperty(MODULE_ID_PROP) ?: "",
+      gitProvenance = gitProvenance,
+      gitRefs = gitRefHistoryRefs,
+      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+      pruneConfig = pruneConfig,
+    )
+  }
 
   val server =
     JsonRpcServer(

@@ -145,8 +145,8 @@ interface HistorySource {
    * 3. Total size — if surviving set still exceeds [HistoryPruneConfig.maxTotalSizeBytes], drop
    *    oldest entries across all previews until under threshold.
    *
-   * Each pass operates on the survivor set from the previous; the most-recent entry per preview
-   * is NEVER dropped (HISTORY.md: "diff requires at least one prior entry to be useful").
+   * Each pass operates on the survivor set from the previous; the most-recent entry per preview is
+   * NEVER dropped (HISTORY.md: "diff requires at least one prior entry to be useful").
    *
    * **Dry-run mode** ([dryRun] = true) computes the removal set + freed bytes without touching
    * disk. Useful for "what would auto-prune do?" probes from a consumer.

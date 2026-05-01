@@ -9,12 +9,12 @@ package ee.schimke.composeai.daemon.history
  *
  * **Defaults** are pinned in HISTORY.md and read by the production daemon mains from sysprops:
  *
- * | knob | default | sysprop |
- * |---|---|---|
- * | [maxEntriesPerPreview] | 50 | `composeai.daemon.history.maxEntriesPerPreview` |
- * | [maxAgeDays] | 14 | `composeai.daemon.history.maxAgeDays` |
- * | [maxTotalSizeBytes] | 500_000_000 (500 MB) | `composeai.daemon.history.maxTotalSizeBytes` |
- * | [autoPruneIntervalMs] | 1h | `composeai.daemon.history.autoPruneIntervalMs` |
+ * | knob                   | default              | sysprop                                         |
+ * |------------------------|----------------------|-------------------------------------------------|
+ * | [maxEntriesPerPreview] | 50                   | `composeai.daemon.history.maxEntriesPerPreview` |
+ * | [maxAgeDays]           | 14                   | `composeai.daemon.history.maxAgeDays`           |
+ * | [maxTotalSizeBytes]    | 500_000_000 (500 MB) | `composeai.daemon.history.maxTotalSizeBytes`    |
+ * | [autoPruneIntervalMs]  | 1h                   | `composeai.daemon.history.autoPruneIntervalMs`  |
  *
  * Manual `history/prune` RPC calls override these per-call (via [HistoryPruneParams][
  * ee.schimke.composeai.daemon.protocol.HistoryPruneParams]); the auto-prune scheduler always uses
@@ -89,8 +89,7 @@ data class PruneAggregateResult(
   val sourceResults: Map<String, PruneResult>,
 ) {
   companion object {
-    val EMPTY: PruneAggregateResult =
-      PruneAggregateResult(emptyList(), 0L, emptyMap())
+    val EMPTY: PruneAggregateResult = PruneAggregateResult(emptyList(), 0L, emptyMap())
   }
 }
 

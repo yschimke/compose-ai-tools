@@ -17,9 +17,9 @@ import org.junit.Test
 /**
  * Pins the H4 prune contract on [LocalFsHistorySource] — see HISTORY.md § "Pruning policy".
  *
- * The pruning passes (age → per-preview count → total size) compose: each runs against the
- * survivor set from the previous. The "never drop most recent per preview" floor is enforced
- * throughout — even an over-age single-entry preview survives.
+ * The pruning passes (age → per-preview count → total size) compose: each runs against the survivor
+ * set from the previous. The "never drop most recent per preview" floor is enforced throughout —
+ * even an over-age single-entry preview survives.
  */
 class LocalFsHistorySourcePruneTest {
 
@@ -48,7 +48,10 @@ class LocalFsHistorySourcePruneTest {
         writeEntry(previewId = "P$i", timestamp = ts)
       }
 
-    val result = source.prune(HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L))
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L)
+      )
 
     // Survivors: newest 14 days. Floor protects most-recent-per-preview but every preview here is
     // unique, so the floor protects every entry. Hence every entry survives despite age cutoff.
@@ -73,12 +76,17 @@ class LocalFsHistorySourcePruneTest {
         writeEntry(previewId = previewId, timestamp = ts, suffix = "%02d".format(i))
       }
 
-    val result = source.prune(HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L))
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L)
+      )
 
-    // Compute expected: newest entry survives (floor); plus all entries that are NOT older than 14 days.
+    // Compute expected: newest entry survives (floor); plus all entries that are NOT older than 14
+    // days.
     val cutoff = now.minusSeconds(14L * 24 * 3600)
     val cutoffString =
-      OffsetDateTime.ofInstant(cutoff, ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+      OffsetDateTime.ofInstant(cutoff, ZoneOffset.UTC)
+        .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
     val expectedSurvivors =
       entries.filter { it.timestamp >= cutoffString }.map { it.id }.toMutableSet()
     expectedSurvivors.add(entries.first().id) // floor
@@ -103,7 +111,10 @@ class LocalFsHistorySourcePruneTest {
         }
       }
 
-    val result = source.prune(HistoryPruneConfig(maxEntriesPerPreview = 10, maxAgeDays = 0, maxTotalSizeBytes = 0L))
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 10, maxAgeDays = 0, maxTotalSizeBytes = 0L)
+      )
 
     // 30 entries survive (10 newest per preview).
     val survivors = readIndexIds(tmpDir)
@@ -154,12 +165,7 @@ class LocalFsHistorySourcePruneTest {
       (0 until 50).map { i ->
         val bytes = tenMb.copyOf().apply { this[0] = i.toByte() }
         val ts = now.minusSeconds(i.toLong() * 60)
-        writeEntry(
-          previewId = previewId,
-          timestamp = ts,
-          bytes = bytes,
-          suffix = "%02d".format(i),
-        )
+        writeEntry(previewId = previewId, timestamp = ts, bytes = bytes, suffix = "%02d".format(i))
       }
 
     val result =
@@ -185,10 +191,16 @@ class LocalFsHistorySourcePruneTest {
     val veryOld = now.minusSeconds(100L * 24 * 3600) // 100 days old
     val entry = writeEntry(previewId = "OldOnly", timestamp = veryOld)
 
-    val result = source.prune(HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L))
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 0, maxAgeDays = 14, maxTotalSizeBytes = 0L)
+      )
 
     val survivors = readIndexIds(tmpDir)
-    assertTrue("most recent of each preview survives even when over-age", survivors.contains(entry.id))
+    assertTrue(
+      "most recent of each preview survives even when over-age",
+      survivors.contains(entry.id),
+    )
     assertEquals(0, result.removedEntryIds.size)
   }
 
@@ -198,12 +210,17 @@ class LocalFsHistorySourcePruneTest {
     val previewId = "P"
     val entries =
       (0 until 5).map { i ->
-        writeEntry(previewId = previewId, timestamp = now.minusSeconds(i.toLong() * 3600), suffix = "%02d".format(i))
+        writeEntry(
+          previewId = previewId,
+          timestamp = now.minusSeconds(i.toLong() * 3600),
+          suffix = "%02d".format(i),
+        )
       }
 
     val sidecarsBefore =
       entries.map { tmpDir.resolve("P").resolve("${it.id}.json") }.filter { Files.exists(it) }
-    val pngsBefore = entries.map { tmpDir.resolve("P").resolve("${it.id}.png") }.filter { Files.exists(it) }
+    val pngsBefore =
+      entries.map { tmpDir.resolve("P").resolve("${it.id}.png") }.filter { Files.exists(it) }
     val indexBefore = Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME))
 
     val result =
@@ -223,7 +240,10 @@ class LocalFsHistorySourcePruneTest {
       pngsBefore,
       entries.map { tmpDir.resolve("P").resolve("${it.id}.png") }.filter { Files.exists(it) },
     )
-    assertEquals(indexBefore, Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)))
+    assertEquals(
+      indexBefore,
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)),
+    )
   }
 
   @Test
@@ -243,12 +263,7 @@ class LocalFsHistorySourcePruneTest {
         suffix = "first",
       )
     val second =
-      writeEntry(
-        previewId = previewId,
-        timestamp = now,
-        bytes = sharedBytes,
-        suffix = "second",
-      )
+      writeEntry(previewId = previewId, timestamp = now, bytes = sharedBytes, suffix = "second")
 
     val previewDir = tmpDir.resolve(previewId)
     val firstPng = previewDir.resolve("${first.id}.png")
@@ -257,7 +272,10 @@ class LocalFsHistorySourcePruneTest {
     assertFalse("dedup → second PNG file should not exist", Files.exists(secondPng))
 
     // Prune with maxEntriesPerPreview=1 → second survives (it's the newest), first removed.
-    val result = source.prune(HistoryPruneConfig(maxEntriesPerPreview = 1, maxAgeDays = 0, maxTotalSizeBytes = 0L))
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 1, maxAgeDays = 0, maxTotalSizeBytes = 0L)
+      )
     assertEquals(listOf(first.id), result.removedEntryIds)
     // freedBytes is 0 because the surviving sidecar's pngPath still references "${first.id}.png".
     assertEquals(0L, result.freedBytes)
@@ -271,8 +289,10 @@ class LocalFsHistorySourcePruneTest {
 
   @Test
   fun index_rewrite_is_atomic_against_failures() {
-    // Synthesise N entries; verify the index is bytewise rewritten cleanly. We can't easily simulate
-    // a mid-write crash without injecting a filesystem error, so we instead verify the contract: the
+    // Synthesise N entries; verify the index is bytewise rewritten cleanly. We can't easily
+    // simulate
+    // a mid-write crash without injecting a filesystem error, so we instead verify the contract:
+    // the
     // tempfile-then-rename sequence leaves no partial index. Approximation: assert the temp file
     // does not exist after a successful prune, and that the index lines are exactly the surviving
     // entries (no torn lines, no orphaned entries).
@@ -286,11 +306,15 @@ class LocalFsHistorySourcePruneTest {
           suffix = "%02d".format(i),
         )
       }
-    source.prune(HistoryPruneConfig(maxEntriesPerPreview = 3, maxAgeDays = 0, maxTotalSizeBytes = 0L))
+    source.prune(
+      HistoryPruneConfig(maxEntriesPerPreview = 3, maxAgeDays = 0, maxTotalSizeBytes = 0L)
+    )
     val tempfile = tmpDir.resolve("${LocalFsHistorySource.INDEX_FILENAME}.tmp")
     assertFalse("prune temp file must be cleaned up after success", Files.exists(tempfile))
     val indexLines =
-      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter { it.isNotBlank() }
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
     assertEquals(3, indexLines.size)
     // Every line is bytewise complete JSON (no torn lines).
     val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -326,14 +350,11 @@ class LocalFsHistorySourcePruneTest {
 
     val result =
       source.prune(
-        HistoryPruneConfig(
-          maxEntriesPerPreview = 3,
-          maxAgeDays = 14,
-          maxTotalSizeBytes = 0L,
-        )
+        HistoryPruneConfig(maxEntriesPerPreview = 3, maxAgeDays = 14, maxTotalSizeBytes = 0L)
       )
 
-    // After age pass: recent (4) + the floor-protected oldest survives. So 5 entries survive age pass.
+    // After age pass: recent (4) + the floor-protected oldest survives. So 5 entries survive age
+    // pass.
     // Then per-preview count of 3 caps surviving recent entries: actually the floor is just one per
     // preview (the *newest* of all entries), so count cap drops 5 - 3 = 2 more, but the floor
     // protects entry recent[0]. We expect: recent[0,1,2] survive (newest 3); the rest pruned.
@@ -384,8 +405,8 @@ class LocalFsHistorySourcePruneTest {
     val indexFile = historyDir.resolve(LocalFsHistorySource.INDEX_FILENAME)
     if (!Files.exists(indexFile)) return emptyList()
     val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-    return Files.readAllLines(indexFile).filter { it.isNotBlank() }.map {
-      json.decodeFromString(HistoryEntry.serializer(), it).id
-    }
+    return Files.readAllLines(indexFile)
+      .filter { it.isNotBlank() }
+      .map { json.decodeFromString(HistoryEntry.serializer(), it).id }
   }
 }

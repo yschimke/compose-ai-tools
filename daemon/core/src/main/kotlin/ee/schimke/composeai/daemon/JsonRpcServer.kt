@@ -17,13 +17,12 @@ import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
 import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
-import ee.schimke.composeai.daemon.protocol.HistoryPrunedParams
 import ee.schimke.composeai.daemon.protocol.HistoryPruneParams
 import ee.schimke.composeai.daemon.protocol.HistoryPruneResult
 import ee.schimke.composeai.daemon.protocol.HistoryPruneSourceResult
+import ee.schimke.composeai.daemon.protocol.HistoryPrunedParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
-import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -31,6 +30,7 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.JsonRpcResponse
 import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
+import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderFinishedParams
 import ee.schimke.composeai.daemon.protocol.RenderMetrics
@@ -878,9 +878,10 @@ class JsonRpcServer(
 
   /**
    * H4 — `history/prune` manual prune trigger. Resolves [HistoryPruneParams] over the daemon's
-   * configured defaults (explicit param wins; null leaves the default). When [HistoryPruneParams.dryRun]
-   * is true, returns the would-remove set without touching disk and does NOT emit a `historyPruned`
-   * notification. Otherwise mutates and (if non-empty) emits `historyPruned` with `reason: "manual"`.
+   * configured defaults (explicit param wins; null leaves the default). When
+   * [HistoryPruneParams.dryRun] is true, returns the would-remove set without touching disk and
+   * does NOT emit a `historyPruned` notification. Otherwise mutates and (if non-empty) emits
+   * `historyPruned` with `reason: "manual"`.
    *
    * See HISTORY.md § "Pruning policy" for the order-of-passes contract.
    */
@@ -940,10 +941,7 @@ class JsonRpcServer(
       }
     val perSource =
       aggregate.sourceResults.mapValues { (_, r) ->
-        HistoryPruneSourceResult(
-          removedEntryIds = r.removedEntryIds,
-          freedBytes = r.freedBytes,
-        )
+        HistoryPruneSourceResult(removedEntryIds = r.removedEntryIds, freedBytes = r.freedBytes)
       }
     sendResponse(
       req.id,

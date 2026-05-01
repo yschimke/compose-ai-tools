@@ -285,8 +285,8 @@ class JsonRpcServerHistoryIntegrationTest {
       val secondHistoryAdded =
         pollUntil(received) {
           it["method"]?.jsonPrimitive?.contentOrNull == "historyAdded" &&
-            it["params"]?.jsonObject?.get("entry")?.jsonObject?.get("id")
-              ?.jsonPrimitive?.content != entryId
+            it["params"]?.jsonObject?.get("entry")?.jsonObject?.get("id")?.jsonPrimitive?.content !=
+              entryId
         }
       assertNotNull("second historyAdded must arrive", secondHistoryAdded)
 
@@ -300,7 +300,10 @@ class JsonRpcServerHistoryIntegrationTest {
       // discard it while waiting for the response.
       val pruneNotif =
         pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "historyPruned" }
-      assertNotNull("historyPruned notification must arrive after non-empty manual prune", pruneNotif)
+      assertNotNull(
+        "historyPruned notification must arrive after non-empty manual prune",
+        pruneNotif,
+      )
       val pruneNotifParams = pruneNotif!!["params"]!!.jsonObject
       assertEquals("manual", pruneNotifParams["reason"]!!.jsonPrimitive.content)
       assertEquals(1, pruneNotifParams["removedIds"]!!.jsonArray.size)

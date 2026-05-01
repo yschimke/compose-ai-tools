@@ -452,10 +452,7 @@ data class HistoryPruneParams(
 )
 
 @Serializable
-data class HistoryPruneSourceResult(
-  val removedEntryIds: List<String>,
-  val freedBytes: Long,
-)
+data class HistoryPruneSourceResult(val removedEntryIds: List<String>, val freedBytes: Long)
 
 /**
  * Result of `history/prune`. [removedEntries] / [freedBytes] are the cross-source aggregate;

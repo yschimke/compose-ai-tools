@@ -335,11 +335,11 @@ class HistoryManager(
    * repeats every [HistoryPruneConfig.autoPruneIntervalMs]. [stopAutoPrune] cancels and joins the
    * scheduler.
    *
-   * **All-off short-circuit.** When [pruneConfig].isAllOff is true, this is a no-op — the
-   * scheduler thread is never created. Same for any non-positive [HistoryPruneConfig.autoPruneIntervalMs].
+   * **All-off short-circuit.** When [pruneConfig].isAllOff is true, this is a no-op — the scheduler
+   * thread is never created. Same for any non-positive [HistoryPruneConfig.autoPruneIntervalMs].
    *
-   * **Safety.** Reentrancy-guarded — second call with the scheduler already running is a no-op.
-   * The scheduler thread is daemonised so the JVM can exit even if [stopAutoPrune] isn't called.
+   * **Safety.** Reentrancy-guarded — second call with the scheduler already running is a no-op. The
+   * scheduler thread is daemonised so the JVM can exit even if [stopAutoPrune] isn't called.
    */
   fun startAutoPrune(initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS) {
     if (pruneConfig.isAllOff) return
@@ -348,10 +348,9 @@ class HistoryManager(
     if (autoPruneStopped.get()) return
     val existing = scheduler.get()
     if (existing != null) return
-    val exec =
-      Executors.newSingleThreadScheduledExecutor { runnable ->
-        Thread(runnable, "compose-ai-daemon-history-auto-prune").apply { isDaemon = true }
-      }
+    val exec = Executors.newSingleThreadScheduledExecutor { runnable ->
+      Thread(runnable, "compose-ai-daemon-history-auto-prune").apply { isDaemon = true }
+    }
     if (!scheduler.compareAndSet(null, exec)) {
       // Lost a race — another thread set the scheduler first. Shut down our redundant exec.
       exec.shutdownNow()

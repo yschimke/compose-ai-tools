@@ -19,7 +19,8 @@ import org.junit.Test
 /**
  * Pins the H4 auto-prune scheduler contract on [HistoryManager].
  *
- * - Schedule fires periodic prune passes; each non-empty pass invokes the listener with `reason: AUTO`.
+ * - Schedule fires periodic prune passes; each non-empty pass invokes the listener with `reason:
+ *   AUTO`.
  * - All-off config (every knob ≤ 0) suppresses the scheduler entirely; no thread is started.
  * - Idempotent: a second pass with no new entries does NOT emit a notification.
  */

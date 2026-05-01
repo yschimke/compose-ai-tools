@@ -19,9 +19,9 @@ import org.junit.Test
 
 /**
  * Scenario **S11 — History prune (fake mode)**. Pre-populates a [LocalFsHistorySource] under
- * `<tmpHistoryDir>` with N entries on a single preview, drives [FakeDaemonMain] (no rendering)
- * with `composeai.daemon.history.maxEntriesPerPreview=3`, calls `history/prune` over the wire,
- * and asserts the wire-shape result matches the disk effect.
+ * `<tmpHistoryDir>` with N entries on a single preview, drives [FakeDaemonMain] (no rendering) with
+ * `composeai.daemon.history.maxEntriesPerPreview=3`, calls `history/prune` over the wire, and
+ * asserts the wire-shape result matches the disk effect.
  *
  * Mirrors the S* fake-mode pattern: the daemon only sees the pre-populated history dir; nothing is
  * rendered during the test. We exercise the prune wire-format end-to-end without any renderer.
@@ -103,11 +103,7 @@ class S11HistoryPruneTest {
       // newest-1 by cap), 3 dropped.
       val result =
         client.historyPrune(
-          HistoryPruneParams(
-            maxEntriesPerPreview = 2,
-            maxAgeDays = 0,
-            maxTotalSizeBytes = 0L,
-          )
+          HistoryPruneParams(maxEntriesPerPreview = 2, maxAgeDays = 0, maxTotalSizeBytes = 0L)
         )
       assertEquals(3, result.removedEntries.size)
       assertTrue("freedBytes must be positive after live prune", result.freedBytes > 0L)
