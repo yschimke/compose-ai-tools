@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.Manifest
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
@@ -54,6 +55,58 @@ class FakeDaemon : DaemonSpawn {
   val focusSets = java.util.concurrent.LinkedBlockingQueue<List<String>>()
   /** `renderNow` invocations the fake observed. */
   val renderRequests = java.util.concurrent.LinkedBlockingQueue<List<String>>()
+
+  /**
+   * D1 — kinds the fake advertises in `initialize.capabilities.dataProducts`. Tests assign before
+   * the spawn calls `initialize` (synchronous in [DaemonSupervisor.spawn], so assign-then-spawn is
+   * the natural order).
+   */
+  @Volatile var advertisedDataProducts: List<DataProductCapability> = emptyList()
+
+  /**
+   * D1 — fake handler for `data/fetch`. When set, the lambda receives `(previewId, kind, params,
+   * inline)` and returns either the [DataFetchOutcome] the daemon should respond with. Default
+   * returns [DataFetchOutcome.Unknown] so unconfigured tests see the wire-error path.
+   */
+  @Volatile
+  var dataFetchHandler:
+    (previewId: String, kind: String, params: JsonObject?, inline: Boolean) -> DataFetchOutcome =
+    { _, _, _, _ ->
+      DataFetchOutcome.Unknown
+    }
+
+  /** Recorded `data/subscribe` calls — list of (previewId, kind) tuples. */
+  val dataSubscribes = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
+  /** Recorded `data/unsubscribe` calls — same shape. */
+  val dataUnsubscribes = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
+
+  /**
+   * Outcome the fake's `data/fetch` handler returns. Mirrors the daemon's
+   * [`DataProductRegistry.Outcome`] but deliberately decouples — the fake doesn't depend on the
+   * registry interface.
+   */
+  sealed interface DataFetchOutcome {
+    /** Wire-success: the fake returns a `DataFetchResult` with the given fields. */
+    data class Ok(
+      val kind: String,
+      val schemaVersion: Int,
+      val payload: JsonElement? = null,
+      val path: String? = null,
+      val bytes: String? = null,
+    ) : DataFetchOutcome
+
+    /** -32020 DataProductUnknown. */
+    data object Unknown : DataFetchOutcome
+
+    /** -32021 DataProductNotAvailable. */
+    data object NotAvailable : DataFetchOutcome
+
+    /** -32022 DataProductFetchFailed. */
+    data class FetchFailed(val message: String) : DataFetchOutcome
+
+    /** -32023 DataProductBudgetExceeded. */
+    data object BudgetExceeded : DataFetchOutcome
+  }
 
   /**
    * When set, the fake auto-emits a `renderFinished` notification for every preview id in an
@@ -174,6 +227,7 @@ class FakeDaemon : DaemonSpawn {
                 incrementalDiscovery = true,
                 sandboxRecycle = false,
                 leakDetection = emptyList(),
+                dataProducts = advertisedDataProducts,
               ),
             classpathFingerprint = "fake-fingerprint",
             manifest = Manifest(path = "", previewCount = 0),
@@ -251,6 +305,58 @@ class FakeDaemon : DaemonSpawn {
             put("toMetadata", toEntry)
           }
           sendResponse(id, payload)
+        }
+      }
+      "data/fetch" -> {
+        val previewId = params?.get("previewId")?.jsonPrimitive?.contentOrNull ?: ""
+        val kind = params?.get("kind")?.jsonPrimitive?.contentOrNull ?: ""
+        val perKindParams = params?.get("params") as? JsonObject
+        // The wire shape encodes booleans as actual JSON booleans, but kotlinx serialises a
+        // `Boolean` as a primitive that prints as "true" / "false"; tolerate both forms.
+        val inline =
+          when (val raw = params?.get("inline")?.jsonPrimitive?.contentOrNull) {
+            null -> false
+            else -> raw == "true"
+          }
+        when (val outcome = dataFetchHandler(previewId, kind, perKindParams, inline)) {
+          is DataFetchOutcome.Ok -> {
+            val payload = buildJsonObject {
+              put("kind", outcome.kind)
+              put("schemaVersion", outcome.schemaVersion)
+              if (outcome.payload != null) put("payload", outcome.payload)
+              if (outcome.path != null) put("path", outcome.path)
+              if (outcome.bytes != null) put("bytes", outcome.bytes)
+            }
+            sendResponse(id, payload)
+          }
+          DataFetchOutcome.Unknown ->
+            sendError(id, -32020, "DataProductUnknown: kind not advertised: $kind")
+          DataFetchOutcome.NotAvailable ->
+            sendError(id, -32021, "DataProductNotAvailable: $previewId has no render available")
+          is DataFetchOutcome.FetchFailed -> sendError(id, -32022, outcome.message)
+          DataFetchOutcome.BudgetExceeded ->
+            sendError(id, -32023, "DataProductBudgetExceeded for kind $kind")
+        }
+      }
+      "data/subscribe",
+      "data/unsubscribe" -> {
+        val previewId = params?.get("previewId")?.jsonPrimitive?.contentOrNull ?: ""
+        val kind = params?.get("kind")?.jsonPrimitive?.contentOrNull ?: ""
+        // Validate the kind is in `advertisedDataProducts` and `attachable` — the daemon's real
+        // handler does this. Tests that need the failure path can advertise a non-attachable
+        // kind; tests that need success advertise an attachable one.
+        val capability = advertisedDataProducts.firstOrNull { it.kind == kind }
+        if (capability == null || !capability.attachable) {
+          sendError(
+            id,
+            -32020,
+            if (capability == null) "DataProductUnknown: kind not advertised: $kind"
+            else "DataProductUnknown: kind '$kind' is not attachable",
+          )
+        } else {
+          if (method == "data/subscribe") dataSubscribes.offer(previewId to kind)
+          else dataUnsubscribes.offer(previewId to kind)
+          sendResponse(id, buildJsonObject { put("ok", true) })
         }
       }
       else -> {
@@ -409,8 +515,17 @@ class FakeDaemonClientFactory : DaemonClientFactory {
   val spawnDescriptors: MutableList<DaemonLaunchDescriptor> =
     java.util.concurrent.CopyOnWriteArrayList()
 
+  /**
+   * Optional pre-`initialize` hook. Invoked synchronously inside [spawn], after the [FakeDaemon] is
+   * constructed but before the supervisor wires the client and sends `initialize`. Tests use this
+   * to configure per-spawn state (e.g. advertised data-product kinds) that needs to be in place
+   * before the initialize round-trip reaches the daemon's reader thread.
+   */
+  @Volatile var daemonConfigurer: (FakeDaemon) -> Unit = {}
+
   override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     val daemon = FakeDaemon()
+    runCatching { daemonConfigurer(daemon) }
     synchronized(this) {
       daemons[project.workspaceId to descriptor.modulePath] = daemon
       spawnHistory.add(daemon)

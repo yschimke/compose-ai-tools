@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
@@ -187,6 +188,11 @@ class DaemonSupervisor(
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
         )
+      // D1 — surface the daemon's advertised data-product kinds so the MCP server's
+      // `list_data_products` tool can answer without a wire round-trip. Empty list on pre-D2
+      // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
+      // and `[]` collapse the same way client-side.
+      supervised.dataProductCapabilities = result.capabilities.dataProducts
       // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
       // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
       // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
@@ -265,6 +271,16 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    * caller thread reads this through [client] / [allClients] without external synchronisation.
    */
   @Volatile private var spawn: DaemonSpawn? = null
+
+  /**
+   * D1 — kinds the daemon advertised via `initialize.capabilities.dataProducts`. Populated by
+   * [DaemonSupervisor.spawn] right after the initialize round-trip, before [attachSpawn] returns to
+   * the caller. Empty list pre-D2 (no producers wired) — matches the daemon's default. Read by
+   * `DaemonMcpServer.toolListDataProducts` to answer without a wire round-trip.
+   */
+  @Volatile
+  var dataProductCapabilities: List<DataProductCapability> = emptyList()
+    internal set
 
   /**
    * The single [DaemonClient]. Used for everything — control-plane operations (`initialize`,

@@ -547,6 +547,83 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
+      ToolDef(
+        name = "list_data_products",
+        description =
+          "Discover the data-product kinds (a11y findings, a11y hierarchy, layout tree, recomposition heat-map, theme resolution, …) the daemon can produce alongside each PNG. Returns one entry per (workspace, module) with the kinds the daemon advertised at initialize-time. Each entry carries `kind`, `schemaVersion`, `transport` (inline|path|both), and three flags: `attachable` (rides renderFinished when subscribed), `fetchable` (callable via get_preview_data), `requiresRerender` (true → fetching may pay a render cost). With no args, lists every spawned daemon; pass `workspaceId` and/or `module` to scope the answer. Empty list = pre-D2 daemon (no producers wired yet) — get_preview_data on such a daemon returns DataProductUnknown. See docs/daemon/DATA-PRODUCTS.md for the kind catalogue.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string","description":"Optional. Restrict the answer to one workspace."},
+                "module":{"type":"string","description":"Optional Gradle module path; requires workspaceId."}
+              }
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "get_preview_data",
+        description =
+          "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Requires that the preview has rendered at least once (otherwise: DataProductNotAvailable — call render_preview / resources/read first). When the daemon's latest render didn't compute the kind, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "kind":{"type":"string","description":"Data-product kind, e.g. a11y/hierarchy, a11y/atf, layout/tree, compose/semantics."},
+                "params":{"type":"object","description":"Optional per-kind parameters (e.g. {nodeId} for layout/tree). Forwarded verbatim to the daemon's data/fetch."},
+                "inline":{"type":"boolean","description":"Default true. When false, the daemon returns a `path` to a sibling JSON file instead of inlining the payload."}
+              },
+              "required":["uri","kind"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "subscribe_preview_data",
+        description =
+          "Subscribe to a data-product kind for one preview. While subscribed, every renderFinished for the preview produces the kind alongside the PNG (subject to the daemon's producer wiring). Useful when the agent expects to ask repeatedly about the same preview — pre-computing on render avoids the get_preview_data re-render cost. Subscriptions are sticky-while-visible: the daemon drops them automatically when the preview leaves the most recent set_visible set, so re-subscribe when the preview returns to view. Idempotent. Errors: DataProductUnknown if the kind isn't advertised or isn't attachable. NOTE: today, MCP doesn't push the attached payload to clients automatically — agents still call get_preview_data to read it; the subscribe just primes the daemon-side cache.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>"},
+                "kind":{"type":"string"}
+              },
+              "required":["uri","kind"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "unsubscribe_preview_data",
+        description =
+          "Drop a subscription installed by subscribe_preview_data. Idempotent — unsubscribing a kind that was never subscribed returns ok.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string"},
+                "kind":{"type":"string"}
+              },
+              "required":["uri","kind"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -568,6 +645,10 @@ class DaemonMcpServer(
       "set_focus" -> toolSetFocus(args)
       "history_list" -> toolHistoryList(args)
       "history_diff" -> toolHistoryDiff(args)
+      "list_data_products" -> toolListDataProducts(args)
+      "get_preview_data" -> toolGetPreviewData(args)
+      "subscribe_preview_data" -> toolDataSubOrUnsub(args, subscribe = true)
+      "unsubscribe_preview_data" -> toolDataSubOrUnsub(args, subscribe = false)
       else -> errorCallToolResult("unknown tool: $name")
     }
   }
@@ -893,6 +974,126 @@ class DaemonMcpServer(
       if (result.diffPngPath != null) put("diffPngPath", JsonPrimitive(result.diffPngPath))
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  // -------------------------------------------------------------------------
+  // D1 — data product tools. See docs/daemon/DATA-PRODUCTS.md.
+  //
+  // The MCP surface is tool-shaped rather than resource-shaped because data
+  // products are keyed on (previewId, kind) — a 2D space — and `resources/read`
+  // can only return one content block per URI. Tools fit the shape exactly:
+  // arguments → JSON return.
+  // -------------------------------------------------------------------------
+
+  private fun toolListDataProducts(args: JsonObject): CallToolResult {
+    val ws = args["workspaceId"]?.jsonPrimitive?.contentOrNull
+    val module = args["module"]?.jsonPrimitive?.contentOrNull
+    if (module != null && ws == null) {
+      return errorCallToolResult("list_data_products: 'module' requires 'workspaceId'")
+    }
+    val workspaceFilter = ws?.let(::WorkspaceId)
+    if (workspaceFilter != null && supervisor.project(workspaceFilter) == null) {
+      return errorCallToolResult("list_data_products: workspace '$ws' not registered")
+    }
+    val payload = buildJsonObject {
+      putJsonArray("daemons") {
+        for (project in supervisor.listProjects()) {
+          if (workspaceFilter != null && project.workspaceId != workspaceFilter) continue
+          for ((mp, daemon) in project.daemons) {
+            if (module != null && mp != module) continue
+            add(
+              buildJsonObject {
+                put("workspaceId", project.workspaceId.value)
+                put("module", mp)
+                putJsonArray("kinds") {
+                  daemon.dataProductCapabilities.forEach { cap ->
+                    add(
+                      buildJsonObject {
+                        put("kind", cap.kind)
+                        put("schemaVersion", cap.schemaVersion)
+                        put("transport", cap.transport.name.lowercase())
+                        put("attachable", cap.attachable)
+                        put("fetchable", cap.fetchable)
+                        put("requiresRerender", cap.requiresRerender)
+                      }
+                    )
+                  }
+                }
+              }
+            )
+          }
+        }
+      }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  private fun toolGetPreviewData(args: JsonObject): CallToolResult {
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("get_preview_data: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("get_preview_data: invalid uri: $uriStr")
+    val kind =
+      args["kind"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("get_preview_data: missing 'kind'")
+    // Default to inline=true so agents get JSON back rather than a sibling-file path they may not
+    // be able to read. Local callers that prefer disk reads pass `inline: false` explicitly.
+    val inline = args["inline"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+    val perKindParams = args["params"] as? JsonObject
+    if (supervisor.project(uri.workspaceId) == null) {
+      return errorCallToolResult(
+        "get_preview_data: workspace '${uri.workspaceId.value}' not registered"
+      )
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("get_preview_data: daemon spawn failed: ${it.message}")
+        }
+    return runCatching {
+        val result = daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
+        val resultPayload = result.payload
+        val resultPath = result.path
+        val resultBytes = result.bytes
+        val payload = buildJsonObject {
+          put("kind", result.kind)
+          put("schemaVersion", result.schemaVersion)
+          if (resultPayload != null) put("payload", resultPayload)
+          if (resultPath != null) put("path", JsonPrimitive(resultPath))
+          if (resultBytes != null) put("bytes", JsonPrimitive(resultBytes))
+        }
+        CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+      }
+      .getOrElse { errorCallToolResult("get_preview_data failed: ${it.message}") }
+  }
+
+  private fun toolDataSubOrUnsub(args: JsonObject, subscribe: Boolean): CallToolResult {
+    val toolName = if (subscribe) "subscribe_preview_data" else "unsubscribe_preview_data"
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("$toolName: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("$toolName: invalid uri: $uriStr")
+    val kind =
+      args["kind"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("$toolName: missing 'kind'")
+    if (supervisor.project(uri.workspaceId) == null) {
+      return errorCallToolResult("$toolName: workspace '${uri.workspaceId.value}' not registered")
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
+        }
+    return runCatching {
+        if (subscribe) daemon.client.dataSubscribe(uri.previewFqn, kind)
+        else daemon.client.dataUnsubscribe(uri.previewFqn, kind)
+        textCallToolResult("$toolName: ok ($kind for ${uri.previewFqn})")
+      }
+      .getOrElse { errorCallToolResult("$toolName failed: ${it.message}") }
   }
 
   private fun toolNotifyFileChanged(args: JsonObject): CallToolResult {

@@ -143,6 +143,45 @@ later.
 | `notify_file_changed` | `workspaceId, path, kind?, changeType?` | Forward `fileChanged` to the daemon + re-issue `renderNow` for any watched / subscribed URIs in that workspace. Use after editing source files outside the MCP server's view. |
 | `history_list` | `workspaceId, module, previewId?, since?, until?, limit?, branch?, …` | Proxy daemon `history/list`. Each result entry is decorated with its `compose-preview-history://` URI. |
 | `history_diff` | `workspaceId, module, from, to` | Proxy daemon `history/diff` (METADATA mode). Cross-source: `from` may live on FS, `to` on a `preview/<branch>` ref. |
+| `list_data_products` | `workspaceId?, module?` | List the structured data kinds (a11y findings, a11y hierarchy, layout tree, recomposition heat-map, …) each spawned daemon advertises alongside its PNGs. See [`docs/daemon/DATA-PRODUCTS.md`](../docs/daemon/DATA-PRODUCTS.md) for the catalogue and per-kind schemas. |
+| `get_preview_data` | `uri, kind, params?, inline?` | Fetch one data product (e.g. `kind: "a11y/hierarchy"`) for a preview. Returns the per-kind JSON payload. Defaults `inline: true` so the agent gets the JSON inline rather than a sibling-file path. Re-render-on-demand kinds may pay a render cost; bounded by the daemon's per-request budget. |
+| `subscribe_preview_data` | `uri, kind` | Prime the daemon to compute `kind` on every render of `uri` (sticky-while-visible). Cuts subsequent `get_preview_data` latency. |
+| `unsubscribe_preview_data` | `uri, kind` | Drop a subscription. |
+
+## Data products
+
+Beyond the PNG, the daemon can produce structured data alongside each render —
+ATF accessibility findings, the a11y semantic hierarchy, the layout tree, a
+recomposition heat-map, theme resolution, and so on. Each is identified by a
+namespaced *kind* string (`a11y/hierarchy`, `compose/recomposition`, …).
+
+The agent flow is two calls:
+
+```jsonc
+// 1. Discover what kinds the daemon advertises (empty list = pre-D2 daemon
+//    with no producer wired yet).
+{ "method": "tools/call", "params": { "name": "list_data_products",
+  "arguments": { "workspaceId": "your-repo-a1b2c3d4" } } }
+
+// 2. Fetch one kind for one preview. The preview must have rendered at least
+//    once — otherwise the call returns DataProductNotAvailable and you should
+//    `resources/read` (or `render_preview`) first.
+{ "method": "tools/call", "params": { "name": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://your-repo-a1b2c3d4/_samples_cmp/com.example.RedSquare",
+    "kind": "a11y/hierarchy"
+  } } }
+```
+
+For long-running flows where the agent expects to ask about the same preview
+repeatedly, call `subscribe_preview_data` first — the daemon then computes the
+kind on every render of that preview, so the next `get_preview_data` resolves
+without paying the re-render cost. Subscriptions auto-drop when the preview
+leaves the daemon's `setVisible` set, so re-subscribe when it comes back into
+view (or use `set_visible` to keep it warm).
+
+The full kind catalogue, per-kind payload schemas, and re-render semantics are
+in [`docs/daemon/DATA-PRODUCTS.md`](../docs/daemon/DATA-PRODUCTS.md).
 
 ## URI schemes
 
