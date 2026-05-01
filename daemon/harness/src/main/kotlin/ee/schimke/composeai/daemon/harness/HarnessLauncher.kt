@@ -76,6 +76,10 @@ class FakeHarnessLauncher(
         // Match the in-process integration test's idle timeout — keeps harness scenarios snappy
         // when a misbehaving test forgets to send `exit`.
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
+        // Save-after-render ordering: tests that don't drive a render between `fileChanged` and
+        // their `discoveryUpdated` assertion lean on the watchdog. Production default is 1500ms;
+        // the fake-mode harness shortens it so scenarios stay sub-second.
+        add("-Dcomposeai.daemon.discoveryWatchdogMs=200")
         if (historyDir != null) add("-Dcomposeai.daemon.historyDir=${historyDir.absolutePath}")
         if (workspaceRoot != null)
           add("-Dcomposeai.daemon.workspaceRoot=${workspaceRoot.absolutePath}")
@@ -161,6 +165,8 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.render.outputDir=${rendersDir.absolutePath}")
         add("-Dcomposeai.harness.previewsManifest=${previewsManifest.absolutePath}")
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
+        // Save-after-render ordering watchdog — same justification as `FakeHarnessLauncher` above.
+        add("-Dcomposeai.daemon.discoveryWatchdogMs=200")
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)

@@ -50,6 +50,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -137,6 +138,19 @@ class JsonRpcServer(
    * behaviour as before phase 2 landed.
    */
   private val incrementalDiscovery: IncrementalDiscovery? = null,
+  /**
+   * Watchdog window for the deferred-discovery cascade — see [queueDiscoveryAfterRender]. A
+   * `fileChanged({kind: source})` notification queues the file for a background scan + diff, but
+   * holds the resulting `discoveryUpdated` notification until either (a) the next `renderFinished`
+   * for any preview flushes the queue, or (b) this many milliseconds elapse and we drain anyway.
+   * The point is that the user sees the new PNG first; the metadata reconcile arrives behind it and
+   * is silent when the diff is empty.
+   *
+   * Configurable via the [DISCOVERY_WATCHDOG_PROP] sysprop; the harness lowers it to a few hundred
+   * ms in scenarios that don't issue a render between the save and the assertion.
+   */
+  private val discoveryWatchdogMs: Long =
+    System.getProperty(DISCOVERY_WATCHDOG_PROP)?.toLongOrNull() ?: DEFAULT_DISCOVERY_WATCHDOG_MS,
   /**
    * H1+H2 — when non-null, every successful render produces a sidecar + index entry on disk
    * (HISTORY.md § "What this PR lands § H1") and emits a `historyAdded` notification. The
@@ -580,6 +594,11 @@ class JsonRpcServer(
     // has already been sent above; history is observation, not state.
     recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
+    // Save-after-render invariant: a `fileChanged({kind:source})` queued discovery work that has
+    // been waiting for this render to ship. The writer queue is FIFO and `renderFinished` is
+    // already in it — kicking the discovery scan now guarantees its `discoveryUpdated`
+    // notification (if any) lands strictly after the render the user just saw.
+    drainPendingDiscovery()
   }
 
   /**
@@ -1075,7 +1094,7 @@ class JsonRpcServer(
     when (params.kind) {
       FileKind.SOURCE -> {
         host.userClassloaderHolder?.swap()
-        runIncrementalDiscovery(params.path)
+        queueDiscoveryAfterRender(params.path)
       }
       FileKind.CLASSPATH -> {
         handleClasspathFileChanged(params)
@@ -1090,20 +1109,75 @@ class JsonRpcServer(
   }
 
   /**
+   * Paths waiting on a deferred discovery scan — populated by [queueDiscoveryAfterRender] from the
+   * `fileChanged({kind:source})` handler, drained by either [emitRenderFinished] (after the next
+   * render notification has flushed) or by a watchdog timer (when no render arrives within
+   * [discoveryWatchdogMs]).
+   *
+   * Identity dedup isn't worth it: two saves of the same file in quick succession scan twice, but
+   * each scan is scoped (one classpath element) and the daemon is bounded by the user's editor
+   * cadence anyway. The queue is correctness-safe under contention thanks to the atomic poll.
+   */
+  private val pendingDiscoveryPaths = ConcurrentLinkedQueue<String>()
+
+  /**
+   * Queues [path] for a deferred discovery cascade and starts a watchdog so the work always runs
+   * eventually — even when the save lands on a file with no focused previews and no `renderNow`
+   * follows.
+   *
+   * The user-visible invariant this enforces (matching the editor save-loop design): a save NEVER
+   * surfaces a metadata event before the corresponding render. Renders are what the user actually
+   * looks at; the metadata reconcile is a quiet background pass that only paints the panel when the
+   * preview set actually drifted (`discoveryUpdated` is silent on an empty diff — see
+   * [runIncrementalDiscoveryNow]).
+   *
+   * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for in-process
+   * integration tests and the fake-mode harness scenarios that don't wire one.
+   */
+  private fun queueDiscoveryAfterRender(path: String) {
+    if (incrementalDiscovery == null) return
+    pendingDiscoveryPaths.add(path)
+    Thread(
+        {
+          try {
+            Thread.sleep(discoveryWatchdogMs)
+          } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return@Thread
+          }
+          drainPendingDiscovery()
+        },
+        "compose-ai-daemon-discovery-watchdog",
+      )
+      .apply { isDaemon = true }
+      .start()
+  }
+
+  /**
+   * Drains [pendingDiscoveryPaths] and runs the discovery cascade for each path. Idempotent:
+   * concurrent callers (the watchdog vs. [emitRenderFinished]) compete via the atomic queue poll,
+   * so each path runs at most once.
+   */
+  private fun drainPendingDiscovery() {
+    while (true) {
+      val path = pendingDiscoveryPaths.poll() ?: return
+      runIncrementalDiscoveryNow(path)
+    }
+  }
+
+  /**
    * B2.2 phase 2 — runs the daemon-side cheap-prefilter / scoped-scan / diff cascade for one
    * source-file `fileChanged` notification, applies the resulting diff in-place to [previewIndex],
    * and emits `discoveryUpdated` if non-empty.
    *
-   * Runs the heavy work on a fresh daemon thread so the JSON-RPC read loop never blocks on a scan.
-   * Mirrors the fire-and-forget pattern [submitRenderAsync] uses for renders. We deliberately pick
-   * a fresh thread (rather than reusing an executor) for symmetry with the render path; saved-file
-   * events arrive O(seconds) apart in a typical save loop, so the cost of one short-lived `Thread`
-   * per save is negligible compared to a ClassGraph scan.
-   *
-   * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for in-process
-   * integration tests.
+   * Runs the heavy work on a fresh daemon thread so neither the JSON-RPC read loop nor the
+   * render-watcher loop blocks on a scan. Mirrors the fire-and-forget pattern [submitRenderAsync]
+   * uses for renders. We deliberately pick a fresh thread (rather than reusing an executor) for
+   * symmetry with the render path; saved-file events arrive O(seconds) apart in a typical save
+   * loop, so the cost of one short-lived `Thread` per save is negligible compared to a ClassGraph
+   * scan.
    */
-  private fun runIncrementalDiscovery(path: String) {
+  private fun runIncrementalDiscoveryNow(path: String) {
     val discovery = incrementalDiscovery ?: return
     Thread(
         {
@@ -1407,6 +1481,17 @@ class JsonRpcServer(
     /** PROTOCOL.md § 6 — `daemon.classpathDirtyGraceMs`, default 2000ms. */
     const val CLASSPATH_DIRTY_GRACE_PROP: String = "composeai.daemon.classpathDirtyGraceMs"
     const val DEFAULT_CLASSPATH_DIRTY_GRACE_MS: Long = 2_000L
+
+    /**
+     * Watchdog window between `fileChanged({kind:source})` and the (deferred) discovery scan. The
+     * server prefers to drain the pending-discovery queue from `emitRenderFinished` so the user's
+     * new PNG always lands before any `discoveryUpdated`; the watchdog is the fallback for saves
+     * that don't drive a render (e.g. file changed but not focused). 1500ms in production keeps the
+     * metadata reconcile responsive without racing fast renders. Tests override to a few hundred ms
+     * via the sysprop.
+     */
+    const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
+    const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
 
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —

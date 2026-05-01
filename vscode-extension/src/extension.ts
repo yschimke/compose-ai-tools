@@ -332,6 +332,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             // Gradle, which re-bootstraps a fresh daemon when the user
             // re-enables it via composePreviewDaemonStart.
         },
+        onDiscoveryUpdated: (moduleId, params) => {
+            // Daemon emits this only when the in-memory preview index drifted
+            // (added / removed / changed against the snapshot it held before
+            // the save). Identity-only saves are silent. Apply the diff to
+            // the extension-side mirror used for daemon focus computation —
+            // we deliberately don't post a "loading" or progress message;
+            // the user already saw the new PNG arrive via `renderFinished`,
+            // and a webview reshape is only needed when the preview set
+            // actually changed.
+            applyDiscoveryDiff(moduleId, params);
+        },
         onHistoryAdded: (_moduleId, params) => {
             // Phase H7 — daemon push: a fresh render landed and was
             // archived. Forward to the History panel; the panel filters
@@ -788,6 +799,78 @@ function invalidateModuleCache(filePath: string): void {
 }
 
 /**
+ * Applies a daemon-emitted `discoveryUpdated` diff silently. Only fires on a
+ * non-empty diff (the daemon stays quiet when the in-memory preview index
+ * matches a fresh scan), so reaching this code path always means the panel
+ * needs to reshape.
+ *
+ * The daemon's lightweight `DiscoveryPreviewInfo` doesn't carry capture paths,
+ * device dimensions, or a11y data — only id / className / functionName /
+ * sourceFile / displayName / group. We need full `PreviewInfo` to repaint
+ * cards, so we run a silent `discoverPreviews` here (no progress bar, no
+ * "Building..." banner, no setLoading message). The user already saw the new
+ * PNG via `renderFinished`; the panel reshape lands behind it.
+ *
+ * Identity-only saves never reach this function — the daemon's
+ * `discoveryDiffEmpty(diff)` guard short-circuits before emitting. So we don't
+ * pay for the gradle discover round-trip on every keystroke; only when the
+ * preview set genuinely drifted.
+ *
+ * Errors are logged and dropped — the next user-driven refresh will reconcile.
+ */
+async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number }): Promise<void> {
+    if (!gradleService || !panel) { return; }
+
+    const removedIds = params.removed ?? [];
+    const addedCount = params.added?.length ?? 0;
+    const changedCount = params.changed?.length ?? 0;
+    if (removedIds.length === 0 && addedCount === 0 && changedCount === 0) {
+        return;
+    }
+
+    gradleService.invalidateCache(moduleId);
+    let manifest;
+    try {
+        manifest = await gradleService.discoverPreviews(moduleId);
+    } catch (err) {
+        logLine(`[daemon] silent discover after discoveryUpdated failed for ${moduleId}: ${(err as Error).message}`);
+        return;
+    }
+    if (!manifest) { return; }
+
+    const fresh = manifest.previews;
+    for (const p of fresh) {
+        for (const capture of p.captures) {
+            capture.label = captureLabel(capture);
+        }
+        previewModuleMap.set(p.id, moduleId);
+    }
+    // Drop module-map entries for removed previews so a subsequent webview
+    // action keyed by previewId doesn't resolve to the stale module.
+    for (const id of removedIds) { previewModuleMap.delete(id); }
+    moduleManifestCache.set(moduleId, fresh);
+    registry.replaceModule(moduleId, fresh);
+
+    // Re-filter against `currentScopeFile` so the panel stays scoped to the
+    // file the user is editing — same shape as the gradle path's setPreviews.
+    if (!currentScopeFile) { return; }
+    const filterFile = packageQualifiedSourcePath(currentScopeFile);
+    const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
+    const moduleIsFastTier = fastTierModules.has(moduleId);
+    const heavyStaleIds = moduleIsFastTier
+        ? visiblePreviews
+            .filter(p => p.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD))
+            .map(p => p.id)
+        : [];
+    panel.postMessage({
+        command: 'setPreviews',
+        previews: visiblePreviews,
+        moduleDir: moduleId,
+        heavyStaleIds,
+    });
+}
+
+/**
  * Side-channel save handler that pushes a `fileChanged` + focus-scoped
  * `renderNow` to the daemon when the daemon path is enabled and a daemon
  * exists for this file's module. Runs alongside the Gradle refresh, never
@@ -1034,16 +1117,16 @@ function maybeFirePendingRefresh(): void {
  *  unhealthy, the refresh is `forceRender=true` and Gradle does a full
  *  render as today.
  *
- *  **Recompile-before-notify invariant.** In the daemon path the discover
- *  refresh runs *first*, then the daemon is notified. The daemon's
+ *  **Recompile-before-notify invariant.** In the daemon path the compile
+ *  step runs *first*, then the daemon is notified. The daemon's
  *  `fileChanged({kind:source})` swaps its `URLClassLoader` and `renderNow`
  *  reads `.class` files from `build/intermediates/.../classes/` — so those
- *  files must be fresh when the swap happens. `compileKotlin` runs as an
- *  upstream of `discoverPreviews` (we let Gradle drive Kotlin compilation
- *  per `docs/daemon/DESIGN.md` § "Out of scope"); inverting the order would
- *  let the daemon render stale bytecode matching the previous save and the
- *  user would see the loading overlay flash without any actual content
- *  change.
+ *  files must be fresh when the swap happens. We invoke
+ *  `composePreviewCompile` (the same `compileKotlin*` upstream that
+ *  `discoverPreviews` depends on, minus the ClassGraph scan over every
+ *  dependency JAR) — the heavy classpath walk is now the daemon's job via
+ *  `IncrementalDiscovery`, surfaced through `discoveryUpdated` only when
+ *  the preview set actually drifted.
  *
  *  Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
  *  keep their previous PNG/GIF on disk and surface as stale in the panel —
@@ -1054,27 +1137,9 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
     try {
         const mode = pickRefreshMode(filePath);
         if (mode === 'daemon') {
-            // Run discover first so `compileKotlin` (an upstream of
-            // discoverPreviews) updates the on-disk `.class` files the
-            // daemon's child URLClassLoader reads. Notifying the daemon
-            // before the recompile would race the swap against stale
-            // bytecode and the panel would flicker without updating.
-            const outcome = await refresh(false, filePath);
-            if (outcome !== 'completed') {
-                // Discover didn't finish to completion. Three cases, all
-                // equally bad for daemon notify:
-                //   - 'cancelled': a newer save aborted us mid-flight, so
-                //     compileKotlin was killed too — `.class` files are
-                //     half-written. The newer save's runRefreshExclusive
-                //     will own the daemon notify.
-                //   - 'failed': Gradle failed (build error, missing jlink).
-                //     `.class` files weren't refreshed; stale bytecode.
-                //   - 'no-module': nothing happened.
-                // In all three, sending fileChanged + renderNow now would
-                // re-render against stale bytes and produce the
-                // flicker-without-update symptom — exactly the bug this
-                // ordering fix was meant to close.
-                logLine(`daemon: skipped notify (refresh outcome=${outcome})`);
+            const compileOk = await runDaemonCompileOnly(filePath);
+            if (!compileOk) {
+                logLine('daemon: skipped notify (compile failed or no module)');
                 return;
             }
             const accepted = await notifyDaemonOfSave(filePath);
@@ -1092,6 +1157,47 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
         refreshInFlight = false;
         maybeFirePendingRefresh();
     }
+}
+
+/**
+ * Daemon-mode save: compile the upstream Kotlin task only — no `discoverPreviews`
+ * round-trip, no progress UI, no spinner overlays. The `.class` files land on
+ * disk fresh; the daemon then runs incremental discovery internally and emits
+ * `discoveryUpdated` when (and only when) the preview set changed.
+ *
+ * Returns `false` if the file resolves to no module or the compile failed —
+ * caller falls back to the Gradle render path. Errors are logged silently;
+ * the user-visible LSP gate (`compileErrors.ts`) still surfaces compile
+ * failures, this just keeps the panel quiet during the happy path.
+ */
+async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
+    if (!gradleService) { return false; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module) { return false; }
+
+    // Honour the existing LSP-error gate — same predicate `refresh()` uses to
+    // skip Gradle when the active buffer has Error-severity diagnostics. We
+    // don't need to surface the banner here (the gradle path handles that on
+    // an explicit refresh); just skip the compile so we don't burn cycles
+    // recompiling a file the LSP already says is broken.
+    const compileErrors = readCompileErrors(filePath);
+    if (compileErrors.length > 0) {
+        logLine(`daemon: gated — ${compileErrors.length} compile error(s) in ${path.basename(filePath)}`);
+        return false;
+    }
+
+    invalidateModuleCache(filePath);
+    try {
+        await gradleService.compileOnly(module);
+    } catch (err) {
+        if (err instanceof TaskCancelledError) {
+            logLine(`daemon: compileOnly cancelled for ${module}`);
+        } else {
+            logLine(`daemon: compileOnly failed for ${module}: ${(err as Error).message}`);
+        }
+        return false;
+    }
+    return true;
 }
 
 /**
