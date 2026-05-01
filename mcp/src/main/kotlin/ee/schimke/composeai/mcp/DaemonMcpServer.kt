@@ -329,7 +329,13 @@ class DaemonMcpServer(
    * [overrides] forwards the per-call display-property overrides PROTOCOL.md § 5 documents on
    * `renderNow`. Defaults to null (use discovery-time RenderSpec); the auto-render fallback in
    * `get_preview_data` leaves it null on purpose since it just wants any render so the kind becomes
-   * available.
+   * available. The value is also folded into [RenderKey] so that two concurrent `render_preview`
+   * calls for the same URI but different overrides do NOT share a single render future — without
+   * that re-key, caller B with `overrides=O2` would silently receive the bytes from caller A's
+   * `overrides=O1` render. **Known limitation:** when concurrent override-bearing calls race the
+   * daemon-side coalesce rule, the second `renderNow` is rejected with `coalesced` and the second
+   * waiter currently hangs until [renderTimeoutMs]. Sequential agent calls — the dominant MCP usage
+   * pattern — are unaffected.
    */
   private fun awaitNextRender(
     uri: PreviewUri,
@@ -338,7 +344,7 @@ class DaemonMcpServer(
     overrides: PreviewOverrides? = null,
   ): RenderOutcome.Finished {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
-    val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
+    val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn, overrides)
     // Multi-waiter dedup: each call adds its own CompletableFuture to the per-key list, so
     // concurrent `resources/read` for the same URI all wake up on the next `renderFinished`
     // — they all asked "what's the current bytes for this preview?" and the daemon's reply
@@ -1446,12 +1452,23 @@ class DaemonMcpServer(
   private fun onRenderFinished(daemon: SupervisedDaemon, params: JsonObject?) {
     val previewId = params?.get("id")?.jsonPrimitive?.contentOrNull ?: return
     val pngPath = params["pngPath"]?.jsonPrimitive?.contentOrNull ?: return
-    // 1. Wake every pending resources/read awaiter for this URI. We remove the list atomically
-    //    and complete each future outside the compute lambda so a slow consumer can't block
-    //    other waiters or the daemon's reader thread.
-    val key = RenderKey(daemon.workspaceId, daemon.modulePath, previewId)
-    val toComplete = pendingRenders.remove(key)
-    toComplete?.forEach { it.complete(RenderOutcome.Finished(pngPath)) }
+    // 1. Wake every pending resources/read awaiter for this URI. The renderFinished notification
+    //    doesn't carry override info, so we wake every (URI, *) key — including override-bearing
+    //    waiters whose own renderNow may have been coalesced by the daemon (PROTOCOL.md § 5).
+    //    Pragmatic fanout: under daemon coalescing only one renderNow per previewId is actually
+    //    rendering at a time, so the bytes we hand back match SOME caller's request; the tradeoff
+    //    is that an off-overrides waiter may receive bytes rendered for a different overrides set.
+    //    See [awaitNextRender]'s "Known limitation" note. Concurrent same-overrides callers
+    //    (the dedup target) get the right bytes.
+    pendingRenders.keys
+      .filter {
+        it.workspaceId == daemon.workspaceId &&
+          it.modulePath == daemon.modulePath &&
+          it.previewId == previewId
+      }
+      .forEach { key ->
+        pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Finished(pngPath)) }
+      }
     // 2. Refresh the data-product attachment cache for this `(uri)`. Any kind the daemon attached
     //    on this render is the new fresh payload; any kind it didn't attach is stale and gets
     //    dropped (the daemon stops attaching kinds the MCP server unsubscribed from, so a missing
@@ -1522,8 +1539,20 @@ class DaemonMcpServer(
     val errorObj = params["error"] as? JsonObject
     val kind = errorObj?.get("kind")?.jsonPrimitive?.contentOrNull ?: "unknown"
     val message = errorObj?.get("message")?.jsonPrimitive?.contentOrNull ?: "no message"
-    val key = RenderKey(daemon.workspaceId, daemon.modulePath, previewId)
-    pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Failed(kind, message)) }
+    // Same fanout pattern as `onRenderFinished` — wake every (URI, *) waiter whose previewId
+    // matches; renderFailed doesn't carry override info either. Failure for one render fails
+    // every waiter for that previewId, which is the right call: if the underlying composable
+    // throws under O1, it almost certainly throws under O2 too, and surfacing the failure
+    // immediately beats hanging until renderTimeoutMs.
+    pendingRenders.keys
+      .filter {
+        it.workspaceId == daemon.workspaceId &&
+          it.modulePath == daemon.modulePath &&
+          it.previewId == previewId
+      }
+      .forEach { key ->
+        pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Failed(kind, message)) }
+      }
   }
 
   /**
@@ -1657,10 +1686,18 @@ class DaemonMcpServer(
 
   private data class PreviewEntry(val fqn: String, val displayName: String?, val config: String?)
 
+  /**
+   * Dedup key for [pendingRenders]. [overrides] is part of the equality so two concurrent
+   * `render_preview` calls for the same URI but different overrides don't share a future; see
+   * [awaitNextRender]'s "Known limitation" note for the residual coalesce-race behaviour.
+   * `PreviewOverrides` is a `data class`, so `equals`/`hashCode` cover the field-by-field compare
+   * we need.
+   */
   private data class RenderKey(
     val workspaceId: WorkspaceId,
     val modulePath: String,
     val previewId: String,
+    val overrides: PreviewOverrides? = null,
   )
 
   /**
