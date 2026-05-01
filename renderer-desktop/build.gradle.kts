@@ -13,6 +13,8 @@ dependencies {
   implementation(compose.material3)
   implementation(compose.runtime)
   implementation(compose.components.uiToolingPreview)
+
+  testImplementation(libs.junit)
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
