@@ -107,6 +107,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         let moduleDir = '';
         let filterDebounce = null;
         let focusIndex = 0;
+        // Last previewId published to the extension via previewScopeChanged.
+        // Tracked here so we don't spam the History panel with redundant
+        // re-scopes (e.g. layout reapplies on every filter tweak).
+        let lastScopedPreviewId = null;
 
         // Restore layout preference
         if (state.layout && ['grid', 'flow', 'column', 'focus'].includes(state.layout)) {
@@ -228,6 +232,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 const visible = getVisibleCards();
                 if (visible.length === 0) {
                     focusPosition.textContent = '0 / 0';
+                    publishScopedPreview();
                     return;
                 }
                 if (focusIndex >= visible.length) focusIndex = visible.length - 1;
@@ -251,12 +256,54 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     card.classList.remove('focused', 'hidden-by-focus');
                 });
             }
+            publishScopedPreview();
+        }
+
+        // Compute the previewId the panel is currently narrowed to, if any:
+        //   - focus mode: the focused card
+        //   - non-focus: the sole visible card when filters narrowed to one
+        //   - otherwise: null (panel shows multiple previews — module-level history)
+        // Posts the current value to the extension only when it changes so
+        // the History panel re-lists at most once per user-driven narrowing.
+        function publishScopedPreview() {
+            const visible = getVisibleCards();
+            let previewId = null;
+            if (layoutMode.value === 'focus') {
+                if (visible.length > 0 && focusIndex >= 0 && focusIndex < visible.length) {
+                    previewId = visible[focusIndex].dataset.previewId || null;
+                }
+            } else if (visible.length === 1) {
+                previewId = visible[0].dataset.previewId || null;
+            }
+            if (previewId === lastScopedPreviewId) return;
+            lastScopedPreviewId = previewId;
+            vscode.postMessage({
+                command: 'previewScopeChanged',
+                previewId,
+            });
         }
 
         function navigateFocus(delta) {
             const visible = getVisibleCards();
             if (visible.length === 0) return;
             focusIndex = Math.max(0, Math.min(visible.length - 1, focusIndex + delta));
+            applyLayout();
+        }
+
+        // Switch the layout to focus mode and target the supplied card.
+        // No-op when the card is filtered out (it wouldn't be in the visible
+        // set anyway, and forcing focus on an invisible card surfaces an
+        // empty pane).
+        function focusOnCard(card) {
+            const visible = getVisibleCards();
+            const idx = visible.indexOf(card);
+            if (idx === -1) return;
+            focusIndex = idx;
+            if (layoutMode.value !== 'focus') {
+                layoutMode.value = 'focus';
+                state.layout = 'focus';
+                vscode.setState(state);
+            }
             applyLayout();
         }
 
@@ -379,6 +426,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             skeleton.setAttribute('aria-label', 'Loading preview');
             imgContainer.appendChild(skeleton);
             card.appendChild(imgContainer);
+
+            // Double-click the image to jump straight to focus mode on this
+            // preview. Useful when you spot something interesting in a grid
+            // and want a closer look without manually toggling the layout
+            // dropdown and arrowing through siblings. The dblclick handler
+            // stays on the image so single-clicks remain free for future
+            // selection affordances and don't interfere with the existing
+            // title / stale-badge / carousel buttons.
+            imgContainer.addEventListener('dblclick', () => {
+                focusOnCard(card);
+            });
 
             // ATF legend + overlay layer — rendered in the webview (not
             // baked into the PNG) so rows stay interactive: hovering a
@@ -1099,6 +1157,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'clearAll':
                     allPreviews = [];
                     grid.innerHTML = '';
+                    // Reset so the next setPreviews can re-publish the
+                    // narrowed-preview scope if applicable — otherwise a
+                    // stale id from the previous module would dedupe the
+                    // first publish and the History panel would miss it.
+                    lastScopedPreviewId = null;
                     // Don't clear the message here — if it came with a
                     // follow-up showMessage (the usual pattern) it'll be
                     // replaced; if not, ensureNotBlank will backstop a

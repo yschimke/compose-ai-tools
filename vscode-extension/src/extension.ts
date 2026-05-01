@@ -1193,6 +1193,23 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 void notifyDaemonViewport(msg.visible, msg.predicted);
             }
             break;
+        case 'previewScopeChanged': {
+            // Live panel has narrowed to a single preview (focus mode, or
+            // filters reduced visible cards to one). Re-scope the History
+            // panel's previewId filter so it only lists entries for that
+            // preview. `previewId` null means widen the scope back to the
+            // module — the panel shows every preview's history.
+            if (!historyScopeRef.current) { break; }
+            const requested = msg.previewId ?? undefined;
+            if (historyScopeRef.current.previewId === requested) { break; }
+            const newScope: HistoryScope = {
+                ...historyScopeRef.current,
+                previewId: requested,
+            };
+            historyScopeRef.current = newScope;
+            historyPanel?.setScope(newScope);
+            break;
+        }
     }
 }
 
@@ -1233,7 +1250,7 @@ interface WebviewToExtensionMessage {
     className?: string;
     functionName?: string;
     value?: string;
-    previewId?: string;
+    previewId?: string | null;
     visible?: string[];
     predicted?: string[];
 }
