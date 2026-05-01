@@ -181,16 +181,16 @@ class JsonRpcServer(
    */
   private val dataProducts: DataProductRegistry = DataProductRegistry.Empty,
   /**
-   * D3 — per-request budget for `data/fetch` re-render-on-demand (DATA-PRODUCTS.md §
-   * "Re-render semantics"). When the registry returns
-   * [DataProductRegistry.Outcome.RequiresRerender] the dispatcher queues a fresh render in the
-   * required mode and waits at most this many milliseconds for the payload to land. On timeout we
-   * return `DataProductBudgetExceeded` (-32023); the render itself is **not** cancelled —
-   * Robolectric mid-render cancellation is unsafe (PROTOCOL.md § 8) — the fetch just stops waiting
-   * and lets the regular `renderFinished` notification ship when the render eventually completes.
+   * D3 — per-request budget for `data/fetch` re-render-on-demand (DATA-PRODUCTS.md § "Re-render
+   * semantics"). When the registry returns [DataProductRegistry.Outcome.RequiresRerender] the
+   * dispatcher queues a fresh render in the required mode and waits at most this many milliseconds
+   * for the payload to land. On timeout we return `DataProductBudgetExceeded` (-32023); the render
+   * itself is **not** cancelled — Robolectric mid-render cancellation is unsafe (PROTOCOL.md § 8) —
+   * the fetch just stops waiting and lets the regular `renderFinished` notification ship when the
+   * render eventually completes.
    *
-   * Default 30000ms per the spec. Overridable via the
-   * [DATA_FETCH_RERENDER_BUDGET_PROP] sysprop or the constructor (tests pin it small).
+   * Default 30000ms per the spec. Overridable via the [DATA_FETCH_RERENDER_BUDGET_PROP] sysprop or
+   * the constructor (tests pin it small).
    */
   private val dataFetchRerenderBudgetMs: Long =
     System.getProperty(DATA_FETCH_RERENDER_BUDGET_PROP)?.toLongOrNull()
@@ -282,8 +282,8 @@ class JsonRpcServer(
    * host-side render id; [emitRenderFinished] / [emitRenderFailed] complete it as soon as the
    * watcher loop processes the result. The waiter then re-invokes `dataProducts.fetch` to get the
    * payload. On budget timeout the waiter abandons the entry — but does NOT cancel the render
-   * (PROTOCOL.md § 8 — no mid-render cancellation), so a stale entry may linger; the watcher
-   * cleans it up when the render eventually finishes.
+   * (PROTOCOL.md § 8 — no mid-render cancellation), so a stale entry may linger; the watcher cleans
+   * it up when the render eventually finishes.
    */
   private val dataFetchWaiters =
     ConcurrentHashMap<Long, java.util.concurrent.CompletableFuture<RerenderOutcome>>()
@@ -1399,13 +1399,13 @@ class JsonRpcServer(
    *    `renderStarted`/`renderFinished` exactly as for a `renderNow`-driven render — the panel UI
    *    repaints if the PNG changed (DATA-PRODUCTS.md:291-293).
    * 2. Parks on a [java.util.concurrent.CompletableFuture] keyed by that host id, with the
-   *    per-request budget ([dataFetchRerenderBudgetMs]) as the deadline. The future is completed
-   *    by [emitRenderFinished] / [emitRenderFailed] when the watcher processes the result.
-   * 3. On `Ok`, re-invokes `dataProducts.fetch(...)` and routes the resulting [Outcome] to the
-   *    wire via [sendDataFetchOutcome]. On `Failed`, returns `DataProductFetchFailed`. On budget
-   *    timeout, returns `DataProductBudgetExceeded`; the render itself keeps going and the
-   *    waiter entry is leaked into `dataFetchWaiters` until the watcher finally clears it
-   *    (PROTOCOL.md § 8 — no mid-render cancellation).
+   *    per-request budget ([dataFetchRerenderBudgetMs]) as the deadline. The future is completed by
+   *    [emitRenderFinished] / [emitRenderFailed] when the watcher processes the result.
+   * 3. On `Ok`, re-invokes `dataProducts.fetch(...)` and routes the resulting [Outcome] to the wire
+   *    via [sendDataFetchOutcome]. On `Failed`, returns `DataProductFetchFailed`. On budget
+   *    timeout, returns `DataProductBudgetExceeded`; the render itself keeps going and the waiter
+   *    entry is leaked into `dataFetchWaiters` until the watcher finally clears it (PROTOCOL.md § 8
+   *    — no mid-render cancellation).
    */
   private fun handleDataFetchWithRerender(
     req: JsonRpcRequest,
@@ -1462,12 +1462,7 @@ class JsonRpcServer(
               // producer bug — we don't recurse, we surface a fetch-failed so callers see it.
               val secondOutcome =
                 try {
-                  dataProducts.fetch(
-                    params.previewId,
-                    params.kind,
-                    params.params,
-                    params.inline,
-                  )
+                  dataProducts.fetch(params.previewId, params.kind, params.params, params.inline)
                 } catch (t: Throwable) {
                   DataProductRegistry.Outcome.FetchFailed(
                     "registry threw on post-rerender fetch: ${t.message ?: t.javaClass.simpleName}"
@@ -1496,15 +1491,18 @@ class JsonRpcServer(
   /**
    * Submits the fetch-driven re-render onto the host. Mirrors [submitRenderAsync] but takes a
    * pre-encoded payload (with `mode=<mode>`) and routes failures into [renderResultsQueue] so the
-   * watcher loop's existing `renderFailed` path handles them — and so the [dataFetchWaiters]
-   * future is woken via [emitRenderFailed]'s completion call rather than by this thread.
+   * watcher loop's existing `renderFailed` path handles them — and so the [dataFetchWaiters] future
+   * is woken via [emitRenderFailed]'s completion call rather than by this thread.
    */
   private fun submitRerenderForFetch(hostId: Long, payload: String) {
     Thread(
         {
           try {
             val raw =
-              host.submit(RenderRequest.Render(id = hostId, payload = payload), timeoutMs = 5 * 60_000)
+              host.submit(
+                RenderRequest.Render(id = hostId, payload = payload),
+                timeoutMs = 5 * 60_000,
+              )
             renderResultsQueue.put(raw)
           } catch (e: Throwable) {
             System.err.println(
@@ -1520,20 +1518,19 @@ class JsonRpcServer(
   }
 
   /**
-   * D3 — encodes a [RenderRequest.Render.payload] with `previewId=<id>;mode=<mode>`. The `mode`
-   * key is consumed renderer-side (D2 / `renderer-android`) to pick the smallest render
-   * configuration that produces the requested kind — the daemon stays kind-agnostic and just
-   * forwards the producer-supplied tag. Fake-mode hosts (the test harness's `FakeHost`,
-   * `FakeRenderHost` in unit tests) ignore unknown payload keys, so this is forward-compatible.
+   * D3 — encodes a [RenderRequest.Render.payload] with `previewId=<id>;mode=<mode>`. The `mode` key
+   * is consumed renderer-side (D2 / `renderer-android`) to pick the smallest render configuration
+   * that produces the requested kind — the daemon stays kind-agnostic and just forwards the
+   * producer-supplied tag. Fake-mode hosts (the test harness's `FakeHost`, `FakeRenderHost` in unit
+   * tests) ignore unknown payload keys, so this is forward-compatible.
    */
-  private fun encodeRenderPayloadWithMode(previewId: String, mode: String): String =
-    buildString {
-      if (previewId.isNotEmpty()) append("previewId=").append(previewId)
-      if (mode.isNotEmpty()) {
-        if (isNotEmpty()) append(';')
-        append("mode=").append(mode)
-      }
+  private fun encodeRenderPayloadWithMode(previewId: String, mode: String): String = buildString {
+    if (previewId.isNotEmpty()) append("previewId=").append(previewId)
+    if (mode.isNotEmpty()) {
+      if (isNotEmpty()) append(';')
+      append("mode=").append(mode)
     }
+  }
 
   private fun sendDataFetchOutcome(
     req: JsonRpcRequest,
@@ -2324,9 +2321,9 @@ class JsonRpcServer(
   }
 
   /**
-   * D3 — completion signal for [dataFetchWaiters]. The watcher loop completes the future with
-   * [Ok] when the underlying render lands and with [Failed] when the host rejects it; the data-
-   * fetch worker thread reads which one it got and decides whether to re-call the registry, surface
+   * D3 — completion signal for [dataFetchWaiters]. The watcher loop completes the future with [Ok]
+   * when the underlying render lands and with [Failed] when the host rejects it; the data- fetch
+   * worker thread reads which one it got and decides whether to re-call the registry, surface
    * `DataProductFetchFailed`, or — on its own timeout path — surface `DataProductBudgetExceeded`.
    */
   private sealed interface RerenderOutcome {

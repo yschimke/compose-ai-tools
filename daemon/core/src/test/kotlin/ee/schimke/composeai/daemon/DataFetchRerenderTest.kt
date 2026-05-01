@@ -26,25 +26,24 @@ import org.junit.Test
 
 /**
  * D3 — `data/fetch` re-render-on-demand behaviour. See
- * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) §
- * "Re-render semantics" + § "Wire surface > data/fetch".
+ * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "Re-render
+ * semantics" + § "Wire surface > data/fetch".
  *
  * The tests drive the JSON-RPC surface end-to-end against a [FakeProducer] [DataProductRegistry]
  * that swings between "needs a re-render" and "Ok with the payload" depending on whether a render
- * has been observed for the requested preview. That lets us pin every documented branch
- * (happy-path re-render -> payload, post-render-no-payload -> fetch-failed, budget-exceeded)
- * without standing up a real renderer-side producer (D2 / `renderer-android` lands on a separate
- * branch).
+ * has been observed for the requested preview. That lets us pin every documented branch (happy-path
+ * re-render -> payload, post-render-no-payload -> fetch-failed, budget-exceeded) without standing
+ * up a real renderer-side producer (D2 / `renderer-android` lands on a separate branch).
  */
 class DataFetchRerenderTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
   /**
-   * Happy path. Producer reports "needs a11y mode re-render" on the first fetch, the daemon kicks
-   * a re-render off the regular render-queue path, the watcher emits `renderStarted` /
-   * `renderFinished`, the producer returns `Ok` on re-call, and the `data/fetch` response
-   * resolves with the payload.
+   * Happy path. Producer reports "needs a11y mode re-render" on the first fetch, the daemon kicks a
+   * re-render off the regular render-queue path, the watcher emits `renderStarted` /
+   * `renderFinished`, the producer returns `Ok` on re-call, and the `data/fetch` response resolves
+   * with the payload.
    */
   @Test(timeout = 30_000)
   fun rerender_happy_path_emits_render_notifications_then_payload_response() {
@@ -61,16 +60,16 @@ class DataFetchRerenderTest {
       )
 
       // Renderer-side notifications fire as for a regular renderNow - UI panel updates the PNG.
-      val started =
-        rpc.pollUntil { it["method"]?.jsonPrimitive?.contentOrNull == "renderStarted" }
+      val started = rpc.pollUntil { it["method"]?.jsonPrimitive?.contentOrNull == "renderStarted" }
       assertNotNull("renderStarted should fire for the fetch-driven re-render", started)
       assertEquals(
         "com.example.Foo_bar",
         started!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull,
       )
 
-      val finished =
-        rpc.pollUntil { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+      val finished = rpc.pollUntil {
+        it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
+      }
       assertNotNull("renderFinished should fire for the fetch-driven re-render", finished)
       assertEquals(
         "com.example.Foo_bar",
@@ -184,8 +183,8 @@ class DataFetchRerenderTest {
   }
 
   /**
-   * Producer returns `RequiresRerender` *again* after the re-render lands. The dispatcher must
-   * NOT recurse infinitely - surface a `DataProductFetchFailed` once and stop.
+   * Producer returns `RequiresRerender` *again* after the re-render lands. The dispatcher must NOT
+   * recurse infinitely - surface a `DataProductFetchFailed` once and stop.
    */
   @Test(timeout = 30_000)
   fun rerender_then_second_requires_rerender_does_not_loop() {
@@ -214,8 +213,8 @@ class DataFetchRerenderTest {
 
   /**
    * Pre-render-on-demand fast paths still work - `Outcome.Ok` returned directly skips the worker
-   * entirely. Pins that we haven't accidentally regressed the D1 "kind already produced" path
-   * by routing it through the new D3 worker.
+   * entirely. Pins that we haven't accidentally regressed the D1 "kind already produced" path by
+   * routing it through the new D3 worker.
    */
   @Test(timeout = 15_000)
   fun ok_outcome_short_circuits_without_a_rerender() {
@@ -251,10 +250,7 @@ class DataFetchRerenderTest {
           val method = it["method"]?.jsonPrimitive?.contentOrNull
           method == "renderStarted" || method == "renderFinished"
         }
-      assertFalse(
-        "Ok-shortcut must not trigger a render - only RequiresRerender does",
-        sawRender,
-      )
+      assertFalse("Ok-shortcut must not trigger a render - only RequiresRerender does", sawRender)
       assertEquals("Ok shortcut must not call the host", 0, producer.renderSubmits.get())
     }
   }
@@ -266,10 +262,10 @@ class DataFetchRerenderTest {
   /**
    * In-memory [DataProductRegistry] driven by per-test config:
    * - [modeForKind] tells the first fetch for a given kind to return `RequiresRerender(<mode>)`.
-   * - After the dispatcher's re-render lands ([renderObserved] is set), subsequent fetches for
-   *   that kind return [postRerenderOutcome] (defaults to a synthetic `Ok` payload).
-   * - [immediateOk] lets a test inject "Ok on first call, no re-render needed" for the D1
-   *   fast-path regression coverage.
+   * - After the dispatcher's re-render lands ([renderObserved] is set), subsequent fetches for that
+   *   kind return [postRerenderOutcome] (defaults to a synthetic `Ok` payload).
+   * - [immediateOk] lets a test inject "Ok on first call, no re-render needed" for the D1 fast-path
+   *   regression coverage.
    */
   private class FakeProducer(
     private val modeForKind: Map<String, String>,
@@ -331,10 +327,8 @@ class DataFetchRerenderTest {
         )
     }
 
-    override fun attachmentsFor(
-      previewId: String,
-      kinds: Set<String>,
-    ) = emptyList<ee.schimke.composeai.daemon.protocol.DataProductAttachment>()
+    override fun attachmentsFor(previewId: String, kinds: Set<String>) =
+      emptyList<ee.schimke.composeai.daemon.protocol.DataProductAttachment>()
 
     /** Called by [TestRenderHost] when the dispatcher submits a render. */
     fun observeRenderSubmit(payload: String) {
@@ -380,11 +374,7 @@ class DataFetchRerenderTest {
                     continue
                   }
                   val result =
-                    RenderResult(
-                      id = req.id,
-                      classLoaderHashCode = 0,
-                      classLoaderName = "test",
-                    )
+                    RenderResult(id = req.id, classLoaderHashCode = 0, classLoaderName = "test")
                   results.computeIfAbsent(req.id) { LinkedBlockingQueue() }.put(result)
                 }
                 RenderRequest.Shutdown -> return@Thread
@@ -467,11 +457,7 @@ class DataFetchRerenderTest {
     readerThread.start()
 
     val driver =
-      RpcDriver(
-        clientToServerOut = clientToServerOut,
-        received = received,
-        history = history,
-      )
+      RpcDriver(clientToServerOut = clientToServerOut, received = received, history = history)
     try {
       block(driver)
       // Tear down - drop subscriptions / let renders drain. Skip shutdown for the
@@ -480,10 +466,7 @@ class DataFetchRerenderTest {
         driver.send("""{"jsonrpc":"2.0","id":9999,"method":"shutdown"}""")
         driver.pollUntil { it["id"]?.jsonPrimitive?.intOrNull == 9999 }
         driver.send("""{"jsonrpc":"2.0","method":"exit"}""")
-        assertTrue(
-          "server should exit cleanly within 10s",
-          exitLatch.await(10, TimeUnit.SECONDS),
-        )
+        assertTrue("server should exit cleanly within 10s", exitLatch.await(10, TimeUnit.SECONDS))
       }
       // Render thread interrupt invariant - fetch-driven re-renders must not interrupt the host.
       assertEquals(
