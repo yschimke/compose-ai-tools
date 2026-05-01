@@ -40,6 +40,7 @@ class FakeGate {
         onRenderFinished?: (p: { id: string; pngPath: string; tookMs: number }) => void;
         onRenderFailed?: (p: { id: string; error: { message: string } }) => void;
         onClasspathDirty?: (p: { detail: string }) => void;
+        onDiscoveryUpdated?: (p: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number }) => void;
         onChannelClosed?: () => void;
     }>();
 
@@ -73,6 +74,7 @@ function build() {
     const images: CapturedImage[] = [];
     const failures: { moduleId: string; previewId: string; message: string }[] = [];
     const dirty: { moduleId: string; detail: string }[] = [];
+    const discovery: { moduleId: string; params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number } }[] = [];
     const events = {
         onPreviewImageReady: (moduleId: string, previewId: string, base64: string, pngPath: string) => {
             images.push({ moduleId, previewId, base64, pngPath });
@@ -83,13 +85,16 @@ function build() {
         onClasspathDirty: (moduleId: string, detail: string) => {
             dirty.push({ moduleId, detail });
         },
+        onDiscoveryUpdated: (moduleId: string, params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number }) => {
+            discovery.push({ moduleId, params });
+        },
     };
     const scheduler = new DaemonScheduler(
         gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
         events,
         { appendLine: (s) => log.push(s) },
     );
-    return { gate, scheduler, log, images, failures, dirty };
+    return { gate, scheduler, log, images, failures, dirty, discovery };
 }
 
 describe('DaemonScheduler', () => {
@@ -302,6 +307,23 @@ describe('DaemonScheduler', () => {
         evts.onClasspathDirty!({ detail: 'libs.versions.toml SHA changed' });
         assert.strictEqual(dirty.length, 1);
         assert.strictEqual(dirty[0].moduleId, 'mod');
+    });
+
+    it('forwards discoveryUpdated to the caller with the moduleId attached', async () => {
+        const { gate, scheduler, discovery } = build();
+        // First call any scheduler method that goes through getOrSpawn so the
+        // events bag for `mod` is registered; setFocus is the cheapest.
+        await scheduler.setFocus('mod', ['p1']);
+        const evts = gate.capturedEvents.get('mod')!;
+        evts.onDiscoveryUpdated!({
+            added: [],
+            removed: ['p1'],
+            changed: [],
+            totalPreviews: 0,
+        });
+        assert.strictEqual(discovery.length, 1);
+        assert.strictEqual(discovery[0].moduleId, 'mod');
+        assert.deepStrictEqual(discovery[0].params.removed, ['p1']);
     });
 
     it('renderNow returns true on accept and false when no daemon is available', async () => {

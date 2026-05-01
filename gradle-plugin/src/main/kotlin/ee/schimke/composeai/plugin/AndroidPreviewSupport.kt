@@ -281,6 +281,8 @@ internal object AndroidPreviewSupport {
         project.configurations.findByName("${variantName}ScreenshotTestRuntimeClasspath")
       } else null
 
+    val mainCompileTaskName = "compile${capVariant}Kotlin"
+    val screenshotCompileTaskName = "compile${capVariant}ScreenshotTestKotlin"
     val discoverTask =
       ComposePreviewTasks.registerDiscoverTask(
         project,
@@ -289,9 +291,9 @@ internal object AndroidPreviewSupport {
         previewOutputDir,
         extension,
       ) {
-        dependsOn("compile${capVariant}Kotlin")
+        dependsOn(mainCompileTaskName)
         if (screenshotTestEnabled) {
-          dependsOn("compile${capVariant}ScreenshotTestKotlin")
+          dependsOn(screenshotCompileTaskName)
           screenshotTestRuntimeConfig?.let { stConfig ->
             dependencyJars.from(
               stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
@@ -304,6 +306,16 @@ internal object AndroidPreviewSupport {
           }
         }
       }
+    // `composePreviewCompile` — the daemon-mode save loop calls this instead of `discoverPreviews`
+    // so the recompile (and on-disk `.class` refresh) runs without re-walking the dependency-JAR
+    // classpath through ClassGraph on every keystroke. We deliberately stop at the main compile —
+    // ScreenshotTest sources matter only for `discoverPreviews`'s dependency-JAR scan, not for the
+    // user's edited preview-bearing file.
+    ComposePreviewTasks.registerCompileOnlyTask(
+      project,
+      extension,
+      compileTaskNames = listOf(mainCompileTaskName),
+    )
 
     // Writes the plugin-side compat findings (CompatRules) to
     // `build/compose-previews/doctor.json`. The CLI doesn't need this

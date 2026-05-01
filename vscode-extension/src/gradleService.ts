@@ -183,6 +183,24 @@ export class GradleService {
     }
 
     /**
+     * Runs the upstream Kotlin compile only — same task `discoverPreviews` depends on, minus the
+     * ClassGraph scan over every dependency JAR. The daemon save loop calls this so that on-disk
+     * `.class` files are fresh before we send `fileChanged` to the daemon, without paying for a
+     * full preview-manifest reconcile on every keystroke. The metadata reconcile is handled
+     * silently by the daemon's `discoveryUpdated` notification when (and only when) the diff is
+     * non-empty.
+     *
+     * Mirrors the cache invalidation behaviour of {@link discoverPreviews}: we drop the cached
+     * manifest because the user-visible source-of-truth is now the daemon's in-memory index, not
+     * the on-disk `previews.json`. A subsequent gradle-mode save (daemon disabled or unhealthy)
+     * will repopulate the cache through `discoverPreviews`.
+     */
+    async compileOnly(module: string, opts?: TaskOptions): Promise<void> {
+        this.manifestCache.delete(module);
+        await this.runTask(`${gradleProjectPath(module)}:composePreviewCompile`, [], opts);
+    }
+
+    /**
      * Runs `:<module>:renderAllPreviews` and returns the parsed manifest.
      *
      * `tier` controls which captures the renderer produces:

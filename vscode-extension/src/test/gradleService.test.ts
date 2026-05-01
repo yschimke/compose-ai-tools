@@ -395,6 +395,33 @@ describe('GradleService', () => {
             assert.strictEqual(api.runCalls.length, 1);
         }));
 
+        it('compileOnly invokes :module:composePreviewCompile and drops the manifest cache',
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, 'mod'));
+                const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
+                    path.join(manifestDir, 'previews.json'),
+                );
+
+                const service = new GradleService(dir, api);
+                // Prime the cache via a discoverPreviews invocation.
+                await service.discoverPreviews('mod');
+                assert.strictEqual(api.runCalls.length, 1);
+                assert.strictEqual(api.runCalls[0].taskName, ':mod:discoverPreviews');
+
+                // compileOnly runs a different task and invalidates the cache.
+                await service.compileOnly('mod');
+                assert.strictEqual(api.runCalls.length, 2);
+                assert.strictEqual(api.runCalls[1].taskName, ':mod:composePreviewCompile');
+
+                // Cache was dropped, so the next discoverPreviews calls Gradle again.
+                await service.discoverPreviews('mod');
+                assert.strictEqual(api.runCalls.length, 3);
+                assert.strictEqual(api.runCalls[2].taskName, ':mod:discoverPreviews');
+            }));
+
         it('bypasses cache after invalidateCache', withTempDir(async (dir, api) => {
             fs.mkdirSync(path.join(dir, 'mod'));
             const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');

@@ -114,10 +114,25 @@ export interface RenderNowResult {
 
 // Daemon → client notifications (PROTOCOL.md § 6)
 
+/**
+ * Per-preview shape inside `discoveryUpdated.added` / `.changed`. Mirrors the
+ * `PreviewInfoDto` JSON serialised by `daemon/core/.../PreviewIndex.kt` —
+ * which uses `@SerialName("functionName")` so the wire field is `functionName`,
+ * not `methodName`.
+ */
+export interface DiscoveryPreviewInfo {
+    id: string;
+    className: string;
+    functionName: string;
+    sourceFile?: string | null;
+    displayName?: string | null;
+    group?: string | null;
+}
+
 export interface DiscoveryUpdatedParams {
-    added: unknown[];
+    added: DiscoveryPreviewInfo[];
     removed: string[];
-    changed: unknown[];
+    changed: DiscoveryPreviewInfo[];
     totalPreviews: number;
 }
 

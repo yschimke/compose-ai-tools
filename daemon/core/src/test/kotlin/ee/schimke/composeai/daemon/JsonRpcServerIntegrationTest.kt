@@ -648,6 +648,9 @@ class JsonRpcServerIntegrationTest {
         daemonVersion = "test",
         previewIndex = index,
         incrementalDiscovery = discovery,
+        // No `renderNow` between the `fileChanged` and the assertion — drive the watchdog fallback
+        // path on a short window so the test isn't blocked on the production 1500ms default.
+        discoveryWatchdogMs = 100,
         onExit = { _ -> exitLatch.countDown() },
       )
     val serverThread =
@@ -708,6 +711,235 @@ class JsonRpcServerIntegrationTest {
       assertEquals(0, index.size)
 
       // Tear down.
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      tmpDir.toFile().deleteRecursively()
+      serverThread.join(10_000)
+    }
+  }
+
+  /**
+   * Save-after-render ordering invariant: when a `fileChanged({kind:source})` and a `renderNow`
+   * arrive in close succession, the daemon emits `renderFinished` strictly before
+   * `discoveryUpdated`. The user sees the new PNG first; the metadata reconcile lands behind it.
+   *
+   * The watchdog is set to a value much larger than the render's wall-clock so the only way
+   * `discoveryUpdated` can arrive is via the post-`renderFinished` drain.
+   */
+  @Test(timeout = 30_000)
+  fun fileChanged_then_renderNow_emits_renderFinished_before_discoveryUpdated() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("ordering-test")
+    val sourceKt = tmpDir.resolve("Foo.kt")
+    java.nio.file.Files.writeString(sourceKt, "@Preview\nfun Foo() {}\n")
+
+    val previewDto =
+      PreviewInfoDto(
+        id = "Foo",
+        className = "com.example.FooKt",
+        methodName = "Foo",
+        sourceFile = sourceKt.toAbsolutePath().toString(),
+      )
+    val index = PreviewIndex.fromMap(path = sourceKt, byId = mapOf("Foo" to previewDto))
+    val discovery =
+      IncrementalDiscovery(
+        classpath = listOf(tmpDir),
+        knownPreviewAnnotationFqns = setOf("androidx.compose.ui.tooling.preview.Preview"),
+      )
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        previewIndex = index,
+        incrementalDiscovery = discovery,
+        // Deliberately well above the FakeRenderHost render wall-clock so the only way
+        // `discoveryUpdated` lands within the test budget is via the post-renderFinished drain.
+        // If the ordering invariant regresses we'd see `discoveryUpdated` arrive at +5s instead.
+        discoveryWatchdogMs = 5_000,
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-ordering").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-ordering-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      // Save: queues discovery, classloader swap, no scan emission yet.
+      val abs = sourceKt.toAbsolutePath().toString().replace("\\", "\\\\")
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"fileChanged","params":{
+              "path":"$abs","kind":"source","changeType":"modified"}}""",
+      )
+      // Render: drives the post-renderFinished drain.
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":2,"method":"renderNow","params":{
+              "previews":["Foo"],"tier":"fast"}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 })
+
+      // Walk the notification stream; renderFinished must precede discoveryUpdated.
+      var sawRenderFinished = false
+      var sawDiscoveryUpdated = false
+      val deadline = System.currentTimeMillis() + 10_000
+      while (System.currentTimeMillis() < deadline && !sawDiscoveryUpdated) {
+        val msg = received.poll(500, TimeUnit.MILLISECONDS) ?: continue
+        when (msg["method"]?.jsonPrimitive?.contentOrNull) {
+          "renderFinished" -> sawRenderFinished = true
+          "discoveryUpdated" -> {
+            assertTrue("renderFinished must arrive before discoveryUpdated", sawRenderFinished)
+            sawDiscoveryUpdated = true
+          }
+        }
+      }
+      assertTrue("renderFinished must arrive", sawRenderFinished)
+      assertTrue("discoveryUpdated must arrive after renderFinished", sawDiscoveryUpdated)
+
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(exitLatch.await(5, TimeUnit.SECONDS))
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      tmpDir.toFile().deleteRecursively()
+      serverThread.join(10_000)
+    }
+  }
+
+  /**
+   * Save-with-no-diff invariant: a `fileChanged({kind:source})` whose scoped scan returns the same
+   * preview set already on the index emits **no** `discoveryUpdated`. The watchdog still fires
+   * (drains the queue) but [`runIncrementalDiscoveryNow`] short-circuits on `discoveryDiffEmpty`.
+   */
+  @Test(timeout = 15_000)
+  fun fileChanged_with_no_diff_emits_no_discoveryUpdated() {
+    val tmpDir = java.nio.file.Files.createTempDirectory("identity-save-test")
+    val sourceKt = tmpDir.resolve("NoChange.kt")
+    // No `@Preview` text and no index hit on this file → cheapPrefilter returns false, the scan
+    // never runs, and no notification is ever emitted. This is the "save unrelated file" path.
+    java.nio.file.Files.writeString(sourceKt, "package com.example\nfun helper() {}\n")
+
+    val discovery =
+      IncrementalDiscovery(
+        classpath = listOf(tmpDir),
+        knownPreviewAnnotationFqns = setOf("androidx.compose.ui.tooling.preview.Preview"),
+      )
+    val index = PreviewIndex.empty()
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = FakeRenderHost()
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        previewIndex = index,
+        incrementalDiscovery = discovery,
+        discoveryWatchdogMs = 100,
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-identity").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-identity-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      val abs = sourceKt.toAbsolutePath().toString().replace("\\", "\\\\")
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"fileChanged","params":{
+              "path":"$abs","kind":"source","changeType":"modified"}}""",
+      )
+
+      // Wait well past the watchdog; assert no `discoveryUpdated` was emitted.
+      val spurious =
+        pollUntil(received, timeoutMs = 1_000) {
+          it["method"]?.jsonPrimitive?.contentOrNull == "discoveryUpdated"
+        }
+      assertNull("identity save must not emit discoveryUpdated, got: $spurious", spurious)
+
       writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":99,"method":"shutdown"}""")
       assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 99 })
       writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")

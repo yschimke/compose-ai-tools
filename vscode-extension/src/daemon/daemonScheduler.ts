@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { GradleService } from '../gradleService';
 import { DaemonGate } from './daemonGate';
 import {
+    DiscoveryUpdatedParams,
     FileChangeType,
     FileKind,
     HistoryAddedParams,
@@ -32,6 +33,14 @@ export interface SchedulerEvents {
      * renders for this module and the caller should re-run Gradle.
      */
     onClasspathDirty: (moduleId: string, detail: string) => void;
+    /**
+     * Daemon's incremental-discovery cascade emitted a non-empty diff —
+     * `added`/`removed`/`changed` against its in-memory preview index for
+     * this module. The daemon is silent on identity-only saves (empty
+     * diff), so receiving this event always means the panel needs to
+     * reshape. Optional because tests may not wire it.
+     */
+    onDiscoveryUpdated?: (moduleId: string, params: DiscoveryUpdatedParams) => void;
     /** Phase H2 — daemon archived a render. Forwarded to the History
      *  panel; optional because the panel may not exist in test mode. */
     onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
@@ -261,6 +270,9 @@ export class DaemonScheduler {
                     if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
                 }
                 this.events.onClasspathDirty(moduleId, params.detail);
+            },
+            onDiscoveryUpdated: (params: DiscoveryUpdatedParams) => {
+                this.events.onDiscoveryUpdated?.(moduleId, params);
             },
             onHistoryAdded: (params: HistoryAddedParams) => {
                 this.events.onHistoryAdded?.(moduleId, params);

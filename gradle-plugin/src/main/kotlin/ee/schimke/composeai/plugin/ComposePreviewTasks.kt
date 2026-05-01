@@ -18,6 +18,14 @@ private val previewManifestJson = Json { ignoreUnknownKeys = true }
  * means the desktop path can reuse these helpers without dragging AGP onto the classpath.
  */
 internal object ComposePreviewTasks {
+  /**
+   * Candidate Kotlin compile task names for the desktop / KMP-flavoured side, in priority order.
+   * The first name that resolves at configuration time is wired as the upstream of both
+   * `discoverPreviews` and `composePreviewCompile`.
+   */
+  private val DESKTOP_COMPILE_TASK_CANDIDATES: List<String> =
+    listOf("compileKotlinJvm", "compileKotlinDesktop", "compileAndroidMain", "compileKotlin")
+
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
 
@@ -69,19 +77,14 @@ internal object ComposePreviewTasks {
         // `compileAndroidMainKotlin`-shaped Kotlin compile under the hood).
         // Listed alongside the JVM/Desktop siblings so we wire up exactly
         // one — whichever the consumer's applied plugins actually register.
-        for (name in
-          listOf(
-            "compileKotlinJvm",
-            "compileKotlinDesktop",
-            "compileAndroidMain",
-            "compileKotlin",
-          )) {
+        for (name in DESKTOP_COMPILE_TASK_CANDIDATES) {
           if (project.tasks.findByName(name) != null) {
             dependsOn(name)
             break
           }
         }
       }
+    registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
     val rendererConfigName = "composePreviewRenderer"
     val rendererConfig = project.configurations.maybeCreate(rendererConfigName)
@@ -398,6 +401,36 @@ internal object ComposePreviewTasks {
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"
       configureDeps()
+    }
+  }
+
+  /**
+   * Registers a `composePreviewCompile` lifecycle task whose only job is to run the same Kotlin
+   * compile task `discoverPreviews` depends on, without the discovery action itself. Wired so the
+   * VS Code extension can keep `.class` files fresh on save without re-walking the dependency-JAR
+   * classpath through ClassGraph — the daemon owns the metadata reconcile via its
+   * `IncrementalDiscovery` cascade and `discoveryUpdated` notification, so the editor save loop no
+   * longer needs `:discoverPreviews` on every keystroke.
+   *
+   * Caller passes the set of candidate compile task names; we wire the first that exists at
+   * configuration time. When none are found (consumer hasn't applied a Kotlin plugin) the task is
+   * still registered but is a no-op — same `onlyIf(false)` shape as the disabled-by-extension
+   * gating below.
+   */
+  fun registerCompileOnlyTask(
+    project: Project,
+    extension: PreviewExtension,
+    compileTaskNames: List<String>,
+  ): TaskProvider<DefaultTask> {
+    val resolvedCompileTask = compileTaskNames.firstOrNull { project.tasks.findByName(it) != null }
+    return project.tasks.register("composePreviewCompile", DefaultTask::class.java) {
+      group = "compose preview"
+      description =
+        "Compile sources without running discoverPreviews — used by the VS Code daemon save path."
+      onlyIf { extension.enabled.get() }
+      if (resolvedCompileTask != null) {
+        dependsOn(resolvedCompileTask)
+      }
     }
   }
 
