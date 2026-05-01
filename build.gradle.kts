@@ -7,6 +7,13 @@ plugins {
   alias(libs.plugins.android.application) apply false
   alias(libs.plugins.android.library) apply false
   alias(libs.plugins.ktfmt) apply false
+  // Loaded into the root scope so :renderer-android and :daemon:android (and
+  // any future sibling) share the plugin's ClassLoader. Without this, each
+  // sibling instantiates its own MavenCentralBuildService class and Gradle
+  // refuses to share the build service across them — fails configuration
+  // with "Cannot set the value of task ':daemon:android:dropMavenCentral
+  // Deployment' property 'buildService'".
+  alias(libs.plugins.maven.publish) apply false
 }
 
 allprojects {
