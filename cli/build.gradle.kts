@@ -43,4 +43,23 @@ dependencies {
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }
 
+// Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
+// (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which
+// drifted out of sync with the release manifest and made `compose-preview show` advertise a
+// nonexistent v0.9.0 release. Mirrors `gradle-plugin/build.gradle.kts`'s
+// `generatePluginVersionResource`.
+val generateCliVersionResource by tasks.registering {
+  val outputDir = layout.buildDirectory.dir("generated/cli-version-resource")
+  val cliVersion = project.version.toString()
+  inputs.property("version", cliVersion)
+  outputs.dir(outputDir)
+  doLast {
+    val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
+    file.parentFile.mkdirs()
+    file.writeText("version=$cliVersion\n")
+  }
+}
+
+sourceSets.main.get().resources.srcDir(generateCliVersionResource)
+
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
