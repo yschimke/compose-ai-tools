@@ -64,11 +64,20 @@ export interface SchedulerEvents {
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
 
 /**
- * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
- * so the local finding + hierarchy overlays light up together; a future panel that wants to
- * subscribe to other kinds (`compose/recomposition`, `layout/tree`) will export its own list.
+ * D2 — kinds the focus-mode "Show accessibility overlay" toggle adds on top of the ambient
+ * subscriptions. `a11y/atf` is ambient (see [AMBIENT_A11Y_KINDS]) so the diagnostic squigglies
+ * stay live without a user gesture; the toggle layers `a11y/hierarchy` for the visual overlay.
  */
-export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
+export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/hierarchy'];
+
+/**
+ * D2 — kinds auto-subscribed per visible preview. Pinned to `a11y/atf` because (a) it's the
+ * cheap-always-on kind the design doc reserves for ambient attach and (b) the diagnostic
+ * squigglies in the Problems panel read straight off it via [PreviewA11yDiagnostics] →
+ * [PreviewRegistry] → wire. The hierarchy overlay (heavier visual layer) stays toggle-gated
+ * via [A11Y_OVERLAY_KINDS] so the wire stays quiet for cards the user isn't actively examining.
+ */
+const AMBIENT_A11Y_KINDS: readonly string[] = ['a11y/atf'];
 /**
  * Cards we'll pre-render ahead of the visible viewport on each scroll-ahead
  * push from the webview. Bounded so a fast scroll past 50 cards doesn't
@@ -223,9 +232,7 @@ export class DaemonScheduler {
 
         // D2 — drop bookkeeping for previews that fell out of view. The daemon already
         // pruned its side on the same `setVisible`, so this just keeps our local dedup
-        // set in sync. Subscriptions themselves are now opt-in per focused preview via
-        // [setDataProductSubscription]; the panel calls in when the user toggles the
-        // a11y overlay in focus mode.
+        // set in sync.
         const visibleSetForSub = new Set(visible);
         const modulePrefix = `${moduleId}::`;
         for (const key of [...this.subscribedPairs]) {
@@ -234,6 +241,27 @@ export class DaemonScheduler {
             const sep = rest.indexOf('::');
             const id = sep < 0 ? rest : rest.slice(0, sep);
             if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
+        }
+
+        // D2 — auto-subscribe ambient kinds (currently `a11y/atf`) for newly-visible previews.
+        // Drives diagnostic squigglies (PreviewA11yDiagnostics reads off the registry, registry
+        // is fed by `onDataProductsAttached`) without the user having to enter focus mode.
+        // Heavier kinds (`a11y/hierarchy`, future `compose/recomposition`) stay toggle-gated.
+        // dataSubscribe rejects gracefully (DataProductUnknown) on pre-D2 daemons; absorbed
+        // and logged so the panel keeps working unchanged.
+        for (const id of visible) {
+            for (const kind of AMBIENT_A11Y_KINDS) {
+                const subKey = `${moduleId}::${id}::${kind}`;
+                if (this.subscribedPairs.has(subKey)) { continue; }
+                this.subscribedPairs.add(subKey);
+                client.dataSubscribe({ previewId: id, kind }).catch((err) => {
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataSubscribe(${id}, ${kind}) failed (pre-D2 daemon?): ${msg}`,
+                    );
+                    this.subscribedPairs.delete(subKey);
+                });
+            }
         }
 
         if (predicted.length === 0) { return; }

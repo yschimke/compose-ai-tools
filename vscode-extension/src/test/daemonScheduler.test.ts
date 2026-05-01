@@ -528,16 +528,50 @@ describe('DaemonScheduler', () => {
     });
 
     /**
-     * D2 — data-product surface. Subscriptions are explicit per focused preview (the panel's
-     * focus-mode "Show a11y overlay" toggle drives them) — `setVisible` itself does NOT
-     * subscribe, only prunes stale bookkeeping. `renderFinished` forwards attachments.
+     * D2 — data-product surface. `setVisible` auto-subscribes the ambient kinds (`a11y/atf`,
+     * cheap, drives diagnostic squigglies). Heavier kinds (`a11y/hierarchy`, the visual
+     * overlay) are explicit per focused preview via [setDataProductSubscription], which
+     * the panel's focus-mode toggle drives. `renderFinished` forwards attachments.
      */
     describe('data products', () => {
-        it('does not auto-subscribe on setVisible — subscriptions are explicit', async () => {
+        it('auto-subscribes a11y/atf for each newly-visible preview', async () => {
             const { gate, scheduler } = build();
             await scheduler.setVisible('mod', ['a', 'b'], []);
             const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            assert.strictEqual(subs.length, 0);
+            // One ambient kind per previewId — `a11y/atf` only.
+            assert.strictEqual(subs.length, 2);
+            const kinds = subs.map(c => (c.args as { kind: string }).kind);
+            assert.deepStrictEqual([...new Set(kinds)], ['a11y/atf']);
+            const ids = subs.map(c => (c.args as { previewId: string }).previewId).sort();
+            assert.deepStrictEqual(ids, ['a', 'b']);
+        });
+
+        it('does not auto-subscribe a11y/hierarchy on setVisible — that stays toggle-gated', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a'], []);
+            const hierarchySubs = gate.client!.calls
+                .filter(c => c.method === 'dataSubscribe')
+                .filter(c => (c.args as { kind: string }).kind === 'a11y/hierarchy');
+            assert.strictEqual(hierarchySubs.length, 0);
+        });
+
+        it('does not re-subscribe a (previewId, kind) pair on a repeated setVisible', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a'], []);
+            await scheduler.setVisible('mod', ['a', 'b'], []); // 'a' is already subscribed
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            // 'a' atf (1) + 'b' atf (1) = 2 — 'a' is NOT re-subscribed.
+            assert.strictEqual(subs.length, 2);
+        });
+
+        it('drops bookkeeping when a preview leaves visible — re-visible re-subscribes', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a', 'b'], []);
+            await scheduler.setVisible('mod', ['a'], []); // 'b' fell out
+            await scheduler.setVisible('mod', ['a', 'b'], []); // 'b' back
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            // Initial 2 + 'b' re-subscribed once = 3.
+            assert.strictEqual(subs.length, 3);
         });
 
         it('setDataProductSubscription(true) issues data/subscribe per kind', async () => {
@@ -584,16 +618,17 @@ describe('DaemonScheduler', () => {
         });
 
         it('setVisible drops bookkeeping for previews that left view', async () => {
+            // Drive this through the toggle-only `a11y/hierarchy` kind so the ambient
+            // `a11y/atf` auto-subscribe doesn't muddy the count. Intent: when 'a' leaves
+            // visible, local bookkeeping clears so a future explicit re-subscribe re-issues.
             const { gate, scheduler } = build();
-            await scheduler.setVisible('mod', ['a', 'b'], []);
-            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/hierarchy'], true);
             await scheduler.setVisible('mod', ['b'], []); // 'a' fell out
-            // Re-subscribing 'a' should issue another subscribe (bookkeeping was cleared by
-            // the visibility prune even though the daemon never received our explicit call).
-            await scheduler.setVisible('mod', ['a', 'b'], []);
-            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
-            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            assert.strictEqual(subs.length, 2);
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/hierarchy'], true);
+            const hierarchySubs = gate.client!.calls
+                .filter(c => c.method === 'dataSubscribe')
+                .filter(c => (c.args as { kind: string }).kind === 'a11y/hierarchy');
+            assert.strictEqual(hierarchySubs.length, 2);
         });
 
         it('forwards renderFinished.dataProducts via onDataProductsAttached', async () => {
