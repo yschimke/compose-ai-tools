@@ -58,6 +58,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <div class="progress-fill"></div>
         <div class="progress-label" id="progress-label"></div>
     </div>
+    <div id="compile-errors" class="compile-errors" role="alert" hidden>
+        <div class="compile-errors-header">
+            <i class="codicon codicon-error" aria-hidden="true"></i>
+            <span id="compile-errors-title">Compile errors</span>
+        </div>
+        <div id="compile-errors-list" class="compile-errors-list"></div>
+        <div class="compile-errors-footnote">Showing last successful render.</div>
+    </div>
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="Preview filters">
         <div class="select-wrapper">
             <select id="filter-function" title="Filter by function" aria-label="Function filter">
@@ -200,6 +208,56 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             progressBar.classList.remove('progress-finishing', 'progress-slow');
             progressFill.style.width = '0%';
             progressLabel.textContent = '';
+        }
+
+        // Compile-error banner state. Cards stay rendered while the banner
+        // is visible — they're decorated via .compile-stale on the grid so
+        // the user keeps the last-good render visible while reading the
+        // error list.
+        const compileErrorsBox = document.getElementById('compile-errors');
+        const compileErrorsList = document.getElementById('compile-errors-list');
+        const compileErrorsTitle = document.getElementById('compile-errors-title');
+
+        function setCompileErrors(errors, sourceFile) {
+            compileErrorsList.innerHTML = '';
+            const count = errors.length;
+            compileErrorsTitle.textContent = count === 1
+                ? '1 compile error'
+                : count + ' compile errors';
+            for (const e of errors) {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'compile-error-row';
+                row.title = 'Open ' + e.file + ':' + e.line + ':' + e.column;
+                const loc = document.createElement('span');
+                loc.className = 'compile-error-loc';
+                loc.textContent = e.file + ':' + e.line + ':' + e.column;
+                const msg = document.createElement('span');
+                msg.className = 'compile-error-msg';
+                msg.textContent = e.message;
+                row.appendChild(loc);
+                row.appendChild(msg);
+                row.addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'openCompileError',
+                        sourceFile: sourceFile,
+                        line: e.line,
+                        column: e.column,
+                    });
+                });
+                compileErrorsList.appendChild(row);
+            }
+            compileErrorsBox.hidden = false;
+            // Dim existing cards via a grid-level class so the user sees
+            // they're stale relative to the buffer. CSS handles the visual.
+            grid.classList.add('compile-stale');
+        }
+
+        function clearCompileErrors() {
+            compileErrorsBox.hidden = true;
+            compileErrorsList.innerHTML = '';
+            compileErrorsTitle.textContent = '';
+            grid.classList.remove('compile-stale');
         }
 
         let allPreviews = [];
@@ -1396,6 +1454,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
                 case 'clearProgress':
                     clearProgress();
+                    break;
+
+                case 'setCompileErrors':
+                    setCompileErrors(msg.errors || [], msg.sourceFile || '');
+                    break;
+
+                case 'clearCompileErrors':
+                    clearCompileErrors();
                     break;
 
                 case 'setError':

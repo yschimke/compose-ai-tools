@@ -21,6 +21,7 @@ import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { mergeCalibration, PhaseDurations, ProgressState } from './buildProgress';
+import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -835,6 +836,28 @@ function updateDaemonStatus(module: string, state: WarmState): void {
 /** Per-extension-session memo so bootstrap runs once per module. */
 const daemonBootstrappedModules = new Set<string>();
 
+/**
+ * Read Error-severity diagnostics for `filePath` from whichever language
+ * server is active and adapt them to the vscode-free shape that
+ * [extractCompileErrors] consumes. Returns an empty array when no LSP is
+ * attached (`vscode.languages.getDiagnostics` returns `[]`), so workspaces
+ * without a Kotlin LSP fall through to the existing Gradle-only path with
+ * no visible difference.
+ *
+ * Cross-file errors (e.g. `Theme.kt` broken, `Previews.kt` clean but uses
+ * it) are NOT detected here — that's a deliberate trade-off to keep the
+ * gate cheap (one URI lookup, no import graph walk). Gradle still catches
+ * them on the slow path.
+ */
+function readCompileErrors(filePath: string): CompileError[] {
+    const uri = vscode.Uri.file(filePath);
+    const diagnostics = vscode.languages.getDiagnostics(uri);
+    // vscode.Diagnostic structurally matches DiagnosticLike — the field
+    // names and severity numeric values are the same. Cast through unknown
+    // to avoid pulling vscode types into the pure module.
+    return extractCompileErrors(filePath, diagnostics as unknown as readonly DiagnosticLike[]);
+}
+
 /** Read calibrated phase durations for `module` from workspace state. Empty
  *  on first run; the tracker falls back to its built-in phase defaults. */
 function readCalibration(module: string): PhaseDurations {
@@ -1021,8 +1044,12 @@ const fastTierModules = new Set<string>();
  *   the empty state; no Gradle work happened.
  * - `'failed'` — Gradle threw a non-cancellation error (build failure,
  *   missing `jlink`, etc.). The panel surfaces the error; no follow-up.
+ * - `'gated'` — LSP reported Error-severity diagnostics for the active
+ *   file, so the build was skipped. Panel shows the compile-error banner
+ *   over the previous (now stale) cards; the next save with a clean buffer
+ *   will run a real refresh.
  */
-type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed';
+type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed' | 'gated';
 
 async function refresh(
     forceRender: boolean,
@@ -1061,6 +1088,34 @@ async function refresh(
         return 'no-module';
     }
     logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
+
+    // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
+    // user is mid-typo-fix — the active file's diagnostics already tell us
+    // the build will fail, so surface those instead of starting Gradle.
+    // Cards from the previous successful render stay visible (just dimmed)
+    // so the user keeps a reference while they fix the error.
+    //
+    // Gate fires before currentScopeFile assignment so a later refresh from
+    // a different file can still drop the banner via clearCompileErrors.
+    const compileErrors = readCompileErrors(activeFile);
+    if (compileErrors.length > 0) {
+        panel.postMessage({
+            command: 'setCompileErrors',
+            errors: compileErrors,
+            sourceFile: activeFile,
+        });
+        // No build is starting — make sure no stale progress bar lingers
+        // from a prior in-flight refresh that was just cancelled by the
+        // pendingRefresh.abort() at the top of this function.
+        panel.postMessage({ command: 'clearProgress' });
+        currentScopeFile = activeFile;
+        logLine(`gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`);
+        return 'gated';
+    }
+    // Errors cleared since the previous gate fire — drop the banner before
+    // we begin the actual build so the user sees the panel return to its
+    // normal "working" state.
+    panel.postMessage({ command: 'clearCompileErrors' });
 
     currentScopeFile = activeFile;
     // Phase H7 — re-scope the History panel alongside the live panel.
@@ -1394,6 +1449,31 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             historyPanel?.setScope(newScope);
             break;
         }
+        case 'openCompileError':
+            if (msg.sourceFile && typeof msg.line === 'number'
+                && typeof msg.column === 'number') {
+                void openSourcePosition(msg.sourceFile, msg.line, msg.column);
+            }
+            break;
+    }
+}
+
+/**
+ * Open `filePath` and reveal the given (1-based) position. Used by the
+ * compile-error banner — clicking a row jumps to the offending location.
+ * 1-based input here matches what we render in the banner; vscode's API
+ * is 0-based, so we subtract before constructing the Position.
+ */
+async function openSourcePosition(filePath: string, line: number, column: number): Promise<void> {
+    try {
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        const editor = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(Math.max(0, line - 1), Math.max(0, column - 1));
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        logLine(`openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`);
     }
 }
 
@@ -1448,6 +1528,9 @@ interface WebviewToExtensionMessage {
     previewId?: string | null;
     visible?: string[];
     predicted?: string[];
+    sourceFile?: string;
+    line?: number;
+    column?: number;
 }
 
 /**

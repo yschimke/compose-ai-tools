@@ -266,7 +266,16 @@ export type ExtensionToWebview =
      */
     | { command: 'setProgress'; phase: string; label: string; percent: number; slow?: boolean }
     /** Force-clear the progress bar (e.g. on cancellation or fatal error). */
-    | { command: 'clearProgress' };
+    | { command: 'clearProgress' }
+    /**
+     * Replace the compile-error banner. Each entry maps to one row in the
+     * banner with file:line:col + message; clicking opens the source.
+     * Cards stay rendered but get a "compile-stale" decoration so the user
+     * keeps the last successful render visible alongside the error list.
+     */
+    | { command: 'setCompileErrors'; errors: import('./compileErrors').CompileError[]; sourceFile: string }
+    /** Remove the compile-error banner and the compile-stale dim on cards. */
+    | { command: 'clearCompileErrors' };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
@@ -299,4 +308,11 @@ export type WebviewToExtension =
      * full module view — extension clears the previewId filter on the
      * History panel scope.
      */
-    | { command: 'previewScopeChanged'; previewId: string | null };
+    | { command: 'previewScopeChanged'; previewId: string | null }
+    /**
+     * Click on a compile-error banner row. Extension responds by opening the
+     * source file and revealing the position. `sourceFile` is the same
+     * absolute path the extension passed in `setCompileErrors`; the line /
+     * column come from the LSP diagnostic (1-based).
+     */
+    | { command: 'openCompileError'; sourceFile: string; line: number; column: number };
