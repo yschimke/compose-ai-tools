@@ -234,23 +234,31 @@ class JsonRpcServer(
   // ----------------------------------------------------------------------
   // Interactive (live-stream) mode state — see docs/daemon/INTERACTIVE.md.
   //
-  // [interactiveTarget] is the single (previewId, frameStreamId) tuple the daemon is
-  // serving as the user's interactive target. Single-target by design: a second
-  // `interactive/start` overwrites this slot, and any input notification carrying a
-  // stale frameStreamId is silently dropped.
+  // [interactiveTargets] is the set of currently-active interactive streams, keyed by
+  // [InteractiveTarget.frameStreamId]. The wire shape is multi-target by design: each
+  // `interactive/start` registers a fresh slot and returns a unique stream id; concurrent
+  // streams targeting different (or even the same) preview ids coexist. Inputs route by
+  // stream id, so a stale id from a `stop`'d or never-started stream is dropped without
+  // touching live targets.
+  //
+  // The current panel UI is single-target — only one card carries `.live` at a time —
+  // but the protocol does not require that. Lifting it on the wire keeps the daemon
+  // useful for hypothetical programmatic clients (side-by-side comparison views, CI
+  // agents driving multiple previews over one stdio pair) without any contract change.
   //
   // [lastFrameHashes] is a per-previewId cache of the SHA-256 of the most recently
   // notified PNG bytes. Populated on every `renderFinished` that the watcher actually
   // emits; consulted to set `unchanged: true` (and skip history) when the next render
   // produces byte-identical output. Always tracked, not just when interactive mode is
-  // on — the dedup is generally useful (a save that doesn't move pixels shouldn't
-  // burn IPC + a panel repaint).
+  // on — the dedup is generally useful (a save that doesn't move pixels shouldn't burn
+  // IPC + a panel repaint). Per-preview key, not per-stream: two streams targeting the
+  // same preview share dedup state, which is what we want — the bytes are the same
+  // bytes regardless of which stream's input triggered the render.
   // ----------------------------------------------------------------------
 
   private data class InteractiveTarget(val previewId: String, val frameStreamId: String)
 
-  private val interactiveTarget =
-    java.util.concurrent.atomic.AtomicReference<InteractiveTarget?>(null)
+  private val interactiveTargets = ConcurrentHashMap<String, InteractiveTarget>()
 
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
@@ -1153,10 +1161,13 @@ class JsonRpcServer(
       return
     }
     val streamId = "stream-${nextStreamIdCounter.getAndIncrement()}"
-    interactiveTarget.set(InteractiveTarget(previewId = params.previewId, frameStreamId = streamId))
+    interactiveTargets[streamId] =
+      InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
     // Wipe any cached hash for this preview so the first interactive frame always paints.
     // Without this a `start` after a previous identical render would suppress the bootstrap
     // frame and the client's LIVE chip would have nothing to paint until the user clicks.
+    // Per-preview wipe (not per-stream): two streams targeting the same preview both want a
+    // fresh first frame, and the dedup state is shared by design.
     lastFrameHashes.remove(params.previewId)
     sendResponse(
       req.id,
@@ -1170,34 +1181,30 @@ class JsonRpcServer(
   private fun handleInteractiveStop(
     params: ee.schimke.composeai.daemon.protocol.InteractiveStopParams
   ) {
-    val current = interactiveTarget.get()
-    if (current != null && current.frameStreamId == params.frameStreamId) {
-      interactiveTarget.compareAndSet(current, null)
-    }
-    // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 7.
+    // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 8 — `remove` is a no-op
+    // when the key isn't present, which is exactly the contract we want.
+    interactiveTargets.remove(params.frameStreamId)
   }
 
   private fun handleInteractiveInput(
     params: ee.schimke.composeai.daemon.protocol.InteractiveInputParams
   ) {
-    val current = interactiveTarget.get()
-    if (current == null || current.frameStreamId != params.frameStreamId) {
-      // Stale stream id (from a prior start, or before any start). Drop silently —
-      // resending after a stop or an overwrite is a documented client-allowed pattern.
-      return
-    }
+    val target =
+      interactiveTargets[params.frameStreamId]
+        ?: return // Stale or unknown stream id (never started, already stopped, or typo'd
+    // by a programmatic client). Drop silently — resending after stop is a documented
+    // client-allowed pattern.
     if (classpathDirtyEmitted.get() || shutdownRequested.get()) {
       return
     }
-    // v0 dispatch model: each input enqueues a fresh render of the target preview. The render
+    // v1 dispatch model: each input enqueues a fresh render of the target preview. The render
     // body itself does not yet route the click into the composition (LocalInspectionMode is
-    // still true; that's the v1 follow-up — see INTERACTIVE.md § 7 "Open questions"). What
+    // still true; that's the v2 follow-up — see INTERACTIVE.md § 8 "Open questions"). What
     // this DOES validate end-to-end: the input → renderNow → renderFinished round-trip plus
     // the byte-identical dedup, which together let a future click-aware engine slot in
     // without changing the wire shape.
-    val previewId = current.previewId
     val hostId = RenderHost.nextRequestId()
-    hostIdToPreviewId[hostId] = previewId
+    hostIdToPreviewId[hostId] = target.previewId
     acceptedAtMs[hostId] = System.currentTimeMillis()
     inFlightRenders.add(hostId)
     submitRenderAsync(hostId)
