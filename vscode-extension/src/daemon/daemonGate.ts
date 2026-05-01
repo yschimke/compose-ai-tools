@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GradleService } from '../gradleService';
+import { LogFilter } from '../logFilter';
 import { DaemonClient, DaemonClientEvents, DaemonClientLogger } from './daemonClient';
 import { readLaunchDescriptor, spawnDaemon, SpawnedDaemon } from './daemonProcess';
 
@@ -27,6 +28,7 @@ export class DaemonGate {
         private readonly workspaceRoot: string,
         private readonly clientVersion: string,
         private readonly logger: DaemonClientLogger,
+        private readonly logFilter: LogFilter = new LogFilter(),
     ) {}
 
     /** Reads the user setting freshly each time so toggles don't need a reload. */
@@ -87,14 +89,17 @@ export class DaemonGate {
                 clientVersion: this.clientVersion,
                 events: composed,
                 logger: this.logger,
+                logFilter: this.logFilter,
             });
             this.daemons.set(moduleId, { spawned, client: spawned.client });
-            this.logger.appendLine(
+            const readyLine =
                 `[daemon] ready for ${moduleId} ` +
                 `(daemonVersion=${spawned.initializeResult.daemonVersion}, ` +
                 `pid=${spawned.initializeResult.pid}, ` +
-                `previews=${spawned.initializeResult.manifest.previewCount})`,
-            );
+                `previews=${spawned.initializeResult.manifest.previewCount})`;
+            if (this.logFilter.shouldEmitInformational(readyLine)) {
+                this.logger.appendLine(readyLine);
+            }
             return spawned.client;
         } catch (err) {
             this.logger.appendLine(

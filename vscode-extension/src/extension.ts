@@ -18,6 +18,7 @@ import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
+import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 
 const DEBOUNCE_MS = 1500;
@@ -156,7 +157,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const outputChannel = vscode.window.createOutputChannel('Compose Preview');
     context.subscriptions.push(outputChannel);
-    logLine = (msg: string) => outputChannel.appendLine(`[refresh] ${msg}`);
+    // `composePreview.logging.level` is read on every emit so a settings.json
+    // edit takes effect immediately without a window reload.
+    const logFilter = new LogFilter(() =>
+        parseLogLevel(
+            vscode.workspace.getConfiguration('composePreview').get<string>('logging.level'),
+        ),
+    );
+    logLine = (msg: string) => {
+        const line = `[refresh] ${msg}`;
+        if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+    };
 
     const isTestMode = process.env.COMPOSE_PREVIEW_TEST_MODE === '1';
 
@@ -184,7 +195,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             args.push('-PcomposePreview.accessibilityChecks.enabled=true');
         }
         return args;
-    });
+    }, logFilter);
 
     // Daemon path is opt-in via composePreview.experimental.daemon.enabled.
     // When disabled (default) the gate's `isEnabled()` returns false and the
@@ -196,7 +207,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // of Gradle's `renderPreviews` on a hot sandbox). The Gradle path remains
     // the safety net; if the daemon fails we silently fall back without any
     // user-visible change.
-    daemonGate = new DaemonGate(workspaceRoot, '0.1.0', outputChannel);
+    daemonGate = new DaemonGate(workspaceRoot, '0.1.0', outputChannel, logFilter);
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
@@ -357,7 +368,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         ),
     );
 
-    const detectLog = (msg: string) => outputChannel.appendLine(`[detect] ${msg}`);
+    const detectLog = (msg: string) => {
+        const line = `[detect] ${msg}`;
+        if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+    };
     const gutterDecorations = new PreviewGutterDecorations(context.extensionUri, registry, detectLog);
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
     const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
@@ -365,7 +379,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     const doctorDiagnostics = new PreviewDoctorDiagnostics(
         gradleService,
         workspaceRoot,
-        (msg) => outputChannel.appendLine(`[doctor] ${msg}`),
+        (msg) => {
+            const line = `[doctor] ${msg}`;
+            if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+        },
     );
     const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
     // AndroidManifest.xml lives at module-root, not under res/, so the existing
@@ -544,7 +561,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                         args.push('-PcomposePreview.accessibilityChecks.enabled=true');
                     }
                     return args;
-                });
+                }, logFilter);
             },
             triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
                 return refresh(force, filePath, tier);

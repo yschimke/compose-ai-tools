@@ -7,6 +7,7 @@ import {
     DaemonLaunchDescriptor,
     InitializeResult,
 } from './daemonProtocol';
+import { LogFilter } from '../logFilter';
 
 /**
  * Reads `<module>/build/compose-previews/daemon-launch.json` and returns the
@@ -56,6 +57,10 @@ export interface SpawnOptions {
     logger?: DaemonClientLogger;
     /** Defaults to `metrics: true, visibility: true`. */
     capabilities?: { visibility: boolean; metrics: boolean };
+    /** Filters daemon stderr lines and the spawn/exit progress messages.
+     *  Defaults to a verbose pass-through so legacy callers and tests are
+     *  unchanged. */
+    logFilter?: LogFilter;
 }
 
 /**
@@ -73,6 +78,7 @@ export interface SpawnOptions {
 export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const { descriptor, clientVersion, events, workspaceRoot } = opts;
     const logger = opts.logger;
+    const logFilter = opts.logFilter ?? new LogFilter(() => 'verbose');
 
     if (!descriptor.enabled) {
         throw new Error(
@@ -95,10 +101,10 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         descriptor.mainClass,
     ];
 
-    logger?.appendLine(
+    const spawnLine =
         `[daemon] spawning ${descriptor.mainClass} for ${descriptor.modulePath} ` +
-        `(${descriptor.classpath.length} classpath entries, java=${javaPath})`,
-    );
+        `(${descriptor.classpath.length} classpath entries, java=${javaPath})`;
+    if (logFilter.shouldEmitInformational(spawnLine)) { logger?.appendLine(spawnLine); }
 
     const child = spawn(javaPath, args, {
         cwd: descriptor.workingDirectory,
@@ -112,15 +118,23 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
 
     // Stderr is a free-form log channel per PROTOCOL.md § 1 — surface to the
     // logger so daemon `System.err.println` lands in the user's output panel.
+    // The filter dedupes the Roborazzi ActionBar banner and drops the boot
+    // diagnostics at normal level; verbose passes everything through.
     child.stderr.setEncoding('utf-8');
     child.stderr.on('data', (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
-            if (line.length > 0) { logger?.appendLine(`[daemon stderr] ${line}`); }
+            if (line.length === 0) { continue; }
+            const filtered = logFilter.filterDaemonStderrLine(line);
+            if (filtered === null) { continue; }
+            logger?.appendLine(`[daemon stderr] ${filtered}`);
         }
     });
 
     const exited = new Promise<number | null>((resolve) => {
         child.on('exit', (code) => {
+            // Exit messages always print — the JVM exiting unexpectedly is
+            // never noise. The successful exit case (code=0 on user-driven
+            // shutdown) is rare enough that it's still useful at quiet.
             logger?.appendLine(`[daemon] process exited with code=${code}`);
             resolve(code);
         });
