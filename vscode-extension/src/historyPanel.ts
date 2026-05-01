@@ -285,6 +285,9 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                     background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
       .row .changed-dot { width: 8px; height: 8px; border-radius: 50%;
                           background: var(--vscode-charts-yellow); display: inline-block; margin-right: 4px; }
+      .row .main-dot { width: 8px; height: 8px; border-radius: 50%;
+                       background: var(--vscode-charts-orange, #d18616);
+                       display: inline-block; margin-right: 4px; }
       .message { padding: 12px; color: var(--vscode-descriptionForeground); }
       .expanded { padding: 8px; background: var(--vscode-editorWidget-background); }
       .expanded img { max-width: 100%; }
@@ -435,6 +438,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             if (thumbObserver) thumbObserver.disconnect();
             thumbRequested.clear();
             timelineEl.innerHTML = '';
+            // Latest archived render on main for the currently scoped preview.
+            // O(N) over the visible page; no extra request. Used for the
+            // "vs main" indicator dot below.
+            const mainHash = findLatestMainHash(entries);
             for (const entry of entries) {
                 const row = document.createElement('div');
                 row.className = 'row';
@@ -465,6 +472,8 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 sub.className = 'sub';
                 const dot = (entry.deltaFromPrevious && entry.deltaFromPrevious.pngHashChanged)
                     ? '<span class="changed-dot" title="bytes changed vs previous"></span>' : '';
+                const mainDot = (mainHash && entry.pngHash && entry.pngHash !== mainHash)
+                    ? '<span class="main-dot" title="bytes differ from latest main render"></span>' : '';
                 const absolute = formatAbsolute(entry.timestamp);
                 const trigger = entry.trigger ? entry.trigger : '—';
                 const branch = (entry.git && entry.git.branch) || '';
@@ -472,7 +481,7 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 if (absolute) subParts.push(escapeHtml(absolute));
                 subParts.push(escapeHtml(trigger));
                 if (branch) subParts.push(escapeHtml(branch));
-                sub.innerHTML = dot + subParts.join(' · ');
+                sub.innerHTML = dot + mainDot + subParts.join(' · ');
                 meta.appendChild(sub);
                 row.appendChild(meta);
 
@@ -670,6 +679,18 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 left.src = 'data:image/png;base64,' + leftBase64;
                 right.src = 'data:image/png;base64,' + rightBase64;
             });
+        }
+
+        function findLatestMainHash(es) {
+            let bestTs = '';
+            let bestHash = null;
+            for (const e of es) {
+                if (!e || (e.git && e.git.branch) !== 'main') continue;
+                if (!e.pngHash) continue;
+                const ts = e.timestamp || '';
+                if (ts > bestTs) { bestTs = ts; bestHash = e.pngHash; }
+            }
+            return bestHash;
         }
 
         function applyDiffStats(el, s) {
