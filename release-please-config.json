@@ -19,10 +19,6 @@
         "docs/RELEASING.md",
         {
           "type": "generic",
-          "path": "cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt"
-        },
-        {
-          "type": "generic",
           "path": ".github/actions/preview-baselines/action.yml"
         },
         {

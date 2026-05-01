@@ -1,14 +1,30 @@
 package ee.schimke.composeai.cli
 
+import java.util.Properties
+
 /**
  * Release this CLI was built from. Surfaced via `compose-preview --version`, used as the default
  * `--plugin-version` in [DoctorCommand]'s remediation snippets, and compared against the latest
  * GitHub release tag in `doctor`'s update check.
  *
- * Updated by release-please — keep the trailing comment intact (see `release-please-config.json`,
- * `extra-files`).
+ * Resolved from `cli-version.properties`, baked into the jar by `cli/build.gradle.kts`'s
+ * `generateCliVersionResource`. The previous hand-edited literal here drifted out of sync with
+ * `.release-please-manifest.json` (`0.9.0` vs `0.8.12`) which made `compose-preview show` look for
+ * a release tag that didn't exist. The build-time resource derives the version from
+ * `project.version`, which already honours the `PLUGIN_VERSION` env override CI sets and the
+ * `.release-please-manifest.json` patch-bump fallback for local builds.
  */
-internal const val BUNDLE_VERSION = "0.9.0" // x-release-please-version
+internal val BUNDLE_VERSION: String by lazy {
+  val props = Properties()
+  val stream =
+    object {}
+      .javaClass
+      .classLoader
+      .getResourceAsStream("ee/schimke/composeai/cli/cli-version.properties")
+      ?: error("cli-version.properties missing from compose-preview jar")
+  stream.use { props.load(it) }
+  props.getProperty("version") ?: error("version property missing from cli-version.properties")
+}
 
 /** GitHub repo slug used to resolve releases and the `update` subcommand bootstrap. */
 internal const val REPO = "yschimke/compose-ai-tools"
