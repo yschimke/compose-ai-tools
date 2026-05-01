@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { GradleService, GradleApi, TaskCancelledError } from './gradleService';
 import { JdkImageError } from './jdkImageErrorDetector';
 import { KotlinCompileError } from './kotlinCompileErrorDetector';
@@ -582,6 +583,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 refreshDoctor,
             );
         }),
+        vscode.commands.registerCommand('composePreview.diffAllVsMain', () => diffAllVsMain()),
     );
     // Refresh applied-markers in the background, then replay the doctor refresh
     // so it picks up any modules that only become visible via the authoritative
@@ -1757,6 +1759,143 @@ async function runLivePreviewDiff(
         leftImage: liveBytes.toString('base64'),
         rightLabel: `${against === 'main' ? 'main' : 'HEAD'} · ${formatRelativeShort(target.timestamp)}`,
         rightImage: rightBytes,
+    });
+}
+
+/**
+ * Walk every preview discovered in the currently scoped module's manifest,
+ * diff its live render against the latest archived render on `main` for
+ * the same preview, and surface the drifted ones in a quick-pick. Picking
+ * one focuses the live panel on that preview and triggers a Diff vs main
+ * so the user lands directly in the result.
+ *
+ * Hash-only check — answers "did anything change?" not "by how much".
+ * The opened diff result already shows pixel-stats for the selected one;
+ * scaling that up to per-preview stats is N PNG decodes which we skip
+ * for the dashboard until performance demands it.
+ */
+async function diffAllVsMain(): Promise<void> {
+    if (!gradleService || !panel || !historySource) {
+        vscode.window.showInformationMessage('Compose Preview is not ready yet.');
+        return;
+    }
+    if (!currentScopeFile) {
+        vscode.window.showInformationMessage(
+            'Open a Kotlin file with @Preview functions before running Diff All vs Main.',
+        );
+        return;
+    }
+    const moduleId = gradleService.resolveModule(currentScopeFile);
+    if (!moduleId) {
+        vscode.window.showInformationMessage('Active file is not part of a Compose Preview module.');
+        return;
+    }
+    const manifest = moduleManifestCache.get(moduleId);
+    if (!manifest || manifest.length === 0) {
+        vscode.window.showInformationMessage('No previews discovered yet — render once first.');
+        return;
+    }
+    const projectDir = path.join(gradleService.workspaceRoot, moduleId);
+
+    interface DriftItem extends vscode.QuickPickItem {
+        previewId: string;
+        driftKind: 'differs' | 'no-baseline' | 'no-live';
+    }
+    const drifted: DriftItem[] = [];
+    let identical = 0;
+
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Compose Preview — diffing all vs main',
+        cancellable: false,
+    }, async (progress) => {
+        const total = manifest.length;
+        let done = 0;
+        for (const preview of manifest) {
+            done++;
+            progress.report({
+                message: `${done} / ${total} · ${preview.functionName}`,
+                increment: 100 / total,
+            });
+            const cap = preview.captures?.[0];
+            if (!cap?.renderOutput) { continue; }
+            const livePath = path.join(projectDir, cap.renderOutput);
+            const liveBytes = await fs.promises.readFile(livePath).catch(() => null);
+            const label = preview.functionName
+                + (preview.params.name ? ` — ${preview.params.name}` : '');
+            if (!liveBytes) {
+                drifted.push({
+                    label,
+                    description: 'no live render',
+                    detail: preview.id,
+                    previewId: preview.id,
+                    driftKind: 'no-live',
+                });
+                continue;
+            }
+            const liveHash = crypto.createHash('sha256').update(liveBytes).digest('hex');
+            let mainHash: string | null = null;
+            let mainTs = '';
+            try {
+                const list = await historySource!.list({
+                    moduleId, projectDir, previewId: preview.id,
+                });
+                for (const e of list.entries) {
+                    const entry = e as { git?: { branch?: string }; pngHash?: string; timestamp?: string };
+                    if (entry?.git?.branch !== 'main' || !entry.pngHash) { continue; }
+                    const ts = entry.timestamp ?? '';
+                    if (ts > mainTs) { mainTs = ts; mainHash = entry.pngHash; }
+                }
+            } catch {
+                // History unavailable for this preview — treat as no baseline.
+            }
+            if (!mainHash) {
+                drifted.push({
+                    label,
+                    description: 'no baseline on main',
+                    detail: preview.id,
+                    previewId: preview.id,
+                    driftKind: 'no-baseline',
+                });
+                continue;
+            }
+            if (liveHash === mainHash) {
+                identical++;
+                continue;
+            }
+            drifted.push({
+                label,
+                description: 'differs from main',
+                detail: preview.id,
+                previewId: preview.id,
+                driftKind: 'differs',
+            });
+        }
+    });
+
+    if (drifted.length === 0) {
+        vscode.window.showInformationMessage(
+            `All ${identical} preview${identical === 1 ? '' : 's'} match main.`,
+        );
+        return;
+    }
+
+    const driftCount = drifted.filter(i => i.driftKind === 'differs').length;
+    const placeholder = driftCount > 0
+        ? `${driftCount} preview${driftCount === 1 ? '' : 's'} differ from main · ${identical} identical`
+        : `${drifted.length} preview${drifted.length === 1 ? '' : 's'} need attention · ${identical} identical`;
+    const picked = await vscode.window.showQuickPick(drifted, {
+        title: `Compose Preview — drift vs main (${moduleId})`,
+        placeHolder: placeholder,
+        matchOnDescription: true,
+    });
+    if (!picked) { return; }
+
+    await vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
+    panel.postMessage({
+        command: 'focusAndDiff',
+        previewId: picked.previewId,
+        against: 'main',
     });
 }
 
