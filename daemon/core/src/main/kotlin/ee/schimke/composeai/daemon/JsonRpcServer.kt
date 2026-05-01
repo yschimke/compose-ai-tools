@@ -304,6 +304,37 @@ class JsonRpcServer(
    */
   private val interactiveSessions = ConcurrentHashMap<String, InteractiveSession>()
 
+  /**
+   * v2 phase 3 — per-stream coalescing queue. Inputs arriving while a render is already in flight
+   * for the same stream get appended here; the render-finishing path drains the whole queue and
+   * dispatches it as a batch followed by a single render. See INTERACTIVE.md § 9.6.
+   *
+   * Caps the per-stream render rate at the renderer's natural cadence (typically 60 Hz on Skiko)
+   * without dropping events — important when we wire pointer-move bursts in v3, modest payoff for
+   * click-only v2 since clicks rarely arrive faster than renders complete. The coalescing path
+   * still exists for v2 so the implementation is exercised end-to-end before move/drag work starts
+   * asking it for more.
+   *
+   * Concurrent reads are safe because each stream's queue is only ever drained by the worker thread
+   * that owns the in-flight render slot for that stream.
+   */
+  private val pendingInteractiveInputs =
+    ConcurrentHashMap<
+      String,
+      java.util.concurrent.ConcurrentLinkedQueue<
+        ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+      >,
+    >()
+
+  /**
+   * v2 phase 3 — claim flag for "this stream has an interactive render in flight". Inputs that find
+   * this flag already set queue themselves rather than spawning another worker; the worker that
+   * holds the flag drains the queue at the start of each render iteration. The flag is cleared in
+   * `finally` after the render finishes; if more inputs arrived in the meantime, the worker
+   * re-claims and re-iterates.
+   */
+  private val interactiveRenderInFlight = ConcurrentHashMap<String, Boolean>()
+
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
   private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
@@ -1498,10 +1529,17 @@ class JsonRpcServer(
     val session = interactiveSessions[params.frameStreamId]
     if (session != null) {
       // v2 dispatch path — feed the input into the held composition, render the next frame
-      // through the same session. The render-watcher thread picks the result up off
-      // [renderResultsQueue] and emits `renderFinished` (subject to the byte-identical dedup).
-      // Sequenced on a fire-and-forget worker so the read loop never blocks on a render body.
-      submitInteractiveRenderAsync(target.previewId, session, params)
+      // through the same session. Coalesce: if a render for this stream is already in flight,
+      // queue the input rather than spawning another render — the in-flight worker drains the
+      // queue and dispatches everything as a batch before its render. See § 9.6 of the design.
+      pendingInteractiveInputs
+        .computeIfAbsent(params.frameStreamId) { java.util.concurrent.ConcurrentLinkedQueue() }
+        .add(params)
+      // Try to claim the in-flight slot. Whoever wins owns the render thread; whoever loses
+      // already had their input queued and the winner will dispatch it.
+      if (interactiveRenderInFlight.putIfAbsent(params.frameStreamId, true) == null) {
+        submitInteractiveRenderAsync(params.frameStreamId, target.previewId, session)
+      }
       return
     }
     // v1 fallback: each input enqueues a fresh stateless render of the target preview. The
@@ -1516,19 +1554,21 @@ class JsonRpcServer(
   }
 
   /**
-   * v2 — dispatch one interactive input through a held [InteractiveSession] and enqueue the
-   * resulting render onto [renderResultsQueue] so the existing watcher pipeline emits
-   * `renderFinished` for it. Mirrors [submitRenderAsync] structurally — fresh worker thread per
-   * call, no read-loop blocking — but goes through the session instead of `host.submit` so
-   * `remember`'d state survives between inputs.
+   * v2 — drain pending interactive inputs for [streamId], dispatch the batch into [session], and
+   * render once. Owns the in-flight slot for [streamId] until the render completes; on completion,
+   * checks the queue and re-claims if more inputs arrived during the render. Mirrors
+   * [submitRenderAsync] structurally — fresh worker thread, no read-loop blocking, results onto
+   * [renderResultsQueue] for the existing watcher pipeline.
    *
-   * Failures during dispatch or render are routed onto the same queue as
-   * [RenderResultOrFailure.Failure]; the watcher demuxes that into a `renderFailed` notification.
+   * Failures during dispatch or render are routed onto the queue as [RenderResultOrFailure.Failure]
+   * for the watcher to demux into a `renderFailed` notification. The in-flight slot is always
+   * cleared in `finally` even on failure, and any inputs queued during the failed render still get
+   * a chance via the post-finally re-claim — a single bad render shouldn't strand subsequent ones.
    */
   private fun submitInteractiveRenderAsync(
+    streamId: String,
     previewId: String,
     session: InteractiveSession,
-    input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams,
   ) {
     val hostId = RenderHost.nextRequestId()
     hostIdToPreviewId[hostId] = previewId
@@ -1537,7 +1577,14 @@ class JsonRpcServer(
     Thread(
         {
           try {
-            session.dispatch(input)
+            // Drain every input currently pending for this stream and dispatch them as a batch
+            // before rendering. Inputs that arrive *during* dispatch + render get queued for the
+            // next iteration via the post-finally re-claim below.
+            val queue = pendingInteractiveInputs[streamId]
+            while (queue != null) {
+              val next = queue.poll() ?: break
+              session.dispatch(next)
+            }
             val result = session.render(hostId)
             renderResultsQueue.put(result)
           } catch (e: Throwable) {
@@ -1545,6 +1592,31 @@ class JsonRpcServer(
               "compose-ai-daemon: interactive session render($hostId) failed: ${e.message}"
             )
             renderResultsQueue.put(RenderResultOrFailure.Failure(hostId, e))
+          } finally {
+            // Release the in-flight slot, then check if more inputs arrived during the render.
+            // If so, re-claim and recurse (on a new worker thread) so the next batch is dispatched
+            // and rendered. The recursion always converges because each iteration drains some
+            // inputs from the queue; without new arrivals the queue empties and the next claim
+            // skips re-spawning.
+            interactiveRenderInFlight.remove(streamId)
+            val pending = pendingInteractiveInputs[streamId]
+            if (
+              pending != null &&
+                pending.isNotEmpty() &&
+                interactiveRenderInFlight.putIfAbsent(streamId, true) == null
+            ) {
+              val curSession = interactiveSessions[streamId]
+              val curTarget = interactiveTargets[streamId]
+              if (curSession != null && curTarget != null) {
+                submitInteractiveRenderAsync(streamId, curTarget.previewId, curSession)
+              } else {
+                // Session was stopped while we were rendering; drop the queued inputs and clear
+                // the slot. Stale inputs against a stopped stream are dropped per the v1
+                // contract (handleInteractiveInput would also short-circuit on the next poll).
+                pendingInteractiveInputs.remove(streamId)
+                interactiveRenderInFlight.remove(streamId)
+              }
+            }
           }
         },
         "compose-ai-daemon-interactive-render-$hostId",
@@ -1875,6 +1947,11 @@ class JsonRpcServer(
   private fun closeAllInteractiveSessions() {
     val sessions = interactiveSessions.values.toList()
     interactiveSessions.clear()
+    // v2 phase 3 — drop any pending coalesced inputs and in-flight claims. The render workers
+    // they refer to may still be running; they observe the cleared sessions map on their post-
+    // finally re-claim and exit cleanly without re-spawning.
+    pendingInteractiveInputs.clear()
+    interactiveRenderInFlight.clear()
     for (session in sessions) {
       try {
         session.close()
