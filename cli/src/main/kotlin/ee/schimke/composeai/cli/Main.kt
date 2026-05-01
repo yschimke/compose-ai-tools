@@ -115,7 +115,7 @@ private fun printUsage() {
       a11y             Render previews and print ATF accessibility findings
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       share-gist       Create a gist from a markdown file plus image attachments
-      publish-images   Push a directory of rendered PNGs to a shared branch (default preview_pr)
+      publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
       update           Re-run the bootstrap installer to pull the latest release
       version          Print the installed bundle version and exit
       help             Show this help message

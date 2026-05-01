@@ -66,16 +66,16 @@ Compose Multiplatform 1.10.3 (Desktop).
 
 Source under [`samples/`](samples/). Rendered baselines (PNGs and animation
 GIFs, regenerated on every push to `main`) are browsable inline on the
-[`preview_main`](https://github.com/yschimke/compose-ai-tools/tree/preview_main)
+[`compose-preview/main`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main)
 branch:
 
-- [`samples:android`](https://github.com/yschimke/compose-ai-tools/tree/preview_main#samplesandroid) — phone, font-family showcase, scrolling captures, animation timelines.
-- [`samples:wear`](https://github.com/yschimke/compose-ai-tools/tree/preview_main#sampleswear) — Wear OS Material 3 Expressive, `EdgeButton`, tile previews.
-- [`samples:cmp`](https://github.com/yschimke/compose-ai-tools/tree/preview_main#samplescmp) — Compose Multiplatform Desktop.
-- [`samples:remotecompose`](https://github.com/yschimke/compose-ai-tools/tree/preview_main#samplesremotecompose) — Remote Compose against `wear-compose-remote-material3`.
+- [`samples:android`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplesandroid) — phone, font-family showcase, scrolling captures, animation timelines.
+- [`samples:wear`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#sampleswear) — Wear OS Material 3 Expressive, `EdgeButton`, tile previews.
+- [`samples:cmp`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplescmp) — Compose Multiplatform Desktop.
+- [`samples:remotecompose`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplesremotecompose) — Remote Compose against `wear-compose-remote-material3`.
 
 ATF a11y findings for the same samples are on the
-[`a11y_main`](https://github.com/yschimke/compose-ai-tools/tree/a11y_main)
+[`compose-preview/a11y/main`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/a11y/main)
 branch.
 
 ## Agent PR hall of fame
@@ -94,7 +94,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure, plugin configuration.
 - [CI install action](.github/actions/install/README.md) — pin the CLI on `$PATH` in any GitHub Actions job, with version-catalog + Renovate recipes.
 - [Cloud sandbox setup](skills/compose-preview/design/CLAUDE_CLOUD.md) — Claude Code on the web, network allowlist.
-- [CI workflows](skills/compose-preview-review/design/CI_PREVIEWS.md) — `preview_main` baselines, PR diff comments.
+- [CI workflows](skills/compose-preview-review/design/CI_PREVIEWS.md) — `compose-preview/main` baselines, PR diff comments.
 - [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; consuming `-SNAPSHOT` builds.
 - [Architecture (contributor)](docs/AGENTS.md) — class-by-class map of the four-stage pipeline.
 - [Releases](https://github.com/yschimke/compose-ai-tools/releases) ·

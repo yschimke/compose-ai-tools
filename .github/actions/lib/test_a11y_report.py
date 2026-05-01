@@ -251,7 +251,7 @@ class ReadmeTest(unittest.TestCase):
         ar.cmd_readme(argparse.Namespace(
             findings=str(findings_path),
             repo="org/repo",
-            branch="a11y_main",
+            branch="compose-preview/a11y/main",
             output=str(out),
         ))
         body = out.read_text()
@@ -259,7 +259,7 @@ class ReadmeTest(unittest.TestCase):
         self.assertIn("BadWearButtonPreview", body)
         # The annotated PNG wins over the clean one when there are findings.
         self.assertIn("Bad_small.a11y.png", body)
-        self.assertIn("a11y_main", body)
+        self.assertIn("compose-preview/a11y/main", body)
         self.assertIn("WARNING", body)
         self.assertIn("TouchTargetSizeCheck", body)
 
@@ -279,7 +279,7 @@ class ReadmeTest(unittest.TestCase):
         ar.cmd_readme(argparse.Namespace(
             findings=str(findings_path),
             repo="org/repo",
-            branch="a11y_main",
+            branch="compose-preview/a11y/main",
             output=str(out),
         ))
         body = out.read_text()

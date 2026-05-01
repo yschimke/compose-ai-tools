@@ -1,8 +1,9 @@
-# CI preview baselines (`preview_main` branch)
+# CI preview baselines (`compose-preview/main` branch)
 
 Projects that use the Gradle plugin can wire up two GitHub Actions
-workflows to maintain a `preview_main` branch with rendered PNGs and a
-`baselines.json` file (preview ID → SHA-256). This serves two purposes:
+workflows to maintain a `compose-preview/main` branch with rendered PNGs
+and a `baselines.json` file (preview ID → SHA-256). This serves two
+purposes:
 
 1. **Browsable gallery** — the branch has a `README.md` with inline images,
    viewable directly on GitHub.
@@ -64,7 +65,7 @@ jobs:
   compare:
     runs-on: ubuntu-latest
     permissions:
-      contents: write          # appends to preview_pr branch
+      contents: write          # appends to compose-preview/pr branch
       pull-requests: write     # upserts the PR comment
     steps:
       - uses: actions/checkout@v6
@@ -105,7 +106,7 @@ when needed.
 | `catalog-path` | `gradle/libs.versions.toml` | Catalog file when `cli-version=catalog`. |
 | `catalog-key` | `composePreviewCli` | `[versions]` key when `cli-version=catalog`. |
 | `timeout` | `600` | CLI render timeout in seconds. |
-| `branch` | `preview_main` | Branch the baselines push to. |
+| `branch` | `compose-preview/main` | Branch the baselines push to. |
 
 `preview-comment`:
 
@@ -115,8 +116,8 @@ when needed.
 | `catalog-path` | `gradle/libs.versions.toml` | Catalog file when `cli-version=catalog`. |
 | `catalog-key` | `composePreviewCli` | `[versions]` key when `cli-version=catalog`. |
 | `timeout` | `600` | CLI render timeout in seconds. |
-| `base-branch` | `preview_main` | Branch the baselines were pushed to. |
-| `head-branch` | `preview_pr` | Shared branch for per-PR render commits. |
+| `base-branch` | `compose-preview/main` | Branch the baselines were pushed to. |
+| `head-branch` | `compose-preview/pr` | Shared branch for per-PR render commits. |
 | `pr-number` | (event) | PR number, auto-detected from the `pull_request` event. |
 
 ## Mobile readability
@@ -139,36 +140,36 @@ vertical-friendly:
 ## Querying baselines outside CI
 
 ```bash
-git ls-remote --exit-code origin preview_main          # check existence
-git fetch origin preview_main
-git show origin/preview_main:baselines.json            # read manifest
-git show origin/preview_main:renders/<module>/<id>.png # read PNG
+git ls-remote --exit-code origin compose-preview/main          # check existence
+git fetch origin compose-preview/main
+git show origin/compose-preview/main:baselines.json            # read manifest
+git show origin/compose-preview/main:renders/<module>/<id>.png # read PNG
 ```
 
 Or via raw URL:
 
 ```
-https://raw.githubusercontent.com/<owner>/<repo>/preview_main/renders/<module>/<id>.png
+https://raw.githubusercontent.com/<owner>/<repo>/compose-preview/main/renders/<module>/<id>.png
 ```
 
 ## Branch durability
 
-Both `preview_main` and `preview_pr` are append-only:
+Both `compose-preview/main` and `compose-preview/pr` are append-only:
 
 - `preview-baselines` adds one commit per push to `main` (parented on
   the previous tip; skipped when the rendered tree is unchanged). A
   fast-forward push on a serialised concurrency group means no
   rewrites.
-- `preview-comment` appends one commit per PR push to `preview_pr`
-  (tree = that PR's changed PNGs). The PR comment pins `<img>` URLs
-  to commit SHAs on `preview_main` and `preview_pr`, not branch
-  names — so images keep resolving after the PR merges and after
-  later PRs advance either branch.
+- `preview-comment` appends one commit per PR push to
+  `compose-preview/pr` (tree = that PR's changed PNGs). The PR comment
+  pins `<img>` URLs to commit SHAs on `compose-preview/main` and
+  `compose-preview/pr`, not branch names — so images keep resolving
+  after the PR merges and after later PRs advance either branch.
 
 ## Local persistent state: `.compose-preview-history/fonts/`
 
-CI keeps long-lived state on the `preview_main` and `preview_pr`
-branches. There's also a per-module local cache —
+CI keeps long-lived state on the `compose-preview/main` and
+`compose-preview/pr` branches. There's also a per-module local cache —
 `<module>/.compose-preview-history/fonts/`, deliberately outside
 `build/` so it survives `./gradlew clean`. The directory holds the
 **downloadable-font cache**, populated automatically the first time a

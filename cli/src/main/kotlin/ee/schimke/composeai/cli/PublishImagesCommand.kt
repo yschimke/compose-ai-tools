@@ -8,13 +8,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * `compose-preview publish-images DIR [--branch preview_pr] [--remote origin] [--pr-number N]
- * [--message MSG] [--json]`
+ * `compose-preview publish-images DIR [--branch compose-preview/pr] [--remote origin]
+ * [--pr-number N] [--message MSG] [--json]`
  *
  * Pushes the contents of a staging directory as a single commit on a shared rendered-PNG branch
- * (default `preview_pr`), mirroring what the `preview-comment` GitHub Action does in CI. Lets an
- * agent that already has a populated `_pr_renders/`-shape directory get stable raw URLs without
- * scripting the `git init` / `commit-tree` / race-loop dance by hand.
+ * (default `compose-preview/pr`), mirroring what the `preview-comment` GitHub Action does in CI.
+ * Lets an agent that already has a populated `_pr_renders/`-shape directory get stable raw URLs
+ * without scripting the `git init` / `commit-tree` / race-loop dance by hand.
  *
  * Deliberately small: this is the push primitive, not the whole `preview-comment` workflow. The
  * agent decides what to put in the staging directory (typically the changed/new PNGs from a
@@ -23,12 +23,13 @@ import kotlinx.serialization.json.Json
  */
 class PublishImagesCommand(args: List<String>) {
   private val jsonOut = "--json" in args
-  private val branch: String = args.flagValue("--branch") ?: "preview_pr"
+  private val branch: String = args.flagValue("--branch") ?: "compose-preview/pr"
   private val remote: String = args.flagValue("--remote") ?: "origin"
   private val prNumber: String? = args.flagValue("--pr-number")
   private val customMessage: String? = args.flagValue("--message")
   /**
-   * Opt-in escape hatch for branch names outside the `preview_*` allowlist. Hard-blocked names
+   * Opt-in escape hatch for branch names outside the preview allowlist (any branch starting with
+   * `compose-preview/`, or the legacy `preview_` prefix). Hard-blocked names
    * ([HARD_BLOCKED_BRANCHES]) stay rejected even with this flag — pushing rendered PNGs onto
    * `main`/`master`/etc. is never the intended use of this command.
    */
@@ -319,10 +320,17 @@ class PublishImagesCommand(args: List<String>) {
      * Branches `publish-images` will never push to, regardless of `--allow-non-preview-branch`.
      * This is policy on top of the allowlist: pushing rendered PNGs onto a project's mainline or
      * release branches is never the intended use of this command, so we hard-block even with the
-     * escape hatch. Anything else outside the `preview_*` allowlist requires the flag.
+     * escape hatch. Anything else outside the preview allowlist requires the flag.
      */
     private val HARD_BLOCKED_BRANCHES = setOf("main", "master", "develop", "trunk", "HEAD")
     private val HARD_BLOCKED_PREFIXES = listOf("release/", "releases/")
+
+    /**
+     * Allowed branch-name prefixes for `publish-images` without `--allow-non-preview-branch`.
+     * `compose-preview/` is the current convention; `preview_` is the legacy prefix kept around so
+     * repos that haven't migrated their `preview_main` / `preview_pr` branches keep working.
+     */
+    private val PREVIEW_BRANCH_PREFIXES = listOf("compose-preview/", "preview_")
 
     /**
      * Conservative subset of `git check-ref-format`. Real refnames allow more, but for this
@@ -358,7 +366,8 @@ class PublishImagesCommand(args: List<String>) {
      * 2. Refname must not be in [HARD_BLOCKED_BRANCHES] or under [HARD_BLOCKED_PREFIXES] — pushing
      *    rendered PNGs onto mainline / release branches is never the intended use, even with the
      *    escape hatch.
-     * 3. Refname must match the `preview_` prefix, OR `--allow-non-preview-branch` must be set.
+     * 3. Refname must match one of [PREVIEW_BRANCH_PREFIXES], OR `--allow-non-preview-branch` must
+     *    be set.
      *
      * The first failing rule wins so error messages stay focused.
      */
@@ -371,10 +380,10 @@ class PublishImagesCommand(args: List<String>) {
         return "refusing to push to '$branch': mainline / release branches are never a valid " +
           "destination for publish-images, even with --allow-non-preview-branch."
       }
-      if (!branch.startsWith("preview_") && !allowNonPreview) {
-        return "branch '$branch' is outside the preview_* allowlist. Pass " +
-          "--allow-non-preview-branch to push to a custom branch (mainline branches stay " +
-          "blocked regardless)."
+      if (PREVIEW_BRANCH_PREFIXES.none { branch.startsWith(it) } && !allowNonPreview) {
+        return "branch '$branch' is outside the preview allowlist (compose-preview/* or " +
+          "legacy preview_*). Pass --allow-non-preview-branch to push to a custom branch " +
+          "(mainline branches stay blocked regardless)."
       }
       return null
     }

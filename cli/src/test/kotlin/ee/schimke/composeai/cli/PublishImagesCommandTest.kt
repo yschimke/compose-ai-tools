@@ -13,7 +13,7 @@ class PublishImagesArgParsingTest {
       listOf(
         "_pr_renders",
         "--branch",
-        "preview_pr",
+        "compose-preview/pr",
         "--remote",
         "origin",
         "--pr-number",
@@ -66,12 +66,29 @@ class PublishImagesMessageTest {
 
 class PublishImagesBranchValidationTest {
   @Test
-  fun `preview_pr passes by default`() {
+  fun `compose-preview pr passes by default`() {
+    assertNull(PublishImagesCommand.validateBranch("compose-preview/pr", allowNonPreview = false))
+  }
+
+  @Test
+  fun `compose-preview main passes by default`() {
+    assertNull(PublishImagesCommand.validateBranch("compose-preview/main", allowNonPreview = false))
+  }
+
+  @Test
+  fun `compose-preview nested resources branch passes by default`() {
+    assertNull(
+      PublishImagesCommand.validateBranch("compose-preview/resources/pr", allowNonPreview = false)
+    )
+  }
+
+  @Test
+  fun `legacy preview_pr still passes by default`() {
     assertNull(PublishImagesCommand.validateBranch("preview_pr", allowNonPreview = false))
   }
 
   @Test
-  fun `preview_main passes by default`() {
+  fun `legacy preview_main still passes by default`() {
     assertNull(PublishImagesCommand.validateBranch("preview_main", allowNonPreview = false))
   }
 
@@ -79,8 +96,11 @@ class PublishImagesBranchValidationTest {
   fun `non-preview branch rejected without escape hatch`() {
     val message = PublishImagesCommand.validateBranch("screenshots", allowNonPreview = false)
     assertTrue(
-      message != null && "preview_*" in message && "--allow-non-preview-branch" in message,
-      "expected reject mentioning the allowlist and escape flag, got $message",
+      message != null &&
+        "compose-preview/" in message &&
+        "preview_" in message &&
+        "--allow-non-preview-branch" in message,
+      "expected reject mentioning both allowlist prefixes and escape flag, got $message",
     )
   }
 
@@ -122,7 +142,9 @@ class PublishImagesBranchValidationTest {
 
   @Test
   fun `refspec colon rejected`() {
-    assertNotNull(PublishImagesCommand.validateBranch("preview_pr:main", allowNonPreview = false))
+    assertNotNull(
+      PublishImagesCommand.validateBranch("compose-preview/pr:main", allowNonPreview = false)
+    )
   }
 
   @Test
@@ -134,7 +156,9 @@ class PublishImagesBranchValidationTest {
   fun `at-brace rejected`() {
     // `branch@{1}` is a reflog selector; pushing to it is meaningless and we don't want exotic
     // git syntax leaking through.
-    assertNotNull(PublishImagesCommand.validateBranch("preview_pr@{1}", allowNonPreview = false))
+    assertNotNull(
+      PublishImagesCommand.validateBranch("compose-preview/pr@{1}", allowNonPreview = false)
+    )
   }
 }
 

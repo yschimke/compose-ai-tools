@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       # preview-comment composite action appends a commit to the shared
-      # preview_pr branch and upserts a PR comment with before/after images.
+      # compose-preview/pr branch and upserts a PR comment with
+      # before/after images.
       contents: write
       pull-requests: write
     steps:

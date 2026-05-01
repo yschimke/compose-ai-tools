@@ -2,25 +2,25 @@ name: 'Compose A11y Report'
 description: >
   Render @Preview functions with ATF accessibility checks enabled, generate
   an annotated screenshot + finding table per preview, and publish to a
-  shared branch (`a11y_main` for `push`, `a11y_pr` for `pull_request`). For
-  PRs, also upserts a comment with finding counts and SHA-pinned image
-  links. Mirrors the push-and-retry / comment-upsert pattern used by
-  preview-comment, but is a separate action so a11y churn doesn't block the
-  pixel-diff hot path.
+  shared branch (`compose-preview/a11y/main` for `push`,
+  `compose-preview/a11y/pr` for `pull_request`). For PRs, also upserts a
+  comment with finding counts and SHA-pinned image links. Mirrors the
+  push-and-retry / comment-upsert pattern used by preview-comment, but is
+  a separate action so a11y churn doesn't block the pixel-diff hot path.
 
 inputs:
   mode:
-    description: "'baseline' (push to `a11y_main`) or 'comment' (push to `a11y_pr` + upsert PR comment)"
+    description: "'baseline' (push to `compose-preview/a11y/main`) or 'comment' (push to `compose-preview/a11y/pr` + upsert PR comment)"
     required: true
   module:
     description: 'Gradle module path to render (e.g. `samples:wear`)'
     default: 'samples:wear'
   baseline-branch:
     description: 'Long-lived branch holding the baseline a11y report'
-    default: 'a11y_main'
+    default: 'compose-preview/a11y/main'
   pr-branch:
     description: 'Shared branch that accumulates per-PR a11y renders'
-    default: 'a11y_pr'
+    default: 'compose-preview/a11y/pr'
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted)'
     default: ''
@@ -64,7 +64,7 @@ runs:
         BASELINE_BRANCH: ${{ inputs.baseline-branch }}
       run: |
         set -euo pipefail
-        # Pull `findings.json` from a11y_main so the comment subcommand can
+        # Pull `findings.json` from compose-preview/a11y/main so the comment subcommand can
         # compare and stay silent when nothing changed. Default to an empty
         # entries list when the branch hasn't been seeded yet — the python
         # treats a missing baseline the same as an empty one.
@@ -165,8 +165,9 @@ runs:
 
         # Append commit on top of existing tip so older PR comments pinned
         # to past SHAs stay reachable. Retry loop handles the push race
-        # when two PRs finish concurrently against the shared `a11y_pr`
-        # branch — same recipe as preview-comment/action.yml.
+        # when two PRs finish concurrently against the shared
+        # `compose-preview/a11y/pr` branch — same recipe as
+        # preview-comment/action.yml.
         attempt=1
         while :; do
           PARENT=""
@@ -216,7 +217,7 @@ runs:
         # The earlier comment-generation step used the branch name as a
         # provisional ref because the SHA wasn't known yet. Now that push
         # has run, swap in the actual SHA so the comment's image URLs stay
-        # resolvable after a11y_pr advances or the PR merges.
+        # resolvable after compose-preview/a11y/pr advances or the PR merges.
         HEAD_REF="${HEAD_SHA:-$PR_BRANCH}"
         python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
           _a11y_renders/findings.json \

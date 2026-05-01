@@ -1066,7 +1066,7 @@ internal object AndroidPreviewSupport {
         // output so the build cache round-trips the PNGs alongside the
         // test reports; without this the task gets a cache hit on a fresh
         // checkout but the renders are never restored, which is exactly
-        // how previous modules silently vanished from `preview_main`.
+        // how previous modules silently vanished from `compose-preview/main`.
         outputs.dir(rendersDirectory).withPropertyName("rendersDir")
 
         dependsOn(discoverTask)

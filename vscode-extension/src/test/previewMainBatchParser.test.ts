@@ -31,7 +31,7 @@ describe('CatFileBatchParser', () => {
 
     it('parses a missing response', () => {
         const parser = new CatFileBatchParser();
-        const out = parser.feed(missing('origin/preview_main:no/such/path'));
+        const out = parser.feed(missing('origin/compose-preview/main:no/such/path'));
         assert.deepStrictEqual(out, [null]);
     });
 

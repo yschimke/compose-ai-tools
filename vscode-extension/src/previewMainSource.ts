@@ -3,13 +3,13 @@ import type { Readable, Writable } from 'stream';
 
 /**
  * Read PNG bytes for a preview's `main` baseline directly from the
- * `preview_main` branch via git plumbing. Used as a fallback when the
- * local `.compose-preview-history/` has no entry for `git.branch === 'main'`
- * — repos that follow the CI baseline workflow (see
- * [.github/actions/preview-baselines/action.yml]) push every `main` build's
- * rendered PNGs to a `preview_main` branch alongside a `baselines.json`
- * manifest. Reading from the ref means "vs main" works without local
- * archived history and without a daemon.
+ * `compose-preview/main` branch via git plumbing. Used as a fallback when
+ * the local `.compose-preview-history/` has no entry for
+ * `git.branch === 'main'` — repos that follow the CI baseline workflow
+ * (see [.github/actions/preview-baselines/action.yml]) push every `main`
+ * build's rendered PNGs to a `compose-preview/main` branch alongside a
+ * `baselines.json` manifest. Reading from the ref means "vs main" works
+ * without local archived history and without a daemon.
  *
  * Layout on the baseline branch (matches `compare-previews.py`'s writer):
  *
@@ -18,9 +18,9 @@ import type { Readable, Writable } from 'stream';
  *       └── <module>/
  *           └── <renderBasename>  // typically "<previewId>.png"
  *
- * The reader prefers `origin/preview_main` (post-fetch view of the
- * remote) and falls back to a local `preview_main` branch if no remote
- * tracking ref exists.
+ * The reader prefers `origin/compose-preview/main` (post-fetch view of the
+ * remote) and falls back to the local branch and then the legacy
+ * `preview_main` flat ref so repos that haven't migrated keep working.
  */
 export async function readPreviewMainPng(
     workspaceRoot: string,
@@ -28,7 +28,13 @@ export async function readPreviewMainPng(
     previewId: string,
 ): Promise<PreviewMainResult | null> {
     const batch = getBatch(workspaceRoot);
-    for (const ref of ['origin/preview_main', 'preview_main']) {
+    const candidateRefs = [
+        'origin/compose-preview/main',
+        'compose-preview/main',
+        'origin/preview_main',
+        'preview_main',
+    ];
+    for (const ref of candidateRefs) {
         const baselineBuf = await batch.read(`${ref}:baselines.json`);
         if (!baselineBuf) { continue; }
         const baselines = parseBaselines(baselineBuf.toString('utf8'));
@@ -44,7 +50,7 @@ export async function readPreviewMainPng(
 }
 
 export interface PreviewMainResult {
-    /** e.g. `'origin/preview_main'` — the ref that resolved. */
+    /** e.g. `'origin/compose-preview/main'` — the ref that resolved. */
     ref: string;
     /** e.g. `':samples:android/com.example.RedSquare'`. */
     baselineKey: string;

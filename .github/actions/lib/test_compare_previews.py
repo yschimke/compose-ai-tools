@@ -350,7 +350,7 @@ class GenerateTest(unittest.TestCase):
                 _entry(id="B", module="m", function="FnB", png="", sha=""),
             ],
         }))
-        self.out = self.tmp / "preview_main"
+        self.out = self.tmp / "out"
 
     def test_writes_baselines_and_readme_and_copies_pngs(self):
         from types import SimpleNamespace
@@ -358,7 +358,7 @@ class GenerateTest(unittest.TestCase):
             cli_json=str(self.cli_path),
             output_dir=str(self.out),
             repo="owner/repo",
-            branch="preview_main",
+            branch="compose-preview/main",
         ))
         self.assertEqual(rc, 0)
 
@@ -369,7 +369,7 @@ class GenerateTest(unittest.TestCase):
 
         readme = (self.out / "README.md").read_text()
         # README references the rendered PNG via the raw GitHub URL.
-        self.assertIn("raw.githubusercontent.com/owner/repo/preview_main", readme)
+        self.assertIn("raw.githubusercontent.com/owner/repo/compose-preview/main", readme)
         self.assertIn("`Fn`", readme)
 
         # PNG copied under renders/<module>/<id>.png.
@@ -507,8 +507,9 @@ class CompareMarkdownTest(unittest.TestCase):
 
     def test_urls_pin_to_sha_refs_not_branch_names(self):
         # The whole point of using refs over branch names: the comment
-        # survives preview_main/preview_pr advancing after merge. Assert
-        # the SHAs we pass in actually land in the generated img src URLs.
+        # survives compose-preview/main and compose-preview/pr advancing
+        # after merge. Assert the SHAs we pass in actually land in the
+        # generated img src URLs.
         out = self._run(
             {"previews": [_entry(id="Changed", function="F", sha="new", png="/c.png")]},
             {"app/Changed": {"sha256": "old", "functionName": "F"}},
@@ -635,7 +636,7 @@ class MultiCaptureGenerateTest(unittest.TestCase):
                 ],
             )],
         }))
-        self.out = self.tmp / "preview_main"
+        self.out = self.tmp / "out"
 
     def test_copies_each_capture_under_its_renderer_basename(self):
         from types import SimpleNamespace
@@ -643,7 +644,7 @@ class MultiCaptureGenerateTest(unittest.TestCase):
             cli_json=str(self.cli_path),
             output_dir=str(self.out),
             repo="owner/repo",
-            branch="preview_main",
+            branch="compose-preview/main",
         ))
         self.assertEqual(rc, 0)
 
@@ -1256,7 +1257,7 @@ class ResourcePerceptualFilterTest(unittest.TestCase):
         self.addCleanup(setattr, cp, "_perceptually_changed", self._real)
 
         # Resource baseline tree mimics what the action's
-        # `git archive preview_resources_main renders | tar -x` produces.
+        # `git archive compose-preview/resources/main renders | tar -x` produces.
         baseline_root = self.tmp / "_resource_baselines" / "renders" / "app" / "resources" / "mipmap"
         baseline_root.mkdir(parents=True)
         (baseline_root / "ic_launcher_xhdpi_SHAPE_circle_noise.png").write_bytes(b"baseline-noise")
@@ -1332,16 +1333,16 @@ class ResourcePerceptualFilterTest(unittest.TestCase):
         ))
         self.assertEqual(rc, 0)
         # Only the real-diff PNG should be copied; the AA-noise capture is
-        # filtered before it gets staged for the preview_resources_pr push.
+        # filtered before it gets staged for the compose-preview/resources/pr push.
         copied = sorted(p.name for p in
                         (out_dir / "renders" / "app" / "resources" / "mipmap").iterdir())
         self.assertEqual(copied, ["ic_launcher_xhdpi_SHAPE_square.png"])
 
     def test_strict_bytes_fallback_when_baseline_renders_omitted(self) -> None:
         # No `baseline_renders` argument → falls back to strict-sha behaviour
-        # (the first-ever-PR shape, when preview_resources_main has no
-        # renders/ tree to extract). Both captures are sha-different so both
-        # should surface as Changed.
+        # (the first-ever-PR shape, when compose-preview/resources/main has
+        # no renders/ tree to extract). Both captures are sha-different so
+        # both should surface as Changed.
         from types import SimpleNamespace
         import io
         import contextlib
@@ -1361,7 +1362,7 @@ class ResourcePerceptualFilterTest(unittest.TestCase):
 class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
     """End-to-end regression for the failure mode that broke PR comments
     after #269 landed: `git show … > resource-baselines.json` truncated the
-    file to zero bytes when `preview_main` didn't yet have a
+    file to zero bytes when `compose-preview/main` didn't yet have a
     `resource-baselines.json`, and `cmd_compare_resources` blew up with
     `JSONDecodeError`."""
 

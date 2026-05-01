@@ -393,7 +393,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         vscode.window.registerWebviewViewProvider(PreviewPanel.viewId, panel),
     );
 
-    // Watch the preview_main ref for fetch-driven changes. When the ref
+    // Watch the compose-preview/main ref for fetch-driven changes. When the ref
     // moves, any open "Diff vs main" overlay in the live panel needs to
     // re-issue against the new bytes. The watcher coalesces fetch bursts
     // internally; we just message the live panel and let it reissue.
@@ -1915,9 +1915,10 @@ async function runLivePreviewDiff(
         return;
     }
     // No local archived entry. For "vs main" we can still try the
-    // preview_main baselines branch — repos using the CI baseline workflow
-    // publish every main build's PNGs there. Avoids requiring a daemon or
-    // a one-off local archive for the user's first diff against main.
+    // compose-preview/main baselines branch (with legacy preview_main
+    // fallback) — repos using the CI baseline workflow publish every main
+    // build's PNGs there. Avoids requiring a daemon or a one-off local
+    // archive for the user's first diff against main.
     if (against === 'main') {
         const baseline = await readPreviewMainPng(
             gradleService.workspaceRoot, moduleId, previewId,
@@ -1938,7 +1939,7 @@ async function runLivePreviewDiff(
     panel.postMessage({
         command: 'previewDiffError', previewId, against,
         message: against === 'main'
-            ? 'No archived render on main yet for this preview, and no preview_main baseline.'
+            ? 'No archived render on main yet for this preview, and no compose-preview/main baseline.'
             : 'No archived history yet for this preview.',
     });
 }
@@ -2031,11 +2032,12 @@ async function diffAllVsMain(): Promise<void> {
                 // History unavailable for this preview — treat as no baseline.
             }
             if (!mainHash) {
-                // Fall back to the preview_main baselines branch — repos
-                // using the CI baseline workflow publish PNGs there even
-                // when nothing has been archived locally yet. The lookup
-                // also exposes a sha256 in the manifest, which we compare
-                // against the live hash to skip identical previews.
+                // Fall back to the compose-preview/main baselines branch
+                // (with legacy preview_main fallback) — repos using the CI
+                // baseline workflow publish PNGs there even when nothing
+                // has been archived locally yet. The lookup also exposes a
+                // sha256 in the manifest, which we compare against the
+                // live hash to skip identical previews.
                 const baseline = await readPreviewMainPng(
                     gradleService!.workspaceRoot, moduleId, preview.id,
                 );

@@ -1,6 +1,6 @@
 ---
 name: compose-preview-review
-description: Review pull requests that change Compose UI by rendering @Preview composables on base and head and diffing them. Use when reviewing a UI PR locally, authoring an agent-opened PR that touches UI, or wiring preview_main baselines and PR-comment GitHub Actions for a project. Pairs with the compose-preview skill.
+description: Review pull requests that change Compose UI by rendering @Preview composables on base and head and diffing them. Use when reviewing a UI PR locally, authoring an agent-opened PR that touches UI, or wiring compose-preview/main baselines and PR-comment GitHub Actions for a project. Pairs with the compose-preview skill.
 ---
 
 # Compose Preview — Review
@@ -33,7 +33,7 @@ Pick the workflow that matches the task:
 |---|---|
 | Review a PR locally that touches UI | [design/AGENT_PR.md § Reviewing a PR](./design/AGENT_PR.md#reviewing-a-pr-agent-workflow) |
 | Author an agent-opened PR that touches UI | [design/AGENT_PR.md § Authoring an Agent PR](./design/AGENT_PR.md#authoring-an-agent-pr-body-structure) |
-| Wire `preview_main` baselines + PR-comment CI for a project | [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) |
+| Wire `compose-preview/main` baselines + PR-comment CI for a project | [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) |
 | Render previews on base and head and diff them | [design/AGENT_PR.md § Render base and head locally](./design/AGENT_PR.md#1-render-base-and-head-locally) |
 
 ## Quick reference: review a UI PR locally
@@ -67,7 +67,7 @@ Pick the workflow that matches the task:
 | Path | When to read |
 |---|---|
 | [design/AGENT_PR.md](./design/AGENT_PR.md) | Full PR review + agent PR authoring guidance: comment structure, image hosting choices, things to flag, integration with `preview-comment` CI when present. |
-| [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `preview_main` baselines branch + PR-comment GitHub Actions: workflow YAML, action inputs, branch durability. |
+| [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `compose-preview/main` baselines branch + PR-comment GitHub Actions: workflow YAML, action inputs, branch durability. |
 
 ## Related
 
