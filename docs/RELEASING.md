@@ -37,10 +37,18 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 
 ### What the `release.yml` workflow does
 
-1. Publishes the **Gradle plugin** (`ee.schimke.composeai:compose-preview-plugin`), the **Android renderer AAR** (`ee.schimke.composeai:renderer-android`), and the **preview annotations** (`ee.schimke.composeai:preview-annotations`) to **Maven Central** via the Central Portal, and mirrors them to GitHub Packages.
+1. Publishes to **Maven Central** via the Central Portal (and mirrors to GitHub Packages):
+   - **Gradle plugin** — `ee.schimke.composeai:compose-preview-plugin`
+   - **Android renderer AAR** — `ee.schimke.composeai:renderer-android`
+   - **Preview annotations** — `ee.schimke.composeai:preview-annotations`
+   - **Daemon core** (pre-1.0) — `ee.schimke.composeai:daemon-core` — renderer-agnostic JSON-RPC server, protocol types, RenderHost interface
+   - **Daemon desktop** (pre-1.0) — `ee.schimke.composeai:daemon-desktop` — Compose Multiplatform desktop backend (DesktopHost + DaemonMain)
+   - **Daemon android** (pre-1.0) — `ee.schimke.composeai:daemon-android` — Robolectric backend; Compose / Roborazzi / UI-test stay `compileOnly`, consumer supplies runtime versions
 2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Uploads all three artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+4. Uploads the CLI + VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+
+The `daemon-*` artifacts are **pre-1.0**; their public API is not yet stable. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
 
 Required secrets on the repository:
 

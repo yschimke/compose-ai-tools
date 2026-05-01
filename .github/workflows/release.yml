@@ -58,6 +58,11 @@ jobs:
   # Android renderer AAR — the plugin resolves it via matching version.
   # `preview-annotations` ships the `@ScrollingPreview` marker that Compose
   # apps add to their compileOnly classpath, so it must publish in lockstep.
+  # `daemon-core` / `daemon-desktop` / `daemon-android` are pre-1.0 — published
+  # alongside so embedders (Gradle plugin, future Maven/IntelliJ plugins,
+  # third-party tooling) can consume the daemon by coordinate. See
+  # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
+  # captureToImage fallback if Roborazzi's API ever does break binary compat.
   publish-gradle-plugin:
     needs: [build-cli, build-vscode-extension]
     runs-on: ubuntu-latest
@@ -84,7 +89,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin, renderer-android and preview-annotations to GitHub Packages
+      - name: Publish plugin, renderer-android, preview-annotations, daemon-* to GitHub Packages
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,8 +98,11 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
             :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
-            :preview-annotations:publishAllPublicationsToGitHubPackagesRepository
-      - name: Publish plugin, renderer-android and preview-annotations to Maven Central
+            :preview-annotations:publishAllPublicationsToGitHubPackagesRepository \
+            :daemon:core:publishAllPublicationsToGitHubPackagesRepository \
+            :daemon:desktop:publishAllPublicationsToGitHubPackagesRepository \
+            :daemon:android:publishAllPublicationsToGitHubPackagesRepository
+      - name: Publish plugin, renderer-android, preview-annotations, daemon-* to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -102,7 +110,10 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
             :renderer-android:publishAndReleaseToMavenCentral \
-            :preview-annotations:publishAndReleaseToMavenCentral
+            :preview-annotations:publishAndReleaseToMavenCentral \
+            :daemon:core:publishAndReleaseToMavenCentral \
+            :daemon:desktop:publishAndReleaseToMavenCentral \
+            :daemon:android:publishAndReleaseToMavenCentral
 
   build-cli:
     runs-on: ubuntu-latest
