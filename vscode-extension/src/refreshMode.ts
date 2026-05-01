@@ -10,7 +10,7 @@
 export type RefreshMode = 'daemon' | 'gradle';
 
 /**
- * - `'daemon'` — the experimental flag is on, the file resolves to a
+ * - `'daemon'` — the daemon flag is on, the file resolves to a
  *   module, and the daemon for that module is up and the sandbox has
  *   finished bootstrapping (post-#327 `RobolectricHost.start` blocks
  *   until ready, so `isDaemonReady` is the right signal). The save

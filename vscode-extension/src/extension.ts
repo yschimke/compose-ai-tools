@@ -290,10 +290,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         return args;
     }, logFilter);
 
-    // Daemon path is opt-in via composePreview.experimental.daemon.enabled.
-    // When disabled (default) the gate's `isEnabled()` returns false and the
-    // scheduler is never asked to spawn anything — the existing Gradle path
-    // is the entire user-facing behaviour. When enabled, the scheduler runs
+    // Daemon path is controlled by composePreview.experimental.daemon.enabled
+    // (true by default). When disabled the gate's `isEnabled()` returns false
+    // and the scheduler is never asked to spawn anything — the Gradle path is
+    // the entire user-facing behaviour. When enabled, the scheduler runs
     // *alongside* the existing refresh logic: saves and viewport changes push
     // notifications to the daemon, the daemon emits renderFinished, and the
     // extension forwards PNGs to the panel as they arrive (typically ahead
@@ -357,7 +357,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
     // off or no module is currently warming. Surfacing the cold-bootstrap
     // pause (typically 2-4 s on first scope-in) avoids the "panel is stuck"
-    // perception on the experimental flag's first-time UX.
+    // perception on the daemon flag's first-time UX.
     daemonStatusItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Left, 90,
     );
