@@ -110,6 +110,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-launch-device" title="Launch on connected Android device" aria-label="Launch on device">
             <i class="codicon codicon-device-mobile" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-a11y-overlay" title="Show accessibility overlay"
+                aria-label="Toggle accessibility overlay" aria-pressed="false">
+            <i class="codicon codicon-eye" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-interactive" title="Daemon not ready — live mode unavailable"
                 aria-label="Toggle live (interactive) mode" aria-pressed="false" disabled hidden>
             <i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>
@@ -136,8 +140,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnDiffHead = document.getElementById('btn-diff-head');
         const btnDiffMain = document.getElementById('btn-diff-main');
         const btnLaunchDevice = document.getElementById('btn-launch-device');
+        const btnA11yOverlay = document.getElementById('btn-a11y-overlay');
         const btnInteractive = document.getElementById('btn-interactive');
         const btnExitFocus = document.getElementById('btn-exit-focus');
+        // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
+        // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
+        // Also gates the panel-side hierarchy overlay so the existing finding overlay (which
+        // can also arrive via the Gradle sidecar path) doesn't appear without an explicit
+        // user gesture. State is per-previewId because hopping between focused cards re-applies
+        // the toggle to the new target.
+        let a11yOverlayPreviewId = null;
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
         const progressFill = progressBar.querySelector('.progress-fill');
@@ -338,6 +350,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnDiffHead.addEventListener('click', () => requestFocusedDiff('head'));
         btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
         btnLaunchDevice.addEventListener('click', () => requestLaunchOnDevice());
+        btnA11yOverlay.addEventListener('click', () => toggleA11yOverlay());
         btnInteractive.addEventListener('click', () => toggleInteractive());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
@@ -389,6 +402,52 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             btnInteractive.innerHTML = live
                 ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
                 : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+        }
+
+        // D2 — keep the a11y-overlay toggle in lockstep with focus-mode + the focused card
+        // identity. Outside focus mode the button hides; inside focus mode aria-pressed
+        // tracks whether the currently focused preview has the overlay subscription on.
+        function applyA11yOverlayButtonState() {
+            const inFocus = layoutMode.value === 'focus';
+            btnA11yOverlay.hidden = !inFocus;
+            if (!inFocus) {
+                btnA11yOverlay.setAttribute('aria-pressed', 'false');
+                return;
+            }
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            const on = previewId !== null && previewId === a11yOverlayPreviewId;
+            btnA11yOverlay.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btnA11yOverlay.title = on
+                ? 'Hide accessibility overlay'
+                : 'Show accessibility overlay';
+            btnA11yOverlay.classList.toggle('a11y-overlay-on', on);
+        }
+
+        // D2 — clicking the a11y toggle subscribes/unsubscribes via the extension. When
+        // turning OFF, the extension also pushes an empty updateA11y so the cached overlay
+        // tears down immediately rather than waiting for a next render. When turning ON for a
+        // different preview, first turn the previous one off so the wire stays clean.
+        function toggleA11yOverlay() {
+            if (layoutMode.value !== 'focus') return;
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            if (!previewId) return;
+            const turningOn = previewId !== a11yOverlayPreviewId;
+            if (a11yOverlayPreviewId && a11yOverlayPreviewId !== previewId) {
+                vscode.postMessage({
+                    command: 'setA11yOverlay',
+                    previewId: a11yOverlayPreviewId,
+                    enabled: false,
+                });
+            }
+            a11yOverlayPreviewId = turningOn ? previewId : null;
+            vscode.postMessage({
+                command: 'setA11yOverlay',
+                previewId,
+                enabled: turningOn,
+            });
+            applyA11yOverlayButtonState();
         }
 
         function applyLiveBadge() {
@@ -644,7 +703,23 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     applyLiveBadge();
                 }
             }
+            // D2 — same teardown for the a11y overlay: navigating off the previewed card
+            // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
+            // user isn't looking at.
+            if (a11yOverlayPreviewId) {
+                const visible = getVisibleCards();
+                const card = mode === 'focus' ? visible[focusIndex] : null;
+                if (!card || card.dataset.previewId !== a11yOverlayPreviewId) {
+                    vscode.postMessage({
+                        command: 'setA11yOverlay',
+                        previewId: a11yOverlayPreviewId,
+                        enabled: false,
+                    });
+                    a11yOverlayPreviewId = null;
+                }
+            }
             applyInteractiveButtonState();
+            applyA11yOverlayButtonState();
         }
 
         // Compute the previewId the panel is currently narrowed to, if any:

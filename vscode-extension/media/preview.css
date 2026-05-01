@@ -537,6 +537,12 @@ body {
     color: var(--vscode-errorForeground, #f55);
 }
 
+/* D2 — a11y-overlay toggle pressed state. Blue glyph echoes the hierarchy
+ * overlay's box border colour so the toolbar tells you which layer is on. */
+.icon-button.a11y-overlay-on {
+    color: rgba(80, 160, 255, 1);
+}
+
 /* Diff overlay — covers the focused image with a side-by-side comparison
    when the user clicks Diff vs HEAD / vs main. Lives inside the
    .image-container so it inherits the card's bounds and exits cleanly via

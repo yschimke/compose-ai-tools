@@ -64,12 +64,11 @@ export interface SchedulerEvents {
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
 
 /**
- * D2 — kinds the panel implicitly subscribes to whenever a preview becomes visible. Pinned to the
- * a11y producer for now so the diagnostic squigglies + the local hierarchy overlay both fire
- * without a user gesture. A future "show a11y" toggle moves this from a hardcoded constant to
- * panel-driven state.
+ * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
+ * so the local finding + hierarchy overlays light up together; a future panel that wants to
+ * subscribe to other kinds (`compose/recomposition`, `layout/tree`) will export its own list.
  */
-const DEFAULT_SUBSCRIBED_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
+export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
 /**
  * Cards we'll pre-render ahead of the visible viewport on each scroll-ahead
  * push from the webview. Bounded so a fast scroll past 50 cards doesn't
@@ -222,15 +221,12 @@ export class DaemonScheduler {
         if (!client) { return; }
         client.setVisible({ ids: visible });
 
-        // D2 — subscribe to a11y data products for newly-visible previews. The daemon attaches
-        // matching kinds to subsequent `renderFinished` events, and prunes subscriptions itself
-        // when a preview leaves `setVisible`. We only track which (moduleId, previewId, kind)
-        // triples we've already asked about so we don't spam `data/subscribe`. dataSubscribe
-        // rejects gracefully (DataProductUnknown) on pre-D2 daemons; those reject promises are
-        // ignored so the panel keeps working unchanged.
+        // D2 — drop bookkeeping for previews that fell out of view. The daemon already
+        // pruned its side on the same `setVisible`, so this just keeps our local dedup
+        // set in sync. Subscriptions themselves are now opt-in per focused preview via
+        // [setDataProductSubscription]; the panel calls in when the user toggles the
+        // a11y overlay in focus mode.
         const visibleSetForSub = new Set(visible);
-        // Drop bookkeeping for previews that fell out of view — daemon already pruned its side.
-        // Key format is `${moduleId}::${id}::${kind}`; we parse to compare just the id.
         const modulePrefix = `${moduleId}::`;
         for (const key of [...this.subscribedPairs]) {
             if (!key.startsWith(modulePrefix)) { continue; }
@@ -238,23 +234,6 @@ export class DaemonScheduler {
             const sep = rest.indexOf('::');
             const id = sep < 0 ? rest : rest.slice(0, sep);
             if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
-        }
-        for (const id of visible) {
-            for (const kind of DEFAULT_SUBSCRIBED_KINDS) {
-                const subKey = `${moduleId}::${id}::${kind}`;
-                if (this.subscribedPairs.has(subKey)) { continue; }
-                this.subscribedPairs.add(subKey);
-                client.dataSubscribe({ previewId: id, kind }).catch((err) => {
-                    // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
-                    // expected, not noise. Log at debug level via the channel so the user
-                    // doesn't see it unless they're poking at the protocol surface.
-                    const msg = (err as Error)?.message ?? String(err);
-                    this.logger.appendLine(
-                        `[daemon] dataSubscribe(${id}, ${kind}) failed (pre-D2 daemon?): ${msg}`,
-                    );
-                    this.subscribedPairs.delete(subKey);
-                });
-            }
         }
 
         if (predicted.length === 0) { return; }
@@ -278,6 +257,54 @@ export class DaemonScheduler {
             this.logger.appendLine(
                 `[daemon] scroll-ahead renderNow failed for ${moduleId}: ${(err as Error).message}`,
             );
+        }
+    }
+
+    /**
+     * D2 — explicit per-`(previewId, kind)` subscription toggle. Wired to the focus-mode a11y
+     * overlay button: enabling subscribes to `a11y/atf` + `a11y/hierarchy` (or whatever the
+     * caller passes) so the next render attaches the payload; disabling unsubscribes. Idempotent
+     * on both sides.
+     *
+     * We deliberately keep the auto-subscribe out of `setVisible` so the wire stays quiet for
+     * unfocused previews — the design doc's "Default = nothing attached" stance with a per-panel
+     * opt-in.
+     */
+    async setDataProductSubscription(
+        moduleId: string,
+        previewId: string,
+        kinds: readonly string[],
+        enabled: boolean,
+    ): Promise<void> {
+        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
+        if (!client) { return; }
+        for (const kind of kinds) {
+            const subKey = `${moduleId}::${previewId}::${kind}`;
+            const already = this.subscribedPairs.has(subKey);
+            if (enabled === already) { continue; }
+            if (enabled) {
+                this.subscribedPairs.add(subKey);
+                client.dataSubscribe({ previewId, kind }).catch((err) => {
+                    // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
+                    // expected, not noise — log to the daemon channel and roll back the
+                    // bookkeeping so a later daemon spawn re-issues.
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataSubscribe(${previewId}, ${kind}) failed: ${msg}`,
+                    );
+                    this.subscribedPairs.delete(subKey);
+                });
+            } else {
+                this.subscribedPairs.delete(subKey);
+                client.dataUnsubscribe({ previewId, kind }).catch((err) => {
+                    // Unsubscribe rejection is purely informational — the daemon already
+                    // cleaned up on its side, our bookkeeping is gone, no rollback needed.
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataUnsubscribe(${previewId}, ${kind}) failed: ${msg}`,
+                    );
+                });
+            }
         }
     }
 

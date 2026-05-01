@@ -26,7 +26,7 @@ import { formatRenderErrorMessage } from './renderError';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DataProductAttachment } from './daemon/daemonProtocol';
-import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
+import { A11Y_OVERLAY_KINDS, DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
 import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
 import { watchPreviewMainRef } from './previewMainWatcher';
@@ -2041,6 +2041,41 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 + `image=${msg.imageWidth}x${msg.imageHeight}`,
             );
             break;
+        case 'setA11yOverlay':
+            void handleSetA11yOverlay(msg.previewId, msg.enabled);
+            break;
+    }
+}
+
+/**
+ * D2 — focus-mode a11y-overlay toggle. Resolves the focused preview's owning module, then
+ * subscribes to `a11y/atf` + `a11y/hierarchy` (or unsubscribes) via the scheduler. When
+ * disabling, also clears the cached payloads in the panel so the existing overlay tears down
+ * even if the next render takes a beat. No-op when the preview's module isn't known yet
+ * (panel rebuild race) or when the daemon scheduler isn't wired (Gradle-only mode).
+ */
+async function handleSetA11yOverlay(previewId: string, enabled: boolean): Promise<void> {
+    if (!daemonScheduler) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) { return; }
+    await daemonScheduler.setDataProductSubscription(
+        moduleId,
+        previewId,
+        A11Y_OVERLAY_KINDS,
+        enabled,
+    );
+    if (!enabled) {
+        // Tear down the panel-side overlay caches immediately so the visual layer clears
+        // without waiting on the next render. Deliberately does NOT touch the registry —
+        // diagnostic squigglies sourced from the Gradle sidecar are independent of the
+        // daemon overlay subscription and shouldn't disappear when the user hides the
+        // visual overlay.
+        panel?.postMessage({
+            command: 'updateA11y',
+            previewId,
+            findings: [],
+            nodes: [],
+        });
     }
 }
 

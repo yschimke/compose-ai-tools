@@ -491,4 +491,13 @@ export type WebviewToExtension =
           pixelY: number;
           imageWidth: number;
           imageHeight: number;
-      };
+      }
+    /**
+     * D2 — focus-mode toggle for the local a11y overlay. When `enabled`, the
+     * extension `data/subscribe`s to `a11y/atf` + `a11y/hierarchy` for
+     * [previewId]; subsequent renders attach the payload and the panel paints
+     * the overlay locally. When `enabled = false`, the extension unsubscribes
+     * and tells the webview to drop the cached nodes/findings. Idempotent on
+     * both sides.
+     */
+    | { command: 'setA11yOverlay'; previewId: string; enabled: boolean };

@@ -510,44 +510,72 @@ describe('DaemonScheduler', () => {
     });
 
     /**
-     * D2 — data-product surface. setVisible auto-subscribes the panel to a11y/atf +
-     * a11y/hierarchy for newly-visible previews; renderFinished forwards the attachments.
+     * D2 — data-product surface. Subscriptions are explicit per focused preview (the panel's
+     * focus-mode "Show a11y overlay" toggle drives them) — `setVisible` itself does NOT
+     * subscribe, only prunes stale bookkeeping. `renderFinished` forwards attachments.
      */
     describe('data products', () => {
-        it('issues data/subscribe for each newly-visible preview, twice per (atf + hierarchy)', async () => {
+        it('does not auto-subscribe on setVisible — subscriptions are explicit', async () => {
             const { gate, scheduler } = build();
             await scheduler.setVisible('mod', ['a', 'b'], []);
             const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            assert.strictEqual(subs.length, 4);
-            const kinds = subs.map(c => (c.args as { kind: string }).kind).sort();
-            assert.deepStrictEqual(
-                kinds,
-                ['a11y/atf', 'a11y/atf', 'a11y/hierarchy', 'a11y/hierarchy'],
+            assert.strictEqual(subs.length, 0);
+        });
+
+        it('setDataProductSubscription(true) issues data/subscribe per kind', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setDataProductSubscription(
+                'mod',
+                'a',
+                ['a11y/atf', 'a11y/hierarchy'],
+                true,
             );
-            const ids = subs.map(c => (c.args as { previewId: string }).previewId).sort();
-            assert.deepStrictEqual(ids, ['a', 'a', 'b', 'b']);
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 2);
+            const kinds = subs.map(c => (c.args as { kind: string }).kind).sort();
+            assert.deepStrictEqual(kinds, ['a11y/atf', 'a11y/hierarchy']);
         });
 
-        it('does not re-subscribe a (previewId, kind) pair on a repeated setVisible', async () => {
+        it('setDataProductSubscription(true) twice is idempotent', async () => {
             const { gate, scheduler } = build();
-            await scheduler.setVisible('mod', ['a'], []);
-            await scheduler.setVisible('mod', ['a', 'b'], []); // 'a' is already subscribed
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
             const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            // 'a': 2 kinds + 'b' newly visible: 2 kinds = 4 total. 'a' is NOT re-subscribed.
-            assert.strictEqual(subs.length, 4);
+            assert.strictEqual(subs.length, 1);
         });
 
-        it('drops bookkeeping when a preview leaves visible — daemon already pruned its side', async () => {
+        it('setDataProductSubscription(false) issues data/unsubscribe and forgets the pair', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], false);
+            const unsubs = gate.client!.calls.filter(c => c.method === 'dataUnsubscribe');
+            assert.strictEqual(unsubs.length, 1);
+            // Re-enabling re-issues subscribe (bookkeeping was cleared).
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 2);
+        });
+
+        it('setDataProductSubscription(false) on an unknown pair is a no-op', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], false);
+            const calls = gate.client!.calls.filter(
+                c => c.method === 'dataSubscribe' || c.method === 'dataUnsubscribe',
+            );
+            assert.strictEqual(calls.length, 0);
+        });
+
+        it('setVisible drops bookkeeping for previews that left view', async () => {
             const { gate, scheduler } = build();
             await scheduler.setVisible('mod', ['a', 'b'], []);
-            await scheduler.setVisible('mod', ['a'], []); // 'b' fell out
-            // No new subscribe. 'a' was already subscribed.
-            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            assert.strictEqual(subs.length, 4);
-            // Bring 'b' back — it should re-subscribe (bookkeeping was dropped).
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            await scheduler.setVisible('mod', ['b'], []); // 'a' fell out
+            // Re-subscribing 'a' should issue another subscribe (bookkeeping was cleared by
+            // the visibility prune even though the daemon never received our explicit call).
             await scheduler.setVisible('mod', ['a', 'b'], []);
-            const subsAfter = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
-            assert.strictEqual(subsAfter.length, 6);
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 2);
         });
 
         it('forwards renderFinished.dataProducts via onDataProductsAttached', async () => {
@@ -595,15 +623,21 @@ describe('DaemonScheduler', () => {
         it('survives a pre-D2 daemon that rejects dataSubscribe with DataProductUnknown', async () => {
             const { gate, scheduler, log } = build();
             gate.client!.dataSubscribeRejects = true;
-            await scheduler.setVisible('mod', ['a'], []);
-            // Wait one microtask cycle so the rejected promises settle.
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            // Wait one microtask cycle so the rejected promise settles.
             await Promise.resolve();
             await Promise.resolve();
-            // The setVisible itself still fires; subscribe failures are absorbed and logged.
-            const visibleCalls = gate.client!.calls.filter(c => c.method === 'setVisible');
-            assert.strictEqual(visibleCalls.length, 1);
+            // Subscribe was attempted; the rejection is absorbed and the bookkeeping rolls
+            // back so a future re-attempt re-issues.
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 1);
             const subFailures = log.filter(l => l.includes('dataSubscribe'));
             assert.ok(subFailures.length >= 1, 'expected log entry for failed dataSubscribe');
+            // Retry succeeds (the rollback dropped the bookkeeping).
+            gate.client!.dataSubscribeRejects = false;
+            await scheduler.setDataProductSubscription('mod', 'a', ['a11y/atf'], true);
+            const subsAfter = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subsAfter.length, 2);
         });
     });
 });
