@@ -614,6 +614,35 @@ body {
     text-align: center;
 }
 
+/* Header strip above a diff result: mode toggle on the left, computed
+   pixel stats on the right. Stats line is computed client-side from
+   the two PNGs (canvas ImageData) — no daemon round-trip. */
+.diff-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.diff-stats {
+    font-size: calc(var(--vscode-font-size) - 1px);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.diff-stats[data-state="identical"] {
+    color: var(--vscode-charts-green, var(--text-secondary));
+}
+.diff-stats[data-state="changed"] {
+    color: var(--text-primary);
+}
+.diff-stats[data-state="size-mismatch"] {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

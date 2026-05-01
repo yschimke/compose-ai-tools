@@ -565,6 +565,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // requests within the same session.
             const initialMode = (state.diffMode === 'overlay' || state.diffMode === 'onion')
                 ? state.diffMode : 'side';
+            const header = document.createElement('div');
+            header.className = 'diff-header';
             const body = document.createElement('div');
             body.className = 'preview-diff-body';
             const modeBar = buildDiffModeBar(initialMode, (mode) => {
@@ -572,10 +574,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 vscode.setState(state);
                 renderPreviewDiffMode(body, mode, payload);
             });
-            overlay.appendChild(modeBar);
+            const stats = document.createElement('div');
+            stats.className = 'diff-stats';
+            stats.textContent = 'computing…';
+            header.appendChild(modeBar);
+            header.appendChild(stats);
+            overlay.appendChild(header);
             overlay.appendChild(body);
             container.appendChild(overlay);
             renderPreviewDiffMode(body, initialMode, payload);
+            computeDiffStats(payload.leftImage, payload.rightImage).then(s => {
+                applyDiffStats(stats, s);
+            });
         }
 
         function buildDiffModeBar(initialMode, onChange) {
@@ -679,6 +689,82 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 pane.appendChild(empty);
             }
             return pane;
+        }
+
+        // Client-side pixel diff: load both base64 PNGs, draw to canvas,
+        // walk the ImageData buffers in parallel. Cheap on the typical
+        // preview size (< 0.5 megapixel); GIFs / very large captures will
+        // be slower but still bounded. Daemon-side pixel mode (with SSIM)
+        // can plug in here later via a different code path.
+        function computeDiffStats(leftBase64, rightBase64) {
+            return new Promise((resolve) => {
+                const left = new Image();
+                const right = new Image();
+                let loaded = 0;
+                const onErr = () => resolve({ error: 'image failed to load' });
+                const onOk = () => {
+                    if (++loaded < 2) return;
+                    try {
+                        if (left.naturalWidth !== right.naturalWidth
+                            || left.naturalHeight !== right.naturalHeight) {
+                            resolve({
+                                sameSize: false,
+                                leftW: left.naturalWidth, leftH: left.naturalHeight,
+                                rightW: right.naturalWidth, rightH: right.naturalHeight,
+                            });
+                            return;
+                        }
+                        const w = left.naturalWidth, h = left.naturalHeight;
+                        const c1 = document.createElement('canvas');
+                        c1.width = w; c1.height = h;
+                        c1.getContext('2d').drawImage(left, 0, 0);
+                        const d1 = c1.getContext('2d').getImageData(0, 0, w, h).data;
+                        const c2 = document.createElement('canvas');
+                        c2.width = w; c2.height = h;
+                        c2.getContext('2d').drawImage(right, 0, 0);
+                        const d2 = c2.getContext('2d').getImageData(0, 0, w, h).data;
+                        let diff = 0;
+                        const len = d1.length;
+                        for (let i = 0; i < len; i += 4) {
+                            if (d1[i] !== d2[i] || d1[i+1] !== d2[i+1]
+                                || d1[i+2] !== d2[i+2] || d1[i+3] !== d2[i+3]) diff++;
+                        }
+                        const total = w * h;
+                        resolve({
+                            sameSize: true, w, h, diffPx: diff, total,
+                            percent: total > 0 ? diff / total : 0,
+                        });
+                    } catch (err) {
+                        resolve({ error: (err && err.message) || 'stats unavailable' });
+                    }
+                };
+                left.onload = onOk; left.onerror = onErr;
+                right.onload = onOk; right.onerror = onErr;
+                left.src = 'data:image/png;base64,' + leftBase64;
+                right.src = 'data:image/png;base64,' + rightBase64;
+            });
+        }
+
+        function applyDiffStats(el, s) {
+            if (!s) { el.textContent = ''; el.removeAttribute('data-state'); return; }
+            if (s.error) { el.textContent = s.error; el.removeAttribute('data-state'); return; }
+            if (!s.sameSize) {
+                el.textContent = 'sizes differ — '
+                    + s.leftW + '×' + s.leftH + ' vs '
+                    + s.rightW + '×' + s.rightH;
+                el.dataset.state = 'size-mismatch';
+                return;
+            }
+            if (s.diffPx === 0) {
+                el.textContent = 'identical · ' + s.w + '×' + s.h;
+                el.dataset.state = 'identical';
+                return;
+            }
+            const p = s.percent * 100;
+            const pct = p < 0.01 ? p.toFixed(3) : p.toFixed(2);
+            el.textContent = s.diffPx.toLocaleString() + ' px ('
+                + pct + '%) · ' + s.w + '×' + s.h;
+            el.dataset.state = 'changed';
         }
 
         function populateFilter(select, values, label) {
