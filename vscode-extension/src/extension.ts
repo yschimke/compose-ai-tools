@@ -49,6 +49,72 @@ const historyScopeRef: { current: HistoryScope | null } = { current: null };
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
  *  scoped focus signals can map "active file → preview IDs" without an
  *  extension-side discovery round-trip. */
+/**
+ * Returns the mtime (ms since epoch) of the oldest on-disk PNG referenced by
+ * any rendered capture in [previews] across [modules], or null if none of the
+ * paths exist. Cheap stat call per capture; results are not cached because
+ * renders rewrite these files on every save.
+ */
+async function oldestRenderMtime(
+    previews: PreviewInfo[],
+    modules: string[],
+): Promise<number | null> {
+    if (!gradleService) { return null; }
+    let oldest: number | null = null;
+    for (const preview of previews) {
+        for (const capture of preview.captures) {
+            if (!capture.renderOutput) { continue; }
+            // Match the path the readPreviewImage resolver builds.
+            const mod = modules.find(m => previewModuleMap.get(preview.id) === m) ?? modules[0];
+            const pngPath = path.join(
+                gradleService.workspaceRoot, mod,
+                'build', 'compose-previews', capture.renderOutput,
+            );
+            try {
+                const stat = await fs.promises.stat(pngPath);
+                const mtime = stat.mtimeMs;
+                if (oldest == null || mtime < oldest) { oldest = mtime; }
+            } catch {
+                // File missing — discover-only pass on a never-rendered preview.
+                // Don't count toward oldest; the banner reflects what the user
+                // is actually seeing on screen.
+            }
+        }
+    }
+    return oldest;
+}
+
+/**
+ * "5 minutes ago", "2 hours ago", "3 days ago". Coarse — the banner exists to
+ * communicate "this is old", not to time-stamp anything.
+ */
+function formatRelativeAge(ageMs: number): string {
+    const seconds = Math.floor(ageMs / 1000);
+    if (seconds < 60) { return `${seconds}s ago`; }
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) { return `${minutes}m ago`; }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) { return `${hours}h ago`; }
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
+/**
+ * True when the panel currently shows a "Showing previews from <ago>" banner
+ * the extension posted because the on-disk PNGs read by the activation /
+ * editor-change refresh were older than [STALE_BANNER_THRESHOLD_MS]. Used so
+ * we only clear the banner when one *we* set is up — not a build-error or
+ * filter-empty notice. Cleared when a fresh `updateImage` arrives from the
+ * daemon, or when a forceRender refresh completes.
+ */
+let staleBannerShown = false;
+
+/** PNGs older than this on the activation-time refresh trigger the
+ *  "Showing previews from <ago>" banner. 60s is enough to skip the
+ *  steady-state save-loop case (where renders are seconds old) but catches
+ *  the "opened the project an hour later" launch case. */
+const STALE_BANNER_THRESHOLD_MS = 60_000;
+
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
 let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
@@ -231,6 +297,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
+            // Fresh daemon render arriving — if a stale banner is up, this is
+            // the moment to retire it. Guarded by staleBannerShown so we only
+            // clear a banner we set ourselves; legitimate showMessage banners
+            // (build error, filter-empty notice) are left alone.
+            if (staleBannerShown) {
+                panel.postMessage({ command: 'showMessage', text: '' });
+                staleBannerShown = false;
+            }
             // Capture index 0 — the daemon's v1 renderFinished targets the
             // representative capture only. Multi-capture (animated) renders
             // still come through the Gradle path; the daemon's predictive
@@ -1360,6 +1434,37 @@ async function refresh(
         // showMessage would also clobber legitimate extension-set messages
         // (filter empty notice, build errors), which was the original
         // "populate then go blank" regression.
+        //
+        // Stale-banner posting / clearing. The on-disk PNGs the discover path
+        // surfaces can be from a previous session — at activation time they
+        // typically are. Without a hint the user reads them as the live
+        // preview. After a successful refresh:
+        //   - forceRender=true → user explicitly re-rendered, anything stale
+        //     was just rewritten; clear any prior banner.
+        //   - forceRender=false → check the oldest visible PNG. If older than
+        //     [STALE_BANNER_THRESHOLD_MS], post a banner with relative time so
+        //     the user knows what they're looking at and where the next
+        //     refresh comes from. Cleared on the first daemon updateImage
+        //     (see daemonScheduler events) or on the next forceRender.
+        if (forceRender && staleBannerShown) {
+            panel.postMessage({ command: 'showMessage', text: '' });
+            staleBannerShown = false;
+        } else if (!forceRender) {
+            const oldestMtime = await oldestRenderMtime(visiblePreviews, modules);
+            if (oldestMtime != null) {
+                const ageMs = Date.now() - oldestMtime;
+                if (ageMs > STALE_BANNER_THRESHOLD_MS) {
+                    panel.postMessage({
+                        command: 'showMessage',
+                        text: `Showing previews from ${formatRelativeAge(ageMs)} (save to render fresh, or run "Compose Preview: Refresh").`,
+                    });
+                    staleBannerShown = true;
+                } else if (staleBannerShown) {
+                    panel.postMessage({ command: 'showMessage', text: '' });
+                    staleBannerShown = false;
+                }
+            }
+        }
         return abort.signal.aborted ? 'cancelled' : 'completed';
     } catch (err: unknown) {
         if (abort.signal.aborted) { return 'cancelled'; }
