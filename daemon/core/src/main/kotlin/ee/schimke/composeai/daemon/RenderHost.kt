@@ -83,13 +83,28 @@ interface RenderHost {
   }
 
   /**
+   * `true` when this host's [acquireInteractiveSession] returns a real held-scene session that
+   * dispatches `interactive/input` into the composition (v2). `false` (the default) when the host
+   * inherits the throwing default and `interactive/input` falls back to v1 (re-render trigger,
+   * input does not reach the composition). Surfaced verbatim as
+   * `InitializeResult.capabilities.interactive` so clients can render an "unsupported host" hint
+   * without a per-call probe.
+   *
+   * Implementations MUST keep this in sync with their [acquireInteractiveSession] override —
+   * advertising `true` while throwing is a contract violation.
+   */
+  val supportsInteractive: Boolean
+    get() = false
+
+  /**
    * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
    * documented in
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).
    *
-   * Hosts that support interactive mode (today: `:daemon:desktop`'s `DesktopHost` once PR 2 lands)
-   * override and return a session holding a warm `ImageComposeScene` (or per-host equivalent) so
-   * `remember`'d state survives across `interactive/input` notifications.
+   * Hosts that support interactive mode (today: `:daemon:desktop`'s `DesktopHost`) override and
+   * return a session holding a warm `ImageComposeScene` (or per-host equivalent) so `remember`'d
+   * state survives across `interactive/input` notifications. Such hosts MUST also override
+   * [supportsInteractive] to return `true`.
    *
    * The default body throws [UnsupportedOperationException] — which
    * [JsonRpcServer.handleInteractiveStart] translates to `MethodNotFound (-32601)` on the wire. v1

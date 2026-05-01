@@ -91,6 +91,17 @@ open class DesktopHost(
   private val previewSpecResolver: ((String) -> RenderSpec?)? = null,
 ) : RenderHost {
 
+  /**
+   * INTERACTIVE.md § 9 — `true` only when a [previewSpecResolver] was wired at construction.
+   * Without one, [acquireInteractiveSession] throws unconditionally; advertising `true` in that
+   * shape would mislead the client into thinking it can dispatch into a held composition. The
+   * production daemon-main path always passes a resolver, so the production wire is `true` for
+   * desktop daemons and stays `false` for in-process tests that don't wire one (which are the
+   * same tests that exercise the v1 fallback path).
+   */
+  override val supportsInteractive: Boolean
+    get() = previewSpecResolver != null
+
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 

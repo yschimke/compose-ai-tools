@@ -580,6 +580,10 @@ class JsonRpcServer(
             leakDetection = emptyList<LeakDetectionMode>(),
             // D1 — advertised kinds. Empty when no producer was wired (pre-D2 default).
             dataProducts = dataProducts.capabilities,
+            // INTERACTIVE.md § 9 — `true` when the host's `acquireInteractiveSession` returns a
+            // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
+            // default (FakeHost, RobolectricHost today) — clients fall back to v1 dispatch.
+            interactive = host.supportsInteractive,
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty

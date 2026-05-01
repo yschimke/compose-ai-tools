@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -56,6 +57,28 @@ class DesktopHostTest {
     assertFalse(
       "render thread observed an InterruptedException — DESIGN § 9 invariant violated",
       host.renderThreadInterrupted,
+    )
+  }
+
+  /**
+   * Capability-bit contract — `supportsInteractive` reflects whether a `previewSpecResolver` was
+   * wired at construction. Clients consume this verbatim as
+   * `InitializeResult.capabilities.interactive`; advertising `true` while
+   * `acquireInteractiveSession` would throw is a contract violation that misleads the panel into
+   * showing a v2 affordance the daemon can't honour.
+   */
+  @Test
+  fun supportsInteractiveReflectsResolverPresence() {
+    val withoutResolver = DesktopHost()
+    assertFalse(
+      "DesktopHost without a previewSpecResolver must advertise interactive=false",
+      withoutResolver.supportsInteractive,
+    )
+
+    val withResolver = DesktopHost(previewSpecResolver = { null })
+    assertTrue(
+      "DesktopHost with a previewSpecResolver must advertise interactive=true",
+      withResolver.supportsInteractive,
     )
   }
 }
