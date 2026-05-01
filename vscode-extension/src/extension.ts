@@ -59,6 +59,7 @@ let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
+let interactiveStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
 let historyPanel: HistoryPanel | null = null;
 /** Owned by activate(); reused by both the History panel and the live
@@ -481,6 +482,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             for (const previewId of stale) {
                 activeInteractiveStreams.delete(previewId);
             }
+            updateInteractiveStatus();
             if (stale.length > 0) {
                 logLine(
                     `[interactive] daemon channel closed for ${moduleId}; ` +
@@ -499,6 +501,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     );
     daemonStatusItem.command = 'workbench.action.output.toggleOutput';
     context.subscriptions.push(daemonStatusItem);
+
+    // INTERACTIVE.md § 9 / #425 — status-bar hint surfaced only when the user has LIVE active
+    // on a daemon backend that DOESN'T speak v2 (`InitializeResult.capabilities.interactive`
+    // is false or absent). Today that's any module on the Robolectric/Android backend; the
+    // panel's LIVE chip lights up regardless, but the user sees clicks not mutate state and
+    // would otherwise have no signal as to why. Hidden when v2 IS supported (the LIVE chip
+    // alone is sufficient feedback) and when no streams are active.
+    interactiveStatusItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left, 89,
+    );
+    interactiveStatusItem.command = 'workbench.action.output.toggleOutput';
+    context.subscriptions.push(interactiveStatusItem);
 
     panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
     if (isTestMode) {
@@ -915,6 +929,7 @@ async function flushInteractiveStreams(): Promise<void> {
     if (activeInteractiveStreams.size === 0) { return; }
     const entries = [...activeInteractiveStreams.entries()];
     activeInteractiveStreams.clear();
+    updateInteractiveStatus();
     if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
     await Promise.all(entries.map(async ([previewId, streamId]) => {
         try {
@@ -2728,6 +2743,7 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         const stream = activeInteractiveStreams.get(previewId);
         if (stream) {
             activeInteractiveStreams.delete(previewId);
+            updateInteractiveStatus();
             const client = await daemonGate?.getOrSpawn(
                 moduleId, daemonScheduler.daemonEvents(moduleId),
             );
@@ -2752,9 +2768,11 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
     try {
         const result = await client.interactiveStart({ previewId });
         activeInteractiveStreams.set(previewId, result.frameStreamId);
+        updateInteractiveStatus();
         logLine(
             `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
-            `streamId=${result.frameStreamId})`,
+            `streamId=${result.frameStreamId}, ` +
+            `v2=${daemonGate?.isInteractiveSupported(moduleId) ?? false})`,
         );
     } catch (err) {
         // MethodNotFound on a daemon that predates the interactive RPC — fall through
@@ -2776,6 +2794,48 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
  * (MethodNotFound), or has already been stopped" — drop the click.
  */
 const activeInteractiveStreams = new Map<string, string>();
+
+/**
+ * Update the v1-fallback status-bar hint (#425). Visible only when at least one active
+ * interactive stream is on a daemon that doesn't advertise
+ * `InitializeResult.capabilities.interactive`. Hidden when v2 is supported on every
+ * stream's host (the panel's LIVE chip is sufficient feedback) and when no streams are
+ * active.
+ *
+ * Called from every site that mutates `activeInteractiveStreams` plus the channel-close
+ * cleanup, so the indicator reflects the current state without polling.
+ */
+function updateInteractiveStatus(): void {
+    if (!interactiveStatusItem) { return; }
+    if (!daemonGate || activeInteractiveStreams.size === 0) {
+        interactiveStatusItem.hide();
+        return;
+    }
+    const unsupportedModules = new Set<string>();
+    for (const previewId of activeInteractiveStreams.keys()) {
+        const moduleId = previewModuleMap.get(previewId);
+        if (!moduleId) { continue; }
+        if (!daemonGate.isInteractiveSupported(moduleId)) {
+            unsupportedModules.add(moduleId);
+        }
+    }
+    if (unsupportedModules.size === 0) {
+        interactiveStatusItem.hide();
+        return;
+    }
+    const moduleLabel = unsupportedModules.size === 1
+        ? [...unsupportedModules][0]
+        : `${unsupportedModules.size} modules`;
+    interactiveStatusItem.text = `$(warning) Live · v1 fallback`;
+    interactiveStatusItem.tooltip = (
+        `Live mode is active on ${moduleLabel}, but this daemon backend doesn't ` +
+        `support clicks-into-composition (v2). Inputs trigger a fresh render but ` +
+        `state from \`remember { mutableStateOf(...) }\` resets between clicks. ` +
+        `Switch to a desktop module for full interactive mode. ` +
+        `See docs/daemon/INTERACTIVE.md § 9.10.`
+    );
+    interactiveStatusItem.show();
+}
 
 /**
  * Forward a panel-side click on a live preview to the daemon's `interactive/input`

@@ -121,6 +121,17 @@ export interface InitializeResult {
          * kinds in subscribe/fetch with `DataProductUnknown` (-32020).
          */
         dataProducts: DataProductCapability[];
+        /**
+         * INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
+         * `interactive/input` events into a held composition (v2 — clicks
+         * mutate `remember { mutableStateOf(...) }` state). `false` means
+         * `interactive/start` still succeeds but inputs trigger a stateless
+         * re-render (v1 fallback). Defaulted for pre-#425 daemons that
+         * predate the capability — clients treat absent and `false`
+         * identically. Today: `true` for desktop hosts, `false` for the
+         * Robolectric / Android backends.
+         */
+        interactive?: boolean;
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };
