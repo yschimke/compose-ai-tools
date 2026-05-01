@@ -7,9 +7,14 @@
 // the render body into this module. For B1.1–B1.3 the runtime deps are present
 // but only the protocol types and the dummy-@Test sandbox holder are used.
 //
-// NOT published to Maven. The daemon is consumed only by the Gradle plugin's
-// DaemonBootstrapTask (Stream A) which builds a launch descriptor pointing at
-// the local module's classpath.
+// **Published to Maven Central** as `ee.schimke.composeai:daemon-android` —
+// pairs with `daemon-core` so the Android (Robolectric) daemon backend is
+// consumable by coordinate. Single artifact across the supported Compose +
+// Roborazzi range; Compose / Roborazzi / UI-test / activity-compose stay
+// `compileOnly` and are supplied by the consumer's runtime, same pattern
+// `:renderer-android` already uses (see DESIGN.md § 17 for the decision and
+// § 19 for the captureToImage fallback if Roborazzi's API ever does break).
+// Pre-1.0; expect API breakage across minor versions.
 
 plugins {
   alias(libs.plugins.android.library)
@@ -19,12 +24,14 @@ plugins {
   // the @Serializable processor; kotlinx-serialization-json is already on the classpath via
   // `:daemon:core`'s `api(libs.kotlinx.serialization.json)`.
   alias(libs.plugins.kotlin.serialization)
+  `maven-publish`
+  alias(libs.plugins.maven.publish)
 }
 
-// The daemon is launched as a local JVM process by the Gradle plugin, never
-// shipped as a published artifact, so the older-Kotlin-runtime ABI dance done
-// in :renderer-android (via tapmoc.configureKotlinCompatibility) is not
-// required here. We get the project's default Kotlin stdlib at runtime.
+// The daemon is launched as a local JVM process by the Gradle plugin (or
+// directly via the published JAR for embedders), so the older-Kotlin-runtime
+// ABI dance done in :renderer-android (via tapmoc.configureKotlinCompatibility)
+// is not required here. We get the project's default Kotlin stdlib at runtime.
 
 group = "ee.schimke.composeai"
 
@@ -252,6 +259,112 @@ val daemonHarnessClasspathFile by configurations.creating {
       Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
       "android",
     )
+  }
+}
+
+// GitHub Packages mirror — same shape as `:renderer-android`.
+publishing {
+  repositories {
+    maven {
+      name = "GitHubPackages"
+      url =
+        uri(
+          providers
+            .environmentVariable("GITHUB_REPOSITORY")
+            .map { "https://maven.pkg.github.com/$it" }
+            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
+        )
+      credentials {
+        username = providers.environmentVariable("GITHUB_ACTOR").orNull
+        password = providers.environmentVariable("GITHUB_TOKEN").orNull
+      }
+    }
+  }
+}
+
+// Use the new (non-deprecated) AndroidSingleVariantLibrary constructor — takes typed JavadocJar /
+// SourcesJar instead of booleans. `JavadocJar.Empty()` ships an empty javadoc jar (Maven Central
+// requires the file to exist) without invoking javadoc/Dokka. javadoc 17 fails on AndroidX
+// dependencies' Kotlin metadata version mismatch (`expected version is 1.4.2`); Dokka would work
+// but is heavyweight for an artifact whose value is in KDocs the sources jar carries anyway.
+// `:renderer-android` still uses the deprecated (Boolean, Boolean) overload — fine to migrate
+// independently when its release bumps next.
+val androidSingleVariantLibrary =
+  com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
+    javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
+    sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
+    variant = "release",
+  )
+
+// AGP `testFixtures { enable = true }` ships `daemon-android-<version>-test-fixtures.aar` as
+// part of the published `release` component. The fixture composables (`RedSquare`/`BlueSquare`/
+// etc.) are internal harness aids, not for consumers. Skip the testFixtures publication
+// configurations from the `release` component. The configuration names are AGP's own
+// `releaseTestFixturesVariantRelease{Api,Runtime,Source}Publication` (the "Variant…Publication"
+// suffix is the AGP-side naming, NOT the standard `releaseTestFixtures*Elements` from
+// `java-test-fixtures`); we observed them with a one-off diagnostic.
+//
+// In-build `testFixtures(project(":daemon:android"))` consumption from `:daemon:harness` is
+// unaffected — that uses the project dep, not the published artifact.
+afterEvaluate {
+  val releaseComponent =
+    components.findByName("release") as? org.gradle.api.component.AdhocComponentWithVariants
+  releaseComponent?.let { component ->
+    // Only the Api and Runtime publications are actually attached to the `release` component as
+    // variants — `releaseTestFixturesVariantReleaseSourcePublication` exists as a configuration
+    // but isn't part of the component, so trying to skip it errors with "Variant for
+    // configuration ... does not exist in component". The .module file confirms only Api and
+    // Runtime variants leak; skipping those two also drops the test-fixtures.aar artifact.
+    listOf(
+        "releaseTestFixturesVariantReleaseApiPublication",
+        "releaseTestFixturesVariantReleaseRuntimePublication",
+      )
+      .forEach { name ->
+        configurations.findByName(name)?.let {
+          component.withVariantsFromConfiguration(it) { skip() }
+        }
+      }
+  }
+}
+
+mavenPublishing {
+  publishToMavenCentral(automaticRelease = true)
+  configure(androidSingleVariantLibrary)
+  if (!version.toString().endsWith("SNAPSHOT")) {
+    signAllPublications()
+  }
+
+  coordinates("ee.schimke.composeai", "daemon-android", version.toString())
+
+  pom {
+    name.set("Compose Preview — Daemon Android")
+    description.set(
+      "Robolectric-based Android backend of the compose-preview daemon: holds a long-lived " +
+        "Robolectric sandbox open via the dummy-@Test trick, renders @Preview composables to " +
+        "PNG. Compose / Roborazzi / UI-test stay compileOnly — consumer supplies runtime " +
+        "versions, same as :renderer-android. Pre-1.0; pairs with daemon-core."
+    )
+    url.set("https://github.com/yschimke/compose-ai-tools")
+    inceptionYear.set("2025")
+    licenses {
+      license {
+        name.set("The Apache License, Version 2.0")
+        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+        distribution.set("repo")
+      }
+    }
+    developers {
+      developer {
+        id.set("yschimke")
+        name.set("Yuri Schimke")
+        url.set("https://github.com/yschimke")
+      }
+    }
+    scm {
+      url.set("https://github.com/yschimke/compose-ai-tools")
+      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
+    }
   }
 }
 
