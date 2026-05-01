@@ -28,6 +28,7 @@ import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
 import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
 import {
+    buildPreviewActivityAmStartArgs,
     collectAndroidApplicationModules,
     findAndroidSdkRoot,
     resolveAdbPath,
@@ -2151,27 +2152,25 @@ async function runLivePreviewDiff(
  * for the dashboard until performance demands it.
  */
 /**
- * Builds and installs the consumer module's debug APK and launches its
- * launcher activity on a connected Android device. Wired up to the
- * "Launch on Device" panel button (focus-mode toolbar) and the
- * `composePreview.launchOnDevice` command (view title bar).
+ * Builds and installs the consumer module's debug APK and renders the
+ * targeted `@Preview` composable on a connected Android device through
+ * `androidx.compose.ui.tooling.PreviewActivity` — the same activity
+ * Android Studio drives for "Deploy Preview to Device". The activity
+ * ships in `androidx.compose.ui:ui-tooling` (typically pulled in as
+ * `debugImplementation`) and reflects on the FQN passed via the
+ * `composable` extra to render that one composable on screen.
  *
- * Module resolution, in order:
- *   1. The owner of [focusedPreviewId], when supplied (the panel button).
- *   2. The active file's module via [GradleService.resolveModule].
- *   3. A quick-pick across every Android-application module that applies
- *      the preview plugin.
+ * Wired up to the "Launch on Device" panel button (focus-mode toolbar)
+ * and the `composePreview.launchOnDevice` command (view title bar). The
+ * extension picks the focused preview, falls back to a quick-pick over
+ * the active scope's previews when none is focused, and only considers
+ * Android-application modules that apply the preview plugin (CMP shared,
+ * libraries, and Desktop don't have `installDebug`, so they're filtered
+ * out before resolution falls through).
  *
- * Modules without `id("com.android.application")` (CMP shared, libraries,
- * Desktop, …) don't have an `installDebug` task, so they're filtered out
- * before the resolution falls through. When no Android-application module
- * is found at all, the user gets an explanatory information message
- * rather than a Gradle "task not found" failure.
- *
- * The launch step uses `adb shell monkey -p <id> -c LAUNCHER 1` so the
- * activity name doesn't need to be hard-coded — `monkey` discovers the
- * declared launcher activity from the installed package. This is the
- * same trick AGP's own `:app:run` task uses internally.
+ * `@PreviewParameter` deep-link extras (`parameterProviderClassName` /
+ * `parameterProviderIndex`) are forwarded too, so a parameterised preview
+ * lands on the right provider value rather than the first one.
  */
 async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
     if (!gradleService) {
@@ -2190,39 +2189,16 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
         return;
     }
 
-    let target: { module: string; applicationId: string } | undefined;
-    if (focusedPreviewId) {
-        const owner = previewModuleMap.get(focusedPreviewId);
-        if (owner) { target = candidates.find(c => c.module === owner); }
-    }
-    if (!target && currentScopeFile) {
-        const scoped = gradleService.resolveModule(currentScopeFile);
-        if (scoped) { target = candidates.find(c => c.module === scoped); }
-    }
-    if (!target) {
-        if (candidates.length === 1) {
-            target = candidates[0];
-        } else {
-            const picked = await vscode.window.showQuickPick(
-                candidates.map(c => ({
-                    label: c.module,
-                    description: c.applicationId,
-                    candidate: c,
-                })),
-                { placeHolder: 'Pick an Android application module to launch' },
-            );
-            if (!picked) { return; }
-            target = picked.candidate;
-        }
-    }
-
-    const { module, applicationId } = target;
-    logLine(`launchOnDevice: ${module} (${applicationId})`);
+    const preview = await resolveLaunchPreview(focusedPreviewId, candidates);
+    if (!preview) { return; }
+    const { module, applicationId, info } = preview;
+    const composableFqn = `${info.className}.${info.functionName}`;
+    logLine(`launchOnDevice: ${module} (${applicationId}) → ${composableFqn}`);
 
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: `Compose Preview: launching ${applicationId} on device`,
+            title: `Compose Preview: launching ${info.functionName} on device`,
             cancellable: false,
         },
         async (progress) => {
@@ -2238,19 +2214,24 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
                 return;
             }
 
-            progress.report({ message: 'Starting launcher activity (adb)…' });
+            progress.report({ message: 'Starting PreviewActivity (adb)…' });
             const sdkRoot = findAndroidSdkRoot(gradleService!.workspaceRoot);
             const adbPath = resolveAdbPath(sdkRoot);
+            const args = buildPreviewActivityAmStartArgs({
+                applicationId,
+                composableFqn,
+                parameterProviderClassName: info.params.previewParameterProviderClassName ?? null,
+            });
             try {
-                const result = await runAdb(adbPath, [
-                    'shell', 'monkey', '-p', applicationId,
-                    '-c', 'android.intent.category.LAUNCHER', '1',
-                ]);
+                const result = await runAdb(adbPath, args);
                 if (result.code !== 0) {
                     const detail = (result.stderr || result.stdout || '').trim();
+                    const hint = /Activity class .* does not exist|ClassNotFoundException/i.test(detail)
+                        ? ' — add `debugImplementation("androidx.compose.ui:ui-tooling")` so PreviewActivity is on the device.'
+                        : '';
                     vscode.window.showErrorMessage(
                         `Compose Preview: adb failed to start ${applicationId}` +
-                        (detail ? ` — ${detail}` : '.'),
+                        (detail ? ` — ${detail}` : '') + hint,
                     );
                     return;
                 }
@@ -2263,10 +2244,88 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
                 return;
             }
             vscode.window.showInformationMessage(
-                `Compose Preview: launched ${applicationId} on device.`,
+                `Compose Preview: launched ${info.functionName} on device.`,
             );
         },
     );
+}
+
+interface ResolvedLaunchPreview {
+    module: string;
+    applicationId: string;
+    info: PreviewInfo;
+}
+
+/**
+ * Resolve which preview to deploy. Order:
+ *
+ *   1. If [focusedPreviewId] is supplied (focus-mode button), use that
+ *      directly when its owning module is an Android application.
+ *   2. Otherwise, gather every preview owned by an Android-application
+ *      module and let the user pick from a quick-pick. If only one
+ *      candidate exists, skip the quick-pick.
+ *
+ * Returns `null` when the user cancels or nothing is launchable, after
+ * surfacing an appropriate message in either case.
+ */
+async function resolveLaunchPreview(
+    focusedPreviewId: string | undefined,
+    candidates: Array<{ module: string; applicationId: string }>,
+): Promise<ResolvedLaunchPreview | null> {
+    const candidateByModule = new Map(candidates.map(c => [c.module, c]));
+
+    if (focusedPreviewId) {
+        const owner = previewModuleMap.get(focusedPreviewId);
+        const candidate = owner ? candidateByModule.get(owner) : undefined;
+        const previews = owner ? moduleManifestCache.get(owner) : undefined;
+        const info = previews?.find(p => p.id === focusedPreviewId);
+        if (candidate && info) {
+            return { module: candidate.module, applicationId: candidate.applicationId, info };
+        }
+        if (owner && !candidate) {
+            vscode.window.showInformationMessage(
+                `Compose Preview: ${owner} is not an Android application module — `
+                + 'add id("com.android.application") to deploy a preview from it.',
+            );
+            return null;
+        }
+    }
+
+    interface PreviewPickItem extends vscode.QuickPickItem {
+        candidate: { module: string; applicationId: string };
+        info: PreviewInfo;
+    }
+    const items: PreviewPickItem[] = [];
+    for (const candidate of candidates) {
+        const previews = moduleManifestCache.get(candidate.module) ?? [];
+        for (const info of previews) {
+            items.push({
+                label: info.functionName,
+                description: candidate.applicationId,
+                detail: `${candidate.module} · ${info.className}`,
+                candidate,
+                info,
+            });
+        }
+    }
+    if (items.length === 0) {
+        vscode.window.showInformationMessage(
+            'Compose Preview: no rendered previews yet — render once first '
+            + 'so the @Preview functions show up here.',
+        );
+        return null;
+    }
+    if (items.length === 1) {
+        const only = items[0];
+        return { module: only.candidate.module, applicationId: only.candidate.applicationId, info: only.info };
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Pick a @Preview to launch on device',
+        matchOnDescription: true,
+        matchOnDetail: true,
+    });
+    if (!picked) { return null; }
+    return { module: picked.candidate.module, applicationId: picked.candidate.applicationId, info: picked.info };
 }
 
 async function diffAllVsMain(): Promise<void> {
