@@ -59,6 +59,16 @@ export interface SchedulerEvents {
     /** Phase H2 — daemon archived a render. Forwarded to the History
      *  panel; optional because the panel may not exist in test mode. */
     onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
+    /**
+     * The daemon's stdio channel closed (process exit, classpath dirty,
+     * spawn died). Subscribers use this to drop module-scoped state that
+     * doesn't survive a JVM restart — `extension.ts` clears
+     * `activeInteractiveStreams` here so a subsequent `interactive/input`
+     * doesn't get routed to a stream id the new daemon doesn't know.
+     * Optional because tests may not wire it. Fires at most once per
+     * daemon lifetime per module.
+     */
+    onChannelClosed?: (moduleId: string) => void;
 }
 
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
@@ -383,6 +393,11 @@ export class DaemonScheduler {
                 for (const k of [...this.subscribedPairs]) {
                     if (k.startsWith(`${moduleId}::`)) { this.subscribedPairs.delete(k); }
                 }
+                // Forward to the extension so it can drop interactive-mode stream state for
+                // this module — frameStreamIds don't survive a daemon restart, and a stale
+                // entry in `activeInteractiveStreams` would route subsequent clicks to a
+                // stream id the fresh daemon never minted.
+                this.events.onChannelClosed?.(moduleId);
             },
         };
     }

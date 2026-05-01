@@ -102,6 +102,7 @@ function build() {
         previewId: string;
         attachments: { kind: string; payload?: unknown; path?: string }[];
     }[] = [];
+    const channelClosed: string[] = [];
     const events = {
         onPreviewImageReady: (moduleId: string, previewId: string, base64: string, pngPath: string) => {
             images.push({ moduleId, previewId, base64, pngPath });
@@ -122,13 +123,16 @@ function build() {
         onDiscoveryUpdated: (moduleId: string, params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number }) => {
             discovery.push({ moduleId, params });
         },
+        onChannelClosed: (moduleId: string) => {
+            channelClosed.push(moduleId);
+        },
     };
     const scheduler = new DaemonScheduler(
         gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
         events,
         { appendLine: (s) => log.push(s) },
     );
-    return { gate, scheduler, log, images, failures, dirty, discovery, dataProducts };
+    return { gate, scheduler, log, images, failures, dirty, discovery, dataProducts, channelClosed };
 }
 
 describe('DaemonScheduler', () => {
@@ -350,6 +354,19 @@ describe('DaemonScheduler', () => {
         await scheduler.setVisible('mod', ['v1'], ['p1', 'p2']);
         const renderCalls = fresh.calls.filter(c => c.method === 'renderNow');
         assert.strictEqual(renderCalls.length, 1, 'speculation cache survived channel close');
+    });
+
+    it('forwards onChannelClosed to the caller with the moduleId attached', async () => {
+        // The extension uses this hook to drop interactive-mode stream state for the dead
+        // daemon — frameStreamIds don't survive a JVM restart, so a stale entry would route
+        // future clicks to a stream id the new daemon never minted.
+        const { gate, scheduler, channelClosed } = build();
+        await scheduler.ensureModule('alpha');
+        await scheduler.ensureModule('beta');
+        gate.capturedEvents.get('alpha')!.onChannelClosed!();
+        assert.deepStrictEqual(channelClosed, ['alpha']);
+        gate.capturedEvents.get('beta')!.onChannelClosed!();
+        assert.deepStrictEqual(channelClosed, ['alpha', 'beta']);
     });
 
     it('routes classpathDirty to the caller and drops the module speculation cache', async () => {
