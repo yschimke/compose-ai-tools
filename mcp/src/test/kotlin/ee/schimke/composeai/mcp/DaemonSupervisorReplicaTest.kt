@@ -22,11 +22,23 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Exercises the 1+N replica model: per-(workspace, module) daemons fan out across replicas so
- * concurrent renders run in parallel. The default `replicasPerDaemon = 0` is covered by the
- * existing [DaemonMcpServerTest]; here we wire `replicasPerDaemon = 2` so each `daemonFor` results
- * in three [FakeDaemon] instances (1 primary + 2 extras), and assert the supervisor shards renders,
- * fans out invalidations, and dispatches close only when the LAST replica is gone.
+ * SANDBOX-POOL.md Layer 3 — exercises the supervisor's single-JVM-with-sandbox-pool model.
+ * `replicasPerDaemon = 2` no longer spawns 1+2 JVM subprocesses; it spawns **one** subprocess
+ * configured (via the launch descriptor's `composeai.daemon.sandboxCount` sysprop) to host 3
+ * sandboxes in-JVM. The daemon's `RobolectricHost` dispatches concurrent renders across those
+ * sandboxes internally, so the wire-protocol-visible behaviour (one client per (workspace, module),
+ * fan-out broadcasts, classpathDirty respawn) is preserved.
+ *
+ * The default `replicasPerDaemon = 0` is covered by [DaemonMcpServerTest]. Here we wire
+ * `replicasPerDaemon = 2` and assert:
+ *
+ * - `daemonFor` produces exactly **one** [FakeDaemon] (not three) and its descriptor carries
+ *   `composeai.daemon.sandboxCount = "3"`.
+ * - `setVisible` / `notify_file_changed` fan out to that single daemon (callers that previously
+ *   iterated `allClients()` see a singleton list — the loop runs once).
+ * - `renderNow` lands on the single daemon for any preview id.
+ * - `classpathDirty` tears down the single subprocess and respawns one fresh subprocess (still
+ *   carrying the sandboxCount sysprop).
  */
 class DaemonSupervisorReplicaTest {
 
@@ -66,53 +78,53 @@ class DaemonSupervisorReplicaTest {
   }
 
   @Test
-  fun `daemonFor spawns 1 primary plus N replicas`() {
+  fun `daemonFor spawns one subprocess with sandboxCount sysprop`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
     val workspaceId = registerWorkspace(projectDir, "demo")
 
     supervisor.daemonFor(workspaceId, ":module")
-    waitForReplicas(expected = 3)
-    assertThat(factory.spawnHistory.size).isEqualTo(3)
+    waitForSpawns(expected = 1)
+    // Layer 3 — one subprocess, not 1 + replicasPerDaemon. Concurrent capacity comes from the
+    // daemon's in-JVM sandbox pool, not extra subprocesses.
+    assertThat(factory.spawnHistory.size).isEqualTo(1)
     val daemon = supervisor.daemonFor(workspaceId, ":module")
-    assertThat(daemon.replicaCount()).isEqualTo(3)
-    // All three are wired to the same logical SupervisedDaemon — exiting any one of them must
-    // not drop catalog state until the LAST one closes (asserted in `closeOnly...` below).
-    assertThat(daemon.allClients()).hasSize(3)
+    assertThat(daemon.replicaCount()).isEqualTo(1)
+    assertThat(daemon.allClients()).hasSize(1)
+
+    // The descriptor handed to `clientFactory.spawn` must carry the sandboxCount sysprop the
+    // daemon's DaemonMain reads on boot. With replicasPerDaemon = 2 that's 1 + 2 = 3.
+    val descriptor = factory.spawnDescriptors.single()
+    assertThat(descriptor.systemProperties)
+      .containsEntry(DaemonLaunchDescriptor.SANDBOX_COUNT_PROP, "3")
   }
 
   @Test
-  fun `renderNow shards previews across replicas by hash`() {
+  fun `renderNow lands on the single daemon for any preview id`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
     val workspaceId = registerWorkspace(projectDir, "demo")
 
     supervisor.daemonFor(workspaceId, ":module")
-    waitForReplicas(expected = 3)
-    val replicas = factory.spawnHistory.toList()
+    waitForSpawns(expected = 1)
+    val fake = factory.spawnHistory.single()
 
-    // Stage a PNG and arm every replica to auto-emit renderFinished — only the chosen replica
-    // for each preview will actually receive the renderNow, so only its emit fires; others stay
-    // idle. We register the auto-emitter on every replica defensively so a routing bug shows up
-    // as "the wrong replica produced the bytes" rather than a hung test.
+    // Stage a PNG and arm the daemon to auto-emit renderFinished. With Layer 3, sharding across
+    // sandboxes happens INSIDE the daemon (RobolectricHost.submit dispatches via slot id);
+    // from the supervisor's vantage there's just one client, so every render request lands here.
     val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3)
-    val pngFile = tmp.newFile("replica-fake-render.png")
+    val pngFile = tmp.newFile("layer3-fake-render.png")
     Files.write(pngFile.toPath(), pngBytes)
     val previewIds =
       listOf("com.example.Alpha", "com.example.Bravo", "com.example.Charlie", "com.example.Delta")
-    replicas.forEach { it.autoRenderPngPath = { _ -> pngFile.absolutePath } }
-    // Drive discoveryUpdated through the primary so the catalog populates; replicas would emit
-    // the same set, which is idempotent in onDiscoveryUpdated.
-    val primary = replicas[0]
-    previewIds.forEach { primary.emitDiscovery(it) }
+    fake.autoRenderPngPath = { _ -> pngFile.absolutePath }
+    previewIds.forEach { fake.emitDiscovery(it) }
     repeat(previewIds.size) {
       client.expectNotification("notifications/resources/list_changed", 2_000)
     }
 
-    // Issue a render for each preview id and verify the renderNow lands on the replica chosen by
-    // the same hash function the supervisor uses.
     previewIds.forEach { previewId ->
       val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
       val resp =
@@ -121,30 +133,22 @@ class DaemonSupervisorReplicaTest {
       val blob = parsed.contents.single() as ResourceContents.Blob
       assertThat(Base64.getDecoder().decode(blob.blob)).isEqualTo(pngBytes)
 
-      val expectedReplica = replicas[Math.floorMod(previewId.hashCode(), replicas.size)]
-      val rendered = expectedReplica.renderRequests.poll(2_000, TimeUnit.MILLISECONDS)
+      val rendered = fake.renderRequests.poll(2_000, TimeUnit.MILLISECONDS)
       assertThat(rendered).isEqualTo(listOf(previewId))
-      // No OTHER replica should have observed a renderNow for this preview — drains stale state.
-      replicas
-        .filter { it !== expectedReplica }
-        .forEach {
-          val stray = it.renderRequests.poll(50, TimeUnit.MILLISECONDS)
-          assertThat(stray).isNull()
-        }
     }
   }
 
   @Test
-  fun `setVisible fans out to every replica`() {
+  fun `setVisible reaches the single daemon`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
     val workspaceId = registerWorkspace(projectDir, "demo")
 
     supervisor.daemonFor(workspaceId, ":module")
-    waitForReplicas(expected = 3)
-    val replicas = factory.spawnHistory.toList()
-    replicas[0].emitDiscovery("com.example.Red")
+    waitForSpawns(expected = 1)
+    val fake = factory.spawnHistory.single()
+    fake.emitDiscovery("com.example.Red")
     client.expectNotification("notifications/resources/list_changed", 2_000)
 
     client.callTool(
@@ -156,26 +160,24 @@ class DaemonSupervisorReplicaTest {
       },
     )
 
-    // Each replica must observe its own setVisible/setFocus — render queues are per-replica,
-    // so only fanning out to the primary would leave peers blind to user attention.
-    replicas.forEach { fake ->
-      val visible = fake.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
-      val focus = fake.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
-      assertThat(visible).isEqualTo(listOf("com.example.Red"))
-      assertThat(focus).isEqualTo(listOf("com.example.Red"))
-    }
+    // Fan-out callers (`daemon.allClients().forEach { … }` in DaemonMcpServer / WatchPropagator)
+    // iterate a singleton list under Layer 3. The single daemon must observe its setVisible /
+    // setFocus exactly once.
+    val visible = fake.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
+    val focus = fake.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(visible).isEqualTo(listOf("com.example.Red"))
+    assertThat(focus).isEqualTo(listOf("com.example.Red"))
   }
 
   @Test
-  fun `notify_file_changed forwards fileChanged to every replica`() {
+  fun `notify_file_changed forwards fileChanged to the single daemon`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
     val workspaceId = registerWorkspace(projectDir, "demo")
 
     supervisor.daemonFor(workspaceId, ":module")
-    waitForReplicas(expected = 3)
-    val replicas = factory.spawnHistory.toList()
+    waitForSpawns(expected = 1)
 
     val callResp =
       client.callTool(
@@ -186,42 +188,45 @@ class DaemonSupervisorReplicaTest {
         },
       )
     val text = callResp.firstTextContent()
-    // Server reports total fileChanged forwards across (replica × daemon) — with one daemon and
-    // three replicas that's 3.
-    assertThat(text).contains("forwarded to 3 daemon(s)")
+    // Layer 3: one daemon per module, so the count drops from 1 + replicasPerDaemon to 1 — the
+    // forwarded-to count reflects the new single-subprocess shape.
+    assertThat(text).contains("forwarded to 1 daemon(s)")
   }
 
   @Test
-  fun `classpathDirty on one replica tears down peers and respawns the group`() {
+  fun `classpathDirty tears down the single subprocess and respawns one`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     tmp.newFolder("workspace", "module")
     val workspaceId = registerWorkspace(projectDir, "demo")
 
     supervisor.daemonFor(workspaceId, ":module")
-    waitForReplicas(expected = 3)
-    val firstGroup = factory.spawnHistory.toList()
+    waitForSpawns(expected = 1)
+    val firstSpawn = factory.spawnHistory.single()
 
-    // Fire classpathDirty on the primary — peers are still up, so the supervisor must shutdown
-    // them explicitly before respawning a fresh group.
-    firstGroup[0].emitClasspathDirty()
+    firstSpawn.emitClasspathDirty()
 
-    // Wait for the supervisor's async respawn to construct three more FakeDaemons (1 primary +
-    // 2 replicas of the new group).
+    // Wait for the supervisor's async respawn to construct a single fresh FakeDaemon.
     val deadline = System.currentTimeMillis() + 10_000
-    while (factory.spawnHistory.size < 6 && System.currentTimeMillis() < deadline) {
+    while (factory.spawnHistory.size < 2 && System.currentTimeMillis() < deadline) {
       Thread.sleep(50)
     }
-    assertThat(factory.spawnHistory.size).isAtLeast(6)
-    val secondGroup = factory.spawnHistory.subList(3, factory.spawnHistory.size)
-    assertThat(secondGroup).hasSize(3)
+    assertThat(factory.spawnHistory.size).isAtLeast(2)
+    val second = factory.spawnHistory[1]
+    assertThat(second).isNotSameInstanceAs(firstSpawn)
     val newDaemon = supervisor.daemonFor(workspaceId, ":module")
-    assertThat(newDaemon.replicaCount()).isEqualTo(3)
+    assertThat(newDaemon.replicaCount()).isEqualTo(1)
+
+    // The respawn descriptor must still carry the sandboxCount sysprop — otherwise a respawned
+    // pool would silently downgrade to a single-sandbox daemon and the user's render concurrency
+    // would halve after the first classpathDirty event.
+    val secondDescriptor = factory.spawnDescriptors[1]
+    assertThat(secondDescriptor.systemProperties)
+      .containsEntry(DaemonLaunchDescriptor.SANDBOX_COUNT_PROP, "3")
   }
 
   // -------------------------------------------------------------------------
-  // Helpers (mirror DaemonMcpServerTest's helpers — kept private here to avoid a shared base
-  // class for two test files).
+  // Helpers
   // -------------------------------------------------------------------------
 
   private fun registerWorkspace(projectDir: java.io.File, rootName: String): WorkspaceId {
@@ -240,10 +245,9 @@ class DaemonSupervisorReplicaTest {
   }
 
   /**
-   * Polls [FakeDaemonClientFactory.spawnHistory] until [expected] replicas have been spawned. The
-   * primary is synchronous but extras come up off-thread on the supervisor's replica spawn pool.
+   * Polls [FakeDaemonClientFactory.spawnHistory] until [expected] subprocesses have been spawned.
    */
-  private fun waitForReplicas(expected: Int, timeoutMs: Long = 5_000) {
+  private fun waitForSpawns(expected: Int, timeoutMs: Long = 5_000) {
     val deadline = System.currentTimeMillis() + timeoutMs
     while (factory.spawnHistory.size < expected && System.currentTimeMillis() < deadline) {
       Thread.sleep(20)

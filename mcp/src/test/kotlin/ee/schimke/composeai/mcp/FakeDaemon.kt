@@ -400,11 +400,21 @@ class FakeDaemonClientFactory : DaemonClientFactory {
    */
   val spawnHistory: MutableList<FakeDaemon> = java.util.concurrent.CopyOnWriteArrayList()
 
+  /**
+   * Descriptors handed to [spawn], parallel-indexed with [spawnHistory]. SANDBOX-POOL.md Layer 3:
+   * the supervisor mutates the descriptor's `systemProperties` to inject
+   * `composeai.daemon.sandboxCount`; tests assert against this list to verify the supervisor passed
+   * the right pool size to the daemon.
+   */
+  val spawnDescriptors: MutableList<DaemonLaunchDescriptor> =
+    java.util.concurrent.CopyOnWriteArrayList()
+
   override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     val daemon = FakeDaemon()
     synchronized(this) {
       daemons[project.workspaceId to descriptor.modulePath] = daemon
       spawnHistory.add(daemon)
+      spawnDescriptors.add(descriptor)
     }
     return daemon
   }
