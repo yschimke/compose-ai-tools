@@ -247,11 +247,15 @@ open class RobolectricHost(
     // on first read after a swap, so this also amortises the allocation onto the host thread
     // rather than the render thread.
     publishChildLoader()
-    // SANDBOX-POOL.md — slot dispatch. Hash the request id to a slot so concurrent submits with
-    // distinct ids fan out across the pool. With sandboxCount=1 this collapses to slot 0, which
-    // is byte-identical with the pre-pool path (slot 0's `requests` queue is the same instance as
-    // the legacy top-level queue).
-    val slotIdx = Math.floorMod(typed.id, sandboxCount.toLong()).toInt()
+    // SANDBOX-POOL.md — slot dispatch. Hash the **previewId** to a slot so the same preview always
+    // lands on the same sandbox; Compose snapshot caches and Robolectric shadow caches accumulate
+    // per-sandbox and pay off on repeat renders. Falls back to the request id when the payload
+    // doesn't carry `previewId=<id>` (legacy stub-render-N test payloads, or any future caller
+    // that bypasses the manifest path) so legacy callers keep their stable-id hashing. With
+    // sandboxCount=1 either dispatch path collapses to slot 0, which is byte-identical with the
+    // pre-pool path (slot 0's `requests` queue is the same instance as the legacy top-level
+    // queue).
+    val slotIdx = chooseSlotIndex(typed)
     val slot = DaemonHostBridge.slot(slotIdx)
     slot.requests.put(typed)
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
@@ -270,6 +274,39 @@ open class RobolectricHost(
     // their fields out via reflection so the host-side caller gets an
     // instance of the host-side RenderResult class.
     return raw as? RenderResult ?: copyResultAcrossClassloaders(raw)
+  }
+
+  /**
+   * SANDBOX-POOL.md (affinity-aware dispatch) — picks a slot for [render]. Uses the previewId
+   * extracted from the payload as the affinity key when present so the same preview always lands
+   * on the same sandbox; falls back to the monotonic request id when the payload is the legacy
+   * stub form (`render-N`) or has no `previewId=` key.
+   *
+   * `Math.floorMod` keeps the slot index non-negative for any hash. With `sandboxCount = 1` both
+   * paths collapse to slot 0 — bit-identical with the pre-pool single-sandbox dispatch.
+   */
+  private fun chooseSlotIndex(render: RenderRequest.Render): Int {
+    if (sandboxCount == 1) return 0
+    val previewId = parsePreviewIdFromPayload(render.payload)
+    val key: Int = previewId?.hashCode() ?: render.id.hashCode()
+    return Math.floorMod(key, sandboxCount)
+  }
+
+  /**
+   * Extracts `previewId=<id>` from a `;`-delimited payload. Mirrors the parsing
+   * `PreviewManifestRouter.parsePreviewId` does in the same package — duplicated here rather than
+   * shared via a top-level helper so the dispatch path stays a self-contained one-line read.
+   * Returns `null` when the payload doesn't carry a previewId (legacy stub-payload tests).
+   */
+  private fun parsePreviewIdFromPayload(payload: String): String? {
+    if (payload.isEmpty()) return null
+    for (entry in payload.split(';')) {
+      val trimmed = entry.trim()
+      if (trimmed.startsWith(PREVIEW_ID_KEY)) {
+        return trimmed.substring(PREVIEW_ID_KEY.length).trim().takeIf { it.isNotEmpty() }
+      }
+    }
+    return null
   }
 
   private fun copyResultAcrossClassloaders(raw: Any): RenderResult {
@@ -329,6 +366,14 @@ open class RobolectricHost(
 
     /** Survey-set key inside the forensic payload — comma-separated FQNs. */
     const val FORENSIC_SURVEY_KEY: String = "survey"
+
+    /**
+     * Affinity-key prefix in the [RenderRequest.Render.payload] used by
+     * [chooseSlotIndex]. `JsonRpcServer.handleRenderNow` and `PreviewManifestRouter` both encode
+     * the previewId here; the dispatch path reads it to pin renders of the same preview to the
+     * same sandbox slot. Mirrors the prefix `PreviewManifestRouter.parsePreviewId` recognises.
+     */
+    private const val PREVIEW_ID_KEY: String = "previewId="
   }
 
   override fun shutdown(timeoutMs: Long) {

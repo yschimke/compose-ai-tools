@@ -11,7 +11,7 @@ constraints from that work remain:
 |--:|-----------|--------------|-----------------------|
 | 1 | Per-slot user-class child loaders | Hot-reload uses a single shared `URLClassLoader`; per-slot needs design + invalidation discipline | Daemons that opt into hot-reload silently fall back to `sandboxCount = 1` and lose pool concurrency |
 | 2 | Per-slot sandbox recycle | Recycle thresholds (heap drift, render-time drift) attribute to "the sandbox" not "this sandbox among N"; pool muddies the math | Whole pool tears down on any heap event — bigger user-visible pause than necessary |
-| 3 | Affinity-aware dispatch (previewId-keyed) | Today's dispatch is `Math.floorMod(requestId, N)`; same preview hits a different sandbox each render | Compose state cache + Robolectric shadow caches don't carry across renders of the same preview |
+| 3 | Affinity-aware dispatch (previewId-keyed) **— landed** | Today's dispatch is `Math.floorMod(requestId, N)`; same preview hits a different sandbox each render | Compose state cache + Robolectric shadow caches don't carry across renders of the same preview |
 
 This doc sketches each. Implementation lands in separate PRs once the sketches survive review.
 
@@ -199,7 +199,7 @@ old clients keep working.
 
 ---
 
-## 3. Affinity-aware dispatch (previewId-keyed)
+## 3. Affinity-aware dispatch (previewId-keyed) — landed
 
 ### Problem
 
