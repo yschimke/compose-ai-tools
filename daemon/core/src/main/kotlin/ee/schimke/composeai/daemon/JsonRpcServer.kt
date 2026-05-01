@@ -231,6 +231,31 @@ class JsonRpcServer(
   /** Mapping host-side internal request id → caller's preview id string. */
   private val hostIdToPreviewId = ConcurrentHashMap<Long, String>()
 
+  // ----------------------------------------------------------------------
+  // Interactive (live-stream) mode state — see docs/daemon/INTERACTIVE.md.
+  //
+  // [interactiveTarget] is the single (previewId, frameStreamId) tuple the daemon is
+  // serving as the user's interactive target. Single-target by design: a second
+  // `interactive/start` overwrites this slot, and any input notification carrying a
+  // stale frameStreamId is silently dropped.
+  //
+  // [lastFrameHashes] is a per-previewId cache of the SHA-256 of the most recently
+  // notified PNG bytes. Populated on every `renderFinished` that the watcher actually
+  // emits; consulted to set `unchanged: true` (and skip history) when the next render
+  // produces byte-identical output. Always tracked, not just when interactive mode is
+  // on — the dedup is generally useful (a save that doesn't move pixels shouldn't
+  // burn IPC + a panel repaint).
+  // ----------------------------------------------------------------------
+
+  private data class InteractiveTarget(val previewId: String, val frameStreamId: String)
+
+  private val interactiveTarget =
+    java.util.concurrent.atomic.AtomicReference<InteractiveTarget?>(null)
+
+  private val lastFrameHashes = ConcurrentHashMap<String, String>()
+
+  private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
+
   private val writerThread =
     Thread({ writerLoop() }, "compose-ai-daemon-writer").apply { isDaemon = false }
 
@@ -373,6 +398,7 @@ class JsonRpcServer(
       "history/read" -> handleHistoryRead(req)
       "history/diff" -> handleHistoryDiff(req)
       "history/prune" -> handleHistoryPrune(req)
+      "interactive/start" -> handleInteractiveStart(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -584,15 +610,34 @@ class JsonRpcServer(
     // null until B2.3 wires the cost-model collection path.
     val tookMs = result.metrics?.get("tookMs") ?: 0L
     val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
-    sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), finished))
+
+    // INTERACTIVE.md § 5 / live-stream dedup: hash the rendered PNG bytes and compare against
+    // the prior frame this preview emitted. On match, swap in `unchanged: true`, skip history,
+    // and let the client short-circuit the file-read + base64 + repaint hop. Track always (not
+    // just under interactive mode): a save that doesn't move pixels is just as redundant as an
+    // input that doesn't change state.
+    val frameHash = hashFrameBytes(result.pngPath)
+    val isUnchanged =
+      frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
+    val outboundFinished = if (isUnchanged) finished.copy(unchanged = true) else finished
+    sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), outboundFinished))
     if (firstRenderFinishedSeen.compareAndSet(false, true)) {
       StartupTimings.mark("first renderFinished sent")
       StartupTimings.summary()
     }
+    if (frameHash != null) {
+      lastFrameHashes[previewId] = frameHash
+    }
     // H1 — record the render to history, if configured. Wrapped in a fail-open try/catch so a
     // history write failure never blocks the renderFinished wire-format. The render's notification
     // has already been sent above; history is observation, not state.
-    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
+    //
+    // Skip history when the frame is byte-identical to the prior one for this preview — there's
+    // nothing new to archive, and a duplicate sidecar would inflate `history/list` results
+    // without changing what the user sees on disk.
+    if (!isUnchanged) {
+      recordHistoryForRender(previewId = previewId, result = result, finished = finished)
+    }
     inFlightRenders.remove(result.id)
     // Save-after-render invariant: a `fileChanged({kind:source})` queued discovery work that has
     // been waiting for this render to ship. The writer queue is FIFO and `renderFinished` is
@@ -1012,6 +1057,38 @@ class JsonRpcServer(
    * (the B1.5-era stub hosts that don't measure anything) keep the pre-B2.3 `metrics: null`
    * behaviour.
    */
+  /**
+   * SHA-256 hex of the bytes at [pngPath], or null when the file is unreadable / missing / a
+   * B1.5-era stub placeholder. Cheap on the typical preview size (sub-MB PNGs); the cost is
+   * dominated by the file read which is already in OS page cache because the daemon just wrote it.
+   * Returning null when the file isn't there is the right call — without bytes we can't dedup, so
+   * we treat it as "definitely changed" and emit normally.
+   */
+  private fun hashFrameBytes(pngPath: String?): String? {
+    if (pngPath == null) return null
+    val path =
+      try {
+        Path.of(pngPath)
+      } catch (_: Throwable) {
+        return null
+      }
+    if (!Files.exists(path)) return null
+    val bytes =
+      try {
+        Files.readAllBytes(path)
+      } catch (_: Throwable) {
+        return null
+      }
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+    return buildString(digest.size * 2) {
+      for (b in digest) {
+        val v = b.toInt() and 0xFF
+        if (v < 0x10) append('0')
+        append(v.toString(16))
+      }
+    }
+  }
+
   private fun renderFinishedFromResult(
     previewId: String,
     result: RenderResult,
@@ -1041,6 +1118,91 @@ class JsonRpcServer(
     )
   }
 
+  // --------------------------------------------------------------------------
+  // Interactive (live-stream) mode — docs/daemon/INTERACTIVE.md § 7.
+  //
+  // Single-target invariant: at most one `(previewId, frameStreamId)` is active. A second
+  // `interactive/start` overwrites the slot; the prior `frameStreamId` is silently
+  // invalidated and any input still in flight against it is dropped. Inputs are
+  // fire-and-forget — we synthesise an internal `renderNow` against the target preview
+  // so the client gets a fresh `renderFinished` (subject to the byte-identical dedup
+  // applied in [emitRenderFinished]).
+  // --------------------------------------------------------------------------
+
+  private fun handleInteractiveStart(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.InteractiveStartParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid interactive/start params: ${e.message}",
+        )
+        return
+      }
+    if (params.previewId.isBlank()) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "interactive/start: previewId is blank",
+      )
+      return
+    }
+    val streamId = "stream-${nextStreamIdCounter.getAndIncrement()}"
+    interactiveTarget.set(InteractiveTarget(previewId = params.previewId, frameStreamId = streamId))
+    // Wipe any cached hash for this preview so the first interactive frame always paints.
+    // Without this a `start` after a previous identical render would suppress the bootstrap
+    // frame and the client's LIVE chip would have nothing to paint until the user clicks.
+    lastFrameHashes.remove(params.previewId)
+    sendResponse(
+      req.id,
+      encode(
+        ee.schimke.composeai.daemon.protocol.InteractiveStartResult.serializer(),
+        ee.schimke.composeai.daemon.protocol.InteractiveStartResult(frameStreamId = streamId),
+      ),
+    )
+  }
+
+  private fun handleInteractiveStop(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveStopParams
+  ) {
+    val current = interactiveTarget.get()
+    if (current != null && current.frameStreamId == params.frameStreamId) {
+      interactiveTarget.compareAndSet(current, null)
+    }
+    // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 7.
+  }
+
+  private fun handleInteractiveInput(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+  ) {
+    val current = interactiveTarget.get()
+    if (current == null || current.frameStreamId != params.frameStreamId) {
+      // Stale stream id (from a prior start, or before any start). Drop silently —
+      // resending after a stop or an overwrite is a documented client-allowed pattern.
+      return
+    }
+    if (classpathDirtyEmitted.get() || shutdownRequested.get()) {
+      return
+    }
+    // v0 dispatch model: each input enqueues a fresh render of the target preview. The render
+    // body itself does not yet route the click into the composition (LocalInspectionMode is
+    // still true; that's the v1 follow-up — see INTERACTIVE.md § 7 "Open questions"). What
+    // this DOES validate end-to-end: the input → renderNow → renderFinished round-trip plus
+    // the byte-identical dedup, which together let a future click-aware engine slot in
+    // without changing the wire shape.
+    val previewId = current.previewId
+    val hostId = RenderHost.nextRequestId()
+    hostIdToPreviewId[hostId] = previewId
+    acceptedAtMs[hostId] = System.currentTimeMillis()
+    inFlightRenders.add(hostId)
+    submitRenderAsync(hostId)
+  }
+
   private fun handleShutdown(req: JsonRpcRequest) {
     shutdownRequested.set(true)
     // Drain in-flight renders before responding, per PROTOCOL.md § 3 and
@@ -1064,6 +1226,14 @@ class JsonRpcServer(
       "setVisible" -> tryDecode(SetVisibleParams.serializer(), n) { /* no-op for B1.5 */ }
       "setFocus" -> tryDecode(SetFocusParams.serializer(), n) { /* no-op for B1.5 */ }
       "fileChanged" -> tryDecode(FileChangedParams.serializer(), n) { handleFileChanged(it) }
+      "interactive/stop" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveStopParams.serializer(), n) {
+          handleInteractiveStop(it)
+        }
+      "interactive/input" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveInputParams.serializer(), n) {
+          handleInteractiveInput(it)
+        }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
     }
   }

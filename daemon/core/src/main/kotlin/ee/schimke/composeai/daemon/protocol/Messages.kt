@@ -190,6 +190,15 @@ data class RenderFinishedParams(
   val pngPath: String,
   val tookMs: Long,
   val metrics: RenderMetrics? = null,
+  /**
+   * Interactive-mode frame deduplication signal — see docs/daemon/INTERACTIVE.md § 5. When `true`
+   * the daemon has determined the rendered bytes are byte-identical to the previously notified
+   * frame for the same preview id, so the client can short-circuit the read-PNG → base64 →
+   * postMessage hop. Always omitted (`null` on the wire) when dedup didn't fire — a fresh
+   * `renderFinished` whose `unchanged` field is `null` means "client must paint these bytes".
+   * Additive per PROTOCOL.md § 7; older clients ignore the field and keep painting unconditionally.
+   */
+  val unchanged: Boolean? = null,
 )
 
 @Serializable
@@ -396,6 +405,48 @@ data class HistoryReadResultDto(
 )
 
 @Serializable data class HistoryAddedParams(val entry: JsonElement)
+
+// =====================================================================
+// 5b. Interactive (live-stream) mode — see docs/daemon/INTERACTIVE.md § 7.
+//
+// Pinned the previewId as the daemon's render-priority target ("warm" sandbox semantics
+// once B2.4 lands). Single target at a time — `interactive/start` overwrites any prior
+// stream. Inputs are fire-and-forget notifications; the daemon responds by emitting a
+// fresh `renderFinished` for the target preview when its composition has anything new
+// to draw.
+// =====================================================================
+
+@Serializable data class InteractiveStartParams(val previewId: String)
+
+/**
+ * Opaque correlation token returned by `interactive/start`. The client passes it back on every
+ * subsequent `interactive/input` and `interactive/stop` so the daemon can route a stale input (one
+ * issued against a now-overwritten target) to the right frame stream — and ignore it if the stream
+ * has been overwritten.
+ */
+@Serializable data class InteractiveStartResult(val frameStreamId: String)
+
+@Serializable data class InteractiveStopParams(val frameStreamId: String)
+
+@Serializable
+data class InteractiveInputParams(
+  val frameStreamId: String,
+  val kind: InteractiveInputKind,
+  /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
+  val pixelX: Int? = null,
+  val pixelY: Int? = null,
+  /** For `keyDown` / `keyUp`. */
+  val keyCode: String? = null,
+)
+
+@Serializable
+enum class InteractiveInputKind {
+  @SerialName("click") CLICK,
+  @SerialName("pointerDown") POINTER_DOWN,
+  @SerialName("pointerUp") POINTER_UP,
+  @SerialName("keyDown") KEY_DOWN,
+  @SerialName("keyUp") KEY_UP,
+}
 
 // ---------------------------------------------------------------------------
 // H3 — `history/diff` metadata-mode wire shape. See HISTORY.md § "What this PR

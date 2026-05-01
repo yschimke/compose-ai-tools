@@ -211,6 +211,24 @@ describe('DaemonScheduler', () => {
         }
     });
 
+    it('short-circuits when renderFinished carries unchanged=true (frame dedup)', async () => {
+        // INTERACTIVE.md § 5 — the daemon already determined the bytes are byte-identical
+        // to the last frame for this preview id. The scheduler must skip the disk read +
+        // base64 + onPreviewImageReady hop so the panel doesn't repaint identical bytes.
+        const { gate, scheduler, images, failures } = build();
+        await scheduler.ensureModule('mod');
+        const evts = gate.capturedEvents.get('mod')!;
+        // Use a path that doesn't exist on disk — if the scheduler even tries to read it,
+        // it would emit onRenderFailed. The dedup short-circuit means it does neither:
+        // no image, no failure.
+        evts.onRenderFinished!({
+            id: 'p1', pngPath: '/no/such/dedup.png', tookMs: 5,
+            unchanged: true,
+        } as never);
+        assert.strictEqual(images.length, 0, 'unchanged=true must not emit onPreviewImageReady');
+        assert.strictEqual(failures.length, 0, 'unchanged=true must not trigger an unreadable-PNG failure path');
+    });
+
     it('reports onRenderFailed when the renderFinished PNG path is unreadable', async () => {
         const { gate, scheduler, failures } = build();
         await scheduler.ensureModule('mod');

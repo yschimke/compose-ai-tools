@@ -150,6 +150,15 @@ export interface RenderFinishedParams {
     pngPath: string;
     tookMs: number;
     metrics?: RenderMetrics;
+    /**
+     * Interactive-mode dedup signal — see docs/daemon/INTERACTIVE.md § 5.
+     * `true` means the daemon already determined the rendered bytes are
+     * byte-identical to the last frame for this preview id, so the client
+     * can short-circuit the read-PNG → base64 → postMessage hop and leave
+     * the on-screen card untouched. `undefined` (the wire-side default
+     * when the daemon omits the field) means "client must paint".
+     */
+    unchanged?: boolean;
 }
 
 export interface RenderError {
