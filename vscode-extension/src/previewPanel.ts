@@ -228,7 +228,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const compileErrorsList = document.getElementById('compile-errors-list');
         const compileErrorsTitle = document.getElementById('compile-errors-title');
 
-        function setCompileErrors(errors, sourceFile) {
+        function setCompileErrors(errors) {
             compileErrorsList.innerHTML = '';
             const count = errors.length;
             compileErrorsTitle.textContent = count === 1
@@ -247,10 +247,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 msg.textContent = e.message;
                 row.appendChild(loc);
                 row.appendChild(msg);
+                // Each error carries its own absolute path — required so
+                // a cross-file kotlinc error (e.g. broken Theme.kt while
+                // editing Previews.kt) opens the right file rather than
+                // whichever file the panel happened to be scoped to.
+                const path = e.path;
                 row.addEventListener('click', () => {
                     vscode.postMessage({
                         command: 'openCompileError',
-                        sourceFile: sourceFile,
+                        sourceFile: path,
                         line: e.line,
                         column: e.column,
                     });
@@ -1540,7 +1545,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
 
                 case 'setCompileErrors':
-                    setCompileErrors(msg.errors || [], msg.sourceFile || '');
+                    setCompileErrors(msg.errors || []);
                     break;
 
                 case 'clearCompileErrors':

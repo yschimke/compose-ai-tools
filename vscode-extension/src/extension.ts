@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { GradleService, GradleApi, TaskCancelledError } from './gradleService';
 import { JdkImageError } from './jdkImageErrorDetector';
+import { KotlinCompileError } from './kotlinCompileErrorDetector';
 import { findPluginAppliedAncestor } from './pluginDetection';
 import { PreviewPanel } from './previewPanel';
 import { PreviewRegistry } from './previewRegistry';
@@ -1218,7 +1219,6 @@ async function refresh(
         panel.postMessage({
             command: 'setCompileErrors',
             errors: compileErrors,
-            sourceFile: activeFile,
         });
         // No build is starting — make sure no stale progress bar lingers
         // from a prior in-flight refresh that was just cancelled by the
@@ -1533,6 +1533,20 @@ async function refresh(
             });
             panel.postMessage({ command: 'clearProgress' });
             showJdkImageRemediation(err);
+            return 'failed';
+        }
+        if (err instanceof KotlinCompileError) {
+            logLine(`FAILED — ${err.errors.length} Kotlin compile error(s) in ${err.task}`);
+            // Reuse the same banner the LSP gate populates — the user
+            // sees identical UX whether the gate fired or Gradle's
+            // compile actually failed. Cards stay visible and dimmed so
+            // the previous successful render is still on screen as a
+            // reference while the error gets fixed.
+            panel.postMessage({
+                command: 'setCompileErrors',
+                errors: err.errors,
+            });
+            panel.postMessage({ command: 'clearProgress' });
             return 'failed';
         }
         const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';

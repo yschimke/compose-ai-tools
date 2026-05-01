@@ -46,6 +46,13 @@ export interface DiagnosticLike {
 export interface CompileError {
     /** Display label — basename of the file. */
     file: string;
+    /**
+     * Absolute path used by the click-to-open handler. Each error carries
+     * its own path so cross-file kotlinc failures (an error in `Theme.kt`
+     * surfaced while editing `Previews.kt`) deep-link to the right file
+     * rather than the panel's currently-scoped one.
+     */
+    path: string;
     /** 1-based line for human display. The webview opens via this number. */
     line: number;
     /** 1-based column. */
@@ -86,6 +93,7 @@ export function extractCompileErrors(
         if (d.source && !TRUSTED_SOURCES.has(d.source)) { continue; }
         errors.push({
             file: fileLabel,
+            path: filePath,
             // VS Code's range is 0-indexed. Convert to 1-based for display
             // and consistency with `kotlinc -e: file://…:42:5` output.
             line: d.range.start.line + 1,

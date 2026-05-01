@@ -268,12 +268,14 @@ export type ExtensionToWebview =
     /** Force-clear the progress bar (e.g. on cancellation or fatal error). */
     | { command: 'clearProgress' }
     /**
-     * Replace the compile-error banner. Each entry maps to one row in the
-     * banner with file:line:col + message; clicking opens the source.
-     * Cards stay rendered but get a "compile-stale" decoration so the user
-     * keeps the last successful render visible alongside the error list.
+     * Replace the compile-error banner. Each entry carries its own
+     * absolute `path` so the click handler can deep-link to whatever
+     * file the diagnostic actually came from — important for the
+     * kotlinc detector where errors can span files. Cards stay rendered
+     * but get a "compile-stale" decoration so the user keeps the last
+     * successful render visible alongside the error list.
      */
-    | { command: 'setCompileErrors'; errors: import('./compileErrors').CompileError[]; sourceFile: string }
+    | { command: 'setCompileErrors'; errors: import('./compileErrors').CompileError[] }
     /** Remove the compile-error banner and the compile-stale dim on cards. */
     | { command: 'clearCompileErrors' }
     /** Side-by-side diff result for a focused live preview. The webview

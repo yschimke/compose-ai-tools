@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, ResourceManifest } from './types';
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
+import { KotlinCompileError, KotlinCompileErrorDetector } from './kotlinCompileErrorDetector';
 import { LogFilter } from './logFilter';
 import { BuildProgressTracker, PhaseDurations, ProgressState } from './buildProgress';
 
@@ -523,6 +524,11 @@ export class GradleService {
         if (this.logFilter.shouldEmitInformational(startLine)) { this.logger.appendLine(startLine); }
 
         const detector = new JdkImageErrorDetector();
+        // Parse `e:` lines from the Kotlin compiler so the panel banner
+        // can show structured errors when a build fails. Catches the
+        // cross-file gap that the LSP-driven gate (compileErrors.ts)
+        // misses by design — that gate only inspects the active file.
+        const kotlinDetector = new KotlinCompileErrorDetector();
         // Progress tracker is wired only when the caller provided one of the
         // hooks — keeps the no-op (test, doctor, applied-bootstrap) callers
         // free of timer overhead.
@@ -559,6 +565,7 @@ export class GradleService {
                     // normal level (the noisy lines are exactly the ones that
                     // contain the diagnostic).
                     detector.consume(decoded);
+                    kotlinDetector.consume(decoded);
                     tracker?.consume(decoded);
                     const filtered = this.logFilter.filterGradleChunk(decoded);
                     if (filtered.length > 0) { this.logger.append(filtered); }
@@ -585,9 +592,14 @@ export class GradleService {
                 }
                 this.logger.appendLine(`> ${task} FAILED: ${message}`);
                 detector.end();
+                kotlinDetector.end();
                 const finding = detector.getFinding();
                 if (finding) {
                     throw new JdkImageError(finding, task);
+                }
+                const kotlinErrors = kotlinDetector.getErrors();
+                if (kotlinErrors.length > 0) {
+                    throw new KotlinCompileError(kotlinErrors, task);
                 }
                 throw new Error(`Gradle task ${task} failed. See Output > Compose Preview.`);
             },
