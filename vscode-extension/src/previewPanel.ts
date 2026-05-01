@@ -55,8 +55,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <div id="progress-bar" class="progress-bar" role="progressbar"
          aria-label="Refresh progress"
          aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
-        <div class="progress-fill"></div>
         <div class="progress-label" id="progress-label"></div>
+        <div class="progress-track">
+            <div class="progress-fill"></div>
+        </div>
     </div>
     <div id="compile-errors" class="compile-errors" role="alert" hidden>
         <div class="compile-errors-header">
