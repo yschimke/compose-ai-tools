@@ -321,11 +321,21 @@ toggle required.
 
 **Backend fidelity.** The Android renderer applies all seven fields via
 `applyPreviewQualifiers` + `RuntimeEnvironment.setFontScale`. The desktop
-renderer applies size/density only; `uiMode` / `localeTag` / `fontScale` /
-`orientation` ride on the wire for parity but are no-ops on plain Skiko
-today (Compose Desktop has no Android-style resource qualifier system —
-they'd need to thread through `LocalConfiguration` /
-`androidx.compose.ui.text.intl.Locale.current`, which is a follow-up).
+renderer applies `widthPx` / `heightPx` / `density` (via
+`ImageComposeScene`'s constructor), `fontScale` (via `Density(density,
+fontScale)` re-provided as `LocalDensity`), and `uiMode` (via
+`LocalSystemTheme provides SystemTheme.Light/Dark`, which is what Compose
+Desktop's `isSystemInDarkTheme()` reads). `localeTag` and `orientation`
+remain no-ops on desktop:
+
+- **`localeTag`** — Compose Desktop has no `LocalLocale` CompositionLocal,
+  and `java.util.Locale.setDefault(...)` is unsafe to mutate transiently
+  because every other JVM thread (Skiko font / text-shaping workers,
+  default-locale formatters like `String.format` / `SimpleDateFormat`,
+  GC finalizers) sees the wrong value for the render's duration. The
+  Android backend honours it via `setQualifiers("b+lang+region")`.
+- **`orientation`** — `ImageComposeScene` has no display rotation
+  concept; size override (`widthPx` / `heightPx`) is the natural lever.
 
 ## 9. v2 — click dispatch into composition
 
