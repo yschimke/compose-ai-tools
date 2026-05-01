@@ -20,6 +20,7 @@ import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
+import { readPreviewMainPng } from './previewMainSource';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
@@ -1699,33 +1700,54 @@ async function runLivePreviewDiff(
         return bt.localeCompare(at);
     });
     const target = sorted[0] as { id?: string; timestamp?: string } | undefined;
-    if (!target?.id) {
+    if (target?.id) {
+        const right = await historySource.read(target.id);
+        if (!right) {
+            panel.postMessage({
+                command: 'previewDiffError', previewId, against,
+                message: 'Comparison entry not readable.',
+            });
+            return;
+        }
+        const rightBytes = right.pngBytes
+            ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
         panel.postMessage({
-            command: 'previewDiffError', previewId, against,
-            message: against === 'main'
-                ? 'No archived render on main yet for this preview.'
-                : 'No archived history yet for this preview.',
+            command: 'previewDiffReady',
+            previewId,
+            against,
+            leftLabel: 'Live · now',
+            leftImage: liveBytes.toString('base64'),
+            rightLabel: `${against === 'main' ? 'main' : 'HEAD'} · ${formatRelativeShort(target.timestamp)}`,
+            rightImage: rightBytes,
         });
         return;
     }
-    const right = await historySource.read(target.id);
-    if (!right) {
-        panel.postMessage({
-            command: 'previewDiffError', previewId, against,
-            message: 'Comparison entry not readable.',
-        });
-        return;
+    // No local archived entry. For "vs main" we can still try the
+    // preview_main baselines branch — repos using the CI baseline workflow
+    // publish every main build's PNGs there. Avoids requiring a daemon or
+    // a one-off local archive for the user's first diff against main.
+    if (against === 'main') {
+        const baseline = await readPreviewMainPng(
+            gradleService.workspaceRoot, moduleId, previewId,
+        );
+        if (baseline) {
+            panel.postMessage({
+                command: 'previewDiffReady',
+                previewId,
+                against,
+                leftLabel: 'Live · now',
+                leftImage: liveBytes.toString('base64'),
+                rightLabel: `main · ${baseline.ref}`,
+                rightImage: baseline.png.toString('base64'),
+            });
+            return;
+        }
     }
-    const rightBytes = right.pngBytes
-        ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
     panel.postMessage({
-        command: 'previewDiffReady',
-        previewId,
-        against,
-        leftLabel: 'Live · now',
-        leftImage: liveBytes.toString('base64'),
-        rightLabel: `${against === 'main' ? 'main' : 'HEAD'} · ${formatRelativeShort(target.timestamp)}`,
-        rightImage: rightBytes,
+        command: 'previewDiffError', previewId, against,
+        message: against === 'main'
+            ? 'No archived render on main yet for this preview, and no preview_main baseline.'
+            : 'No archived history yet for this preview.',
     });
 }
 
@@ -1817,12 +1839,36 @@ async function diffAllVsMain(): Promise<void> {
                 // History unavailable for this preview — treat as no baseline.
             }
             if (!mainHash) {
+                // Fall back to the preview_main baselines branch — repos
+                // using the CI baseline workflow publish PNGs there even
+                // when nothing has been archived locally yet. The lookup
+                // also exposes a sha256 in the manifest, which we compare
+                // against the live hash to skip identical previews.
+                const baseline = await readPreviewMainPng(
+                    gradleService!.workspaceRoot, moduleId, preview.id,
+                );
+                if (!baseline) {
+                    drifted.push({
+                        label,
+                        description: 'no baseline on main',
+                        detail: preview.id,
+                        previewId: preview.id,
+                        driftKind: 'no-baseline',
+                    });
+                    continue;
+                }
+                const baselineHash = baseline.sha256
+                    ?? crypto.createHash('sha256').update(baseline.png).digest('hex');
+                if (liveHash === baselineHash) {
+                    identical++;
+                    continue;
+                }
                 drifted.push({
                     label,
-                    description: 'no baseline on main',
+                    description: 'differs from main',
                     detail: preview.id,
                     previewId: preview.id,
-                    driftKind: 'no-baseline',
+                    driftKind: 'differs',
                 });
                 continue;
             }
