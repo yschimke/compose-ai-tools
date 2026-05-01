@@ -83,6 +83,10 @@ data class Options(
   val warmSpare: Boolean? = null,
   val detectLeaks: DetectLeaks? = null,
   val foreground: Boolean? = null,
+  // D1 — data-product kinds the client wants ambient on every render. See
+  // docs/daemon/DATA-PRODUCTS.md § "Wire surface". Most clients leave this
+  // null/empty and use `data/subscribe` for sticky-while-visible attachment.
+  val attachDataProducts: List<String>? = null,
 )
 
 @Serializable
@@ -108,7 +112,36 @@ data class ServerCapabilities(
   val sandboxRecycle: Boolean,
   // Subset of {"light","heavy"}; empty means leak detection unavailable.
   val leakDetection: List<LeakDetectionMode>,
+  // D1 — kinds the daemon can produce. Empty list = pre-D1 daemon (the
+  // client side treats absent and `[]` identically). See
+  // docs/daemon/DATA-PRODUCTS.md § "Wire surface".
+  val dataProducts: List<DataProductCapability> = emptyList(),
 )
+
+/**
+ * One advertised data-product kind. Mirrors `DataProductCapability` in
+ * `vscode-extension/src/daemon/daemonProtocol.ts`. See
+ * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "The
+ * primitive" for semantics — `transport` picks how the payload travels; `attachable` / `fetchable`
+ * discriminate which surfaces support the kind; `requiresRerender = true` warns the client that a
+ * `data/fetch` may pay a render cost when the latest pass didn't compute the kind.
+ */
+@Serializable
+data class DataProductCapability(
+  val kind: String,
+  val schemaVersion: Int,
+  val transport: DataProductTransport,
+  val attachable: Boolean,
+  val fetchable: Boolean,
+  val requiresRerender: Boolean,
+)
+
+@Serializable
+enum class DataProductTransport {
+  @SerialName("inline") INLINE,
+  @SerialName("path") PATH,
+  @SerialName("both") BOTH,
+}
 
 @Serializable
 enum class LeakDetectionMode {
@@ -165,6 +198,45 @@ data class RenderNowResult(val queued: List<String>, val rejected: List<Rejected
 
 @Serializable data class RejectedRender(val id: String, val reason: String)
 
+// ---------------------------------------------------------------------------
+// D1 — data products (see docs/daemon/DATA-PRODUCTS.md).
+//
+// `params` is per-kind options carried as JsonElement so the dispatch surface
+// stays kind-agnostic — kinds that take params (e.g. `layout/tree` keyed by
+// nodeId) decode against their own serializer at producer time.
+// ---------------------------------------------------------------------------
+
+@Serializable
+data class DataFetchParams(
+  val previewId: String,
+  val kind: String,
+  val params: JsonElement? = null,
+  val inline: Boolean = false,
+)
+
+@Serializable
+data class DataFetchResult(
+  val kind: String,
+  val schemaVersion: Int,
+  val payload: JsonElement? = null,
+  val path: String? = null,
+  // Reserved for non-local clients; populated only when caller passes
+  // `inline: true` and the kind's transport is blob-shaped.
+  val bytes: String? = null,
+)
+
+/** Shared params shape for `data/subscribe` and `data/unsubscribe`. */
+@Serializable data class DataSubscribeParams(val previewId: String, val kind: String)
+
+/** Acknowledgement-only result; trivial by design so growing it stays additive. */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class DataSubscribeResult(@EncodeDefault val ok: Boolean = true) {
+  companion object {
+    val OK: DataSubscribeResult = DataSubscribeResult(ok = true)
+  }
+}
+
 // =====================================================================
 // 5. Daemon → client notifications (PROTOCOL.md § 6)
 // =====================================================================
@@ -190,6 +262,23 @@ data class RenderFinishedParams(
   val pngPath: String,
   val tookMs: Long,
   val metrics: RenderMetrics? = null,
+  // D1 — populated only with the `(id, kind)` pairs the client subscribed
+  // to (or globally attached via `attachDataProducts`). Absent and `[]` are
+  // interchangeable on the wire. See docs/daemon/DATA-PRODUCTS.md.
+  val dataProducts: List<DataProductAttachment>? = null,
+)
+
+/**
+ * One data-product attachment riding on a `renderFinished`. `payload` is per-kind JSON when the
+ * producer's transport is `inline`; `path` is an absolute path to a sibling file when the
+ * producer's transport is `path`. Exactly one of the two is set per attachment.
+ */
+@Serializable
+data class DataProductAttachment(
+  val kind: String,
+  val schemaVersion: Int,
+  val payload: JsonElement? = null,
+  val path: String? = null,
 )
 
 @Serializable

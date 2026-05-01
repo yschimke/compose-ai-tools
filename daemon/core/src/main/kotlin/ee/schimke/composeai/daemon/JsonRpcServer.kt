@@ -8,6 +8,11 @@ import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
 import ee.schimke.composeai.daemon.history.PruneReason
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
+import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.daemon.protocol.DataProductAttachment
+import ee.schimke.composeai.daemon.protocol.DataSubscribeParams
+import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
@@ -165,6 +170,13 @@ class JsonRpcServer(
    * very small value (e.g. 50ms) to drive the schedule deterministically.
    */
   private val autoPruneInitialDelayMs: Long = HistoryManager.DEFAULT_INITIAL_DELAY_MS,
+  /**
+   * D1 — producer-side seam for the data-product surface. Defaults to [DataProductRegistry.Empty]
+   * so pre-D2 callers keep `capabilities.dataProducts = []` and every `data/fetch` /
+   * `data/subscribe` short-circuits to `DataProductUnknown`. The renderer-side a11y producer (D2,
+   * in `renderer-android`) is the first concrete implementation that gets wired in by `DaemonMain`.
+   */
+  private val dataProducts: DataProductRegistry = DataProductRegistry.Empty,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -230,6 +242,21 @@ class JsonRpcServer(
 
   /** Mapping host-side internal request id → caller's preview id string. */
   private val hostIdToPreviewId = ConcurrentHashMap<Long, String>()
+
+  /**
+   * D1 — kinds the client wants attached to *every* render of *every* preview, supplied via
+   * `initialize.options.attachDataProducts`. Pre-filtered against [DataProductRegistry.isKnown] +
+   * each kind's `attachable` flag at handshake time so the per-render path doesn't re-check.
+   */
+  @Volatile private var globalAttachKinds: Set<String> = emptySet()
+
+  /**
+   * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. The map is keyed
+   * by previewId so [setVisible] can drop entries for previews that are no longer on screen — see
+   * [pruneSubscriptionsToVisible]. Inner sets are wrapped via [ConcurrentHashMap.newKeySet] so
+   * subscribe / unsubscribe / attachment-build can race without locking.
+   */
+  private val subscriptions = ConcurrentHashMap<String, MutableSet<String>>()
 
   private val writerThread =
     Thread({ writerLoop() }, "compose-ai-daemon-writer").apply { isDaemon = false }
@@ -373,6 +400,9 @@ class JsonRpcServer(
       "history/read" -> handleHistoryRead(req)
       "history/diff" -> handleHistoryDiff(req)
       "history/prune" -> handleHistoryPrune(req)
+      "data/fetch" -> handleDataFetch(req)
+      "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
+      "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -407,6 +437,14 @@ class JsonRpcServer(
       running.set(false)
       return
     }
+    // D1 — accept the client's `attachDataProducts` set, narrowed to kinds the registry
+    // actually knows AND advertises as attachable. Anything outside that intersection is
+    // silently dropped: pre-D2 daemons advertise nothing, so even an over-eager client falls
+    // back to no global attachments rather than tripping `DataProductUnknown` on every
+    // render.
+    val attachableKinds = dataProducts.capabilities.filter { it.attachable }.map { it.kind }.toSet()
+    globalAttachKinds =
+      (params.options?.attachDataProducts ?: emptyList()).toSet().intersect(attachableKinds)
     val result =
       InitializeResult(
         protocolVersion = PROTOCOL_VERSION,
@@ -421,6 +459,8 @@ class JsonRpcServer(
             sandboxRecycle = true,
             // Leak detection (B2.4) not wired yet — empty list = unavailable.
             leakDetection = emptyList<LeakDetectionMode>(),
+            // D1 — advertised kinds. Empty when no producer was wired (pre-D2 default).
+            dataProducts = dataProducts.capabilities,
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty
@@ -1033,12 +1073,125 @@ class JsonRpcServer(
         }
         is RenderMetrics.FromFlatMapResult.Populated -> outcome.metrics
       }
+    // D1 — pull attachments from the registry for the union of (per-preview) subscribed kinds
+    // and the global attach set. The registry returns an empty list for kinds that didn't land
+    // anything for this render (e.g. an a11y producer on a render whose mode skipped a11y), so
+    // a missing attachment never blocks the renderFinished. We omit the field entirely when the
+    // resulting list is empty so pre-D1 fixtures keep round-tripping.
+    val requestedKinds: Set<String> =
+      (subscriptions[previewId]?.toSet() ?: emptySet()) + globalAttachKinds
+    val attachments: List<DataProductAttachment> =
+      if (requestedKinds.isEmpty()) emptyList()
+      else dataProducts.attachmentsFor(previewId, requestedKinds)
     return RenderFinishedParams(
       id = previewId,
       pngPath = pngPath,
       tookMs = tookMs,
       metrics = metrics,
+      dataProducts = attachments.takeIf { it.isNotEmpty() },
     )
+  }
+
+  // --------------------------------------------------------------------------
+  // D1 — data product handlers. See docs/daemon/DATA-PRODUCTS.md.
+  // --------------------------------------------------------------------------
+
+  private fun handleDataFetch(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, DataFetchParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid data/fetch params: ${e.message}",
+        )
+        return
+      }
+    when (
+      val outcome = dataProducts.fetch(params.previewId, params.kind, params.params, params.inline)
+    ) {
+      is DataProductRegistry.Outcome.Ok ->
+        sendResponse(req.id, encode(DataFetchResult.serializer(), outcome.result))
+      DataProductRegistry.Outcome.Unknown ->
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_DATA_PRODUCT_UNKNOWN,
+          message = "data/fetch: kind not advertised: ${params.kind}",
+        )
+      DataProductRegistry.Outcome.NotAvailable ->
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_DATA_PRODUCT_NOT_AVAILABLE,
+          message = "data/fetch: preview '${params.previewId}' has no render available",
+        )
+      is DataProductRegistry.Outcome.FetchFailed ->
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_DATA_PRODUCT_FETCH_FAILED,
+          message = "data/fetch: ${outcome.message}",
+        )
+      DataProductRegistry.Outcome.BudgetExceeded ->
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_DATA_PRODUCT_BUDGET_EXCEEDED,
+          message = "data/fetch: re-render budget exceeded for kind '${params.kind}'",
+        )
+    }
+  }
+
+  /**
+   * Handles `data/subscribe` (when [subscribe] is true) and `data/unsubscribe` (false) — they share
+   * the same params shape, so the dispatch path is folded together. Idempotent on both sides:
+   * re-subscribing returns ok, unsubscribing a kind that was never subscribed also returns ok.
+   * Validates the kind against the registry on subscribe so unattachable / unknown kinds fail fast.
+   */
+  private fun handleDataSubscribe(req: JsonRpcRequest, subscribe: Boolean) {
+    val method = if (subscribe) "data/subscribe" else "data/unsubscribe"
+    val params =
+      try {
+        decodeParams(req.params, DataSubscribeParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid $method params: ${e.message}",
+        )
+        return
+      }
+    if (subscribe) {
+      val capability = dataProducts.capabilities.firstOrNull { it.kind == params.kind }
+      if (capability == null || !capability.attachable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_DATA_PRODUCT_UNKNOWN,
+          message =
+            if (capability == null) "$method: kind not advertised: ${params.kind}"
+            else "$method: kind '${params.kind}' is not attachable",
+        )
+        return
+      }
+      subscriptions
+        .computeIfAbsent(params.previewId) { ConcurrentHashMap.newKeySet() }
+        .add(params.kind)
+    } else {
+      subscriptions[params.previewId]?.remove(params.kind)
+      // Drop the inner set when its last subscription cleared so the bookkeeping doesn't
+      // accumulate empty entries for previews the user has cycled through.
+      subscriptions.computeIfPresent(params.previewId) { _, v -> if (v.isEmpty()) null else v }
+    }
+    sendResponse(req.id, encode(DataSubscribeResult.serializer(), DataSubscribeResult.OK))
+  }
+
+  /**
+   * Per the design doc — subscriptions are sticky-while-visible only. When the client sends a fresh
+   * `setVisible` set, drop subscription state for previews that fell out of it. The UI is invited
+   * to re-subscribe when the preview returns to view rather than the daemon retaining state for
+   * unseen cards.
+   */
+  private fun pruneSubscriptionsToVisible(visible: Set<String>) {
+    val toDrop = subscriptions.keys - visible
+    for (id in toDrop) subscriptions.remove(id)
   }
 
   private fun handleShutdown(req: JsonRpcRequest) {
@@ -1061,7 +1214,8 @@ class JsonRpcServer(
     when (n.method) {
       "initialized" -> initialized.set(true)
       "exit" -> handleExit()
-      "setVisible" -> tryDecode(SetVisibleParams.serializer(), n) { /* no-op for B1.5 */ }
+      "setVisible" ->
+        tryDecode(SetVisibleParams.serializer(), n) { pruneSubscriptionsToVisible(it.ids.toSet()) }
       "setFocus" -> tryDecode(SetFocusParams.serializer(), n) { /* no-op for B1.5 */ }
       "fileChanged" -> tryDecode(FileChangedParams.serializer(), n) { handleFileChanged(it) }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
@@ -1535,6 +1689,18 @@ class JsonRpcServer(
      * fields by design."
      */
     const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
+
+    /** DATA-PRODUCTS.md § "Error codes" — kind not advertised by the daemon. */
+    const val ERR_DATA_PRODUCT_UNKNOWN: Int = -32020
+
+    /** DATA-PRODUCTS.md § "Error codes" — preview has never rendered; caller should `renderNow`. */
+    const val ERR_DATA_PRODUCT_NOT_AVAILABLE: Int = -32021
+
+    /** DATA-PRODUCTS.md § "Error codes" — re-render or projection failed; details in `data`. */
+    const val ERR_DATA_PRODUCT_FETCH_FAILED: Int = -32022
+
+    /** DATA-PRODUCTS.md § "Error codes" — re-render budget tripped before the payload landed. */
+    const val ERR_DATA_PRODUCT_BUDGET_EXCEEDED: Int = -32023
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }

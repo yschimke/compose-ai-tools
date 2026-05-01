@@ -78,6 +78,23 @@ class MessagesTest {
 
   @Test fun roundTripLogParams() = roundTrip<LogParams>("daemon-log.json")
 
+  // D1 — data product fixtures. See docs/daemon/DATA-PRODUCTS.md § "Wire surface".
+
+  @Test fun roundTripDataFetchParams() = roundTrip<DataFetchParams>("client-dataFetch.json")
+
+  @Test fun roundTripDataFetchResult() = roundTrip<DataFetchResult>("daemon-dataFetchResult.json")
+
+  @Test
+  fun roundTripDataSubscribeParams() = roundTrip<DataSubscribeParams>("client-dataSubscribe.json")
+
+  @Test
+  fun roundTripDataSubscribeResult() =
+    roundTrip<DataSubscribeResult>("daemon-dataSubscribeResult.json")
+
+  @Test
+  fun roundTripRenderFinishedParamsWithDataProducts() =
+    roundTrip<RenderFinishedParams>("daemon-renderFinished-withDataProducts.json")
+
   @Test fun roundTripJsonRpcRequest() = roundTrip<JsonRpcRequest>("envelope-request.json")
 
   @Test fun roundTripJsonRpcResponse() = roundTrip<JsonRpcResponse>("envelope-response.json")
@@ -123,6 +140,12 @@ class MessagesTest {
         "envelope-response.json",
         "envelope-notification.json",
         "envelope-errorResponse.json",
+        // D1 — data products.
+        "client-dataFetch.json",
+        "daemon-dataFetchResult.json",
+        "client-dataSubscribe.json",
+        "daemon-dataSubscribeResult.json",
+        "daemon-renderFinished-withDataProducts.json",
       )
     val missing = expected - present
     assertEquals("missing protocol fixtures: $missing", emptySet<String>(), missing)

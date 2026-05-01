@@ -3,6 +3,10 @@ import { FrameDecoder, encodeFrame } from './daemonFraming';
 import {
     ClasspathDirtyParams,
     DaemonWarmingParams,
+    DataFetchParams,
+    DataFetchResult,
+    DataSubscribeParams,
+    DataSubscribeResult,
     DiscoveryUpdatedParams,
     FileChangedParams,
     HistoryAddedParams,
@@ -153,6 +157,36 @@ export class DaemonClient {
      *  PROTOCOL.md § 5 (history/diff). */
     historyDiff(params: HistoryDiffParams): Promise<HistoryDiffResult> {
         return this.request<HistoryDiffResult>('history/diff', params);
+    }
+
+    /**
+     * D1 — pull-on-demand data product fetch. See
+     * `docs/daemon/DATA-PRODUCTS.md` § "Wire surface". The call resolves
+     * against the latest render of the preview; the daemon may trigger a
+     * re-render if the kind wasn't computed in the last pass and is
+     * marked `requiresRerender: true` in capabilities. Pre-D2 daemons
+     * that haven't wired any producer reject with
+     * `DataProductUnknown (-32020)`.
+     */
+    dataFetch(params: DataFetchParams): Promise<DataFetchResult> {
+        return this.request<DataFetchResult>('data/fetch', params);
+    }
+
+    /**
+     * D1 — sticky `(previewId, kind)` subscription. While subscribed, every
+     * `renderFinished` for `previewId` carries the kind in its
+     * `dataProducts` field. Idempotent. Drops automatically when
+     * `previewId` leaves the most recent `setVisible` set, so the panel
+     * UI is invited to re-subscribe when the preview returns to view.
+     */
+    dataSubscribe(params: DataSubscribeParams): Promise<DataSubscribeResult> {
+        return this.request<DataSubscribeResult>('data/subscribe', params);
+    }
+
+    /** D1 — opposite of {@link dataSubscribe}. Idempotent — unsubscribing
+     *  a kind that was never subscribed succeeds silently. */
+    dataUnsubscribe(params: DataSubscribeParams): Promise<DataSubscribeResult> {
+        return this.request<DataSubscribeResult>('data/unsubscribe', params);
     }
 
     /**

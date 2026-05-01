@@ -52,6 +52,11 @@ export const ERROR_RENDER_FAILED = -32005;
 export const ERROR_HISTORY_ENTRY_NOT_FOUND = -32010;
 export const ERROR_HISTORY_DIFF_MISMATCH = -32011;
 export const ERROR_HISTORY_PIXEL_NOT_IMPLEMENTED = -32012;
+// Data products (phase D1) — see DATA-PRODUCTS.md § "Error codes".
+export const ERROR_DATA_PRODUCT_UNKNOWN = -32020;
+export const ERROR_DATA_PRODUCT_NOT_AVAILABLE = -32021;
+export const ERROR_DATA_PRODUCT_FETCH_FAILED = -32022;
+export const ERROR_DATA_PRODUCT_BUDGET_EXCEEDED = -32023;
 
 // initialize (PROTOCOL.md § 3)
 
@@ -67,7 +72,38 @@ export interface InitializeParams {
         warmSpare?: boolean;
         detectLeaks?: 'off' | 'light' | 'heavy';
         foreground?: boolean;
+        /**
+         * Data-product kinds the client wants attached to *every* render of
+         * *every* preview, ambient. Reserved for genuinely cheap, always-on
+         * kinds (today: `a11y/atf` only). Most clients leave this empty and
+         * use `data/subscribe` for sticky-while-visible attachment instead.
+         * See `docs/daemon/DATA-PRODUCTS.md` § "Wire surface".
+         */
+        attachDataProducts?: string[];
     };
+}
+
+/**
+ * One advertised data-product kind on the daemon side. Mirrors
+ * `DataProductCapability` in `daemon/core/.../Messages.kt`; see
+ * `docs/daemon/DATA-PRODUCTS.md` § "The primitive" for semantics.
+ *
+ * `transport`: `'inline'` means the payload travels as JSON in the response;
+ * `'path'` means the daemon writes a sibling file and returns its absolute
+ * path; `'both'` lets the caller pick via `data/fetch.inline`.
+ *
+ * `attachable` / `fetchable` describe which surfaces support the kind —
+ * a kind that's only producible by re-rendering may be `fetchable: true,
+ * attachable: false`. `requiresRerender: true` warns the client that a
+ * `data/fetch` against a never-rendered preview will pay a render cost.
+ */
+export interface DataProductCapability {
+    kind: string;
+    schemaVersion: number;
+    transport: 'inline' | 'path' | 'both';
+    attachable: boolean;
+    fetchable: boolean;
+    requiresRerender: boolean;
 }
 
 export interface InitializeResult {
@@ -78,6 +114,13 @@ export interface InitializeResult {
         incrementalDiscovery: boolean;
         sandboxRecycle: boolean;
         leakDetection: ('light' | 'heavy')[];
+        /**
+         * Phase D1 — kinds the daemon can produce. Empty list means the
+         * daemon doesn't speak the data-product surface (pre-D1 daemons).
+         * Additive: clients ignore unknown kinds, daemons reject unknown
+         * kinds in subscribe/fetch with `DataProductUnknown` (-32020).
+         */
+        dataProducts: DataProductCapability[];
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };
@@ -145,11 +188,31 @@ export interface RenderMetrics {
     sandboxAgeMs: number;
 }
 
+/**
+ * One data-product attachment riding on a `renderFinished` notification.
+ * `payload` is per-kind JSON when `transport='inline'`; `path` is an
+ * absolute path to a sibling file when `transport='path'`. Exactly one of
+ * the two is set per entry.
+ */
+export interface DataProductAttachment {
+    kind: string;
+    schemaVersion: number;
+    payload?: unknown;
+    path?: string;
+}
+
 export interface RenderFinishedParams {
     id: string;
     pngPath: string;
     tookMs: number;
     metrics?: RenderMetrics;
+    /**
+     * Phase D1 — populated only with the `(id, kind)` pairs the client has
+     * subscribed to via `data/subscribe`, plus everything in
+     * `initialize.options.attachDataProducts`. Absent / `[]` mean "no
+     * attachments"; clients MUST treat the two interchangeably.
+     */
+    dataProducts?: DataProductAttachment[];
 }
 
 export interface RenderError {
@@ -262,6 +325,52 @@ export interface HistoryDiffResult {
 export interface HistoryAddedParams {
     /** Sidecar JSON of the newly-written entry. */
     entry: unknown;
+}
+
+// Data products (phase D1) — see docs/daemon/DATA-PRODUCTS.md.
+//
+// Three methods:
+// - `data/fetch`     — pull-on-demand. Returns a payload for one
+//                      `(previewId, kind)` pair against the latest render;
+//                      may trigger a re-render if the kind needs it.
+// - `data/subscribe` — sticky attach. While subscribed, every
+//                      `renderFinished` for `previewId` carries the kind
+//                      in its `dataProducts` field. Drops automatically
+//                      when the preview leaves `setVisible`.
+// - `data/unsubscribe` — opposite. Idempotent.
+
+export interface DataFetchParams {
+    previewId: string;
+    kind: string;
+    /** Per-kind options. Documented alongside each kind. */
+    params?: Record<string, unknown>;
+    /**
+     * `true` → daemon inlines the payload (or `bytes` for blob kinds).
+     * `false` (default) → daemon writes JSON to disk and returns `path`,
+     * matching the cheaper local-client path used by `history/read`.
+     */
+    inline?: boolean;
+}
+
+export interface DataFetchResult {
+    kind: string;
+    schemaVersion: number;
+    payload?: unknown;
+    path?: string;
+    /** Base64 — set only when caller passed `inline: true` and the kind's
+     *  transport is blob-shaped. Reserved for non-local clients. */
+    bytes?: string;
+}
+
+export interface DataSubscribeParams {
+    previewId: string;
+    kind: string;
+}
+
+/** Acknowledgement-only result; the response shape is intentionally
+ *  trivial so adding fields stays additive. */
+export interface DataSubscribeResult {
+    ok: true;
 }
 
 // Interactive mode (reserved — see docs/daemon/INTERACTIVE.md § 7).
