@@ -82,8 +82,13 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
     async refresh(): Promise<void> {
         if (!this.view || !this.currentScope) {
             this.view?.webview.postMessage({ command: 'showMessage', text: 'Open a Kotlin file to see its render history.' });
+            this.view?.webview.postMessage({ command: 'setScopeLabel', label: null });
             return;
         }
+        const label = this.currentScope.previewId
+            ? this.currentScope.previewLabel ?? this.currentScope.previewId
+            : null;
+        this.view.webview.postMessage({ command: 'setScopeLabel', label });
         try {
             const result = await this.source.list(this.currentScope);
             this.view.webview.postMessage({ command: 'setEntries', result });
@@ -197,6 +202,15 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                      background: var(--vscode-textCodeBlock-background); padding: 6px; }
       .diff-inline { padding: 8px; background: var(--vscode-editorWidget-background);
                      margin-top: 8px; border-left: 2px solid var(--vscode-focusBorder); }
+      .scope-chip { display: inline-flex; align-items: center; gap: 6px;
+                    padding: 2px 8px; margin-bottom: 8px;
+                    background: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    border-radius: 10px; font-size: 90%;
+                    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+                    white-space: nowrap; }
+      .scope-chip[hidden] { display: none; }
+      .scope-chip .codicon { font-size: 12px; opacity: 0.85; }
     </style>
 </head>
 <body>
@@ -212,6 +226,11 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         <button id="btn-refresh" title="Refresh">⟳</button>
         <button id="btn-diff" disabled title="Pixel-diff two selected entries (metadata mode in current daemon)">Diff selected</button>
     </div>
+    <div id="scope-chip" class="scope-chip" role="status" aria-live="polite" hidden
+         title="History narrowed because a single preview is selected in the live panel — change focus or filters there to widen.">
+        <i class="codicon codicon-filter" aria-hidden="true"></i>
+        <span id="scope-chip-label"></span>
+    </div>
     <div id="message" class="message">Loading…</div>
     <div id="timeline" class="timeline" role="list" aria-label="History entries"></div>
 
@@ -224,6 +243,8 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         const filterBranchEl = document.getElementById('filter-branch');
         const btnRefreshEl = document.getElementById('btn-refresh');
         const btnDiffEl = document.getElementById('btn-diff');
+        const scopeChipEl = document.getElementById('scope-chip');
+        const scopeChipLabelEl = document.getElementById('scope-chip-label');
 
         let entries = [];
         let selectedIds = new Set();
@@ -436,6 +457,15 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 case 'showMessage':
                     setMessage(msg.text || '');
                     break;
+                case 'setScopeLabel':
+                    if (msg.label) {
+                        scopeChipLabelEl.textContent = msg.label;
+                        scopeChipEl.hidden = false;
+                    } else {
+                        scopeChipLabelEl.textContent = '';
+                        scopeChipEl.hidden = true;
+                    }
+                    break;
                 case 'imageReady':
                     fillExpansion(msg.id, msg.imageData, msg.entry);
                     break;
@@ -478,6 +508,10 @@ export interface HistoryScope {
     /** Optional preview filter; when null, the panel shows every preview
      *  in the module's history. */
     previewId?: string;
+    /** Display name for the previewId filter (function or `@Preview` name).
+     *  Surfaced in the panel's toolbar as a chip when set so the user can
+     *  see why entries are narrowed. Not used for filtering. */
+    previewLabel?: string;
 }
 
 /**
