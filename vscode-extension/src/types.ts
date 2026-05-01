@@ -260,9 +260,11 @@ export type ExtensionToWebview =
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
      * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).
-     * The webview hides the bar on its own when `percent` reaches 1.
+     * `slow` is true when the current phase is overrunning its calibrated
+     * estimate — the webview tints the bar and appends "(slow)" to the
+     * label. The webview hides the bar on its own when `percent` reaches 1.
      */
-    | { command: 'setProgress'; phase: string; label: string; percent: number }
+    | { command: 'setProgress'; phase: string; label: string; percent: number; slow?: boolean }
     /** Force-clear the progress bar (e.g. on cancellation or fatal error). */
     | { command: 'clearProgress' };
 

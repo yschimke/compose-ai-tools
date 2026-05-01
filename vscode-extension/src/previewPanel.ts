@@ -119,29 +119,69 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // beat so the user sees the completed state, then fades the strip
         // out so it doesn't permanently occupy a row of UI.
         let progressHideTimer = null;
+        // Deferred-mount state. The bar isn't shown until [PROGRESS_MOUNT_DELAY_MS]
+        // of in-flight work has accumulated — warm-cache refreshes that finish
+        // in <200ms never mount it at all, avoiding the "flash on, flash off"
+        // glitch. progressVisible flips true once we've actually rendered
+        // something into the DOM; subsequent setProgress updates within the
+        // same refresh apply directly without re-deferring.
+        const PROGRESS_MOUNT_DELAY_MS = 200;
+        let progressMountTimer = null;
+        let progressVisible = false;
+        let pendingProgressState = null;
 
-        function setProgress(label, percent) {
-            if (progressHideTimer) {
-                clearTimeout(progressHideTimer);
-                progressHideTimer = null;
-            }
-            const pct = Math.max(0, Math.min(1, percent));
+        function applyProgressState(state) {
+            const pct = Math.max(0, Math.min(1, state.percent));
             progressBar.hidden = false;
+            progressVisible = true;
             progressBar.classList.remove('progress-finishing');
+            progressBar.classList.toggle('progress-slow', !!state.slow);
             progressFill.style.width = (pct * 100).toFixed(1) + '%';
             progressBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
-            progressLabel.textContent = label
-                ? label + ' · ' + Math.round(pct * 100) + '%'
+            const slowSuffix = state.slow ? ' (slow)' : '';
+            progressLabel.textContent = state.label
+                ? state.label + slowSuffix + ' · ' + Math.round(pct * 100) + '%'
                 : '';
             if (pct >= 1) {
                 progressBar.classList.add('progress-finishing');
                 progressHideTimer = setTimeout(() => {
                     progressBar.hidden = true;
-                    progressBar.classList.remove('progress-finishing');
+                    progressVisible = false;
+                    progressBar.classList.remove('progress-finishing', 'progress-slow');
                     progressFill.style.width = '0%';
                     progressLabel.textContent = '';
                     progressHideTimer = null;
                 }, 600);
+            }
+        }
+
+        function setProgress(label, percent, slow) {
+            if (progressHideTimer) {
+                clearTimeout(progressHideTimer);
+                progressHideTimer = null;
+            }
+            const state = { label: label || '', percent, slow: !!slow };
+            // Already visible (or mid-fade) — apply directly.
+            if (progressVisible) {
+                applyProgressState(state);
+                return;
+            }
+            // Latched state for whenever the deferral timer fires.
+            pendingProgressState = state;
+            // Already terminal — show immediately so the brief flash isn't
+            // missed (rare path: tracker emits an immediate done=100% before
+            // any phase work happens, e.g. up-to-date discover).
+            if (state.percent >= 1) {
+                applyProgressState(state);
+                return;
+            }
+            if (progressMountTimer === null) {
+                progressMountTimer = setTimeout(() => {
+                    progressMountTimer = null;
+                    if (pendingProgressState) {
+                        applyProgressState(pendingProgressState);
+                    }
+                }, PROGRESS_MOUNT_DELAY_MS);
             }
         }
 
@@ -150,8 +190,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 clearTimeout(progressHideTimer);
                 progressHideTimer = null;
             }
+            if (progressMountTimer) {
+                clearTimeout(progressMountTimer);
+                progressMountTimer = null;
+            }
+            pendingProgressState = null;
+            progressVisible = false;
             progressBar.hidden = true;
-            progressBar.classList.remove('progress-finishing');
+            progressBar.classList.remove('progress-finishing', 'progress-slow');
             progressFill.style.width = '0%';
             progressLabel.textContent = '';
         }
@@ -984,7 +1030,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
         }
 
-        /** Add a subtle spinner overlay to every card during a stealth refresh. */
+        // Two-stage overlay during stealth refresh:
+        //   stage 1 (0–500ms): tiny corner spinner, no dim, no blur. Most
+        //     daemon hits land in this window — image swap reads as a clean
+        //     update, no "dim → undim" flicker.
+        //   stage 2 (>500ms):  classic subtle (dim + blur + corner spinner).
+        //     The build is taking real time, escalate so the user sees the
+        //     panel is actually working.
+        // Cards whose updateImage arrives during stage 1 never see stage 2.
+        const OVERLAY_ESCALATE_MS = 500;
+        let overlayEscalationTimer = null;
+
         function markAllLoading() {
             document.querySelectorAll('.preview-card').forEach(card => {
                 const container = card.querySelector('.image-container');
@@ -994,10 +1050,32 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 // Don't add overlay if there's just a skeleton (nothing useful to cover)
                 if (container.querySelector('.skeleton') && !container.querySelector('img')) return;
                 const overlay = document.createElement('div');
-                overlay.className = 'loading-overlay subtle';
+                overlay.className = 'loading-overlay minimal';
                 overlay.innerHTML = '<div class="spinner" aria-label="Refreshing"></div>';
                 container.appendChild(overlay);
             });
+            scheduleOverlayEscalation();
+        }
+
+        function scheduleOverlayEscalation() {
+            if (overlayEscalationTimer) clearTimeout(overlayEscalationTimer);
+            overlayEscalationTimer = setTimeout(() => {
+                overlayEscalationTimer = null;
+                // Promote every still-present minimal overlay to subtle.
+                // Cards whose images already arrived have removed their
+                // overlays, so this only touches cards still waiting.
+                document.querySelectorAll('.loading-overlay.minimal').forEach(o => {
+                    o.classList.remove('minimal');
+                    o.classList.add('subtle');
+                });
+            }, OVERLAY_ESCALATE_MS);
+        }
+
+        function cancelOverlayEscalation() {
+            if (overlayEscalationTimer) {
+                clearTimeout(overlayEscalationTimer);
+                overlayEscalationTimer = null;
+            }
         }
 
         /**
@@ -1256,6 +1334,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     // stale id from the previous module would dedupe the
                     // first publish and the History panel would miss it.
                     lastScopedPreviewId = null;
+                    // Cards are gone — escalation timer has nothing left to
+                    // promote. Avoids a stray timer firing after the next
+                    // refresh has installed fresh minimal overlays.
+                    cancelOverlayEscalation();
                     // Don't clear the message here — if it came with a
                     // follow-up showMessage (the usual pattern) it'll be
                     // replaced; if not, ensureNotBlank will backstop a
@@ -1309,7 +1391,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
 
                 case 'setProgress':
-                    setProgress(msg.label || '', msg.percent || 0);
+                    setProgress(msg.label || '', msg.percent || 0, msg.slow);
                     break;
 
                 case 'clearProgress':

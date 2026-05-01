@@ -64,7 +64,21 @@ export interface ProgressState {
     label: string;
     /** [0, 1]. Monotonic within a single tracker. 1 only when phase === 'done'. */
     percent: number;
+    /**
+     * True when this phase has been running for more than [SLOW_RATIO]× its
+     * expected duration. Surfaces as a warning tint on the bar plus a
+     * "(slow)" label suffix — cheap signal that a cold cache or version
+     * bump is at play, without popping a notification.
+     */
+    slow: boolean;
 }
+
+/**
+ * How far past the expected phase duration counts as "slow". 2× chosen as a
+ * soft threshold — the asymptotic curve already absorbs short overruns
+ * gracefully, so we only flag when the estimate is meaningfully wrong.
+ */
+const SLOW_RATIO = 2;
 
 /** Recorded duration per phase, used to calibrate future estimates. */
 export type PhaseDurations = Partial<Record<PhaseId, number>>;
@@ -283,10 +297,10 @@ export class BuildProgressTracker {
     private computeState(): ProgressState {
         const phase = PHASES[PHASE_INDEX[this.currentPhase]];
         if (this.currentPhase === 'done') {
-            return { phase: 'done', label: 'Done', percent: 1 };
+            return { phase: 'done', label: 'Done', percent: 1, slow: false };
         }
         if (this.currentPhase === 'starting') {
-            return { phase: 'starting', label: phase.label, percent: 0 };
+            return { phase: 'starting', label: phase.label, percent: 0, slow: false };
         }
         const { phaseStart, phaseEnd } = this.phaseBoundaries(this.currentPhase);
         const expectedMs = this.expectedPhaseMs(this.currentPhase);
@@ -303,7 +317,8 @@ export class BuildProgressTracker {
         // jump forward to.
         const fraction = Math.min(0.95, ratio);
         const percent = phaseStart + (phaseEnd - phaseStart) * fraction;
-        return { phase: this.currentPhase, label: phase.label, percent };
+        const slow = expectedMs > 0 && elapsed > SLOW_RATIO * expectedMs;
+        return { phase: this.currentPhase, label: phase.label, percent, slow };
     }
 
     /**

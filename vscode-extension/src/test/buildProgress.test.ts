@@ -46,6 +46,7 @@ interface Snapshot {
     phase: PhaseId;
     label: string;
     percent: number;
+    slow: boolean;
 }
 
 function makeTracker(opts: {
@@ -247,6 +248,35 @@ describe('BuildProgressTracker', () => {
         for (const p of PHASES) {
             assert.ok(p.label.length > 0, `phase ${p.id} missing label`);
         }
+    });
+
+    it('flags slow=true once elapsed exceeds 2x the phase estimate', () => {
+        const clock = new FakeClock();
+        // Calibrate compile to 1000ms — so any tick after 2000ms in compile
+        // counts as slow.
+        const calibration: PhaseDurations = { compiling: 1000 };
+        const { tracker, states } = makeTracker({ clock, calibration });
+        tracker.start();
+        tracker.consume('> Task :a:compileDebugKotlin\n');
+        const enteredCompile = states[states.length - 1];
+        assert.strictEqual(enteredCompile.slow, false,
+            'just-entered phase should not be slow');
+
+        clock.advance(1500);
+        const halfwayOver = states[states.length - 1];
+        assert.strictEqual(halfwayOver.slow, false,
+            '1.5x expected is not yet slow');
+
+        clock.advance(1000); // total 2500ms — past the 2x threshold
+        const slow = states[states.length - 1];
+        assert.strictEqual(slow.slow, true, '>2x expected should flag slow');
+
+        // Transition out of the slow phase — slow flag resets for the next.
+        tracker.consume('> Task :a:renderPreviews\n');
+        const renderJustStarted = states[states.length - 1];
+        assert.strictEqual(renderJustStarted.slow, false,
+            'fresh phase should reset the slow flag');
+        tracker.finish();
     });
 });
 

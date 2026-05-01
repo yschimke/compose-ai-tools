@@ -63,6 +63,19 @@ body {
     opacity: 0.85;
 }
 
+/* "Slow" annotation: when a phase is running >2× its calibrated estimate
+ * we tint the bar with the warning colour and append "(slow)" to the
+ * label. Cheap signal that something unusual is happening (cold cache,
+ * a Compose / AGP version bump invalidating Robolectric caches) without
+ * popping a notification. */
+.progress-bar.progress-slow .progress-fill {
+    background: var(--vscode-editorWarning-foreground, #cca700);
+}
+.progress-bar.progress-slow .progress-label {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    opacity: 1;
+}
+
 /* Final-state flash before fade-out. Brightens the strip momentarily so
  * the eye registers the transition from "in-flight" to "done". */
 .progress-bar.progress-finishing .progress-fill {
@@ -399,9 +412,30 @@ body {
     justify-content: center;
 }
 
-/* Subtle variant used during stealth refresh — dims + blurs the stale image
-   and drops a clearly visible spinner in the corner so it reads as "updating"
-   at a glance without clobbering the image you're editing. */
+/* Minimal variant — first 500 ms of a stealth refresh. Just a tiny corner
+   spinner, NO dim, NO blur. Most daemon-served updates land in this window
+   so the user sees a clean image swap rather than the dim → undim flicker
+   that read as "the panel went glitchy" before. After 500 ms this gets
+   promoted to .subtle by the JS escalation timer for builds that need a
+   stronger affordance. */
+.loading-overlay.minimal {
+    background: transparent;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding: 6px;
+    pointer-events: none;
+}
+.loading-overlay.minimal .spinner {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+    opacity: 0.85;
+}
+
+/* Subtle variant — escalated state, used after [OVERLAY_ESCALATE_MS] for
+   refreshes that take meaningful wall-clock time. Dims + blurs the stale
+   image and drops a clearly visible spinner in the corner so it reads as
+   "updating" at a glance without clobbering the image you're editing. */
 .loading-overlay.subtle {
     background: color-mix(in srgb, var(--vscode-editor-background) 35%, transparent);
     backdrop-filter: blur(1.5px);
@@ -420,7 +454,8 @@ body {
 }
 
 /* Fade the image a touch so the blur + spinner read as "refreshing". Uses
-   :has() so we don't have to touch the TS that manages the overlay DOM. */
+   :has() so we don't have to touch the TS that manages the overlay DOM.
+   Only the .subtle stage dims — .minimal leaves the image untouched. */
 .image-container:has(> .loading-overlay.subtle) img {
     opacity: 0.55;
     transition: opacity 0.15s ease-out;

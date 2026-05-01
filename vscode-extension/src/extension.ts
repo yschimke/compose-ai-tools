@@ -1119,6 +1119,7 @@ async function refresh(
             phase: state.phase,
             label: state.label,
             percent: state.percent,
+            slow: state.slow,
         });
     };
     const taskOpts = {
@@ -1235,7 +1236,7 @@ async function refresh(
         // to advance instead of sitting stuck at the end of `rendering` while
         // images stream in.
         if (!abort.signal.aborted) {
-            onProgress({ phase: 'loading', label: 'Loading images', percent: 0.92 });
+            onProgress({ phase: 'loading', label: 'Loading images', percent: 0.92, slow: false });
         }
 
         // Load images in parallel. Animated previews have multiple captures
@@ -1295,7 +1296,7 @@ async function refresh(
         }
         await Promise.all(imageJobs);
         if (!abort.signal.aborted) {
-            onProgress({ phase: 'done', label: 'Done', percent: 1 });
+            onProgress({ phase: 'done', label: 'Done', percent: 1, slow: false });
         }
 
         // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
