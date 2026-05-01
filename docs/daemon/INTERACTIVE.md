@@ -284,7 +284,297 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
    to false during interactive frames and dispatches the pixel coords
    into the active `ImageComposeScene`.
 
-## 9. Out of scope (v1)
+## 9. v2 — click dispatch into composition
+
+> **Status:** design only. v1 ships the wire shape; v2 makes
+> `interactive/input` actually mutate the composition. No protocol
+> changes — the v1 wire format already carries everything v2 needs.
+
+### 9.1 Why v1 isn't enough
+
+v1's `interactive/input` triggers a fresh render of the target preview,
+but the renderer still composes with `LocalInspectionMode = true` and
+allocates a fresh `ImageComposeScene` per render. The composition
+restarts from scratch on every frame, so any state derived from
+`remember { mutableStateOf(...) }` resets between clicks — which means
+even if we dispatched the pointer event correctly, the click wouldn't
+*do* anything observable. The user sees the bytes refresh and that's
+it.
+
+For v2 we need three pieces, each of which is small on its own but
+together force a real refactor:
+
+1. **Held composition.** The `ImageComposeScene` must persist across
+   `renderFinished` notifications for the duration of an
+   `interactive/start` so `remember`'d state survives. Today's render
+   path closes the scene in a `try/finally` after every render.
+2. **Pointer dispatch.** The pixel coords carried in
+   `interactive/input` need to reach the held scene via
+   `ImageComposeScene.sendPointerEvent`.
+3. **Inspection-mode flip.** `LocalInspectionMode = false` for the
+   duration of the interactive session so previews that branch on
+   `isInspectionMode` show their non-inspection ("real") behaviour and
+   pointer-input modifiers actually fire.
+
+### 9.2 InteractiveSession — held scene per stream
+
+A new daemon-internal abstraction owns the held scene + composition
+state for one `frameStreamId`. Lifecycle:
+
+- **Allocated** by `handleInteractiveStart` after the first
+  `interactive/start` for a given preview. Pre-renders one bootstrap
+  frame so the panel has something to paint immediately.
+- **Driven** by `handleInteractiveInput`: dispatches the pointer event
+  through `scene.sendPointerEvent`, drives Compose to recompose, then
+  encodes a fresh PNG and emits `renderFinished`.
+- **Released** by `handleInteractiveStop` (or by daemon shutdown):
+  closes the scene, frees the Skiko `Surface`, drops the entry from the
+  session map.
+
+Sketch:
+
+```kotlin
+class InteractiveSession(
+    val streamId: String,
+    val previewId: String,
+    private val scene: ImageComposeScene,
+    private val classLoader: ClassLoader,
+) : AutoCloseable {
+
+    fun dispatch(input: InteractiveInputParams) {
+        val type = when (input.kind) {
+            CLICK -> /* down + up */
+            POINTER_DOWN -> PointerEventType.Press
+            ...
+        }
+        val position = Offset(
+            (input.pixelX ?: 0).toFloat(),
+            (input.pixelY ?: 0).toFloat(),
+        )
+        scene.sendPointerEvent(type, position)
+    }
+
+    fun render(): RenderResult {
+        // Two render() calls so launched effects + recompositions settle.
+        scene.render()
+        val image = scene.render()
+        val pngData = image.encodeToData(EncodedImageFormat.PNG)
+        ...
+    }
+
+    override fun close() { scene.close() }
+}
+```
+
+`JsonRpcServer` keeps a `ConcurrentHashMap<String /*streamId*/, InteractiveSession>` parallel to the
+`interactiveTargets` map. Eviction on `interactive/stop` calls
+`session.close()` before removing the map entry.
+
+### 9.3 Scene allocation — same RenderEngine, different lifetime
+
+The desktop `RenderEngine` already knows how to set up a scene + invoke
+the composable + close. For v2, factor `RenderEngine.render` into:
+
+- `setUp(spec, classLoader, sandboxStats)` → `ImageComposeScene` (still
+  holding the user's composable, no first render yet).
+- `renderOnce(scene)` → `RenderResult` (encode current pixels to PNG;
+  does NOT close the scene).
+- `tearDown(scene)` (closes the scene + restores context classloader).
+
+`RenderEngine.render` becomes the existing one-shot wrapper around
+those three. The new `InteractiveSession` holds the scene long after
+`setUp` and calls `renderOnce` per input.
+
+### 9.4 Pointer dispatch
+
+`ImageComposeScene` (compose-multiplatform 1.10+) exposes
+`sendPointerEvent` from its `BaseComposeScene` parent:
+
+```kotlin
+fun sendPointerEvent(
+    eventType: PointerEventType,
+    position: Offset,
+    scrollDelta: Offset = Offset.Zero,
+    timeMillis: Long = System.currentTimeMillis(),
+    ...
+)
+```
+
+For a `CLICK` we send `Press` then `Release` at the same position back-
+to-back. `pointerDown` / `pointerUp` map directly. `keyDown` / `keyUp`
+go through `sendKeyEvent` (different API; same general shape).
+
+The pixel coords on the wire are **image-natural pixels** (the
+coordinate system the renderer thinks in — see § 6/§ 7). Compose's
+`Offset` is in "scene px" which equals natural pixels at density 1.0;
+when the spec carries a non-default `density` we divide before
+dispatch:
+
+```kotlin
+val sceneOffset = Offset(
+    pixelX / scene.density.density,
+    pixelY / scene.density.density,
+)
+```
+
+### 9.5 LocalInspectionMode flip
+
+Compose's `LocalInspectionMode` controls a few opt-in branches —
+`pointerInput` modifiers no-op when true, several text-input + IME
+behaviours short-circuit, and most importantly, app code that checks
+`if (LocalInspectionMode.current)` to bypass network/IO + use stub
+data won't run that bypass. For v1 the trade-off was "pin
+inspection-mode-aware previews to a deterministic stub", which is why
+we set it to true everywhere.
+
+For v2 the call inverts: an interactive session is the user *wanting*
+real behaviour. `InteractiveSession.setUp` provides
+`LocalInspectionMode = false`; non-interactive renders (the existing
+save → discoveryUpdated → renderFinished flow) keep
+`LocalInspectionMode = true`.
+
+The split is per-render, not per-engine: the same `RenderEngine`
+serves both interactive and non-interactive renders, and the flag is a
+parameter into `setUp`.
+
+### 9.6 Coalescing pointer bursts
+
+Click-only input, as v1 ships, doesn't burst — one click, one render.
+But v2's pointer-down/move/up sequence (when we add it) can emit
+hundreds of events per second from a drag.
+
+Approach: the daemon coalesces input bursts arriving while a render is
+already in flight for the same stream. `handleInteractiveInput` checks
+whether the session has a render in flight; if so, it appends the
+event to a per-session pending queue rather than enqueuing another
+render. When the in-flight render finishes, the watcher dispatches all
+queued events through `sendPointerEvent` in one batch and renders
+once. This caps the render rate at the renderer's natural cadence
+(typically 60 Hz on Skiko) without dropping events.
+
+`pointerMove` events specifically should *also* be coalesced
+intra-batch — keep only the most recent move at any pixel. v1 click-
+only doesn't need this; revisit when move events ship.
+
+### 9.7 Concurrent streams targeting the same preview
+
+`interactiveTargets` is a `ConcurrentHashMap<String, InteractiveTarget>`
+keyed by streamId, so two streams on the same `previewId` are legal at
+the wire level (§ 8). For v2 we have two reasonable architectures:
+
+- **One session per stream.** Each `interactive/start` allocates its
+  own held scene + composition. Inputs route by streamId; each stream
+  has its own state. Memory cost: 2× the scene per concurrent stream
+  on the same preview.
+- **One session per (previewId, classloaderGeneration).** Multiple
+  streams on the same preview share a session; inputs from any stream
+  drive the same composition. Memory: O(unique previews); state is
+  shared, which is *probably* the more useful semantics for the side-
+  by-side / CI use cases that motivated multi-target.
+
+We pick the second: shared session per previewId, ref-counted by the
+number of subscribed streamIds. The session lives until the last
+subscribed stream calls `interactive/stop`. This matches what a human
+would expect from "two streams looking at the same preview" — they're
+looking at the same thing, not at parallel copies of it.
+
+### 9.8 RenderHost surface — minimal interface change
+
+The renderer-agnostic `RenderHost` interface in `:daemon:core` already
+has `submit(RenderRequest, timeoutMs)`. v2 adds **one** new method:
+
+```kotlin
+interface RenderHost {
+    ...
+
+    /**
+     * Acquire a held interactive session for [previewId]. The session
+     * must own its own [ImageComposeScene] (or per-host equivalent) so
+     * `remember`'d state survives across [InteractiveSession.dispatch]
+     * calls. Default no-op throws — hosts that don't support
+     * interactive mode (FakeHost, the v1 stub) reject `interactive/start`
+     * via the standard MethodNotFound error path.
+     */
+    fun acquireInteractiveSession(
+        previewId: String,
+        classLoader: ClassLoader,
+    ): InteractiveSession =
+        throw UnsupportedOperationException(
+            "interactive mode unsupported by ${this::class.simpleName}"
+        )
+}
+```
+
+`InteractiveSession` itself moves into `:daemon:core` as an interface;
+`:daemon:desktop` ships the concrete implementation. `:daemon:android`
+gets a `throw UnsupportedOperationException` stub (Robolectric pointer
+dispatch is its own follow-up — § 9.10).
+
+`JsonRpcServer.handleInteractiveStart` checks
+`host.acquireInteractiveSession` for `UnsupportedOperationException`
+and reflects that to the wire as `MethodNotFound (-32601)` so old
+panels can fall back gracefully.
+
+### 9.9 Tests
+
+The challenge: actually verifying clicks reach composition requires a
+real Compose render. v1's `BytesAwareFakeHost` returns canned PNGs and
+can't observe state mutation.
+
+Two-layer test approach:
+
+1. **`:daemon:core` integration test (FakeHost-driven).** Verifies the
+   protocol-level plumbing — `interactive/start` allocates, `input`
+   dispatches, `stop` releases — without actually exercising
+   composition. The fake host records `dispatch(input)` calls into a
+   visible counter; the test asserts each `interactive/input` produces
+   a counter bump. Fast, deterministic, doesn't need Compose.
+2. **`:daemon:desktop` integration test (real RenderEngine).** A
+   stateful preview composable that paints red on first render, paints
+   green after one click. The test pre-renders, asserts red bytes,
+   sends `interactive/input` with pixel coords inside the click
+   region, asserts green bytes on the next `renderFinished`. This is
+   the honest "v2 actually works" assertion. Single-digit-second
+   runtime.
+
+Both tests live next to existing peers (`InteractiveRpcIntegrationTest`,
+`RenderEngineTest`) and follow the same harness patterns.
+
+### 9.10 Android (Robolectric) — explicitly out of scope for v2
+
+`androidx.compose.ui.test.junit4`'s pointer-input dispatch (`onNode`,
+`performClick`) requires a `ComposeTestRule` + `ActivityScenario`,
+which are inseparably tied to JUnit's `@Test`-method lifetime. The
+existing `RobolectricRenderTest` works around this with the dummy-
+`@Test` runner trick (DESIGN § 9), and that scaffold doesn't survive
+across multiple driver invocations from one daemon session — once the
+test method exits, the rule is closed and the activity is destroyed.
+
+Making Robolectric click-aware needs either (a) a custom long-lived
+sandbox without the JUnit lifecycle (significant Robolectric internals
+reverse-engineering — see CLASSLOADER-FORENSICS.md for the kind of
+work required) or (b) rebuilding the rule + activity per input
+(rebuilds composition state, defeats the point). Both are large.
+
+v2 lands desktop only. Android `interactive/input` against a daemon
+backed by `RobolectricHost` rejects with `MethodNotFound`, the panel
+falls back. The status bar surfaces "interactive mode unsupported by
+Android backend" so the user knows. Lifting this is a v3 problem with
+its own design pass.
+
+### 9.11 Rollout — three PRs
+
+Roughly:
+
+1. **PR 1 — RenderHost surface + InteractiveSession interface** (`:daemon:core`). Adds the new method + interface, keeps every existing host on the default no-op throw. JsonRpcServer's `handleInteractiveStart` translates the throw to `MethodNotFound`. The wire behaviour for callers is identical to v1: the daemon accepts `interactive/start` and dispatches inputs but the renders still come from `submitRenderAsync` (no scene-warming yet). Adds the FakeHost-driven test from § 9.9.1 to validate the plumbing.
+
+2. **PR 2 — Desktop RenderEngine refactor + concrete InteractiveSession** (`:daemon:desktop`). Splits `RenderEngine.render` into `setUp`/`renderOnce`/`tearDown`. `DesktopHost.acquireInteractiveSession` returns a `DesktopInteractiveSession` that holds the scene. JsonRpcServer's `handleInteractiveInput` switches to `session.dispatch + session.render` for streams that have a session, falls back to the v1 path otherwise. Adds the stateful-composable integration test from § 9.9.2.
+
+3. **PR 3 — Coalescing + extension UI polish** (`:daemon:core` + `vscode-extension`). Wires the in-flight coalescing queue from § 9.6. Adds a tiny status-bar hint when interactive mode is rejected because the host doesn't support it (Android case). Probably also flips the panel's `interactivePreviewId` to a `Set<previewId>` so the "watch two previews live" use case is reachable from the UI when the user holds Shift on the LIVE toggle (optional; requires a small UX call).
+
+Total: ~600 lines of Kotlin + ~100 lines of TypeScript across the three PRs. Each PR is independently mergeable — PR 1 alone would let an external programmatic client build its own session-aware host without waiting for desktop wiring.
+
+## 10. Out of scope (v1)
 
 - **Continuous-stream rendering** in the absence of edits/clicks. v1
   treats `renderFinished` as the streaming heartbeat — no edits, no new
