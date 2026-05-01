@@ -140,7 +140,30 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  fun rejectsHolderWithSandboxCountAboveOne() {
+  fun rejectsLegacyHolderPlusFactory() {
+    // SANDBOX-POOL-FOLLOWUPS.md (#1) — the two constructor paths are mutually exclusive. Pre-#1
+    // the constraint was "no holder when sandboxCount > 1"; now the constraint is "use either
+    // form, not both."
+    val holder =
+      UserClassLoaderHolder(
+        urls = emptyList(),
+        parentSupplier = { ClassLoader.getSystemClassLoader() },
+      )
+    val ex =
+      assertThrows(IllegalArgumentException::class.java) {
+        RobolectricHost(
+          userClassloaderHolder = holder,
+          userClassloaderHolderFactory = { _ -> holder },
+        )
+      }
+    assertTrue(
+      "error should call out the holder-vs-factory exclusivity, got: ${ex.message}",
+      ex.message?.contains("not both") == true,
+    )
+  }
+
+  @Test
+  fun rejectsLegacyHolderWithSandboxCountAboveOne() {
     val holder =
       UserClassLoaderHolder(
         urls = emptyList(),
@@ -151,9 +174,97 @@ class RobolectricHostPoolTest {
         RobolectricHost(userClassloaderHolder = holder, sandboxCount = 2)
       }
     assertTrue(
-      "error should explain why holder + sandboxCount>1 is forbidden, got: ${ex.message}",
-      ex.message?.contains("per-slot") == true,
+      "error should explain that pool callers should use the factory form, got: ${ex.message}",
+      ex.message?.contains("userClassloaderHolderFactory") == true,
     )
+  }
+
+  @Test
+  fun perSlotHoldersHaveDistinctChildLoadersParentedToTheirSandbox() {
+    // SANDBOX-POOL-FOLLOWUPS.md (#1) — the load-bearing per-slot guarantee: each slot's holder is
+    // parented to that slot's sandbox classloader, so a render that lands on slot N resolves user
+    // classes against sandbox N's framework classes (no classloader-identity skew across slots).
+    //
+    // Implementation note: we record the sandbox classloader the factory was invoked with for
+    // each slot, then assert the recorded set matches the sandbox classloaders the renders
+    // actually saw. This proves the factory was invoked with the right parent — without trying to
+    // build a real child URLClassLoader (which would require URL resources we don't have here).
+    val recordedParents = java.util.concurrent.ConcurrentHashMap<Int, ClassLoader>()
+    val factory: (ClassLoader) -> UserClassLoaderHolder = { sandboxClassLoader ->
+      val slotIndex =
+        // Each slot has a unique sandbox classloader; use its identity as the key. We don't know
+        // the slot index from inside the factory but identityHash is unique-per-instance.
+        System.identityHashCode(sandboxClassLoader)
+      recordedParents[slotIndex] = sandboxClassLoader
+      UserClassLoaderHolder(urls = emptyList(), parentSupplier = { sandboxClassLoader })
+    }
+    val host = RobolectricHost(sandboxCount = 2, userClassloaderHolderFactory = factory)
+    try {
+      host.start()
+      // Drive enough renders that each slot is exercised at least once.
+      val results =
+        (1..8).map { i ->
+          host.submit(RenderRequest.Render(payload = "previewId=com.example.Preview$i"))
+        }
+      val sandboxCls = results.map { it.classLoaderHashCode }.toSet()
+      assertEquals(
+        "two slots must produce two distinct sandbox classloaders, saw $sandboxCls",
+        2,
+        sandboxCls.size,
+      )
+      // The factory must have been invoked exactly once per slot (idempotent CAS in the host).
+      assertEquals(
+        "factory should be invoked once per slot, saw ${recordedParents.size}: ${recordedParents.keys}",
+        2,
+        recordedParents.size,
+      )
+      // Recorded parent classloaders match the classloaders the renders actually observed.
+      assertEquals(
+        "recorded parents must equal the rendered-against classloaders",
+        sandboxCls,
+        recordedParents.keys.toSet(),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun swapUserClassLoadersBroadcastsToEverySlot() {
+    // SANDBOX-POOL-FOLLOWUPS.md (#1) — `fileChanged({ kind: "source" })` calls
+    // `host.swapUserClassLoaders()`, which must invalidate every slot's holder so the next render
+    // to any slot allocates a fresh child loader. Pre-#1 the equivalent code only swapped one
+    // shared holder.
+    val swapCallsPerSlot = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.atomic.AtomicInteger>()
+    val factory: (ClassLoader) -> UserClassLoaderHolder = { sandboxClassLoader ->
+      val key = System.identityHashCode(sandboxClassLoader)
+      val counter = swapCallsPerSlot.computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
+      UserClassLoaderHolder(
+        urls = emptyList(),
+        parentSupplier = { sandboxClassLoader },
+        onSwap = { counter.incrementAndGet() },
+      )
+    }
+    val host = RobolectricHost(sandboxCount = 2, userClassloaderHolderFactory = factory)
+    try {
+      host.start()
+      // Warm both slots so both holders are allocated. Without this the swap is a no-op for slots
+      // whose factory has never been invoked.
+      (1..8).forEach { i -> host.submit(RenderRequest.Render(payload = "previewId=com.example.P$i")) }
+      assertEquals("expected both slots warmed", 2, swapCallsPerSlot.size)
+      // Trigger the broadcast.
+      host.swapUserClassLoaders()
+      // Each slot's holder must have observed exactly one swap.
+      for ((key, counter) in swapCallsPerSlot) {
+        assertEquals(
+          "slot identityHash=$key should observe exactly one swap broadcast",
+          1,
+          counter.get(),
+        )
+      }
+    } finally {
+      host.shutdown()
+    }
   }
 
   private fun <T : Throwable> assertThrows(expected: Class<T>, block: () -> Unit): T {

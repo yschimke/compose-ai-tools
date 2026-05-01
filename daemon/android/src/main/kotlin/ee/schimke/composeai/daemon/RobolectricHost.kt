@@ -80,27 +80,58 @@ open class RobolectricHost(
   /**
    * Number of Robolectric sandboxes to host in parallel — see
    * [SANDBOX-POOL.md](../../../../../../docs/daemon/SANDBOX-POOL.md). Default `1` preserves the
-   * pre-pool single-sandbox behaviour bit-for-bit. `> 1` is **experimental and currently broken
-   * via the JUnit-runner approach**: see SANDBOX-POOL.md "Layer 2 — empirical finding" for the
-   * stall on the second sandbox's bootstrap.
+   * pre-pool single-sandbox behaviour bit-for-bit. `> 1` boots N sandboxes in this JVM and
+   * dispatches concurrent renders across them via affinity-aware slot routing in [submit].
    *
-   * When [sandboxCount] > 1, [start] sequences boots, sets [SandboxHoldingHints.workerIndex] per
-   * worker so each sandbox lands on a distinct cache key, and dumps every thread's stack to
-   * stderr if any slot misses its ready latch — the diagnostic that informs the pivot to
-   * Robolectric's lower-level `Sandbox` API.
-   *
-   * **Restricted in v1:** [sandboxCount] > 1 requires [userClassloaderHolder] to be `null`.
+   * For the legacy single-instance [userClassloaderHolder] param (sandboxCount=1 only): set
+   * [userClassloaderHolderFactory] instead when you need the pool. Both paths are otherwise
+   * equivalent.
    */
   val sandboxCount: Int = 1,
+  /**
+   * Per-slot user-class loader factory — SANDBOX-POOL-FOLLOWUPS.md (#1, per-slot child loaders).
+   * When non-null, the host invokes the factory once per sandbox slot at first dispatch (with the
+   * slot's sandbox classloader) to allocate that slot's [UserClassLoaderHolder]. Each slot's
+   * holder owns a child `URLClassLoader` parented to its own sandbox loader, so the framework
+   * classes the child resolves match the sandbox the render runs in (no classloader-identity
+   * skew across slots).
+   *
+   * Mutually exclusive with the legacy single-instance [userClassloaderHolder] — at most one of
+   * the two may be non-null. Per-slot is required for `sandboxCount > 1` when hot-reload (file
+   * changed → swap user classloaders) is wired; the single-instance form is retained for
+   * single-sandbox callers and existing tests.
+   */
+  val userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
+    null,
 ) : RenderHost {
 
   init {
     require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
+    require(userClassloaderHolder == null || userClassloaderHolderFactory == null) {
+      "RobolectricHost: pass either userClassloaderHolder OR userClassloaderHolderFactory, not " +
+        "both. The factory form supersedes the single-instance form for sandboxCount > 1."
+    }
     require(sandboxCount == 1 || userClassloaderHolder == null) {
-      "sandboxCount > 1 with a non-null userClassloaderHolder is not supported in v1: per-slot " +
-        "child URLClassLoaders need separate work (SANDBOX-POOL.md). Got sandboxCount=$sandboxCount."
+      "RobolectricHost: sandboxCount > 1 with a non-null userClassloaderHolder is not supported " +
+        "(per-slot child URLClassLoaders need their own per-slot parent). Use " +
+        "userClassloaderHolderFactory for the pool path. Got sandboxCount=$sandboxCount."
     }
   }
+
+  /**
+   * Per-slot holders, allocated lazily on first dispatch to each slot. `null` when the host runs
+   * without any user-class isolation (factory unset, holder unset) — that's the default for the
+   * harness's in-process tests where testFixtures live on the sandbox classpath.
+   *
+   * Slot 0 is also populated by the legacy [userClassloaderHolder] path, so single-sandbox
+   * callers using either constructor form end up with a holder at index 0.
+   */
+  private val perSlotHolders: java.util.concurrent.atomic.AtomicReferenceArray<UserClassLoaderHolder?> =
+    java.util.concurrent.atomic.AtomicReferenceArray<UserClassLoaderHolder?>(sandboxCount).also {
+      // Seed slot 0 with the legacy single-instance holder so `swapUserClassLoaders()` and
+      // `publishChildLoader()` see one consistent source of truth.
+      if (userClassloaderHolder != null) it.set(0, userClassloaderHolder)
+    }
 
   private val workerThreads: List<Thread> =
     (0 until sandboxCount).map { i ->
@@ -215,19 +246,51 @@ open class RobolectricHost(
   }
 
   /**
-   * Mirrors the holder's current child classloader into [DaemonHostBridge.childLoaderRef] so the
-   * sandbox-side render thread can read it (the host-side holder lives in a package Robolectric
-   * re-loads inside the sandbox; the bridge package is do-not-acquire). Called before every
-   * [submit] so a fileChanged-driven swap on the JSON-RPC thread is visible to the next render —
-   * see B2.0's no-mid-render-cancellation discipline.
-   *
-   * The sandbox-ready latch is already 0 by the time [submit] runs — [start] blocked on it. The
-   * holder's `parentSupplier` (which reads `DaemonHostBridge.sandboxClassLoaderRef`) sees the
-   * sandbox loader directly, no per-submit wait, no race.
+   * SANDBOX-POOL-FOLLOWUPS.md (#1) — lazily allocate the holder for [slotIdx] from
+   * [userClassloaderHolderFactory], using the slot's already-claimed sandbox classloader as
+   * parent. Idempotent (CAS); subsequent calls return the same instance until [swapUserClassLoaders]
+   * drops it. Returns `null` when no factory is wired, in which case slot 0's
+   * [DaemonHostBridge.SandboxSlot.childLoaderRef] may already hold the legacy single-instance
+   * holder's child loader (seeded into [perSlotHolders]).
    */
-  private fun publishChildLoader() {
-    val holder = userClassloaderHolder ?: return
-    DaemonHostBridge.setCurrentChildLoader(holder.currentChildLoader())
+  private fun ensureHolderForSlot(slotIdx: Int): UserClassLoaderHolder? {
+    perSlotHolders.get(slotIdx)?.let { return it }
+    val factory = userClassloaderHolderFactory ?: return null
+    val sandboxLoader =
+      DaemonHostBridge.slot(slotIdx).sandboxClassLoaderRef.get()
+        ?: error(
+          "RobolectricHost.ensureHolderForSlot($slotIdx): slot's sandbox classloader is null — " +
+            "submit() should only be called after start() returns, by which point every slot has " +
+            "registered its loader."
+        )
+    val candidate = factory(sandboxLoader)
+    return if (perSlotHolders.compareAndSet(slotIdx, null, candidate)) candidate
+    else perSlotHolders.get(slotIdx)
+  }
+
+  /**
+   * Mirrors the slot's holder's current child classloader into the slot's
+   * [DaemonHostBridge.SandboxSlot.childLoaderRef] so the sandbox-side render thread can read it.
+   * Called per-submit so a fileChanged-driven [swapUserClassLoaders] on the JSON-RPC thread is
+   * visible to the next render — preserves B2.0's no-mid-render-cancellation discipline.
+   *
+   * Per-slot since the affinity-aware dispatch can land each preview on a different sandbox; the
+   * mirror needs to land on the slot the render is about to dispatch to.
+   */
+  private fun publishChildLoaderForSlot(slotIdx: Int) {
+    val holder = ensureHolderForSlot(slotIdx) ?: return
+    DaemonHostBridge.slot(slotIdx).childLoaderRef.set(holder.currentChildLoader())
+  }
+
+  /**
+   * SANDBOX-POOL-FOLLOWUPS.md (#1) — broadcast `swap()` to every slot's holder. Each holder
+   * lazily re-allocates its child `URLClassLoader` on next read, so the next render to that slot
+   * sees the recompiled bytecode. No-op when no holder is wired (default in-process tests).
+   */
+  override fun swapUserClassLoaders() {
+    for (i in 0 until sandboxCount) {
+      perSlotHolders.get(i)?.swap()
+    }
   }
 
   /**
@@ -242,11 +305,6 @@ open class RobolectricHost(
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
-    // B2.0 — publish the (possibly-just-swapped) child classloader to the bridge so the
-    // sandbox-side render dispatch picks it up. `holder.currentChildLoader()` is lazily allocated
-    // on first read after a swap, so this also amortises the allocation onto the host thread
-    // rather than the render thread.
-    publishChildLoader()
     // SANDBOX-POOL.md — slot dispatch. Hash the **previewId** to a slot so the same preview always
     // lands on the same sandbox; Compose snapshot caches and Robolectric shadow caches accumulate
     // per-sandbox and pay off on repeat renders. Falls back to the request id when the payload
@@ -257,6 +315,11 @@ open class RobolectricHost(
     // queue).
     val slotIdx = chooseSlotIndex(typed)
     val slot = DaemonHostBridge.slot(slotIdx)
+    // SANDBOX-POOL-FOLLOWUPS.md (#1) — publish the (possibly-just-swapped) child classloader to
+    // the slot the render is about to land on. `currentChildLoader()` is lazily allocated on
+    // first read after a swap, so this also amortises the allocation onto the host thread rather
+    // than the render thread.
+    publishChildLoaderForSlot(slotIdx)
     slot.requests.put(typed)
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
     val raw =

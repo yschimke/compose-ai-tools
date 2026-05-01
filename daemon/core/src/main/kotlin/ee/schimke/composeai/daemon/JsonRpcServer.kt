@@ -1093,7 +1093,11 @@ class JsonRpcServer(
   private fun handleFileChanged(params: FileChangedParams) {
     when (params.kind) {
       FileKind.SOURCE -> {
-        host.userClassloaderHolder?.swap()
+        // SANDBOX-POOL-FOLLOWUPS.md (#1) — broadcast to every slot's holder under sandboxCount>1.
+        // For single-sandbox hosts this is the same `swap()` call the previous code made on
+        // `userClassloaderHolder`; the default-no-op on hosts without holders (FakeHost, B1.3
+        // stubs) keeps the v1 fake-mode scenarios unchanged.
+        host.swapUserClassLoaders()
         queueDiscoveryAfterRender(params.path)
       }
       FileKind.CLASSPATH -> {

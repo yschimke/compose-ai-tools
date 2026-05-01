@@ -52,17 +52,35 @@ interface RenderHost {
 
   /**
    * The disposable user-class [UserClassLoaderHolder] this host renders against (B2.0 — see
-   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). The
-   * [JsonRpcServer.handleFileChanged] path mutates it (`swap()` on `kind: "source"`); the host's
-   * render path reads `currentChildLoader()` to resolve preview classes via `Class.forName`.
+   * [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)). The host's render path reads
+   * `currentChildLoader()` to resolve preview classes via `Class.forName`.
    *
    * Returns `null` when the host doesn't participate in the parent/child split (the harness's
    * `FakeHost`, the Stream A B1.3 stub-render hosts, etc.) — those hosts don't load user classes,
-   * so `JsonRpcServer.handleFileChanged` simply skips the swap and the existing v1 fake-mode
-   * scenarios stay unchanged. Real backends (`DesktopHost`, `RobolectricHost`) override.
+   * so the swap is a no-op and the existing v1 fake-mode scenarios stay unchanged. Real backends
+   * (`DesktopHost`, `RobolectricHost`) override.
+   *
+   * **Sandbox pool note (SANDBOX-POOL.md).** Under multi-sandbox mode `RobolectricHost` carries one
+   * holder per slot rather than a single shared instance. This property still returns one
+   * representative holder (slot 0) so callers that only need "is this host classloader-aware?" keep
+   * working; callers that mutate state should use [swapUserClassLoaders] for the broadcast.
    */
   val userClassloaderHolder: UserClassLoaderHolder?
     get() = null
+
+  /**
+   * Swap (drop and lazily re-allocate on next read) every user-class child classloader this host
+   * holds. SANDBOX-POOL.md (per-slot child loaders): a host with `sandboxCount > 1` broadcasts to
+   * every slot's holder so all slots see the recompiled bytecode on their next render.
+   *
+   * Default no-op for hosts that don't participate in the parent/child split.
+   * [JsonRpcServer.handleFileChanged] calls this on `kind: "source"` instead of dereferencing
+   * [userClassloaderHolder]?.swap() directly so the broadcast is the same call site for both
+   * single-sandbox and pool modes.
+   */
+  fun swapUserClassLoaders() {
+    userClassloaderHolder?.swap()
+  }
 
   companion object {
     /**

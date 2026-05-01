@@ -79,10 +79,12 @@ Cheap to raise thanks to the in-JVM pool: extra sandboxes share the JVM baseline
 bytecode (~75 MB). Pre-Layer-3 this knob spawned N+1 separate JVM subprocesses; ~750 MB per
 replica was wasted on duplicated baselines.
 
-`sandboxCount > 1` requires the user-class loader holder to be **null** (i.e. the gradle plugin's
-hot-reload path is incompatible with the pool in v1 — per-slot child loaders are tracked as a
-follow-up in [SANDBOX-POOL.md](SANDBOX-POOL.md)). When both are requested the daemon falls back
-to `sandboxCount = 1` with a stderr warning.
+Compatible with the gradle plugin's hot-reload path. Each sandbox slot allocates its own child
+`URLClassLoader` parented to its own sandbox classloader, so `fileChanged({ kind: "source" })`
+broadcasts a `swap()` to every slot's holder — see
+[SANDBOX-POOL-FOLLOWUPS.md](SANDBOX-POOL-FOLLOWUPS.md) "#1 Per-slot user-class child loaders" for
+the design and the per-slot factory the host accepts in place of the legacy single-instance
+holder.
 
 ## Gradle properties
 
