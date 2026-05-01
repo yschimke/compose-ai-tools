@@ -21,7 +21,7 @@ import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
-import { mergeCalibration, PhaseDurations, ProgressState } from './buildProgress';
+import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
 import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
 
 const DEBOUNCE_MS = 1500;
@@ -1280,23 +1280,31 @@ async function refresh(
     gradleService.cancel();
 
     // Forward progress-bar updates to the webview. Single tracker per refresh
-    // — same instance feeds the Gradle phase signals (compile/discover/render)
-    // and the post-task `loading` phase the extension drives itself once
-    // Gradle returns. The webview hides the bar on its own once percent=1.
-    const onProgress = (state: ProgressState) => {
-        if (abort.signal.aborted) { return; }
-        panel?.postMessage({
-            command: 'setProgress',
-            phase: state.phase,
-            label: state.label,
-            percent: state.percent,
-            slow: state.slow,
-        });
-    };
+    // — single instance feeds the Gradle phase signals (compile/discover/
+    // render) AND the post-Gradle `loading` phase that the tracker
+    // auto-detects from the `BUILD SUCCESSFUL` line. Lifecycle is owned
+    // here, not by gradleService, so the tick interval can survive past
+    // `runTask` returning while we read manifests + base64-encode PNGs,
+    // and so failure / cancellation paths can shut it down deterministically.
+    // Without local ownership the tracker's tick kept emitting setProgress
+    // messages after Gradle finished, freezing the bar on whatever state
+    // it last computed (typically "(slow) · 99%").
+    const tracker = new BuildProgressTracker({
+        onProgress: (state) => {
+            if (abort.signal.aborted) { return; }
+            panel?.postMessage({
+                command: 'setProgress',
+                phase: state.phase,
+                label: state.label,
+                percent: state.percent,
+                slow: state.slow,
+            });
+        },
+        calibration: readCalibration(module),
+    });
+    tracker.start();
     const taskOpts = {
-        progressCalibration: readCalibration(module),
-        onProgress,
-        onCalibration: (durations: PhaseDurations) => writeCalibration(module, durations),
+        onTaskOutput: (chunk: string) => tracker.consume(chunk),
     };
 
     try {
@@ -1402,12 +1410,14 @@ async function refresh(
         logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
 
         // Gradle is done; the rest of the work (reading PNGs, base64-encoding,
-        // pushing to webview) is extension-side. Push the bar into a "Loading
-        // images" phase with a known weight so the user sees the bar continue
-        // to advance instead of sitting stuck at the end of `rendering` while
-        // images stream in.
+        // pushing to webview) is extension-side. The tracker has already
+        // transitioned to its `loading` phase via the `BUILD SUCCESSFUL`
+        // marker in Gradle's stdout — it'll keep ticking the bar through
+        // that phase asymptotically while the imageJobs run, with no
+        // explicit signal needed from this side. tracker.finish() at the
+        // end of the happy path drives the bar to 100% and stops the tick.
         if (!abort.signal.aborted) {
-            onProgress({ phase: 'loading', label: 'Loading images', percent: 0.92, slow: false });
+            tracker.enterPhase('loading');
         }
 
         // Load images in parallel. Animated previews have multiple captures
@@ -1467,7 +1477,12 @@ async function refresh(
         }
         await Promise.all(imageJobs);
         if (!abort.signal.aborted) {
-            onProgress({ phase: 'done', label: 'Done', percent: 1, slow: false });
+            // Drive the bar to 100% and stop the tick. The webview holds
+            // the completed state for ~600ms then fades the strip away.
+            // The finally block's tracker.abort() is a no-op once we've
+            // called finish().
+            tracker.finish();
+            writeCalibration(module, tracker.phaseDurations);
         }
 
         // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
@@ -1558,6 +1573,12 @@ async function refresh(
         panel.postMessage({ command: 'clearProgress' });
         return 'failed';
     } finally {
+        // Idempotent — happy-path tracker.finish() already flipped the
+        // tracker's `finished` flag, so this is a no-op there. Failure /
+        // cancellation / abort paths come through here too and need the
+        // tick interval shut down so the bar doesn't keep emitting after
+        // we've moved on.
+        tracker.abort();
         if (pendingRefresh === abort) { pendingRefresh = null; }
     }
 }

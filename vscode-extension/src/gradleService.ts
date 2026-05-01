@@ -5,7 +5,6 @@ import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 import { KotlinCompileError, KotlinCompileErrorDetector } from './kotlinCompileErrorDetector';
 import { LogFilter } from './logFilter';
-import { BuildProgressTracker, PhaseDurations, ProgressState } from './buildProgress';
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -108,18 +107,23 @@ export interface Logger {
 const nullLogger: Logger = { appendLine() {}, append() {} };
 
 /**
- * Per-call hooks for [GradleService.runTask] and friends. The progress
- * tracker is owned by the caller (refresh()) so the same tracker spans
- * Gradle's discover/render phases plus the post-task image-loading phase
- * the extension drives itself.
+ * Per-call hooks for [GradleService.runTask] and friends.
+ *
+ * Tracker ownership lives outside this module — the caller (refresh())
+ * constructs a [BuildProgressTracker] whose lifecycle spans the whole
+ * refresh, including the post-Gradle image-loading phase, and feeds it
+ * Gradle's stdout via [onTaskOutput]. Keeping the tracker here would
+ * orphan its tick interval after `runTask` resolved, leaving the bar
+ * stuck at the last rendering-phase percent until the next refresh.
  */
 export interface TaskOptions {
-    /** Per-phase calibration to seed the tracker with (from prior runs). */
-    progressCalibration?: PhaseDurations;
-    /** Receives progress states as Gradle output streams in. */
-    onProgress?: (state: ProgressState) => void;
-    /** Called after the task ends with the durations recorded this run. */
-    onCalibration?: (durations: PhaseDurations) => void;
+    /**
+     * Receives every decoded chunk of stdout/stderr from the running task.
+     * Called after the gradleService's internal detectors and log filter
+     * have processed the chunk, so the caller never gets bytes that have
+     * already triggered a JdkImageError or KotlinCompileError.
+     */
+    onTaskOutput?: (chunk: string) => void;
 }
 
 /**
@@ -529,16 +533,6 @@ export class GradleService {
         // cross-file gap that the LSP-driven gate (compileErrors.ts)
         // misses by design — that gate only inspects the active file.
         const kotlinDetector = new KotlinCompileErrorDetector();
-        // Progress tracker is wired only when the caller provided one of the
-        // hooks — keeps the no-op (test, doctor, applied-bootstrap) callers
-        // free of timer overhead.
-        const tracker = (opts.onProgress || opts.onCalibration)
-            ? new BuildProgressTracker({
-                onProgress: opts.onProgress ?? (() => { /* noop */ }),
-                calibration: opts.progressCalibration,
-            })
-            : null;
-        tracker?.start();
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
@@ -566,22 +560,18 @@ export class GradleService {
                     // contain the diagnostic).
                     detector.consume(decoded);
                     kotlinDetector.consume(decoded);
-                    tracker?.consume(decoded);
                     const filtered = this.logFilter.filterGradleChunk(decoded);
                     if (filtered.length > 0) { this.logger.append(filtered); }
+                    opts.onTaskOutput?.(decoded);
                 } catch { /* ignore */ }
             },
         }).then(
             () => {
                 const line = `> ${task} completed`;
                 if (this.logFilter.shouldEmitInformational(line)) { this.logger.appendLine(line); }
-                if (tracker) {
-                    opts.onCalibration?.({ ...tracker.phaseDurations });
-                }
             },
             (err) => {
                 const message = err?.message ?? String(err);
-                tracker?.abort();
                 // vscode-gradle reports a superseded task as a gRPC CANCELLED
                 // error — that's the normal "new refresh replaced this one"
                 // path, not a build failure. Log it differently and throw a
