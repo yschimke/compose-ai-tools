@@ -954,7 +954,16 @@ async function refresh(
     // it from workspaceRoot + module here because GradleService keeps
     // modules as relative slash-paths.
     const projectDir = path.join(gradleService.workspaceRoot, module);
-    const newScope: HistoryScope = { moduleId: module, projectDir };
+    // Preserve the previewId narrow across same-module refreshes so a
+    // save-driven refresh doesn't briefly widen the History panel to the
+    // module before the webview re-publishes the narrow on next layout.
+    // On a module switch the narrow no longer applies — the previewId is
+    // owned by the previous module's preview set.
+    const prior = historyScopeRef.current;
+    const sameModule = prior?.moduleId === module && prior.projectDir === projectDir;
+    const newScope: HistoryScope = sameModule
+        ? { moduleId: module, projectDir, previewId: prior!.previewId, previewLabel: prior!.previewLabel }
+        : { moduleId: module, projectDir };
     historyScopeRef.current = newScope;
     historyPanel?.setScope(newScope);
     const modules = [module];

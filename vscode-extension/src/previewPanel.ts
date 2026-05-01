@@ -147,6 +147,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnNext.addEventListener('click', () => navigateFocus(1));
         btnExitFocus.addEventListener('click', () => exitFocus());
 
+        // Document-level Left/Right in focus mode steps between cards. The
+        // animated-carousel frame-controls handler stops propagation so
+        // its arrow keys still walk captures within a single card. Skip
+        // when an input-like element has focus (the layout dropdown,
+        // future text inputs) so native keyboard semantics aren't stolen.
+        document.addEventListener('keydown', (e) => {
+            if (layoutMode.value !== 'focus') return;
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            const tag = e.target && e.target.tagName;
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+            navigateFocus(e.key === 'ArrowLeft' ? -1 : 1);
+            e.preventDefault();
+        });
+
         for (const sel of [filterFunction, filterGroup]) {
             sel.addEventListener('change', () => {
                 saveFilterState();
@@ -520,11 +534,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             bar.appendChild(indicator);
             bar.appendChild(next);
 
-            // Arrow keys when the carousel has focus.
+            // Arrow keys when the carousel has focus. Stop propagation so
+            // the document-level focus-mode nav doesn't also advance the card.
             bar.tabIndex = 0;
             bar.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowLeft') { stepFrame(card, -1); e.preventDefault(); }
-                else if (e.key === 'ArrowRight') { stepFrame(card, 1); e.preventDefault(); }
+                if (e.key === 'ArrowLeft') {
+                    stepFrame(card, -1); e.preventDefault(); e.stopPropagation();
+                } else if (e.key === 'ArrowRight') {
+                    stepFrame(card, 1); e.preventDefault(); e.stopPropagation();
+                }
             });
 
             // Seed indicator text so it's not blank before any image arrives.
