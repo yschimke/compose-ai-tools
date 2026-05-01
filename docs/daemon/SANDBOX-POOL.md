@@ -1,7 +1,9 @@
 # Preview daemon — in-JVM sandbox pool
 
-> **Status:** sketch, work in progress. Foundational bridge refactor in flight; multi-worker
-> orchestration and the supervisor-side wire-up are follow-ups.
+> **Status:** Layer 1 (bridge multi-slot foundation) landed. Layer 2 (RobolectricHost as a sandbox
+> pool) was attempted and **blocked at the Robolectric layer** — see "Layer 2 — empirical
+> finding" below for what we tried and why it stalled. The next attempt needs to bypass the JUnit
+> runner and drive Robolectric's lower-level `Sandbox` API directly.
 
 ## Motivation
 
@@ -60,19 +62,54 @@ latch. `slot 0` = today's single-sandbox path; the bridge surface stays source-c
 existing `RobolectricHost.submit` and `SandboxRunner.holdSandboxOpen` call sites that don't yet
 opt into multi-slot.
 
-### Layer 2 — RobolectricHost as a sandbox pool [next]
+### Layer 2 — RobolectricHost as a sandbox pool — empirical finding [blocked]
 
-`RobolectricHost(sandboxCount: Int = 1)`. When `sandboxCount > 1`:
+The straightforward shape — `RobolectricHost(sandboxCount: Int = 1)` spinning up N worker threads,
+each running `JUnitCore.runClasses(SandboxRunner::class.java)` with a synthetic
+`doNotAcquirePackage` discriminator on the `InstrumentationConfiguration` to defeat Robolectric's
+sandbox cache — was prototyped end-to-end on `agent/sandbox-pool-multi-worker`. Concrete shape:
 
-- `start()` launches N worker threads. Each runs `JUnitCore.runClasses(SandboxRunner::class.java)`.
-  Each `SandboxRunner.holdSandboxOpen` registers itself with `DaemonHostBridge.registerSandbox` and
-  receives an exclusive slot id.
-- `submit(req)` hashes `req.id` (or `previewId`) modulo N, dispatches to the chosen slot's queue.
-- `shutdown()` poisons every slot.
+- `RobolectricHost(sandboxCount = N)`, `submit` hashes `id` to a slot, `shutdown` poisons every
+  slot's queue.
+- `SandboxRunner.holdSandboxOpen` calls `DaemonHostBridge.registerSandbox(this.javaClass.classLoader)`
+  and polls `slot.requests`.
+- `SandboxHoldingHints.workerIndex` ThreadLocal carries each worker's index into
+  `SandboxHoldingRunner.createClassLoaderConfig`, which adds a unique
+  `composeai.sandbox.uniq.worker<N>` `doNotAcquirePackage` so the cache key differs per worker.
 
-Robolectric's `Sandbox` cache (keyed on `@Config` + `InstrumentationConfiguration`) may serialise
-sandbox bootstrap across worker threads — that's acceptable as long as **renders** run in parallel
-once the pool is warm. Validate empirically before declaring done.
+**It does not work.** Even with **sequenced boots** (start worker 0, await its ready latch, then
+start worker 1) the second sandbox's bootstrap stalls indefinitely while the first is alive in its
+hold-open poll loop. Slot 0 boots and registers in ~4s; slot 1 never reaches `holdSandboxOpen` —
+host.start times out at the configured `composeai.daemon.sandboxBootTimeoutMs` deadline.
+
+The leftover-thread side effect is brutal: when slot 1's await throws, slot 0's worker is still
+non-daemon and pinned in `holdSandboxOpen`, slot 1's worker is wedged in Robolectric internals. Any
+test class that runs next in the same Gradle test JVM inherits the poisoned Robolectric state and
+also fails to bootstrap a sandbox. That's an operational hazard worth flagging.
+
+**Diagnosis.** With one sandbox alive in its hold-open poll loop, Robolectric's bootstrap path for
+a second sandbox can't make progress. Likely culprits (not yet pinned with a thread dump): the
+JUnit runner's parallel-universe lock, an internal Robolectric global, or a classloader-graph
+ordering constraint. The discriminator strategy is fine — the cache key change is provable — but
+sandbox **construction**, not just lookup, doesn't tolerate a co-resident live sandbox.
+
+**Pivot.** The next attempt needs to bypass `RobolectricTestRunner` and `JUnitCore.runClasses`
+entirely and drive Robolectric's lower-level `Sandbox` API directly:
+
+```
+val sandbox = SandboxBuilder.build(instrumentationConfig, sdkConfig, …)
+sandbox.runOnMainThread { /* render here */ }
+```
+
+That removes the dummy-`@Test`-holds-the-sandbox-open trick and gives us a sandbox object we can
+hand work to without keeping a worker thread blocked inside JUnit. It's the escalation path
+RobolectricHost.kt's KDoc has flagged since v1 ("if this pattern fails for any reason we escalate
+rather than silently switching to Robolectric's lower-level Sandbox API"); empirically that escalation
+is now warranted.
+
+That's a substantial rewrite — separate PR, with its own risk surface (sandbox lifecycle, error
+paths, Compose/Looper threading inside the sandbox) — so this layer is parked at the design-doc
+level until the lower-level approach is prototyped.
 
 ### Layer 3 — supervisor wire-up [follow-up]
 
