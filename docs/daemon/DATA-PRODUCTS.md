@@ -54,10 +54,20 @@ kinds are silently ignored both ways.
 5. **No `protocolVersion` bump.** Adding a kind, adding a field to a
    payload, adding a new method in the `data/*` family — all additive
    per PROTOCOL.md § 7. Both sides ignore unknowns.
-6. CLI parity: `compose-preview --emit a11y/hierarchy` (and friends)
-   produce the same JSON the daemon would, so MCP-driven agents see
-   the same payloads as VS Code. Daemon and CLI share the renderer-side
-   producers.
+6. CLI parity, **on-disk only**. Daemon and CLI share the renderer-side
+   producers, so a Gradle-driven render of an a11y-enabled module writes
+   the same `build/compose-previews/data/<id>/<kind>.json` files the
+   daemon would attach to `renderFinished`. CLI consumers (CI scripts,
+   non-MCP agents) read those files directly — there is **no
+   `--emit kind` flag** and the CLI surface stays as "render to disk,
+   look in `build/`." Kinds are selected via the consumer's
+   `composePreview { ... }` Gradle config (the same channel that already
+   gates `accessibilityChecks.enabled`); duplicating that selection on
+   the CLI would just create two ways to express the same intent and
+   let them drift. The agent ergonomics that justify a programmatic
+   surface — `data/fetch` re-render, `data/subscribe` priming, kind
+   discovery — live in the daemon protocol and its MCP front-end, not
+   the CLI.
 
 **Non-goals**:
 
