@@ -19,9 +19,9 @@
 // and so the test source set can declare `@Preview` / `@Composable` fixtures.
 // The same plugin set is used by `:renderer-desktop`.
 //
-// NOT published to Maven. Consumed only by the Gradle plugin's daemon launch
-// descriptor (Stream A); classpath wireup for the desktop target lands in a
-// later Stream A task.
+// **Published to Maven Central** as `ee.schimke.composeai:daemon-desktop` —
+// pairs with `daemon-core` so the desktop daemon is consumable by coordinate.
+// Pre-1.0; see DESIGN.md § 17.
 
 plugins {
   alias(libs.plugins.kotlin.jvm)
@@ -38,6 +38,8 @@ plugins {
   // `RedFixturePreviews` is unchanged; the testFixtures source set re-exports `RedSquare` for
   // cross-module consumers.
   `java-test-fixtures`
+  `maven-publish`
+  alias(libs.plugins.maven.publish)
 }
 
 group = "ee.schimke.composeai"
@@ -58,24 +60,24 @@ dependencies {
   // re-declare it here.
   implementation(project(":daemon:core"))
 
-  // Inherit the desktop renderer's Compose Multiplatform / Skiko stack.
-  // Compose Desktop ships per-platform native Skiko binaries via the
-  // `compose.desktop.currentOs` accessor used in :renderer-desktop, so this
-  // module gets the host platform's Skiko bundle for free — no extra config
-  // here. B-desktop.1.4 (RenderEngine) duplicates the desktop render body
-  // into this module on top of that classpath.
-  implementation(project(":renderer-desktop"))
-
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
-  // `getDeclaredComposableMethod`, and a few Modifier / layout helpers. These
-  // are runtime-transitive through `:renderer-desktop` but not compile-visible
-  // here; declare them explicitly so the duplicated render body compiles
-  // against the same coordinates `:renderer-desktop` resolves.
+  // `getDeclaredComposableMethod`, and a few Modifier / layout helpers.
+  // Platform-agnostic surface; resolves to `*-desktop` variants on JVM
+  // consumers via Compose Multiplatform's variant selection.
   implementation(compose.runtime)
   implementation(compose.foundation)
   implementation(compose.ui)
   implementation(compose.components.uiToolingPreview)
+
+  // `compose.desktop.currentOs` bakes the *build host's* Skiko platform into
+  // the published POM (e.g. `desktop-jvm-linux-x64` when CI builds on Linux),
+  // which would lock consumers to that platform. Declare as `compileOnly` so
+  // it stays on our compile/test classpath but does NOT escape into the
+  // published POM. Consumers resolve their own host's Skiko via
+  // `implementation(compose.desktop.currentOs)` in their own build, the
+  // standard Compose Desktop library pattern.
+  compileOnly(compose.desktop.currentOs)
 
   testImplementation(libs.junit)
   // Tests declare a small fixture composable + drive RenderEngine against it,
@@ -116,4 +118,85 @@ tasks.register<JavaExec>("runDaemonMain") {
   mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
   standardInput = System.`in`
   dependsOn("jar")
+}
+
+// `java-test-fixtures` adds testFixtures-* "Elements" configurations that Vanniktech's
+// auto-detection picks up and ships as `-test-fixtures.jar` / `-test-fixtures-sources.jar`.
+// The fixtures (`RedSquare`, etc.) are internal harness aids — do not publish them. Skip the
+// publishable testFixtures variants from the `java` component. Done in `afterEvaluate` because
+// Vanniktech adds the sources/javadoc variants to the component lazily — calling
+// `withVariantsFromConfiguration` before `addVariantsFromConfiguration` fails (the variant
+// isn't yet attached to the component even though the configuration exists).
+afterEvaluate {
+  val javaComponent = components["java"] as org.gradle.api.component.AdhocComponentWithVariants
+  listOf(
+      "testFixturesApiElements",
+      "testFixturesRuntimeElements",
+      "testFixturesSourcesElements",
+      "testFixturesJavadocElements",
+    )
+    .forEach { name ->
+      configurations.findByName(name)?.let {
+        javaComponent.withVariantsFromConfiguration(it) { skip() }
+      }
+    }
+}
+
+// GitHub Packages mirror — same shape as `:renderer-android` and `:preview-annotations`.
+publishing {
+  repositories {
+    maven {
+      name = "GitHubPackages"
+      url =
+        uri(
+          providers
+            .environmentVariable("GITHUB_REPOSITORY")
+            .map { "https://maven.pkg.github.com/$it" }
+            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
+        )
+      credentials {
+        username = providers.environmentVariable("GITHUB_ACTOR").orNull
+        password = providers.environmentVariable("GITHUB_TOKEN").orNull
+      }
+    }
+  }
+}
+
+mavenPublishing {
+  publishToMavenCentral(automaticRelease = true)
+  if (!version.toString().endsWith("SNAPSHOT")) {
+    signAllPublications()
+  }
+
+  coordinates("ee.schimke.composeai", "daemon-desktop", version.toString())
+
+  pom {
+    name.set("Compose Preview — Daemon Desktop")
+    description.set(
+      "Compose Multiplatform desktop backend of the compose-preview daemon: " +
+        "long-lived JVM + Skiko render thread, per-render ImageComposeScene. " +
+        "Pre-1.0; pairs with daemon-core."
+    )
+    url.set("https://github.com/yschimke/compose-ai-tools")
+    inceptionYear.set("2025")
+    licenses {
+      license {
+        name.set("The Apache License, Version 2.0")
+        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+        distribution.set("repo")
+      }
+    }
+    developers {
+      developer {
+        id.set("yschimke")
+        name.set("Yuri Schimke")
+        url.set("https://github.com/yschimke")
+      }
+    }
+    scm {
+      url.set("https://github.com/yschimke/compose-ai-tools")
+      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
+    }
+  }
 }
