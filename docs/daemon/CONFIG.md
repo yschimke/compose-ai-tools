@@ -61,6 +61,29 @@ Higher values amortise the spare-rebuild cost over more renders; lower values ca
 
 `true` doubles the daemon's idle memory footprint. Set to `false` on memory-constrained dev machines (< 16GB system RAM, or where multiple modules' daemons run side by side). The recycle pause is still bounded by `maxHeapMb` + `maxRendersPerSandbox` so the worst case stays predictable.
 
+### MCP-only — `replicasPerDaemon`
+
+Configured at the **MCP server**, not the per-module Gradle DSL. Pass `--replicas-per-daemon N`
+on the `compose-preview-mcp` CLI (or `-Dcomposeai.mcp.replicasPerDaemon=N`). The supervisor
+translates this to `composeai.daemon.sandboxCount = 1 + N` on the daemon launch descriptor — see
+[SANDBOX-POOL.md](SANDBOX-POOL.md) for the full picture.
+
+| | |
+|-|-|
+| **Default** | `3` (4 in-JVM sandboxes per daemon) |
+| **Range** | `≥ 0` |
+| **Effect** | Number of additional in-JVM Robolectric sandboxes the daemon hosts beyond the primary. Concurrent `renderNow` requests with different ids dispatch across them via `Math.floorMod(id, 1 + N)`. `0` opts out and runs a single sandbox per daemon — bit-identical with the pre-pool path on disk. |
+
+Cheap to raise thanks to the in-JVM pool: extra sandboxes share the JVM baseline + native heap
+(loaded once-per-JVM), so the marginal cost per slot is the sandbox classloader's instrumented
+bytecode (~75 MB). Pre-Layer-3 this knob spawned N+1 separate JVM subprocesses; ~750 MB per
+replica was wasted on duplicated baselines.
+
+`sandboxCount > 1` requires the user-class loader holder to be **null** (i.e. the gradle plugin's
+hot-reload path is incompatible with the pool in v1 — per-slot child loaders are tracked as a
+follow-up in [SANDBOX-POOL.md](SANDBOX-POOL.md)). When both are requested the daemon falls back
+to `sandboxCount = 1` with a stderr warning.
+
 ## Gradle properties
 
 There is intentionally NO `-PcomposePreview.experimental.daemon.enabled=...` property override in v1. Gradle property reads at config time key the configuration cache, and the daemon flag is one consumers will flip frequently from VS Code — a property override would force a ~5–10s reconfigure on every toggle. Flip via build script and rely on Gradle's incremental task graph, or use VS Code's own setting (which gates the spawn without re-running `composePreviewDaemonStart`).
