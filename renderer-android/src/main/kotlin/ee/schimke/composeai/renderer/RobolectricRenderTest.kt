@@ -351,16 +351,47 @@ abstract class RobolectricRenderTestBase(
             recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
         )
 
-        renderDefault(
-            params = params,
-            widthDp = widthDp,
-            heightDp = heightDp,
-            wrapWidth = wrapWidth,
-            wrapHeight = wrapHeight,
-            outputDir = outputDir,
-            roborazziOptions = roborazziOptions,
-            composeOptions = composeOptions,
-        )
+        // Drop any stale .error.json from a prior run before attempting a
+        // fresh render. If today's render succeeds, the panel doesn't want
+        // to surface yesterday's exception alongside the new PNG.
+        val pngFile = outputFileFor(preview.captures.first(), outputDir)
+        RenderErrorSidecar.deleteStale(pngFile)
+
+        // Catch Throwable per preview. Today, a throw inside the preview
+        // function fails the JUnit test, fails the Test task, and the
+        // panel shows a generic "Build failed" message — ONE broken
+        // preview hides every sibling preview's render. By catching here
+        // and writing a structured `.error.json` sidecar, the failing
+        // card surfaces the actual exception while every other preview
+        // still produces its PNG.
+        //
+        // Catching Throwable (not Exception) so AssertionErrors from
+        // `require`/`check` calls in user code surface the same way as
+        // RuntimeExceptions. JVM-fatal throwables already terminated the
+        // JVM before we got here.
+        try {
+            renderDefault(
+                params = params,
+                widthDp = widthDp,
+                heightDp = heightDp,
+                wrapWidth = wrapWidth,
+                wrapHeight = wrapHeight,
+                outputDir = outputDir,
+                roborazziOptions = roborazziOptions,
+                composeOptions = composeOptions,
+            )
+        } catch (e: Throwable) {
+            System.err.println(
+                "Render failed for ${preview.className}.${preview.functionName}: ${e.message}"
+            )
+            RenderErrorSidecar.write(pngFile, e)
+            // Don't rethrow — keep the JUnit test green so a single
+            // broken preview doesn't fail the Test task and prevent
+            // sibling previews from rendering. The structured error
+            // travels through the sidecar; VS Code reads it via
+            // `gradleService.readPreviewRenderError` and shows the
+            // exception detail on the failing card.
+        }
     }
 
     /**
