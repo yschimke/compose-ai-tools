@@ -52,6 +52,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
+    <div id="progress-bar" class="progress-bar" role="progressbar"
+         aria-label="Refresh progress"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div class="progress-fill"></div>
+        <div class="progress-label" id="progress-label"></div>
+    </div>
+    <div id="compile-errors" class="compile-errors" role="alert" hidden>
+        <div class="compile-errors-header">
+            <i class="codicon codicon-error" aria-hidden="true"></i>
+            <span id="compile-errors-title">Compile errors</span>
+        </div>
+        <div id="compile-errors-list" class="compile-errors-list"></div>
+        <div class="compile-errors-footnote">Showing last successful render.</div>
+    </div>
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="Preview filters">
         <div class="select-wrapper">
             <select id="filter-function" title="Filter by function" aria-label="Function filter">
@@ -106,6 +120,145 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnNext = document.getElementById('btn-next');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
+        const progressBar = document.getElementById('progress-bar');
+        const progressFill = progressBar.querySelector('.progress-fill');
+        const progressLabel = document.getElementById('progress-label');
+        // Auto-hide timer for the bar after it lands at 100%. Holds for a
+        // beat so the user sees the completed state, then fades the strip
+        // out so it doesn't permanently occupy a row of UI.
+        let progressHideTimer = null;
+        // Deferred-mount state. The bar isn't shown until [PROGRESS_MOUNT_DELAY_MS]
+        // of in-flight work has accumulated — warm-cache refreshes that finish
+        // in <200ms never mount it at all, avoiding the "flash on, flash off"
+        // glitch. progressVisible flips true once we've actually rendered
+        // something into the DOM; subsequent setProgress updates within the
+        // same refresh apply directly without re-deferring.
+        const PROGRESS_MOUNT_DELAY_MS = 200;
+        let progressMountTimer = null;
+        let progressVisible = false;
+        let pendingProgressState = null;
+
+        function applyProgressState(state) {
+            const pct = Math.max(0, Math.min(1, state.percent));
+            progressBar.hidden = false;
+            progressVisible = true;
+            progressBar.classList.remove('progress-finishing');
+            progressBar.classList.toggle('progress-slow', !!state.slow);
+            progressFill.style.width = (pct * 100).toFixed(1) + '%';
+            progressBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+            const slowSuffix = state.slow ? ' (slow)' : '';
+            progressLabel.textContent = state.label
+                ? state.label + slowSuffix + ' · ' + Math.round(pct * 100) + '%'
+                : '';
+            if (pct >= 1) {
+                progressBar.classList.add('progress-finishing');
+                progressHideTimer = setTimeout(() => {
+                    progressBar.hidden = true;
+                    progressVisible = false;
+                    progressBar.classList.remove('progress-finishing', 'progress-slow');
+                    progressFill.style.width = '0%';
+                    progressLabel.textContent = '';
+                    progressHideTimer = null;
+                }, 600);
+            }
+        }
+
+        function setProgress(label, percent, slow) {
+            if (progressHideTimer) {
+                clearTimeout(progressHideTimer);
+                progressHideTimer = null;
+            }
+            const state = { label: label || '', percent, slow: !!slow };
+            // Already visible (or mid-fade) — apply directly.
+            if (progressVisible) {
+                applyProgressState(state);
+                return;
+            }
+            // Latched state for whenever the deferral timer fires.
+            pendingProgressState = state;
+            // Already terminal — show immediately so the brief flash isn't
+            // missed (rare path: tracker emits an immediate done=100% before
+            // any phase work happens, e.g. up-to-date discover).
+            if (state.percent >= 1) {
+                applyProgressState(state);
+                return;
+            }
+            if (progressMountTimer === null) {
+                progressMountTimer = setTimeout(() => {
+                    progressMountTimer = null;
+                    if (pendingProgressState) {
+                        applyProgressState(pendingProgressState);
+                    }
+                }, PROGRESS_MOUNT_DELAY_MS);
+            }
+        }
+
+        function clearProgress() {
+            if (progressHideTimer) {
+                clearTimeout(progressHideTimer);
+                progressHideTimer = null;
+            }
+            if (progressMountTimer) {
+                clearTimeout(progressMountTimer);
+                progressMountTimer = null;
+            }
+            pendingProgressState = null;
+            progressVisible = false;
+            progressBar.hidden = true;
+            progressBar.classList.remove('progress-finishing', 'progress-slow');
+            progressFill.style.width = '0%';
+            progressLabel.textContent = '';
+        }
+
+        // Compile-error banner state. Cards stay rendered while the banner
+        // is visible — they're decorated via .compile-stale on the grid so
+        // the user keeps the last-good render visible while reading the
+        // error list.
+        const compileErrorsBox = document.getElementById('compile-errors');
+        const compileErrorsList = document.getElementById('compile-errors-list');
+        const compileErrorsTitle = document.getElementById('compile-errors-title');
+
+        function setCompileErrors(errors, sourceFile) {
+            compileErrorsList.innerHTML = '';
+            const count = errors.length;
+            compileErrorsTitle.textContent = count === 1
+                ? '1 compile error'
+                : count + ' compile errors';
+            for (const e of errors) {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'compile-error-row';
+                row.title = 'Open ' + e.file + ':' + e.line + ':' + e.column;
+                const loc = document.createElement('span');
+                loc.className = 'compile-error-loc';
+                loc.textContent = e.file + ':' + e.line + ':' + e.column;
+                const msg = document.createElement('span');
+                msg.className = 'compile-error-msg';
+                msg.textContent = e.message;
+                row.appendChild(loc);
+                row.appendChild(msg);
+                row.addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'openCompileError',
+                        sourceFile: sourceFile,
+                        line: e.line,
+                        column: e.column,
+                    });
+                });
+                compileErrorsList.appendChild(row);
+            }
+            compileErrorsBox.hidden = false;
+            // Dim existing cards via a grid-level class so the user sees
+            // they're stale relative to the buffer. CSS handles the visual.
+            grid.classList.add('compile-stale');
+        }
+
+        function clearCompileErrors() {
+            compileErrorsBox.hidden = true;
+            compileErrorsList.innerHTML = '';
+            compileErrorsTitle.textContent = '';
+            grid.classList.remove('compile-stale');
+        }
 
         let allPreviews = [];
         let moduleDir = '';
@@ -935,7 +1088,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
         }
 
-        /** Add a subtle spinner overlay to every card during a stealth refresh. */
+        // Two-stage overlay during stealth refresh:
+        //   stage 1 (0–500ms): tiny corner spinner, no dim, no blur. Most
+        //     daemon hits land in this window — image swap reads as a clean
+        //     update, no "dim → undim" flicker.
+        //   stage 2 (>500ms):  classic subtle (dim + blur + corner spinner).
+        //     The build is taking real time, escalate so the user sees the
+        //     panel is actually working.
+        // Cards whose updateImage arrives during stage 1 never see stage 2.
+        const OVERLAY_ESCALATE_MS = 500;
+        let overlayEscalationTimer = null;
+
         function markAllLoading() {
             document.querySelectorAll('.preview-card').forEach(card => {
                 const container = card.querySelector('.image-container');
@@ -945,10 +1108,32 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 // Don't add overlay if there's just a skeleton (nothing useful to cover)
                 if (container.querySelector('.skeleton') && !container.querySelector('img')) return;
                 const overlay = document.createElement('div');
-                overlay.className = 'loading-overlay subtle';
+                overlay.className = 'loading-overlay minimal';
                 overlay.innerHTML = '<div class="spinner" aria-label="Refreshing"></div>';
                 container.appendChild(overlay);
             });
+            scheduleOverlayEscalation();
+        }
+
+        function scheduleOverlayEscalation() {
+            if (overlayEscalationTimer) clearTimeout(overlayEscalationTimer);
+            overlayEscalationTimer = setTimeout(() => {
+                overlayEscalationTimer = null;
+                // Promote every still-present minimal overlay to subtle.
+                // Cards whose images already arrived have removed their
+                // overlays, so this only touches cards still waiting.
+                document.querySelectorAll('.loading-overlay.minimal').forEach(o => {
+                    o.classList.remove('minimal');
+                    o.classList.add('subtle');
+                });
+            }, OVERLAY_ESCALATE_MS);
+        }
+
+        function cancelOverlayEscalation() {
+            if (overlayEscalationTimer) {
+                clearTimeout(overlayEscalationTimer);
+                overlayEscalationTimer = null;
+            }
         }
 
         /**
@@ -1207,6 +1392,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     // stale id from the previous module would dedupe the
                     // first publish and the History panel would miss it.
                     lastScopedPreviewId = null;
+                    // Cards are gone — escalation timer has nothing left to
+                    // promote. Avoids a stray timer firing after the next
+                    // refresh has installed fresh minimal overlays.
+                    cancelOverlayEscalation();
                     // Don't clear the message here — if it came with a
                     // follow-up showMessage (the usual pattern) it'll be
                     // replaced; if not, ensureNotBlank will backstop a
@@ -1252,13 +1441,27 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                                 container.appendChild(overlay);
                             }
                         }
-                    } else {
-                        // 'loading' (not 'extension') so renderPreviews can
-                        // clear it the moment cards arrive — otherwise the
-                        // banner sits on top of skeleton cards while images
-                        // stream in, which looks like the build is stuck.
-                        setMessage('Building…', 'loading');
                     }
+                    // Whole-panel loading state is now carried by the slim
+                    // progress bar at the top of the view (setProgress).
+                    // Avoid double-signalling with a "Building…" banner —
+                    // it competes with the bar for visual attention.
+                    break;
+
+                case 'setProgress':
+                    setProgress(msg.label || '', msg.percent || 0, msg.slow);
+                    break;
+
+                case 'clearProgress':
+                    clearProgress();
+                    break;
+
+                case 'setCompileErrors':
+                    setCompileErrors(msg.errors || [], msg.sourceFile || '');
+                    break;
+
+                case 'clearCompileErrors':
+                    clearCompileErrors();
                     break;
 
                 case 'setError':

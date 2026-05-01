@@ -20,6 +20,162 @@ body {
     color: var(--text-primary);
 }
 
+/* -- Top progress bar -------------------------------------------------
+ * Slim 2px strip pinned to the very top of the panel, animating during a
+ * refresh. Mirrors the affordance native VS Code views (Extensions, Source
+ * Control) use for background work — visible-but-quiet, with a label that
+ * names the current build phase. Hidden when no refresh is in flight.
+ */
+.progress-bar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: transparent;
+    z-index: 10;
+    overflow: visible;
+}
+.progress-bar[hidden] { display: none; }
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+    transition: width 200ms ease-out;
+}
+
+/* Phase label: tiny, lives just below the strip. Right-aligned so it
+ * doesn't fight with the toolbar selects on the left. Pointer-events
+ * disabled so the toolbar stays clickable through it. */
+.progress-label {
+    position: absolute;
+    top: 2px;
+    right: 8px;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    color: var(--text-secondary);
+    background: var(--vscode-editor-background);
+    padding: 0 4px;
+    border-radius: 0 0 3px 3px;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+    opacity: 0.85;
+}
+
+/* "Slow" annotation: when a phase is running >2× its calibrated estimate
+ * we tint the bar with the warning colour and append "(slow)" to the
+ * label. Cheap signal that something unusual is happening (cold cache,
+ * a Compose / AGP version bump invalidating Robolectric caches) without
+ * popping a notification. */
+.progress-bar.progress-slow .progress-fill {
+    background: var(--vscode-editorWarning-foreground, #cca700);
+}
+.progress-bar.progress-slow .progress-label {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    opacity: 1;
+}
+
+/* Final-state flash before fade-out. Brightens the strip momentarily so
+ * the eye registers the transition from "in-flight" to "done". */
+.progress-bar.progress-finishing .progress-fill {
+    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+    transition: width 200ms ease-out, opacity 500ms ease-out 100ms;
+    opacity: 0;
+}
+.progress-bar.progress-finishing .progress-label {
+    transition: opacity 500ms ease-out 100ms;
+    opacity: 0;
+}
+
+/* -- Compile-error banner --------------------------------------------
+ * Pinned under the progress bar when the LSP-driven gate has skipped a
+ * refresh because the active file has Error-severity diagnostics. Sits
+ * above the toolbar so the user notices it first; cards beneath get a
+ * subtle fade via .compile-stale so the user keeps the last-good render
+ * visible without confusing it for the current state.
+ */
+.compile-errors {
+    background: var(--vscode-inputValidation-errorBackground,
+        color-mix(in srgb, var(--vscode-errorForeground) 18%, transparent));
+    border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+    border-radius: 4px;
+    margin: 6px 8px 0;
+    padding: 8px 10px 4px;
+    color: var(--vscode-foreground);
+    font-size: calc(var(--vscode-font-size) - 1px);
+}
+.compile-errors[hidden] { display: none; }
+
+.compile-errors-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--vscode-errorForeground);
+    margin-bottom: 4px;
+}
+.compile-errors-header .codicon { font-size: 14px; }
+
+.compile-errors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.compile-error-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 6px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    width: 100%;
+}
+.compile-error-row:hover {
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+.compile-error-row:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.compile-error-loc {
+    flex: 0 0 auto;
+    color: var(--vscode-textLink-foreground);
+    text-decoration: underline;
+    font-variant-numeric: tabular-nums;
+}
+.compile-error-msg {
+    flex: 1;
+    min-width: 0;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compile-errors-footnote {
+    font-size: calc(var(--vscode-font-size) - 3px);
+    color: var(--vscode-descriptionForeground);
+    margin-top: 4px;
+    opacity: 0.85;
+}
+
+/* Cards keep their last-good image but read as "this is stale" while
+ * the compile-error banner is up. Sibling-aware dim — applied to the
+ * whole grid so newly-arriving cards (rare during the gate, but
+ * possible) inherit the same look. */
+.preview-grid.compile-stale .preview-card {
+    opacity: 0.55;
+    filter: saturate(0.7);
+    transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
 /* -- Toolbar ---------------------------------------------------------- */
 
 .toolbar {
@@ -344,9 +500,30 @@ body {
     justify-content: center;
 }
 
-/* Subtle variant used during stealth refresh — dims + blurs the stale image
-   and drops a clearly visible spinner in the corner so it reads as "updating"
-   at a glance without clobbering the image you're editing. */
+/* Minimal variant — first 500 ms of a stealth refresh. Just a tiny corner
+   spinner, NO dim, NO blur. Most daemon-served updates land in this window
+   so the user sees a clean image swap rather than the dim → undim flicker
+   that read as "the panel went glitchy" before. After 500 ms this gets
+   promoted to .subtle by the JS escalation timer for builds that need a
+   stronger affordance. */
+.loading-overlay.minimal {
+    background: transparent;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding: 6px;
+    pointer-events: none;
+}
+.loading-overlay.minimal .spinner {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+    opacity: 0.85;
+}
+
+/* Subtle variant — escalated state, used after [OVERLAY_ESCALATE_MS] for
+   refreshes that take meaningful wall-clock time. Dims + blurs the stale
+   image and drops a clearly visible spinner in the corner so it reads as
+   "updating" at a glance without clobbering the image you're editing. */
 .loading-overlay.subtle {
     background: color-mix(in srgb, var(--vscode-editor-background) 35%, transparent);
     backdrop-filter: blur(1.5px);
@@ -365,7 +542,8 @@ body {
 }
 
 /* Fade the image a touch so the blur + spinner read as "refreshing". Uses
-   :has() so we don't have to touch the TS that manages the overlay DOM. */
+   :has() so we don't have to touch the TS that manages the overlay DOM.
+   Only the .subtle stage dims — .minimal leaves the image untouched. */
 .image-container:has(> .loading-overlay.subtle) img {
     opacity: 0.55;
     transition: opacity 0.15s ease-out;

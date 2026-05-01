@@ -4,6 +4,7 @@ import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport,
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
 import { LogFilter } from './logFilter';
+import { BuildProgressTracker, PhaseDurations, ProgressState } from './buildProgress';
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -106,6 +107,21 @@ export interface Logger {
 const nullLogger: Logger = { appendLine() {}, append() {} };
 
 /**
+ * Per-call hooks for [GradleService.runTask] and friends. The progress
+ * tracker is owned by the caller (refresh()) so the same tracker spans
+ * Gradle's discover/render phases plus the post-task image-loading phase
+ * the extension drives itself.
+ */
+export interface TaskOptions {
+    /** Per-phase calibration to seed the tracker with (from prior runs). */
+    progressCalibration?: PhaseDurations;
+    /** Receives progress states as Gradle output streams in. */
+    onProgress?: (state: ProgressState) => void;
+    /** Called after the task ends with the durations recorded this run. */
+    onCalibration?: (durations: PhaseDurations) => void;
+}
+
+/**
  * Subset of vscjava.vscode-gradle's exported API.
  * See: https://github.com/microsoft/vscode-gradle/blob/main/extension/src/api/Api.ts
  */
@@ -148,12 +164,12 @@ export class GradleService {
         this.logFilter = logFilter ?? new LogFilter();
     }
 
-    async discoverPreviews(module: string): Promise<PreviewManifest | null> {
+    async discoverPreviews(module: string, opts?: TaskOptions): Promise<PreviewManifest | null> {
         const cached = this.manifestCache.get(module);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
             return cached.manifest;
         }
-        await this.runTask(`${gradleProjectPath(module)}:discoverPreviews`);
+        await this.runTask(`${gradleProjectPath(module)}:discoverPreviews`, [], opts);
         const manifest = this.readManifest(module);
         if (manifest) {
             this.manifestCache.set(module, { manifest, timestamp: Date.now() });
@@ -181,11 +197,13 @@ export class GradleService {
     async renderPreviews(
         module: string,
         tier: 'fast' | 'full' = 'full',
+        opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module);
         await this.runTask(
             `${gradleProjectPath(module)}:renderAllPreviews`,
             [`-PcomposePreview.tier=${tier}`],
+            opts,
         );
         const manifest = this.readManifest(module);
         if (manifest) {
@@ -494,13 +512,27 @@ export class GradleService {
         this.cancel();
     }
 
-    private runTask(task: string, extraArgs: ReadonlyArray<string> = []): Promise<void> {
+    private runTask(
+        task: string,
+        extraArgs: ReadonlyArray<string> = [],
+        opts: TaskOptions = {},
+    ): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
         const startLine = `> ${task}`;
         if (this.logFilter.shouldEmitInformational(startLine)) { this.logger.appendLine(startLine); }
 
         const detector = new JdkImageErrorDetector();
+        // Progress tracker is wired only when the caller provided one of the
+        // hooks — keeps the no-op (test, doctor, applied-bootstrap) callers
+        // free of timer overhead.
+        const tracker = (opts.onProgress || opts.onCalibration)
+            ? new BuildProgressTracker({
+                onProgress: opts.onProgress ?? (() => { /* noop */ }),
+                calibration: opts.progressCalibration,
+            })
+            : null;
+        tracker?.start();
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
@@ -527,6 +559,7 @@ export class GradleService {
                     // normal level (the noisy lines are exactly the ones that
                     // contain the diagnostic).
                     detector.consume(decoded);
+                    tracker?.consume(decoded);
                     const filtered = this.logFilter.filterGradleChunk(decoded);
                     if (filtered.length > 0) { this.logger.append(filtered); }
                 } catch { /* ignore */ }
@@ -535,9 +568,13 @@ export class GradleService {
             () => {
                 const line = `> ${task} completed`;
                 if (this.logFilter.shouldEmitInformational(line)) { this.logger.appendLine(line); }
+                if (tracker) {
+                    opts.onCalibration?.({ ...tracker.phaseDurations });
+                }
             },
             (err) => {
                 const message = err?.message ?? String(err);
+                tracker?.abort();
                 // vscode-gradle reports a superseded task as a gRPC CANCELLED
                 // error — that's the normal "new refresh replaced this one"
                 // path, not a build failure. Log it differently and throw a

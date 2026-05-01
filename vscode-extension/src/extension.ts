@@ -20,6 +20,8 @@ import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
+import { mergeCalibration, PhaseDurations, ProgressState } from './buildProgress';
+import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -74,6 +76,11 @@ let debounceElapsed = true;
 let refreshInFlight = false;
 /** Workspace-state key that suppresses the "plugin not applied" notification. */
 const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
+/** Workspace-state key for per-module phase-duration calibration. Shape:
+ *  `Record<moduleId, PhaseDurations>`. Updated after every successful refresh
+ *  so the progress bar's animation rate matches what each module actually
+ *  takes (a Wear OS sample with Robolectric is much slower than a CMP one). */
+const PROGRESS_CALIBRATION_KEY = 'composePreview.progressCalibration';
 /** Captured in activate() so notification helpers can reach workspaceState. */
 let extensionContext: vscode.ExtensionContext | null = null;
 /** Module-scoped logger wired up in activate() so refresh() can trace state
@@ -830,6 +837,47 @@ function updateDaemonStatus(module: string, state: WarmState): void {
 const daemonBootstrappedModules = new Set<string>();
 
 /**
+ * Read Error-severity diagnostics for `filePath` from whichever language
+ * server is active and adapt them to the vscode-free shape that
+ * [extractCompileErrors] consumes. Returns an empty array when no LSP is
+ * attached (`vscode.languages.getDiagnostics` returns `[]`), so workspaces
+ * without a Kotlin LSP fall through to the existing Gradle-only path with
+ * no visible difference.
+ *
+ * Cross-file errors (e.g. `Theme.kt` broken, `Previews.kt` clean but uses
+ * it) are NOT detected here — that's a deliberate trade-off to keep the
+ * gate cheap (one URI lookup, no import graph walk). Gradle still catches
+ * them on the slow path.
+ */
+function readCompileErrors(filePath: string): CompileError[] {
+    const uri = vscode.Uri.file(filePath);
+    const diagnostics = vscode.languages.getDiagnostics(uri);
+    // vscode.Diagnostic structurally matches DiagnosticLike — the field
+    // names and severity numeric values are the same. Cast through unknown
+    // to avoid pulling vscode types into the pure module.
+    return extractCompileErrors(filePath, diagnostics as unknown as readonly DiagnosticLike[]);
+}
+
+/** Read calibrated phase durations for `module` from workspace state. Empty
+ *  on first run; the tracker falls back to its built-in phase defaults. */
+function readCalibration(module: string): PhaseDurations {
+    if (!extensionContext) { return {}; }
+    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
+        PROGRESS_CALIBRATION_KEY, {});
+    return all[module] ?? {};
+}
+
+/** Persist updated calibration for `module`, blending into prior samples via
+ *  EMA so a single anomalous run doesn't dominate. */
+function writeCalibration(module: string, latest: PhaseDurations): void {
+    if (!extensionContext) { return; }
+    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
+        PROGRESS_CALIBRATION_KEY, {});
+    all[module] = mergeCalibration(all[module] ?? {}, latest);
+    void extensionContext.workspaceState.update(PROGRESS_CALIBRATION_KEY, all);
+}
+
+/**
  * Coalesce save-driven refreshes. The next refresh fires when BOTH:
  *   1. `DEBOUNCE_MS` has elapsed since the last save (absorbs bursts), and
  *   2. any in-flight refresh has finished (never stacks builds).
@@ -996,8 +1044,12 @@ const fastTierModules = new Set<string>();
  *   the empty state; no Gradle work happened.
  * - `'failed'` — Gradle threw a non-cancellation error (build failure,
  *   missing `jlink`, etc.). The panel surfaces the error; no follow-up.
+ * - `'gated'` — LSP reported Error-severity diagnostics for the active
+ *   file, so the build was skipped. Panel shows the compile-error banner
+ *   over the previous (now stale) cards; the next save with a clean buffer
+ *   will run a real refresh.
  */
-type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed';
+type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed' | 'gated';
 
 async function refresh(
     forceRender: boolean,
@@ -1036,6 +1088,34 @@ async function refresh(
         return 'no-module';
     }
     logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
+
+    // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
+    // user is mid-typo-fix — the active file's diagnostics already tell us
+    // the build will fail, so surface those instead of starting Gradle.
+    // Cards from the previous successful render stay visible (just dimmed)
+    // so the user keeps a reference while they fix the error.
+    //
+    // Gate fires before currentScopeFile assignment so a later refresh from
+    // a different file can still drop the banner via clearCompileErrors.
+    const compileErrors = readCompileErrors(activeFile);
+    if (compileErrors.length > 0) {
+        panel.postMessage({
+            command: 'setCompileErrors',
+            errors: compileErrors,
+            sourceFile: activeFile,
+        });
+        // No build is starting — make sure no stale progress bar lingers
+        // from a prior in-flight refresh that was just cancelled by the
+        // pendingRefresh.abort() at the top of this function.
+        panel.postMessage({ command: 'clearProgress' });
+        currentScopeFile = activeFile;
+        logLine(`gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`);
+        return 'gated';
+    }
+    // Errors cleared since the previous gate fire — drop the banner before
+    // we begin the actual build so the user sees the panel return to its
+    // normal "working" state.
+    panel.postMessage({ command: 'clearCompileErrors' });
 
     currentScopeFile = activeFile;
     // Phase H7 — re-scope the History panel alongside the live panel.
@@ -1083,6 +1163,26 @@ async function refresh(
     lastLoadedModules = modules;
     gradleService.cancel();
 
+    // Forward progress-bar updates to the webview. Single tracker per refresh
+    // — same instance feeds the Gradle phase signals (compile/discover/render)
+    // and the post-task `loading` phase the extension drives itself once
+    // Gradle returns. The webview hides the bar on its own once percent=1.
+    const onProgress = (state: ProgressState) => {
+        if (abort.signal.aborted) { return; }
+        panel?.postMessage({
+            command: 'setProgress',
+            phase: state.phase,
+            label: state.label,
+            percent: state.percent,
+            slow: state.slow,
+        });
+    };
+    const taskOpts = {
+        progressCalibration: readCalibration(module),
+        onProgress,
+        onCalibration: (durations: PhaseDurations) => writeCalibration(module, durations),
+    };
+
     try {
         const allPreviews: PreviewInfo[] = [];
         previewModuleMap.clear();
@@ -1091,8 +1191,8 @@ async function refresh(
             if (abort.signal.aborted) { return 'cancelled'; }
 
             const manifest = forceRender
-                ? await gradleService.renderPreviews(mod, tier)
-                : await gradleService.discoverPreviews(mod);
+                ? await gradleService.renderPreviews(mod, tier, taskOpts)
+                : await gradleService.discoverPreviews(mod, taskOpts);
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
@@ -1138,6 +1238,7 @@ async function refresh(
             // message isn't overlaid on old content from a prior scope.
             panel.postMessage({ command: 'clearAll' });
             panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found in this module' });
+            panel.postMessage({ command: 'clearProgress' });
             hasPreviewsLoaded = false;
             logLine('done — module has no previews');
             return 'completed';
@@ -1158,6 +1259,7 @@ async function refresh(
                 command: 'showMessage',
                 text: `No @Preview functions in this file (${otherFiles} in other files in this module).`,
             });
+            panel.postMessage({ command: 'clearProgress' });
             hasPreviewsLoaded = false;
             logLine(`done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`);
             return 'completed';
@@ -1182,6 +1284,15 @@ async function refresh(
         });
         hasPreviewsLoaded = true;
         logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
+
+        // Gradle is done; the rest of the work (reading PNGs, base64-encoding,
+        // pushing to webview) is extension-side. Push the bar into a "Loading
+        // images" phase with a known weight so the user sees the bar continue
+        // to advance instead of sitting stuck at the end of `rendering` while
+        // images stream in.
+        if (!abort.signal.aborted) {
+            onProgress({ phase: 'loading', label: 'Loading images', percent: 0.92, slow: false });
+        }
 
         // Load images in parallel. Animated previews have multiple captures
         // in `preview.captures`; one updateImage message per capture. The
@@ -1239,6 +1350,9 @@ async function refresh(
             }
         }
         await Promise.all(imageJobs);
+        if (!abort.signal.aborted) {
+            onProgress({ phase: 'done', label: 'Done', percent: 1, slow: false });
+        }
 
         // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
         // renderPreviews() clears the 'loading' Building… banner the moment
@@ -1254,6 +1368,7 @@ async function refresh(
         // would be misleading and noisy.
         if (err instanceof TaskCancelledError) {
             logLine(`cancelled — superseded by a newer refresh`);
+            panel.postMessage({ command: 'clearProgress' });
             return 'cancelled';
         }
         if (err instanceof JdkImageError) {
@@ -1262,6 +1377,7 @@ async function refresh(
                 command: 'showMessage',
                 text: 'Gradle is running on a JRE without jlink. Configure a full JDK to render previews.',
             });
+            panel.postMessage({ command: 'clearProgress' });
             showJdkImageRemediation(err);
             return 'failed';
         }
@@ -1271,6 +1387,7 @@ async function refresh(
             command: 'showMessage',
             text: message,
         });
+        panel.postMessage({ command: 'clearProgress' });
         return 'failed';
     } finally {
         if (pendingRefresh === abort) { pendingRefresh = null; }
@@ -1332,6 +1449,31 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             historyPanel?.setScope(newScope);
             break;
         }
+        case 'openCompileError':
+            if (msg.sourceFile && typeof msg.line === 'number'
+                && typeof msg.column === 'number') {
+                void openSourcePosition(msg.sourceFile, msg.line, msg.column);
+            }
+            break;
+    }
+}
+
+/**
+ * Open `filePath` and reveal the given (1-based) position. Used by the
+ * compile-error banner — clicking a row jumps to the offending location.
+ * 1-based input here matches what we render in the banner; vscode's API
+ * is 0-based, so we subtract before constructing the Position.
+ */
+async function openSourcePosition(filePath: string, line: number, column: number): Promise<void> {
+    try {
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        const editor = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(Math.max(0, line - 1), Math.max(0, column - 1));
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        logLine(`openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`);
     }
 }
 
@@ -1386,6 +1528,9 @@ interface WebviewToExtensionMessage {
     previewId?: string | null;
     visible?: string[];
     predicted?: string[];
+    sourceFile?: string;
+    line?: number;
+    column?: number;
 }
 
 /**
