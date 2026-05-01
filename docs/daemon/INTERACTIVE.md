@@ -287,13 +287,25 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
 ## 8a. Display overrides
 
 Per-render display properties — **size**, **density**, **locale**,
-**fontScale**, **uiMode** (light/dark), **orientation** — ride on the existing
-`renderNow` request via the optional `overrides` field documented in
-[PROTOCOL.md § 5](PROTOCOL.md#renderNow). They are not interactive-only: any
-caller (panel, MCP, future RPC) can attach overrides to a single `renderNow`
-to get a one-off render with a different qualifier set. A subsequent
-`renderNow` without `overrides` reverts to the discovery-time `RenderSpec` —
-overrides are call-scoped, not session-scoped.
+**fontScale**, **uiMode** (light/dark), **orientation**, **device** — ride
+on the existing `renderNow` request via the optional `overrides` field
+documented in [PROTOCOL.md § 5](PROTOCOL.md#renderNow). They are not
+interactive-only: any caller (panel, MCP, future RPC) can attach overrides
+to a single `renderNow` to get a one-off render with a different qualifier
+set. A subsequent `renderNow` without `overrides` reverts to the
+discovery-time `RenderSpec` — overrides are call-scoped, not
+session-scoped.
+
+**Device override.** `device: "id:pixel_5"` (or any other catalog id /
+`spec:` grammar that `@Preview(device = …)` accepts) is resolved by the
+daemon's built-in `DeviceDimensions` catalog into `widthPx` / `heightPx` /
+`density`. Explicit `widthPx` / `heightPx` / `density` overrides on the
+same call take precedence — so a caller can say `device: "id:pixel_5",
+widthPx: 600` to force a wider window on the Pixel 5's density, or
+`device: "id:wearos_small_round"` to flip a phone preview to a Wear round
+device frame (the Android backend's `isRoundDevice` round-detection picks
+up the override). Unknown ids fall back to the daemon's default
+(400×800dp at xxhdpi).
 
 **Why not interactive-only.** Size/density/locale/fontScale/uiMode/orientation
 are all the same Robolectric qualifier knob (`setQualifiers` +

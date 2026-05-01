@@ -58,6 +58,19 @@ class PreviewManifestRouter(
             "(payload='${typed.payload}'). Manifest knows: ${byId.keys}"
         )
     val resolved = entry.resolved()
+    // PROTOCOL.md § 5 (`renderNow.overrides.device`) — when the inbound carries a `device=` token
+    // we resolve it against the catalog and use its widthPx/heightPx/density as the BASE for this
+    // render, replacing the manifest's per-preview defaults. Explicit `widthPx` / `heightPx` /
+    // `density` overrides on the same call still win over the device-derived values, so a caller
+    // can say `device=id:pixel_5;widthPx=600` to force a wider window on the Pixel's density.
+    val deviceOverride = inbound["device"]?.takeIf { it.isNotBlank() }
+    val deviceSpec = deviceOverride?.let {
+      ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
+    }
+    val baseWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() } ?: resolved.widthPx
+    val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
+    val baseDensity = deviceSpec?.density ?: resolved.density
+    val effectiveDevice = deviceOverride ?: resolved.device
     val routed =
       RenderRequest.Render(
         id = typed.id,
@@ -65,15 +78,16 @@ class PreviewManifestRouter(
           buildString {
             append("className=").append(entry.className).append(';')
             append("functionName=").append(entry.functionName).append(';')
-            // Inbound override wins over the per-preview manifest default.
-            append("widthPx=").append(inbound["widthPx"] ?: resolved.widthPx).append(';')
-            append("heightPx=").append(inbound["heightPx"] ?: resolved.heightPx).append(';')
-            append("density=").append(inbound["density"] ?: resolved.density).append(';')
+            // Inbound explicit override wins over both the device-derived value and the
+            // per-preview manifest default.
+            append("widthPx=").append(inbound["widthPx"] ?: baseWidthPx).append(';')
+            append("heightPx=").append(inbound["heightPx"] ?: baseHeightPx).append(';')
+            append("density=").append(inbound["density"] ?: baseDensity).append(';')
             append("showBackground=").append(resolved.showBackground).append(';')
             if (resolved.backgroundColor != 0L) {
               append("backgroundColor=").append(resolved.backgroundColor).append(';')
             }
-            resolved.device
+            effectiveDevice
               ?.takeIf { it.isNotBlank() }
               ?.let { append("device=").append(it).append(';') }
             // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation

@@ -9,6 +9,7 @@
     "localeTag": "fr-FR",
     "fontScale": 1.3,
     "uiMode": "dark",
-    "orientation": "portrait"
+    "orientation": "portrait",
+    "device": "id:pixel_5"
   }
 }

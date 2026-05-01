@@ -216,6 +216,16 @@ data class PreviewOverrides(
   val uiMode: UiMode? = null,
   /** Portrait/landscape override. Android-only today. */
   val orientation: Orientation? = null,
+  /**
+   * `@Preview(device = ...)` string — `id:pixel_5`, `id:wearos_small_round`, `id:tv_1080p`, or a
+   * full `spec:width=400dp,height=800dp,dpi=320,isRound=true` grammar. The daemon resolves the
+   * string against its built-in catalog (`ee.schimke.composeai.daemon.devices.DeviceDimensions`)
+   * and merges the resulting `widthPx` / `heightPx` / `density` into the render spec. Explicit
+   * `widthPx` / `heightPx` / `density` overrides on this same object take precedence — so a caller
+   * can say `device: "id:pixel_5", widthPx: 600` to force a wider window on the Pixel 5's density.
+   * Unknown device ids fall back to the default (400×800 dp at xxhdpi).
+   */
+  val device: String? = null,
 )
 
 @Serializable

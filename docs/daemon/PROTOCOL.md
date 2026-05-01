@@ -201,6 +201,9 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
   fontScale?: number;                // 1.0 = system default
   uiMode?: "light" | "dark";         // Android-only today.
   orientation?: "portrait" | "landscape";  // Android-only today.
+  device?: string;                   // "id:pixel_5", "id:wearos_small_round", "spec:width=400dp,height=800dp,dpi=320".
+                                     // Resolved by the daemon's catalog into widthPx/heightPx/density;
+                                     // explicit widthPx/heightPx/density above take precedence.
 }
 
 // result

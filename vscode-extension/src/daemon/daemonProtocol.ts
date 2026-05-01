@@ -157,6 +157,13 @@ export interface PreviewOverrides {
     fontScale?: number;
     uiMode?: 'light' | 'dark';
     orientation?: 'portrait' | 'landscape';
+    /**
+     * `@Preview(device = ...)` string — `id:pixel_5`, `id:wearos_small_round`, `id:tv_1080p`,
+     * or a full `spec:width=400dp,height=800dp,dpi=320` grammar. Resolved by the daemon's
+     * built-in catalog into widthPx/heightPx/density; explicit width/height/density overrides
+     * on this same object take precedence.
+     */
+    device?: string;
 }
 
 export interface RenderNowParams {
