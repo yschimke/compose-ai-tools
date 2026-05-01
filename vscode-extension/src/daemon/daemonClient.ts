@@ -14,6 +14,10 @@ import {
     HistoryReadResult,
     InitializeParams,
     InitializeResult,
+    InteractiveInputParams,
+    InteractiveStartParams,
+    InteractiveStartResult,
+    InteractiveStopParams,
     JsonRpcError,
     JsonRpcNotification,
     JsonRpcRequest,
@@ -149,6 +153,34 @@ export class DaemonClient {
      *  PROTOCOL.md § 5 (history/diff). */
     historyDiff(params: HistoryDiffParams): Promise<HistoryDiffResult> {
         return this.request<HistoryDiffResult>('history/diff', params);
+    }
+
+    /**
+     * Interactive mode (reserved — see docs/daemon/INTERACTIVE.md § 7).
+     *
+     * Tells the daemon "this preview is the user's interactive target." Pins
+     * a warm sandbox to it and returns an opaque stream id used to correlate
+     * later `interactiveInput` notifications. **Not yet implemented by any
+     * shipped daemon** — calling against a v1.0 daemon rejects with
+     * `MethodNotFound (-32601)`. The wire shape is locked so a future
+     * lockstep landing in `daemon/core` doesn't reshuffle the client.
+     */
+    interactiveStart(params: InteractiveStartParams): Promise<InteractiveStartResult> {
+        return this.request<InteractiveStartResult>('interactive/start', params);
+    }
+
+    /** Symmetric to {@link interactiveStart}. Idempotent — extra stops are
+     *  no-ops. Notification, not request: drop-and-go semantics. */
+    interactiveStop(params: InteractiveStopParams): void {
+        this.notify('interactive/stop', params);
+    }
+
+    /** Notification (drop-and-go). The daemon dispatches the input into the
+     *  active composition and emits a fresh `renderFinished` once it
+     *  settles. Backpressure is the caller's job — don't issue a new input
+     *  before the prior frame arrives. */
+    interactiveInput(params: InteractiveInputParams): void {
+        this.notify('interactive/input', params);
     }
 
     /** Drains in-flight renders, then resolves. Daemon will not exit until `exit` fires. */

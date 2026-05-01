@@ -354,6 +354,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             // closed handler in DaemonGate evicts the entry. Next save runs
             // Gradle, which re-bootstraps a fresh daemon when the user
             // re-enables it via composePreviewDaemonStart.
+            // Drop the interactive-mode availability so any open LIVE chip
+            // disables itself instead of streaming stale frames from a
+            // soon-to-die daemon.
+            publishInteractiveAvailability(moduleId);
         },
         onDiscoveryUpdated: (moduleId, params) => {
             // Daemon emits this only when the in-memory preview index drifted
@@ -1126,6 +1130,13 @@ async function warmDaemonForFile(filePath: string): Promise<void> {
  * time no module is in flight.
  */
 function updateDaemonStatus(module: string, state: WarmState): void {
+    // Push availability for the interactive (live-stream) toggle on every
+    // state transition. Done outside the !daemonStatusItem early-return so
+    // tests that drive activate() without a status bar still see the
+    // panel-side state propagate. Cheap: a no-op when panel isn't open.
+    if (state === 'ready' || state === 'fallback') {
+        publishInteractiveAvailability(module);
+    }
     if (!daemonStatusItem) { return; }
     if (daemonStatusClearTimer) {
         clearTimeout(daemonStatusClearTimer);
@@ -1934,6 +1945,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void launchOnDevice(msg.previewId);
             }
             break;
+        case 'setInteractive':
+            void handleSetInteractive(msg.previewId, msg.enabled);
+            break;
+        case 'recordInteractiveClick':
+            // v0 — log only. Once `interactive/input` ships (INTERACTIVE.md
+            // § 7) the same payload feeds the daemon notification.
+            logLine(
+                `[interactive] click ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
+                + `image=${msg.imageWidth}x${msg.imageHeight}`,
+            );
+            break;
     }
 }
 
@@ -2501,6 +2523,61 @@ function lookupPreviewLabel(previewId: string): string | undefined {
     return info.params.name
         ? `${info.functionName} — ${info.params.name}`
         : info.functionName;
+}
+
+/**
+ * Live-stream (interactive) mode entry/exit handler. See
+ * docs/daemon/INTERACTIVE.md § 4 for the full lifecycle. v0 reuses the
+ * existing setFocus + renderNow path — the panel-side LIVE chip is the
+ * only user-visible difference. When the future `interactive/start` RPC
+ * lands the daemon-side warm-sandbox lock plugs in here without touching
+ * the panel.
+ *
+ * Exit (`enabled = false`) does not cancel anything daemon-side; it just
+ * lets the next save-driven setFocus take over. Sending an explicit
+ * setFocus([]) here would race with concurrent saves.
+ */
+async function handleSetInteractive(previewId: string, enabled: boolean): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) {
+        logLine(`[interactive] no module for ${previewId}; ignoring setInteractive`);
+        return;
+    }
+    if (!enabled) {
+        logLine(`[interactive] live mode off for ${previewId}`);
+        return;
+    }
+    const ok = await daemonScheduler.ensureModule(moduleId);
+    if (!ok) {
+        // The webview already saw the toggle disabled — but the user could
+        // have flipped settings between toggle render and click. Push a
+        // fresh availability ping so the chip reverts cleanly.
+        panel?.postMessage({
+            command: 'setInteractiveAvailability',
+            moduleId, ready: false,
+        });
+        return;
+    }
+    await daemonScheduler.setFocus(moduleId, [previewId]);
+    await daemonScheduler.renderNow(moduleId, [previewId], 'fast', 'interactive-on');
+    logLine(`[interactive] live mode on for ${previewId} (module=${moduleId})`);
+}
+
+/**
+ * Push the daemon-readiness state for [moduleId] to the live panel so the
+ * focus-mode LIVE toggle can enable/disable itself. Cheap; no-op when the
+ * panel isn't open. Called from every code path that flips daemon state
+ * for a module — warm-up completion, channel-close, classpath-dirty.
+ */
+function publishInteractiveAvailability(moduleId: string): void {
+    if (!panel) { return; }
+    const ready = daemonGate?.isDaemonReady(moduleId) ?? false;
+    panel.postMessage({
+        command: 'setInteractiveAvailability',
+        moduleId,
+        ready,
+    });
 }
 
 async function notifyDaemonViewport(visible: string[], predicted: string[]): Promise<void> {

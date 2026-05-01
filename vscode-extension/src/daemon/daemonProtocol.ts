@@ -264,6 +264,42 @@ export interface HistoryAddedParams {
     entry: unknown;
 }
 
+// Interactive mode (reserved — see docs/daemon/INTERACTIVE.md § 7).
+//
+// The wire shapes below are documented but **not** spoken by today's daemon.
+// They live here so a future protocol implementation lands without a schema
+// reshuffle, and so the TypeScript client can grow input-emission code in
+// lockstep with the daemon work. Adding these methods is additive per
+// PROTOCOL.md § 7 — no `protocolVersion` bump required.
+
+export interface InteractiveStartParams { previewId: string }
+export interface InteractiveStartResult {
+    /** Opaque correlation id; the client passes it back on every input
+     *  notification so the daemon can route inputs to the right warm
+     *  sandbox even if the user toggles between previews. */
+    frameStreamId: string;
+}
+
+export interface InteractiveStopParams { frameStreamId: string }
+
+export type InteractiveInputKind =
+    | 'click'
+    | 'pointerDown'
+    | 'pointerUp'
+    | 'keyDown'
+    | 'keyUp';
+
+export interface InteractiveInputParams {
+    frameStreamId: string;
+    kind: InteractiveInputKind;
+    /** Image-natural pixel coordinates. Daemon resolves to dp using the
+     *  last-render density. Omit for keyboard events. */
+    pixelX?: number;
+    pixelY?: number;
+    /** For `keyDown` / `keyUp`. */
+    keyCode?: string;
+}
+
 /**
  * Wire format of `<module>/build/compose-previews/daemon-launch.json`,
  * authored by `DaemonBootstrapTask`. See
