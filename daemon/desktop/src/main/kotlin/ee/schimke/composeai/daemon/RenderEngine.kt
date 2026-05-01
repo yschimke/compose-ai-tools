@@ -89,6 +89,62 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
+    // Install the user classloader as the thread's context classloader for the duration of the
+    // one-shot render so Compose's reflection paths (PreviewParameter providers — see
+    // CLASSLOADER.md § Risks 2) resolve user classes correctly. Restored in `finally`. v2's
+    // [setUp] / [renderOnce] / [tearDown] split owns its own per-call install on the calling
+    // thread (each interactive dispatch may run on a different thread than [setUp]).
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
+    val held =
+      try {
+        setUp(spec, classLoader, sandboxStats)
+      } catch (t: Throwable) {
+        Thread.currentThread().contextClassLoader = previousContext
+        throw t
+      }
+    try {
+      return renderOnce(held, requestId)
+    } finally {
+      try {
+        tearDown(held)
+      } finally {
+        Thread.currentThread().contextClassLoader = previousContext
+      }
+    }
+  }
+
+  /**
+   * v2 (INTERACTIVE.md § 9.3) — first stage of the split render pipeline. Resolves [spec]'s class
+   * via reflection, allocates the [ImageComposeScene], and calls `scene.setContent`. **Does NOT
+   * call `scene.render()`** — that's [renderOnce]'s job. Pair every [setUp] with a [tearDown] in a
+   * `try/finally` so the scene is always closed, even if the caller throws between calls.
+   *
+   * Splitting [render] into [setUp] / [renderOnce] / [tearDown] is the load-bearing refactor for
+   * v2's held-scene interactive sessions (see
+   * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition)).
+   * The one-shot [render] wrapper above keeps the existing behaviour for non-interactive callers;
+   * [DesktopInteractiveSession] keeps a [HeldScene] alive across [InteractiveSession.dispatch]
+   * calls so `remember`'d composition state survives between inputs.
+   *
+   * @param runInspectionMode controls the `LocalInspectionMode` provided to the composition. v1
+   *   non-interactive renders pin this to `true` (so previews that branch on `isInspectionMode`
+   *   show their inspection-mode stub data); interactive sessions pass `false` so pointer-input
+   *   modifiers actually fire and the user sees real behaviour. INTERACTIVE.md § 9.5.
+   *
+   * The caller is responsible for installing [classLoader] as the thread's context classloader
+   * for the duration of the operation that consumes this [HeldScene]. The one-shot [render]
+   * wrapper above does it once around setUp+renderOnce+tearDown; interactive sessions install it
+   * per-dispatch / per-render so dispatches running on a different thread than this [setUp]
+   * still resolve user classes correctly.
+   */
+  fun setUp(
+    spec: RenderSpec,
+    classLoader: ClassLoader =
+      RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+    sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
+    runInspectionMode: Boolean = true,
+  ): HeldScene {
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     val startNs = System.nanoTime()
@@ -96,25 +152,14 @@ class RenderEngine(
     val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
 
-    // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
-    // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
-    // [UserClassLoaderHolder]. If `classFile` doesn't advance across saves the daemon is
-    // re-rendering against bytecode that wasn't actually recompiled.
     val fingerprint =
       UserClassLoaderHolder.classFileFingerprint(classLoader, spec.className)
         ?: "fingerprint unavailable (class not on a file: URL)"
     System.err.println(
       "compose-ai-daemon: [render] ${spec.className}#${spec.functionName} " +
-        "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint"
+        "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint " +
+        "inspectionMode=$runInspectionMode"
     )
-
-    // Install the child classloader as the context classloader for the duration of the render
-    // dispatch. Compose's reflection paths (notably PreviewParameter providers — see
-    // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
-    // miss user classes that aren't on the parent's classpath. Restored in `finally` so the host
-    // render-thread invariants outside the render are unaffected.
-    val previousContext = Thread.currentThread().contextClassLoader
-    Thread.currentThread().contextClassLoader = classLoader
 
     val scene =
       ImageComposeScene(
@@ -124,7 +169,7 @@ class RenderEngine(
       )
     try {
       scene.setContent {
-        CompositionLocalProvider(LocalInspectionMode provides true) {
+        CompositionLocalProvider(LocalInspectionMode provides runInspectionMode) {
           val bgColor =
             when {
               spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
@@ -138,39 +183,72 @@ class RenderEngine(
           }
         }
       }
-
-      // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
-      // as `:renderer-desktop`'s renderPreview.
-      scene.render()
-      val image = scene.render()
-
-      val pngData =
-        image.encodeToData(EncodedImageFormat.PNG)
-          ?: error("Failed to encode image to PNG for ${spec.className}.${spec.functionName}")
-
-      outputFile.parentFile?.mkdirs()
-      outputFile.writeBytes(pngData.bytes)
-    } finally {
-      // DESIGN § 9: always close the scene, even on render-body exceptions. Without this, a thrown
-      // render leaks one Skia `Surface` per submission until JVM exit. The desktop counterpart of
-      // Android's bitmap.recycle() discipline.
-      try {
-        scene.close()
-      } finally {
-        // Restore the pre-render context classloader regardless of how the body completed.
-        Thread.currentThread().contextClassLoader = previousContext
-      }
+    } catch (t: Throwable) {
+      // setContent threw — close the scene we just allocated before re-raising so the caller
+      // doesn't have to call tearDown on a broken HeldScene.
+      runCatching { scene.close() }
+      throw t
     }
 
+    return HeldScene(
+      scene = scene,
+      classLoader = classLoader,
+      spec = spec,
+      sandboxStats = sandboxStats,
+      outputFile = outputFile,
+      setUpStartNs = startNs,
+    )
+  }
+
+  /**
+   * v2 — second stage. Renders the [held] composition twice (so any `LaunchedEffect` /
+   * recomposition settles — same heuristic as the one-shot path) and writes the resulting PNG to
+   * disk. **Does NOT close the scene** — the caller is responsible for [tearDown] (one-shot
+   * [render]) or for keeping the scene alive across inputs ([DesktopInteractiveSession]).
+   *
+   * Safe to call repeatedly on the same [HeldScene] — each call writes the current pixel state
+   * to the same output path. Interactive sessions exploit this: dispatch a pointer event, then
+   * [renderOnce] re-paints the scene reflecting the new composition state.
+   */
+  fun renderOnce(held: HeldScene, requestId: Long): RenderResult {
+    val startNs = System.nanoTime()
+    // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
+    // as `:renderer-desktop`'s renderPreview.
+    held.scene.render()
+    val image = held.scene.render()
+
+    val pngData =
+      image.encodeToData(EncodedImageFormat.PNG)
+        ?: error(
+          "Failed to encode image to PNG for ${held.spec.className}.${held.spec.functionName}"
+        )
+
+    held.outputFile.parentFile?.mkdirs()
+    held.outputFile.writeBytes(pngData.bytes)
+
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
-    val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
+    val metrics = SandboxMeasurement.collect(held.sandboxStats, tookMs = tookMs)
     return RenderResult(
       id = requestId,
-      classLoaderHashCode = System.identityHashCode(classLoader),
-      classLoaderName = classLoader.javaClass.name,
-      pngPath = outputFile.absolutePath,
+      classLoaderHashCode = System.identityHashCode(held.classLoader),
+      classLoaderName = held.classLoader.javaClass.name,
+      pngPath = held.outputFile.absolutePath,
       metrics = metrics,
     )
+  }
+
+  /**
+   * v2 — third stage. Closes the scene's underlying Skia `Surface`. Restoration of any
+   * pre-render context classloader is the caller's responsibility (one-shot [render] manages that
+   * around setUp+renderOnce+tearDown; interactive sessions install + restore per
+   * dispatch/render call).
+   *
+   * DESIGN § 9: always invoked from a `try/finally` so the underlying Skia `Surface` always
+   * releases, even when the render body throws. Without this, a thrown render leaks one Skia
+   * `Surface` per submission until JVM exit.
+   */
+  fun tearDown(held: HeldScene) {
+    held.scene.close()
   }
 
   companion object {
@@ -181,6 +259,37 @@ class RenderEngine(
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
   }
 }
+
+/**
+ * Held render state returned by [RenderEngine.setUp] and consumed by [RenderEngine.renderOnce] /
+ * [RenderEngine.tearDown]. Owns the live [ImageComposeScene] plus the bookkeeping needed to encode
+ * the next frame ([outputFile], [spec]).
+ *
+ * Outside [RenderEngine] this is the handle [DesktopInteractiveSession] keeps warm across
+ * `interactive/input` notifications so `remember`'d composition state survives between clicks
+ * (INTERACTIVE.md § 9.2). Public so the desktop interactive session — which lives next to
+ * [RenderEngine] in the same module — can read [scene] for `sendPointerEvent` dispatch without
+ * widening [RenderEngine]'s surface area further.
+ */
+class HeldScene
+internal constructor(
+  /**
+   * The live Compose scene. [DesktopInteractiveSession.dispatch] calls `scene.sendPointerEvent`
+   * on this instance; [RenderEngine.renderOnce] drives `scene.render()` twice and encodes the
+   * pixels.
+   */
+  val scene: androidx.compose.ui.ImageComposeScene,
+  /** User classloader the scene's content was resolved against (for diagnostics + result fields). */
+  val classLoader: ClassLoader,
+  /** The spec the scene was set up against. Carried so [RenderEngine.renderOnce] can name the PNG. */
+  val spec: RenderSpec,
+  /** Per-host measurement context. Bumped once per [RenderEngine.renderOnce] call. */
+  internal val sandboxStats: SandboxLifecycleStats,
+  /** Where the next [RenderEngine.renderOnce] will write its PNG. */
+  internal val outputFile: File,
+  /** `System.nanoTime()` snapshot captured at [RenderEngine.setUp]; for future cold-start metrics. */
+  internal val setUpStartNs: Long,
+)
 
 /**
  * What [RenderEngine.render] needs to produce a single PNG. Decoupled from the protocol's

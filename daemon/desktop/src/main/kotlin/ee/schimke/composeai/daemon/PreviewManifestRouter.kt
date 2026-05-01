@@ -44,6 +44,28 @@ class PreviewManifestRouter(
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 
+  /**
+   * v2 (INTERACTIVE.md § 9) — resolve [previewId] to the [RenderSpec] the held interactive scene
+   * should be built from, by looking it up in this router's manifest. Returns null when the
+   * previewId is unknown, which causes [DesktopHost.acquireInteractiveSession] to throw
+   * [UnsupportedOperationException] and the daemon falls back to the v1 dispatch path.
+   */
+  override fun resolveInteractiveSpec(previewId: String): RenderSpec? {
+    val entry = byId[previewId] ?: return null
+    val resolved = entry.resolved()
+    return RenderSpec(
+      className = entry.className,
+      functionName = entry.functionName,
+      widthPx = resolved.widthPx,
+      heightPx = resolved.heightPx,
+      density = resolved.density,
+      showBackground = resolved.showBackground,
+      backgroundColor = resolved.backgroundColor,
+      device = resolved.device,
+      outputBaseName = "${resolved.outputBaseName}-interactive",
+    )
+  }
+
   override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
     require(request !is RenderRequest.Shutdown) {
       "Use shutdown() to stop the host, not submit(Shutdown)."

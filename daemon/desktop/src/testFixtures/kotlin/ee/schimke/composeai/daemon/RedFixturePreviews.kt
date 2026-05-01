@@ -1,9 +1,14 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
@@ -64,4 +69,27 @@ fun GreenSquare() {
 @Composable
 fun BoomComposable() {
   error("boom")
+}
+
+/**
+ * Fixture for the v2 PR-2 desktop interactive integration test (INTERACTIVE.md § 9.9.2). Paints
+ * red on first composition; flips a `remember`'d `mutableStateOf` to green on the first
+ * click anywhere in the surface, so the test can assert "click reaches the composition" by
+ * comparing pre-click and post-click PNG bytes.
+ *
+ * The state lives in a `remember { mutableStateOf(...) }` — the load-bearing assertion of v2's
+ * "held composition" promise: a one-shot render path would reset this state on every render and
+ * the flip would never become visible. The interactive session keeps the scene warm across
+ * inputs, so the recomposition sticks and the second render observes green.
+ *
+ * `Modifier.clickable` requires `LocalInspectionMode = false` (otherwise the modifier no-ops, per
+ * Compose's inspection-mode contract). v2's [DesktopInteractiveSession] sets up its scene with
+ * `runInspectionMode = false`, so the click reaches us; v1's one-shot render would still pass
+ * inspection-mode = true and the click would be silently dropped.
+ */
+@Composable
+fun ClickToGreenSquare() {
+  var clicked by remember { mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color).clickable { clicked = true })
 }

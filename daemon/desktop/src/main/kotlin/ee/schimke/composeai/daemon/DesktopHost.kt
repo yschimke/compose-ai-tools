@@ -78,6 +78,24 @@ open class DesktopHost(
   override val userClassloaderHolder: UserClassLoaderHolder? = null,
 ) : RenderHost {
 
+  /**
+   * v2 — interactive session sharing per `previewId`, ref-counted by the number of subscribed
+   * streams (INTERACTIVE.md § 9.7 — "shared session per previewId, ref-counted by streamId").
+   * Two `interactive/start` calls for the same preview share one held [HeldScene] and one
+   * underlying [DesktopInteractiveSession]; the session lives until the last subscribed stream
+   * stops. Inputs from any stream drive the same composition state.
+   *
+   * Keyed by previewId. Each acquire returns a fresh per-stream proxy [InteractiveSession] whose
+   * [InteractiveSession.close] decrements the refcount; the inner shared session is torn down
+   * once the count hits zero.
+   */
+  private val sharedInteractiveSessions = ConcurrentHashMap<String, SharedInteractiveSession>()
+
+  private data class SharedInteractiveSession(
+    val inner: DesktopInteractiveSession,
+    val refCount: java.util.concurrent.atomic.AtomicInteger,
+  )
+
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
@@ -254,5 +272,130 @@ open class DesktopHost(
       current = current.targetException ?: return current
     }
     return current
+  }
+
+  /**
+   * v2 (INTERACTIVE.md § 9) — resolve [previewId] to the [RenderSpec] the held scene should be
+   * built from. Default returns `null`, which causes [acquireInteractiveSession] to throw
+   * [UnsupportedOperationException]; that signals to [JsonRpcServer.handleInteractiveStart] that
+   * this host doesn't know how to serve interactive sessions for this preview, and the v1
+   * fallback path stays in force.
+   *
+   * Production wiring: [PreviewManifestRouter] overrides this to look the previewId up in its
+   * `previews.json` manifest. The base [DesktopHost] doesn't carry a manifest of its own — the
+   * renderer-agnostic surface in `:daemon:core` only forwards `previewId` strings, not specs — so
+   * the no-manifest case is "no interactive support". Tests can subclass and pin a fixture spec
+   * directly without going through the manifest.
+   */
+  protected open fun resolveInteractiveSpec(previewId: String): RenderSpec? = null
+
+  /**
+   * v2 — acquire a held [InteractiveSession] for [previewId]. Resolves the [RenderSpec] via
+   * [resolveInteractiveSpec], sets up an [HeldScene] with `LocalInspectionMode = false`
+   * (INTERACTIVE.md § 9.5), and returns a [DesktopInteractiveSession] backed by it.
+   *
+   * **Shared session per previewId** (INTERACTIVE.md § 9.7). Two streams targeting the same
+   * preview share one held scene so the second stream's input drives the same composition state
+   * as the first. The shared session lives until the last subscribed stream stops; that's
+   * tracked here via [SharedInteractiveSession.refCount]. Each call returns a fresh per-stream
+   * proxy whose [InteractiveSession.close] decrements the refcount and tears the held scene
+   * down once the count hits zero.
+   *
+   * **Inspection-mode flip.** v1 non-interactive renders pin `LocalInspectionMode = true`;
+   * interactive sessions explicitly want real behaviour (pointer-input modifiers fire, app code
+   * that branches on `isInspectionMode` runs the production path) — INTERACTIVE.md § 9.5.
+   */
+  override fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+  ): InteractiveSession {
+    val spec =
+      resolveInteractiveSpec(previewId)
+        ?: throw UnsupportedOperationException(
+          "DesktopHost: no manifest entry for previewId='$previewId'; " +
+            "interactive mode requires resolveInteractiveSpec to return a RenderSpec"
+        )
+    val shared =
+      sharedInteractiveSessions.compute(previewId) { _, existing ->
+        if (existing != null) {
+          existing.refCount.incrementAndGet()
+          existing
+        } else {
+          val held =
+            engine.setUp(
+              spec = spec,
+              classLoader = classLoader,
+              sandboxStats = sandboxStats,
+              runInspectionMode = false,
+            )
+          // Bootstrap render so the scene has done layout once before any pointer dispatch
+          // arrives — without it Compose's hit-testing has no measured tree to walk and pointer
+          // events miss every clickable. INTERACTIVE.md § 9.2 calls this out: "Pre-renders one
+          // bootstrap frame so the panel has something to paint immediately." We don't ship the
+          // pixels anywhere; the load-bearing side effect is layout.
+          held.scene.render()
+          val inner =
+            DesktopInteractiveSession(previewId = previewId, engine = engine, held = held)
+          SharedInteractiveSession(
+            inner = inner,
+            refCount = java.util.concurrent.atomic.AtomicInteger(1),
+          )
+        }
+      }!!
+    return RefCountedInteractiveSession(previewId, shared, this)
+  }
+
+  /**
+   * Decrement [previewId]'s refcount by one; close the underlying shared session and drop the map
+   * entry when it hits zero. Idempotent on a previewId that's already been fully released (the
+   * `compute` no-ops on a missing entry).
+   */
+  internal fun releaseInteractiveSession(previewId: String) {
+    sharedInteractiveSessions.compute(previewId) { _, existing ->
+      if (existing == null) return@compute null
+      val remaining = existing.refCount.decrementAndGet()
+      if (remaining > 0) {
+        existing
+      } else {
+        try {
+          existing.inner.close()
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: DesktopHost.releaseInteractiveSession($previewId) " +
+              "inner close threw: ${t.javaClass.simpleName}: ${t.message}"
+          )
+        }
+        null
+      }
+    }
+  }
+
+  /**
+   * Per-stream proxy returned to [JsonRpcServer] from [acquireInteractiveSession]. Delegates
+   * dispatch + render to the shared inner session; [close] decrements the refcount and only
+   * tears the held scene down when the last subscribed stream stops.
+   */
+  private class RefCountedInteractiveSession(
+    override val previewId: String,
+    private val shared: SharedInteractiveSession,
+    private val host: DesktopHost,
+  ) : InteractiveSession {
+
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {
+      check(!closed.get()) { "RefCountedInteractiveSession($previewId) is closed" }
+      shared.inner.dispatch(input)
+    }
+
+    override fun render(requestId: Long): RenderResult {
+      check(!closed.get()) { "RefCountedInteractiveSession($previewId) is closed" }
+      return shared.inner.render(requestId)
+    }
+
+    override fun close() {
+      if (!closed.compareAndSet(false, true)) return
+      host.releaseInteractiveSession(previewId)
+    }
   }
 }
