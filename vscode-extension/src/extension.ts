@@ -20,7 +20,7 @@ import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
-import { readPreviewMainPng } from './previewMainSource';
+import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
@@ -712,6 +712,7 @@ export function deactivate() {
     // processes after a window close. Fire-and-forget — VS Code won't wait
     // for an async deactivate beyond a few seconds anyway.
     void daemonGate?.dispose();
+    disposePreviewMainBatches();
 }
 
 function sameScope(a: string[], b: string[]): boolean {
