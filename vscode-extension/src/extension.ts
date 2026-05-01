@@ -34,6 +34,11 @@ const DEBOUNCE_MS = 1500;
 // gate still protects against stacking builds if something happens faster.
 const SCOPE_DEBOUNCE_MS = 300;
 const INIT_DELAY_MS = 1000;
+// LSP republish lag. The Kotlin LSP typically republishes diagnostics
+// within 30–80 ms of a save; this is a conservative cap before the gate
+// trusts that what it reads is the post-save state. Only paid when the
+// initial read showed errors — happy path is unaffected.
+const GATE_REREAD_DELAY_MS = 150;
 
 let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
@@ -136,6 +141,15 @@ let lastLoadedModules: string[] = [];
  * webview has focus (undefined) or resolve to an unrelated editor.
  */
 let currentScopeFile: string | null = null;
+/**
+ * True when the panel currently shows a compile-error banner the
+ * extension posted (either from the LSP gate or from a kotlinc parse
+ * failure). The onDidChangeDiagnostics listener uses this to decide
+ * whether a "diagnostics now empty" event for `currentScopeFile`
+ * should auto-retry the refresh — pointless when no banner is up.
+ * Cleared whenever the gate clears the banner or a refresh completes.
+ */
+let compileGateActive = false;
 const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used to look up the
  *  owning module when the webview posts a per-preview action. */
@@ -683,6 +697,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         context.subscriptions.push(watcher);
     }
 
+    // Auto-retry when the LSP clears errors on the currently-gated file.
+    // Closes the loop on the typo-fix flow: today the user has to save
+    // again to release the banner; here, the moment the LSP republishes
+    // empty diagnostics for the saved buffer, we kick a fresh render.
+    //
+    // Guard rails:
+    //   1. compileGateActive — no point retrying when the panel isn't
+    //      currently showing an error banner.
+    //   2. event affects currentScopeFile — diagnostic changes for
+    //      unrelated files mustn't pull a render of the active one.
+    //   3. buffer is saved (!isDirty) — Gradle reads the on-disk file,
+    //      so retrying against an unsaved fix would still render against
+    //      the bad version. Wait for the next save.
+    //   4. errors actually clear — the event also fires on diagnostic
+    //      content changes, e.g. severity bump from Warning to Error.
+    context.subscriptions.push(
+        vscode.languages.onDidChangeDiagnostics(e => onDiagnosticsChanged(e)),
+    );
+
     context.subscriptions.push({ dispose: () => gradleService?.dispose() });
 
     if (!isTestMode) {
@@ -1059,6 +1092,30 @@ function readCompileErrors(filePath: string): CompileError[] {
     return extractCompileErrors(filePath, diagnostics as unknown as readonly DiagnosticLike[]);
 }
 
+/**
+ * Auto-retry the refresh when the LSP republishes diagnostics that
+ * clear the currently-gated file. See the listener registration site
+ * for the four guard rails (compileGateActive, scope match, !isDirty,
+ * errors actually cleared).
+ *
+ * Pulled out of the listener call site so it can early-return cheaply
+ * without nesting; the event fires for every diagnostic change in the
+ * workspace, so the body needs to bail fast in the common case where
+ * we don't care.
+ */
+function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
+    if (!compileGateActive || !currentScopeFile) { return; }
+    const scopeFile = currentScopeFile;
+    if (!e.uris.some(u => u.fsPath === scopeFile)) { return; }
+    const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === scopeFile);
+    if (doc?.isDirty) { return; }
+    const errors = readCompileErrors(scopeFile);
+    if (errors.length > 0) { return; }
+    logLine(`auto-retry: LSP diagnostics cleared on ${path.basename(scopeFile)}`);
+    compileGateActive = false;
+    void refresh(true, scopeFile, 'fast');
+}
+
 /** Read calibrated phase durations for `module` from workspace state. Empty
  *  on first run; the tracker falls back to its built-in phase defaults. */
 function readCalibration(module: string): PhaseDurations {
@@ -1321,7 +1378,21 @@ async function refresh(
     //
     // Gate fires before currentScopeFile assignment so a later refresh from
     // a different file can still drop the banner via clearCompileErrors.
-    const compileErrors = readCompileErrors(activeFile);
+    //
+    // Save-edge debounce. The Kotlin LSP can take 50–200 ms to republish
+    // diagnostics for the post-save buffer. The first-save path skips
+    // the save debounce, so without this re-read we'd happily gate on
+    // pre-save errors that were just fixed. When the initial read shows
+    // errors, wait briefly and re-check; if they cleared we proceed
+    // straight to a normal refresh.
+    const initialErrors = readCompileErrors(activeFile);
+    if (initialErrors.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, GATE_REREAD_DELAY_MS));
+        if (abort.signal.aborted) { return 'cancelled'; }
+    }
+    const compileErrors = initialErrors.length > 0
+        ? readCompileErrors(activeFile)
+        : initialErrors;
     if (compileErrors.length > 0) {
         panel.postMessage({
             command: 'setCompileErrors',
@@ -1332,6 +1403,7 @@ async function refresh(
         // pendingRefresh.abort() at the top of this function.
         panel.postMessage({ command: 'clearProgress' });
         currentScopeFile = activeFile;
+        compileGateActive = true;
         logLine(`gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`);
         return 'gated';
     }
@@ -1339,6 +1411,7 @@ async function refresh(
     // we begin the actual build so the user sees the panel return to its
     // normal "working" state.
     panel.postMessage({ command: 'clearCompileErrors' });
+    compileGateActive = false;
 
     currentScopeFile = activeFile;
     // Phase H7 — re-scope the History panel alongside the live panel.
@@ -1650,6 +1723,7 @@ async function refresh(
                 errors: err.errors,
             });
             panel.postMessage({ command: 'clearProgress' });
+            compileGateActive = true;
             return 'failed';
         }
         const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
