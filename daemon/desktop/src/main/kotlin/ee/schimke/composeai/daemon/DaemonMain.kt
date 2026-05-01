@@ -72,6 +72,25 @@ fun main(args: Array<String>) {
       UserClassLoaderHolder(urls = userClassUrls)
     } else null
 
+  // B2.2 phase 1 — load the in-memory preview index from `previews.json`. The gradle plugin's
+  // `composePreviewDaemonStart` task emits the absolute path as a sysprop on the daemon JVM (see
+  // `composeai.daemon.previewsJsonPath` in AndroidPreviewSupport.kt). When unset (in-process tests,
+  // ad-hoc launches) we come up with the empty index — same shape as the pre-B2.2 stub.
+  // Loaded BEFORE host construction (was: after) so the host's v2 interactive resolver can consult
+  // the index. Index loading is read-only and fast; the reorder is a no-op for everything else.
+  val previewsJsonPath = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+  val previewIndex: PreviewIndex =
+    if (!previewsJsonPath.isNullOrBlank()) {
+      val loaded = PreviewIndex.loadFromFile(Path.of(previewsJsonPath))
+      System.err.println(
+        "compose-ai-tools desktop daemon: PreviewIndex loaded " +
+          "(path=${loaded.path}, previewCount=${loaded.size})"
+      )
+      loaded
+    } else {
+      PreviewIndex.empty()
+    }
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -82,7 +101,16 @@ fun main(args: Array<String>) {
       )
       PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
     } else {
-      DesktopHost(userClassloaderHolder = userClassloaderHolder)
+      DesktopHost(
+        userClassloaderHolder = userClassloaderHolder,
+        // v2 — resolve `previewId` via PreviewIndex for the interactive session path. Display
+        // dimensions aren't carried in PreviewInfoDto today, so we fall back to the same
+        // 320x320 / density 2.0 defaults the v1 one-shot RenderSpec uses. When the gradle
+        // plugin grows display-property fields on PreviewInfoDto, this lambda picks them up.
+        // See INTERACTIVE.md § 9 ("RenderHost surface").
+        previewSpecResolver =
+          previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
+      )
     }
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
   // `composeai.daemon.cheapSignalFiles` (set by the gradle plugin's composePreviewDaemonStart).
@@ -104,23 +132,6 @@ fun main(args: Array<String>) {
         )
         ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
       }
-
-  // B2.2 phase 1 — load the in-memory preview index from `previews.json`. The gradle plugin's
-  // `composePreviewDaemonStart` task emits the absolute path as a sysprop on the daemon JVM (see
-  // `composeai.daemon.previewsJsonPath` in AndroidPreviewSupport.kt). When unset (in-process tests,
-  // ad-hoc launches) we come up with the empty index — same shape as the pre-B2.2 stub.
-  val previewsJsonPath = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
-  val previewIndex: PreviewIndex =
-    if (!previewsJsonPath.isNullOrBlank()) {
-      val loaded = PreviewIndex.loadFromFile(Path.of(previewsJsonPath))
-      System.err.println(
-        "compose-ai-tools desktop daemon: PreviewIndex loaded " +
-          "(path=${loaded.path}, previewCount=${loaded.size})"
-      )
-      loaded
-    } else {
-      PreviewIndex.empty()
-    }
 
   // B2.2 phase 2 — wire the incremental rescan path. ClassGraph scans are scoped to the smallest
   // classpath element overlapping the saved `.kt` file (see [IncrementalDiscovery]); the diff
@@ -249,6 +260,25 @@ private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
 
 /** Module project path stamped into every history entry's `module` field. */
 private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
+
+/**
+ * Adapts a [PreviewIndex] into the `(previewId) -> RenderSpec?` lambda [DesktopHost] consumes for
+ * v2 interactive sessions. PreviewIndex carries className + methodName; everything else
+ * (dimensions, density, background) comes from the [RenderSpec] defaults — a future iteration
+ * widens [PreviewInfoDto] to carry display dimensions from the gradle plugin so interactive scenes
+ * match the user's `@Preview(widthDp = …)` exactly.
+ *
+ * Returns `null` when [previewId] isn't in the index — the host translates that into
+ * `UnsupportedOperationException`, JsonRpcServer falls back to v1 dispatch, the panel keeps working
+ * without held-state semantics.
+ */
+private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String) -> RenderSpec?)? {
+  return { previewId ->
+    previewIndex.byId(previewId)?.let { info ->
+      RenderSpec(className = info.className, functionName = info.methodName)
+    }
+  }
+}
 
 private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.InputStream) {
   // Same property the JsonRpcServer reads, so a single sysprop tunes both timeouts coherently.
