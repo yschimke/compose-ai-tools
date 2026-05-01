@@ -85,8 +85,12 @@ fun main(args: Array<String>) {
   val previewParameterProviderFqn = args.getOrNull(11)?.takeIf { it.isNotBlank() }
   val previewParameterLimit = args.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: Int.MAX_VALUE
 
-  try {
-    val values: List<Any?> =
+  // Provider enumeration is fatal to the whole subprocess — we can't
+  // render anything if values can't be loaded. Per-value render failures
+  // are caught individually below and surfaced as `.error.json` sidecars
+  // so a single broken preview doesn't sink the whole batch.
+  val values: List<Any?> =
+    try {
       if (previewParameterProviderFqn != null && previewParameterLimit > 0) {
         loadProviderValues(previewParameterProviderFqn, previewParameterLimit).also { vs ->
           if (vs.isEmpty()) {
@@ -98,27 +102,47 @@ fun main(args: Array<String>) {
       } else {
         listOf(NO_PARAM)
       }
+    } catch (e: Exception) {
+      writeErrorSidecar(outputFile, className, functionName, e)
+      // Exit 0 so the gradle plugin keeps rendering subsequent previews.
+      // The sidecar carries the structured error; the plugin doesn't need
+      // to re-discover it from a non-zero exit.
+      return
+    }
 
-    val suffixes: List<String> =
-      if (values.size == 1 && values[0] === NO_PARAM) {
-        listOf("")
-      } else {
-        PreviewParameterLabels.suffixesFor(values)
-      }
-    val targetFiles = values.mapIndexed { idx, value ->
-      if (value === NO_PARAM) outputFile
-      else File(insertBeforeExtension(outputFile.path, suffixes[idx]))
+  val suffixes: List<String> =
+    if (values.size == 1 && values[0] === NO_PARAM) {
+      listOf("")
+    } else {
+      PreviewParameterLabels.suffixesFor(values)
     }
-    // Renderer is authoritative about the fan-out — delete any
-    // `<stem>_*<ext>` files from prior runs that aren't in this run's
-    // expected output. Guards against provider renames and the
-    // `_PARAM_<idx>` → `_<label>` migration leaving stale PNGs behind.
-    if (values.any { it !== NO_PARAM }) {
-      deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet())
-    }
-    for ((idx, value) in values.withIndex()) {
-      val targetFile = targetFiles[idx]
-      val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
+  val targetFiles = values.mapIndexed { idx, value ->
+    if (value === NO_PARAM) outputFile
+    else File(insertBeforeExtension(outputFile.path, suffixes[idx]))
+  }
+  // Renderer is authoritative about the fan-out — delete any
+  // `<stem>_*<ext>` files from prior runs that aren't in this run's
+  // expected output. Guards against provider renames and the
+  // `_PARAM_<idx>` → `_<label>` migration leaving stale PNGs behind.
+  if (values.any { it !== NO_PARAM }) {
+    deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet())
+  }
+  for ((idx, value) in values.withIndex()) {
+    val targetFile = targetFiles[idx]
+    val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
+    // Per-value try/catch — the user-facing pain we're addressing is "one
+    // broken preview turns the whole panel into 'Build failed'". Catching
+    // here lets sibling previews in the same subprocess (i.e. multiple
+    // @PreviewParameter values for the same function) succeed
+    // independently. Cross-preview isolation across functions is already
+    // provided by the subprocess-per-preview model in the gradle plugin.
+    try {
+      // Drop any stale sidecar before attempting a fresh render — if the
+      // last run failed and this one succeeds, the .error.json from the
+      // failed run would otherwise live forever next to the new PNG and
+      // VS Code would surface yesterday's exception as if it were current.
+      val sidecar = errorSidecarFor(targetFile)
+      if (sidecar.exists()) sidecar.delete()
       renderPreview(
         className,
         functionName,
@@ -133,12 +157,109 @@ fun main(args: Array<String>) {
         wrapHeight,
         previewArgs,
       )
+    } catch (e: Throwable) {
+      // Catch Throwable, not Exception — preview functions can throw
+      // Errors (e.g. AssertionError from a misused require) and the user
+      // wants those surfaced too. We won't catch JVM-fatal throwables in
+      // practice (those already terminated the JVM before we got here).
+      System.err.println("Render failed for $className.$functionName: ${e.message}")
+      writeErrorSidecar(targetFile, className, functionName, e)
+      // Continue with the next value — keep exit code 0 below.
     }
-  } catch (e: Exception) {
-    System.err.println("Render failed for $className.$functionName: ${e.message}")
-    e.printStackTrace()
-    exitProcess(2)
   }
+}
+
+/**
+ * Filename convention for the error sidecar: same path as the PNG with `.error.json` appended.
+ * Sibling placement means the gradle plugin doesn't need an aggregation step and the extension
+ * finds the sidecar by trivial string-concat on the manifest's existing renderOutput path.
+ */
+private fun errorSidecarFor(pngFile: File): File =
+  File(pngFile.parentFile, pngFile.name + ".error.json")
+
+private fun writeErrorSidecar(
+  pngFile: File,
+  className: String,
+  functionName: String,
+  e: Throwable,
+) {
+  val sidecar = errorSidecarFor(pngFile)
+  sidecar.parentFile?.mkdirs()
+  // Drop any stale PNG from a previous successful run so the extension
+  // doesn't surface yesterday's image alongside today's error message.
+  if (pngFile.exists()) pngFile.delete()
+  val stack = java.io.StringWriter().also { e.printStackTrace(java.io.PrintWriter(it)) }.toString()
+  val top = pickTopAppFrame(e)
+  // Hand-rolled JSON to avoid pulling kotlinx-serialization into the
+  // renderer-desktop runtime classpath (the plugin owns serialisation
+  // and we don't want a second copy here). Schema must mirror
+  // gradle-plugin/.../PreviewRenderError.kt verbatim.
+  val sb = StringBuilder()
+  sb.append('{')
+  sb.append("\"schema\":\"compose-preview-error/v1\",")
+  sb.append("\"exception\":").append(jsonString(e.javaClass.name)).append(',')
+  sb.append("\"message\":").append(jsonString(e.message ?: "")).append(',')
+  if (top != null) {
+    sb.append("\"topAppFrame\":{")
+    sb.append("\"file\":").append(jsonString(top.file)).append(',')
+    sb.append("\"line\":").append(top.line).append(',')
+    sb.append("\"function\":").append(jsonString(top.function))
+    sb.append("},")
+  }
+  sb.append("\"stackTrace\":").append(jsonString(stack))
+  sb.append('}')
+  sidecar.writeText(sb.toString())
+}
+
+/**
+ * The first stack frame attributable to user code — skip Compose scaffold, Kotlin stdlib, JDK
+ * frames, and the renderer's own glue so the user-facing "at Previews.kt:47" points where the bug
+ * actually is. Returns null when no frame survives the filter (deep framework throw).
+ */
+private fun pickTopAppFrame(e: Throwable): TopFrameJson? {
+  val skipPrefixes =
+    listOf(
+      "androidx.compose.",
+      "kotlin.",
+      "kotlinx.",
+      "java.",
+      "javax.",
+      "jdk.",
+      "sun.",
+      "ee.schimke.composeai.renderer.",
+      "org.jetbrains.skia.",
+      "org.jetbrains.skiko.",
+    )
+  for (frame in e.stackTrace) {
+    val cls = frame.className
+    if (skipPrefixes.any { cls.startsWith(it) }) continue
+    return TopFrameJson(
+      file = frame.fileName ?: "",
+      line = frame.lineNumber.coerceAtLeast(0),
+      function = frame.methodName ?: "",
+    )
+  }
+  return null
+}
+
+private data class TopFrameJson(val file: String, val line: Int, val function: String)
+
+private fun jsonString(s: String): String {
+  val sb = StringBuilder(s.length + 2)
+  sb.append('"')
+  for (c in s) {
+    when (c) {
+      '"' -> sb.append("\\\"")
+      '\\' -> sb.append("\\\\")
+      '\b' -> sb.append("\\b")
+      '\n' -> sb.append("\\n")
+      '\r' -> sb.append("\\r")
+      '\t' -> sb.append("\\t")
+      else -> if (c < ' ') sb.append("\\u%04x".format(c.code)) else sb.append(c)
+    }
+  }
+  sb.append('"')
+  return sb.toString()
 }
 
 // Sentinel: distinguishes "no @PreviewParameter fan-out" from "provider yielded null".

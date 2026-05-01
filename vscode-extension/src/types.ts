@@ -118,6 +118,43 @@ export interface AccessibilityReport {
     }[];
 }
 
+/**
+ * Per-preview render-error sidecar produced by the renderer when a
+ * `@Preview` function throws at render time. Mirrors
+ * `gradle-plugin/.../PreviewRenderError.kt`. Schema is versioned so the
+ * extension can ignore files written by an incompatible plugin version
+ * — only `compose-preview-error/v1` is currently understood.
+ *
+ * Lives next to the would-be PNG with `.error.json` appended:
+ *   `<module>/build/compose-previews/renders/Foo.png.error.json`
+ */
+export interface PreviewRenderError {
+    /** Stable schema tag, currently `compose-preview-error/v1`. */
+    schema: string;
+    /** FQN of the throwable, e.g. `java.lang.NullPointerException`. */
+    exception: string;
+    /** The throwable's message. Empty string when no message was supplied. */
+    message: string;
+    /**
+     * First stack frame the renderer attributes to user code (skipping
+     * `androidx.compose.*`, `kotlin.*`, `java.*`, and the renderer scaffold).
+     * Surfaced on the failing card as a "go to source" link. `null` when
+     * the heuristic finds no app frame (deep framework throw).
+     */
+    topAppFrame?: PreviewRenderErrorTopFrame | null;
+    /** Full stack trace as it would appear in `Throwable.printStackTrace()`. */
+    stackTrace: string;
+}
+
+export interface PreviewRenderErrorTopFrame {
+    /** Source-file basename, e.g. `Previews.kt`. */
+    file: string;
+    /** 1-based line number, or 0 when the frame doesn't carry one. */
+    line: number;
+    /** Function / method name from the stack frame. */
+    function: string;
+}
+
 // -------------------------------------------------------------------------
 // Android XML resource previews — mirrors of the Kotlin types in
 // `gradle-plugin/.../PreviewData.kt` / `renderer-android/.../RenderResourceManifest.kt`.
@@ -248,7 +285,21 @@ export type ExtensionToWebview =
     /** `captureIndex` addresses which capture within an animated preview the
      *  image belongs to. Static previews have a single capture at index 0. */
     | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
-    | { command: 'setImageError'; previewId: string; captureIndex: number; message: string }
+    | {
+          command: 'setImageError';
+          previewId: string;
+          captureIndex: number;
+          message: string;
+          /**
+           * Structured runtime-error detail surfaced from the renderer's
+           * `.error.json` sidecar. When present the panel renders a richer
+           * card affordance — exception class + message + a "go to source"
+           * link tied to the top app frame — instead of the bare
+           * [message] string. Null/missing means "no sidecar available";
+           * the panel falls back to the generic message.
+           */
+          renderError?: PreviewRenderError | null;
+      }
     | { command: 'setLoading'; previewId?: string }
     | { command: 'markAllLoading' }
     | { command: 'setError'; previewId: string; message: string }
