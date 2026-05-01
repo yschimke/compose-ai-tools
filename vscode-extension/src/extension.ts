@@ -15,7 +15,7 @@ import { AndroidManifestCodeLensProvider } from './androidManifestCodeLensProvid
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
+import { HEAVY_COST_THRESHOLD, PreviewInfo, WebviewToExtension } from './types';
 import { formatRenderErrorMessage } from './renderError';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
@@ -1851,35 +1851,40 @@ async function refresh(
     }
 }
 
-function handleWebviewMessage(msg: WebviewToExtensionMessage) {
+function handleWebviewMessage(msg: WebviewToExtension) {
+    // Discriminated-union dispatch: inside each `case` TypeScript narrows
+    // `msg` to the matching variant, so the field accesses below are
+    // type-checked. Defensive runtime checks remain only where the
+    // webview's untyped postMessage could deliver a structurally-broken
+    // payload (e.g. arrays that aren't actually arrays).
     switch (msg.command) {
         case 'openFile':
-            if (msg.className && msg.functionName) {
-                openPreviewSource(msg.className, msg.functionName);
-            }
+            openPreviewSource(msg.className, msg.functionName);
             break;
         case 'selectModule':
             selectedModule = msg.value || null;
             sendModuleList();
             if (selectedModule) { refresh(false); }
             break;
-        case 'refreshHeavy':
+        case 'refreshHeavy': {
             // Click on the stale badge → full-tier render of the owning
             // module. Once we have a `-PcomposePreview.previewIds=` filter
             // we can scope this to just the requested capture; for now the
             // user pays a full-module render for the freshness guarantee.
-            if (msg.previewId) {
-                const mod = previewModuleMap.get(msg.previewId);
-                if (mod) {
-                    void refresh(true, currentScopeFile ?? undefined, 'full');
-                }
+            const mod = previewModuleMap.get(msg.previewId);
+            if (mod) {
+                void refresh(true, currentScopeFile ?? undefined, 'full');
             }
             break;
+        }
         case 'viewportUpdated':
             // Daemon-only: route geometric visibility + scroll-ahead
             // predictions to the scheduler so it can `setVisible` and
             // queue speculative renders. When the daemon is disabled
-            // (default) `notifyDaemonViewport` is a no-op.
+            // (default) `notifyDaemonViewport` is a no-op. Array.isArray
+            // is the one defensive check we keep — postMessage's typing
+            // doesn't survive across the bridge so a buggy webview build
+            // could send a string here.
             if (Array.isArray(msg.visible) && Array.isArray(msg.predicted)) {
                 void notifyDaemonViewport(msg.visible, msg.predicted);
             }
@@ -1907,20 +1912,13 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
             break;
         }
         case 'openCompileError':
-            if (msg.sourceFile && typeof msg.line === 'number'
-                && typeof msg.column === 'number') {
-                void openSourcePosition(msg.sourceFile, msg.line, msg.column);
-            }
+            void openSourcePosition(msg.sourceFile, msg.line, msg.column);
             break;
         case 'openSourceFile':
-            if (msg.fileName && typeof msg.line === 'number') {
-                void openSourceByFileName(msg.fileName, msg.line);
-            }
+            void openSourceByFileName(msg.fileName, msg.line, msg.className);
             break;
         case 'requestPreviewDiff':
-            if (msg.previewId && (msg.against === 'head' || msg.against === 'main')) {
-                void runLivePreviewDiff(msg.previewId, msg.against);
-            }
+            void runLivePreviewDiff(msg.previewId, msg.against);
             break;
     }
 }
@@ -1946,35 +1944,74 @@ async function openSourcePosition(filePath: string, line: number, column: number
 
 /**
  * Resolve a stack-trace `fileName` (a basename like `Previews.kt` from
- * `StackTraceElement.fileName`) to an absolute path via workspace
- * findFiles, then open it at [line]. Used by the runtime-error card —
- * the JVM stack trace doesn't carry the absolute path of the source
- * file, only its basename, so we glob and take the first hit outside
- * `**\/build/**`. Ambiguous matches across same-named files in
- * different modules fall back to the first hit; richer disambiguation
- * (e.g. by function name) is a follow-up.
+ * `StackTraceElement.fileName`) to an absolute path, then open it at
+ * [line]. The JVM stack trace doesn't carry the absolute path of the
+ * source file — only the basename — so we have to search.
+ *
+ * Two-pass resolution:
+ *
+ *  1. **Class-derived path** when [className] is supplied (the preview's
+ *     compiled class FQN, e.g. `com.example.app.PreviewsKt`) AND the
+ *     basename of that path matches [fileName]. Maps `com.example.app.
+ *     PreviewsKt` → `com/example/app/Previews.kt`, then globs for that
+ *     suffix. Disambiguates same-named files across modules: a click on
+ *     a frame that's IN the preview's own class file lands on the right
+ *     `Previews.kt` rather than the first one workspace-wide.
+ *  2. **Basename glob** as fallback. The top app frame can be in a
+ *     different file from the preview's class (cross-file throws —
+ *     `Theme.kt` referenced from `Previews.kt`'s preview function), so
+ *     a class-FQN-derived path won't match. Falls back to the same
+ *     `**\/<fileName>` glob the resolver originally used.
  *
  * Silently does nothing when no match is found — the user sees no
  * editor change and a log line, since "open my Previews.kt" failing
  * isn't worth a toast.
  */
-async function openSourceByFileName(fileName: string, line: number): Promise<void> {
+async function openSourceByFileName(
+    fileName: string,
+    line: number,
+    className?: string,
+): Promise<void> {
     if (!fileName) { return; }
     try {
+        // Class-derived path. The Kotlin compiler emits one .class per
+        // top-level Kotlin file, named `<File>Kt`; strip the trailing
+        // "Kt" and convert package-dots to slashes to recover the
+        // original `.kt` source path. Skip when the FQN's basename
+        // doesn't match the stack-trace's basename — the throw isn't in
+        // this preview's own file, so the class-derived path would point
+        // at the wrong source.
+        if (className) {
+            const classFile = className.replace(/Kt$/, '').replace(/\./g, '/') + '.kt';
+            if (path.posix.basename(classFile) === fileName) {
+                const exact = await vscode.workspace.findFiles(`**/${classFile}`, '**/build/**', 1);
+                if (exact.length > 0) {
+                    await openAt(exact[0], line);
+                    return;
+                }
+            }
+        }
+        // Basename fallback for cross-file throws.
         const matches = await vscode.workspace.findFiles(`**/${fileName}`, '**/build/**', 1);
         if (matches.length === 0) {
             logLine(`openSourceByFileName: no match for ${fileName}`);
             return;
         }
-        const doc = await vscode.workspace.openTextDocument(matches[0]);
-        const editor = await vscode.window.showTextDocument(doc);
-        const pos = new vscode.Position(Math.max(0, line - 1), 0);
-        editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+        await openAt(matches[0], line);
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         logLine(`openSourceByFileName failed for ${fileName}:${line} — ${message}`);
     }
+}
+
+/** Shared open-at-line helper — same shape as the inline body in
+ *  openSourcePosition but takes a Uri instead of a string path. */
+async function openAt(uri: vscode.Uri, line: number): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc);
+    const pos = new vscode.Position(Math.max(0, line - 1), 0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
 }
 
 async function runLivePreviewDiff(
@@ -2302,24 +2339,6 @@ async function notifyDaemonViewport(visible: string[], predicted: string[]): Pro
             predictedByModule.get(mod) ?? [],
         );
     }
-}
-
-// Loose type for incoming webview messages (validated per-case above).
-// Field union accommodates every case in handleWebviewMessage so no cast
-// gymnastics are needed at the use site.
-interface WebviewToExtensionMessage {
-    command: string;
-    className?: string;
-    functionName?: string;
-    value?: string;
-    previewId?: string | null;
-    visible?: string[];
-    predicted?: string[];
-    sourceFile?: string;
-    fileName?: string;
-    line?: number;
-    column?: number;
-    against?: 'head' | 'main';
 }
 
 /**
