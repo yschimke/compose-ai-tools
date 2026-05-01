@@ -266,6 +266,15 @@ data class RenderFinishedParams(
   // to (or globally attached via `attachDataProducts`). Absent and `[]` are
   // interchangeable on the wire. See docs/daemon/DATA-PRODUCTS.md.
   val dataProducts: List<DataProductAttachment>? = null,
+  /**
+   * Interactive-mode frame deduplication signal — see docs/daemon/INTERACTIVE.md § 5. When `true`
+   * the daemon has determined the rendered bytes are byte-identical to the previously notified
+   * frame for the same preview id, so the client can short-circuit the read-PNG → base64 →
+   * postMessage hop. Always omitted (`null` on the wire) when dedup didn't fire — a fresh
+   * `renderFinished` whose `unchanged` field is `null` means "client must paint these bytes".
+   * Additive per PROTOCOL.md § 7; older clients ignore the field and keep painting unconditionally.
+   */
+  val unchanged: Boolean? = null,
 )
 
 /**
@@ -485,6 +494,48 @@ data class HistoryReadResultDto(
 )
 
 @Serializable data class HistoryAddedParams(val entry: JsonElement)
+
+// =====================================================================
+// 5b. Interactive (live-stream) mode — see docs/daemon/INTERACTIVE.md § 8.
+//
+// Pins a previewId as one of the daemon's render-priority targets ("warm" sandbox semantics
+// once B2.4 lands). Multi-target on the wire: each `interactive/start` registers a fresh
+// slot and returns a unique stream id; concurrent streams targeting different (or even the
+// same) preview ids coexist. Inputs route by `frameStreamId` so a stop on one stream leaves
+// the others untouched. Inputs are fire-and-forget notifications; the daemon responds by
+// emitting a fresh `renderFinished` for the target preview.
+// =====================================================================
+
+@Serializable data class InteractiveStartParams(val previewId: String)
+
+/**
+ * Opaque correlation token returned by `interactive/start`. The client passes it back on every
+ * subsequent `interactive/input` and `interactive/stop` so the daemon can route the input to the
+ * right frame stream and drop stale ids cleanly.
+ */
+@Serializable data class InteractiveStartResult(val frameStreamId: String)
+
+@Serializable data class InteractiveStopParams(val frameStreamId: String)
+
+@Serializable
+data class InteractiveInputParams(
+  val frameStreamId: String,
+  val kind: InteractiveInputKind,
+  /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
+  val pixelX: Int? = null,
+  val pixelY: Int? = null,
+  /** For `keyDown` / `keyUp`. */
+  val keyCode: String? = null,
+)
+
+@Serializable
+enum class InteractiveInputKind {
+  @SerialName("click") CLICK,
+  @SerialName("pointerDown") POINTER_DOWN,
+  @SerialName("pointerUp") POINTER_UP,
+  @SerialName("keyDown") KEY_DOWN,
+  @SerialName("keyUp") KEY_UP,
+}
 
 // ---------------------------------------------------------------------------
 // H3 — `history/diff` metadata-mode wire shape. See HISTORY.md § "What this PR
