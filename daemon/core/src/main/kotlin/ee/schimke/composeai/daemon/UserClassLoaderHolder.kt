@@ -219,18 +219,41 @@ class UserClassLoaderHolder(
 
     /**
      * Resolves [USER_CLASS_DIRS_PROP] into a list of [URL]s, dropping entries that don't exist on
-     * disk. Returns an empty list if the sysprop is unset.
+     * disk and **ordering directories before jars**. Returns an empty list if the sysprop is unset.
+     *
+     * **Why directories first.** AGP's variant classpath surfaces both the kotlinc output directory
+     * (`build/intermediates/built_in_kotlinc/<variant>/compileDebugKotlin/classes/`) and the
+     * runtime-bundled jar (`build/intermediates/runtime_app_classes_jar/<variant>/.../classes.jar`)
+     * for the same set of user classes. The kotlinc directory is rewritten by `compileDebugKotlin`
+     * — an upstream of every save's `discoverPreviews` — so it carries the fresh bytecode. The
+     * runtime jar is rewritten by `bundleDebugClassesToRuntimeJar`, which is **not** on the
+     * `discoverPreviews` task graph; it only runs as part of `composePreviewDaemonStart` (once at
+     * bootstrap) and the unit-test packaging path. After the first save the jar is therefore stale
+     * relative to the `.class` directory.
+     *
+     * `URLClassLoader.findClass` walks URLs in declaration order and returns the first match. AGP's
+     * natural ordering puts the runtime jar before the kotlinc directory; without this sort the
+     * daemon resolves every user class out of the stale jar and the freshly-recompiled directory is
+     * never read — the "first edit updates, subsequent edits stick" symptom that the cancellation
+     * hole / classloader-swap diagnostics couldn't explain on their own. Moving directories to the
+     * front lets the kotlinc output win for any class it carries; bundled jars stay on the path as
+     * a fallback for kapt/ksp-generated classes and the AGP `R.jar`.
+     *
+     * Sort is stable (`sortedBy` uses TimSort), so directories among themselves and jars among
+     * themselves keep their relative order — important because AGP's main-vs-test classpath
+     * ordering carries semantics we don't want to scramble.
      */
     fun urlsFromSysprop(): List<URL> {
       val raw = System.getProperty(USER_CLASS_DIRS_PROP) ?: return emptyList()
       if (raw.isBlank()) return emptyList()
-      return raw
-        .split(java.io.File.pathSeparator)
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .map { java.io.File(it) }
-        .filter { it.exists() }
-        .map { it.toURI().toURL() }
+      val files =
+        raw
+          .split(java.io.File.pathSeparator)
+          .map { it.trim() }
+          .filter { it.isNotEmpty() }
+          .map { java.io.File(it) }
+          .filter { it.exists() }
+      return files.sortedBy { if (it.isDirectory) 0 else 1 }.map { it.toURI().toURL() }
     }
 
     /**
