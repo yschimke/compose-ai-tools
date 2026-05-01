@@ -18,9 +18,12 @@ import kotlinx.serialization.json.JsonObject
  * clients see the project in `list_projects` immediately. Projects can also be added at runtime via
  * the `register_project` MCP tool.
  *
- * `--replicas-per-daemon N` (or the `composeai.mcp.replicasPerDaemon` system property) spawns N
- * extra in-process replicas per (workspace, module) for render fan-out — see
- * [DaemonSupervisor.replicasPerDaemon]. Default 0 (one daemon per module).
+ * `--replicas-per-daemon N` (or the `composeai.mcp.replicasPerDaemon` system property) configures
+ * the in-JVM sandbox pool size: total sandboxes per (workspace, module) = `1 + N`. SANDBOX-POOL.md
+ * Layer 3 collapsed what used to be N+1 separate JVM subprocesses into a single daemon JVM hosting
+ * N+1 Robolectric sandboxes, so this knob no longer multiplies the JVM-baseline cost. Default
+ * [DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON] (= 3, i.e. 4 sandboxes per daemon). Set `0` to opt
+ * out and run a single sandbox per daemon.
  *
  * On stdin EOF the server tears down every supervised daemon (sending `shutdown` + `exit` per
  * PROTOCOL.md § 3) and exits cleanly.
@@ -89,8 +92,9 @@ object DaemonMcpMain {
 
   private fun parseReplicasPerDaemon(args: Array<String>): Int {
     // CLI flag wins over the system property; system property wins over the default. Negative
-    // or unparseable values fall back to 0 with a stderr warning rather than crashing the server
-    // — replication is an opt-in optimisation, not load-bearing.
+    // or unparseable values fall back to the default with a stderr warning rather than crashing
+    // the server — replication is non-load-bearing, so prefer "did something reasonable" to
+    // refusing to start.
     val fromArgs =
       generateSequence(0) { it + 1 }
         .takeWhile { it < args.size }
@@ -103,13 +107,14 @@ object DaemonMcpMain {
           }
         }
     val raw = fromArgs ?: System.getProperty("composeai.mcp.replicasPerDaemon")
-    if (raw.isNullOrBlank()) return 0
+    if (raw.isNullOrBlank()) return DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON
     val parsed = raw.toIntOrNull()
     if (parsed == null || parsed < 0) {
       System.err.println(
-        "compose-preview-mcp: ignoring invalid --replicas-per-daemon='$raw' (want non-negative int)"
+        "compose-preview-mcp: ignoring invalid --replicas-per-daemon='$raw' (want non-negative int); " +
+          "falling back to default ${DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON}"
       )
-      return 0
+      return DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON
     }
     return parsed
   }
