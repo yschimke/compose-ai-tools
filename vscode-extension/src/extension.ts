@@ -1912,6 +1912,11 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 void openSourcePosition(msg.sourceFile, msg.line, msg.column);
             }
             break;
+        case 'openSourceFile':
+            if (msg.fileName && typeof msg.line === 'number') {
+                void openSourceByFileName(msg.fileName, msg.line);
+            }
+            break;
         case 'requestPreviewDiff':
             if (msg.previewId && (msg.against === 'head' || msg.against === 'main')) {
                 void runLivePreviewDiff(msg.previewId, msg.against);
@@ -1936,6 +1941,39 @@ async function openSourcePosition(filePath: string, line: number, column: number
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         logLine(`openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`);
+    }
+}
+
+/**
+ * Resolve a stack-trace `fileName` (a basename like `Previews.kt` from
+ * `StackTraceElement.fileName`) to an absolute path via workspace
+ * findFiles, then open it at [line]. Used by the runtime-error card —
+ * the JVM stack trace doesn't carry the absolute path of the source
+ * file, only its basename, so we glob and take the first hit outside
+ * `**\/build/**`. Ambiguous matches across same-named files in
+ * different modules fall back to the first hit; richer disambiguation
+ * (e.g. by function name) is a follow-up.
+ *
+ * Silently does nothing when no match is found — the user sees no
+ * editor change and a log line, since "open my Previews.kt" failing
+ * isn't worth a toast.
+ */
+async function openSourceByFileName(fileName: string, line: number): Promise<void> {
+    if (!fileName) { return; }
+    try {
+        const matches = await vscode.workspace.findFiles(`**/${fileName}`, '**/build/**', 1);
+        if (matches.length === 0) {
+            logLine(`openSourceByFileName: no match for ${fileName}`);
+            return;
+        }
+        const doc = await vscode.workspace.openTextDocument(matches[0]);
+        const editor = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(Math.max(0, line - 1), 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        logLine(`openSourceByFileName failed for ${fileName}:${line} — ${message}`);
     }
 }
 
@@ -2278,6 +2316,7 @@ interface WebviewToExtensionMessage {
     visible?: string[];
     predicted?: string[];
     sourceFile?: string;
+    fileName?: string;
     line?: number;
     column?: number;
     against?: 'head' | 'main';
