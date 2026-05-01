@@ -72,6 +72,28 @@ interface DataProductRegistry {
 
     /** Re-render budget tripped → `DataProductBudgetExceeded` (-32023). */
     data object BudgetExceeded : Outcome
+
+    /**
+     * D3 — the latest pass didn't compute the kind and producing it requires a fresh render in the
+     * named [mode] (DATA-PRODUCTS.md § "Re-render semantics"). The dispatcher
+     * ([JsonRpcServer.handleDataFetch]) reacts by:
+     *
+     * 1. Queueing a re-render of just `previewId` in [mode], emitting a normal
+     *    `renderStarted`/`renderFinished` so the panel UI updates the PNG if it changed.
+     * 2. Bounding the wait by the per-request budget (`composeai.daemon.dataFetchRerenderBudgetMs`,
+     *    default 30000ms). On budget exceeded the dispatcher returns
+     *    [Outcome.BudgetExceeded]'s wire error (`-32023`) — but per the spec the render is *not*
+     *    cancelled, the fetch just gives up waiting for it.
+     * 3. Re-invoking [fetch] once the render lands so the registry can return [Ok] (or another
+     *    failure) against the now-current pass.
+     *
+     * `mode` is a renderer-side mode tag (e.g. `"a11y"`, `"recomposition"`); the dispatcher
+     * forwards it through the host payload's `mode=<mode>` key so the renderer-agnostic seam stays
+     * stringly-typed. Producers pick the smallest mode that produces the kind — different kinds
+     * MAY share a mode, in which case a follow-up D-step can opportunistically piggy-back fetches
+     * against an already-queued re-render.
+     */
+    data class RequiresRerender(val mode: String) : Outcome
   }
 
   companion object {
