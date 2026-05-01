@@ -115,6 +115,18 @@ class RenderEngine(
     val clazz = Class.forName(spec.className, true, classLoader)
     val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
 
+    // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
+    // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
+    // [UserClassLoaderHolder]. If `classFile` doesn't advance across saves the daemon is
+    // re-rendering against bytecode that wasn't actually recompiled.
+    val fingerprint =
+      UserClassLoaderHolder.classFileFingerprint(classLoader, spec.className)
+        ?: "fingerprint unavailable (class not on a file: URL)"
+    System.err.println(
+      "compose-ai-daemon: [render] ${spec.className}#${spec.functionName} " +
+        "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint"
+    )
+
     // `device = "id:wearos_*_round"` / `isRound=true` previews need a circular crop matching the
     // standalone renderer's `RobolectricRenderTest`. The standalone path also gates on
     // `showSystemUi || kind == TILE` to skip the crop on non-fullscreen previews (the crop is a

@@ -169,6 +169,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
     };
 
+    // Startup fingerprint — answers "is the build I think I installed
+    // actually loaded?" when triaging a save-loop bug. The extension version
+    // comes from package.json (bumped by release-please); the path locates
+    // the loaded module on disk so an old install lingering from a prior
+    // session is obvious.
+    const extId = 'yuri-schimke.compose-preview';
+    const ext = vscode.extensions.getExtension(extId);
+    const extVersion = ext?.packageJSON?.version ?? 'unknown';
+    const extPath = ext?.extensionPath ?? '<unresolved>';
+    outputChannel.appendLine(
+        `[startup] compose-preview v${extVersion} loaded from ${extPath}`,
+    );
+
     const isTestMode = process.env.COMPOSE_PREVIEW_TEST_MODE === '1';
 
     // vscjava.vscode-gradle is declared as an extensionDependency, so it's
@@ -366,6 +379,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 panel.postMessage({ command: 'setFunctionFilter', functionName });
             },
         ),
+        // The daemon JVM caches the renderer JAR + sandbox state across every
+        // render in a session — that's the whole point of the daemon. The
+        // downside is that rebuilding the daemon (`./gradlew :daemon:android:…`
+        // or any change to the renderer/host code) doesn't take effect until
+        // the running JVM dies. Idle timeout is 5s, but a user actively saving
+        // never trips it. This command is the explicit escape hatch: shut
+        // down every running daemon, clear the bootstrapped-modules memo, and
+        // re-run the bootstrap task so the next save picks up the new JAR.
+        vscode.commands.registerCommand('composePreview.restartDaemon', async () => {
+            if (!daemonGate || !daemonScheduler) {
+                vscode.window.showInformationMessage(
+                    'Compose Preview: daemon gate not initialised yet.',
+                );
+                return;
+            }
+            const restarted = await daemonGate.restartAll();
+            // Clear the per-session bootstrap memo so the next save re-runs
+            // `composePreviewDaemonStart`, which writes a fresh
+            // `daemon-launch.json` pointing at the rebuilt JAR. Without
+            // clearing this the spawn would skip the bootstrap and the
+            // descriptor on disk could still reference the previous build.
+            daemonBootstrappedModules.clear();
+            // Hide the status-bar item — its text references a specific module
+            // that's no longer relevant; the next warmModule call will repopulate
+            // it through its progress callback.
+            daemonStatusItem?.hide();
+            outputChannel.appendLine(
+                `[daemon] restartDaemon: shut down ${restarted.length} running daemon(s)` +
+                (restarted.length > 0 ? ` [${restarted.join(', ')}]` : '') +
+                ` — next save will respawn from the on-disk JAR`,
+            );
+            vscode.window.showInformationMessage(
+                restarted.length === 0
+                    ? 'Compose Preview: no daemon was running.'
+                    : `Compose Preview: restarted ${restarted.length} daemon(s). ` +
+                      'Next save will respawn from the on-disk JAR.',
+            );
+        }),
     );
 
     const detectLog = (msg: string) => {
@@ -564,7 +615,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 }, logFilter);
             },
             triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
-                return refresh(force, filePath, tier);
+                return refresh(force, filePath, tier).then(() => {});
             },
             getPostedMessages(): unknown[] {
                 return [...postedMessageLog];
@@ -853,7 +904,24 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
             // daemon's child URLClassLoader reads. Notifying the daemon
             // before the recompile would race the swap against stale
             // bytecode and the panel would flicker without updating.
-            await refresh(false, filePath);
+            const outcome = await refresh(false, filePath);
+            if (outcome !== 'completed') {
+                // Discover didn't finish to completion. Three cases, all
+                // equally bad for daemon notify:
+                //   - 'cancelled': a newer save aborted us mid-flight, so
+                //     compileKotlin was killed too — `.class` files are
+                //     half-written. The newer save's runRefreshExclusive
+                //     will own the daemon notify.
+                //   - 'failed': Gradle failed (build error, missing jlink).
+                //     `.class` files weren't refreshed; stale bytecode.
+                //   - 'no-module': nothing happened.
+                // In all three, sending fileChanged + renderNow now would
+                // re-render against stale bytes and produce the
+                // flicker-without-update symptom — exactly the bug this
+                // ordering fix was meant to close.
+                logLine(`daemon: skipped notify (refresh outcome=${outcome})`);
+                return;
+            }
             const accepted = await notifyDaemonOfSave(filePath);
             if (accepted) {
                 return;
@@ -910,12 +978,33 @@ const fastTierModules = new Set<string>();
  *                     overrides to `'fast'` (see {@link runRefreshExclusive}).
  *                     Ignored when `forceRender` is false (discover-only).
  */
+/**
+ * Outcome of a {@link refresh} call. Callers (notably {@link runRefreshExclusive})
+ * use this to decide whether to take follow-up steps that depend on the
+ * Gradle work having actually run to completion — e.g. notifying the daemon
+ * after a discover, which only makes sense when `compileKotlin` (an
+ * upstream of `discoverPreviews`) finished and the on-disk `.class` files
+ * are fresh.
+ *
+ * - `'completed'` — the requested Gradle task ran end-to-end and the panel
+ *   is up to date.
+ * - `'cancelled'` — a newer refresh aborted this one (or Gradle reported
+ *   `CANCELLED`). Whoever superseded us owns the panel state from here;
+ *   no follow-up should run.
+ * - `'no-module'` — no preview module resolved for the requested file
+ *   (file outside the workspace, build script, etc.). Panel was reset to
+ *   the empty state; no Gradle work happened.
+ * - `'failed'` — Gradle threw a non-cancellation error (build failure,
+ *   missing `jlink`, etc.). The panel surfaces the error; no follow-up.
+ */
+type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed';
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
     tier: 'fast' | 'full' = 'full',
-) {
-    if (!gradleService || !panel) { return; }
+): Promise<RefreshOutcome> {
+    if (!gradleService || !panel) { return 'no-module'; }
 
     // Cancel any in-flight refresh
     pendingRefresh?.abort();
@@ -944,7 +1033,7 @@ async function refresh(
         if (activeFile && isPreviewSourceFile(activeFile)) {
             maybeShowSetupPrompt(activeFile);
         }
-        return;
+        return 'no-module';
     }
     logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
 
@@ -999,7 +1088,7 @@ async function refresh(
         previewModuleMap.clear();
 
         for (const mod of modules) {
-            if (abort.signal.aborted) { return; }
+            if (abort.signal.aborted) { return 'cancelled'; }
 
             const manifest = forceRender
                 ? await gradleService.renderPreviews(mod, tier)
@@ -1042,7 +1131,7 @@ async function refresh(
             }
         }
 
-        if (abort.signal.aborted) { return; }
+        if (abort.signal.aborted) { return 'cancelled'; }
 
         if (allPreviews.length === 0) {
             // Module has no previews at all. Wipe any stale cards so the
@@ -1051,7 +1140,7 @@ async function refresh(
             panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found in this module' });
             hasPreviewsLoaded = false;
             logLine('done — module has no previews');
-            return;
+            return 'completed';
         }
 
         // Scope strictly to the active file. If the file has no @Preview
@@ -1071,7 +1160,7 @@ async function refresh(
             });
             hasPreviewsLoaded = false;
             logLine(`done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`);
-            return;
+            return 'completed';
         }
 
         // A preview is "heavyStale" when this module's most recent render was
@@ -1157,14 +1246,15 @@ async function refresh(
         // showMessage would also clobber legitimate extension-set messages
         // (filter empty notice, build errors), which was the original
         // "populate then go blank" regression.
+        return abort.signal.aborted ? 'cancelled' : 'completed';
     } catch (err: unknown) {
-        if (abort.signal.aborted) { return; }
+        if (abort.signal.aborted) { return 'cancelled'; }
         // Cancellation = a follow-up refresh superseded this one. The new
         // refresh owns the panel state from here; surfacing a "FAILED" toast
         // would be misleading and noisy.
         if (err instanceof TaskCancelledError) {
             logLine(`cancelled — superseded by a newer refresh`);
-            return;
+            return 'cancelled';
         }
         if (err instanceof JdkImageError) {
             logLine(`FAILED (jlink missing): ${err.finding.jlinkPath}`);
@@ -1173,7 +1263,7 @@ async function refresh(
                 text: 'Gradle is running on a JRE without jlink. Configure a full JDK to render previews.',
             });
             showJdkImageRemediation(err);
-            return;
+            return 'failed';
         }
         const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
         logLine(`FAILED: ${message}`);
@@ -1181,6 +1271,7 @@ async function refresh(
             command: 'showMessage',
             text: message,
         });
+        return 'failed';
     } finally {
         if (pendingRefresh === abort) { pendingRefresh = null; }
     }

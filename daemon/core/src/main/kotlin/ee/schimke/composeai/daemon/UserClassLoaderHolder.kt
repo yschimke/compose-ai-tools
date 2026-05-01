@@ -89,6 +89,14 @@ class UserClassLoaderHolder(
   fun swap() {
     synchronized(lock) {
       current = null
+      // Self-diagnostic log — surfaces as `[daemon stderr] [classloader] swap …` in the VS Code
+      // extension's Compose Preview output channel. Pairs with the `allocate` line emitted on the
+      // next currentChildLoader() read; if a save loop produces "swap" but never the matching
+      // "allocate" the host's render thread isn't picking up the swap, and if "allocate" fires but
+      // the .class fingerprint doesn't move across saves the disk hasn't actually been recompiled.
+      System.err.println(
+        "compose-ai-daemon: [classloader] swap requested urlCount=${urls.size} liveLoaders=${trackedLoaders.size}"
+      )
       // Force the next currentChildLoader read to do the allocation; we deliberately don't
       // pre-allocate here because the next render is what cares, and pre-allocating would
       // double the loader objects in flight when fileChanged arrives faster than renders.
@@ -131,6 +139,14 @@ class UserClassLoaderHolder(
     val fresh = ChildFirstURLClassLoader(urls.toTypedArray(), resolvedParent)
     current = fresh
     trackedLoaders.add(WeakReference(fresh))
+    // Self-diagnostic log — pairs with `swap requested` above. Surfaces the URL list so we can see
+    // exactly which directories the next render's findClass walks. The `urlsSummary` helper
+    // reports the directory mtime for each entry; an mtime that doesn't advance across saves means
+    // `compileKotlin` didn't actually rewrite anything (Gradle up-to-date, no-op edit, etc.).
+    System.err.println(
+      "compose-ai-daemon: [classloader] allocate child loader parent=${resolvedParent.javaClass.name} " +
+        "loaderId=${System.identityHashCode(fresh).toString(16)} urls=${urlsSummary(urls)}"
+    )
     onSwap?.invoke(fresh)
     return fresh
   }
@@ -203,18 +219,100 @@ class UserClassLoaderHolder(
 
     /**
      * Resolves [USER_CLASS_DIRS_PROP] into a list of [URL]s, dropping entries that don't exist on
-     * disk. Returns an empty list if the sysprop is unset.
+     * disk and **ordering directories before jars**. Returns an empty list if the sysprop is unset.
+     *
+     * **Why directories first.** AGP's variant classpath surfaces both the kotlinc output directory
+     * (`build/intermediates/built_in_kotlinc/<variant>/compileDebugKotlin/classes/`) and the
+     * runtime-bundled jar (`build/intermediates/runtime_app_classes_jar/<variant>/.../classes.jar`)
+     * for the same set of user classes. The kotlinc directory is rewritten by `compileDebugKotlin`
+     * — an upstream of every save's `discoverPreviews` — so it carries the fresh bytecode. The
+     * runtime jar is rewritten by `bundleDebugClassesToRuntimeJar`, which is **not** on the
+     * `discoverPreviews` task graph; it only runs as part of `composePreviewDaemonStart` (once at
+     * bootstrap) and the unit-test packaging path. After the first save the jar is therefore stale
+     * relative to the `.class` directory.
+     *
+     * `URLClassLoader.findClass` walks URLs in declaration order and returns the first match. AGP's
+     * natural ordering puts the runtime jar before the kotlinc directory; without this sort the
+     * daemon resolves every user class out of the stale jar and the freshly-recompiled directory is
+     * never read — the "first edit updates, subsequent edits stick" symptom that the cancellation
+     * hole / classloader-swap diagnostics couldn't explain on their own. Moving directories to the
+     * front lets the kotlinc output win for any class it carries; bundled jars stay on the path as
+     * a fallback for kapt/ksp-generated classes and the AGP `R.jar`.
+     *
+     * Sort is stable (`sortedBy` uses TimSort), so directories among themselves and jars among
+     * themselves keep their relative order — important because AGP's main-vs-test classpath
+     * ordering carries semantics we don't want to scramble.
      */
     fun urlsFromSysprop(): List<URL> {
       val raw = System.getProperty(USER_CLASS_DIRS_PROP) ?: return emptyList()
       if (raw.isBlank()) return emptyList()
-      return raw
-        .split(java.io.File.pathSeparator)
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .map { java.io.File(it) }
-        .filter { it.exists() }
-        .map { it.toURI().toURL() }
+      val files =
+        raw
+          .split(java.io.File.pathSeparator)
+          .map { it.trim() }
+          .filter { it.isNotEmpty() }
+          .map { java.io.File(it) }
+          .filter { it.exists() }
+      return files.sortedBy { if (it.isDirectory) 0 else 1 }.map { it.toURI().toURL() }
+    }
+
+    /**
+     * Compact one-line dump of [urls] suitable for stderr — each entry is `<path>(mtime=…)` so the
+     * directory's most-recent write is visible at a glance. Only `file:` URLs are statted; other
+     * schemes are reported by URL string only.
+     */
+    internal fun urlsSummary(urls: List<URL>): String =
+      urls.joinToString(prefix = "[", postfix = "]") { url ->
+        if (url.protocol == "file") {
+          val file = java.io.File(url.toURI())
+          val mtime =
+            if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+            else "missing"
+          "${file.absolutePath}(mtime=$mtime)"
+        } else {
+          url.toString()
+        }
+      }
+
+    /**
+     * Resolves [className] to its on-disk `.class` file via [loader]'s resource lookup and returns
+     * a compact `path=… mtime=… size=… sha=…` string. Returns `null` if the class isn't on a
+     * `file:` URL (jar entry, network, missing) — we only fingerprint disk-backed user classes
+     * since those are the ones that should change across save → recompile cycles.
+     *
+     * The SHA is the first 6 bytes of SHA-256 hex (12 chars) — enough to disambiguate consecutive
+     * recompiles in a save loop without bloating each log line.
+     */
+    fun classFileFingerprint(loader: ClassLoader, className: String): String? {
+      val resourceName = className.replace('.', '/') + ".class"
+      val url = loader.getResource(resourceName) ?: return null
+      if (url.protocol != "file") return null
+      val file =
+        try {
+          java.io.File(url.toURI())
+        } catch (_: Throwable) {
+          return null
+        }
+      if (!file.exists()) return null
+      val mtime = java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+      return "path=${file.absolutePath} mtime=$mtime size=${file.length()} sha=${sha256Short(file)}"
+    }
+
+    private fun sha256Short(file: java.io.File): String {
+      val md = java.security.MessageDigest.getInstance("SHA-256")
+      try {
+        file.inputStream().use { input ->
+          val buffer = ByteArray(8192)
+          while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            md.update(buffer, 0, read)
+          }
+        }
+      } catch (_: Throwable) {
+        return "unreadable"
+      }
+      return md.digest().take(6).joinToString("") { "%02x".format(it) }
     }
   }
 }

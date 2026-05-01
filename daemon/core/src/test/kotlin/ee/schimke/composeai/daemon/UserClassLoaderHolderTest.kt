@@ -88,6 +88,49 @@ class UserClassLoaderHolderTest {
   }
 
   @Test
+  fun `urlsFromSysprop sorts directories before jars`() {
+    // AGP's variant classpath lists the runtime-bundled jar before the kotlinc output directory
+    // for the same set of user classes; the daemon must consult the directory first because that's
+    // where compileDebugKotlin writes fresh bytes on every save. URLClassLoader.findClass walks
+    // declaration order and returns the first match, so this ordering is load-bearing for the
+    // edit → render save loop. Regression marker for the "first edit updates, subsequent edits
+    // stick" symptom diagnosed via the user-class-dirs log line in DaemonMain.
+    val parent =
+      Files.createTempDirectory("user-classes-order-").toFile().also { it.deleteOnExit() }
+    val jarFirst = File(parent, "runtime_app_classes_jar.jar").apply { writeBytes(byteArrayOf()) }
+    val dirSecond = File(parent, "compileDebugKotlin-classes").apply { mkdirs() }
+    val jarThird = File(parent, "R.jar").apply { writeBytes(byteArrayOf()) }
+    val dirFourth = File(parent, "kotlin-classes").apply { mkdirs() }
+    val raw =
+      listOf(
+          jarFirst.absolutePath,
+          dirSecond.absolutePath,
+          jarThird.absolutePath,
+          dirFourth.absolutePath,
+        )
+        .joinToString(File.pathSeparator)
+    val previous = System.getProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP)
+    System.setProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP, raw)
+    try {
+      val urls = UserClassLoaderHolder.urlsFromSysprop()
+      assertEquals(4, urls.size)
+      // First two are directories; relative order preserved (dirSecond → dirFourth).
+      assertTrue("urls[0] should be a directory: ${urls[0]}", urls[0].path.endsWith("/"))
+      assertTrue("urls[1] should be a directory: ${urls[1]}", urls[1].path.endsWith("/"))
+      assertTrue(urls[0].path.contains(dirSecond.name))
+      assertTrue(urls[1].path.contains(dirFourth.name))
+      // Last two are jars; relative order preserved (jarFirst → jarThird).
+      assertTrue("urls[2] should be a jar: ${urls[2]}", urls[2].path.endsWith(".jar"))
+      assertTrue("urls[3] should be a jar: ${urls[3]}", urls[3].path.endsWith(".jar"))
+      assertTrue(urls[2].path.contains(jarFirst.name))
+      assertTrue(urls[3].path.contains(jarThird.name))
+    } finally {
+      if (previous != null) System.setProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP, previous)
+      else System.clearProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP)
+    }
+  }
+
+  @Test
   fun `soak loop GCs recycled loaders within bounded window`() {
     // CLASSLOADER.md § Risks 1: assert that recycled loaders collect within 2 GCs (roughly — see
     // liveLoaderCount which forces 2 system.gc() calls). After 50 swaps with no work between
