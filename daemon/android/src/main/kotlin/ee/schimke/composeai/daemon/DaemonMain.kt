@@ -62,54 +62,32 @@ fun main(args: Array<String>) {
   // swap. When the sysprop is unset (legacy/in-process tests), the holder is null and the legacy
   // sandbox-classpath path stays — pre-B2.0 behaviour.
   val userClassUrls = UserClassLoaderHolder.urlsFromSysprop()
-  val userClassloaderHolder: UserClassLoaderHolder? =
-    if (userClassUrls.isNotEmpty()) {
-      System.err.println(
-        "compose-ai-tools daemon: UserClassLoaderHolder active " +
-          "(urls=${userClassUrls.size}, dirs=${userClassUrls.map { it.path }})"
-      )
-      // B2.0-followup — the child URLClassLoader's parent must be the **sandbox** classloader
-      // (not the host thread's app loader). DaemonHostBridge.sandboxClassLoaderRef is set inside
-      // SandboxHoldingRunner.holdSandboxOpen once the sandbox boots; the supplier here is
-      // evaluated lazily on first allocation, by which time the bridge ref is non-null because
-      // RobolectricHost.publishChildLoader awaits sandbox-ready before invoking the supplier.
-      // Forensics-confirmed root cause for the previous Android save-loop failure.
-      UserClassLoaderHolder(
-        urls = userClassUrls,
-        parentSupplier = {
-          DaemonHostBridge.currentSandboxClassLoader()
-            ?: error(
-              "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run. " +
-                "Did SandboxHoldingRunner.holdSandboxOpen execute setSandboxClassLoader before " +
-                "the host called publishChildLoader?"
-            )
-        },
-      )
-    } else null
+  val hasUserClasses = userClassUrls.isNotEmpty()
+  if (hasUserClasses) {
+    System.err.println(
+      "compose-ai-tools daemon: UserClassLoaderHolder active " +
+        "(urls=${userClassUrls.size}, dirs=${userClassUrls.map { it.path }})"
+    )
+  }
 
   // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. The
   // DaemonSupervisor passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` via the
   // launch descriptor's systemProperties; sandbox pooling collapses what used to be N separate
   // daemon JVMs into one JVM with N sandbox slots. Default 1 preserves the pre-pool single-
   // sandbox behaviour bit-for-bit.
-  //
-  // Constraint: sandboxCount > 1 isn't compatible with a non-null userClassloaderHolder in v1
-  // (per-slot child URLClassLoaders are layered work — see RobolectricHost's init-block check).
-  // Force sandboxCount = 1 with a clear warning when both are requested so the daemon still
-  // boots; otherwise the host's `require` would fire and the daemon would fail to start.
-  val requestedSandboxCount =
+  val sandboxCount =
     (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: 1).coerceAtLeast(1)
-  val effectiveSandboxCount =
-    if (requestedSandboxCount > 1 && userClassloaderHolder != null) {
-      System.err.println(
-        "compose-ai-tools daemon: requested sandboxCount=$requestedSandboxCount but a user-class " +
-          "loader holder is active; sandbox pooling is not yet compatible with the disposable " +
-          "child loader (per-slot child loaders are follow-up work). Falling back to sandboxCount=1."
-      )
-      1
-    } else {
-      requestedSandboxCount
-    }
+
+  // SANDBOX-POOL-FOLLOWUPS.md (#1) — per-slot child loaders. The factory closes over the URL
+  // list and constructs one holder per slot, parented to the slot's own sandbox classloader. The
+  // host invokes the factory lazily on first dispatch to each slot, after the sandbox prologue
+  // has registered its loader on `DaemonHostBridge.slot(i).sandboxClassLoaderRef`.
+  val userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
+    if (hasUserClasses) {
+      { sandboxClassLoader ->
+        UserClassLoaderHolder(urls = userClassUrls, parentSupplier = { sandboxClassLoader })
+      }
+    } else null
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
@@ -121,17 +99,32 @@ fun main(args: Array<String>) {
       )
       // The harness's PreviewManifestRouter wraps a single RobolectricHost; sandbox pooling is
       // an optimisation for the production daemon path, not the harness mode (which exists to
-      // exercise the wire protocol against in-process fakes). Stay at sandboxCount=1 here.
-      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
+      // exercise the wire protocol against in-process fakes). Stay at sandboxCount=1 here and
+      // use the legacy single-instance holder (PreviewManifestRouter still takes that form).
+      val singletonHolder: UserClassLoaderHolder? =
+        userClassloaderHolderFactory?.let { factory ->
+          UserClassLoaderHolder(
+            urls = userClassUrls,
+            parentSupplier = {
+              DaemonHostBridge.currentSandboxClassLoader()
+                ?: error(
+                  "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run. " +
+                    "Did SandboxHoldingRunner.holdSandboxOpen execute setSandboxClassLoader before " +
+                    "the host called publishChildLoader?"
+                )
+            },
+          )
+        }
+      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = singletonHolder)
     } else {
-      if (effectiveSandboxCount > 1) {
+      if (sandboxCount > 1) {
         System.err.println(
-          "compose-ai-tools daemon: sandbox pool active (sandboxCount=$effectiveSandboxCount)"
+          "compose-ai-tools daemon: sandbox pool active (sandboxCount=$sandboxCount)"
         )
       }
       RobolectricHost(
-        userClassloaderHolder = userClassloaderHolder,
-        sandboxCount = effectiveSandboxCount,
+        userClassloaderHolderFactory = userClassloaderHolderFactory,
+        sandboxCount = sandboxCount,
       )
     }
 
