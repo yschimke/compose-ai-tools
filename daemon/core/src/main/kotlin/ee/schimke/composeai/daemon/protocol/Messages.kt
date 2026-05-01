@@ -116,6 +116,12 @@ data class ServerCapabilities(
   // client side treats absent and `[]` identically). See
   // docs/daemon/DATA-PRODUCTS.md § "Wire surface".
   val dataProducts: List<DataProductCapability> = emptyList(),
+  // INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
+  // `interactive/input` events into a held composition (v2). `false` means
+  // `interactive/start` still works but inputs trigger a re-render rather than
+  // mutating state (v1 fallback). Defaulted for old daemons that pre-date the
+  // capability — clients treat absent and `false` identically.
+  val interactive: Boolean = false,
 )
 
 /**
