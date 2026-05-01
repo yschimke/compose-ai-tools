@@ -133,6 +133,84 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                     await this.runDiff(msg.fromId, msg.toId);
                 }
                 break;
+            case 'requestDiff':
+                if (msg.id && (msg.against === 'current' || msg.against === 'previous')) {
+                    await this.runPairDiff(msg.id, msg.against);
+                }
+                break;
+        }
+    }
+
+    private async runPairDiff(id: string, against: 'current' | 'previous'): Promise<void> {
+        if (!this.view) { return; }
+        const scope = this.currentScope;
+        if (!scope) {
+            this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No active scope.' });
+            return;
+        }
+        try {
+            const left = await this.source.read(id);
+            if (!left) {
+                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Entry not found.' });
+                return;
+            }
+            const leftEntry = left.entry as { previewId?: string; timestamp?: string };
+            const previewId = leftEntry.previewId ?? scope.previewId;
+            if (!previewId) {
+                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Entry has no previewId.' });
+                return;
+            }
+
+            let right: HistoryReadResult | null = null;
+            let rightLabel = '';
+            if (against === 'current') {
+                const synthList = currentRendersFor(scope).list(previewId);
+                const synth = synthList.entries[0] as { id?: string; timestamp?: string } | undefined;
+                if (!synth?.id) {
+                    this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No live render available for this preview.' });
+                    return;
+                }
+                right = currentRendersFor(scope).read(synth.id);
+                rightLabel = `Current · ${formatLabelTime(synth.timestamp)}`;
+            } else {
+                const list = await this.source.list({ ...scope, previewId });
+                // Sort newest-first to match the panel; the entry just *after*
+                // the clicked one in this order is the older "previous".
+                const sorted = [...list.entries].sort((a, b) => {
+                    const at = (a as { timestamp?: string }).timestamp ?? '';
+                    const bt = (b as { timestamp?: string }).timestamp ?? '';
+                    return bt.localeCompare(at);
+                });
+                const idx = sorted.findIndex(e => (e as { id?: string }).id === id);
+                const prev = idx >= 0 ? sorted[idx + 1] as { id?: string; timestamp?: string } | undefined : undefined;
+                if (!prev?.id) {
+                    this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No earlier entry for this preview.' });
+                    return;
+                }
+                right = await this.source.read(prev.id);
+                rightLabel = `Previous · ${formatLabelTime(prev.timestamp)}`;
+            }
+            if (!right) {
+                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Comparison entry not found.' });
+                return;
+            }
+            const leftBytes = left.pngBytes
+                ?? (await fs.promises.readFile(left.pngPath)).toString('base64');
+            const rightBytes = right.pngBytes
+                ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
+            this.view.webview.postMessage({
+                command: 'diffReady',
+                id,
+                against,
+                leftLabel: `This entry · ${formatLabelTime(leftEntry.timestamp)}`,
+                leftImage: leftBytes,
+                rightLabel,
+                rightImage: rightBytes,
+            });
+        } catch (err) {
+            this.view.webview.postMessage({
+                command: 'diffPairError', id, against, message: (err as Error).message,
+            });
         }
     }
 
@@ -218,6 +296,21 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                      background: var(--vscode-textCodeBlock-background); padding: 6px; }
       .diff-inline { padding: 8px; background: var(--vscode-editorWidget-background);
                      margin-top: 8px; border-left: 2px solid var(--vscode-focusBorder); }
+      .row { grid-template-columns: 56px 1fr auto auto; }
+      .row-actions { display: flex; gap: 2px; opacity: 0;
+                     transition: opacity 100ms ease; }
+      .row:hover .row-actions, .row:focus-within .row-actions { opacity: 1; }
+      .row-action { width: 22px; height: 22px; }
+      .diff-expanded { padding: 8px; background: var(--vscode-editorWidget-background); }
+      .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .diff-pane { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+      .diff-pane-label { font-size: 90%; color: var(--vscode-descriptionForeground);
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .diff-pane img { max-width: 100%; height: auto; display: block;
+                       background: var(--vscode-editor-background); }
+      .diff-pane-empty { font-size: 90%; padding: 12px; text-align: center;
+                         color: var(--vscode-descriptionForeground);
+                         background: var(--vscode-editor-background); }
       .scope-chip { display: inline-flex; align-items: center; gap: 6px;
                     padding: 2px 8px; margin-bottom: 8px;
                     background: var(--vscode-badge-background);
@@ -388,6 +481,30 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 badge.textContent = ((entry.source && entry.source.kind) || 'fs');
                 row.appendChild(badge);
 
+                const actions = document.createElement('div');
+                actions.className = 'row-actions';
+                const diffPrevBtn = document.createElement('button');
+                diffPrevBtn.className = 'icon-button row-action';
+                diffPrevBtn.title = 'Diff against the previous entry for this preview';
+                diffPrevBtn.setAttribute('aria-label', 'Diff vs previous');
+                diffPrevBtn.innerHTML = '<i class="codicon codicon-arrow-up" aria-hidden="true"></i>';
+                diffPrevBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    requestRowDiff(entry.id, row, 'previous');
+                });
+                actions.appendChild(diffPrevBtn);
+                const diffCurrentBtn = document.createElement('button');
+                diffCurrentBtn.className = 'icon-button row-action';
+                diffCurrentBtn.title = 'Diff against the live render of this preview';
+                diffCurrentBtn.setAttribute('aria-label', 'Diff vs current');
+                diffCurrentBtn.innerHTML = '<i class="codicon codicon-git-compare" aria-hidden="true"></i>';
+                diffCurrentBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    requestRowDiff(entry.id, row, 'current');
+                });
+                actions.appendChild(diffCurrentBtn);
+                row.appendChild(actions);
+
                 row.addEventListener('click', (ev) => {
                     if (ev.shiftKey) toggleSelected(entry.id, row);
                     else expandRow(entry.id, row);
@@ -429,6 +546,19 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             vscode.postMessage({ command: 'loadImage', id });
         }
 
+        function requestRowDiff(id, row, against) {
+            const prev = timelineEl.querySelector('.expanded');
+            if (prev) prev.remove();
+            expandedId = id;
+            const expansion = document.createElement('div');
+            expansion.className = 'expanded diff-expanded';
+            expansion.dataset.id = id;
+            expansion.dataset.against = against;
+            expansion.innerHTML = '<div>Loading diff…</div>';
+            row.parentNode.insertBefore(expansion, row.nextSibling);
+            vscode.postMessage({ command: 'requestDiff', id, against });
+        }
+
         function fillExpansion(id, imageData, entry) {
             const expansion = timelineEl.querySelector('.expanded[data-id="' + cssEscape(id) + '"]');
             if (!expansion) return;
@@ -457,6 +587,39 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             img.src = 'data:image/png;base64,' + imageData;
             img.alt = '';
             thumbEl.appendChild(img);
+        }
+
+        function fillDiff(id, against, leftLabel, leftImage, rightLabel, rightImage) {
+            const expansion = timelineEl.querySelector(
+                '.expanded[data-id="' + cssEscape(id) + '"][data-against="' + cssEscape(against) + '"]');
+            if (!expansion) return;
+            expansion.innerHTML = '';
+            const grid = document.createElement('div');
+            grid.className = 'diff-grid';
+            grid.appendChild(buildDiffPane(leftLabel, leftImage));
+            grid.appendChild(buildDiffPane(rightLabel, rightImage));
+            expansion.appendChild(grid);
+        }
+
+        function buildDiffPane(label, imageData) {
+            const pane = document.createElement('div');
+            pane.className = 'diff-pane';
+            const cap = document.createElement('div');
+            cap.className = 'diff-pane-label';
+            cap.textContent = label;
+            pane.appendChild(cap);
+            if (imageData) {
+                const img = document.createElement('img');
+                img.src = 'data:image/png;base64,' + imageData;
+                img.alt = label;
+                pane.appendChild(img);
+            } else {
+                const empty = document.createElement('div');
+                empty.className = 'diff-pane-empty';
+                empty.textContent = '(no image)';
+                pane.appendChild(empty);
+            }
+            return pane;
         }
 
         function showDiff(fromId, toId, result) {
@@ -575,6 +738,16 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 case 'diffError':
                     showDiff(msg.fromId, msg.toId, null);
                     break;
+                case 'diffReady':
+                    fillDiff(msg.id, msg.against, msg.leftLabel, msg.leftImage,
+                             msg.rightLabel, msg.rightImage);
+                    break;
+                case 'diffPairError': {
+                    const expansion = timelineEl.querySelector(
+                        '.expanded[data-id="' + cssEscape(msg.id) + '"][data-against="' + cssEscape(msg.against) + '"]');
+                    if (expansion) expansion.textContent = 'Diff unavailable: ' + (msg.message || '(no detail)');
+                    break;
+                }
             }
         });
     })();
@@ -715,6 +888,16 @@ interface HistoryWebviewMessage {
     sourceFile?: string;
     fromId?: string;
     toId?: string;
+    against?: 'current' | 'previous';
+}
+
+function formatLabelTime(iso: string | undefined): string {
+    if (!iso) { return '(unknown time)'; }
+    const t = Date.parse(iso);
+    if (isNaN(t)) { return iso; }
+    return new Date(t).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
 }
 
 function matchesScope(
