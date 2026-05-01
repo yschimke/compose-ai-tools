@@ -62,7 +62,7 @@ class PreviewManifestRouter(
           "PreviewManifestRouter: no manifest entry for previewId='${previewId ?: "<missing>"}' " +
             "(payload='${typed.payload}'). Manifest knows: ${byId.keys}"
         )
-    val outputBaseName = entry.outputBaseName ?: entry.id
+    val resolved = entry.resolved()
     val routed =
       RenderRequest.Render(
         id = typed.id,
@@ -70,14 +70,17 @@ class PreviewManifestRouter(
           buildString {
             append("className=").append(entry.className).append(';')
             append("functionName=").append(entry.functionName).append(';')
-            append("widthPx=").append(entry.widthPx ?: 320).append(';')
-            append("heightPx=").append(entry.heightPx ?: 320).append(';')
-            append("density=").append(entry.density ?: 2.0f).append(';')
-            append("showBackground=").append(entry.showBackground ?: true).append(';')
-            entry.device?.takeIf { it.isNotBlank() }?.let {
+            append("widthPx=").append(resolved.widthPx).append(';')
+            append("heightPx=").append(resolved.heightPx).append(';')
+            append("density=").append(resolved.density).append(';')
+            append("showBackground=").append(resolved.showBackground).append(';')
+            if (resolved.backgroundColor != 0L) {
+              append("backgroundColor=").append(resolved.backgroundColor).append(';')
+            }
+            resolved.device?.takeIf { it.isNotBlank() }?.let {
               append("device=").append(it).append(';')
             }
-            append("outputBaseName=").append(outputBaseName)
+            append("outputBaseName=").append(resolved.outputBaseName)
           },
       )
     return super.submit(routed, timeoutMs)
@@ -104,15 +107,38 @@ class PreviewManifestRouter(
 
 @Serializable data class PreviewManifest(val previews: List<PreviewManifestEntry>)
 
+/**
+ * On-the-wire entry the router reads from `previews.json`. Two shapes coexist:
+ *
+ * - **Flat** (used by harness tests in `:daemon:harness`): top-level `widthPx` / `heightPx` /
+ *   `density` / `showBackground` / `device`. Hand-rolled JSON, easy to write inline.
+ * - **Nested** (emitted by the gradle plugin's `DiscoverPreviewsTask`): the canonical
+ *   [PreviewInfo][ee.schimke.composeai.plugin.PreviewInfo] schema with a `params` block carrying
+ *   `widthDp` / `heightDp` / `density` / `device` / `showBackground` / `backgroundColor`. Pre-fix
+ *   the daemon ignored the nested shape entirely (kotlinx.serialization with `ignoreUnknownKeys =
+ *   true`), so production always rendered at the daemon's hardcoded defaults (320×320, density 2.0,
+ *   no device, no wear-round crop) — diagnosed when the wear sample's circular crop went missing
+ *   after the URL-ordering fix exposed otherwise-stale renders.
+ *
+ * [resolved] returns a [ResolvedRenderParams] that prefers flat fields when set and falls back to
+ * the nested params, doing the dp→px conversion the plugin's schema requires.
+ */
 @Serializable
 data class PreviewManifestEntry(
   val id: String,
   val className: String,
   val functionName: String,
+  /**
+   * Production manifests written by the gradle plugin nest these fields under `params`. Optional
+   * because harness tests use the flat schema (see kdoc above); when null, the resolver consults
+   * the flat fields below.
+   */
+  val params: PreviewParamsEntry? = null,
   val widthPx: Int? = null,
   val heightPx: Int? = null,
   val density: Float? = null,
   val showBackground: Boolean? = null,
+  val backgroundColor: Long? = null,
   /**
    * Raw `@Preview(device = …)` string when the source preview has one set. Forwarded into the
    * `RenderSpec` payload so the render body applies the wear-round crop / `round` resource
@@ -120,4 +146,52 @@ data class PreviewManifestEntry(
    */
   val device: String? = null,
   val outputBaseName: String? = null,
+) {
+  fun resolved(): ResolvedRenderParams {
+    val p = params
+    val density = density ?: p?.density ?: 2.0f
+    val widthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() } ?: 320
+    val heightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() } ?: 320
+    val showBackground = showBackground ?: p?.showBackground ?: true
+    val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
+    val device = device ?: p?.device
+    return ResolvedRenderParams(
+      widthPx = widthPx,
+      heightPx = heightPx,
+      density = density,
+      showBackground = showBackground,
+      backgroundColor = backgroundColor,
+      device = device,
+      outputBaseName = outputBaseName ?: id,
+    )
+  }
+}
+
+/**
+ * Subset of the plugin's
+ * [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's render path consumes.
+ * Any plugin-side fields the daemon doesn't yet care about (fontScale, locale, uiMode, group, …)
+ * are silently dropped via `ignoreUnknownKeys = true`. Add them here when the daemon grows the
+ * matching render-path support.
+ */
+@Serializable
+data class PreviewParamsEntry(
+  val device: String? = null,
+  val widthDp: Int? = null,
+  val heightDp: Int? = null,
+  val density: Float? = null,
+  val showBackground: Boolean = false,
+  val backgroundColor: Long = 0L,
+)
+
+/** Output of [PreviewManifestEntry.resolved] — flat, fully-defaulted, ready to format into a
+ *  `RenderSpec` payload. */
+data class ResolvedRenderParams(
+  val widthPx: Int,
+  val heightPx: Int,
+  val density: Float,
+  val showBackground: Boolean,
+  val backgroundColor: Long,
+  val device: String?,
+  val outputBaseName: String,
 )
