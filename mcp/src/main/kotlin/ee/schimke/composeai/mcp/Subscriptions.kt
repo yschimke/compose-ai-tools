@@ -26,6 +26,16 @@ class Subscriptions {
   /** Session ref → its watch sets. */
   private val watches = ConcurrentHashMap<Session, MutableList<WatchEntry>>()
 
+  /**
+   * D1 — `(uri, kind)` → set of sessions subscribed to that data-product attachment via
+   * `subscribe_preview_data`. Refcounted across sessions: the supervisor only forwards
+   * `data/subscribe` to the daemon on first reference and `data/unsubscribe` on last release. This
+   * matches the resource-subscription model — multiple MCP sessions can hold the same logical
+   * subscription without redundant wire traffic to the daemon — and prevents leaked daemon-side
+   * subscriptions when a session disconnects without explicitly unsubscribing.
+   */
+  private val byDataKey = ConcurrentHashMap<DataSubKey, MutableSet<Session>>()
+
   fun subscribe(uri: String, session: Session) {
     val set = byUri.computeIfAbsent(uri) { ConcurrentHashMap.newKeySet() }
     set.add(session)
@@ -33,6 +43,61 @@ class Subscriptions {
 
   fun unsubscribe(uri: String, session: Session) {
     byUri[uri]?.remove(session)
+  }
+
+  /**
+   * Adds a `(uri, kind)` data-product subscription for [session]. Returns `true` iff this is the
+   * first session interested in the pair — the supervisor uses that signal to decide whether to
+   * forward `data/subscribe` to the daemon (idempotent on repeat).
+   */
+  fun subscribeData(uri: String, kind: String, session: Session): Boolean {
+    val key = DataSubKey(uri, kind)
+    var firstRef = false
+    byDataKey.compute(key) { _, existing ->
+      val set = existing ?: ConcurrentHashMap.newKeySet<Session>().also { firstRef = true }
+      // Re-subscribing the same session is idempotent (set semantics) — but we still surface
+      // `firstRef = true` only when the set was empty before this call.
+      set.add(session)
+      set
+    }
+    return firstRef
+  }
+
+  /**
+   * Removes [session] from the `(uri, kind)` subscription. Returns `true` iff this was the last
+   * session — the supervisor uses that signal to decide whether to forward `data/unsubscribe` to
+   * the daemon.
+   */
+  fun unsubscribeData(uri: String, kind: String, session: Session): Boolean {
+    val key = DataSubKey(uri, kind)
+    var lastRef = false
+    byDataKey.computeIfPresent(key) { _, set ->
+      set.remove(session)
+      if (set.isEmpty()) {
+        lastRef = true
+        null
+      } else set
+    }
+    return lastRef
+  }
+
+  /**
+   * Returns the `(uri, kind)` pairs [session] held the last reference to, removing them from the
+   * registry. The supervisor calls this on session disconnect and forwards `data/unsubscribe` to
+   * the matching daemon for each pair so the daemon doesn't leak subscriptions for previews the
+   * client will never look at again.
+   */
+  fun forgetDataSubscriptions(session: Session): List<DataSubKey> {
+    val released = mutableListOf<DataSubKey>()
+    val iter = byDataKey.entries.iterator()
+    while (iter.hasNext()) {
+      val (key, set) = iter.next()
+      if (set.remove(session) && set.isEmpty()) {
+        released.add(key)
+        iter.remove()
+      }
+    }
+    return released
   }
 
   /** Registers a watch entry for [session]. Returns the entry so the tool can echo it back. */
@@ -52,7 +117,13 @@ class Subscriptions {
     }
   }
 
-  /** Drops all subscriptions and watches owned by [session]. Called on session disconnect. */
+  /**
+   * Drops resource subscriptions and watches owned by [session]. Data-product subscriptions are NOT
+   * dropped here — call [forgetDataSubscriptions] separately and forward `data/unsubscribe` to the
+   * matching daemons for each released `(uri, kind)`. Splitting the two lets the caller see which
+   * keys lost their last reference (so it knows which wire calls to make) without this method
+   * needing to know about the supervisor.
+   */
   fun forget(session: Session) {
     byUri.values.forEach { it.remove(session) }
     watches.remove(session)
@@ -109,6 +180,13 @@ class Subscriptions {
     return out
   }
 }
+
+/**
+ * Refcount key for `subscribe_preview_data` bookkeeping. Modelled as a value type so the `(uri,
+ * kind)` pair stays opaque to callers — they get back the released keys on disconnect and forward
+ * unsubscribes without reaching into individual fields.
+ */
+data class DataSubKey(val uri: String, val kind: String)
 
 /**
  * One area-of-interest registration. The matching dimensions:

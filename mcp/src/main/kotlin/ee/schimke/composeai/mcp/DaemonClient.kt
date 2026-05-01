@@ -270,8 +270,8 @@ class DaemonClient(
           ),
       )
     val response = sendAndAwait(id, request, timeout)
-    val errorElem = response["error"]
-    if (errorElem != null) error("data/fetch failed: $errorElem")
+    val errorElem = response["error"] as? JsonObject
+    if (errorElem != null) throw DataProductWireException.from(errorElem)
     val resultElem = response["result"] ?: error("data/fetch: no result — full=$response")
     return json.decodeFromJsonElement(DataFetchResult.serializer(), resultElem)
   }
@@ -436,5 +436,29 @@ class DaemonClient(
       }
       buf.write(b)
     }
+  }
+}
+
+/**
+ * Typed wire-error from `data/fetch`. The daemon error codes are reserved by DATA-PRODUCTS.md:
+ * `-32020` DataProductUnknown, `-32021` DataProductNotAvailable, `-32022` DataProductFetchFailed,
+ * `-32023` DataProductBudgetExceeded. Callers (notably `DaemonMcpServer.toolGetPreviewData`) use
+ * [code] to decide whether to retry — `DataProductNotAvailable` is the auto-render trigger.
+ */
+class DataProductWireException(val code: Int, val wireMessage: String, val data: JsonObject?) :
+  RuntimeException("data/fetch wire error $code: $wireMessage") {
+  companion object {
+    const val UNKNOWN = -32020
+    const val NOT_AVAILABLE = -32021
+    const val FETCH_FAILED = -32022
+    const val BUDGET_EXCEEDED = -32023
+
+    /** Extracts the JSON-RPC error payload into a [DataProductWireException]. */
+    fun from(errorElem: JsonObject): DataProductWireException =
+      DataProductWireException(
+        code = errorElem["code"]?.jsonPrimitive?.long?.toInt() ?: 0,
+        wireMessage = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: errorElem.toString(),
+        data = errorElem["data"] as? JsonObject,
+      )
   }
 }

@@ -192,6 +192,14 @@ class DaemonMcpServer(
         }
 
         override fun onClose(session: McpSession) {
+          // Release the session's data-product subscriptions and tell the daemon to unsubscribe
+          // the keys whose last reference just dropped — otherwise daemon-side subscriptions
+          // would leak until `setVisible` churn drops them, and an interactive UI that wants to
+          // re-attach later would see stale state. We forward unsubscribes best-effort: a daemon
+          // that's already gone (classpathDirty respawn) or rejects the kind doesn't block
+          // session teardown.
+          val released = subscriptions.forgetDataSubscriptions(session)
+          released.forEach { key -> dispatchDataUnsubscribe(key) }
           subscriptions.forget(session)
           sessions.unregister(session)
         }
@@ -287,6 +295,24 @@ class DaemonMcpServer(
     progressToken: JsonElement? = null,
     overrides: PreviewOverrides? = null,
   ): ByteArray {
+    val outcome = awaitNextRender(uri, session, progressToken)
+    val file = File(outcome.pngPath)
+    check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
+    return Files.readAllBytes(file.toPath())
+  }
+
+  /**
+   * Submits a `renderNow` for [uri] and blocks until the matching `renderFinished` lands. Throws on
+   * render failure or timeout. Used by [renderAndReadBytes] (which then reads the PNG) and by
+   * `get_preview_data`'s auto-render fallback (which doesn't care about the bytes — it just needs
+   * the daemon to have rendered SOMETHING so a follow-up `data/fetch` returns the kind instead of
+   * `DataProductNotAvailable`).
+   */
+  private fun awaitNextRender(
+    uri: PreviewUri,
+    session: McpSession? = null,
+    progressToken: JsonElement? = null,
+  ): RenderOutcome.Finished {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
     val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
     // Multi-waiter dedup: each call adds its own CompletableFuture to the per-key list, so
@@ -319,18 +345,14 @@ class DaemonMcpServer(
         // Best-effort cleanup so a stuck daemon doesn't leak futures forever.
         pendingRenders.computeIfPresent(key) { _, list -> list.also { it.remove(future) } }
         progressBeat?.cancel(true)
-        error("renderAndReadBytes: timed out after ${renderTimeoutMs}ms for $uri")
+        error("awaitNextRender: timed out after ${renderTimeoutMs}ms for $uri")
       } finally {
         progressBeat?.cancel(false)
       }
-    when (outcome) {
+    return when (outcome) {
       is RenderOutcome.Failed ->
-        error("renderAndReadBytes failed for $uri: ${outcome.kind} ${outcome.message}")
-      is RenderOutcome.Finished -> {
-        val file = File(outcome.pngPath)
-        check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
-        return Files.readAllBytes(file.toPath())
-      }
+        error("awaitNextRender failed for $uri: ${outcome.kind} ${outcome.message}")
+      is RenderOutcome.Finished -> outcome
     }
   }
 
@@ -587,7 +609,7 @@ class DaemonMcpServer(
       ToolDef(
         name = "get_preview_data",
         description =
-          "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Requires that the preview has rendered at least once (otherwise: DataProductNotAvailable — call render_preview / resources/read first). When the daemon's latest render didn't compute the kind, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
+          "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Auto-renders the preview if it hasn't rendered yet (so the agent doesn't need to call render_preview first). When the daemon's latest render didn't compute the kind, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
         inputSchema =
           parseSchema(
             """
@@ -666,8 +688,8 @@ class DaemonMcpServer(
       "history_diff" -> toolHistoryDiff(args)
       "list_data_products" -> toolListDataProducts(args)
       "get_preview_data" -> toolGetPreviewData(args)
-      "subscribe_preview_data" -> toolDataSubOrUnsub(args, subscribe = true)
-      "unsubscribe_preview_data" -> toolDataSubOrUnsub(args, subscribe = false)
+      "subscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = true)
+      "unsubscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = false)
       else -> errorCallToolResult("unknown tool: $name")
     }
   }
@@ -1132,23 +1154,77 @@ class DaemonMcpServer(
           return errorCallToolResult("get_preview_data: daemon spawn failed: ${it.message}")
         }
     return runCatching {
-        val result = daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
-        val resultPayload = result.payload
-        val resultPath = result.path
-        val resultBytes = result.bytes
-        val payload = buildJsonObject {
-          put("kind", result.kind)
-          put("schemaVersion", result.schemaVersion)
-          if (resultPayload != null) put("payload", resultPayload)
-          if (resultPath != null) put("path", JsonPrimitive(resultPath))
-          if (resultBytes != null) put("bytes", JsonPrimitive(resultBytes))
-        }
-        CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+        // Try the fetch directly first — works whenever the preview has rendered at least once.
+        // On `DataProductNotAvailable` (-32021) the daemon is telling us the preview has never
+        // rendered; trigger a single render and retry. Folds the two-call agent dance ("render
+        // first, then ask for data") into one tool call. Other wire errors propagate.
+        val result =
+          try {
+            daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
+          } catch (e: DataProductWireException) {
+            if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+            awaitNextRender(uri)
+            daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
+          }
+        renderDataFetchResult(result)
       }
-      .getOrElse { errorCallToolResult("get_preview_data failed: ${it.message}") }
+      .getOrElse { e ->
+        when (e) {
+          is DataProductWireException ->
+            errorCallToolResult("get_preview_data: ${nameOf(e.code)}: ${e.wireMessage}")
+          else -> errorCallToolResult("get_preview_data failed: ${e.message}")
+        }
+      }
   }
 
-  private fun toolDataSubOrUnsub(args: JsonObject, subscribe: Boolean): CallToolResult {
+  /**
+   * Forwards `data/unsubscribe` for a refcount-released `(uri, kind)` to the matching daemon.
+   * Best-effort — failures are logged to stderr but never propagated, since this runs on session
+   * teardown where we can't surface errors to the (already-gone) client. Returns silently when the
+   * URI doesn't parse, the workspace was unregistered, or the daemon already exited.
+   */
+  private fun dispatchDataUnsubscribe(key: DataSubKey) {
+    val uri = PreviewUri.parseOrNull(key.uri) ?: return
+    val project = supervisor.project(uri.workspaceId) ?: return
+    val daemon = project.daemons[uri.modulePath] ?: return
+    runCatching { daemon.client.dataUnsubscribe(uri.previewFqn, key.kind) }
+      .onFailure {
+        System.err.println(
+          "DaemonMcpServer: data/unsubscribe for ${key.uri} ($key.kind) failed: ${it.message}"
+        )
+      }
+  }
+
+  private fun renderDataFetchResult(
+    result: ee.schimke.composeai.daemon.protocol.DataFetchResult
+  ): CallToolResult {
+    val resultPayload = result.payload
+    val resultPath = result.path
+    val resultBytes = result.bytes
+    val payload = buildJsonObject {
+      put("kind", result.kind)
+      put("schemaVersion", result.schemaVersion)
+      if (resultPayload != null) put("payload", resultPayload)
+      if (resultPath != null) put("path", JsonPrimitive(resultPath))
+      if (resultBytes != null) put("bytes", JsonPrimitive(resultBytes))
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  private fun nameOf(code: Int): String =
+    when (code) {
+      DataProductWireException.UNKNOWN -> "DataProductUnknown"
+      DataProductWireException.NOT_AVAILABLE -> "DataProductNotAvailable"
+      DataProductWireException.FETCH_FAILED -> "DataProductFetchFailed"
+      DataProductWireException.BUDGET_EXCEEDED -> "DataProductBudgetExceeded"
+      else -> "wire-error-$code"
+    }
+
+  private fun toolDataSubOrUnsub(
+    session: McpSession,
+    args: JsonObject,
+    subscribe: Boolean,
+  ): CallToolResult {
     val toolName = if (subscribe) "subscribe_preview_data" else "unsubscribe_preview_data"
     val uriStr =
       args["uri"]?.jsonPrimitive?.contentOrNull
@@ -1167,10 +1243,26 @@ class DaemonMcpServer(
         .getOrElse {
           return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
         }
+    // Refcount across MCP sessions so multiple agents subscribed to the same (uri, kind) only
+    // pay one wire-level `data/subscribe`. The daemon doesn't multiplex per-session; one
+    // subscribe is enough for as many MCP sessions as want it. Wire forwards happen only on
+    // first-ref / last-ref transitions.
     return runCatching {
-        if (subscribe) daemon.client.dataSubscribe(uri.previewFqn, kind)
-        else daemon.client.dataUnsubscribe(uri.previewFqn, kind)
-        textCallToolResult("$toolName: ok ($kind for ${uri.previewFqn})")
+        if (subscribe) {
+          val firstRef = subscriptions.subscribeData(uriStr, kind, session)
+          if (firstRef) daemon.client.dataSubscribe(uri.previewFqn, kind)
+          textCallToolResult(
+            "$toolName: ok ($kind for ${uri.previewFqn}, " +
+              if (firstRef) "first session)" else "shared with N≥2 sessions)"
+          )
+        } else {
+          val lastRef = subscriptions.unsubscribeData(uriStr, kind, session)
+          if (lastRef) daemon.client.dataUnsubscribe(uri.previewFqn, kind)
+          textCallToolResult(
+            "$toolName: ok ($kind for ${uri.previewFqn}, " +
+              if (lastRef) "released)" else "still shared with other sessions)"
+          )
+        }
       }
       .getOrElse { errorCallToolResult("$toolName failed: ${it.message}") }
   }
