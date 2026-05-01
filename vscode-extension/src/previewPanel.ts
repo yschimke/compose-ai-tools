@@ -550,19 +550,114 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 err.className = 'preview-diff-error';
                 err.textContent = errorMessage;
                 overlay.appendChild(err);
-            } else if (payload) {
-                const grid = document.createElement('div');
-                grid.className = 'preview-diff-grid';
-                grid.appendChild(buildPreviewDiffPane(payload.leftLabel, payload.leftImage));
-                grid.appendChild(buildPreviewDiffPane(payload.rightLabel, payload.rightImage));
-                overlay.appendChild(grid);
-            } else {
+                container.appendChild(overlay);
+                return;
+            }
+            if (!payload) {
                 const loading = document.createElement('div');
                 loading.className = 'preview-diff-loading';
                 loading.textContent = 'Loading diff…';
                 overlay.appendChild(loading);
+                container.appendChild(overlay);
+                return;
             }
+            // Persist the user's last-picked mode so it sticks across diff
+            // requests within the same session.
+            const initialMode = (state.diffMode === 'overlay' || state.diffMode === 'onion')
+                ? state.diffMode : 'side';
+            const body = document.createElement('div');
+            body.className = 'preview-diff-body';
+            const modeBar = buildDiffModeBar(initialMode, (mode) => {
+                state.diffMode = mode;
+                vscode.setState(state);
+                renderPreviewDiffMode(body, mode, payload);
+            });
+            overlay.appendChild(modeBar);
+            overlay.appendChild(body);
             container.appendChild(overlay);
+            renderPreviewDiffMode(body, initialMode, payload);
+        }
+
+        function buildDiffModeBar(initialMode, onChange) {
+            const bar = document.createElement('div');
+            bar.className = 'diff-mode-bar';
+            bar.setAttribute('role', 'tablist');
+            const modes = [
+                { id: 'side', label: 'Side' },
+                { id: 'overlay', label: 'Overlay' },
+                { id: 'onion', label: 'Onion' },
+            ];
+            for (const m of modes) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = m.label;
+                btn.dataset.mode = m.id;
+                btn.setAttribute('role', 'tab');
+                btn.setAttribute('aria-selected', m.id === initialMode ? 'true' : 'false');
+                if (m.id === initialMode) btn.classList.add('active');
+                btn.addEventListener('click', () => {
+                    bar.querySelectorAll('button').forEach(b => {
+                        b.classList.toggle('active', b.dataset.mode === m.id);
+                        b.setAttribute('aria-selected', b.dataset.mode === m.id ? 'true' : 'false');
+                    });
+                    onChange(m.id);
+                });
+                bar.appendChild(btn);
+            }
+            return bar;
+        }
+
+        function renderPreviewDiffMode(body, mode, payload) {
+            body.innerHTML = '';
+            if (mode === 'side') {
+                const grid = document.createElement('div');
+                grid.className = 'preview-diff-grid';
+                grid.appendChild(buildPreviewDiffPane(payload.leftLabel, payload.leftImage));
+                grid.appendChild(buildPreviewDiffPane(payload.rightLabel, payload.rightImage));
+                body.appendChild(grid);
+                return;
+            }
+            const stack = buildDiffStack(mode, payload);
+            body.appendChild(stack);
+        }
+
+        function buildDiffStack(mode, payload) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'preview-diff-stack-wrapper';
+            const stack = document.createElement('div');
+            stack.className = 'diff-stack';
+            stack.dataset.mode = mode;
+            const base = document.createElement('img');
+            base.className = 'diff-stack-base';
+            base.alt = payload.leftLabel;
+            base.src = 'data:image/png;base64,' + payload.leftImage;
+            const top = document.createElement('img');
+            top.className = 'diff-stack-top';
+            top.alt = payload.rightLabel;
+            top.src = 'data:image/png;base64,' + payload.rightImage;
+            stack.appendChild(base);
+            stack.appendChild(top);
+            wrapper.appendChild(stack);
+            if (mode === 'onion') {
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = '0';
+                slider.max = '100';
+                slider.value = '50';
+                slider.className = 'diff-stack-onion-slider';
+                slider.setAttribute('aria-label',
+                    'Onion-skin mix between ' + payload.leftLabel + ' and ' + payload.rightLabel);
+                stack.style.setProperty('--diff-onion-mix', '0.5');
+                slider.addEventListener('input', () => {
+                    stack.style.setProperty('--diff-onion-mix', (slider.value / 100).toString());
+                });
+                wrapper.appendChild(slider);
+            }
+            const cap = document.createElement('div');
+            cap.className = 'diff-stack-caption';
+            cap.textContent = payload.leftLabel + '  ◄  ' + payload.rightLabel;
+            wrapper.appendChild(cap);
+            return wrapper;
         }
 
         function buildPreviewDiffPane(label, imageData) {
