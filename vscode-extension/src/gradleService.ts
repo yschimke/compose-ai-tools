@@ -236,6 +236,17 @@ export class GradleService {
     }
 
     /**
+     * Runs `:<module>:installDebug` to build and install the consumer's
+     * `com.android.application` APK on the connected device. Used by the
+     * "Launch on Device" panel button — `adb shell am start` follows
+     * separately. Throws on failure (e.g. no device, build error) so the
+     * caller can surface the message to the user.
+     */
+    async installDebug(module: string, opts?: TaskOptions): Promise<void> {
+        await this.runTask(`${gradleProjectPath(module)}:installDebug`, [], opts);
+    }
+
+    /**
      * Runs `:<module>:composePreviewDoctor` and returns the parsed sidecar
      * report. Same JSON schema as `compose-preview doctor --json`'s per-
      * module shape — see `ComposePreviewDoctorTask.kt` in `gradle-plugin`.

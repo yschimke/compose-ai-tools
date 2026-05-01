@@ -107,6 +107,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-diff-main" title="Diff vs the latest render archived on main" aria-label="Diff vs main">
             <i class="codicon codicon-source-control" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-launch-device" title="Launch on connected Android device" aria-label="Launch on device">
+            <i class="codicon codicon-device-mobile" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
             <i class="codicon codicon-close" aria-hidden="true"></i>
         </button>
@@ -128,6 +131,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnNext = document.getElementById('btn-next');
         const btnDiffHead = document.getElementById('btn-diff-head');
         const btnDiffMain = document.getElementById('btn-diff-main');
+        const btnLaunchDevice = document.getElementById('btn-launch-device');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
@@ -317,6 +321,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnNext.addEventListener('click', () => navigateFocus(1));
         btnDiffHead.addEventListener('click', () => requestFocusedDiff('head'));
         btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
+        btnLaunchDevice.addEventListener('click', () => requestLaunchOnDevice());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
         // Document-level Left/Right in focus mode steps between cards. The
@@ -530,6 +535,21 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (!previewId) return;
             showDiffOverlay(card, against, null, null);
             vscode.postMessage({ command: 'requestPreviewDiff', previewId, against });
+        }
+
+        // Live-panel "Launch on Device": runs the consumer's
+        // installDebug task and uses adb to start the launcher activity on
+        // a connected device. Only meaningful when one preview is focused
+        // -- the extension uses the focused previewId to pick the owning
+        // module before falling back to a quick-pick.
+        function requestLaunchOnDevice() {
+            if (layoutMode.value !== 'focus') return;
+            const visible = getVisibleCards();
+            const card = visible[focusIndex];
+            if (!card) return;
+            const previewId = card.dataset.previewId;
+            if (!previewId) return;
+            vscode.postMessage({ command: 'requestLaunchOnDevice', previewId });
         }
 
         function showDiffOverlay(card, against, payload, errorMessage) {
