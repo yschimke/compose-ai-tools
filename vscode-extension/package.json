@@ -92,6 +92,11 @@
                 "command": "composePreview.runDoctor",
                 "title": "Run Doctor (refresh compatibility diagnostics)",
                 "category": "Compose Preview"
+            },
+            {
+                "command": "composePreview.restartDaemon",
+                "title": "Restart Preview Daemon (pick up rebuilt JAR)",
+                "category": "Compose Preview"
             }
         ],
         "configuration": {

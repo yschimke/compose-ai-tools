@@ -152,6 +152,39 @@ export class DaemonGate {
             try { entry.spawned.process.kill('SIGTERM'); } catch { /* ignore */ }
         }));
     }
+
+    /**
+     * Cleanly shuts down every running daemon JVM and clears the registry, so
+     * the next `getOrSpawn` reads `daemon-launch.json` afresh and spawns a
+     * brand-new JVM. Returns the moduleIds that were running so the caller can
+     * report what was restarted.
+     *
+     * The same protocol as [dispose] (shutdown → exit → SIGTERM) but the gate
+     * stays usable afterwards. This is the manual escape hatch the user
+     * triggers via `composePreview.restartDaemon` after rebuilding the daemon
+     * JAR — without it the running JVM keeps serving renders from the JAR it
+     * was spawned with even after the on-disk JAR has been replaced.
+     */
+    async restartAll(): Promise<string[]> {
+        if (this.disposed) { return []; }
+        const entries = [...this.daemons.entries()];
+        this.daemons.clear();
+        await Promise.all(entries.map(async ([_moduleId, entry]) => {
+            try {
+                if (!entry.client.isClosed()) {
+                    await Promise.race([
+                        entry.client.shutdown(),
+                        new Promise((resolve) => setTimeout(resolve, 2000)),
+                    ]);
+                    entry.client.exit();
+                }
+            } catch {
+                /* best-effort shutdown */
+            }
+            try { entry.spawned.process.kill('SIGTERM'); } catch { /* ignore */ }
+        }));
+        return entries.map(([moduleId]) => moduleId);
+    }
 }
 
 interface ManagedDaemon {

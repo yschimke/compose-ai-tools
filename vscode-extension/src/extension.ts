@@ -379,6 +379,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 panel.postMessage({ command: 'setFunctionFilter', functionName });
             },
         ),
+        // The daemon JVM caches the renderer JAR + sandbox state across every
+        // render in a session — that's the whole point of the daemon. The
+        // downside is that rebuilding the daemon (`./gradlew :daemon:android:…`
+        // or any change to the renderer/host code) doesn't take effect until
+        // the running JVM dies. Idle timeout is 5s, but a user actively saving
+        // never trips it. This command is the explicit escape hatch: shut
+        // down every running daemon, clear the bootstrapped-modules memo, and
+        // re-run the bootstrap task so the next save picks up the new JAR.
+        vscode.commands.registerCommand('composePreview.restartDaemon', async () => {
+            if (!daemonGate || !daemonScheduler) {
+                vscode.window.showInformationMessage(
+                    'Compose Preview: daemon gate not initialised yet.',
+                );
+                return;
+            }
+            const restarted = await daemonGate.restartAll();
+            // Clear the per-session bootstrap memo so the next save re-runs
+            // `composePreviewDaemonStart`, which writes a fresh
+            // `daemon-launch.json` pointing at the rebuilt JAR. Without
+            // clearing this the spawn would skip the bootstrap and the
+            // descriptor on disk could still reference the previous build.
+            daemonBootstrappedModules.clear();
+            // Hide the status-bar item — its text references a specific module
+            // that's no longer relevant; the next warmModule call will repopulate
+            // it through its progress callback.
+            daemonStatusItem?.hide();
+            outputChannel.appendLine(
+                `[daemon] restartDaemon: shut down ${restarted.length} running daemon(s)` +
+                (restarted.length > 0 ? ` [${restarted.join(', ')}]` : '') +
+                ` — next save will respawn from the on-disk JAR`,
+            );
+            vscode.window.showInformationMessage(
+                restarted.length === 0
+                    ? 'Compose Preview: no daemon was running.'
+                    : `Compose Preview: restarted ${restarted.length} daemon(s). ` +
+                      'Next save will respawn from the on-disk JAR.',
+            );
+        }),
     );
 
     const detectLog = (msg: string) => {
