@@ -56,13 +56,15 @@
                 {
                     "type": "webview",
                     "id": "composePreview.panel",
-                    "name": "Previews"
+                    "name": "Previews",
+                    "visibility": "visible"
                 },
                 {
                     "type": "webview",
                     "id": "composePreview.historyPanel",
                     "name": "History",
-                    "when": "config.composePreview.experimental.daemon.enabled"
+                    "when": "config.composePreview.experimental.daemon.enabled",
+                    "visibility": "collapsed"
                 }
             ]
         },
