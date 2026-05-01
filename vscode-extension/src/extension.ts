@@ -17,7 +17,7 @@ import { HEAVY_COST_THRESHOLD, PreviewInfo } from './types';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
-import { buildHistorySource, HistoryPanel, HistoryScope } from './historyPanel';
+import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
 import { LogFilter, parseLogLevel } from './logFilter';
 import { pickRefreshModeFor, RefreshMode } from './refreshMode';
 import { mergeCalibration, PhaseDurations, ProgressState } from './buildProgress';
@@ -37,6 +37,9 @@ let daemonScheduler: DaemonScheduler | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
 let historyPanel: HistoryPanel | null = null;
+/** Owned by activate(); reused by both the History panel and the live
+ *  panel's diff handler. */
+let historySource: HistorySource | null = null;
 /**
  * Mutable closure for the history panel's read/diff fall-back path.
  * `buildHistorySource` captures this object once at panel-construction time
@@ -383,39 +386,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // is empty when no Kotlin file is in scope. The setScope() driver is
     // wired below into the active-editor change events.
     historyScopeRef.current = null;
-    historyPanel = new HistoryPanel(
-        context.extensionUri,
-        buildHistorySource({
-            isDaemonReady: (moduleId) => daemonGate?.isDaemonReady(moduleId) ?? false,
-            daemonList: async (scope) => {
-                const client = await daemonGate?.getOrSpawn(
-                    scope.moduleId, daemonScheduler!.daemonEvents(scope.moduleId),
-                );
-                if (!client) { throw new Error('daemon unavailable'); }
-                return client.historyList({ previewId: scope.previewId });
-            },
-            daemonRead: async (id) => {
-                const moduleId = historyScopeRef.current?.moduleId;
-                if (!moduleId) { throw new Error('no scope'); }
-                const client = await daemonGate?.getOrSpawn(
-                    moduleId, daemonScheduler!.daemonEvents(moduleId),
-                );
-                if (!client) { throw new Error('daemon unavailable'); }
-                return client.historyRead({ id, inline: false });
-            },
-            daemonDiff: async (fromId, toId) => {
-                const moduleId = historyScopeRef.current?.moduleId;
-                if (!moduleId) { throw new Error('no scope'); }
-                const client = await daemonGate?.getOrSpawn(
-                    moduleId, daemonScheduler!.daemonEvents(moduleId),
-                );
-                if (!client) { throw new Error('daemon unavailable'); }
-                return client.historyDiff({ from: fromId, to: toId, mode: 'metadata' });
-            },
-            getCurrentScope: () => historyScopeRef.current,
-            logger: outputChannel,
-        }),
-    );
+    historySource = buildHistorySource({
+        isDaemonReady: (moduleId) => daemonGate?.isDaemonReady(moduleId) ?? false,
+        daemonList: async (scope) => {
+            const client = await daemonGate?.getOrSpawn(
+                scope.moduleId, daemonScheduler!.daemonEvents(scope.moduleId),
+            );
+            if (!client) { throw new Error('daemon unavailable'); }
+            return client.historyList({ previewId: scope.previewId });
+        },
+        daemonRead: async (id) => {
+            const moduleId = historyScopeRef.current?.moduleId;
+            if (!moduleId) { throw new Error('no scope'); }
+            const client = await daemonGate?.getOrSpawn(
+                moduleId, daemonScheduler!.daemonEvents(moduleId),
+            );
+            if (!client) { throw new Error('daemon unavailable'); }
+            return client.historyRead({ id, inline: false });
+        },
+        daemonDiff: async (fromId, toId) => {
+            const moduleId = historyScopeRef.current?.moduleId;
+            if (!moduleId) { throw new Error('no scope'); }
+            const client = await daemonGate?.getOrSpawn(
+                moduleId, daemonScheduler!.daemonEvents(moduleId),
+            );
+            if (!client) { throw new Error('daemon unavailable'); }
+            return client.historyDiff({ from: fromId, to: toId, mode: 'metadata' });
+        },
+        getCurrentScope: () => historyScopeRef.current,
+        logger: outputChannel,
+    });
+    historyPanel = new HistoryPanel(context.extensionUri, historySource);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(HistoryPanel.viewId, historyPanel),
     );
@@ -1608,6 +1609,11 @@ function handleWebviewMessage(msg: WebviewToExtensionMessage) {
                 void openSourcePosition(msg.sourceFile, msg.line, msg.column);
             }
             break;
+        case 'requestPreviewDiff':
+            if (msg.previewId && (msg.against === 'head' || msg.against === 'main')) {
+                void runLivePreviewDiff(msg.previewId, msg.against);
+            }
+            break;
     }
 }
 
@@ -1628,6 +1634,109 @@ async function openSourcePosition(filePath: string, line: number, column: number
         const message = e instanceof Error ? e.message : String(e);
         logLine(`openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`);
     }
+}
+
+async function runLivePreviewDiff(
+    previewId: string,
+    against: 'head' | 'main',
+): Promise<void> {
+    if (!panel || !historySource) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    const manifest = moduleId ? moduleManifestCache.get(moduleId) : undefined;
+    const info = manifest?.find(p => p.id === previewId);
+    if (!moduleId || !info || !gradleService) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: 'Preview not found in the current scope.',
+        });
+        return;
+    }
+    const capture = info.captures?.[0];
+    if (!capture?.renderOutput) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: 'No live render available for this preview.',
+        });
+        return;
+    }
+    const moduleDir = path.join(gradleService.workspaceRoot, moduleId);
+    const livePath = path.join(moduleDir, capture.renderOutput);
+    const liveBytes = await fs.promises.readFile(livePath).catch(() => null);
+    if (!liveBytes) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: 'Live render not on disk yet — save the file once first.',
+        });
+        return;
+    }
+
+    const projectDir = path.join(gradleService.workspaceRoot, moduleId);
+    const scope: HistoryScope = { moduleId, projectDir, previewId };
+    let entries: unknown[];
+    try {
+        const result = await historySource.list(scope);
+        entries = result.entries ?? [];
+    } catch (err) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: `History unavailable: ${(err as Error).message}`,
+        });
+        return;
+    }
+    const filtered = (against === 'main')
+        ? entries.filter(e => {
+            const branch = (e as { git?: { branch?: string } }).git?.branch;
+            return branch === 'main';
+        })
+        : entries;
+    const sorted = [...filtered].sort((a, b) => {
+        const at = (a as { timestamp?: string }).timestamp ?? '';
+        const bt = (b as { timestamp?: string }).timestamp ?? '';
+        return bt.localeCompare(at);
+    });
+    const target = sorted[0] as { id?: string; timestamp?: string } | undefined;
+    if (!target?.id) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: against === 'main'
+                ? 'No archived render on main yet for this preview.'
+                : 'No archived history yet for this preview.',
+        });
+        return;
+    }
+    const right = await historySource.read(target.id);
+    if (!right) {
+        panel.postMessage({
+            command: 'previewDiffError', previewId, against,
+            message: 'Comparison entry not readable.',
+        });
+        return;
+    }
+    const rightBytes = right.pngBytes
+        ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
+    panel.postMessage({
+        command: 'previewDiffReady',
+        previewId,
+        against,
+        leftLabel: 'Live · now',
+        leftImage: liveBytes.toString('base64'),
+        rightLabel: `${against === 'main' ? 'main' : 'HEAD'} · ${formatRelativeShort(target.timestamp)}`,
+        rightImage: rightBytes,
+    });
+}
+
+function formatRelativeShort(iso: string | undefined): string {
+    if (!iso) { return '(unknown)'; }
+    const t = Date.parse(iso);
+    if (isNaN(t)) { return iso; }
+    const s = Math.round((Date.now() - t) / 1000);
+    if (s < 60) { return s + 's ago'; }
+    const m = Math.round(s / 60);
+    if (m < 60) { return m + 'm ago'; }
+    const h = Math.round(m / 60);
+    if (h < 24) { return h + 'h ago'; }
+    const d = Math.round(h / 24);
+    return d + 'd ago';
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {
@@ -1684,6 +1793,7 @@ interface WebviewToExtensionMessage {
     sourceFile?: string;
     line?: number;
     column?: number;
+    against?: 'head' | 'main';
 }
 
 /**

@@ -99,6 +99,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-next" title="Next preview" aria-label="Next preview">
             <i class="codicon codicon-arrow-right" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-diff-head" title="Diff vs last archived render (HEAD)" aria-label="Diff vs HEAD">
+            <i class="codicon codicon-git-compare" aria-hidden="true"></i>
+        </button>
+        <button class="icon-button" id="btn-diff-main" title="Diff vs the latest render archived on main" aria-label="Diff vs main">
+            <i class="codicon codicon-source-control" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
             <i class="codicon codicon-close" aria-hidden="true"></i>
         </button>
@@ -118,6 +124,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const focusControls = document.getElementById('focus-controls');
         const btnPrev = document.getElementById('btn-prev');
         const btnNext = document.getElementById('btn-next');
+        const btnDiffHead = document.getElementById('btn-diff-head');
+        const btnDiffMain = document.getElementById('btn-diff-main');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
@@ -298,6 +306,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         btnPrev.addEventListener('click', () => navigateFocus(-1));
         btnNext.addEventListener('click', () => navigateFocus(1));
+        btnDiffHead.addEventListener('click', () => requestFocusedDiff('head'));
+        btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
         btnExitFocus.addEventListener('click', () => exitFocus());
 
         // Document-level Left/Right in focus mode steps between cards. The
@@ -496,6 +506,77 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             state.layout = previousLayout;
             vscode.setState(state);
             applyLayout();
+        }
+
+        // Live-panel diff: only meaningful when one preview is focused. Pulls
+        // the currently focused card's previewId and asks the extension to
+        // resolve the comparison anchor (HEAD = latest archived render,
+        // main = latest archived render on the main branch).
+        function requestFocusedDiff(against) {
+            if (layoutMode.value !== 'focus') return;
+            const visible = getVisibleCards();
+            const card = visible[focusIndex];
+            if (!card) return;
+            const previewId = card.dataset.previewId;
+            if (!previewId) return;
+            showDiffOverlay(card, against, null, null);
+            vscode.postMessage({ command: 'requestPreviewDiff', previewId, against });
+        }
+
+        function showDiffOverlay(card, against, payload, errorMessage) {
+            const container = card.querySelector('.image-container');
+            if (!container) return;
+            const existing = container.querySelector('.preview-diff-overlay');
+            if (existing) existing.remove();
+            const overlay = document.createElement('div');
+            overlay.className = 'preview-diff-overlay';
+            overlay.dataset.against = against;
+            const close = document.createElement('button');
+            close.className = 'icon-button preview-diff-close';
+            close.title = 'Exit diff';
+            close.setAttribute('aria-label', 'Exit diff');
+            close.innerHTML = '<i class="codicon codicon-close" aria-hidden="true"></i>';
+            close.addEventListener('click', () => overlay.remove());
+            overlay.appendChild(close);
+            if (errorMessage) {
+                const err = document.createElement('div');
+                err.className = 'preview-diff-error';
+                err.textContent = errorMessage;
+                overlay.appendChild(err);
+            } else if (payload) {
+                const grid = document.createElement('div');
+                grid.className = 'preview-diff-grid';
+                grid.appendChild(buildPreviewDiffPane(payload.leftLabel, payload.leftImage));
+                grid.appendChild(buildPreviewDiffPane(payload.rightLabel, payload.rightImage));
+                overlay.appendChild(grid);
+            } else {
+                const loading = document.createElement('div');
+                loading.className = 'preview-diff-loading';
+                loading.textContent = 'Loading diff…';
+                overlay.appendChild(loading);
+            }
+            container.appendChild(overlay);
+        }
+
+        function buildPreviewDiffPane(label, imageData) {
+            const pane = document.createElement('div');
+            pane.className = 'preview-diff-pane';
+            const cap = document.createElement('div');
+            cap.className = 'preview-diff-pane-label';
+            cap.textContent = label;
+            pane.appendChild(cap);
+            if (imageData) {
+                const img = document.createElement('img');
+                img.src = 'data:image/png;base64,' + imageData;
+                img.alt = label;
+                pane.appendChild(img);
+            } else {
+                const empty = document.createElement('div');
+                empty.className = 'preview-diff-pane-empty';
+                empty.textContent = '(no image)';
+                pane.appendChild(empty);
+            }
+            return pane;
         }
 
         function populateFilter(select, values, label) {
@@ -1500,6 +1581,24 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 case 'showMessage':
                     setMessage(msg.text, 'extension');
                     break;
+
+                case 'previewDiffReady': {
+                    const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
+                    if (!card) break;
+                    showDiffOverlay(card, msg.against, {
+                        leftLabel: msg.leftLabel,
+                        leftImage: msg.leftImage,
+                        rightLabel: msg.rightLabel,
+                        rightImage: msg.rightImage,
+                    }, null);
+                    break;
+                }
+                case 'previewDiffError': {
+                    const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
+                    if (!card) break;
+                    showDiffOverlay(card, msg.against, null, msg.message || 'Diff unavailable.');
+                    break;
+                }
             }
         });
 

@@ -275,7 +275,19 @@ export type ExtensionToWebview =
      */
     | { command: 'setCompileErrors'; errors: import('./compileErrors').CompileError[]; sourceFile: string }
     /** Remove the compile-error banner and the compile-stale dim on cards. */
-    | { command: 'clearCompileErrors' };
+    | { command: 'clearCompileErrors' }
+    /** Side-by-side diff result for a focused live preview. The webview
+     *  swaps in an overlay over the focused image with two labelled images. */
+    | {
+          command: 'previewDiffReady';
+          previewId: string;
+          against: 'head' | 'main';
+          leftLabel: string;
+          leftImage: string;
+          rightLabel: string;
+          rightImage: string;
+      }
+    | { command: 'previewDiffError'; previewId: string; against: 'head' | 'main'; message: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
@@ -315,4 +327,11 @@ export type WebviewToExtension =
      * absolute path the extension passed in `setCompileErrors`; the line /
      * column come from the LSP diagnostic (1-based).
      */
-    | { command: 'openCompileError'; sourceFile: string; line: number; column: number };
+    | { command: 'openCompileError'; sourceFile: string; line: number; column: number }
+    /**
+     * Live panel asks the extension to compute a diff for the focused
+     * preview against an anchor. `head` = latest archived render in
+     * `.compose-preview-history/` for this preview; `main` = same, filtered
+     * to entries whose `git.branch` is `main`.
+     */
+    | { command: 'requestPreviewDiff'; previewId: string; against: 'head' | 'main' };
