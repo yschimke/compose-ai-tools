@@ -594,11 +594,102 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 '.expanded[data-id="' + cssEscape(id) + '"][data-against="' + cssEscape(against) + '"]');
             if (!expansion) return;
             expansion.innerHTML = '';
-            const grid = document.createElement('div');
-            grid.className = 'diff-grid';
-            grid.appendChild(buildDiffPane(leftLabel, leftImage));
-            grid.appendChild(buildDiffPane(rightLabel, rightImage));
-            expansion.appendChild(grid);
+            const payload = { leftLabel, leftImage, rightLabel, rightImage };
+            const stored = vscode.getState() || {};
+            const initialMode = (stored.diffMode === 'overlay' || stored.diffMode === 'onion')
+                ? stored.diffMode : 'side';
+            const body = document.createElement('div');
+            body.className = 'diff-body';
+            const modeBar = buildHistoryDiffModeBar(initialMode, (mode) => {
+                const cur = vscode.getState() || {};
+                cur.diffMode = mode;
+                vscode.setState(cur);
+                renderHistoryDiffMode(body, mode, payload);
+            });
+            expansion.appendChild(modeBar);
+            expansion.appendChild(body);
+            renderHistoryDiffMode(body, initialMode, payload);
+        }
+
+        function buildHistoryDiffModeBar(initialMode, onChange) {
+            const bar = document.createElement('div');
+            bar.className = 'diff-mode-bar';
+            bar.setAttribute('role', 'tablist');
+            const modes = [
+                { id: 'side', label: 'Side' },
+                { id: 'overlay', label: 'Overlay' },
+                { id: 'onion', label: 'Onion' },
+            ];
+            for (const m of modes) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = m.label;
+                btn.dataset.mode = m.id;
+                btn.setAttribute('role', 'tab');
+                btn.setAttribute('aria-selected', m.id === initialMode ? 'true' : 'false');
+                if (m.id === initialMode) btn.classList.add('active');
+                btn.addEventListener('click', () => {
+                    bar.querySelectorAll('button').forEach(b => {
+                        b.classList.toggle('active', b.dataset.mode === m.id);
+                        b.setAttribute('aria-selected', b.dataset.mode === m.id ? 'true' : 'false');
+                    });
+                    onChange(m.id);
+                });
+                bar.appendChild(btn);
+            }
+            return bar;
+        }
+
+        function renderHistoryDiffMode(body, mode, payload) {
+            body.innerHTML = '';
+            if (mode === 'side') {
+                const grid = document.createElement('div');
+                grid.className = 'diff-grid';
+                grid.appendChild(buildDiffPane(payload.leftLabel, payload.leftImage));
+                grid.appendChild(buildDiffPane(payload.rightLabel, payload.rightImage));
+                body.appendChild(grid);
+                return;
+            }
+            body.appendChild(buildHistoryDiffStack(mode, payload));
+        }
+
+        function buildHistoryDiffStack(mode, payload) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'diff-stack-wrapper';
+            const stack = document.createElement('div');
+            stack.className = 'diff-stack';
+            stack.dataset.mode = mode;
+            const base = document.createElement('img');
+            base.className = 'diff-stack-base';
+            base.alt = payload.leftLabel;
+            base.src = 'data:image/png;base64,' + payload.leftImage;
+            const top = document.createElement('img');
+            top.className = 'diff-stack-top';
+            top.alt = payload.rightLabel;
+            top.src = 'data:image/png;base64,' + payload.rightImage;
+            stack.appendChild(base);
+            stack.appendChild(top);
+            wrapper.appendChild(stack);
+            if (mode === 'onion') {
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = '0';
+                slider.max = '100';
+                slider.value = '50';
+                slider.className = 'diff-stack-onion-slider';
+                slider.setAttribute('aria-label',
+                    'Onion-skin mix between ' + payload.leftLabel + ' and ' + payload.rightLabel);
+                stack.style.setProperty('--diff-onion-mix', '0.5');
+                slider.addEventListener('input', () => {
+                    stack.style.setProperty('--diff-onion-mix', (slider.value / 100).toString());
+                });
+                wrapper.appendChild(slider);
+            }
+            const cap = document.createElement('div');
+            cap.className = 'diff-stack-caption';
+            cap.textContent = payload.leftLabel + '  ◄  ' + payload.rightLabel;
+            wrapper.appendChild(cap);
+            return wrapper;
         }
 
         function buildDiffPane(label, imageData) {
