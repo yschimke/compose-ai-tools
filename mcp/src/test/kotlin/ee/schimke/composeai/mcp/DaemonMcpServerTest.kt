@@ -102,6 +102,10 @@ class DaemonMcpServerTest {
         "set_focus",
         "history_list",
         "history_diff",
+        "list_data_products",
+        "get_preview_data",
+        "subscribe_preview_data",
+        "unsubscribe_preview_data",
       )
   }
 
@@ -579,6 +583,184 @@ class DaemonMcpServerTest {
     val decoded = Base64.getDecoder().decode(blob.blob)
     assertThat(decoded).isEqualTo(pngBytes)
     assertThat(blob.mimeType).isEqualTo("image/png")
+  }
+
+  // -------------------------------------------------------------------------
+  // D1 — data product tools
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `list_data_products surfaces kinds advertised by each daemon's initialize`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          ),
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/atf",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          ),
+        )
+    }
+    warmDaemonFor(workspaceId, ":module")
+
+    val resp = client.callTool("list_data_products", buildJsonObject {})
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    val daemons = payload["daemons"]!!.jsonArray
+    assertThat(daemons).hasSize(1)
+    val entry = daemons.single().jsonObject
+    assertThat(entry["workspaceId"]?.jsonPrimitive?.contentOrNull).isEqualTo(workspaceId.value)
+    assertThat(entry["module"]?.jsonPrimitive?.contentOrNull).isEqualTo(":module")
+    val kinds = entry["kinds"]!!.jsonArray.map { it.jsonObject["kind"]!!.jsonPrimitive.content }
+    assertThat(kinds).containsExactly("a11y/hierarchy", "a11y/atf")
+  }
+
+  @Test
+  fun `get_preview_data forwards data slash fetch and returns the payload`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      daemon.dataFetchHandler = { previewId, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 1,
+          payload =
+            buildJsonObject {
+              putJsonArray("nodes") {
+                add(
+                  buildJsonObject {
+                    put("label", "Hello $previewId")
+                    put("role", "Button")
+                  }
+                )
+              }
+            },
+        )
+      }
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+      )
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(payload["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("a11y/hierarchy")
+    assertThat(payload["schemaVersion"]?.jsonPrimitive?.contentOrNull).isEqualTo("1")
+    val nodes = payload["payload"]!!.jsonObject["nodes"]!!.jsonArray
+    assertThat(nodes.single().jsonObject["label"]!!.jsonPrimitive.content)
+      .isEqualTo("Hello $previewId")
+  }
+
+  @Test
+  fun `get_preview_data surfaces DataProductUnknown when kind is not advertised`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    // Default daemon advertises nothing — every fetch returns DataProductUnknown.
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("DataProductUnknown")
+  }
+
+  @Test
+  fun `subscribe_preview_data and unsubscribe_preview_data forward to the daemon`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val subResp =
+      client.callTool(
+        "subscribe_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+      )
+    assertThat(subResp.firstTextContent()).contains("subscribe_preview_data: ok")
+    val sub = daemon.dataSubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(sub).isEqualTo("com.example.Red" to "a11y/hierarchy")
+
+    val unsubResp =
+      client.callTool(
+        "unsubscribe_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+      )
+    assertThat(unsubResp.firstTextContent()).contains("unsubscribe_preview_data: ok")
+    val unsub = daemon.dataUnsubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(unsub).isEqualTo("com.example.Red" to "a11y/hierarchy")
   }
 
   // -------------------------------------------------------------------------
