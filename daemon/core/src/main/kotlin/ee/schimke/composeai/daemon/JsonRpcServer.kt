@@ -290,6 +290,20 @@ class JsonRpcServer(
 
   private val interactiveTargets = ConcurrentHashMap<String, InteractiveTarget>()
 
+  /**
+   * v2 — held [InteractiveSession] per `frameStreamId` for hosts that support
+   * [RenderHost.acquireInteractiveSession]. When present, [handleInteractiveInput] dispatches the
+   * event into the session and renders through it (state survives across inputs). When absent (host
+   * doesn't override the default no-op throw — `FakeHost`, the v1-era hosts), the v1 fall- back
+   * path stays in force: each input enqueues a stateless `submitRenderAsync` that recomposes from
+   * scratch. Per-stream key, not per-preview: the host decides whether to share state across
+   * streams targeting the same preview (design § 9.7).
+   *
+   * See
+   * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).
+   */
+  private val interactiveSessions = ConcurrentHashMap<String, InteractiveSession>()
+
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
   private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
@@ -1405,8 +1419,36 @@ class JsonRpcServer(
       return
     }
     val streamId = "stream-${nextStreamIdCounter.getAndIncrement()}"
+    // v2 — try to allocate a held InteractiveSession. Hosts that don't support interactive mode
+    // (FakeHost, the v1-era hosts that haven't overridden the default) throw
+    // UnsupportedOperationException, which we silently catch and fall through to the v1 dispatch
+    // path. We do NOT propagate that failure to the wire as MethodNotFound: the v1 contract is
+    // "interactive/start always succeeds and returns a streamId; inputs route through whatever
+    // path the host supports". A v2-aware client gets the held-state semantics; a v1 client
+    // doesn't notice the difference. See INTERACTIVE.md § 9 for the rollout rationale.
+    val session: InteractiveSession? =
+      try {
+        val classLoader =
+          host.userClassloaderHolder?.currentChildLoader()
+            ?: this::class.java.classLoader
+            ?: ClassLoader.getSystemClassLoader()
+        host.acquireInteractiveSession(params.previewId, classLoader)
+      } catch (_: UnsupportedOperationException) {
+        null
+      } catch (t: Throwable) {
+        // Host overrode the method but failed to allocate (e.g. preview class not found, scene
+        // setup threw). Surface as a log notification — the wire-level start still succeeds with
+        // the v1 fall-back path so the client gets a usable streamId.
+        System.err.println(
+          "compose-ai-daemon: interactive/start: acquireInteractiveSession failed for " +
+            "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}; " +
+            "falling back to v1 dispatch"
+        )
+        null
+      }
     interactiveTargets[streamId] =
       InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
+    if (session != null) interactiveSessions[streamId] = session
     // Wipe any cached hash for this preview so the first interactive frame always paints.
     // Without this a `start` after a previous identical render would suppress the bootstrap
     // frame and the client's LIVE chip would have nothing to paint until the user clicks.
@@ -1428,6 +1470,18 @@ class JsonRpcServer(
     // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 8 — `remove` is a no-op
     // when the key isn't present, which is exactly the contract we want.
     interactiveTargets.remove(params.frameStreamId)
+    // Release any held v2 session. close() is idempotent; failures from a host's session
+    // teardown shouldn't propagate to the wire (the stop notification is fire-and-forget).
+    interactiveSessions.remove(params.frameStreamId)?.let { session ->
+      try {
+        session.close()
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: interactive/stop: session.close() threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+        )
+      }
+    }
   }
 
   private fun handleInteractiveInput(
@@ -1441,17 +1495,62 @@ class JsonRpcServer(
     if (classpathDirtyEmitted.get() || shutdownRequested.get()) {
       return
     }
-    // v1 dispatch model: each input enqueues a fresh render of the target preview. The render
-    // body itself does not yet route the click into the composition (LocalInspectionMode is
-    // still true; that's the v2 follow-up — see INTERACTIVE.md § 8 "Open questions"). What
-    // this DOES validate end-to-end: the input → renderNow → renderFinished round-trip plus
-    // the byte-identical dedup, which together let a future click-aware engine slot in
-    // without changing the wire shape.
+    val session = interactiveSessions[params.frameStreamId]
+    if (session != null) {
+      // v2 dispatch path — feed the input into the held composition, render the next frame
+      // through the same session. The render-watcher thread picks the result up off
+      // [renderResultsQueue] and emits `renderFinished` (subject to the byte-identical dedup).
+      // Sequenced on a fire-and-forget worker so the read loop never blocks on a render body.
+      submitInteractiveRenderAsync(target.previewId, session, params)
+      return
+    }
+    // v1 fallback: each input enqueues a fresh stateless render of the target preview. The
+    // render body composes from scratch each time (LocalInspectionMode = true), so clicks
+    // don't yet mutate composition state on hosts without a session — but the wire shape
+    // round-trip + frame dedup still work end-to-end.
     val hostId = RenderHost.nextRequestId()
     hostIdToPreviewId[hostId] = target.previewId
     acceptedAtMs[hostId] = System.currentTimeMillis()
     inFlightRenders.add(hostId)
     submitRenderAsync(hostId)
+  }
+
+  /**
+   * v2 — dispatch one interactive input through a held [InteractiveSession] and enqueue the
+   * resulting render onto [renderResultsQueue] so the existing watcher pipeline emits
+   * `renderFinished` for it. Mirrors [submitRenderAsync] structurally — fresh worker thread per
+   * call, no read-loop blocking — but goes through the session instead of `host.submit` so
+   * `remember`'d state survives between inputs.
+   *
+   * Failures during dispatch or render are routed onto the same queue as
+   * [RenderResultOrFailure.Failure]; the watcher demuxes that into a `renderFailed` notification.
+   */
+  private fun submitInteractiveRenderAsync(
+    previewId: String,
+    session: InteractiveSession,
+    input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams,
+  ) {
+    val hostId = RenderHost.nextRequestId()
+    hostIdToPreviewId[hostId] = previewId
+    acceptedAtMs[hostId] = System.currentTimeMillis()
+    inFlightRenders.add(hostId)
+    Thread(
+        {
+          try {
+            session.dispatch(input)
+            val result = session.render(hostId)
+            renderResultsQueue.put(result)
+          } catch (e: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: interactive session render($hostId) failed: ${e.message}"
+            )
+            renderResultsQueue.put(RenderResultOrFailure.Failure(hostId, e))
+          }
+        },
+        "compose-ai-daemon-interactive-render-$hostId",
+      )
+      .apply { isDaemon = true }
+      .start()
   }
 
   private fun handleShutdown(req: JsonRpcRequest) {
@@ -1753,9 +1852,39 @@ class JsonRpcServer(
     // graceful classpath-dirty exit. 1 otherwise (client sent `exit` without `shutdown` first,
     // PROTOCOL.md § 3 — that path is a protocol violation).
     val exitCode = if (shutdownRequested.get() || classpathDirtyEmitted.get()) 0 else 1
+    // Close interactive sessions BEFORE flipping running=false: cleanShutdown's body guards
+    // against double-execution via compareAndSet(running, true→false), so once we set
+    // running=false here it would early-return without closing the sessions itself. The helper
+    // is idempotent (clears the map), so the duplicate call inside cleanShutdown's body is a
+    // safe no-op on this path.
+    closeAllInteractiveSessions()
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
+  }
+
+  /**
+   * Drains every held [InteractiveSession] from [interactiveSessions], close()'s each one, and
+   * clears the map. Idempotent — a second call after the map is empty is a no-op. Called from both
+   * [handleExit] (to handle the explicit-exit path where [cleanShutdown]'s body would early-
+   * return) and [cleanShutdown] (to handle the EOF / idle-timeout / classpath-dirty paths). The v2
+   * design doc § 9.2 calls out that a session's `close()` must drain any in-flight render before
+   * tearing down the scene; the [InteractiveSession.close] contract pushes that responsibility to
+   * the implementation.
+   */
+  private fun closeAllInteractiveSessions() {
+    val sessions = interactiveSessions.values.toList()
+    interactiveSessions.clear()
+    for (session in sessions) {
+      try {
+        session.close()
+      } catch (e: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: closeAllInteractiveSessions: session.close() " +
+            "(${session.previewId}) threw ${e.javaClass.simpleName}: ${e.message}; continuing"
+        )
+      }
+    }
   }
 
   private fun <T> tryDecode(
@@ -1857,6 +1986,7 @@ class JsonRpcServer(
     } catch (e: Throwable) {
       System.err.println("compose-ai-daemon: historyManager.stopAutoPrune failed: ${e.message}")
     }
+    closeAllInteractiveSessions()
     try {
       host.shutdown()
     } catch (e: Throwable) {
