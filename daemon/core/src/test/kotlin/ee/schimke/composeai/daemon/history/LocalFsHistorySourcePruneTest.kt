@@ -248,43 +248,53 @@ class LocalFsHistorySourcePruneTest {
 
   @Test
   fun dedup_by_hash_preserves_png_when_other_sidecar_still_references_it() {
-    // Two entries share the same bytes (and therefore same pngHash). Source dedups: only the first
-    // PNG file is on disk; both sidecars' pngPath points at it. Pruning the SECOND sidecar must
-    // leave the PNG intact (the first sidecar still references it). Pruning the FIRST sidecar
-    // alone is the same: the second sidecar still references the file via the same name.
+    // Exercises tier 2 dedup (pointer-on-any-match), the only path that produces two sidecars
+    // referencing one PNG. Sequence is A → B → A: the third write's bytes don't match the
+    // most-recent (B), so tier 1 doesn't skip; they DO match an earlier entry (A), so tier 2
+    // points the third sidecar's pngPath at A's existing PNG file. Pruning the first entry must
+    // leave that PNG on disk because the third sidecar still references it via the same pngPath.
     val previewId = "Dedup"
-    val sharedBytes = "shared-bytes".toByteArray()
+    val bytesA = "alpha".toByteArray()
+    val bytesB = "beta".toByteArray()
     val now = Instant.now()
     val first =
       writeEntry(
         previewId = previewId,
-        timestamp = now.minusSeconds(3600),
-        bytes = sharedBytes,
+        timestamp = now.minusSeconds(7200),
+        bytes = bytesA,
         suffix = "first",
       )
-    val second =
-      writeEntry(previewId = previewId, timestamp = now, bytes = sharedBytes, suffix = "second")
+    val middle =
+      writeEntry(
+        previewId = previewId,
+        timestamp = now.minusSeconds(3600),
+        bytes = bytesB,
+        suffix = "middle",
+      )
+    val third = writeEntry(previewId = previewId, timestamp = now, bytes = bytesA, suffix = "third")
 
     val previewDir = tmpDir.resolve(previewId)
     val firstPng = previewDir.resolve("${first.id}.png")
-    val secondPng = previewDir.resolve("${second.id}.png")
+    val thirdPng = previewDir.resolve("${third.id}.png")
     assertTrue(Files.exists(firstPng))
-    assertFalse("dedup → second PNG file should not exist", Files.exists(secondPng))
+    assertFalse("tier 2 dedup → third PNG file should not exist", Files.exists(thirdPng))
 
-    // Prune with maxEntriesPerPreview=1 → second survives (it's the newest), first removed.
+    // Prune with maxEntriesPerPreview=2 → middle + third survive (newest 2), first removed.
     val result =
       source.prune(
-        HistoryPruneConfig(maxEntriesPerPreview = 1, maxAgeDays = 0, maxTotalSizeBytes = 0L)
+        HistoryPruneConfig(maxEntriesPerPreview = 2, maxAgeDays = 0, maxTotalSizeBytes = 0L)
       )
     assertEquals(listOf(first.id), result.removedEntryIds)
-    // freedBytes is 0 because the surviving sidecar's pngPath still references "${first.id}.png".
+    // freedBytes is 0 because the surviving third sidecar's pngPath still references
+    // "${first.id}.png".
     assertEquals(0L, result.freedBytes)
     assertTrue("PNG must remain — dedup target still referenced", Files.exists(firstPng))
 
     // Sidecar for the removed entry is gone.
     assertFalse("first sidecar must be gone", Files.exists(previewDir.resolve("${first.id}.json")))
-    // Survivor sidecar still on disk.
-    assertTrue(Files.exists(previewDir.resolve("${second.id}.json")))
+    // Survivor sidecars still on disk.
+    assertTrue(Files.exists(previewDir.resolve("${middle.id}.json")))
+    assertTrue(Files.exists(previewDir.resolve("${third.id}.json")))
   }
 
   @Test
