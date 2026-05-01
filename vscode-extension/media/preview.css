@@ -21,11 +21,14 @@ body {
 }
 
 /* -- Top progress strip ------------------------------------------------
- * A slim two-row strip pinned to the very top of the panel during a
- * refresh: phase label on top (≈13px text), 2px progress bar beneath.
- * The strip reserves its own vertical space rather than overlaying the
- * toolbar — `display: none` (via the `hidden` attribute) when no
- * refresh is in flight, so it costs nothing visually when idle.
+ * A slim two-row strip permanently pinned to the very top of the panel:
+ * phase-label row on top (≈13px text), 2px progress bar beneath.
+ *
+ * The strip is ALWAYS rendered (no display:none on idle) so the rest of
+ * the panel never reflows when a refresh starts or finishes — the user
+ * sees content updates inside the existing layout instead of rows
+ * shifting up/down. When idle the label is empty and the fill is at 0%,
+ * so the strip degrades to a thin inactive lane that's visually quiet.
  */
 .progress-bar {
     position: sticky;
@@ -38,7 +41,6 @@ body {
        banner). Keeps the strip visually distinct from the next row. */
     border-bottom: 1px solid var(--card-border);
 }
-.progress-bar[hidden] { display: none; }
 
 /* Track is the 2px lane the fill animates inside. A subtle inactive
    background so the empty portion of the bar is visible at low percent —

@@ -89,9 +89,8 @@ async function oldestRenderMtime(
     return oldest;
 }
 
-/** Stat the source file and return its mtime, or null on any error. The
- *  banner uses this as the "freshness reference" — `.kt` newer than the
- *  oldest PNG = renders are stale relative to the source. */
+/** Stat the source file and return its mtime, or null on any error.
+ *  Used to detect "user edited since the rendered PNGs were written". */
 async function sourceFileMtime(filePath: string): Promise<number | null> {
     try {
         const stat = await fs.promises.stat(filePath);
@@ -102,29 +101,24 @@ async function sourceFileMtime(filePath: string): Promise<number | null> {
 }
 
 /**
- * "5 minutes ago", "2 hours ago", "3 days ago". Coarse — the banner exists to
- * communicate "this is old", not to time-stamp anything.
+ * True when the active source file's mtime is newer than the oldest visible
+ * preview's PNG. Cheap signal that the on-disk renders don't reflect the
+ * current buffer — used both to suppress reading those stale bytes into the
+ * webview and to schedule an automatic re-render. Conservative: any
+ * unreadable file (missing PNG, source-stat failure) yields `false` so we
+ * default to "use what's on disk" rather than spuriously trigger renders.
  */
-function formatRelativeAge(ageMs: number): string {
-    const seconds = Math.floor(ageMs / 1000);
-    if (seconds < 60) { return `${seconds}s ago`; }
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) { return `${minutes}m ago`; }
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) { return `${hours}h ago`; }
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+async function isSourceNewerThanRenders(
+    activeFile: string,
+    previews: PreviewInfo[],
+    modules: string[],
+): Promise<boolean> {
+    const [sourceMtime, oldestMtime] = await Promise.all([
+        sourceFileMtime(activeFile),
+        oldestRenderMtime(previews, modules),
+    ]);
+    return sourceMtime != null && oldestMtime != null && sourceMtime > oldestMtime;
 }
-
-/**
- * True when the panel currently shows a "Showing previews from <ago>, but
- * <file> has changed since" banner the extension posted because the active
- * source file's mtime is newer than the oldest on-disk PNG. Used so we only
- * clear the banner when one *we* set is up — not a build-error or
- * filter-empty notice. Cleared when a fresh `updateImage` arrives from the
- * daemon, or when a forceRender refresh completes.
- */
-let staleBannerShown = false;
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
 let panel: PreviewPanel | null = null;
@@ -308,14 +302,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
-            // Fresh daemon render arriving — if a stale banner is up, this is
-            // the moment to retire it. Guarded by staleBannerShown so we only
-            // clear a banner we set ourselves; legitimate showMessage banners
-            // (build error, filter-empty notice) are left alone.
-            if (staleBannerShown) {
-                panel.postMessage({ command: 'showMessage', text: '' });
-                staleBannerShown = false;
-            }
             // Capture index 0 — the daemon's v1 renderFinished targets the
             // representative capture only. Multi-capture (animated) renders
             // still come through the Gradle path; the daemon's predictive
@@ -1432,52 +1418,64 @@ async function refresh(
         // base64 encode. Streaming them concurrently lets each card paint
         // as soon as its bytes arrive rather than waiting for an arbitrary
         // serial position.
-        const imageJobs: Promise<void>[] = [];
-        for (const preview of visiblePreviews) {
-            const captures = preview.captures;
-            if (captures.length === 0) { continue; }
+        //
+        // Skip the imageJobs entirely when discover-only AND the source is
+        // newer than the PNGs on disk: those bytes are stale relative to
+        // the user's current buffer, and pushing them via updateImage would
+        // remove the loading overlay and surface yesterday's render as if
+        // it were the current state. Cards keep their cached imageData
+        // (last known good) under the loading overlay until the auto-render
+        // we kick off below replaces them with fresh bytes.
+        const sourceIsStale = !forceRender
+            && await isSourceNewerThanRenders(activeFile, visiblePreviews, modules);
+        if (!sourceIsStale) {
+            const imageJobs: Promise<void>[] = [];
+            for (const preview of visiblePreviews) {
+                const captures = preview.captures;
+                if (captures.length === 0) { continue; }
 
-            const mod = previewModuleMap.get(preview.id);
-            if (!mod) { continue; }
+                const mod = previewModuleMap.get(preview.id);
+                if (!mod) { continue; }
 
-            for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
-                const capture = captures[captureIndex];
-                if (!capture.renderOutput) { continue; }
-                const idx = captureIndex;
-                imageJobs.push((async () => {
-                    if (abort.signal.aborted) { return; }
-                    const imageData = await gradleService!.readPreviewImage(mod, capture.renderOutput);
-                    if (abort.signal.aborted || !panel) { return; }
+                for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
+                    const capture = captures[captureIndex];
+                    if (!capture.renderOutput) { continue; }
+                    const idx = captureIndex;
+                    imageJobs.push((async () => {
+                        if (abort.signal.aborted) { return; }
+                        const imageData = await gradleService!.readPreviewImage(mod, capture.renderOutput);
+                        if (abort.signal.aborted || !panel) { return; }
 
-                    if (imageData) {
-                        if (idx === 0) {
-                            registry.setImage(preview.id, imageData);
+                        if (imageData) {
+                            if (idx === 0) {
+                                registry.setImage(preview.id, imageData);
+                            }
+                            panel.postMessage({
+                                command: 'updateImage',
+                                previewId: preview.id,
+                                captureIndex: idx,
+                                imageData,
+                            });
+                        } else if (forceRender) {
+                            // Render task completed but produced no PNG for this
+                            // capture — a per-capture failure that didn't fail the
+                            // whole task. Surface it on the card; root-cause log is
+                            // in Output ▸ Compose Preview.
+                            panel.postMessage({
+                                command: 'setImageError',
+                                previewId: preview.id,
+                                captureIndex: idx,
+                                message: 'Render failed — see Output ▸ Compose Preview',
+                            });
                         }
-                        panel.postMessage({
-                            command: 'updateImage',
-                            previewId: preview.id,
-                            captureIndex: idx,
-                            imageData,
-                        });
-                    } else if (forceRender) {
-                        // Render task completed but produced no PNG for this
-                        // capture — a per-capture failure that didn't fail the
-                        // whole task. Surface it on the card; root-cause log is
-                        // in Output ▸ Compose Preview.
-                        panel.postMessage({
-                            command: 'setImageError',
-                            previewId: preview.id,
-                            captureIndex: idx,
-                            message: 'Render failed — see Output ▸ Compose Preview',
-                        });
-                    }
-                    // else: discover-only pass, PNG not produced yet. Leave
-                    // the skeleton in place; the next save-triggered render
-                    // will populate it.
-                })());
+                        // else: discover-only pass, PNG not produced yet. Leave
+                        // the skeleton in place; the next save-triggered render
+                        // will populate it.
+                    })());
+                }
             }
+            await Promise.all(imageJobs);
         }
-        await Promise.all(imageJobs);
         if (!abort.signal.aborted) {
             // Drive the bar to 100% and stop the tick. The webview holds
             // the completed state for ~600ms then fades the strip away.
@@ -1487,49 +1485,18 @@ async function refresh(
             writeCalibration(module, tracker.phaseDurations);
         }
 
-        // NOTE: intentionally do NOT send `showMessage: ''` here. The webview's
-        // renderPreviews() clears the 'loading' Building… banner the moment
-        // cards arrive, so the happy path is already covered. Posting a blank
-        // showMessage would also clobber legitimate extension-set messages
-        // (filter empty notice, build errors), which was the original
-        // "populate then go blank" regression.
+        // Source-newer-than-renders auto-refresh. Replaces the old "Showing
+        // previews from <ago>" banner — the banner pushed the work onto the
+        // user, this just re-renders. Scheduled via setTimeout(0) so the
+        // current refresh resolves cleanly first; the new refresh's
+        // pendingRefresh.abort() then takes over.
         //
-        // Stale-banner posting / clearing. Compare the active source file's
-        // mtime against the oldest visible PNG: if the source has been edited
-        // since the renders were written, the user is looking at a render
-        // that doesn't reflect their current source. An absolute "older than
-        // X" threshold is wrong because a steady-state save loop produces
-        // PNGs seconds old that are nonetheless current — what matters is
-        // "did the source move since".
-        //
-        //   - forceRender=true → user explicitly re-rendered, anything stale
-        //     was just rewritten; clear any prior banner.
-        //   - forceRender=false → check source vs PNG; banner if source is
-        //     newer. Cleared on the first daemon `updateImage` (see
-        //     daemonScheduler events) or on the next forceRender.
-        if (forceRender && staleBannerShown) {
-            panel.postMessage({ command: 'showMessage', text: '' });
-            staleBannerShown = false;
-        } else if (!forceRender) {
-            const [sourceMtime, oldestMtime] = await Promise.all([
-                sourceFileMtime(activeFile),
-                oldestRenderMtime(visiblePreviews, modules),
-            ]);
-            const sourceIsNewer =
-                sourceMtime != null && oldestMtime != null && sourceMtime > oldestMtime;
-            if (sourceIsNewer) {
-                const ago = formatRelativeAge(Date.now() - oldestMtime!);
-                panel.postMessage({
-                    command: 'showMessage',
-                    text:
-                        `Showing previews from ${ago}, but ${path.basename(activeFile)} ` +
-                        'has changed since (save to render fresh, or run "Compose Preview: Refresh").',
-                });
-                staleBannerShown = true;
-            } else if (staleBannerShown) {
-                panel.postMessage({ command: 'showMessage', text: '' });
-                staleBannerShown = false;
-            }
+        // Only fires from the discover-only path: forceRender=true paths
+        // just rendered, so PNGs are fresh by definition. Without that
+        // gate we'd loop on every save-driven refresh.
+        if (sourceIsStale) {
+            logLine(`auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`);
+            setTimeout(() => { void refresh(true, activeFile, 'fast'); }, 0);
         }
         return abort.signal.aborted ? 'cancelled' : 'completed';
     } catch (err: unknown) {
