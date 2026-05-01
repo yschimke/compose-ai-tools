@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { GradleService } from '../gradleService';
 import { DaemonGate } from './daemonGate';
 import {
+    DataProductAttachment,
     DiscoveryUpdatedParams,
     FileChangeType,
     FileKind,
@@ -26,6 +27,20 @@ export interface SchedulerEvents {
         imageBase64: string,
         pngPath: string,
     ) => void;
+    /**
+     * D2 — `renderFinished` arrived with `dataProducts: [{kind, payload? | path?}]`.
+     * Fires once per render, after the PNG has been read; consumers route each kind
+     * into the registry / webview / diagnostics surface.
+     *
+     * Optional because tests may not wire it. Only fires when the daemon attaches
+     * data products (i.e. the client subscribed via `dataSubscribe` for one of the
+     * `(previewId, kind)` pairs, or attached one globally at `initialize`).
+     */
+    onDataProductsAttached?: (
+        moduleId: string,
+        previewId: string,
+        dataProducts: DataProductAttachment[],
+    ) => void;
     onRenderFailed: (moduleId: string, previewId: string, message: string) => void;
     /**
      * Daemon told us the classpath drifted (e.g. `libs.versions.toml`
@@ -47,6 +62,14 @@ export interface SchedulerEvents {
 }
 
 const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
+
+/**
+ * D2 — kinds the panel implicitly subscribes to whenever a preview becomes visible. Pinned to the
+ * a11y producer for now so the diagnostic squigglies + the local hierarchy overlay both fire
+ * without a user gesture. A future "show a11y" toggle moves this from a hardcoded constant to
+ * panel-driven state.
+ */
+const DEFAULT_SUBSCRIBED_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
 /**
  * Cards we'll pre-render ahead of the visible viewport on each scroll-ahead
  * push from the webview. Bounded so a fast scroll past 50 cards doesn't
@@ -77,6 +100,13 @@ export class DaemonScheduler {
     private lastVisible = new Map<string, string[]>();
     /** Last `setFocus` per module so editor refocus on the same file is a no-op. */
     private lastFocus = new Map<string, string[]>();
+    /**
+     * D2 — `(moduleId, previewId)` pairs we've already issued `data/subscribe` for. Subscribed kinds
+     * are pinned at [DEFAULT_SUBSCRIBED_KINDS] today; per-kind tracking moves here when the panel
+     * grows a runtime "show a11y" toggle. Daemon prunes its side automatically when a previewId
+     * leaves `setVisible`, so we only need to dedup re-subscribes.
+     */
+    private readonly subscribedPairs = new Set<string>();
     /** Cards we've already speculatively requested so scrolling back over
      *  them doesn't re-queue identical work. Keyed by `${moduleId}::${id}`. */
     private speculated = new Set<string>();
@@ -192,6 +222,41 @@ export class DaemonScheduler {
         if (!client) { return; }
         client.setVisible({ ids: visible });
 
+        // D2 — subscribe to a11y data products for newly-visible previews. The daemon attaches
+        // matching kinds to subsequent `renderFinished` events, and prunes subscriptions itself
+        // when a preview leaves `setVisible`. We only track which (moduleId, previewId, kind)
+        // triples we've already asked about so we don't spam `data/subscribe`. dataSubscribe
+        // rejects gracefully (DataProductUnknown) on pre-D2 daemons; those reject promises are
+        // ignored so the panel keeps working unchanged.
+        const visibleSetForSub = new Set(visible);
+        // Drop bookkeeping for previews that fell out of view — daemon already pruned its side.
+        // Key format is `${moduleId}::${id}::${kind}`; we parse to compare just the id.
+        const modulePrefix = `${moduleId}::`;
+        for (const key of [...this.subscribedPairs]) {
+            if (!key.startsWith(modulePrefix)) { continue; }
+            const rest = key.slice(modulePrefix.length);
+            const sep = rest.indexOf('::');
+            const id = sep < 0 ? rest : rest.slice(0, sep);
+            if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
+        }
+        for (const id of visible) {
+            for (const kind of DEFAULT_SUBSCRIBED_KINDS) {
+                const subKey = `${moduleId}::${id}::${kind}`;
+                if (this.subscribedPairs.has(subKey)) { continue; }
+                this.subscribedPairs.add(subKey);
+                client.dataSubscribe({ previewId: id, kind }).catch((err) => {
+                    // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
+                    // expected, not noise. Log at debug level via the channel so the user
+                    // doesn't see it unless they're poking at the protocol surface.
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] dataSubscribe(${id}, ${kind}) failed (pre-D2 daemon?): ${msg}`,
+                    );
+                    this.subscribedPairs.delete(subKey);
+                });
+            }
+        }
+
         if (predicted.length === 0) { return; }
         // Bound the speculative request so a flick-scroll past 50 cards
         // doesn't queue 50 renders. Visible IDs trump predicted ones —
@@ -285,6 +350,12 @@ export class DaemonScheduler {
                 for (const k of [...this.speculated]) {
                     if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
                 }
+                // D2 — wipe data-product subscription state so the next daemon spawn re-issues
+                // `data/subscribe` against the fresh JVM. Subscriptions don't survive daemon
+                // restarts (PROTOCOL.md / DATA-PRODUCTS.md § "Wire surface").
+                for (const k of [...this.subscribedPairs]) {
+                    if (k.startsWith(`${moduleId}::`)) { this.subscribedPairs.delete(k); }
+                }
             },
         };
     }
@@ -325,6 +396,13 @@ export class DaemonScheduler {
                 buf.toString('base64'),
                 params.pngPath,
             );
+            // D2 — forward attached data products. The dispatcher already filtered to the
+            // `(previewId, kind)` pairs the client subscribed to, so any non-empty list is a
+            // payload the panel asked for. Empty / absent → nothing to do; we DON'T fire the
+            // event in that case to keep the consumer-side dispatch trivial.
+            if (params.dataProducts && params.dataProducts.length > 0) {
+                this.events.onDataProductsAttached?.(moduleId, params.id, params.dataProducts);
+            }
         } catch (err) {
             this.logger.appendLine(
                 `[daemon] failed to read ${params.pngPath} for ${params.id}: ${(err as Error).message}`,

@@ -5,7 +5,13 @@ import * as path from 'path';
 import { DaemonScheduler } from '../daemon/daemonScheduler';
 
 interface RecordedCall {
-    method: 'fileChanged' | 'setFocus' | 'setVisible' | 'renderNow';
+    method:
+        | 'fileChanged'
+        | 'setFocus'
+        | 'setVisible'
+        | 'renderNow'
+        | 'dataSubscribe'
+        | 'dataUnsubscribe';
     args: unknown;
 }
 
@@ -14,6 +20,11 @@ class FakeClient {
     public closed = false;
     public renderNowResult: { queued: string[]; rejected: { id: string; reason: string }[] } =
         { queued: ['x'], rejected: [] };
+    /**
+     * D2 — when true, `dataSubscribe` rejects with `DataProductUnknown`-shaped error,
+     * mimicking a pre-D2 daemon. Tests that don't set this get a successful resolution.
+     */
+    public dataSubscribeRejects = false;
 
     fileChanged(args: unknown): void { this.calls.push({ method: 'fileChanged', args }); }
     setFocus(args: unknown): void { this.calls.push({ method: 'setFocus', args }); }
@@ -21,6 +32,17 @@ class FakeClient {
     renderNow(args: unknown): Promise<unknown> {
         this.calls.push({ method: 'renderNow', args });
         return Promise.resolve(this.renderNowResult);
+    }
+    dataSubscribe(args: unknown): Promise<unknown> {
+        this.calls.push({ method: 'dataSubscribe', args });
+        if (this.dataSubscribeRejects) {
+            return Promise.reject(new Error('-32020 DataProductUnknown'));
+        }
+        return Promise.resolve({ ok: true });
+    }
+    dataUnsubscribe(args: unknown): Promise<unknown> {
+        this.calls.push({ method: 'dataUnsubscribe', args });
+        return Promise.resolve({ ok: true });
     }
     isClosed(): boolean { return this.closed; }
 }
@@ -75,9 +97,21 @@ function build() {
     const failures: { moduleId: string; previewId: string; message: string }[] = [];
     const dirty: { moduleId: string; detail: string }[] = [];
     const discovery: { moduleId: string; params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number } }[] = [];
+    const dataProducts: {
+        moduleId: string;
+        previewId: string;
+        attachments: { kind: string; payload?: unknown; path?: string }[];
+    }[] = [];
     const events = {
         onPreviewImageReady: (moduleId: string, previewId: string, base64: string, pngPath: string) => {
             images.push({ moduleId, previewId, base64, pngPath });
+        },
+        onDataProductsAttached: (
+            moduleId: string,
+            previewId: string,
+            attachments: { kind: string; payload?: unknown; path?: string }[],
+        ) => {
+            dataProducts.push({ moduleId, previewId, attachments });
         },
         onRenderFailed: (moduleId: string, previewId: string, message: string) => {
             failures.push({ moduleId, previewId, message });
@@ -94,7 +128,7 @@ function build() {
         events,
         { appendLine: (s) => log.push(s) },
     );
-    return { gate, scheduler, log, images, failures, dirty, discovery };
+    return { gate, scheduler, log, images, failures, dirty, discovery, dataProducts };
 }
 
 describe('DaemonScheduler', () => {
@@ -472,6 +506,104 @@ describe('DaemonScheduler', () => {
             };
             // Doesn't throw.
             evts.onHistoryAdded!({ entry: { id: 'abc' } });
+        });
+    });
+
+    /**
+     * D2 — data-product surface. setVisible auto-subscribes the panel to a11y/atf +
+     * a11y/hierarchy for newly-visible previews; renderFinished forwards the attachments.
+     */
+    describe('data products', () => {
+        it('issues data/subscribe for each newly-visible preview, twice per (atf + hierarchy)', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a', 'b'], []);
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 4);
+            const kinds = subs.map(c => (c.args as { kind: string }).kind).sort();
+            assert.deepStrictEqual(
+                kinds,
+                ['a11y/atf', 'a11y/atf', 'a11y/hierarchy', 'a11y/hierarchy'],
+            );
+            const ids = subs.map(c => (c.args as { previewId: string }).previewId).sort();
+            assert.deepStrictEqual(ids, ['a', 'a', 'b', 'b']);
+        });
+
+        it('does not re-subscribe a (previewId, kind) pair on a repeated setVisible', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a'], []);
+            await scheduler.setVisible('mod', ['a', 'b'], []); // 'a' is already subscribed
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            // 'a': 2 kinds + 'b' newly visible: 2 kinds = 4 total. 'a' is NOT re-subscribed.
+            assert.strictEqual(subs.length, 4);
+        });
+
+        it('drops bookkeeping when a preview leaves visible — daemon already pruned its side', async () => {
+            const { gate, scheduler } = build();
+            await scheduler.setVisible('mod', ['a', 'b'], []);
+            await scheduler.setVisible('mod', ['a'], []); // 'b' fell out
+            // No new subscribe. 'a' was already subscribed.
+            const subs = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subs.length, 4);
+            // Bring 'b' back — it should re-subscribe (bookkeeping was dropped).
+            await scheduler.setVisible('mod', ['a', 'b'], []);
+            const subsAfter = gate.client!.calls.filter(c => c.method === 'dataSubscribe');
+            assert.strictEqual(subsAfter.length, 6);
+        });
+
+        it('forwards renderFinished.dataProducts via onDataProductsAttached', async () => {
+            const { gate, scheduler, dataProducts } = build();
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onRenderFinished: (p: {
+                    id: string;
+                    pngPath: string;
+                    tookMs: number;
+                    dataProducts?: { kind: string; payload?: unknown; path?: string }[];
+                }) => void;
+            };
+            // Stage a real PNG so the scheduler doesn't bail on ENOENT.
+            const tmp = path.join(os.tmpdir(), `data-products-${Date.now()}.png`);
+            fs.writeFileSync(tmp, Buffer.from('\x89PNG\r\n\x1a\n', 'binary'));
+            evts.onRenderFinished({
+                id: 'a',
+                pngPath: tmp,
+                tookMs: 10,
+                dataProducts: [
+                    { kind: 'a11y/atf', payload: { findings: [] } },
+                    { kind: 'a11y/hierarchy', path: '/abs/a11y-hierarchy.json' },
+                ],
+            });
+            assert.strictEqual(dataProducts.length, 1);
+            assert.strictEqual(dataProducts[0].previewId, 'a');
+            assert.strictEqual(dataProducts[0].attachments.length, 2);
+            fs.unlinkSync(tmp);
+        });
+
+        it('does not fire onDataProductsAttached when renderFinished carries no products', async () => {
+            const { gate, scheduler, dataProducts } = build();
+            await scheduler.ensureModule('mod');
+            const evts = gate.capturedEvents.get('mod')! as unknown as {
+                onRenderFinished: (p: { id: string; pngPath: string; tookMs: number }) => void;
+            };
+            const tmp = path.join(os.tmpdir(), `data-products-empty-${Date.now()}.png`);
+            fs.writeFileSync(tmp, Buffer.from('\x89PNG\r\n\x1a\n', 'binary'));
+            evts.onRenderFinished({ id: 'a', pngPath: tmp, tookMs: 10 });
+            assert.strictEqual(dataProducts.length, 0);
+            fs.unlinkSync(tmp);
+        });
+
+        it('survives a pre-D2 daemon that rejects dataSubscribe with DataProductUnknown', async () => {
+            const { gate, scheduler, log } = build();
+            gate.client!.dataSubscribeRejects = true;
+            await scheduler.setVisible('mod', ['a'], []);
+            // Wait one microtask cycle so the rejected promises settle.
+            await Promise.resolve();
+            await Promise.resolve();
+            // The setVisible itself still fires; subscribe failures are absorbed and logged.
+            const visibleCalls = gate.client!.calls.filter(c => c.method === 'setVisible');
+            assert.strictEqual(visibleCalls.length, 1);
+            const subFailures = log.filter(l => l.includes('dataSubscribe'));
+            assert.ok(subFailures.length >= 1, 'expected log entry for failed dataSubscribe');
         });
     });
 });

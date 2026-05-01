@@ -15,10 +15,17 @@ import { AndroidManifestCodeLensProvider } from './androidManifestCodeLensProvid
 import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
 import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
 import { packageQualifiedSourcePath } from './sourcePath';
-import { HEAVY_COST_THRESHOLD, PreviewInfo, WebviewToExtension } from './types';
+import {
+    AccessibilityFinding,
+    AccessibilityNode,
+    HEAVY_COST_THRESHOLD,
+    PreviewInfo,
+    WebviewToExtension,
+} from './types';
 import { formatRenderErrorMessage } from './renderError';
 import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
+import { DataProductAttachment } from './daemon/daemonProtocol';
 import { DaemonScheduler, WarmState } from './daemon/daemonScheduler';
 import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
 import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
@@ -251,6 +258,62 @@ export interface ComposePreviewTestApi {
  *  populated when running under `COMPOSE_PREVIEW_TEST_MODE=1`. */
 const postedMessageLog: unknown[] = [];
 
+/**
+ * D2 — routes daemon-attached `a11y/atf` + `a11y/hierarchy` data products into the
+ * [PreviewRegistry]. Inline payloads are decoded directly; path-transport kinds are
+ * read off disk (the daemon writes them under `<outputDir.parent>/data/<previewId>/`).
+ *
+ * Failure mode: malformed JSON or a missing path file logs to the daemon channel and
+ * leaves the registry untouched — the previous render's a11y state stays valid until
+ * the next attachment arrives.
+ *
+ * Exported for unit-testability; the module-scoped scheduler wiring above is the
+ * production caller.
+ */
+export function applyDataProductsToRegistry(
+    registry: PreviewRegistry,
+    previewId: string,
+    dataProducts: DataProductAttachment[],
+    log: { appendLine(value: string): void },
+): { findings?: AccessibilityFinding[]; nodes?: AccessibilityNode[] } | null {
+    let findings: AccessibilityFinding[] | undefined;
+    let nodes: AccessibilityNode[] | undefined;
+    for (const dp of dataProducts) {
+        try {
+            if (dp.kind === 'a11y/atf') {
+                const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
+                    | { findings?: AccessibilityFinding[] }
+                    | undefined;
+                if (payload?.findings) { findings = payload.findings; }
+            } else if (dp.kind === 'a11y/hierarchy') {
+                const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
+                    | { nodes?: AccessibilityNode[] }
+                    | undefined;
+                if (payload?.nodes) { nodes = payload.nodes; }
+            }
+        } catch (err) {
+            log.appendLine(
+                `[daemon] data product ${dp.kind} for ${previewId} failed: ${(err as Error).message}`,
+            );
+        }
+    }
+    if (findings !== undefined || nodes !== undefined) {
+        registry.setA11y(previewId, { findings, nodes });
+        return { findings, nodes };
+    }
+    return null;
+}
+
+function readJsonPath(p: string | undefined, log: { appendLine(value: string): void }): unknown {
+    if (!p) { return undefined; }
+    try {
+        return JSON.parse(fs.readFileSync(p, 'utf-8'));
+    } catch (err) {
+        log.appendLine(`[daemon] could not read data-product JSON at ${p}: ${(err as Error).message}`);
+        return undefined;
+    }
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<ComposePreviewTestApi | void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) { return; }
@@ -345,6 +408,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 captureIndex: 0,
                 message,
             });
+        },
+        onDataProductsAttached: (_moduleId, previewId, dataProducts) => {
+            // D2 — route the data products attached to this render. For path-transport kinds
+            // (`a11y/hierarchy`) we read the JSON off disk; inline kinds (`a11y/atf`) carry
+            // their payload in `dp.payload`. The registry update fires `onDidChange`, which
+            // the diagnostics provider already listens to. The panel receives a targeted
+            // `updateA11y` post so its cached overlays repaint without re-emitting the entire
+            // preview list.
+            const decoded = applyDataProductsToRegistry(
+                registry,
+                previewId,
+                dataProducts,
+                outputChannel,
+            );
+            if (decoded && panel) {
+                panel.postMessage({
+                    command: 'updateA11y',
+                    previewId,
+                    findings: decoded.findings ?? undefined,
+                    nodes: decoded.nodes ?? undefined,
+                });
+            }
         },
         onClasspathDirty: (moduleId, detail) => {
             outputChannel.appendLine(

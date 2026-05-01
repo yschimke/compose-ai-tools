@@ -991,6 +991,37 @@ body {
     pointer-events: none;
     z-index: 2;
 }
+/* D2 — daemon-attached `a11y/hierarchy` overlay. Sits BELOW the finding overlay so
+ * findings stay legible (numbered badges + coloured borders win); shows every
+ * accessibility-relevant node with a thin dotted border + translucent fill so the
+ * full TalkBack-visible tree is laid out without obscuring the design. Pointer-events
+ * are auto on the boxes so the `title` tooltip fires on hover. */
+.a11y-hierarchy-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+.a11y-hierarchy-box {
+    position: absolute;
+    border: 1px dashed rgba(80, 160, 255, 0.7);
+    background: rgba(80, 160, 255, 0.06);
+    border-radius: 1px;
+    pointer-events: auto;
+    transition: background 120ms ease;
+}
+.a11y-hierarchy-box:hover {
+    background: rgba(80, 160, 255, 0.18);
+    border-color: rgba(80, 160, 255, 1);
+}
+/* Nodes sitting under a focusable ancestor that already carries its own
+ * contentDescription — TalkBack reads only the ancestor. Shown with a lighter
+ * border so reviewers can see the structure without confusing it for "two
+ * separate stops". */
+.a11y-hierarchy-box.a11y-hierarchy-unmerged {
+    border-style: dotted;
+    border-color: rgba(160, 200, 255, 0.5);
+}
 .a11y-box {
     position: absolute;
     border: 2px solid var(--a11y-color, #d32f2f);
