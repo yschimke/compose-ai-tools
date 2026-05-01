@@ -650,15 +650,17 @@ Total: ~600 lines of Kotlin + ~100 lines of TypeScript across the three PRs. Eac
   `LocalInspectionMode = true` so the input doesn't reach the active
   composition. v2 flips the local and dispatches the pixel coords
   through `ImageComposeScene`'s pointer-input pipeline.
-- **Multi-preview simultaneous live mode in the panel UI.** The wire
-  protocol supports concurrent `interactive/start` streams (see § 8),
-  but the panel only renders a single `.live` card at a time. Lifting
-  the UI is purely a webview change — `interactivePreviewId` would
-  become a `Set<previewId>` and the LIVE chip / badge would attach per
-  card — but the affordance argument for surfacing multi-target to a
-  human is weak (the user can only meaningfully focus on one live
-  preview at a time). Programmatic clients are the load-bearing case
-  for multi-target on the wire today.
+- **Multi-preview simultaneous live mode in the panel UI.** Surfaced
+  behind the Shift modifier on the LIVE toggle: plain click is
+  single-target (preserves the v1 mental model — one card live at a
+  time, follow-focus on navigation), Shift+click adds or removes the
+  focused preview from the live set without disturbing existing
+  streams. The webview keeps `interactivePreviewIds: Set<string>` and
+  decorates each card in the set; the wire protocol's multi-target
+  capability (§ 8) is what makes this trivial. Programmatic clients
+  exercising concurrent streams remain the primary load-bearing case;
+  the human-affordance argument is "nice when you need it, not in the
+  way when you don't".
 - **Mouse-move / drag** events. Click is the smallest first surface; we
   reserve the wire shape but don't capture moves to keep the
   implementation honest.

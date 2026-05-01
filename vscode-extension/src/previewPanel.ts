@@ -314,14 +314,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         // Interactive (live-stream) mode state. Declared up here — *before*
         // the first applyLayout() call below — because applyLayout reads
-        // interactivePreviewId via the early-exit-on-focus-change path.
+        // interactivePreviewIds via the early-exit-on-focus-change path.
         // moduleDaemonReady tracks per-module daemon readiness pushed by the
         // extension via setInteractiveAvailability; the button enables only
-        // when the focused card's owning module is ready. interactivePreviewId
-        // is the single live target — see INTERACTIVE.md § 8 (one card at
-        // a time).
+        // when the focused card's owning module is ready.
+        //
+        // interactivePreviewIds is a Set so Shift+click on the LIVE toggle
+        // can add/remove a preview without disturbing others (multi-stream
+        // UI). The wire and daemon already support concurrent streams
+        // (INTERACTIVE.md § 8); the panel just exposes it under a modifier
+        // key. Default un-modified click stays single-target — clearing the
+        // set before adding the new one — so casual users don't accidentally
+        // pile up live streams.
         const moduleDaemonReady = new Map();
-        let interactivePreviewId = null;
+        const interactivePreviewIds = new Set();
 
         // Restore layout preference
         if (state.layout && ['grid', 'flow', 'column', 'focus'].includes(state.layout)) {
@@ -351,11 +357,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
         btnLaunchDevice.addEventListener('click', () => requestLaunchOnDevice());
         btnA11yOverlay.addEventListener('click', () => toggleA11yOverlay());
-        btnInteractive.addEventListener('click', () => toggleInteractive());
+        // Shift modifier opts into the multi-stream path: keep the prior live targets, add or
+        // remove just this one. Plain click keeps the single-target single-card UX casual users
+        // expect.
+        btnInteractive.addEventListener('click', (e) => toggleInteractive(e.shiftKey));
         btnExitFocus.addEventListener('click', () => exitFocus());
 
         // ----- Interactive (live-stream) mode helpers -----
-        // State (moduleDaemonReady, interactivePreviewId) is declared
+        // State (moduleDaemonReady, interactivePreviewIds) is declared
         // earlier so the first applyLayout() can reach it. The function
         // declarations below are hoisted, so call sites above this block
         // resolve fine.
@@ -403,13 +412,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             }
             const previewId = card.dataset.previewId;
             const ready = isFocusedDaemonReady();
-            const live = previewId === interactivePreviewId && interactivePreviewId !== null;
+            const live = !!previewId && interactivePreviewIds.has(previewId);
+            const otherLiveCount = interactivePreviewIds.size - (live ? 1 : 0);
             btnInteractive.disabled = !ready && !live;
             btnInteractive.setAttribute('aria-pressed', live ? 'true' : 'false');
             btnInteractive.classList.toggle('live-on', live);
             btnInteractive.title = !ready
                 ? 'Daemon not ready — live mode unavailable'
-                : (live ? 'Live · click to exit' : 'Enter live mode (stream renders)');
+                : (live
+                    ? 'Live · click to exit · Shift+click to leave others on'
+                    : (otherLiveCount > 0
+                        ? otherLiveCount + ' other live · click to make this one live too · '
+                          + 'Shift+click to add without unsubscribing the rest'
+                        : 'Enter live mode (stream renders) · Shift+click to add to multi-stream'));
             btnInteractive.innerHTML = live
                 ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
                 : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
@@ -462,18 +477,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         }
 
         function applyLiveBadge() {
-            // Tear down all prior live decorations first so a focus change
-            // doesn't leave a stale badge on an unfocused card.
+            // Tear down every prior live decoration first — a removal from interactivePreviewIds
+            // (Shift+click off, set-cleared on daemon-not-ready, etc.) needs the badge to come
+            // off the now-not-live card. Then re-stamp every still-live preview.
             document.querySelectorAll('.preview-card.live').forEach(c => {
                 c.classList.remove('live');
                 const badge = c.querySelector('.live-badge');
                 if (badge) badge.remove();
             });
-            if (!interactivePreviewId) return;
-            const card = document.getElementById('preview-' + sanitizeId(interactivePreviewId));
-            if (!card) return;
-            card.classList.add('live');
-            if (!card.querySelector('.live-badge')) {
+            if (interactivePreviewIds.size === 0) return;
+            interactivePreviewIds.forEach(previewId => {
+                const card = document.getElementById('preview-' + sanitizeId(previewId));
+                if (!card) return;
+                card.classList.add('live');
+                if (card.querySelector('.live-badge')) return;
                 const badge = document.createElement('div');
                 badge.className = 'live-badge';
                 badge.setAttribute('aria-hidden', 'true');
@@ -484,28 +501,39 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 text.textContent = 'LIVE';
                 badge.appendChild(text);
                 card.appendChild(badge);
-            }
+            });
         }
 
-        function toggleInteractive() {
+        function toggleInteractive(shift) {
             if (layoutMode.value !== 'focus') return;
             const visible = getVisibleCards();
             const card = visible[focusIndex];
             if (!card) return;
             const previewId = card.dataset.previewId;
             if (!previewId) return;
-            const turnOn = previewId !== interactivePreviewId;
-            // Exit any prior live target before announcing the new one — the
-            // extension/daemon contract is single-target (INTERACTIVE.md § 8),
-            // so we never want two cards reporting .live at once.
-            if (interactivePreviewId && interactivePreviewId !== previewId) {
-                vscode.postMessage({
-                    command: 'setInteractive',
-                    previewId: interactivePreviewId,
-                    enabled: false,
+            const wasLive = interactivePreviewIds.has(previewId);
+            // Plain click: single-target. Drop every prior live target before adding (or
+            // re-removing) this one — keeps the casual UX matching v1's "one card live at a
+            // time" mental model.
+            // Shift+click: multi-target. Toggle just this preview in/out of the live set without
+            // touching the others.
+            if (!shift) {
+                interactivePreviewIds.forEach(prior => {
+                    if (prior === previewId) return;
+                    vscode.postMessage({
+                        command: 'setInteractive',
+                        previewId: prior,
+                        enabled: false,
+                    });
                 });
+                interactivePreviewIds.clear();
             }
-            interactivePreviewId = turnOn ? previewId : null;
+            const turnOn = !wasLive;
+            if (turnOn) {
+                interactivePreviewIds.add(previewId);
+            } else {
+                interactivePreviewIds.delete(previewId);
+            }
             vscode.postMessage({
                 command: 'setInteractive',
                 previewId,
@@ -521,12 +549,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // mode exits, so non-live cards never carry the handler.
         function ensureInteractiveClickHandler(card, img) {
             const previewId = card.dataset.previewId;
-            const shouldHandle = previewId === interactivePreviewId;
+            const shouldHandle = !!previewId && interactivePreviewIds.has(previewId);
             if (shouldHandle && img.dataset.interactiveBound !== '1') {
                 img.dataset.interactiveBound = '1';
                 img.addEventListener('click', (evt) => {
-                    if (card.dataset.previewId !== interactivePreviewId) return;
-                    recordInteractiveClick(previewId, img, evt);
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id)) return;
+                    recordInteractiveClick(id, img, evt);
                 });
             } else if (!shouldHandle && img.dataset.interactiveBound === '1') {
                 // Listener leak isn't worth a clone+replace dance — set the
@@ -699,18 +728,22 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const tooltip = mode === 'focus' ? 'Double-click to exit focus' : 'Double-click to focus';
             document.querySelectorAll('.image-container').forEach(c => c.title = tooltip);
             publishScopedPreview();
-            // If the user navigated focus off the live preview, drop the
-            // live state so the badge and the "is live" UI follow the user.
-            if (interactivePreviewId) {
+            // Single-target follow-focus: when there's exactly one live stream and the user
+            // navigates off it, drop the stream so the LIVE chip follows the focused card.
+            // Multi-target (size > 1) is treated as an explicit opt-in via Shift+click — those
+            // streams persist across focus navigation until the user explicitly toggles them off
+            // (or daemon dies, or the webview disposes).
+            if (interactivePreviewIds.size === 1) {
                 const visible = getVisibleCards();
                 const card = mode === 'focus' ? visible[focusIndex] : null;
-                if (!card || card.dataset.previewId !== interactivePreviewId) {
+                const lone = interactivePreviewIds.values().next().value;
+                if (!card || card.dataset.previewId !== lone) {
                     vscode.postMessage({
                         command: 'setInteractive',
-                        previewId: interactivePreviewId,
+                        previewId: lone,
                         enabled: false,
                     });
-                    interactivePreviewId = null;
+                    interactivePreviewIds.clear();
                     applyLiveBadge();
                 }
             }
@@ -1877,7 +1910,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // In live mode the new bytes are a frame, not a card reload —
             // skip the fade-in so successive frames read as a stream rather
             // than a sequence of independent renders. See INTERACTIVE.md § 3.
-            const isLive = previewId === interactivePreviewId;
+            const isLive = interactivePreviewIds.has(previewId);
             img.className = isLive ? 'live-frame' : 'fade-in';
             ensureInteractiveClickHandler(card, img);
 
@@ -2143,12 +2176,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     applyLayout();
                     // setPreviews can rebuild the focused card from scratch;
                     // re-stamp the live badge so the LIVE chip reattaches to
-                    // the right card. If the previously-live preview is gone
-                    // from the new manifest, drop the live state outright.
-                    if (interactivePreviewId
-                        && !msg.previews.some(p => p.id === interactivePreviewId)) {
-                        interactivePreviewId = null;
-                    }
+                    // the right card(s). Drop any live previewIds that are
+                    // gone from the new manifest — silent cleanup; we don't
+                    // bother sending interactive/stop because the preview no
+                    // longer exists for the daemon to dispatch into anyway.
+                    const newIds = new Set(msg.previews.map(p => p.id));
+                    interactivePreviewIds.forEach(id => {
+                        if (!newIds.has(id)) interactivePreviewIds.delete(id);
+                    });
                     applyLiveBadge();
                     applyInteractiveButtonState();
                     break;
@@ -2324,9 +2359,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     moduleDaemonReady.set(msg.moduleId, !!msg.ready);
                     // Daemon went away while a card was live — drop the live
                     // state so the user doesn't keep seeing a LIVE badge on
-                    // a card whose stream has stopped.
-                    if (!msg.ready && interactivePreviewId) {
-                        interactivePreviewId = null;
+                    // a card whose stream has stopped. Today the panel is
+                    // single-module-scoped so any not-ready signal applies
+                    // to every live preview; if the panel ever shows multi-
+                    // module previews simultaneously, this needs scoping by
+                    // each preview's owning module.
+                    if (!msg.ready && interactivePreviewIds.size > 0) {
+                        interactivePreviewIds.clear();
                         applyLiveBadge();
                     }
                     applyInteractiveButtonState();

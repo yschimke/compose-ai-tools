@@ -463,6 +463,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             // timeline.
             historyPanel?.onHistoryAdded(params);
         },
+        onChannelClosed: (moduleId) => {
+            // Daemon's stdio channel closed (process exit, classpath dirty,
+            // spawn died). frameStreamIds don't survive a JVM restart, so
+            // drop every entry in `activeInteractiveStreams` whose previewId
+            // belongs to this module. Without this, a click landing after
+            // the daemon respawned would carry a stale streamId the new
+            // JVM never minted, and v2 dispatch would silently drop. The
+            // extension's `previewModuleMap` still resolves correctly post-
+            // respawn so the lookup uses today's mapping.
+            const stale: string[] = [];
+            for (const previewId of activeInteractiveStreams.keys()) {
+                if (previewModuleMap.get(previewId) === moduleId) {
+                    stale.push(previewId);
+                }
+            }
+            for (const previewId of stale) {
+                activeInteractiveStreams.delete(previewId);
+            }
+            if (stale.length > 0) {
+                logLine(
+                    `[interactive] daemon channel closed for ${moduleId}; ` +
+                    `dropped ${stale.length} stale stream(s): ${stale.join(', ')}`,
+                );
+            }
+        },
     }, outputChannel);
 
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
