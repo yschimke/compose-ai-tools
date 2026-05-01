@@ -143,11 +143,26 @@ class LocalFsHistorySourceWriteTest {
     val hashB = LocalFsHistorySource.sha256Hex(bytesB)
 
     val firstA =
-      makeEntry(id = "20260430-100000-${hashA.take(8)}", previewId = previewId, hash = hashA, size = 3)
+      makeEntry(
+        id = "20260430-100000-${hashA.take(8)}",
+        previewId = previewId,
+        hash = hashA,
+        size = 3,
+      )
     val midB =
-      makeEntry(id = "20260430-100001-${hashB.take(8)}", previewId = previewId, hash = hashB, size = 3)
+      makeEntry(
+        id = "20260430-100001-${hashB.take(8)}",
+        previewId = previewId,
+        hash = hashB,
+        size = 3,
+      )
     val secondA =
-      makeEntry(id = "20260430-100002-${hashA.take(8)}", previewId = previewId, hash = hashA, size = 3)
+      makeEntry(
+        id = "20260430-100002-${hashA.take(8)}",
+        previewId = previewId,
+        hash = hashA,
+        size = 3,
+      )
 
     assertEquals(WriteResult.WRITTEN, source.write(firstA, bytesA))
     assertEquals(WriteResult.WRITTEN, source.write(midB, bytesB))
@@ -197,7 +212,10 @@ class LocalFsHistorySourceWriteTest {
         hash = hash,
         size = bytes.size.toLong(),
       )
-    assertEquals(WriteResult.WRITTEN, LocalFsHistorySource(historyDir = tmpDir).write(firstEntry, bytes))
+    assertEquals(
+      WriteResult.WRITTEN,
+      LocalFsHistorySource(historyDir = tmpDir).write(firstEntry, bytes),
+    )
 
     val sourceB = LocalFsHistorySource(historyDir = tmpDir)
     val secondEntry =
