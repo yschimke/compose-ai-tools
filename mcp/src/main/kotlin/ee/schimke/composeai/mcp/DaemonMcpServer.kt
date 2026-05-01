@@ -421,7 +421,8 @@ class DaemonMcpServer(
                     "localeTag":{"type":"string","description":"BCP-47 locale tag (e.g. 'en-US', 'fr', 'ja-JP'). Android-only today."},
                     "fontScale":{"type":"number","description":"Font scale multiplier (1.0 = system default)."},
                     "uiMode":{"type":"string","enum":["light","dark"],"description":"Light/dark mode override. Android-only today."},
-                    "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."}
+                    "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."},
+                    "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or full 'spec:width=400dp,height=800dp,dpi=320'. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."}
                   }
                 }
               },
@@ -818,6 +819,7 @@ class DaemonMcpServer(
       fontScale = float("fontScale"),
       uiMode = uiMode,
       orientation = orientation,
+      device = str("device"),
     )
   }
 

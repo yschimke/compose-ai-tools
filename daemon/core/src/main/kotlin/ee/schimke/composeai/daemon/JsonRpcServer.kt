@@ -773,6 +773,12 @@ class JsonRpcServer(
           }
         )
       }
+      overrides.device
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          if (isNotEmpty()) append(';')
+          append("device=").append(it)
+        }
     }
   }
 

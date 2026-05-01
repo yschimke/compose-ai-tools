@@ -117,6 +117,69 @@ class OverrideIntegrationTest {
     }
   }
 
+  @Test
+  fun deviceOverrideResolvesCatalogDimensions() {
+    // PROTOCOL.md § 5 (`renderNow.overrides.device`) — `device=id:pixel_5` should resolve via
+    // `DeviceDimensions.resolve` to widthDp=393, heightDp=851, density=2.75, giving widthPx=1080
+    // (393 × 2.75) and heightPx=2340 (851 × 2.75). The manifest's per-preview defaults are
+    // small (64×64) so the PNG dimension change is the visible signal.
+    val outputDir = tempFolder.newFolder("renders-device")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "red-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "red-square-device",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val pixel5 = renderAndDecode(host, "previewId=red-square;device=id:pixel_5", "pixel_5")
+      // 393dp × 2.75 density = 1080px nominal, 851dp × 2.75 = 2340px nominal. Robolectric's
+      // qualifier round-trip is lossy by a couple of px (px → dp via integer division → px again),
+      // so we assert "near nominal" rather than equality. The point is that the device override
+      // routed through the catalog and produced ~Pixel 5 dimensions, not the manifest's 64×64.
+      assertNearPx("device=id:pixel_5 width should be ~1080px", expected = 1080, pixel5.width)
+      assertNearPx("device=id:pixel_5 height should be ~2340px", expected = 2340, pixel5.height)
+
+      // Explicit widthPx still wins over the device-derived value — `device=id:pixel_5;widthPx=600`
+      // takes the Pixel 5's density (2.75) but forces a custom width.
+      val custom =
+        renderAndDecode(host, "previewId=red-square;device=id:pixel_5;widthPx=600", "custom")
+      assertNearPx("explicit widthPx should override device dims", expected = 600, custom.width)
+      assertNearPx(
+        "heightPx still flows from the device when not overridden",
+        expected = 2340,
+        custom.height,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * Asserts [actual] is within ±4px of [expected]. The Android backend's qualifier path round-trips
+   * px → dp (via integer division) → px again inside `applyPreviewQualifiers`, so a request for
+   * 1080px can come back as 1078px etc. The exact-px assertion isn't what this test is proving —
+   * we're proving the device override reached the spec at all.
+   */
+  private fun assertNearPx(message: String, expected: Int, actual: Int) {
+    assertTrue(
+      "$message — expected ~$expected, got $actual (drift > 4px)",
+      kotlin.math.abs(expected - actual) <= 4,
+    )
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
