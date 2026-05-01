@@ -363,13 +363,24 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function applyInteractiveButtonState() {
             const inFocus = layoutMode.value === 'focus';
-            const visible = getVisibleCards();
-            const card = inFocus ? visible[focusIndex] : null;
             // Hide outright when not in focus mode — the toolbar already
             // hides itself, but this keeps aria-pressed correct for tests
             // that snapshot the button in either layout.
             btnInteractive.hidden = !inFocus;
-            if (!inFocus || !card) {
+            if (!inFocus) {
+                // Cheap fast-path: applyLayout fires this on every layout
+                // change (filter tweaks, focus nav, every setPreviews). In
+                // non-focus modes the focus-controls strip is hidden by CSS,
+                // so nothing visible would change — skip the getVisibleCards
+                // DOM walk and the per-attribute writes. State on re-entry to
+                // focus mode is rebuilt fresh by the full path below.
+                btnInteractive.setAttribute('aria-pressed', 'false');
+                btnInteractive.classList.remove('live-on');
+                return;
+            }
+            const visible = getVisibleCards();
+            const card = visible[focusIndex];
+            if (!card) {
                 btnInteractive.disabled = true;
                 btnInteractive.setAttribute('aria-pressed', 'false');
                 btnInteractive.title = 'Daemon not ready — live mode unavailable';

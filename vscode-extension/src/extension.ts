@@ -777,11 +777,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 export function deactivate() {
     if (debounceTimer) { clearTimeout(debounceTimer); }
     pendingRefresh?.abort();
+    // Tell the daemon to release every interactive stream this session opened
+    // before the JVMs go away. Without this, a soft-leak window exists for
+    // streams the user toggled on but never explicitly toggled off — the
+    // daemon's slot would point at the orphan previewId until the JVM exits.
+    // Today's slot doesn't gate any background work so the leak is benign,
+    // but flushing here keeps things tidy for v2 where `interactive/start`
+    // pins a warm sandbox. Fire-and-forget — `flushInteractiveStreams` itself
+    // races against `daemonGate.dispose()` on a tight deadline.
+    void flushInteractiveStreams();
     // Drain any live daemon JVMs so the user doesn't end up with orphaned
     // processes after a window close. Fire-and-forget — VS Code won't wait
     // for an async deactivate beyond a few seconds anyway.
     void daemonGate?.dispose();
     disposePreviewMainBatches();
+}
+
+/**
+ * Sends `interactive/stop` for every entry in [activeInteractiveStreams] and
+ * clears the map. Called from {@link deactivate} so a window close doesn't
+ * leave the daemon thinking it has live targets. Idempotent — safe to call
+ * multiple times. Best-effort: failures (channel already closed, stop
+ * notification can't be written, daemon doesn't speak interactive RPC) are
+ * silently swallowed because we're on the way out anyway.
+ */
+async function flushInteractiveStreams(): Promise<void> {
+    if (activeInteractiveStreams.size === 0) { return; }
+    const entries = [...activeInteractiveStreams.entries()];
+    activeInteractiveStreams.clear();
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    await Promise.all(entries.map(async ([previewId, streamId]) => {
+        try {
+            const moduleId = previewModuleMap.get(previewId);
+            if (!moduleId) { return; }
+            const client = await daemonGate?.getOrSpawn(
+                moduleId, daemonScheduler!.daemonEvents(moduleId),
+            );
+            client?.interactiveStop({ frameStreamId: streamId });
+        } catch {
+            /* deactivate path — best-effort */
+        }
+    }));
 }
 
 function sameScope(a: string[], b: string[]): boolean {
