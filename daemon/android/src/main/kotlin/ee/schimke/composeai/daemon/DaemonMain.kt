@@ -209,21 +209,28 @@ fun main(args: Array<String>) {
       )
     }
 
-  // D2 — wire the accessibility data-product registry. Always-on when the renders dir is
-  // resolvable: the registry advertises `a11y/atf` + `a11y/hierarchy` and reads the JSON files
-  // RenderEngine writes under `<outputDir.parent>/data/<id>/`. The registry never blocks
-  // rendering; missing files surface as "no attachment for this kind on this render". Setting
-  // [RenderEngine.ATTACH_A11Y_PROP] flips the renderer into a11y mode so the JSON ever lands.
+  // D2 — wire the accessibility data-product registry. The `composeai.daemon.attachA11y`
+  // sysprop (driven by `DaemonExtension.attachA11y`, default true) is the producer-side
+  // opt-out: when `false` we never construct the registry, no a11y kinds get advertised,
+  // and the renderer skips a11y mode for the per-render saving (see `RenderEngine.render`).
+  // The renders dir must also be resolvable, since `AccessibilityDataProductRegistry`
+  // reads its JSON sidecars relative to it; pre-D2 callers without the sysprop wired
+  // (harness fake-mode) keep the no-op `DataProductRegistry.Empty`.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
+  val attachA11y = System.getProperty(RenderEngine.ATTACH_A11Y_PROP) == "true"
   val dataProducts: DataProductRegistry =
-    if (renderOutputDir != null) {
+    if (renderOutputDir != null && attachA11y) {
       val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-      System.setProperty(RenderEngine.ATTACH_A11Y_PROP, "true")
       System.err.println(
         "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
       )
       AccessibilityDataProductRegistry(rootDir = dataRoot)
     } else {
+      if (renderOutputDir != null && !attachA11y) {
+        System.err.println(
+          "compose-ai-tools daemon: a11y data products disabled via composeai.daemon.attachA11y=false"
+        )
+      }
       DataProductRegistry.Empty
     }
 
