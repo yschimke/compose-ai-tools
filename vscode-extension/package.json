@@ -111,6 +111,17 @@
                     "type": "boolean",
                     "default": false,
                     "description": "EXPERIMENTAL. Use the persistent preview daemon for sub-second refresh on saves to files the user has open, plus scroll-ahead speculative renders. Requires `composePreview { experimental { daemon { enabled = true } } }` in the consumer's build.gradle.kts. When the daemon isn't healthy, the extension silently falls back to the Gradle `renderPreviews` task. See docs/daemon/DESIGN.md for status and caveats."
+                },
+                "composePreview.logging.level": {
+                    "type": "string",
+                    "enum": ["quiet", "normal", "verbose"],
+                    "default": "normal",
+                    "enumDescriptions": [
+                        "Errors and BUILD outcomes only — no per-task progress.",
+                        "Errors, summaries, and per-Gradle-task lines, with daemon boot diagnostics and repeated Roborazzi/Robolectric warnings deduped.",
+                        "Show every line from Gradle and the daemon, including UP-TO-DATE tasks, configuration-cache bookkeeping, kotlin-dsl warnings, and the full Roborazzi ActionBar block per capture."
+                    ],
+                    "description": "Verbosity for the \"Compose Preview\" output channel. Default `normal` strips the per-task UP-TO-DATE/SKIPPED noise, configuration-cache bookkeeping, and dedupes the repeated Roborazzi ActionBar warnings. Switch to `verbose` to debug Gradle/daemon issues; `quiet` to keep only errors and the BUILD SUCCESSFUL/FAILED line."
                 }
             }
         }

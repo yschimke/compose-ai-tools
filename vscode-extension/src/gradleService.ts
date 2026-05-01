@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, ResourceManifest } from './types';
 import { appliesPlugin } from './pluginDetection';
 import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
+import { LogFilter } from './logFilter';
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -128,6 +129,7 @@ export class GradleService {
     private logger: Logger;
     private gradleApi: GradleApi;
     private argsProvider: () => string[];
+    private logFilter: LogFilter;
     private manifestCache = new Map<string, { manifest: PreviewManifest; timestamp: number }>();
     private taskCounter = 0;
     private activeKeys = new Set<string>();
@@ -137,11 +139,13 @@ export class GradleService {
         gradleApi: GradleApi,
         logger?: Logger,
         argsProvider?: () => string[],
+        logFilter?: LogFilter,
     ) {
         this.workspaceRoot = workspaceRoot;
         this.gradleApi = gradleApi;
         this.logger = logger ?? nullLogger;
         this.argsProvider = argsProvider ?? (() => []);
+        this.logFilter = logFilter ?? new LogFilter();
     }
 
     async discoverPreviews(module: string): Promise<PreviewManifest | null> {
@@ -493,7 +497,8 @@ export class GradleService {
     private runTask(task: string, extraArgs: ReadonlyArray<string> = []): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
-        this.logger.appendLine(`> ${task}`);
+        const startLine = `> ${task}`;
+        if (this.logFilter.shouldEmitInformational(startLine)) { this.logger.appendLine(startLine); }
 
         const detector = new JdkImageErrorDetector();
 
@@ -517,12 +522,20 @@ export class GradleService {
             onOutput: (output) => {
                 try {
                     const decoded = new TextDecoder().decode(output.getOutputBytes());
-                    this.logger.append(decoded);
+                    // Detector still sees the raw stream — it pattern-matches
+                    // on JDK image errors that the filter would suppress at
+                    // normal level (the noisy lines are exactly the ones that
+                    // contain the diagnostic).
                     detector.consume(decoded);
+                    const filtered = this.logFilter.filterGradleChunk(decoded);
+                    if (filtered.length > 0) { this.logger.append(filtered); }
                 } catch { /* ignore */ }
             },
         }).then(
-            () => { this.logger.appendLine(`> ${task} completed`); },
+            () => {
+                const line = `> ${task} completed`;
+                if (this.logFilter.shouldEmitInformational(line)) { this.logger.appendLine(line); }
+            },
             (err) => {
                 const message = err?.message ?? String(err);
                 // vscode-gradle reports a superseded task as a gRPC CANCELLED

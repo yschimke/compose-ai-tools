@@ -69,6 +69,7 @@ snapshot builds.
 | Setting | Default | Description |
 |---|---|---|
 | `composePreview.variant` | `debug` | Build variant to use for preview rendering (Android). |
+| `composePreview.logging.level` | `normal` | Verbosity for the "Compose Preview" output channel. `quiet` shows only errors and the BUILD outcome; `normal` keeps active task headers and summary lines but drops UP-TO-DATE/SKIPPED noise, configuration-cache bookkeeping, and dedupes the repeated Roborazzi ActionBar warnings; `verbose` shows every line from Gradle and the daemon. |
 
 ## Links
 
