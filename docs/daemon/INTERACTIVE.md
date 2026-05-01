@@ -196,11 +196,19 @@ setFocus + renderNow path.
 { frameStreamId: string }           // opaque; passed back in interactive/input
 ```
 
-Tells the daemon "this preview is the user's interactive target — keep a
-warm sandbox for it, prefer it on every render-queue drain, do NOT recycle
-its sandbox on idle." Returns a stream id the client uses for input
-correlation. Multiple `start` calls overwrite the prior target (one
-interactive preview at a time — matches the panel's single-focus mode).
+Tells the daemon "this preview is an interactive target — keep a warm
+sandbox for it, prefer it on every render-queue drain, do NOT recycle
+its sandbox on idle." Returns a unique stream id the client uses for
+input correlation.
+
+**Multi-target on the wire.** Each `start` registers a fresh slot —
+concurrent streams targeting different (or even the same) preview ids
+coexist. Inputs route by `frameStreamId`, so a stop on one stream
+leaves the others untouched. The current panel UI is single-target
+(only one card carries `.live`), but the daemon does not require that;
+a programmatic client (side-by-side comparison view, CI agent driving
+multiple previews over one stdio pair) can drive concurrent streams
+without any wire change.
 
 ### `interactive/stop` (notification, client → daemon)
 
@@ -236,19 +244,25 @@ re-click.
 
 ### v1 implementation notes
 
-The current dispatch flow inside `JsonRpcServer`:
+State lives in a `ConcurrentHashMap<String /*streamId*/, InteractiveTarget>` so
+multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
 
-1. `interactive/start` — stash the `(previewId, frameStreamId)` pair as the
-   single active target, wipe any cached frame hash for that preview so the
-   first interactive frame always paints, return the stream id. Blank
-   previewIds reject with `InvalidParams (-32602)`.
-2. `interactive/stop` — clear the slot iff the supplied `frameStreamId`
-   matches the active one. Idempotent on stale or unknown ids.
-3. `interactive/input` — drop silently when the stream id doesn't match the
-   active target (handles the "start was overwritten" race). Otherwise
-   enqueue a render against the target preview through the same
-   `submitRenderAsync` path `renderNow` uses; the result demuxes through
-   the existing render-watcher thread back into `renderFinished`.
+1. `interactive/start` — generate a unique `streamId` (monotonic), put a fresh
+   `(previewId, streamId)` entry into the targets map, wipe any cached frame
+   hash for that preview so the first interactive frame always paints, return
+   the stream id. Blank previewIds reject with `InvalidParams (-32602)`. The
+   wipe is per-preview (not per-stream) by design: two streams targeting the
+   same preview share dedup state because the bytes are the same bytes
+   regardless of which stream's input triggered the render.
+2. `interactive/stop` — `remove(streamId)` from the targets map. Idempotent
+   on stale or unknown ids — `remove` is a no-op when the key isn't present,
+   which is exactly the contract we want.
+3. `interactive/input` — look up the target by `streamId`; drop silently when
+   absent (the stream was never started, has been stopped, or the client
+   typo'd the id). Otherwise enqueue a render against the target preview
+   through the same `submitRenderAsync` path `renderNow` uses; the result
+   demuxes through the existing render-watcher thread back into
+   `renderFinished`.
 
 ### Open questions for the v2 protocol
 
@@ -281,9 +295,15 @@ The current dispatch flow inside `JsonRpcServer`:
   `LocalInspectionMode = true` so the input doesn't reach the active
   composition. v2 flips the local and dispatches the pixel coords
   through `ImageComposeScene`'s pointer-input pipeline.
-- **Multi-preview simultaneous live mode.** One focused preview, one
-  `.live` card. The future `interactive/start` API formalises this with
-  the "overwrites prior target" semantics.
+- **Multi-preview simultaneous live mode in the panel UI.** The wire
+  protocol supports concurrent `interactive/start` streams (see § 8),
+  but the panel only renders a single `.live` card at a time. Lifting
+  the UI is purely a webview change — `interactivePreviewId` would
+  become a `Set<previewId>` and the LIVE chip / badge would attach per
+  card — but the affordance argument for surfacing multi-target to a
+  human is weak (the user can only meaningfully focus on one live
+  preview at a time). Programmatic clients are the load-bearing case
+  for multi-target on the wire today.
 - **Mouse-move / drag** events. Click is the smallest first surface; we
   reserve the wire shape but don't capture moves to keep the
   implementation honest.

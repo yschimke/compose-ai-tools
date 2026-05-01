@@ -35,6 +35,8 @@ import org.junit.Test
  * 3. Frame dedup: an input that re-renders byte-identical bytes emits `unchanged: true`.
  * 4. `interactive/stop` invalidates the stream id, so a subsequent `interactive/input` against the
  *    stale id is dropped (no new render).
+ * 5. Multi-target: two concurrent `interactive/start` calls coexist, inputs route by stream id, and
+ *    `stop` on one stream leaves the other live.
  */
 class InteractiveRpcIntegrationTest {
 
@@ -192,9 +194,18 @@ class InteractiveRpcIntegrationTest {
     teardownServer(clientToServerOut, received, serverThread, exitLatch)
   }
 
+  /**
+   * Multi-target invariant — INTERACTIVE.md § 8. Two `interactive/start` calls coexist as
+   * independent streams; each input routes to its stream's preview; a `stop` on one stream leaves
+   * the other untouched.
+   *
+   * The panel UI today only exercises one stream at a time, but the daemon protocol supports
+   * multi-target so a future programmatic client (side-by-side comparison view, CI agent driving
+   * multiple previews) can drive concurrent streams without a wire change.
+   */
   @Test(timeout = 30_000)
-  fun start_overwrites_prior_target_so_input_against_stale_streamId_is_dropped() {
-    val tmp = Files.createTempDirectory("interactive-rpc-overwrite-test").toFile()
+  fun multiple_concurrent_streams_route_inputs_independently() {
+    val tmp = Files.createTempDirectory("interactive-rpc-multi-test").toFile()
     val aPng = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
     val bPng = File(tmp, "preview-B.png").apply { writeBytes(testPngBytes(seed = 5)) }
     val host = BytesAwareFakeHost(aPng, mapOf("preview-A" to aPng, "preview-B" to bPng))
@@ -204,7 +215,7 @@ class InteractiveRpcIntegrationTest {
 
     handshake(clientToServerOut, received)
 
-    // Start on A, then on B — A's stream id becomes stale.
+    // Start on A, then on B — both streams must coexist (multi-target).
     writeFrame(
       clientToServerOut,
       """{"jsonrpc":"2.0","id":1,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
@@ -217,12 +228,9 @@ class InteractiveRpcIntegrationTest {
     )
     val b = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 }!!
     val bStream = b["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
-    assertFalse("subsequent start must yield a new stream id", aStream == bStream)
+    assertFalse("each start must yield a unique stream id", aStream == bStream)
 
-    // Stale input against the old (preview-A) stream → dropped. We assert the absence
-    // by waiting a window long enough for a render to ride through; the FakeHost completes
-    // synchronously so any accepted submission would emit a renderFinished within that
-    // window.
+    // Input on stream A → renders preview-A.
     writeFrame(
       clientToServerOut,
       """
@@ -232,16 +240,16 @@ class InteractiveRpcIntegrationTest {
       """
         .trimIndent(),
     )
-    val staleAfterOverwrite =
-      pollUntil(received, timeoutMs = 500) {
-        it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
-      }
-    assertNull(
-      "input against the overwritten (preview-A) stream must not render",
-      staleAfterOverwrite,
+    val firstFinished =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+    assertNotNull("input on stream A must render", firstFinished)
+    assertEquals(
+      "stream A's input must render preview-A",
+      "preview-A",
+      firstFinished!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull,
     )
 
-    // Fresh input against the current (preview-B) stream → renders.
+    // Input on stream B → renders preview-B (proves both streams are alive).
     writeFrame(
       clientToServerOut,
       """
@@ -251,13 +259,54 @@ class InteractiveRpcIntegrationTest {
       """
         .trimIndent(),
     )
-    val freshFinished =
+    val secondFinished =
       pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
-    assertNotNull("input against the live preview-B stream must render", freshFinished)
+    assertNotNull("input on stream B must render", secondFinished)
     assertEquals(
-      "rendered preview must be the new target",
+      "stream B's input must render preview-B",
       "preview-B",
-      freshFinished!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull,
+      secondFinished!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull,
+    )
+
+    // Stop stream A → stream B is untouched.
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","method":"interactive/stop","params":{"frameStreamId":"$aStream"}}""",
+    )
+    Thread.sleep(50) // settle the stop notification before the next input
+
+    // Stale input against stopped stream A → dropped.
+    writeFrame(
+      clientToServerOut,
+      """
+      {"jsonrpc":"2.0","method":"interactive/input","params":{
+        "frameStreamId":"$aStream","kind":"click","pixelX":2,"pixelY":2
+      }}
+      """
+        .trimIndent(),
+    )
+    val staleAFollowup =
+      pollUntil(received, timeoutMs = 500) {
+        it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
+      }
+    assertNull("input against stopped stream A must not render", staleAFollowup)
+
+    // Fresh input on stream B → still renders preview-B (untouched by A's stop).
+    writeFrame(
+      clientToServerOut,
+      """
+      {"jsonrpc":"2.0","method":"interactive/input","params":{
+        "frameStreamId":"$bStream","kind":"click","pixelX":3,"pixelY":3
+      }}
+      """
+        .trimIndent(),
+    )
+    val bAfterAStopped =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+    assertNotNull("stream B must keep rendering after stream A is stopped", bAfterAStopped)
+    assertEquals(
+      "preview-B",
+      bAfterAStopped!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull,
     )
 
     teardownServer(clientToServerOut, received, serverThread, exitLatch)
