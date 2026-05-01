@@ -279,4 +279,13 @@ export type WebviewToExtension =
      * previous send. `predicted` excludes IDs already in `visible` because
      * those are reactively rendered by the visible queue.
      */
-    | { command: 'viewportUpdated'; visible: string[]; predicted: string[] };
+    | { command: 'viewportUpdated'; visible: string[]; predicted: string[] }
+    /**
+     * Webview reports which preview the user has narrowed the live panel to.
+     * Drives the History panel's `previewId` filter so it shows only entries
+     * for the currently-focused (focus mode) or sole-visible (filter narrowed
+     * to one card) preview. `previewId` is `null` when the panel shows the
+     * full module view — extension clears the previewId filter on the
+     * History panel scope.
+     */
+    | { command: 'previewScopeChanged'; previewId: string | null };
