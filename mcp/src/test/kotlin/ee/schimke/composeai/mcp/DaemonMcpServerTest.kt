@@ -763,6 +763,210 @@ class DaemonMcpServerTest {
     assertThat(unsub).isEqualTo("com.example.Red" to "a11y/hierarchy")
   }
 
+  @Test
+  fun `get_preview_data auto-renders on DataProductNotAvailable and retries`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    val previewId = "com.example.Red"
+    val pngFile = tmp.newFile("auto-render.png")
+    Files.write(pngFile.toPath(), byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47))
+    val fetchAttempts = java.util.concurrent.atomic.AtomicInteger(0)
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      // First call → NotAvailable (preview hasn't rendered). Second call → Ok. The MCP server's
+      // auto-render path between the two issues a renderNow whose renderFinished completes
+      // `awaitNextRender`, after which the retry hits the Ok branch.
+      daemon.dataFetchHandler = { _, kind, _, _ ->
+        if (fetchAttempts.incrementAndGet() == 1) FakeDaemon.DataFetchOutcome.NotAvailable
+        else
+          FakeDaemon.DataFetchOutcome.Ok(
+            kind = kind,
+            schemaVersion = 1,
+            payload = buildJsonObject { put("nodes", JsonPrimitive("auto-rendered")) },
+          )
+      }
+      // Wire renderNow → renderFinished so awaitNextRender unblocks promptly.
+      daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+        timeoutMs = 10_000,
+      )
+    val payload = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(payload["payload"]?.jsonObject?.get("nodes")?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("auto-rendered")
+    assertThat(fetchAttempts.get()).isEqualTo(2)
+    // The auto-render path issued exactly one renderNow.
+    val renderRequest = daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(renderRequest).isEqualTo(listOf(previewId))
+  }
+
+  @Test
+  fun `get_preview_data does not auto-render on DataProductUnknown`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val resp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "a11y/hierarchy")
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("DataProductUnknown")
+    // No render was queued — auto-render is reserved for NotAvailable.
+    assertThat(daemon.renderRequests.poll(500, TimeUnit.MILLISECONDS)).isNull()
+  }
+
+  @Test
+  fun `subscribe_preview_data refcounts across two sessions and only forwards on first ref`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val args = buildJsonObject {
+      put("uri", uri)
+      put("kind", "a11y/hierarchy")
+    }
+
+    // Session A subscribes — first ref, forwards data/subscribe to daemon.
+    client.callTool("subscribe_preview_data", args)
+    val subA = daemon.dataSubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(subA).isEqualTo("com.example.Red" to "a11y/hierarchy")
+
+    // Session B opens, also subscribes — refcount goes to 2, no new wire call.
+    val (cToS2, sFromC2) = pipedPair()
+    val (sToC2, cFromS2) = pipedPair()
+    val session2 = server.newSession(input = sFromC2, output = sToC2).also { it.start() }
+    val client2 = McpTestClient(input = cFromS2, output = cToS2)
+    try {
+      client2.initialize()
+      client2.callTool("subscribe_preview_data", args)
+      // The fake's queue must stay quiet — no second daemon-side subscribe.
+      val subB = daemon.dataSubscribes.poll(500, TimeUnit.MILLISECONDS)
+      assertThat(subB).isNull()
+
+      // Session A unsubscribes — refcount drops to 1, still no wire unsubscribe.
+      client.callTool("unsubscribe_preview_data", args)
+      val unsubA = daemon.dataUnsubscribes.poll(500, TimeUnit.MILLISECONDS)
+      assertThat(unsubA).isNull()
+
+      // Session B unsubscribes — last ref, daemon gets the data/unsubscribe.
+      client2.callTool("unsubscribe_preview_data", args)
+      val unsubB = daemon.dataUnsubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+      assertThat(unsubB).isEqualTo("com.example.Red" to "a11y/hierarchy")
+    } finally {
+      runCatching { client2.close() }
+      runCatching { session2.close() }
+    }
+  }
+
+  @Test
+  fun `session disconnect releases data subscriptions and forwards data slash unsubscribe`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "a11y/hierarchy",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    daemon.emitDiscovery("com.example.Red")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // Open a second session, subscribe, then disconnect it without unsubscribing. The supervisor's
+    // onClose path must drop the daemon-side subscription so the daemon doesn't leak it.
+    val (cToS2, sFromC2) = pipedPair()
+    val (sToC2, cFromS2) = pipedPair()
+    val session2 = server.newSession(input = sFromC2, output = sToC2).also { it.start() }
+    val client2 = McpTestClient(input = cFromS2, output = cToS2)
+    client2.initialize()
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    client2.callTool(
+      "subscribe_preview_data",
+      buildJsonObject {
+        put("uri", uri)
+        put("kind", "a11y/hierarchy")
+      },
+    )
+    val sub = daemon.dataSubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(sub).isEqualTo("com.example.Red" to "a11y/hierarchy")
+
+    // Hard close on the client side simulates the agent process going away. The McpSession's
+    // reader hits EOF, fires onClose, and the supervisor's hook calls forgetDataSubscriptions
+    // which forwards data/unsubscribe to the daemon. The poll-with-timeout below is what we use
+    // to wait for that asynchronous chain to complete.
+    client2.close()
+
+    val unsub = daemon.dataUnsubscribes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(unsub).isEqualTo("com.example.Red" to "a11y/hierarchy")
+    runCatching { session2.close() }
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
