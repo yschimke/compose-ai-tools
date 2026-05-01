@@ -76,3 +76,16 @@ fun SlowSquare() {
 fun BoomComposable() {
   error("boom")
 }
+
+/**
+ * Reads `isSystemInDarkTheme()` and fills the box with white in light mode, black in dark mode.
+ * Used by `OverrideIntegrationTest` to prove `renderNow.overrides.uiMode` actually flips the
+ * resource qualifier — `setQualifiers("+night")` toggles `Configuration.UI_MODE_NIGHT_YES`,
+ * which is what `isSystemInDarkTheme()` reads.
+ */
+@Composable
+fun DarkAwareSquare() {
+  val bg =
+    if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}
