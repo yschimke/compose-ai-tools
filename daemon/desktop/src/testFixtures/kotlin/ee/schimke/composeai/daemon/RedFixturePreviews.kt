@@ -104,3 +104,28 @@ fun ClickToggleSquare() {
       }
   )
 }
+
+/**
+ * Reads `isSystemInDarkTheme()` and fills the box with white in light mode, black in dark mode.
+ * Used by `OverrideIntegrationTest` (desktop) to prove `renderNow.overrides.uiMode` reaches
+ * `LocalSystemTheme` — Compose Desktop's `isSystemInDarkTheme()` reads that local rather than the
+ * OS-level Skiko theme probe.
+ */
+@Composable
+fun DarkAwareSquare() {
+  val bg = if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
+ * Reads `LocalDensity.current.fontScale` and renders a square whose colour encodes the scale —
+ * black at fontScale=1.0 (background), white at fontScale=2.0. A pure-pixel signal for proving the
+ * override reaches `LocalDensity` without needing `Text` rendering (which would entangle
+ * font-metrics across platforms).
+ */
+@Composable
+fun FontScaleAwareSquare() {
+  val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+  val bg = if (fontScale >= 1.5f) Color.White else Color.Black
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}

@@ -9,7 +9,9 @@ import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Density
 import java.io.File
@@ -115,6 +117,7 @@ class RenderEngine(
    * inspection branch. Interactive sessions pass `false` so `pointerInput` modifiers fire and the
    * preview shows its real, click-aware behaviour.
    */
+  @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
   fun setUp(
     spec: RenderSpec,
     classLoader: ClassLoader =
@@ -148,7 +151,22 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
-    val density = Density(spec.density)
+    // PROTOCOL.md § 5 (`renderNow.overrides.localeTag`) — Compose Desktop has no `LocalLocale`
+    // CompositionLocal to override; the only JVM-wide lever is `Locale.setDefault(...)`, which is
+    // unsafe to mutate transiently because every other JVM thread (JSON-RPC reader, Skiko font /
+    // text-shaping workers, GC finalizers, anything that calls `String.format` or
+    // `SimpleDateFormat` with the default locale) sees the wrong value for the render's duration.
+    // Per-text `TextStyle(localeList = …)` is the only safe lever and can't be applied
+    // sweepingly without rewriting the user's composition. So `localeTag` stays a no-op on
+    // desktop. The Android backend honours it via `setQualifiers("b+lang+region")`.
+
+    // PROTOCOL.md § 5 (`renderNow.overrides.fontScale`) — Compose Desktop has no resource-qualifier
+    // system, but `LocalDensity` carries `fontScale` as part of `Density`, and `Text` / `TextStyle`
+    // honour it. Threading through `ImageComposeScene`'s constructor makes the override visible to
+    // layout (sp → px conversion) before the first measure pass. We re-provide the same `Density`
+    // as `LocalDensity` below since a few ui-text/text-foundation paths read it directly during
+    // composition rather than going through the scene density.
+    val density = Density(spec.density, spec.fontScale ?: 1.0f)
     val scene =
       try {
         ImageComposeScene(width = spec.widthPx, height = spec.heightPx, density = density)
@@ -161,7 +179,22 @@ class RenderEngine(
       }
     try {
       scene.setContent {
-        CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
+        // PROTOCOL.md § 5 (`renderNow.overrides.uiMode`) — Compose Desktop's
+        // `isSystemInDarkTheme()` reads `LocalSystemTheme.current` (foundation-desktop's
+        // `DarkTheme.skiko.kt`). Override it here so `uiMode = "dark"` actually flips dark-aware
+        // composables instead of falling through to the JVM's `org.jetbrains.skiko.SystemTheme`
+        // probe.
+        val systemTheme =
+          when (spec.uiMode) {
+            RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
+            RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
+            null -> SystemTheme.Unknown
+          }
+        CompositionLocalProvider(
+          LocalInspectionMode provides inspectionMode,
+          androidx.compose.ui.LocalSystemTheme provides systemTheme,
+          LocalDensity provides density,
+        ) {
           val bgColor =
             when {
               spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
@@ -303,20 +336,29 @@ data class RenderSpec(
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
   /**
-   * BCP-47 locale tag override. Carried on the wire for parity with `:daemon:android`'s
-   * `RenderSpec`; Compose Desktop has no Android-style resource qualifier system so this is a no-op
-   * on the desktop render path today. A future change can route it into `LocalConfiguration` /
-   * `androidx.compose.ui.text.intl.Locale.current` if a desktop consumer needs it.
+   * BCP-47 locale tag override. **No-op on desktop** — Compose Desktop has no `LocalLocale`
+   * CompositionLocal, and `Locale.setDefault(...)` is unsafe to mutate transiently because it
+   * affects every JVM thread (Skiko font/text-shaping workers, default-locale formatters, etc.).
+   * The field is carried for wire parity with `:daemon:android`, which honours it via
+   * `setQualifiers("b+lang+region")`.
    */
   val localeTag: String? = null,
   /**
-   * Font scale multiplier override. No-op on desktop today (would route through `LocalDensity`'s
-   * `fontScale` field); carried for wire parity with `:daemon:android`.
+   * Font scale multiplier override. Threaded through `Density(density, fontScale)` — applied to
+   * `ImageComposeScene`'s constructor and re-provided as `LocalDensity` so any composition path
+   * that reads `LocalDensity` directly (rather than the scene's density) sees the same value.
    */
   val fontScale: Float? = null,
-  /** Light/dark mode override. No-op on desktop today; carried for wire parity. */
+  /**
+   * Light/dark mode override. Provided as `LocalSystemTheme` — Compose Desktop's
+   * `isSystemInDarkTheme()` reads that local rather than `Configuration.uiMode`.
+   */
   val uiMode: SpecUiMode? = null,
-  /** Portrait/landscape override. Desktop only honours derived size; carried for wire parity. */
+  /**
+   * Portrait/landscape override. **No-op on desktop** — there's no display rotation concept for an
+   * `ImageComposeScene`. The size override (`widthPx`/`heightPx`) is the natural lever; the field
+   * is carried so a single payload string drives both backends.
+   */
   val orientation: SpecOrientation? = null,
 ) {
 
