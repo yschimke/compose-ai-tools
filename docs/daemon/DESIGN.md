@@ -237,6 +237,8 @@ Clean save (file in module, no previews depend on it, user not looking) → ~5ms
 
 The daemon runs a single dummy `@Test` whose body blocks on a `LinkedBlockingQueue<RenderRequest>` until shutdown. This holds a Robolectric sandbox open without re-implementing sandbox setup — we inherit all the `robolectric.properties` plumbing for free. The "test" never returns; the JVM exits when the daemon stops.
 
+**In-JVM sandbox pool (SANDBOX-POOL.md).** With `composeai.daemon.sandboxCount > 1` the daemon launches that many worker threads, each running an independent JUnit invocation against the same `SandboxRunner`; Robolectric builds a distinct sandbox per worker (the `SandboxHoldingRunner` injects a per-instance discriminator on the `InstrumentationConfiguration` to defeat `SandboxManager`'s cache key). Concurrent `renderNow` requests dispatch across slots via `Math.floorMod(id, sandboxCount)`. The supervisor sets this sysprop to `1 + replicasPerDaemon` (default 4 sandboxes per daemon — see [CONFIG.md](CONFIG.md#mcp-only--replicasperdaemon)). All other lifecycle invariants below apply per sandbox.
+
 ### Per-preview render loop
 
 Prologue:
@@ -285,6 +287,12 @@ Trigger on any:
 - **`leakSuspected` event from active detection (§ 10).** Immediate.
 
 Each trigger emits `sandboxRecycle({ reason, ageMs, renderCount })`.
+
+> **In-JVM sandbox pool interaction.** With `sandboxCount > 1` the heap-based triggers fire on
+> JVM-global heap, not per-sandbox — there's no straightforward way to attribute a specific
+> sandbox classloader's contribution. v1 recycles the whole pool when any heap signal fires;
+> render-count and per-sandbox render-time stay sandbox-local. Per-slot recycle is tracked in
+> [SANDBOX-POOL.md](SANDBOX-POOL.md) as a follow-up.
 
 ### Warm spare
 

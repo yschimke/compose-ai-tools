@@ -14,7 +14,8 @@
 >   the user opting in. Set `0` to opt out and keep a single sandbox per daemon.
 >
 > Memory math (replicasPerDaemon = 4 on one module): pre-Layer-3 ~8 GB across 5 JVMs;
-> post-Layer-3 ~5 GB in one JVM with 5 sandbox classloaders.
+> post-Layer-3 ~5 GB in one JVM with 5 sandbox classloaders. See "Empirical bench" below for the
+> measured per-sandbox marginal on Robolectric 4.16.1 / SDK 35.
 
 ## Motivation
 
@@ -171,6 +172,40 @@ read the ThreadLocal directly inside `createClassLoaderConfig`.
 `replicasPerDaemon == 0` keeps a single sandbox in a single JVM — bit-identical with the
 pre-pool behaviour on disk (the sysprop is omitted from the descriptor entirely at count=1, so
 descriptors don't change shape for users who never opted in).
+
+## Empirical bench
+
+`SandboxPoolMemoryBench.kt` boots `RobolectricHost(sandboxCount = 4)` in a fresh JVM, runs a
+warm-up render per sandbox, and reports the heap + native-virtual delta. Sample run on
+Robolectric 4.16.1 / SDK 35 / OpenJDK 17 / Linux x86_64:
+
+```
+baseline:  heap=10 MiB    nativeHeap=3758 MiB
+warm (×4): heap=101 MiB   nativeHeap=4596 MiB
+delta:     heap=91 MiB    nativeHeap=838 MiB
+per-sandbox amortized: heap≈22 MiB  nativeHeap≈209 MiB
+```
+
+`nativeHeap` is `committedVirtualMemorySize` — a portable proxy for "JVM resident set" that folds
+together the JVM heap, native libs, instrumented framework JARs, and mmap'd resources. The 838
+MiB delta for 4 sandboxes therefore conflates the **once-per-JVM** cost (Skia / sqlite / Robolectric
+native libs ~540 MiB; framework loading ~250 MiB) with the **per-sandbox** cost (per-loader
+instrumented bytecode + classloader internals — ~75 MiB each on this run).
+
+Attribution against the subprocess model (each replica = one JVM with its own once-per-JVM cost):
+
+| replicasPerDaemon | Subprocess model | Pool model | Saved |
+|------------------:|----------------:|----------:|----:|
+| 0 (1 sandbox)     | ~1 GB           | ~1 GB     | 0   |
+| 2 (3 sandboxes)   | ~3 GB           | ~1.15 GB  | ~1.85 GB |
+| 3 (4 sandboxes, default) | ~4 GB    | ~1.23 GB  | ~2.77 GB |
+| 4 (5 sandboxes)   | ~5 GB           | ~1.30 GB  | ~3.70 GB |
+
+The original "8 GB → 5 GB" claim in the status banner was conservative — it assumed user heap
+dominated. The actual win on the framework+native side is larger.
+
+The bench prints to JUnit's `<system-out>` so CI logs preserve the numbers; rerun and update the
+table when the picture changes (Robolectric upgrades, JDK upgrades, framework size changes).
 
 ## What this does NOT solve
 
