@@ -295,7 +295,14 @@ export type ExtensionToWebview =
      * request. Used by the "Diff All vs Main" command so picking an item
      * from its quick-pick lands the user directly on the diff result.
      */
-    | { command: 'focusAndDiff'; previewId: string; against: 'head' | 'main' };
+    | { command: 'focusAndDiff'; previewId: string; against: 'head' | 'main' }
+    /**
+     * `origin/preview_main` (or the local `preview_main` branch / packed
+     * refs) just changed on disk — typically because a `git fetch` landed
+     * a new baseline. The live panel re-issues any open "Diff vs main"
+     * overlay so the user sees the new bytes without manually clicking.
+     */
+    | { command: 'previewMainRefChanged' };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =

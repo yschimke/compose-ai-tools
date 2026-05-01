@@ -1801,6 +1801,25 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     });
                     break;
                 }
+                case 'previewMainRefChanged': {
+                    // preview_main moved — re-issue any open vs-main diff
+                    // overlay so the user sees the new bytes without clicking.
+                    // Other diffs (HEAD, current, previous) are unaffected.
+                    document.querySelectorAll(
+                        '.preview-diff-overlay[data-against="main"]',
+                    ).forEach(overlay => {
+                        const card = overlay.closest('.preview-card');
+                        const previewId = card && card.dataset.previewId;
+                        if (!card || !previewId) return;
+                        showDiffOverlay(card, 'main', null, null);
+                        vscode.postMessage({
+                            command: 'requestPreviewDiff',
+                            previewId,
+                            against: 'main',
+                        });
+                    });
+                    break;
+                }
             }
         });
 
