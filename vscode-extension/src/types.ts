@@ -354,7 +354,15 @@ export type ExtensionToWebview =
      * baseline. The live panel re-issues any open "Diff vs main" overlay
      * so the user sees the new bytes without manually clicking.
      */
-    | { command: 'previewMainRefChanged' };
+    | { command: 'previewMainRefChanged' }
+    /**
+     * Interactive (live-stream) mode availability for a given module.
+     * Posted by the extension whenever the daemon for [moduleId] becomes
+     * ready or unhealthy. The webview uses this to enable/disable the
+     * focus-mode "LIVE" toggle for any focused preview owned by the
+     * module. See docs/daemon/INTERACTIVE.md § 3 for the UI surface.
+     */
+    | { command: 'setInteractiveAvailability'; moduleId: string; ready: boolean };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
@@ -425,4 +433,29 @@ export type WebviewToExtension =
      * Falls back to a quick-pick when more than one Android-application
      * module applies the plugin.
      */
-    | { command: 'requestLaunchOnDevice'; previewId: string };
+    | { command: 'requestLaunchOnDevice'; previewId: string }
+    /**
+     * Toggle interactive (live-stream) mode for [previewId]. Daemon-only —
+     * the extension routes this into a `setFocus` + `renderNow(tier='fast')`
+     * call so the focused preview is the daemon's render priority. Exit
+     * (`enabled = false`) does not issue any daemon call: the next
+     * save/focus-change publishes a fresh focus set on its own. See
+     * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
+     */
+    | { command: 'setInteractive'; previewId: string; enabled: boolean }
+    /**
+     * Click on the focused image while interactive mode is on. v0 logs
+     * the coordinates to the output channel (no daemon call yet); the
+     * payload shape matches the future `interactive/input` RPC so the
+     * panel side won't change when the daemon implementation lands.
+     * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate
+     * system the renderer thinks in. See docs/daemon/INTERACTIVE.md § 6/§ 7.
+     */
+    | {
+          command: 'recordInteractiveClick';
+          previewId: string;
+          pixelX: number;
+          pixelY: number;
+          imageWidth: number;
+          imageHeight: number;
+      };

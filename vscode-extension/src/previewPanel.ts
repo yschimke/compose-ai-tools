@@ -110,6 +110,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         <button class="icon-button" id="btn-launch-device" title="Launch on connected Android device" aria-label="Launch on device">
             <i class="codicon codicon-device-mobile" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-interactive" title="Daemon not ready — live mode unavailable"
+                aria-label="Toggle live (interactive) mode" aria-pressed="false" disabled hidden>
+            <i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
             <i class="codicon codicon-close" aria-hidden="true"></i>
         </button>
@@ -132,6 +136,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnDiffHead = document.getElementById('btn-diff-head');
         const btnDiffMain = document.getElementById('btn-diff-main');
         const btnLaunchDevice = document.getElementById('btn-launch-device');
+        const btnInteractive = document.getElementById('btn-interactive');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
@@ -295,6 +300,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // exit lands somewhere sensible.
         let previousLayout = state.layout && state.layout !== 'focus' ? state.layout : 'grid';
 
+        // Interactive (live-stream) mode state. Declared up here — *before*
+        // the first applyLayout() call below — because applyLayout reads
+        // interactivePreviewId via the early-exit-on-focus-change path.
+        // moduleDaemonReady tracks per-module daemon readiness pushed by the
+        // extension via setInteractiveAvailability; the button enables only
+        // when the focused card's owning module is ready. interactivePreviewId
+        // is the single live target — see INTERACTIVE.md § 8 (one card at
+        // a time).
+        const moduleDaemonReady = new Map();
+        let interactivePreviewId = null;
+
         // Restore layout preference
         if (state.layout && ['grid', 'flow', 'column', 'focus'].includes(state.layout)) {
             layoutMode.value = state.layout;
@@ -322,7 +338,157 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         btnDiffHead.addEventListener('click', () => requestFocusedDiff('head'));
         btnDiffMain.addEventListener('click', () => requestFocusedDiff('main'));
         btnLaunchDevice.addEventListener('click', () => requestLaunchOnDevice());
+        btnInteractive.addEventListener('click', () => toggleInteractive());
         btnExitFocus.addEventListener('click', () => exitFocus());
+
+        // ----- Interactive (live-stream) mode helpers -----
+        // State (moduleDaemonReady, interactivePreviewId) is declared
+        // earlier so the first applyLayout() can reach it. The function
+        // declarations below are hoisted, so call sites above this block
+        // resolve fine.
+
+        function isFocusedDaemonReady() {
+            // The webview doesn't know moduleId per preview today. We fall
+            // back to "any module ready" because the extension-side panel
+            // is single-module-scoped (it only ever holds one module's
+            // previews at a time) — so the readiness of the sole module is
+            // also the readiness for whatever's focused. If the panel ever
+            // shows multiple modules at once, swap this to lookup by the
+            // focused card's data-module-id.
+            for (const ready of moduleDaemonReady.values()) {
+                if (ready) return true;
+            }
+            return false;
+        }
+
+        function applyInteractiveButtonState() {
+            const inFocus = layoutMode.value === 'focus';
+            const visible = getVisibleCards();
+            const card = inFocus ? visible[focusIndex] : null;
+            // Hide outright when not in focus mode — the toolbar already
+            // hides itself, but this keeps aria-pressed correct for tests
+            // that snapshot the button in either layout.
+            btnInteractive.hidden = !inFocus;
+            if (!inFocus || !card) {
+                btnInteractive.disabled = true;
+                btnInteractive.setAttribute('aria-pressed', 'false');
+                btnInteractive.title = 'Daemon not ready — live mode unavailable';
+                btnInteractive.innerHTML =
+                    '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+                return;
+            }
+            const previewId = card.dataset.previewId;
+            const ready = isFocusedDaemonReady();
+            const live = previewId === interactivePreviewId && interactivePreviewId !== null;
+            btnInteractive.disabled = !ready && !live;
+            btnInteractive.setAttribute('aria-pressed', live ? 'true' : 'false');
+            btnInteractive.classList.toggle('live-on', live);
+            btnInteractive.title = !ready
+                ? 'Daemon not ready — live mode unavailable'
+                : (live ? 'Live · click to exit' : 'Enter live mode (stream renders)');
+            btnInteractive.innerHTML = live
+                ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
+                : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+        }
+
+        function applyLiveBadge() {
+            // Tear down all prior live decorations first so a focus change
+            // doesn't leave a stale badge on an unfocused card.
+            document.querySelectorAll('.preview-card.live').forEach(c => {
+                c.classList.remove('live');
+                const badge = c.querySelector('.live-badge');
+                if (badge) badge.remove();
+            });
+            if (!interactivePreviewId) return;
+            const card = document.getElementById('preview-' + sanitizeId(interactivePreviewId));
+            if (!card) return;
+            card.classList.add('live');
+            if (!card.querySelector('.live-badge')) {
+                const badge = document.createElement('div');
+                badge.className = 'live-badge';
+                badge.setAttribute('aria-hidden', 'true');
+                const dot = document.createElement('span');
+                dot.className = 'live-badge-dot';
+                badge.appendChild(dot);
+                const text = document.createElement('span');
+                text.textContent = 'LIVE';
+                badge.appendChild(text);
+                card.appendChild(badge);
+            }
+        }
+
+        function toggleInteractive() {
+            if (layoutMode.value !== 'focus') return;
+            const visible = getVisibleCards();
+            const card = visible[focusIndex];
+            if (!card) return;
+            const previewId = card.dataset.previewId;
+            if (!previewId) return;
+            const turnOn = previewId !== interactivePreviewId;
+            // Exit any prior live target before announcing the new one — the
+            // extension/daemon contract is single-target (INTERACTIVE.md § 8),
+            // so we never want two cards reporting .live at once.
+            if (interactivePreviewId && interactivePreviewId !== previewId) {
+                vscode.postMessage({
+                    command: 'setInteractive',
+                    previewId: interactivePreviewId,
+                    enabled: false,
+                });
+            }
+            interactivePreviewId = turnOn ? previewId : null;
+            vscode.postMessage({
+                command: 'setInteractive',
+                previewId,
+                enabled: turnOn,
+            });
+            applyLiveBadge();
+            applyInteractiveButtonState();
+        }
+
+        // Idempotent attach. Adds a click listener to the live card's image
+        // exactly once; flagged via dataset so a second updateImage on the
+        // same element doesn't stack listeners. Detached the moment live
+        // mode exits, so non-live cards never carry the handler.
+        function ensureInteractiveClickHandler(card, img) {
+            const previewId = card.dataset.previewId;
+            const shouldHandle = previewId === interactivePreviewId;
+            if (shouldHandle && img.dataset.interactiveBound !== '1') {
+                img.dataset.interactiveBound = '1';
+                img.addEventListener('click', (evt) => {
+                    if (card.dataset.previewId !== interactivePreviewId) return;
+                    recordInteractiveClick(previewId, img, evt);
+                });
+            } else if (!shouldHandle && img.dataset.interactiveBound === '1') {
+                // Listener leak isn't worth a clone+replace dance — set the
+                // flag so the early-return inside the listener short-circuits
+                // future clicks, and let the element's lifetime clean things
+                // up. Re-entering live mode rebinds via the bound check above.
+                delete img.dataset.interactiveBound;
+            }
+        }
+
+        function recordInteractiveClick(previewId, img, evt) {
+            // Image-natural pixel coords — same space the daemon's renderer
+            // works in. The webview's offsetX/Y is in CSS pixels of the
+            // displayed image; scale by the displayed/natural ratio to
+            // recover the pixel the user actually clicked.
+            const natW = img.naturalWidth || 0;
+            const natH = img.naturalHeight || 0;
+            const rect = img.getBoundingClientRect();
+            if (!natW || !natH || rect.width === 0 || rect.height === 0) return;
+            const clientX = evt.clientX - rect.left;
+            const clientY = evt.clientY - rect.top;
+            const pixelX = Math.round(clientX * (natW / rect.width));
+            const pixelY = Math.round(clientY * (natH / rect.height));
+            vscode.postMessage({
+                command: 'recordInteractiveClick',
+                previewId,
+                pixelX,
+                pixelY,
+                imageWidth: natW,
+                imageHeight: natH,
+            });
+        }
 
         // Document-level Left/Right in focus mode steps between cards. The
         // animated-carousel frame-controls handler stops propagation so
@@ -463,6 +629,22 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const tooltip = mode === 'focus' ? 'Double-click to exit focus' : 'Double-click to focus';
             document.querySelectorAll('.image-container').forEach(c => c.title = tooltip);
             publishScopedPreview();
+            // If the user navigated focus off the live preview, drop the
+            // live state so the badge and the "is live" UI follow the user.
+            if (interactivePreviewId) {
+                const visible = getVisibleCards();
+                const card = mode === 'focus' ? visible[focusIndex] : null;
+                if (!card || card.dataset.previewId !== interactivePreviewId) {
+                    vscode.postMessage({
+                        command: 'setInteractive',
+                        previewId: interactivePreviewId,
+                        enabled: false,
+                    });
+                    interactivePreviewId = null;
+                    applyLiveBadge();
+                }
+            }
+            applyInteractiveButtonState();
         }
 
         // Compute the previewId the panel is currently narrowed to, if any:
@@ -1606,7 +1788,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 container.appendChild(img);
             }
             img.src = newSrc;
-            img.className = 'fade-in';
+            // In live mode the new bytes are a frame, not a card reload —
+            // skip the fade-in so successive frames read as a stream rather
+            // than a sequence of independent renders. See INTERACTIVE.md § 3.
+            const isLive = previewId === interactivePreviewId;
+            img.className = isLive ? 'live-frame' : 'fade-in';
+            ensureInteractiveClickHandler(card, img);
 
             if (caps) updateFrameIndicator(card);
 
@@ -1768,6 +1955,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     restoreFilterState();
                     applyFilters();
                     applyLayout();
+                    // setPreviews can rebuild the focused card from scratch;
+                    // re-stamp the live badge so the LIVE chip reattaches to
+                    // the right card. If the previously-live preview is gone
+                    // from the new manifest, drop the live state outright.
+                    if (interactivePreviewId
+                        && !msg.previews.some(p => p.id === interactivePreviewId)) {
+                        interactivePreviewId = null;
+                    }
+                    applyLiveBadge();
+                    applyInteractiveButtonState();
                     break;
                 }
 
@@ -1928,6 +2125,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         previewId: msg.previewId,
                         against: msg.against,
                     });
+                    break;
+                }
+                case 'setInteractiveAvailability': {
+                    moduleDaemonReady.set(msg.moduleId, !!msg.ready);
+                    // Daemon went away while a card was live — drop the live
+                    // state so the user doesn't keep seeing a LIVE badge on
+                    // a card whose stream has stopped.
+                    if (!msg.ready && interactivePreviewId) {
+                        interactivePreviewId = null;
+                        applyLiveBadge();
+                    }
+                    applyInteractiveButtonState();
                     break;
                 }
                 case 'previewMainRefChanged': {

@@ -173,6 +173,62 @@ describe('DaemonClient', () => {
         assert.deepStrictEqual(b.queued, ['second']);
     });
 
+    it('interactiveStart sends a request with previewId and awaits a frameStreamId result', async () => {
+        // Reserved per docs/daemon/INTERACTIVE.md § 7. v0 daemons reject
+        // with MethodNotFound, but the wire shape is locked here so the
+        // caller-side machinery is ready when the daemon implementation
+        // lands.
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const promise = client.interactiveStart({ previewId: 'com.example.PreviewA' });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'interactive/start');
+        assert.deepStrictEqual(sent.params, { previewId: 'com.example.PreviewA' });
+        toClient.write(encodeFrame({
+            jsonrpc: '2.0',
+            id: sent.id,
+            result: { frameStreamId: 'stream-42' },
+        }));
+        const result = await promise;
+        assert.strictEqual(result.frameStreamId, 'stream-42');
+        client.exit();
+    });
+
+    it('interactiveStop emits a notification (no id) carrying the stream id', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        client.interactiveStop({ frameStreamId: 'stream-42' });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'interactive/stop');
+        assert.strictEqual((sent as unknown as { id?: number }).id, undefined);
+        assert.deepStrictEqual(sent.params, { frameStreamId: 'stream-42' });
+        client.exit();
+    });
+
+    it('interactiveInput emits a notification carrying click coordinates', async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        client.interactiveInput({
+            frameStreamId: 'stream-42',
+            kind: 'click',
+            pixelX: 120,
+            pixelY: 64,
+        });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, 'interactive/input');
+        assert.strictEqual((sent as unknown as { id?: number }).id, undefined);
+        assert.deepStrictEqual(sent.params, {
+            frameStreamId: 'stream-42',
+            kind: 'click',
+            pixelX: 120,
+            pixelY: 64,
+        });
+        client.exit();
+    });
+
     it('issues monotonically increasing ids', async () => {
         const { toServer, toClient } = bidiPair();
         const frames = captureFrames(toServer);
