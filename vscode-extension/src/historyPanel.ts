@@ -85,9 +85,20 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             this.view?.webview.postMessage({ command: 'setScopeLabel', label: null });
             return;
         }
-        const label = this.currentScope.previewId
-            ? this.currentScope.previewLabel ?? this.currentScope.previewId
-            : null;
+        if (!this.currentScope.previewId) {
+            // Module-wide history would mix entries from every preview in the
+            // file, which is rarely what the user wants and obscures whose
+            // timeline they're looking at. Require a single preview be
+            // selected (focus mode, or filters narrowed to one card) and
+            // show a hint until then.
+            this.view.webview.postMessage({ command: 'setScopeLabel', label: null });
+            this.view.webview.postMessage({
+                command: 'showMessage',
+                text: 'Select a single preview (focus mode, or narrow the filter to one card) to see its render history.',
+            });
+            return;
+        }
+        const label = this.currentScope.previewLabel ?? this.currentScope.previewId;
         this.view.webview.postMessage({ command: 'setScopeLabel', label });
         try {
             const result = await this.source.list(this.currentScope);
@@ -549,11 +560,12 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
             return result;
         },
         read: async (id) => {
-            if (!opts.currentScope) { return null; }
+            const scope = opts.getCurrentScope();
+            if (!scope) { return null; }
             if (CurrentRendersHistory.isSyntheticId(id)) {
-                return currentRendersFor(opts.currentScope).read(id);
+                return currentRendersFor(scope).read(id);
             }
-            if (opts.isDaemonReady(opts.currentScope.moduleId)) {
+            if (opts.isDaemonReady(scope.moduleId)) {
                 try {
                     return await opts.daemonRead(id);
                 } catch (err) {
@@ -562,10 +574,11 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                     );
                 }
             }
-            return new HistoryReader(historyDirFor(opts.currentScope)).read(id);
+            return new HistoryReader(historyDirFor(scope)).read(id);
         },
         diff: async (fromId, toId) => {
-            if (!opts.currentScope) { return null; }
+            const scope = opts.getCurrentScope();
+            if (!scope) { return null; }
             // Synthetic "current render" entries don't have a stable prior
             // — diffing them is meaningless. Fall through to null so the
             // panel surfaces "Diff unavailable" instead of crashing.
@@ -573,7 +586,7 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                 || CurrentRendersHistory.isSyntheticId(toId)) {
                 return null;
             }
-            if (opts.isDaemonReady(opts.currentScope.moduleId)) {
+            if (opts.isDaemonReady(scope.moduleId)) {
                 try {
                     return await opts.daemonDiff(fromId, toId);
                 } catch (err) {
@@ -582,7 +595,7 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                     );
                 }
             }
-            return new HistoryReader(historyDirFor(opts.currentScope))
+            return new HistoryReader(historyDirFor(scope))
                 .diff(fromId, toId, 'metadata');
         },
     };
@@ -604,11 +617,11 @@ interface BuildSourceOptions {
     daemonList: (scope: HistoryScope) => Promise<HistoryListResult>;
     daemonRead: (id: string) => Promise<HistoryReadResult>;
     daemonDiff: (fromId: string, toId: string) => Promise<unknown>;
-    /** Mutable closure — extension.ts updates this on every scope change so
-     *  the panel's `read` / `diff` callbacks know which module's FS to fall
-     *  back to. We don't bake it into the `HistorySource` shape because
-     *  list() takes scope as an arg but read() / diff() don't. */
-    currentScope: HistoryScope | null;
+    /** Live accessor for the active scope. The panel's read() / diff()
+     *  callbacks don't get scope as an argument (unlike list), so they
+     *  reach into the extension's mutable scope ref through this getter
+     *  rather than capturing a stale snapshot at construction time. */
+    getCurrentScope: () => HistoryScope | null;
     logger?: { appendLine(s: string): void };
 }
 
@@ -624,12 +637,9 @@ function matchesScope(
     entry: { previewId?: string; module?: string },
     scope: HistoryScope | null,
 ): boolean {
-    if (!scope) { return false; }
-    // The panel scope is keyed on Gradle moduleId — entries carry it as
-    // `module`. previewId filter is optional; absent → any preview in the
-    // module matches.
+    if (!scope || !scope.previewId) { return false; }
     if (entry.module !== scope.moduleId) { return false; }
-    if (scope.previewId && entry.previewId !== scope.previewId) { return false; }
+    if (entry.previewId !== scope.previewId) { return false; }
     return true;
 }
 
