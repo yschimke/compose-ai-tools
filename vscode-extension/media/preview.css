@@ -20,23 +20,34 @@ body {
     color: var(--text-primary);
 }
 
-/* -- Top progress bar -------------------------------------------------
- * Slim 2px strip pinned to the very top of the panel, animating during a
- * refresh. Mirrors the affordance native VS Code views (Extensions, Source
- * Control) use for background work — visible-but-quiet, with a label that
- * names the current build phase. Hidden when no refresh is in flight.
+/* -- Top progress strip ------------------------------------------------
+ * A slim two-row strip pinned to the very top of the panel during a
+ * refresh: phase label on top (≈13px text), 2px progress bar beneath.
+ * The strip reserves its own vertical space rather than overlaying the
+ * toolbar — `display: none` (via the `hidden` attribute) when no
+ * refresh is in flight, so it costs nothing visually when idle.
  */
 .progress-bar {
     position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: transparent;
     z-index: 10;
-    overflow: visible;
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    /* Faint divider against whatever lives below (toolbar or compile-error
+       banner). Keeps the strip visually distinct from the next row. */
+    border-bottom: 1px solid var(--card-border);
 }
 .progress-bar[hidden] { display: none; }
+
+/* Track is the 2px lane the fill animates inside. A subtle inactive
+   background so the empty portion of the bar is visible at low percent —
+   without it the bar would appear to stretch from nothing. */
+.progress-track {
+    height: 2px;
+    width: 100%;
+    background: color-mix(in srgb, var(--text-secondary) 25%, transparent);
+}
 
 .progress-fill {
     height: 100%;
@@ -45,22 +56,20 @@ body {
     transition: width 200ms ease-out;
 }
 
-/* Phase label: tiny, lives just below the strip. Right-aligned so it
- * doesn't fight with the toolbar selects on the left. Pointer-events
- * disabled so the toolbar stays clickable through it. */
+/* Phase label row: small text, right-aligned so the eye picks it up
+   alongside the bar's leading edge while the bar fills left-to-right. */
 .progress-label {
-    position: absolute;
-    top: 2px;
-    right: 8px;
     font-size: calc(var(--vscode-font-size) - 3px);
     color: var(--text-secondary);
-    background: var(--vscode-editor-background);
-    padding: 0 4px;
-    border-radius: 0 0 3px 3px;
+    padding: 1px 8px 1px 0;
+    text-align: right;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
-    line-height: 1.4;
-    opacity: 0.85;
+    line-height: 1.3;
+    /* Min height keeps the strip stable when the label is briefly empty
+       (e.g. between phases) so the bar below doesn't jump. ~13px matches
+       the rendered label height at the chosen font-size. */
+    min-height: 13px;
 }
 
 /* "Slow" annotation: when a phase is running >2× its calibrated estimate
@@ -73,13 +82,12 @@ body {
 }
 .progress-bar.progress-slow .progress-label {
     color: var(--vscode-editorWarning-foreground, #cca700);
-    opacity: 1;
 }
 
-/* Final-state flash before fade-out. Brightens the strip momentarily so
- * the eye registers the transition from "in-flight" to "done". */
+/* Final-state flash before fade-out. The strip's reserved row stays
+ * up for the brief hide-delay; only the fill and label fade so there's
+ * no layout flicker when the strip itself collapses afterwards. */
 .progress-bar.progress-finishing .progress-fill {
-    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
     transition: width 200ms ease-out, opacity 500ms ease-out 100ms;
     opacity: 0;
 }
