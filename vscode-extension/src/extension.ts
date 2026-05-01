@@ -811,6 +811,17 @@ function maybeFirePendingRefresh(): void {
  *  unhealthy, the refresh is `forceRender=true` and Gradle does a full
  *  render as today.
  *
+ *  **Recompile-before-notify invariant.** In the daemon path the discover
+ *  refresh runs *first*, then the daemon is notified. The daemon's
+ *  `fileChanged({kind:source})` swaps its `URLClassLoader` and `renderNow`
+ *  reads `.class` files from `build/intermediates/.../classes/` — so those
+ *  files must be fresh when the swap happens. `compileKotlin` runs as an
+ *  upstream of `discoverPreviews` (we let Gradle drive Kotlin compilation
+ *  per `docs/daemon/DESIGN.md` § "Out of scope"); inverting the order would
+ *  let the daemon render stale bytecode matching the previous save and the
+ *  user would see the loading overlay flash without any actual content
+ *  change.
+ *
  *  Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
  *  keep their previous PNG/GIF on disk and surface as stale in the panel —
  *  the user re-renders them on demand via the refresh command, which uses
@@ -820,13 +831,14 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
     try {
         const mode = pickRefreshMode(filePath);
         if (mode === 'daemon') {
-            // Daemon owns rendering for this save. Notify it about the
-            // change + focus the visible previews; Gradle does discovery
-            // only (cached) so the manifest is current without spinning up
-            // the slow renderPreviews task.
+            // Run discover first so `compileKotlin` (an upstream of
+            // discoverPreviews) updates the on-disk `.class` files the
+            // daemon's child URLClassLoader reads. Notifying the daemon
+            // before the recompile would race the swap against stale
+            // bytecode and the panel would flicker without updating.
+            await refresh(false, filePath);
             const accepted = await notifyDaemonOfSave(filePath);
             if (accepted) {
-                await refresh(false, filePath);
                 return;
             }
             // Daemon was healthy at decision time but the actual call
