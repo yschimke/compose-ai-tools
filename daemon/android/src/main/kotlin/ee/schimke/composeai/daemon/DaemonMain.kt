@@ -87,6 +87,30 @@ fun main(args: Array<String>) {
       )
     } else null
 
+  // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. The
+  // DaemonSupervisor passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` via the
+  // launch descriptor's systemProperties; sandbox pooling collapses what used to be N separate
+  // daemon JVMs into one JVM with N sandbox slots. Default 1 preserves the pre-pool single-
+  // sandbox behaviour bit-for-bit.
+  //
+  // Constraint: sandboxCount > 1 isn't compatible with a non-null userClassloaderHolder in v1
+  // (per-slot child URLClassLoaders are layered work — see RobolectricHost's init-block check).
+  // Force sandboxCount = 1 with a clear warning when both are requested so the daemon still
+  // boots; otherwise the host's `require` would fire and the daemon would fail to start.
+  val requestedSandboxCount =
+    (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: 1).coerceAtLeast(1)
+  val effectiveSandboxCount =
+    if (requestedSandboxCount > 1 && userClassloaderHolder != null) {
+      System.err.println(
+        "compose-ai-tools daemon: requested sandboxCount=$requestedSandboxCount but a user-class " +
+          "loader holder is active; sandbox pooling is not yet compatible with the disposable " +
+          "child loader (per-slot child loaders are follow-up work). Falling back to sandboxCount=1."
+      )
+      1
+    } else {
+      requestedSandboxCount
+    }
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -95,9 +119,20 @@ fun main(args: Array<String>) {
         "compose-ai-tools daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
       )
+      // The harness's PreviewManifestRouter wraps a single RobolectricHost; sandbox pooling is
+      // an optimisation for the production daemon path, not the harness mode (which exists to
+      // exercise the wire protocol against in-process fakes). Stay at sandboxCount=1 here.
       PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
     } else {
-      RobolectricHost(userClassloaderHolder = userClassloaderHolder)
+      if (effectiveSandboxCount > 1) {
+        System.err.println(
+          "compose-ai-tools daemon: sandbox pool active (sandboxCount=$effectiveSandboxCount)"
+        )
+      }
+      RobolectricHost(
+        userClassloaderHolder = userClassloaderHolder,
+        sandboxCount = effectiveSandboxCount,
+      )
     }
 
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Mirrors the desktop daemon's
@@ -202,3 +237,10 @@ private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
 
 /** Module project path stamped into every history entry's `module` field. */
 private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
+
+/**
+ * SANDBOX-POOL.md (Layer 3) — sandbox-pool size knob. Set by [DaemonSupervisor] from
+ * `1 + replicasPerDaemon`. Default 1 preserves the pre-pool single-sandbox behaviour. Values < 1
+ * are coerced to 1.
+ */
+private const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"

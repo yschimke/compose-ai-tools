@@ -2,10 +2,6 @@ package ee.schimke.composeai.mcp
 
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -32,12 +28,18 @@ class DaemonSupervisor(
   private val clientFactory: DaemonClientFactory,
   private val router: NotificationRouter = NotificationRouter(),
   /**
-   * Extra in-process replicas to spawn per (workspace, module) once the primary is up. The primary
-   * is always spawned synchronously and seeds the catalog via `synthesiseInitialDiscovery`; the
-   * replicas come up off-thread, share the (now-warm) Maven cache, and absorb render fan-out so
-   * concurrent `renderNow` requests for different previews don't queue behind each other on a
-   * single render thread. `replicasPerDaemon = 0` (the default) preserves the original
-   * 1-daemon-per-module behaviour. Total daemons per module = `1 + replicasPerDaemon`.
+   * Concurrent render slots per (workspace, module) beyond the first. SANDBOX-POOL.md Layer 3 — the
+   * supervisor passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` as a sysprop on the
+   * launch descriptor; the daemon's
+   * [`RobolectricHost`][ee.schimke.composeai.daemon.RobolectricHost] boots that many in-JVM
+   * Robolectric sandboxes and dispatches concurrent `renderNow` requests across them.
+   * `replicasPerDaemon = 0` (the default) keeps the daemon at sandboxCount=1 — bit-identical with
+   * the pre-pool single-sandbox path on disk.
+   *
+   * Pre-Layer-3 this knob spawned N additional **JVM subprocesses**; that wasted ~2 GB per replica
+   * on shared per-JVM cost (native heap, JVM baseline, instrumented framework). Layer 3 collapses
+   * those into a single daemon JVM with N sandbox classloaders. Wire-protocol-visible behaviour
+   * (initialize, renderNow, fileChanged fan-out) is unchanged from the consumer's perspective.
    */
   private val replicasPerDaemon: Int = 0,
 ) {
@@ -47,18 +49,6 @@ class DaemonSupervisor(
   }
 
   private val projects = ConcurrentHashMap<WorkspaceId, RegisteredProject>()
-
-  /**
-   * Off-thread spawner for **additional replicas** beyond the primary. Sized to the configured
-   * replica count so all replicas of one module can come up in parallel; capped so several modules
-   * spawning concurrently don't fork an unbounded number of JVMs.
-   */
-  private val replicaSpawnExecutor: ExecutorService =
-    Executors.newFixedThreadPool(
-      maxOf(1, replicasPerDaemon).coerceAtMost(REPLICA_SPAWN_POOL_CAP)
-    ) { r ->
-      Thread(r, "mcp-daemon-replica-spawn").apply { isDaemon = true }
-    }
 
   /**
    * Registers a project at [absolutePath] (must already exist on disk). Returns the assigned
@@ -153,8 +143,6 @@ class DaemonSupervisor(
       project.daemons.clear()
     }
     projects.clear()
-    replicaSpawnExecutor.shutdown()
-    runCatching { replicaSpawnExecutor.awaitTermination(2, TimeUnit.SECONDS) }
   }
 
   /** Returns the [NotificationRouter] so callers can register handlers. */
@@ -165,60 +153,29 @@ class DaemonSupervisor(
   // -------------------------------------------------------------------------
 
   private fun spawn(project: RegisteredProject, modulePath: String): SupervisedDaemon {
-    val descriptor = descriptorProvider.descriptorFor(project, modulePath)
+    val baseDescriptor = descriptorProvider.descriptorFor(project, modulePath)
+    // SANDBOX-POOL.md Layer 3 — inject `composeai.daemon.sandboxCount = 1 + replicasPerDaemon`
+    // into the descriptor's systemProperties so the spawned daemon JVM boots that many in-JVM
+    // sandboxes. The daemon's DaemonMain reads this sysprop and passes it to RobolectricHost. We
+    // merge into a copy rather than mutating the original — the descriptor object is cached by
+    // `DescriptorProvider.readingFromDisk` and shared across `daemonFor` calls.
+    val descriptor = baseDescriptor.withSandboxCount(1 + replicasPerDaemon)
     val supervised = SupervisedDaemon(workspaceId = project.workspaceId, modulePath = modulePath)
 
-    // Primary spawn is synchronous so the calling thread blocks on cold-start and the catalog is
-    // seeded before any subsequent `daemonFor` returns. Subsequent replicas piggy-back on the
-    // (now-warm) Maven cache — see `replicasPerDaemon` KDoc.
-    spawnReplica(project, descriptor, supervised, isPrimary = true)
-
-    // Fire off replica spawns in parallel. They share the warmed Maven cache and the JIT'd
-    // classloader cache from the primary, so cold-start cost is dominated by the primary; the
-    // replicas come up in roughly max(replica) instead of sum(replicas).
-    repeat(replicasPerDaemon) { idx ->
-      replicaSpawnExecutor.execute {
-        runCatching { spawnReplica(project, descriptor, supervised, isPrimary = false) }
-          .onFailure {
-            System.err.println(
-              "DaemonSupervisor: replica spawn ${idx + 1} failed for " +
-                "${project.workspaceId}/$modulePath: ${it.message}"
-            )
-          }
-      }
-    }
-
-    return supervised
-  }
-
-  /**
-   * Spawns one client (primary or replica) and attaches it to [supervised]. The primary blocks on
-   * `initialize` and seeds the catalog via [synthesiseInitialDiscovery]; replicas only need to
-   * `initialize` (catalog is already populated by the primary's manifest read).
-   */
-  private fun spawnReplica(
-    project: RegisteredProject,
-    descriptor: DaemonLaunchDescriptor,
-    supervised: SupervisedDaemon,
-    isPrimary: Boolean,
-  ) {
+    // Single synchronous spawn — the calling thread blocks on cold-start and the catalog is seeded
+    // before `daemonFor` returns. With sandboxCount > 1 the daemon's per-sandbox bootstrap is
+    // sequenced internally (RobolectricHost.start), so the wall-clock here is roughly
+    // (1 + replicasPerDaemon) × per-sandbox-boot.
     val spawn = clientFactory.spawn(project, descriptor)
-    // Wire the client BEFORE publishing the spawn to the replica list — otherwise a concurrent
-    // `clientForRender` reader could pick this index and call `.client` before the spawn's
-    // internal lazy client field is initialised (DaemonSpawn implementations construct the
-    // DaemonClient inside `client(onNotification, onClose)`).
     spawn.client(
       onNotification = { method, params -> router.dispatch(supervised, method, params) },
       onClose = {
-        // Only fire dispatchClose to handlers (which drop catalog state etc.) when the *last*
-        // replica is gone — otherwise a single replica's wire close would tear down state shared
-        // with its still-alive peers.
-        if (supervised.removeReplica(spawn)) {
+        if (supervised.detachSpawn(spawn)) {
           router.dispatchClose(supervised)
         }
       },
     )
-    supervised.addReplica(spawn)
+    supervised.attachSpawn(spawn)
     runCatching {
       val result =
         spawn.client.initialize(
@@ -226,25 +183,15 @@ class DaemonSupervisor(
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
         )
-      if (isPrimary) {
-        // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
-        // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
-        // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
-        // reading that file and dispatching it through the router as if it were a wire-level
-        // event. Replicas of the same module would synthesise the same set, so we skip them.
-        synthesiseInitialDiscovery(supervised, result.manifest.path)
-      }
+      // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
+      // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
+      // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
+      // reading that file and dispatching it through the router as if it were a wire-level
+      // event.
+      synthesiseInitialDiscovery(supervised, result.manifest.path)
     }
-  }
 
-  companion object {
-    /**
-     * Cap on the replica-spawn thread pool. With many modules each requesting `replicasPerDaemon`
-     * extra replicas, an unbounded pool would fork tens of JVMs at once and trash the host. Cold
-     * Robolectric bootstraps are CPU + I/O heavy, so eight concurrent forks is the comfortable
-     * upper bound on a typical dev machine.
-     */
-    private const val REPLICA_SPAWN_POOL_CAP: Int = 8
+    return supervised
   }
 
   private fun synthesiseInitialDiscovery(daemon: SupervisedDaemon, manifestPath: String) {
@@ -285,71 +232,82 @@ data class RegisteredProject(
 )
 
 /**
- * A live daemon — owned by [DaemonSupervisor]. May front 1+N underlying replicas (see
- * [DaemonSupervisor.replicasPerDaemon]). All replicas serve the same (workspaceId, modulePath); the
- * supervisor uses the group to fan out invalidations and shard render fan-out.
+ * A live daemon — owned by [DaemonSupervisor]. SANDBOX-POOL.md Layer 3: one daemon JVM per
+ * (workspaceId, modulePath); concurrent render capacity comes from in-JVM sandbox pooling
+ * configured via `composeai.daemon.sandboxCount` on the launch descriptor (the supervisor passes
+ * `1 + replicasPerDaemon`).
+ *
+ * Pre-Layer-3 this class fronted N+1 separate JVM subprocesses; the public surface ([client],
+ * [allClients], [clientForRender]) survives that change because the daemon-side slot dispatch
+ * handles render affinity internally.
  */
 class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
 
   /**
-   * Replicas in spawn order. The primary is at index 0, populated by the synchronous spawn path;
-   * extra replicas append as their async spawns finish. Iterations take a snapshot — the list is
-   * copy-on-write so concurrent appends + reads are safe.
+   * The single [DaemonSpawn] backing this supervised daemon. `null` between construction and
+   * [attachSpawn]; set once and cleared by [detachSpawn] / [shutdown]. `@Volatile` because the
+   * onNotification / onClose callbacks fire on the spawn's reader thread and the supervisor's
+   * caller thread reads this through [client] / [allClients] without external synchronisation.
    */
-  private val replicas: CopyOnWriteArrayList<DaemonSpawn> = CopyOnWriteArrayList()
+  @Volatile private var spawn: DaemonSpawn? = null
 
   /**
-   * The primary [DaemonClient]. Used for control-plane operations (`initialize`, `history*`,
-   * `setVisible`/`setFocus` — though propagation fans out to every replica, see [allClients]).
-   * Throws if no replica has been registered yet (only possible during the brief window before the
-   * primary's synchronous spawn returns).
+   * The single [DaemonClient]. Used for everything — control-plane operations (`initialize`,
+   * `history*`), render dispatch, and fan-out broadcasts. Throws if [attachSpawn] hasn't run yet
+   * (only possible during the brief window before the synchronous spawn returns).
    */
   val client: DaemonClient
     get() {
-      val list = replicas
-      check(list.isNotEmpty()) { "SupervisedDaemon($workspaceId/$modulePath): no replicas" }
-      return list[0].client
+      val s = spawn
+      check(s != null) { "SupervisedDaemon($workspaceId/$modulePath): no spawn attached yet" }
+      return s.client
     }
 
-  /** Snapshot of every active replica's client — for fan-out (e.g. `fileChanged`, `setVisible`). */
-  fun allClients(): List<DaemonClient> = replicas.map { it.client }
+  /**
+   * Snapshot of every active client — for fan-out APIs (e.g. `fileChanged`, `setVisible`). Always a
+   * singleton list under Layer 3; kept as a list for source-compatibility with callers that iterate
+   * it (they keep working unchanged).
+   */
+  fun allClients(): List<DaemonClient> = spawn?.let { listOf(it.client) } ?: emptyList()
 
   /**
-   * Picks a replica's client for a render keyed on [previewId]. Hash-based so the same preview
-   * lands on the same replica every time (cache locality + render dedup); different previews spread
-   * across replicas so concurrent renders run in parallel. Falls back to the primary when no
-   * replica is yet registered.
+   * Returns the client for a render keyed on [previewId]. Layer 3: always the single client; the
+   * daemon-side `RobolectricHost.submit` dispatches across in-JVM sandbox slots internally. The
+   * [previewId] argument is informational — kept on the API so a future affinity-aware wire change
+   * can use it without breaking callers.
    */
-  fun clientForRender(previewId: String): DaemonClient {
-    val list = replicas
-    if (list.isEmpty()) error("SupervisedDaemon($workspaceId/$modulePath): no replicas")
-    if (list.size == 1) return list[0].client
-    // Math.floorMod gives a non-negative index even for negative hashCodes.
-    val idx = Math.floorMod(previewId.hashCode(), list.size)
-    return list[idx].client
-  }
+  fun clientForRender(@Suppress("UNUSED_PARAMETER") previewId: String): DaemonClient = client
 
-  /** Number of currently-active replicas (primary + extras). */
-  fun replicaCount(): Int = replicas.size
+  /**
+   * Always 1 under Layer 3 (one JVM subprocess per supervised daemon). Concurrent render capacity
+   * is `1 + replicasPerDaemon` and is realised inside the daemon JVM's sandbox pool, not at the
+   * subprocess level. Kept for source-compatibility with callers that previously asserted "primary
+   * plus N replicas" — those assertions are now wrong, but the method itself doesn't lie.
+   */
+  fun replicaCount(): Int = if (spawn != null) 1 else 0
 
-  internal fun addReplica(spawn: DaemonSpawn) {
-    replicas.add(spawn)
+  internal fun attachSpawn(spawn: DaemonSpawn) {
+    check(this.spawn == null) {
+      "SupervisedDaemon($workspaceId/$modulePath): spawn already attached"
+    }
+    this.spawn = spawn
   }
 
   /**
-   * Removes [spawn] from the replica set. Returns `true` if this was the *last* replica — callers
-   * use this to decide whether to fire group-level cleanup (e.g. dispatching `onClose` to handlers
-   * that own per-(workspace, module) state).
+   * Detaches [s] if it's the current spawn. Returns `true` if a spawn was actually removed —
+   * callers use this to decide whether to fire group-level cleanup (e.g. dispatching `onClose` to
+   * handlers that own per-(workspace, module) state).
    */
-  internal fun removeReplica(spawn: DaemonSpawn): Boolean {
-    replicas.remove(spawn)
-    return replicas.isEmpty()
+  internal fun detachSpawn(s: DaemonSpawn): Boolean {
+    if (this.spawn !== s) return false
+    this.spawn = null
+    return true
   }
 
   fun shutdown() {
-    val snapshot = replicas.toList()
-    replicas.clear()
-    snapshot.forEach { runCatching { it.shutdown() } }
+    val s = spawn ?: return
+    spawn = null
+    runCatching { s.shutdown() }
   }
 }
 
@@ -410,7 +368,31 @@ data class DaemonLaunchDescriptor(
   val workingDirectory: String,
   val manifestPath: String,
 ) {
+
+  /**
+   * SANDBOX-POOL.md Layer 3 — returns a copy with `composeai.daemon.sandboxCount` merged into
+   * [systemProperties]. The supervisor calls this on the descriptor read from disk before passing
+   * it to [DaemonClientFactory.spawn] so the daemon JVM picks up the right pool size at boot.
+   *
+   * Idempotent at [count] = 1 (the daemon's default; the sysprop is omitted to keep the disk
+   * descriptor trivially diffable across replicas-per-daemon settings of 0).
+   */
+  fun withSandboxCount(count: Int): DaemonLaunchDescriptor {
+    require(count >= 1) { "sandboxCount must be >= 1, got $count" }
+    if (count == 1) return this
+    val merged = systemProperties.toMutableMap()
+    merged[SANDBOX_COUNT_PROP] = count.toString()
+    return copy(systemProperties = merged)
+  }
+
   companion object {
+    /**
+     * Sysprop key the daemon reads to configure
+     * [`RobolectricHost.sandboxCount`][ee.schimke.composeai.daemon.RobolectricHost.sandboxCount].
+     * Mirrored on the daemon side as a private const in `DaemonMain.kt`; both sides MUST agree.
+     */
+    const val SANDBOX_COUNT_PROP: String = "composeai.daemon.sandboxCount"
+
     private val json = Json { ignoreUnknownKeys = true }
 
     fun parse(jsonText: String): DaemonLaunchDescriptor =

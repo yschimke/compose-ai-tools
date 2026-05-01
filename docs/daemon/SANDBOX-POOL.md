@@ -1,14 +1,19 @@
 # Preview daemon — in-JVM sandbox pool
 
-> **Status:** Layer 1 (bridge multi-slot foundation) and Layer 2 (RobolectricHost as a sandbox
-> pool) are landed and working. `RobolectricHost(sandboxCount = N)` boots N distinct Robolectric
-> sandboxes in one JVM, each with its own `InstrumentingClassLoader` and `SDK Main Thread`;
-> renders dispatch to slots via `Math.floorMod(id, N)`. Two-sandbox boot completes in ~7s on a
-> warm cache. The `RobolectricHostPoolTest` asserts distinct classloaders + stable per-slot
-> dispatch.
+> **Status:** All three layers landed.
 >
-> Layer 3 (supervisor wire-up — make `replicasPerDaemon` translate into `sandboxCount` on a single
-> daemon JVM rather than spawning N JVMs) is a follow-up.
+> - **Layer 1** — bridge multi-slot foundation.
+> - **Layer 2** — `RobolectricHost(sandboxCount = N)` boots N distinct Robolectric sandboxes in
+>   one JVM, each with its own `InstrumentingClassLoader` and `SDK Main Thread`; renders dispatch
+>   to slots via `Math.floorMod(id, N)`. Two-sandbox boot completes in ~7s on warm cache.
+> - **Layer 3** — `DaemonSupervisor` passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon`
+>   on the launch descriptor instead of spawning N+1 JVM subprocesses. The supervisor's public
+>   surface (`SupervisedDaemon.client`, `allClients`, `clientForRender`) is unchanged; the daemon
+>   handles render fan-out internally. `replicasPerDaemon = 0` (default) preserves bit-identical
+>   pre-pool behaviour on disk.
+>
+> Memory math (replicasPerDaemon = 4 on one module): pre-Layer-3 ~8 GB across 5 JVMs;
+> post-Layer-3 ~5 GB in one JVM with 5 sandbox classloaders.
 
 ## Motivation
 
@@ -142,21 +147,29 @@ The fix lives in [`SandboxHoldingRunner.kt`](../../daemon/android/src/main/kotli
 KDoc on `poolWorkerIndex` and `SandboxHoldingHints.workerIndex` warn future maintainers not to
 read the ThreadLocal directly inside `createClassLoaderConfig`.
 
-### Layer 3 — supervisor wire-up [follow-up]
+### Layer 3 — supervisor wire-up [landed]
 
-`DaemonSupervisor` keeps its `replicasPerDaemon` knob as the public surface. Behaviour change:
-instead of forking N extra JVMs via `SubprocessDaemonClientFactory`, the supervisor spawns **one**
-JVM per module and passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` as a sysprop on
-the launch descriptor. The daemon's `DaemonMain` reads it and configures
-`RobolectricHost(sandboxCount = N)`.
+`DaemonSupervisor` keeps its `replicasPerDaemon` knob as the public surface. Implementation:
 
-`SupervisedDaemon` collapses to a single `DaemonClient`; `clientForRender(previewId)` becomes a
-no-op (the daemon handles affinity internally). The wire `render` call grows an optional
-affinity-key param (or relies on the existing `previewId` payload) so the daemon's pool router can
-land repeat renders on the same sandbox for cache locality.
+- `spawn(project, modulePath)` reads the descriptor, calls `descriptor.withSandboxCount(1 + replicasPerDaemon)`
+  to inject `composeai.daemon.sandboxCount` into `systemProperties`, and forks a **single** JVM via
+  `clientFactory.spawn`. The previous N+1-JVM-fork loop and its `replicaSpawnExecutor` thread pool
+  are gone.
+- `SupervisedDaemon` is now backed by a single `DaemonSpawn` (was a `CopyOnWriteArrayList`); the
+  public surface — `client`, `allClients()`, `clientForRender(previewId)`, `replicaCount()` — is
+  unchanged so existing fan-out callers (`DaemonMcpServer`, `WatchPropagator`) keep working.
+  `clientForRender` is now a degenerate no-op (always returns the single client) but the
+  `previewId` argument is preserved for a future affinity-aware wire change.
+- `DaemonMain` reads `composeai.daemon.sandboxCount` (default 1) and constructs
+  `RobolectricHost(sandboxCount = N)`. When the user-class loader holder is wired (the gradle
+  plugin's hot-reload path), sandboxCount falls back to 1 with a stderr warning — per-slot child
+  loaders are layered work.
+- Wire-protocol-visible behaviour (`initialize`, `renderNow`, `fileChanged` fan-out,
+  `classpathDirty` respawn) is unchanged from the consumer's perspective.
 
-The `replicasPerDaemon == 0` default keeps a single sandbox — bit-identical with today's behaviour
-on disk.
+`replicasPerDaemon == 0` keeps a single sandbox in a single JVM — bit-identical with the
+pre-pool behaviour on disk (the sysprop is omitted from the descriptor entirely at count=1, so
+descriptors don't change shape for users who never opted in).
 
 ## What this does NOT solve
 
