@@ -27,7 +27,7 @@ import { captureLabel } from './captureLabels';
 import { DaemonGate } from './daemon/daemonGate';
 import { DataProductAttachment } from './daemon/daemonProtocol';
 import { A11Y_OVERLAY_KINDS, DaemonScheduler, WarmState } from './daemon/daemonScheduler';
-import { buildHistorySource, HistoryPanel, HistoryScope, HistorySource } from './historyPanel';
+import { buildHistorySource, HistoryScope, HistorySource } from './historyPanel';
 import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
 import { watchPreviewMainRef } from './previewMainWatcher';
 import { LogFilter, parseLogLevel } from './logFilter';
@@ -64,13 +64,11 @@ let daemonScheduler: DaemonScheduler | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let interactiveStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
-let historyPanel: HistoryPanel | null = null;
-/** Owned by activate(); reused by both the History panel and the live
- *  panel's diff handler. */
+/** Owned by activate(); reused by the live panel's focus-mode diff handler. */
 let historySource: HistorySource | null = null;
 /**
- * Mutable closure for the history panel's read/diff fall-back path.
- * `buildHistorySource` captures this object once at panel-construction time
+ * Mutable closure for history read/diff fallback paths.
+ * `buildHistorySource` captures this object once at construction time
  * and reads `.current` at call-time so we never need to re-instantiate the
  * source when the user navigates between modules.
  */
@@ -414,12 +412,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             applyDiscoveryDiff(moduleId, params);
         },
         onHistoryAdded: (_moduleId, params) => {
-            // Phase H7 — daemon push: a fresh render landed and was
-            // archived. Forward to the History panel; the panel filters
-            // by `entry.module` against the currently-scoped module so an
-            // unrelated render in a background module doesn't pop the
-            // timeline.
-            historyPanel?.onHistoryAdded(params);
+            // Phase H7 — daemon push: a fresh render landed and was archived. History is
+            // now focus-view-only; the live panel resolves it on demand when the user
+            // asks for a diff from the focused preview.
+            void params;
         },
         onChannelClosed: (moduleId) => {
             clearDaemonShownPreviewWarmScopes(moduleId);
@@ -481,7 +477,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     panel = new PreviewPanel(
         context.extensionUri,
         handleWebviewMessage,
-        () => historyPanel?.isVisible() ?? false,
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -507,13 +502,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         }),
     );
 
-    // Phase H7 — Preview History panel (HISTORY.md § "VS Code integration").
-    // Live when `composePreview.daemon.enabled` is true; falls
-    // back to reading `<projectDir>/.compose-preview-history/index.jsonl` +
-    // sidecars when the daemon isn't healthy. View shows up unconditionally
-    // — the view container is contributed in package.json — but its content
-    // is empty when no Kotlin file is in scope. The setScope() driver is
-    // wired below into the active-editor change events.
+    // Phase H7 — preview history source. The standalone History view is not
+    // contributed; history is surfaced from the focus view alongside data products.
     historyScopeRef.current = null;
     historySource = buildHistorySource({
         isDaemonReady: (moduleId) => daemonGate?.isDaemonReady(moduleId) ?? false,
@@ -545,11 +535,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         getCurrentScope: () => historyScopeRef.current,
         logger: outputChannel,
     });
-    historyPanel = new HistoryPanel(context.extensionUri, historySource);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(HistoryPanel.viewId, historyPanel),
-    );
-
     context.subscriptions.push(
         vscode.commands.registerCommand('composePreview.refresh', () =>
             refresh(true, currentScopeFile ?? undefined)),
@@ -2011,7 +1996,6 @@ async function refresh(
         setCurrentScopeFile(null);
         clearHeavyRefreshOptIns();
         historyScopeRef.current = null;
-        historyPanel?.setScope(null);
         if (activeFile && isPreviewSourceFile(activeFile)) {
             maybeShowSetupPrompt(activeFile);
         }
@@ -2082,7 +2066,6 @@ async function refresh(
         ? { moduleId: module, projectDir, previewId: prior!.previewId, previewLabel: prior!.previewLabel }
         : { moduleId: module, projectDir };
     historyScopeRef.current = newScope;
-    historyPanel?.setScope(newScope);
     const modules = [module];
     // Package-qualified path (e.g. `com/example/samplewear/Previews.kt`) so
     // files with the same basename in different packages don't collide.
@@ -2499,7 +2482,6 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 previewLabel: requestedLabel,
             };
             historyScopeRef.current = newScope;
-            historyPanel?.setScope(newScope);
             break;
         }
         case 'openCompileError':

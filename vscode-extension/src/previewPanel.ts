@@ -137,6 +137,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         </button>
     </div>
     <div id="preview-grid" class="preview-grid" role="list" aria-label="Preview cards"></div>
+    <div id="focus-inspector" class="focus-inspector" hidden aria-label="Focused preview data"></div>
 
     <script nonce="${nonce}">
     (function() {
@@ -144,6 +145,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const state = vscode.getState() || { filters: {} };
 
         const grid = document.getElementById('preview-grid');
+        const focusInspector = document.getElementById('focus-inspector');
         const message = document.getElementById('message');
         const filterFunction = document.getElementById('filter-function');
         const filterGroup = document.getElementById('filter-group');
@@ -165,6 +167,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // user gesture. State is per-previewId because hopping between focused cards re-applies
         // the toggle to the new target.
         let a11yOverlayPreviewId = null;
+        const enabledFocusProducts = new Set();
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
         const progressFill = progressBar.querySelector('.progress-fill');
@@ -506,6 +509,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 enabled: turningOn,
             });
             applyA11yOverlayButtonState();
+            renderFocusInspector(card);
         }
 
         function applyLiveBadge() {
@@ -622,6 +626,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
             applyLiveBadge();
             applyInteractiveButtonState();
+            renderFocusInspector(card);
         }
 
         /**
@@ -902,6 +907,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 const visible = getVisibleCards();
                 if (visible.length === 0) {
                     focusPosition.textContent = '0 / 0';
+                    renderFocusInspector(null);
                     publishScopedPreview();
                     return;
                 }
@@ -920,11 +926,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 focusPosition.textContent = (focusIndex + 1) + ' / ' + visible.length;
                 btnPrev.disabled = focusIndex === 0;
                 btnNext.disabled = focusIndex === visible.length - 1;
+                renderFocusInspector(visible[focusIndex]);
             } else {
                 // Clear focus classes for other layouts
                 document.querySelectorAll('.preview-card').forEach(card => {
                     card.classList.remove('focused', 'hidden-by-focus');
                 });
+                renderFocusInspector(null);
             }
             document.querySelectorAll('.image-container').forEach(c => c.removeAttribute('title'));
             publishScopedPreview();
@@ -966,12 +974,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             applyA11yOverlayButtonState();
         }
 
-        // Compute the previewId the panel is currently narrowed to, if any:
-        //   - focus mode: the focused card
-        //   - non-focus: the sole visible card when filters narrowed to one
-        //   - otherwise: null (panel shows multiple previews — module-level history)
-        // Posts the current value to the extension only when it changes so
-        // the History panel re-lists at most once per user-driven narrowing.
+        // Compute the focus-mode previewId. History is intentionally focus-only:
+        // list/grid/filter layouts publish null even if only one card is visible.
+        // Posts only when it changes so the extension does not rebuild history scope
+        // on ordinary filter/layout churn.
         function publishScopedPreview() {
             const visible = getVisibleCards();
             let previewId = null;
@@ -979,8 +985,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 if (visible.length > 0 && focusIndex >= 0 && focusIndex < visible.length) {
                     previewId = visible[focusIndex].dataset.previewId || null;
                 }
-            } else if (visible.length === 1) {
-                previewId = visible[0].dataset.previewId || null;
             }
             if (previewId === lastScopedPreviewId) return;
             lastScopedPreviewId = previewId;
@@ -1021,6 +1025,179 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             state.layout = previousLayout;
             vscode.setState(state);
             applyLayout();
+        }
+
+        function renderFocusInspector(card) {
+            focusInspector.innerHTML = '';
+            focusInspector.hidden = !card;
+            if (!card) return;
+            const previewId = card.dataset.previewId;
+            const p = allPreviews.find(pp => pp.id === previewId);
+            if (!previewId || !p) return;
+
+            const history = document.createElement('section');
+            history.className = 'focus-panel focus-history-panel';
+            history.appendChild(sectionHeader('history', 'History'));
+            const historyActions = document.createElement('div');
+            historyActions.className = 'focus-actions';
+            historyActions.appendChild(actionButton('git-compare', 'HEAD', 'Diff vs last archived render', () => {
+                requestFocusedDiff('head');
+            }));
+            historyActions.appendChild(actionButton('source-control', 'main', 'Diff vs latest archived main render', () => {
+                requestFocusedDiff('main');
+            }));
+            history.appendChild(historyActions);
+
+            const data = document.createElement('section');
+            data.className = 'focus-panel focus-products-panel';
+            data.appendChild(sectionHeader('layers', 'Data Products'));
+            const products = document.createElement('div');
+            products.className = 'focus-product-grid';
+            const findings = cardA11yFindings.get(previewId) || p.a11yFindings || [];
+            const nodes = cardA11yNodes.get(previewId) || p.a11yNodes || [];
+            products.appendChild(productToggle('eye', 'Accessibility', findings.length > 0
+                ? findings.length + ' finding' + (findings.length === 1 ? '' : 's')
+                : 'Overlay', previewId === a11yOverlayPreviewId, findings.length > 0 ? 'warn' : 'idle',
+                () => toggleA11yOverlay()));
+            products.appendChild(productToggle('list-tree', 'Layout', nodes.length > 0
+                ? nodes.length + ' node' + (nodes.length === 1 ? '' : 's')
+                : 'Overlay', previewId === a11yOverlayPreviewId, nodes.length > 0 ? 'ok' : 'idle',
+                () => toggleA11yOverlay()));
+            products.appendChild(productToggle('symbol-string', 'Strings', 'Section',
+                enabledFocusProducts.has('strings'), 'idle', () => toggleFocusProduct('strings')));
+            products.appendChild(productToggle('file-code', 'Resources', 'Section',
+                enabledFocusProducts.has('resources'), 'idle', () => toggleFocusProduct('resources')));
+            products.appendChild(productToggle('text-size', 'Fonts', 'Section',
+                enabledFocusProducts.has('fonts'), 'idle', () => toggleFocusProduct('fonts')));
+            products.appendChild(productToggle('pulse', 'Render', 'Section',
+                enabledFocusProducts.has('render'), 'idle', () => toggleFocusProduct('render')));
+            products.appendChild(productToggle('symbol-color', 'Theme', 'Section',
+                enabledFocusProducts.has('theme'), 'idle', () => toggleFocusProduct('theme')));
+            products.appendChild(productToggle('sync', 'Recomposition', interactivePreviewIds.has(previewId) ? 'Live' : 'Section',
+                enabledFocusProducts.has('recomposition') || interactivePreviewIds.has(previewId),
+                interactivePreviewIds.has(previewId) ? 'ok' : 'idle',
+                () => toggleFocusProduct('recomposition')));
+            data.appendChild(products);
+
+            const controls = document.createElement('section');
+            controls.className = 'focus-panel focus-controls-panel';
+            controls.appendChild(sectionHeader('settings-gear', 'Tools'));
+            const toolActions = document.createElement('div');
+            toolActions.className = 'focus-actions';
+            toolActions.appendChild(actionButton('eye', 'A11y', 'Toggle accessibility overlay', () => {
+                toggleA11yOverlay();
+            }));
+            toolActions.appendChild(actionButton('device-mobile', 'Device', 'Launch on connected Android device', () => {
+                requestLaunchOnDevice();
+            }));
+            toolActions.appendChild(actionButton('circle-large-outline', 'Live', 'Toggle live preview', () => {
+                toggleInteractive(false);
+            }));
+            controls.appendChild(toolActions);
+
+            focusInspector.appendChild(history);
+            focusInspector.appendChild(data);
+            focusInspector.appendChild(controls);
+            const placeholders = buildFocusPlaceholders(p);
+            if (placeholders) focusInspector.appendChild(placeholders);
+        }
+
+        function sectionHeader(icon, label) {
+            const header = document.createElement('div');
+            header.className = 'focus-panel-header';
+            header.innerHTML = '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
+            const span = document.createElement('span');
+            span.textContent = label;
+            header.appendChild(span);
+            return header;
+        }
+
+        function actionButton(icon, label, title, onClick) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'focus-action';
+            btn.title = title;
+            btn.innerHTML = '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
+            const span = document.createElement('span');
+            span.textContent = label;
+            btn.appendChild(span);
+            btn.addEventListener('click', onClick);
+            return btn;
+        }
+
+        function productToggle(icon, label, value, enabled, state, onClick) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'focus-product-chip';
+            chip.dataset.state = state || 'idle';
+            chip.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            chip.title = enabled ? 'Disable ' + label : 'Enable ' + label;
+            chip.innerHTML = '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
+            const text = document.createElement('div');
+            text.className = 'focus-product-text';
+            const name = document.createElement('span');
+            name.className = 'focus-product-name';
+            name.textContent = label;
+            const val = document.createElement('span');
+            val.className = 'focus-product-value';
+            val.textContent = value;
+            text.appendChild(name);
+            text.appendChild(val);
+            chip.appendChild(text);
+            chip.addEventListener('click', onClick);
+            return chip;
+        }
+
+        function toggleFocusProduct(id) {
+            if (enabledFocusProducts.has(id)) {
+                enabledFocusProducts.delete(id);
+            } else {
+                enabledFocusProducts.add(id);
+            }
+            const card = getVisibleCards()[focusIndex];
+            if (layoutMode.value === 'focus' && card) renderFocusInspector(card);
+        }
+
+        function buildFocusPlaceholders(p) {
+            const defs = [
+                ['strings', 'Strings', 'text/strings and i18n/translations'],
+                ['resources', 'Resources', 'resources/used'],
+                ['fonts', 'Fonts', 'fonts/used'],
+                ['render', 'Render', 'render/trace and render/composeAiTrace'],
+                ['theme', 'Theme', 'compose/theme'],
+                ['recomposition', 'Recomposition', 'compose/recomposition'],
+            ].filter(([id]) => enabledFocusProducts.has(id));
+            if (defs.length === 0) return null;
+            const wrapper = document.createElement('section');
+            wrapper.className = 'focus-panel focus-placeholder-list';
+            wrapper.appendChild(sectionHeader('panel', 'Enabled'));
+            defs.forEach(([id, label, kind]) => {
+                const details = document.createElement('details');
+                details.className = 'focus-placeholder';
+                details.dataset.product = id;
+                const summary = document.createElement('summary');
+                summary.textContent = label;
+                details.appendChild(summary);
+                const body = document.createElement('div');
+                body.className = 'focus-placeholder-body';
+                body.textContent = kind;
+                details.appendChild(body);
+                wrapper.appendChild(details);
+            });
+            return wrapper;
+        }
+
+        function renderSummary(p) {
+            const captures = p.captures ? p.captures.length : 0;
+            if (captures > 1) return captures + ' captures';
+            const c = p.captures && p.captures[0];
+            if (c && c.label) return c.label;
+            return 'Static';
+        }
+
+        function themeSummary(p) {
+            if (p.params.backgroundColor) return 'Background';
+            return p.params.showSystemUi ? 'System UI' : 'Preview';
         }
 
         // Live-panel diff: only meaningful when one preview is focused. Pulls
@@ -2271,6 +2448,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     const layer = card.querySelector('.a11y-hierarchy-overlay');
                     if (layer) layer.remove();
                 }
+            }
+            if (layoutMode.value === 'focus') {
+                const focused = getVisibleCards()[focusIndex];
+                if (focused === card) renderFocusInspector(card);
             }
         }
 

@@ -58,13 +58,6 @@
                     "id": "composePreview.panel",
                     "name": "Previews",
                     "visibility": "visible"
-                },
-                {
-                    "type": "webview",
-                    "id": "composePreview.historyPanel",
-                    "name": "History",
-                    "when": "config.composePreview.daemon.enabled",
-                    "visibility": "collapsed"
                 }
             ]
         },
