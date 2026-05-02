@@ -41,6 +41,7 @@ import {
     resolveAdbPath,
     runAdb,
 } from './launchOnDevice';
+import { hasFreshRenderStamp, writeRenderFreshnessStamp } from './renderFreshness';
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -80,69 +81,21 @@ const historyScopeRef: { current: HistoryScope | null } = { current: null };
  *  scoped focus signals can map "active file → preview IDs" without an
  *  extension-side discovery round-trip. */
 /**
- * Returns the mtime (ms since epoch) of the oldest on-disk PNG referenced by
- * any rendered capture in [previews] across [modules], or null if none of the
- * paths exist. Cheap stat call per capture; results are not cached because
- * renders rewrite these files on every save.
- */
-async function oldestRenderMtime(
-    previews: PreviewInfo[],
-    modules: string[],
-): Promise<number | null> {
-    if (!gradleService) { return null; }
-    let oldest: number | null = null;
-    for (const preview of previews) {
-        for (const capture of preview.captures) {
-            if (!capture.renderOutput) { continue; }
-            // Match the path the readPreviewImage resolver builds.
-            const mod = modules.find(m => previewModuleMap.get(preview.id) === m) ?? modules[0];
-            const pngPath = path.join(
-                gradleService.workspaceRoot, mod,
-                'build', 'compose-previews', capture.renderOutput,
-            );
-            try {
-                const stat = await fs.promises.stat(pngPath);
-                const mtime = stat.mtimeMs;
-                if (oldest == null || mtime < oldest) { oldest = mtime; }
-            } catch {
-                // File missing — discover-only pass on a never-rendered preview.
-                // Don't count toward oldest; the banner reflects what the user
-                // is actually seeing on screen.
-            }
-        }
-    }
-    return oldest;
-}
-
-/** Stat the source file and return its mtime, or null on any error.
- *  Used to detect "user edited since the rendered PNGs were written". */
-async function sourceFileMtime(filePath: string): Promise<number | null> {
-    try {
-        const stat = await fs.promises.stat(filePath);
-        return stat.mtimeMs;
-    } catch {
-        return null;
-    }
-}
-
-/**
- * True when the active source file's mtime is newer than the oldest visible
- * preview's PNG. Cheap signal that the on-disk renders don't reflect the
- * current buffer — used both to suppress reading those stale bytes into the
- * webview and to schedule an automatic re-render. Conservative: any
- * unreadable file (missing PNG, source-stat failure) yields `false` so we
- * default to "use what's on disk" rather than spuriously trigger renders.
+ * True when the active source file has changed since a successful render
+ * stamped the current preview set. This deliberately does not compare source
+ * mtime against PNG mtimes: Gradle build-cache restores preserve derived
+ * artefacts whose filesystem mtimes can be older than source files even though
+ * the cache key proves they were rendered from those inputs.
  */
 async function isSourceNewerThanRenders(
     activeFile: string,
     previews: PreviewInfo[],
     modules: string[],
 ): Promise<boolean> {
-    const [sourceMtime, oldestMtime] = await Promise.all([
-        sourceFileMtime(activeFile),
-        oldestRenderMtime(previews, modules),
-    ]);
-    return sourceMtime != null && oldestMtime != null && sourceMtime > oldestMtime;
+    if (!gradleService) { return false; }
+    const module = modules[0];
+    if (!module) { return false; }
+    return !(await hasFreshRenderStamp(gradleService.workspaceRoot, module, activeFile, previews));
 }
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
@@ -2196,9 +2149,25 @@ async function refresh(
         for (const mod of modules) {
             if (abort.signal.aborted) { return 'cancelled'; }
 
-            const manifest = forceRender
+            let manifest = !forceRender ? gradleService.readManifest(mod) : null;
+            if (manifest) {
+                const manifestVisiblePreviews = manifest.previews.filter(p => p.sourceFile === filterFile);
+                const fresh = manifestVisiblePreviews.length > 0
+                    && await hasFreshRenderStamp(
+                        gradleService.workspaceRoot,
+                        mod,
+                        activeFile,
+                        manifestVisiblePreviews,
+                    );
+                if (fresh) {
+                    logLine(`cache hit: ${path.basename(activeFile)} render stamp fresh — skipping Gradle`);
+                } else {
+                    manifest = null;
+                }
+            }
+            manifest = manifest ?? (forceRender
                 ? await gradleService.renderPreviews(mod, tier, taskOpts)
-                : await gradleService.discoverPreviews(mod, taskOpts);
+                : await gradleService.discoverPreviews(mod, taskOpts));
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
@@ -2290,6 +2259,9 @@ async function refresh(
         });
         hasPreviewsLoaded = true;
         logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
+        if (forceRender && gradleService) {
+            await writeRenderFreshnessStamp(gradleService.workspaceRoot, module, activeFile, visiblePreviews);
+        }
 
         // Gradle is done; the rest of the work (reading PNGs, base64-encoding,
         // pushing to webview) is extension-side. The tracker has already
