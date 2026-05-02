@@ -144,6 +144,161 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun clickableClickMutatesHeldState() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-clickable").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = CLICKABLE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "clickable fixture should start red",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.CLICK,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = INTERACTIVE_HEIGHT_PX / 2,
+          )
+        )
+
+        val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val greenAfter = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "click should drive Modifier.clickable state to green; got " +
+            "${"%.2f".format(greenAfter * 100)}% green",
+          greenAfter >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun fingerDragScrollsVerticalScrollable() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-scroll").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = SCROLL_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "scroll fixture should initially show the red top item",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_DOWN,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 82,
+          )
+        )
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_MOVE,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 8,
+          )
+        )
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_UP,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 8,
+          )
+        )
+
+        val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val greenAfter = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "finger drag should scroll the verticalScroll content enough to reveal green; got " +
+            "${"%.2f".format(greenAfter * 100)}% green",
+          greenAfter >= 0.35,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun rotaryScrollDispatchesAsRsbInput() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-rsb").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = ROTARY_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "rotary fixture should start red",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.ROTARY_SCROLL,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = INTERACTIVE_HEIGHT_PX / 2,
+            scrollDeltaY = 120f,
+          )
+        )
+
+        val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val greenAfter = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "rotary scroll should reach the focused onRotaryScrollEvent handler; got " +
+            "${"%.2f".format(greenAfter * 100)}% green",
+          greenAfter >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun acquireWithoutResolverThrowsUnsupported() {
     val host = RobolectricHost(sandboxCount = 2)
     assertFalse(
@@ -446,6 +601,36 @@ class AndroidInteractiveSessionTest {
           outputBaseName = "interactive-darkaware",
           uiMode = RenderSpec.SpecUiMode.DARK,
         )
+      CLICKABLE_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "ClickableToggleSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-clickable",
+        )
+      SCROLL_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "DragScrollableSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-scroll",
+        )
+      ROTARY_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "RotaryToggleSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-rsb",
+        )
       else -> null
     }
   }
@@ -488,6 +673,9 @@ class AndroidInteractiveSessionTest {
   companion object {
     private const val INTERACTIVE_PREVIEW_ID = "interactive-clicktoggle"
     private const val DARK_PREVIEW_ID = "interactive-darkaware"
+    private const val CLICKABLE_PREVIEW_ID = "interactive-clickable"
+    private const val SCROLL_PREVIEW_ID = "interactive-scroll"
+    private const val ROTARY_PREVIEW_ID = "interactive-rsb"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350

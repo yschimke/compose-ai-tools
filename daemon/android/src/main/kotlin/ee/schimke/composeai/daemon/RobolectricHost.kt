@@ -2,8 +2,13 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasRequestFocusAction
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
@@ -910,8 +915,6 @@ open class RobolectricHost(
      */
     private val engine: RenderEngine by lazy { RenderEngine() }
 
-    private var heldPointerDownTimeMs: Long = 0L
-
     /**
      * B2.3 — per-sandbox lifecycle counters, instantiated inside the sandbox so `sandboxAgeMs`
      * is wall-clock since `holdSandboxOpen` started (i.e. since the sandbox booted, not since
@@ -1423,19 +1426,12 @@ open class RobolectricHost(
     }
 
     /**
-     * INTERACTIVE-ANDROID.md § 5 (Option A) — synthesise + dispatch a [android.view.MotionEvent]
-     * on the rule's UI thread. The probe at `RobolectricInteractiveProbeTest` empirically
-     * confirmed this reaches `Modifier.pointerInput { awaitFirstDown() }` under a paused
-     * `mainClock` provided we advance the clock by [POINTER_HOLD_MS] after the dispatch.
-     *
-     * `click` synthesises touchscreen/finger ACTION_DOWN + ACTION_UP at the same coords;
-     * `pointerDown` / `pointerMove` / `pointerUp` send single touchscreen/finger events. This means
-     * the VS Code mouse gesture is interpreted as a finger tap/drag by Android previews, which is
-     * what scrollable mobile composables expect. `rotaryScroll` dispatches a generic
-     * SOURCE_ROTARY_ENCODER ACTION_SCROLL so Wear Compose receives it like an RSB turn. Unknown kinds
-     * are silently dropped — the host-side
-     * [AndroidInteractiveSession.dispatch] already filters key events out, so we should never
-     * see them here.
+     * INTERACTIVE-ANDROID.md § 5 — dispatch interactive input inside the held Compose rule. Clicks
+     * prefer the semantics action under the cursor so `Modifier.clickable` / `Button` previews
+     * mutate state under the paused clock; non-click touch events use Compose's root touch injector
+     * so desktop mouse drags behave like finger drags. Rotary scroll first focuses the target under
+     * the wheel position, then sends a native SOURCE_ROTARY_ENCODER ACTION_SCROLL to the Compose
+     * view, matching Wear's RSB route.
      */
     private fun dispatchHeldMotion(
       rule:
@@ -1445,175 +1441,136 @@ open class RobolectricHost(
         >,
       cmd: InteractiveCommand.Dispatch,
     ) {
-      rule.runOnUiThread {
-        val decor = rule.activity.window.decorView
-        val now = android.os.SystemClock.uptimeMillis()
-        val x = cmd.pixelX.toFloat()
-        val y = cmd.pixelY.toFloat()
-        when (cmd.kind) {
-          "click" -> {
-            val down =
-              obtainFingerTouchEvent(
-                now,
-                now,
-                android.view.MotionEvent.ACTION_DOWN,
-                x,
-                y,
-              )
-            try {
-              decor.dispatchTouchEvent(down)
-            } finally {
-              down.recycle()
-            }
-            val up =
-              obtainFingerTouchEvent(
-                now,
-                now + POINTER_HOLD_MS,
-                android.view.MotionEvent.ACTION_UP,
-                x,
-                y,
-              )
-            try {
-              decor.dispatchTouchEvent(up)
-            } finally {
-              up.recycle()
-            }
+      val position = Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
+      when (cmd.kind) {
+        "click" -> {
+          if (!performClickActionAt(rule, position)) {
+            rule.onRoot().performTouchInput { down(position) }
+            rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+            rule.onRoot().performTouchInput { move() }
+            rule.mainClock.advanceTimeBy(POINTER_HOLD_MS - POINTER_MOVE_MS)
+            rule.onRoot().performTouchInput { up() }
           }
-          "pointerDown" -> {
-            heldPointerDownTimeMs = now
-            val ev =
-              obtainFingerTouchEvent(
-                heldPointerDownTimeMs,
-                now,
-                android.view.MotionEvent.ACTION_DOWN,
-                x,
-                y,
-              )
-            try {
-              decor.dispatchTouchEvent(ev)
-            } finally {
-              ev.recycle()
-            }
-          }
-          "pointerMove" -> {
-            val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
-            val ev =
-              obtainFingerTouchEvent(
-                downTime,
-                now,
-                android.view.MotionEvent.ACTION_MOVE,
-                x,
-                y,
-              )
-            try {
-              decor.dispatchTouchEvent(ev)
-            } finally {
-              ev.recycle()
-            }
-          }
-          "pointerUp" -> {
-            val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
-            val ev =
-              obtainFingerTouchEvent(
-                downTime,
-                now,
-                android.view.MotionEvent.ACTION_UP,
-                x,
-                y,
-              )
-            try {
-              decor.dispatchTouchEvent(ev)
-            } finally {
-              ev.recycle()
-              heldPointerDownTimeMs = 0L
-            }
-          }
-          "rotaryScroll" -> {
-            val delta = cmd.scrollDeltaY ?: 0f
-            if (delta != 0f) {
-              val props =
-                arrayOf(
-                  android.view.MotionEvent.PointerProperties().apply {
-                    id = 0
-                    toolType = android.view.MotionEvent.TOOL_TYPE_UNKNOWN
-                  }
-                )
-              val coords =
-                arrayOf(
-                  android.view.MotionEvent.PointerCoords().apply {
-                    this.x = x
-                    this.y = y
-                    setAxisValue(
-                      android.view.MotionEvent.AXIS_SCROLL,
-                      if (delta > 0f) -1f else 1f,
-                    )
-                  }
-                )
-              val ev =
-                android.view.MotionEvent.obtain(
-                  now,
-                  now,
-                  android.view.MotionEvent.ACTION_SCROLL,
-                  1,
-                  props,
-                  coords,
-                  /* metaState = */ 0,
-                  /* buttonState = */ 0,
-                  /* xPrecision = */ 1f,
-                  /* yPrecision = */ 1f,
-                  /* deviceId = */ 0,
-                  /* edgeFlags = */ 0,
-                  android.view.InputDevice.SOURCE_ROTARY_ENCODER,
-                  /* flags = */ 0,
-                )
-              try {
-                decor.dispatchGenericMotionEvent(ev)
-              } finally {
-                ev.recycle()
-              }
-            }
+        }
+        "pointerDown" -> {
+          rule.onRoot().performTouchInput { down(position) }
+        }
+        "pointerMove" -> {
+          rule.onRoot().performTouchInput { moveTo(position) }
+        }
+        "pointerUp" -> {
+          rule.onRoot().performTouchInput { up() }
+        }
+        "rotaryScroll" -> {
+          val delta = cmd.scrollDeltaY ?: 0f
+          if (delta != 0f) {
+            performRequestFocusAt(rule, position)
+            dispatchRotaryScroll(rule, position, delta)
           }
         }
       }
     }
 
-    private fun obtainFingerTouchEvent(
-      downTimeMs: Long,
-      eventTimeMs: Long,
-      action: Int,
-      x: Float,
-      y: Float,
-    ): android.view.MotionEvent {
-      val props =
-        arrayOf(
-          android.view.MotionEvent.PointerProperties().apply {
-            id = 0
-            toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
-          }
+    private fun performClickActionAt(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      position: Offset,
+    ): Boolean {
+      val clickables = rule.onAllNodes(hasClickAction(), useUnmergedTree = true)
+      val nodes = clickables.fetchSemanticsNodes(atLeastOneRootRequired = false)
+      val target =
+        nodes
+          .withIndex()
+          .filter { (_, node) -> node.boundsInRoot.contains(position) }
+          .minByOrNull { (_, node) -> node.boundsInRoot.width * node.boundsInRoot.height }
+          ?: return false
+      rule.runOnUiThread { target.value.config[SemanticsActions.OnClick].action?.invoke() }
+      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      rule.waitForIdle()
+      return true
+    }
+
+    private fun performRequestFocusAt(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      position: Offset,
+    ): Boolean {
+      val focusables = rule.onAllNodes(hasRequestFocusAction(), useUnmergedTree = true)
+      val nodes = focusables.fetchSemanticsNodes(atLeastOneRootRequired = false)
+      val target =
+        nodes
+          .withIndex()
+          .filter { (_, node) -> node.boundsInRoot.contains(position) }
+          .minByOrNull { (_, node) -> node.boundsInRoot.width * node.boundsInRoot.height }
+          ?: return false
+      rule.runOnUiThread { target.value.config[SemanticsActions.RequestFocus].action?.invoke() }
+      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      rule.waitForIdle()
+      return true
+    }
+
+    private fun dispatchRotaryScroll(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      position: Offset,
+      delta: Float,
+    ) {
+      val eventTime = rule.mainClock.currentTime
+      val ev =
+        android.view.MotionEvent.obtain(
+          /* downTime = */ 0L,
+          /* eventTime = */ eventTime,
+          android.view.MotionEvent.ACTION_SCROLL,
+          1,
+          arrayOf(
+            android.view.MotionEvent.PointerProperties().apply {
+              id = 0
+              toolType = android.view.MotionEvent.TOOL_TYPE_UNKNOWN
+            }
+          ),
+          arrayOf(
+            android.view.MotionEvent.PointerCoords().apply {
+              x = position.x
+              y = position.y
+              setAxisValue(android.view.MotionEvent.AXIS_SCROLL, if (delta > 0f) -1f else 1f)
+            }
+          ),
+          /* metaState = */ 0,
+          /* buttonState = */ 0,
+          /* xPrecision = */ 1f,
+          /* yPrecision = */ 1f,
+          /* deviceId = */ 0,
+          /* edgeFlags = */ 0,
+          android.view.InputDevice.SOURCE_ROTARY_ENCODER,
+          /* flags = */ 0,
         )
-      val coords =
-        arrayOf(
-          android.view.MotionEvent.PointerCoords().apply {
-            this.x = x
-            this.y = y
-          }
-        )
-      return android.view.MotionEvent.obtain(
-        downTimeMs,
-        eventTimeMs,
-        action,
-        1,
-        props,
-        coords,
-        /* metaState = */ 0,
-        /* buttonState = */ 0,
-        /* xPrecision = */ 1f,
-        /* yPrecision = */ 1f,
-        /* deviceId = */ 0,
-        /* edgeFlags = */ 0,
-        android.view.InputDevice.SOURCE_TOUCHSCREEN,
-        /* flags = */ 0,
-      )
+      try {
+        rule.runOnUiThread { interactiveTargetView(rule).dispatchGenericMotionEvent(ev) }
+      } finally {
+        ev.recycle()
+      }
+      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      rule.waitForIdle()
+    }
+
+    private fun interactiveTargetView(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >
+    ): android.view.View {
+      val content = rule.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+      return content?.getChildAt(0) ?: rule.activity.window.decorView
     }
 
     private fun pxToDp(px: Int, density: Float): Int {
@@ -1644,14 +1601,10 @@ open class RobolectricHost(
        */
       private const val HELD_CAPTURE_ADVANCE_MS: Long = 32L
 
-      /**
-       * Hold time between an ACTION_DOWN and its ACTION_UP for `click`, and the post-dispatch
-       * `mainClock` advance for any kind. 100 ms is the same window
-       * `:daemon:desktop`'s `DesktopInteractiveSession.CLICK_HOLD_MS` uses — long enough for
-       * `detectTapGestures` to register an unambiguous tap, short enough that the click feels
-       * instant.
-       */
+      /** Post-dispatch `mainClock` advance for any input kind. */
       private const val POINTER_HOLD_MS: Long = 100L
+
+      private const val POINTER_MOVE_MS: Long = 16L
     }
   }
 }
