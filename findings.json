@@ -47,6 +47,16 @@
       "previewId": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round",
       "sourceFile": "com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.a11y.png",
+      "cleanBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "CircularProgressIndicatorPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
     }
   ]
 }
