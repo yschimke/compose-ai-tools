@@ -159,6 +159,7 @@ class PreviewManifestRouter(
 private fun PreviewManifestEntry.renderSpec(): RenderSpec {
   val resolved = resolved()
   return RenderSpec(
+    previewId = id,
     className = className,
     functionName = functionName,
     widthPx = resolved.widthPx,

@@ -281,6 +281,20 @@ class RenderEngine(
 
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") { state.outputFile.writeBytes(pngData.bytes) }
+    dataDir?.let { dataRoot ->
+      val previewId = state.spec.previewId ?: state.spec.outputBaseName
+      trace.section("compose:fontsUsedDataProduct") {
+        // Compose Desktop's paragraph builder casts LocalFontFamilyResolver to Compose's internal
+        // resolver implementation, so replacing it with a recording proxy crashes text layout.
+        // Keep the product available and path-backed on desktop, but leave resolver-level capture
+        // to the Android backend until desktop exposes a proxy-safe resolver seam.
+        FontsUsedDataProducer.writeArtifacts(
+          dataRoot,
+          previewId,
+          FontsUsedPayload(fonts = emptyList()),
+        )
+      }
+    }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
