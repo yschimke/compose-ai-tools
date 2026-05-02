@@ -307,7 +307,7 @@ export class DaemonScheduler {
         // `composePreview.a11y.alwaysSubscribe`, subscribe every newly-visible preview to
         // [A11Y_OVERLAY_KINDS] so diagnostics + the hierarchy overlay fire without entering
         // focus mode. dataSubscribe rejects gracefully (DataProductUnknown) when the daemon
-        // wasn't built with `attachA11y = true` on the producer side; that path absorbs the
+        // was not built with the a11y data plugin enabled; that path absorbs the
         // rejection and rolls back the bookkeeping (matching `setDataProductSubscription`).
         if (this.isA11yAlwaysSubscribed()) {
             for (const id of visible) {

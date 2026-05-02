@@ -1344,14 +1344,11 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
       )
-      // D2 — opt-out for the a11y data products (see `DaemonExtension.attachA11y`). When
-      // `false`, `DaemonMain` constructs `DataProductRegistry.Empty` and the renderer skips
-      // a11y mode, which saves the per-render ATF cost for users who don't consume the
-      // overlay. Pairs with the VS Code `composePreview.a11y.alwaysSubscribe` setting on the
-      // consumer side.
+      // Data-product plugin selection. The daemon consumes the same a11y selector as
+      // `renderPreviews`; there is no daemon-specific a11y feature flag.
       this.systemProperties.put(
-        "composeai.daemon.attachA11y",
-        extension.daemon.attachA11y.map { it.toString() },
+        "composeai.dataPlugins.a11y.enabled",
+        resolveA11yEnabled(project, extension).map { it.toString() },
       )
       this.systemProperties.put(
         "composeai.daemon.perfettoTrace",
@@ -1430,8 +1427,7 @@ internal object AndroidPreviewSupport {
    * Returns a lazy `Provider<Boolean>` for the effective a11y data-product selection. The
    * `-PcomposePreview.dataPlugins.a11y.enableAllChecks=<true|false>` Gradle property enables every
    * a11y check; `-PcomposePreview.dataPlugins.a11y.checks=atf,hierarchy` enables only named a11y
-   * checks. The legacy `-PcomposePreview.accessibilityChecks.enabled=<true|false>` property remains
-   * as a fallback for one release so older editor integrations keep working.
+   * checks.
    *
    * **Deliberately returns a Provider, not a Boolean.** Reading `.get()` at configuration time keys
    * the configuration cache on the current property value, which means every VSCode toggle would
@@ -1456,11 +1452,6 @@ internal object AndroidPreviewSupport {
       project.providers
         .gradleProperty("composePreview.dataPlugins.a11y.enableAllChecks")
         .map { it.toBooleanStrictOrNull() ?: false }
-        .orElse(
-          project.providers.gradleProperty("composePreview.accessibilityChecks.enabled").map {
-            it.toBooleanStrictOrNull() ?: false
-          }
-        )
         .orElse(configuredAllChecks)
     val selectedChecks =
       project.providers
@@ -1482,11 +1473,6 @@ internal object AndroidPreviewSupport {
     project.providers
       .gradleProperty("composePreview.dataPlugins.a11y.annotateScreenshots")
       .map { it.toBooleanStrictOrNull() ?: true }
-      .orElse(
-        project.providers
-          .gradleProperty("composePreview.accessibilityChecks.annotateScreenshots")
-          .map { it.toBooleanStrictOrNull() ?: true }
-      )
       .orElse(a11yExtension(extension).annotateScreenshots)
 
   private fun a11yExtension(extension: PreviewExtension): A11yDataPluginExtension =

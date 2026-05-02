@@ -27,19 +27,6 @@ class DaemonExtensionTest {
     // Warm spare on by default — pays double idle memory for zero
     // user-visible recycle pause. Off-by-default would be a regression.
     assertThat(daemon.warmSpare.get()).isTrue()
-    // D2 — attachA11y on by default so the data-product surface advertises a11y kinds.
-    // Flipping this to false would silently break the focus-mode overlay and the
-    // VS Code `composePreview.a11y.alwaysSubscribe` setting; defaults are pinned here
-    // so a regression is loud.
-    assertThat(daemon.attachA11y.get()).isTrue()
-  }
-
-  @Test
-  fun `attachA11y is settable per consumer`() {
-    val project = ProjectBuilder.builder().build()
-    val daemon = project.objects.newInstance(DaemonExtension::class.java)
-    daemon.attachA11y.set(false)
-    assertThat(daemon.attachA11y.get()).isFalse()
   }
 
   @Test
