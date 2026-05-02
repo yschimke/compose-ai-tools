@@ -507,14 +507,14 @@
     "captureLabel": "",
     "functionName": "CircularProgressIndicatorPreview",
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
-    "sha256": "a1684d8dd51e00fbb7920d3aafad187143516c312a12580fe54f19d71e460d50",
+    "sha256": "96d5052437d77a5d291d450a05a1bd9ad4ecc3bb3e9558c39e61b58f03183e51",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Small Round": {
     "captureLabel": "",
     "functionName": "CircularProgressIndicatorPreview",
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png",
-    "sha256": "5e05d1a8a78ad4937731786b48095c9e88db70e49a32638891c7e322349fe723",
+    "sha256": "db99f08046c7235f255cb810cb4d73631a5a2108f2087e0e205d148207c784d9",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
