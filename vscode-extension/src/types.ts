@@ -395,7 +395,17 @@ export type ExtensionToWebview =
      * focus-mode "LIVE" toggle for any focused preview owned by the
      * module. See docs/daemon/INTERACTIVE.md § 3 for the UI surface.
      */
-    | { command: 'setInteractiveAvailability'; moduleId: string; ready: boolean };
+    | { command: 'setInteractiveAvailability'; moduleId: string; ready: boolean }
+    /**
+     * Drop every active interactive (live-stream) UI state on the panel side.
+     * Posted by the extension when the user moves focus away from the panel's
+     * scope file (active editor change to a different file) — the daemon-side
+     * streams are flushed in parallel via `interactive/stop`. The panel
+     * clears the LIVE badge / .live class / `interactivePreviewIds` set
+     * without sending its own `setInteractive` messages back (those would
+     * race the extension's flush). See INTERACTIVE.md § 3.
+     */
+    | { command: 'clearInteractive' };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
