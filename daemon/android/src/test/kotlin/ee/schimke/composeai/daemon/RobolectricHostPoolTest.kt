@@ -140,6 +140,40 @@ class RobolectricHostPoolTest {
   }
 
   @Test
+  fun normalRendersAvoidInteractiveSlotWhenHeldSessionIsPinned() {
+    val host = RobolectricHost(sandboxCount = 2)
+    val slotOnePayload =
+      (0 until 64)
+        .map { i -> "previewId=com.example.preview.HashesToInteractiveSlot$i" }
+        .first { payload ->
+          host.chooseSlotIndexForTest(
+            payload = payload,
+            id = 100L,
+            interactiveSlotPinned = false,
+          ) == RobolectricHost.INTERACTIVE_SLOT_INDEX
+        }
+
+    assertEquals(
+      "test setup should pick a payload that normally hashes to the interactive slot",
+      RobolectricHost.INTERACTIVE_SLOT_INDEX,
+      host.chooseSlotIndexForTest(
+        payload = slotOnePayload,
+        id = 100L,
+        interactiveSlotPinned = false,
+      ),
+    )
+    assertEquals(
+      "when slot 1 is held by live interactive mode, normal renderNow dispatch must stay on slot 0",
+      0,
+      host.chooseSlotIndexForTest(
+        payload = slotOnePayload,
+        id = 100L,
+        interactiveSlotPinned = true,
+      ),
+    )
+  }
+
+  @Test
   fun rejectsLegacyHolderPlusFactory() {
     // SANDBOX-POOL-FOLLOWUPS.md (#1) — the two constructor paths are mutually exclusive. Pre-#1
     // the constraint was "no holder when sandboxCount > 1"; now the constraint is "use either

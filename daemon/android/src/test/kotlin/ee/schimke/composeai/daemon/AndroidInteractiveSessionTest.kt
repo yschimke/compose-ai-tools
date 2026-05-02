@@ -411,6 +411,35 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun previewManifestRouterKeepsPreviewIdInRoutedPayloadForSlotAffinity() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = SCROLL_PREVIEW_ID,
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "DragScrollableSquare",
+              widthPx = INTERACTIVE_WIDTH_PX,
+              heightPx = INTERACTIVE_HEIGHT_PX,
+              density = 1.0f,
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest, sandboxCount = 2)
+
+    val routed = router.routePayload("previewId=$SCROLL_PREVIEW_ID;widthPx=128")
+
+    assertTrue(
+      "routed payload must retain previewId so RobolectricHost can keep renderNow off the " +
+        "held interactive slot by preview affinity",
+      routed.split(';').contains("previewId=$SCROLL_PREVIEW_ID"),
+    )
+    assertTrue("routed payload should still carry resolved class", routed.contains("className="))
+    assertTrue("inbound overrides must survive routing", routed.contains("widthPx=128"))
+  }
+
+  @Test
   fun acquireWithSandboxCountOneThrowsUnsupported() {
     // sandboxCount = 1 should refuse interactive even when a resolver is wired — the single slot
     // can't be sacrificed without taking normal renders down.

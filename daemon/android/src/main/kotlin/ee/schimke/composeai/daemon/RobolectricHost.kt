@@ -523,11 +523,23 @@ open class RobolectricHost(
    * `Math.floorMod` keeps the slot index non-negative for any hash. With `sandboxCount = 1` both
    * paths collapse to slot 0 — bit-identical with the pre-pool single-sandbox dispatch.
    */
-  private fun chooseSlotIndex(render: RenderRequest.Render): Int {
+  internal fun chooseSlotIndexForTest(
+    payload: String,
+    id: Long,
+    interactiveSlotPinned: Boolean = false,
+  ): Int = chooseSlotIndex(RenderRequest.Render(id = id, payload = payload), interactiveSlotPinned)
+
+  private fun chooseSlotIndex(
+    render: RenderRequest.Render,
+    interactiveSlotPinned: Boolean = activeInteractiveStreamId.get() != null,
+  ): Int {
     if (sandboxCount == 1) return 0
     val previewId = parsePreviewIdFromPayload(render.payload)
     val key: Int = previewId?.hashCode() ?: render.id.hashCode()
-    return Math.floorMod(key, sandboxCount)
+    if (!interactiveSlotPinned) return Math.floorMod(key, sandboxCount)
+    val normalSlotCount = sandboxCount - 1
+    val normalSlot = Math.floorMod(key, normalSlotCount)
+    return if (normalSlot < INTERACTIVE_SLOT_INDEX) normalSlot else normalSlot + 1
   }
 
   /**
