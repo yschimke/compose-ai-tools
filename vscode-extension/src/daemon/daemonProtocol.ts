@@ -141,6 +141,19 @@ export interface InitializeResult {
          * resolve-time.
          */
         knownDevices?: KnownDevice[];
+        /**
+         * The `PreviewOverrides` field names this daemon's host actually applies (see
+         * PROTOCOL.md § 5 `renderNow.overrides`). Names match the JSON spelling on the
+         * wire: `widthPx`, `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`,
+         * `orientation`, `device`. Lets clients grey out unsupported sliders. Empty list
+         * = pre-feature daemon (clients treat absent and `[]` identically and assume any
+         * field they pass might be ignored).
+         *
+         * Today: Robolectric advertises all eight; Desktop omits `localeTag` (no
+         * `LocalLocale` CompositionLocal) and `orientation` (no rotation concept on
+         * `ImageComposeScene`).
+         */
+        supportedOverrides?: string[];
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };

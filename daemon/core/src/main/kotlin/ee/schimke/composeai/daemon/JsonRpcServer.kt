@@ -592,6 +592,11 @@ class JsonRpcServer(
             // clients can render labels like "Pixel 5 — 393×851 dp @ 2.75x" without
             // re-resolving.
             knownDevices = buildKnownDevices(),
+            // PROTOCOL.md § 3 — surface which `PreviewOverrides` fields this host actually
+            // applies, so clients can grey out unsupported sliders and MCP can warn agents who
+            // set fields the backend would silently ignore. Sorted for stable wire ordering;
+            // pre-feature hosts inherit `emptySet()` from the interface, projected to `[]`.
+            supportedOverrides = host.supportedOverrides.sorted(),
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty
@@ -1644,8 +1649,8 @@ class JsonRpcServer(
    * unseen cards.
    *
    * Notifies the registry via [DataProductRegistry.onUnsubscribe] for every dropped pair so
-   * producers with per-subscription state (`compose/recomposition`'s delta counters, etc.) can
-   * tear down even when the client doesn't send an explicit `data/unsubscribe`.
+   * producers with per-subscription state (`compose/recomposition`'s delta counters, etc.) can tear
+   * down even when the client doesn't send an explicit `data/unsubscribe`.
    */
   private fun pruneSubscriptionsToVisible(visible: Set<String>) {
     val toDrop = subscriptions.keys - visible

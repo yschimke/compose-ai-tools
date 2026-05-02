@@ -119,6 +119,7 @@ Result:
     sandboxRecycle: boolean;
     leakDetection: ("light" | "heavy")[];   // reserved; always [] today (TODO B2.4)
     knownDevices?: KnownDevice[];    // catalog of @Preview(device=...) ids the daemon recognises
+    supportedOverrides?: string[];   // PreviewOverrides field names this host actually applies
   };
   // KnownDevice — one entry per id in DeviceDimensions.KNOWN_DEVICE_IDS, projected to wire shape.
   // `id` is the string a caller passes via renderNow.overrides.device; widthDp/heightDp/density
@@ -126,6 +127,14 @@ Result:
   // Empty list = pre-feature daemon; treat absent and `[]` identically.
   // The `spec:width=…,height=…,dpi=…` grammar is not enumerable — clients pass it as a
   // free-form `device` override and the daemon parses it at resolve-time.
+  //
+  // supportedOverrides — the `PreviewOverrides` field names this daemon's host actually applies
+  // (subset of {"widthPx","heightPx","density","localeTag","fontScale","uiMode","orientation",
+  // "device"}). Lets clients grey out unsupported sliders. Empty list = pre-feature daemon;
+  // treat absent and `[]` identically and assume any field might be ignored.
+  // Today: Robolectric advertises all eight; Desktop omits "localeTag" (no `LocalLocale`
+  // CompositionLocal + `Locale.setDefault(...)` is JVM-thread-unsafe) and "orientation"
+  // (no rotation concept on `ImageComposeScene`).
   classpathFingerprint: string;      // SHA-256 hex of the resolved test classpath
   manifest: {
     path: string;                    // absolute path to the daemon's working previews.json
