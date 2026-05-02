@@ -5,10 +5,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -103,6 +105,28 @@ fun ClickToggleSquare() {
         }
       }
   )
+}
+
+/**
+ * Live interactive fixture that exposes Compose's frame clock as pixels. It starts red and turns
+ * green after at least 250 ms of frame-clock time has elapsed. If [ImageComposeScene.render] is
+ * called without an explicit timestamp, every frame is rendered at `nanoTime = 0` and this preview
+ * never advances.
+ */
+@Composable
+fun FrameClockSquare() {
+  var firstFrameNs by remember { mutableStateOf<Long?>(null) }
+  var elapsedNs by remember { mutableStateOf(0L) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      withFrameNanos { frameNs ->
+        val first = firstFrameNs ?: frameNs.also { firstFrameNs = it }
+        elapsedNs = frameNs - first
+      }
+    }
+  }
+  val color = if (elapsedNs >= 250_000_000L) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
 }
 
 /**

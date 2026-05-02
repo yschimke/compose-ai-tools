@@ -115,6 +115,63 @@ class DesktopInteractiveSessionTest {
   }
 
   @Test
+  fun live_render_advances_frame_clock_with_monotonic_wall_time() {
+    val outputDir = tempFolder.newFolder("interactive-frame-clock-renders")
+    val frameTimes =
+      java.util.ArrayDeque(listOf(1_000_000_000L, 1_000_000_000L, 1_300_000_000L, 1_300_000_000L))
+    val engine = RenderEngine(outputDir = outputDir, frameNanoTime = { frameTimes.removeFirst() })
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FRAME_CLOCK_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "FrameClockSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "frame-clock-square",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = FRAME_CLOCK_PREVIEW_ID,
+          classLoader =
+            DesktopInteractiveSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+        )
+      try {
+        val first = session.render(requestId = RenderHost.nextRequestId())
+        val firstImage = readPng(File(first.pngPath!!))
+        val redMatch = pixelMatchPct(firstImage, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+        assertTrue(
+          "expected frame-clock fixture to start red; got ${"%.2f".format(redMatch * 100)}%",
+          redMatch >= 0.95,
+        )
+
+        val second = session.render(requestId = RenderHost.nextRequestId())
+        val secondImage = readPng(File(second.pngPath!!))
+        val greenMatch = pixelMatchPct(secondImage, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "expected frame-clock fixture to turn green after 300ms of render time; got " +
+            "${"%.2f".format(greenMatch * 100)}%",
+          greenMatch >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+    assertTrue("all injected frame times should be consumed", frameTimes.isEmpty())
+  }
+
+  @Test
   fun acquire_throws_unsupported_when_resolver_unwired() {
     // No previewSpecResolver passed — host advertises no v2 support and throws
     // UnsupportedOperationException, which `JsonRpcServer.handleInteractiveStart` translates into
@@ -209,5 +266,6 @@ class DesktopInteractiveSessionTest {
 
   companion object {
     private const val FIXTURE_PREVIEW_ID = "click-toggle-square"
+    private const val FRAME_CLOCK_PREVIEW_ID = "frame-clock-square"
   }
 }

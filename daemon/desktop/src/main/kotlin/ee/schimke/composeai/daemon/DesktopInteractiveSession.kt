@@ -58,19 +58,20 @@ class DesktopInteractiveSession(
         // Press carries `button = PointerButton.Primary` + matching `buttons` because
         // `Modifier.clickable` filters on the primary mouse button (or first finger on touch);
         // omitting these makes the detector treat the event as ambiguous and ignore it.
-        val now = System.currentTimeMillis()
+        val nowNs = engine.currentFrameNanoTime()
+        val nowMs = nowNs / 1_000_000L
         state.scene.sendPointerEvent(
           eventType = PointerEventType.Press,
           position = offset,
-          timeMillis = now,
+          timeMillis = nowMs,
           button = PointerButton.Primary,
           buttons = PointerButtons(isPrimaryPressed = true),
         )
-        state.scene.render(nanoTime = now * 1_000_000L)
+        state.scene.render(nanoTime = nowNs)
         state.scene.sendPointerEvent(
           eventType = PointerEventType.Release,
           position = offset,
-          timeMillis = now + CLICK_HOLD_MS,
+          timeMillis = nowMs + CLICK_HOLD_MS,
           button = PointerButton.Primary,
           buttons = PointerButtons(),
         )
@@ -114,7 +115,12 @@ class DesktopInteractiveSession(
 
   override fun render(requestId: Long): RenderResult {
     check(!closed) { "DesktopInteractiveSession.render() called after close()" }
-    return engine.renderOnce(state, requestId, sandboxStats = sandboxStats)
+    return engine.renderOnce(
+      state,
+      requestId,
+      sandboxStats = sandboxStats,
+      useWallClockFrameTime = true,
+    )
   }
 
   override fun close() {
