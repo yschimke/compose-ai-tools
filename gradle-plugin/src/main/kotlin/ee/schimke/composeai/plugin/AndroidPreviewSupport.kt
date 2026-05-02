@@ -100,7 +100,7 @@ internal object AndroidPreviewSupport {
       registerAndroidTasks(
         project,
         extension,
-        variant.name,
+        variant,
         androidComponents.sdkComponents.bootClasspath,
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
@@ -245,17 +245,19 @@ internal object AndroidPreviewSupport {
   private fun registerAndroidTasks(
     project: Project,
     extension: PreviewExtension,
-    variantName: String,
+    variant: Variant,
     bootClasspath: org.gradle.api.provider.Provider<List<org.gradle.api.file.RegularFile>>,
   ) {
+    val variantName = variant.name
     val capVariant = variantName.cap()
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
     val artifactType = Attribute.of("artifactType", String::class.java)
     val daemonResDirs =
-      listOf("main", variantName, "debug")
-        .map { project.layout.projectDirectory.dir("src/$it/res").asFile.absolutePath }
-        .distinct()
-        .joinToString(java.io.File.pathSeparator)
+      variant.sources.res?.all?.let { resSources ->
+        project.files(resSources).elements.map { elements ->
+          elements.joinToString(java.io.File.pathSeparator) { it.asFile.absolutePath }
+        }
+      } ?: project.providers.provider { "" }
 
     // `com.android.compose.screenshot` (Google's alpha Layoutlib-based
     // screenshot testing plugin) adds its own `screenshotTest` source set
