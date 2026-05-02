@@ -79,6 +79,14 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun `spec string tolerates ignored cutout parameter`() {
+    val spec = DeviceDimensions.resolve("spec:width=411dp,height=914dp,dpi=420,cutout=corner")
+    assertThat(spec.widthDp).isEqualTo(411)
+    assertThat(spec.heightDp).isEqualTo(914)
+    assertThat(spec.density).isEqualTo(DeviceDimensions.DEFAULT_DENSITY)
+  }
+
+  @Test
   fun `wear device returns wear defaults`() {
     val spec = DeviceDimensions.resolve("id:wearos_large_round")
     assertThat(spec.widthDp).isEqualTo(227)

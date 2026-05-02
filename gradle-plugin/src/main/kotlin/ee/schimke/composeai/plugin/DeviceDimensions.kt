@@ -181,7 +181,8 @@ object DeviceDimensions {
         val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
         val isRound = params["isRound"]?.toBooleanStrictOrNull() == true
         // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
-        // — honour it if present, otherwise fall back to the AS default.
+        // — honour it if present, otherwise fall back to the AS default. `cutout=` is accepted by
+        // Studio's grammar but intentionally ignored here until a renderer consumes it.
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
         return DeviceSpec(w, h, density, isRound = isRound)
       }

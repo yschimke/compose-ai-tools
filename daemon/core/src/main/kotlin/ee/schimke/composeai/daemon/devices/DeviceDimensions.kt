@@ -145,7 +145,9 @@ object DeviceDimensions {
    * - Explicit `widthDp`+`heightDp` short-circuit to a [DeviceSpec] at [DEFAULT_DENSITY] (no device
    *   info, so we fall back to the Studio default).
    * - `id:pixel_5`-style ids hit [KNOWN_DEVICES]; unknown ids fall through to the default.
-   * - `spec:width=…,height=…,dpi=…` is parsed inline; the `dp` suffix on values is tolerated.
+   * - `spec:width=…,height=…,dpi=…,isRound=…` is parsed inline; the `dp` suffix on values is
+   *   tolerated. `cutout=…` is accepted by Studio's grammar but ignored here until a renderer
+   *   consumes it.
    * - Any device string containing `wear` (case-insensitive) returns [DEFAULT_WEAR].
    * - Otherwise [DEFAULT] (400×800 dp at xxhdpi).
    */
