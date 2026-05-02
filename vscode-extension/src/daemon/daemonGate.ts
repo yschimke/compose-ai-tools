@@ -21,6 +21,7 @@ const LEGACY_SETTING_ENABLED = 'experimental.daemon.enabled';
  */
 export class DaemonGate {
     private readonly daemons = new Map<string, ManagedDaemon>();
+    private readonly spawns = new Map<string, Promise<DaemonClient>>();
     private disposed = false;
     private warnedUserDisabled = false;
     private readonly warnedBuildDisabled = new Set<string>();
@@ -74,6 +75,8 @@ export class DaemonGate {
         if (existing && existing.client.isClosed()) {
             this.daemons.delete(moduleId);
         }
+        const inFlight = this.spawns.get(moduleId);
+        if (inFlight) { return inFlight; }
 
         const descriptor = readLaunchDescriptor(this.workspaceRoot, moduleId, this.logger);
         if (!descriptor) {
@@ -96,7 +99,10 @@ export class DaemonGate {
         }
 
         try {
-            return await this.spawn(moduleId, descriptor, events);
+            const spawn = this.spawn(moduleId, descriptor, events)
+                .finally(() => this.spawns.delete(moduleId));
+            this.spawns.set(moduleId, spawn);
+            return await spawn;
         } catch (err) {
             const message = `[daemon] spawn failed for ${moduleId}: ${(err as Error).message}`;
             this.logger.appendLine(message);

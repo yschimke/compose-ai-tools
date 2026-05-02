@@ -655,11 +655,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         ),
     );
 
-    // Refresh doctor diagnostics on first load, on-demand from the command,
-    // and whenever we discover new modules. Each refresh kicks the
-    // `composePreviewDoctor` task per module — cheap (no render), but we
-    // don't want to spam on every keystroke, hence the explicit trigger
-    // points rather than a document-change hook.
+    // Refresh doctor diagnostics on demand from the command. The task is useful
+    // but can be expensive in large workspaces because it configures Gradle per
+    // module; keep it out of the activation path so preview startup stabilises
+    // before background diagnostics run.
     const refreshDoctor = async () => {
         // gradleService is non-null inside this activation scope (initialised
         // a few lines up), but the module-scope nullable declaration forces
@@ -678,16 +677,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         vscode.commands.registerCommand('composePreview.launchOnDevice',
             (previewId?: string) => launchOnDevice(previewId)),
     );
-    // Refresh applied-markers in the background, then replay the doctor refresh
-    // so it picks up any modules that only become visible via the authoritative
-    // `applied.json` path (e.g. a module whose build.gradle.kts uses a
-    // non-standard catalog accessor our scan doesn't recognise). First-activation
-    // doctor run still fires immediately off the scan result — we don't want to
-    // gate startup diagnostics on a Gradle configuration.
-    void refreshDoctor();
-    void gradleService.bootstrapAppliedMarkers().then(() => {
-        void refreshDoctor();
-    });
+    // Refresh applied-markers in the background so future module resolution can
+    // use the authoritative `applied.json` path. Doctor stays explicit via
+    // `composePreview.runDoctor`.
+    void gradleService.bootstrapAppliedMarkers();
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
