@@ -36,6 +36,7 @@ class RenderSpecFromInfoTest {
     assertNull(spec.localeTag)
     assertNull(spec.fontScale)
     assertNull(spec.device)
+    assertEquals("Foo", spec.previewId)
     assertEquals("com.example.FooKt", spec.className)
     assertEquals("Foo", spec.functionName)
   }

@@ -71,12 +71,12 @@ fun recordingFontFamilyResolver(
   recorder: FontResolverRecorder,
 ): FontFamily.Resolver {
   val handler =
-    InvocationHandler { _, method, args ->
+    InvocationHandler { proxy, method, args ->
       if (method.declaringClass == Any::class.java) {
         return@InvocationHandler when (method.name) {
           "toString" -> "RecordingFontFamilyResolver($delegate)"
-          "hashCode" -> System.identityHashCode(delegate)
-          "equals" -> delegate === args?.firstOrNull()
+          "hashCode" -> System.identityHashCode(proxy)
+          "equals" -> proxy === args?.firstOrNull()
           else -> method.invoke(delegate, *(args ?: emptyArray()))
         }
       }
