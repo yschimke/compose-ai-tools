@@ -113,6 +113,17 @@ interface RenderHost {
     get() = emptySet()
 
   /**
+   * Identifier for the renderer backend this host implements. Surfaced verbatim as
+   * `InitializeResult.capabilities.backend` so clients can render backend-specific UI hints (e.g.
+   * "Wear preview unsupported on desktop") without per-call probing. `null` (the default) for hosts
+   * that haven't been classified — `FakeHost` in `:daemon:harness`, the in-test `FakeRenderHost`,
+   * etc. Real backends override: `RobolectricHost` returns `ANDROID`, `DesktopHost` returns
+   * `DESKTOP`.
+   */
+  val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind?
+    get() = null
+
+  /**
    * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
    * documented in
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).

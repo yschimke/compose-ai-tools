@@ -137,6 +137,10 @@ open class DesktopHost(
   override val supportedOverrides: Set<String> =
     setOf("widthPx", "heightPx", "density", "fontScale", "uiMode", "device")
 
+  /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
+  override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =
+    ee.schimke.composeai.daemon.protocol.BackendKind.DESKTOP
+
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
