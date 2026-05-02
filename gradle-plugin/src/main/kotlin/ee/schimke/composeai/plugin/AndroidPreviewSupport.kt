@@ -1013,12 +1013,12 @@ internal object AndroidPreviewSupport {
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
-        // ATF flags are routed through a CommandLineArgumentProvider
+        // Data-product flags are routed through a CommandLineArgumentProvider
         // rather than `systemProperty(...)` so toggling the `-P` override
         // doesn't invalidate the Gradle configuration cache. `systemProperty`
         // evaluates its value eagerly at configuration time — the provider
         // we'd read there becomes part of the config-cache key, so flipping
-        // `-PcomposePreview.accessibilityChecks.enabled` forces a ~5-10s
+        // `-PcomposePreview.dataPlugins.a11y.enableAllChecks` forces a ~5-10s
         // reconfigure. CommandLineArgumentProvider's `@Input` providers
         // are only evaluated at task execution, which is exactly the
         // lazy-input semantics we want for VSCode toggles.
@@ -1153,7 +1153,7 @@ internal object AndroidPreviewSupport {
     }
 
     // `verifyAccessibility` is ALWAYS registered so toggling
-    // `-PcomposePreview.accessibilityChecks.enabled` doesn't change the
+    // `-PcomposePreview.dataPlugins.a11y.enableAllChecks` doesn't change the
     // task graph — config cache stays valid across VSCode / CLI toggles.
     // An `onlyIf` gate backed by the lazy provider makes it a no-op when
     // the feature is off: the task configures but never executes, so the
@@ -1168,10 +1168,10 @@ internal object AndroidPreviewSupport {
         perPreviewDir.set(accessibilityPerPreviewDir)
         reportFile.set(accessibilityReportFile)
         moduleName.set(project.name)
-        failOnErrors.set(extension.accessibilityChecks.failOnErrors)
-        failOnWarnings.set(extension.accessibilityChecks.failOnWarnings)
+        failOnErrors.set(a11yExtension(extension).failOnErrors)
+        failOnWarnings.set(a11yExtension(extension).failOnWarnings)
         dependsOn(renderTask)
-        onlyIf("composePreview.accessibilityChecks.enabled") { a11yEnabledProvider.get() }
+        onlyIf("composePreview.dataPlugins.a11y.enableAllChecks") { a11yEnabledProvider.get() }
       }
 
     ComposePreviewTasks.registerRenderAllPreviews(
@@ -1364,11 +1364,11 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Lazy holder for ATF-related system properties on the `renderPreviews` `Test` task. Using a
-   * CommandLineArgumentProvider — instead of `test.systemProperty(...)` — means the values are
-   * resolved at task execution time, so flipping the underlying Gradle property doesn't invalidate
-   * the configuration cache. Each `@Input` participates in the task's own up-to-date check, so
-   * toggling a11y correctly re-runs rendering.
+   * Lazy holder for data-product-related system properties on the `renderPreviews` `Test` task.
+   * Using a CommandLineArgumentProvider — instead of `test.systemProperty(...)` — means the values
+   * are resolved at task execution time, so flipping the underlying Gradle property doesn't
+   * invalidate the configuration cache. Each `@Input` participates in the task's own up-to-date
+   * check, so toggling a11y correctly re-runs rendering.
    */
   internal class AccessibilitySystemPropsProvider(
     @get:org.gradle.api.tasks.Input val enabled: org.gradle.api.provider.Provider<Boolean>,
@@ -1386,10 +1386,11 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Returns a lazy `Provider<Boolean>` for the effective `accessibilityChecks.enabled` value. The
-   * `-PcomposePreview.accessibilityChecks.enabled=<true|false>` Gradle property WINS over the
-   * extension block — so VSCode (or a one-off CLI invocation) can flip the feature on for a single
-   * run without touching `build.gradle.kts`.
+   * Returns a lazy `Provider<Boolean>` for the effective a11y data-product selection. The
+   * `-PcomposePreview.dataPlugins.a11y.enableAllChecks=<true|false>` Gradle property enables every
+   * a11y check; `-PcomposePreview.dataPlugins.a11y.checks=atf,hierarchy` enables only named a11y
+   * checks. The legacy `-PcomposePreview.accessibilityChecks.enabled=<true|false>` property remains
+   * as a fallback for one release so older editor integrations keep working.
    *
    * **Deliberately returns a Provider, not a Boolean.** Reading `.get()` at configuration time keys
    * the configuration cache on the current property value, which means every VSCode toggle would
@@ -1400,11 +1401,37 @@ internal object AndroidPreviewSupport {
   internal fun resolveA11yEnabled(
     project: org.gradle.api.Project,
     extension: PreviewExtension,
-  ): org.gradle.api.provider.Provider<Boolean> =
-    project.providers
-      .gradleProperty("composePreview.accessibilityChecks.enabled")
-      .map { it.toBooleanStrictOrNull() ?: false }
-      .orElse(extension.accessibilityChecks.enabled)
+  ): org.gradle.api.provider.Provider<Boolean> {
+    val a11y = a11yExtension(extension)
+    val genericA11y = extension.dataPlugins.plugins.findByName("a11y")
+    val genericAllChecks =
+      genericA11y?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+    val configuredAllChecks =
+      a11y.allChecksEnabled.zip(genericAllChecks) { typed, generic -> typed || generic }
+    val genericChecks =
+      genericA11y?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList())
+    val wholePlugin =
+      project.providers
+        .gradleProperty("composePreview.dataPlugins.a11y.enableAllChecks")
+        .map { it.toBooleanStrictOrNull() ?: false }
+        .orElse(
+          project.providers.gradleProperty("composePreview.accessibilityChecks.enabled").map {
+            it.toBooleanStrictOrNull() ?: false
+          }
+        )
+        .orElse(configuredAllChecks)
+    val selectedChecks =
+      project.providers
+        .gradleProperty("composePreview.dataPlugins.a11y.checks")
+        .map { raw -> parseCheckList(raw).any { it in A11Y_CHECK_IDS } }
+        .orElse(
+          a11y.checks.zip(genericChecks) { typedChecks, genericChecks ->
+            (typedChecks + genericChecks).any { it in A11Y_CHECK_IDS }
+          }
+        )
+    return wholePlugin.zip(selectedChecks) { whole, selected -> whole || selected }
+  }
 
   /** Same config-cache-friendly treatment for `annotateScreenshots`. See [resolveA11yEnabled]. */
   internal fun resolveA11yAnnotate(
@@ -1412,9 +1439,23 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> =
     project.providers
-      .gradleProperty("composePreview.accessibilityChecks.annotateScreenshots")
+      .gradleProperty("composePreview.dataPlugins.a11y.annotateScreenshots")
       .map { it.toBooleanStrictOrNull() ?: true }
-      .orElse(extension.accessibilityChecks.annotateScreenshots)
+      .orElse(
+        project.providers
+          .gradleProperty("composePreview.accessibilityChecks.annotateScreenshots")
+          .map { it.toBooleanStrictOrNull() ?: true }
+      )
+      .orElse(a11yExtension(extension).annotateScreenshots)
+
+  private fun a11yExtension(extension: PreviewExtension): A11yDataPluginExtension =
+    extension.dataPlugins.a11y
+
+  private fun parseCheckList(raw: String): Set<String> =
+    raw.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+  private val A11Y_CHECK_IDS =
+    setOf("atf", "hierarchy", "overlay", "a11y/atf", "a11y/hierarchy", "a11y/overlay")
 
   /**
    * Resolve the active render tier from `-PcomposePreview.tier=<fast|full>`. `fast` tells the

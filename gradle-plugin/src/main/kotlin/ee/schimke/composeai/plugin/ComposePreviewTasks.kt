@@ -375,20 +375,16 @@ internal object ComposePreviewTasks {
       }
       moduleName.set(project.name)
       variantName.set(extension.variant)
-      // Gradle property override: `-PcomposePreview.accessibilityChecks.enabled=true`
-      // wins over the extension. Lets VSCode / CLI flip the feature on
-      // for a run without editing build.gradle.kts. Isolated-Projects-
-      // safe because `providers.gradleProperty` is.
-      accessibilityChecksEnabled.set(
-        project.providers
-          .gradleProperty("composePreview.accessibilityChecks.enabled")
-          .map { it.toBooleanStrictOrNull() ?: false }
-          .orElse(extension.accessibilityChecks.enabled)
-      )
+      // Generic data-product override:
+      // `-PcomposePreview.dataPlugins.a11y.allChecks=true` wins over the
+      // extension. Lets VSCode / CLI flip the feature on for a run without
+      // editing build.gradle.kts. Isolated-Projects-safe because
+      // `providers.gradleProperty` is.
+      a11yDataProductsEnabled.set(AndroidPreviewSupport.resolveA11yEnabled(project, extension))
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as
-      // `accessibilityChecks.enabled` above.
+      // the data-product selector above.
       failOnEmpty.set(
         project.providers
           .gradleProperty("composePreview.failOnEmpty")

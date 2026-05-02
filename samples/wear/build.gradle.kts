@@ -5,12 +5,14 @@ plugins {
 }
 
 composePreview {
-  accessibilityChecks {
-    // Sample wires a deliberately-broken `BadWearButtonPreview` so the
-    // `.a11y.png` for Wear exercises the stacked (legend-below) layout.
-    // Flip to `true` and re-run to see the annotation; defaults off so
-    // `./gradlew check` stays clean.
-    enabled = false
+  dataPlugins {
+    a11y {
+      // Sample wires a deliberately-broken `BadWearButtonPreview` so the
+      // `.a11y.png` for Wear exercises the stacked (legend-below) layout.
+      // Uncomment `enableAllChecks()` and re-run to see the annotation;
+      // defaults off so `./gradlew check` stays clean.
+      // enableAllChecks()
+    }
   }
 }
 

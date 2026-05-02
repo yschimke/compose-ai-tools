@@ -215,9 +215,9 @@ data class PreviewManifest(
   val previews: List<PreviewInfo>,
   /**
    * Relative path (from this manifest's parent directory) to a sidecar accessibility report JSON,
-   * when `composePreview.accessibilityChecks.enabled` is `true`. `null` signals the feature is off
-   * — downstream tools should treat the absence of this pointer as "no a11y data" rather than
-   * probing for the file on disk.
+   * when the built-in `a11y` data-product plugin is enabled. `null` signals the feature is off —
+   * downstream tools should treat the absence of this pointer as "no a11y data" rather than probing
+   * for the file on disk.
    */
   val accessibilityReport: String? = null,
 )

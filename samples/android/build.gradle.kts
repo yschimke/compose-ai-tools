@@ -5,13 +5,15 @@ plugins {
 }
 
 composePreview {
-  accessibilityChecks {
-    // Sample includes deliberately-broken previews (BadButton,
-    // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
-    // VSCode surfacing of a11y findings. Flip to `true` to exercise the
-    // opt-in path; defaults off to keep the sample's render build
-    // byte-identical to the non-a11y baseline.
-    enabled = false
+  dataPlugins {
+    a11y {
+      // Sample includes deliberately-broken previews (BadButton,
+      // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
+      // VSCode surfacing of a11y findings. Uncomment `enableAllChecks()` to
+      // exercise the opt-in path; defaults off to keep the sample's render
+      // build byte-identical to the non-a11y baseline.
+      // enableAllChecks()
+    }
   }
   // resourcePreviews { ... } is on by default — the sample exercises the
   // Android XML resource preview pipeline (vector / animated-vector /

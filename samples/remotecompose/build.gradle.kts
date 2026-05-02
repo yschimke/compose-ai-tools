@@ -4,7 +4,7 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-composePreview { accessibilityChecks { enabled = false } }
+composePreview { dataPlugins { a11y { /* enableAllChecks() */ } } }
 
 android {
   namespace = "com.example.sampleremotecompose"

@@ -366,15 +366,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         : { runTask: async () => { /* test-mode placeholder */ },
             cancelRunTask: async () => { /* test-mode placeholder */ } };
 
-    gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel, () => {
-        // Read config lazily on each run so user toggles take effect without a reload.
-        const args: string[] = [];
-        const config = vscode.workspace.getConfiguration('composePreview');
-        if (config.get<boolean>('accessibilityChecks.enabled')) {
-            args.push('-PcomposePreview.accessibilityChecks.enabled=true');
-        }
-        return args;
-    }, logFilter);
+    gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel, () => [], logFilter);
 
     // Daemon path is controlled by composePreview.daemon.enabled (true by default). When disabled
     // the gate's `isEnabled()` returns false and the scheduler is never asked to spawn anything —
@@ -593,27 +585,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         }),
         vscode.commands.registerCommand('composePreview.openModuleBuildFile',
             (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath)),
-        vscode.commands.registerCommand('composePreview.toggleAccessibilityChecks', async () => {
-            // Session-wide toggle — mutates the workspace setting so the
-            // gradleService's `-P` override picks up the new value on the
-            // next task run. We follow up with a refresh so the webview +
-            // diagnostics update immediately; otherwise the new state
-            // would only be visible after the user's next edit.
-            const config = vscode.workspace.getConfiguration('composePreview');
-            const current = config.get<boolean>('accessibilityChecks.enabled') ?? false;
-            await config.update(
-                'accessibilityChecks.enabled',
-                !current,
-                vscode.ConfigurationTarget.Workspace,
-            );
-            vscode.window.showInformationMessage(
-                `Compose Preview: accessibility checks ${!current ? 'ON' : 'OFF'} for this workspace`,
-            );
-            // Force a fresh render — the render task's inputs changed
-            // (different -P arg), so we need to re-resolve findings.
-            gradleService?.invalidateCache();
-            await refresh(true, currentScopeFile ?? undefined);
-        }),
         vscode.commands.registerCommand('composePreview.focusPreview',
             async (functionName: string, filePath?: string) => {
                 if (!panel) { return; }
@@ -888,14 +859,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     if (isTestMode) {
         const testApi: ComposePreviewTestApi = {
             injectGradleApi(api: GradleApi): void {
-                gradleService = new GradleService(workspaceRoot, api, outputChannel, () => {
-                    const args: string[] = [];
-                    const config = vscode.workspace.getConfiguration('composePreview');
-                    if (config.get<boolean>('accessibilityChecks.enabled')) {
-                        args.push('-PcomposePreview.accessibilityChecks.enabled=true');
-                    }
-                    return args;
-                }, logFilter);
+                gradleService = new GradleService(workspaceRoot, api, outputChannel, () => [], logFilter);
             },
             triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
                 return refresh(force, filePath, tier).then(() => {});

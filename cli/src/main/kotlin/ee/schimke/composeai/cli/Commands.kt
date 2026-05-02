@@ -83,8 +83,8 @@ data class PreviewManifest(
   val previews: List<PreviewInfo>,
   /**
    * Relative path (from this manifest file's parent directory) to the sidecar ATF accessibility
-   * report, when `composePreview.accessibilityChecks` is enabled on this module. `null` means the
-   * feature is off.
+   * report, when the built-in `a11y` data-product plugin is enabled on this module. `null` means
+   * the feature is off.
    */
   val accessibilityReport: String? = null,
 )
@@ -845,7 +845,7 @@ class A11yCommand(args: List<String>) : Command(args) {
         else {
           println(
             "No module has accessibility checks enabled. Add\n" +
-              "  composePreview { accessibilityChecks { enabled = true } }\n" +
+              "  composePreview { dataPlugins { a11y { enableAllChecks() } } }\n" +
               "to the module's build.gradle.kts."
           )
         }
