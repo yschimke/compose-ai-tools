@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -153,6 +154,32 @@ open class RobolectricHost(
    */
   override val supportsInteractive: Boolean
     get() = sandboxCount >= 2 && previewSpecResolver != null
+
+  /**
+   * RECORDING.md / P5 — Android scripted recording rides on top of the same v3 held-rule loop
+   * `acquireInteractiveSession` uses, so it inherits the same gating: needs two sandboxes plus a
+   * resolver. Live mode is rejected at acquire time (Android v1 doesn't ship the per-frame bridge
+   * machinery a sustained tick loop would need).
+   */
+  override val supportsRecording: Boolean
+    get() = supportsInteractive
+
+  /**
+   * RECORDING.md § "encoded formats" — APNG always available (pure-JVM `ApngEncoder`); MP4 / WEBM
+   * appear when an `ffmpeg` binary is on the daemon's PATH. Empty list when [supportsRecording] is
+   * false so clients consistently see "no formats" rather than "apng but recording disabled".
+   */
+  override val supportedRecordingFormats: List<String>
+    get() =
+      if (!supportsRecording) emptyList()
+      else
+        buildList {
+          add("apng")
+          if (FfmpegEncoder.available()) {
+            add("mp4")
+            add("webm")
+          }
+        }
 
   /**
    * Identifier of the currently-held interactive session, or `null` when no session is active.
@@ -672,10 +699,85 @@ open class RobolectricHost(
   }
 
   /**
+   * RECORDING.md / P5 — allocate an [AndroidRecordingSession] for [previewId]. The recording
+   * wraps an internally-allocated [AndroidInteractiveSession] (the v3 held-rule loop) and replays
+   * the script frame-by-frame at [stop] time. Same slot-pinning constraints as
+   * [acquireInteractiveSession]: needs `sandboxCount >= 2` and a [previewSpecResolver]; only one
+   * held session at a time per host.
+   *
+   * Live mode (`live = true`) is rejected with [UnsupportedOperationException] —
+   * [JsonRpcServer.handleRecordingStart] translates that to `MethodNotFound (-32601)` on the
+   * wire, mirroring the desktop fallback. Android live recording would need per-frame bridge
+   * machinery that v1 doesn't ship.
+   */
+  override fun acquireRecordingSession(
+    previewId: String,
+    recordingId: String,
+    classLoader: ClassLoader,
+    fps: Int,
+    scale: Float,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    live: Boolean,
+  ): RecordingSession {
+    if (live) {
+      throw UnsupportedOperationException(
+        "RobolectricHost: live recording is not supported on the Android backend in v1; use " +
+          "scripted mode (recording/start with live=false). See RECORDING.md § \"Android backend\"."
+      )
+    }
+    if (overrides != null) {
+      // v1 accepts overrides on acquire only when they wouldn't conflict with the held-rule loop's
+      // start-up. The session is constructed off the resolver-provided RenderSpec; merging
+      // overrides through that path is its own follow-up because the held loop's Start command
+      // already takes the spec's qualifiers verbatim. Fail fast rather than silently dropping
+      // overrides — a future v2 wires them through Start.
+      throw UnsupportedOperationException(
+        "RobolectricHost: per-call PreviewOverrides on recording/start are not supported on " +
+          "the Android backend in v1; use the discovery-time RenderSpec or override at the " +
+          "@Preview annotation. See RECORDING.md § \"Android backend\"."
+      )
+    }
+    val interactive = acquireInteractiveSession(previewId, classLoader)
+    val recordingsRoot = recordingsRootDir()
+    val framesDir = File(File(recordingsRoot, "frames"), recordingId)
+    val encodedDir = File(recordingsRoot, "encoded")
+    return AndroidRecordingSession(
+      previewId = previewId,
+      recordingId = recordingId,
+      fps = fps,
+      scale = scale,
+      interactive = interactive,
+      framesDir = framesDir,
+      encodedDir = encodedDir,
+    )
+  }
+
+  /**
+   * Resolve the directory recordings live under. Mirrors [DesktopHost.recordingsRootDir]: defers
+   * to `composeai.daemon.recordingsDir` when set; falls back to a sibling of the engine's output
+   * dir; final fallback to `${user.dir}/.compose-preview-history/daemon-recordings`.
+   */
+  private fun recordingsRootDir(): File {
+    val sysprop = System.getProperty(RECORDINGS_DIR_PROP)
+    if (sysprop != null && sysprop.isNotBlank()) return File(sysprop)
+    val engineOut = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
+    val parent: File =
+      if (engineOut != null && engineOut.isNotBlank()) {
+        File(engineOut).parentFile ?: File(System.getProperty("user.dir") ?: ".")
+      } else {
+        File("${System.getProperty("user.dir")}/.compose-preview-history")
+      }
+    return File(parent, "daemon-recordings")
+  }
+
+  /**
    * Sends the poison pill, waits up to [timeoutMs] for the worker thread to
    * exit. Idempotent.
    */
   companion object {
+    /** Same sysprop the desktop side uses; honoured on Android too. */
+    const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
+
     /**
      * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty
      * `~/.cache/robolectric` is dominated by the `android-all-instrumented-{ver}-{sdk}.jar`
