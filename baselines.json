@@ -493,28 +493,28 @@
     "captureLabel": "",
     "functionName": "ButtonPreview",
     "renderBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
-    "sha256": "663846f54bcdd3dab8250fdd6e669752cfe50a92bdf3c7f4ae50584705c14f51",
+    "sha256": "2039e626378ad093431b20950a9a72aa0d9ebaf1cc80a7fd7ca9e991234e32e7",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Small Round": {
     "captureLabel": "",
     "functionName": "ButtonPreview",
     "renderBasename": "PreviewsKt.ButtonPreview_Devices_-_Small_Round.png",
-    "sha256": "779e934a0ab493d4f7e06df2e917e762cd00d5ccd45e9c6c974ba96e3691b974",
+    "sha256": "9aa48ea47360dd4bf45fb177653d3601a39e46494ea5facb8c5b9db17b40417a",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round": {
     "captureLabel": "",
     "functionName": "CircularProgressIndicatorPreview",
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
-    "sha256": "498ce19e91be1fd7eb93267cda1462e3efbc5d7a7a1354e35bc11a658deac51c",
+    "sha256": "3d7fd8772425ee77e5b0f877f0f1216ce88bc6b55b53d23134130e468a1983a6",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Small Round": {
     "captureLabel": "",
     "functionName": "CircularProgressIndicatorPreview",
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png",
-    "sha256": "4943fc7506a624aacf3725341d6e10f0a8748953bad05658e8b674d728b70b3a",
+    "sha256": "b2f3b6fddc576a5b8d4621872d20e976b6215606de4e73eea41a4c3973c64f6e",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
