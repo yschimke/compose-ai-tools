@@ -62,6 +62,14 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun specStringToleratesIgnoredCutoutParameter() {
+    assertEquals(
+      DeviceDimensions.DeviceSpec(411, 914, DeviceDimensions.DEFAULT_DENSITY),
+      DeviceDimensions.resolve("spec:width=411dp,height=914dp,dpi=420,cutout=corner"),
+    )
+  }
+
+  @Test
   fun specStringWithoutDpiUsesDefaultDensity() {
     assertEquals(
       DeviceDimensions.DeviceSpec(400, 800, DeviceDimensions.DEFAULT_DENSITY),

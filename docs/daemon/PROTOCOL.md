@@ -130,8 +130,9 @@ Result:
   // let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving. isRound marks
   // circular Wear-style displays.
   // Empty list = pre-feature daemon; treat absent and `[]` identically.
-  // The `spec:width=…,height=…,dpi=…` grammar is not enumerable — clients pass it as a
-  // free-form `device` override and the daemon parses it at resolve-time.
+  // The `spec:width=…,height=…,dpi=…,isRound=…` grammar is not enumerable — clients pass it as a
+  // free-form `device` override and the daemon parses it at resolve-time. `cutout=…` is tolerated
+  // but ignored until a renderer consumes it.
   //
   // supportedOverrides — the `PreviewOverrides` field names this daemon's host actually applies
   // (subset of {"widthPx","heightPx","density","localeTag","fontScale","uiMode","orientation",
