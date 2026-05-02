@@ -1,11 +1,15 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * Test fixtures for [RenderEngineTest] and the D-harness.v2 Android real-mode scenarios. Lives in
@@ -88,4 +92,33 @@ fun DarkAwareSquare() {
   val bg =
     if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
   Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
+ * Stateful fixture for the v3 Android-interactive test ([AndroidInteractiveSessionTest]). Paints
+ * red on first composition; flips to green when any pointer-down event lands. Same shape as the
+ * desktop `ClickToggleSquare` fixture in `daemon/desktop`'s testFixtures so the two backends'
+ * integration tests assert against an identical state-mutation contract ("first capture red;
+ * dispatch click; second capture green — `remember{}` state survived across captures").
+ *
+ * Uses `awaitFirstDown` rather than `Modifier.clickable` because `clickable` sits on top of
+ * `detectTapGestures`, whose coroutine timing under Compose's paused clock is non-trivial. The
+ * `RobolectricInteractiveProbeTest` empirical probe verified `awaitFirstDown` fires reliably for
+ * a synthesised `MotionEvent` dispatched through `decorView.dispatchTouchEvent` under the held
+ * rule — the simplest pointerInput shape gives the cleanest yes/no answer for the wire-level
+ * test and matches what the desktop counterpart already asserts on.
+ */
+@Composable
+fun ClickToggleSquare() {
+  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(color).pointerInput(Unit) {
+        awaitPointerEventScope {
+          awaitFirstDown()
+          clicked = true
+        }
+      }
+  )
 }
