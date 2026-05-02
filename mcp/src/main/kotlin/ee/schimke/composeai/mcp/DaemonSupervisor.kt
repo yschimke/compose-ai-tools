@@ -207,6 +207,14 @@ class DaemonSupervisor(
       // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
       // and `[]` collapse the same way client-side.
       supervised.dataProductCapabilities = result.capabilities.dataProducts
+      // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
+      // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
+      // backend will actually apply (instead of silently no-op'ing fields the backend ignores) and
+      // reject typo'd `device` ids before they fall back to the default. Pre-feature daemons
+      // advertise `[]` for both, in which case validation falls open — clients are exactly where
+      // they were before the capability landed.
+      supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
+      supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
       // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
       // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
       // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
@@ -294,6 +302,29 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    */
   @Volatile
   var dataProductCapabilities: List<DataProductCapability> = emptyList()
+    internal set
+
+  /**
+   * PROTOCOL.md § 3 — `PreviewOverrides` field names this daemon's host actually applies (see
+   * `RenderHost.supportedOverrides`). Populated by [DaemonSupervisor.spawn] right after the
+   * initialize round-trip. Read by `DaemonMcpServer.toolRenderPreview` to reject inbound
+   * `overrides` fields the backend would silently ignore. Empty set on pre-feature daemons —
+   * validation falls open and the request goes through unchanged (no behaviour change for old
+   * daemons, the caller just doesn't get the new diagnostic).
+   */
+  @Volatile
+  var supportedOverrides: Set<String> = emptySet()
+    internal set
+
+  /**
+   * PROTOCOL.md § 3 — `device` ids the daemon's catalog recognises (see
+   * `ServerCapabilities.knownDevices`). Populated by [DaemonSupervisor.spawn] right after the
+   * initialize round-trip. Read by `DaemonMcpServer.toolRenderPreview` to reject typo'd `device`
+   * overrides before they silently fall back to the default. The free-form `spec:width=…` grammar
+   * is not enumerable and not stored here — the validator passes those through.
+   */
+  @Volatile
+  var knownDeviceIds: Set<String> = emptySet()
     internal set
 
   /**

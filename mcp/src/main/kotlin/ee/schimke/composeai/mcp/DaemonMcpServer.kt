@@ -899,11 +899,73 @@ class DaemonMcpServer(
             return errorCallToolResult("render_preview: invalid overrides: ${e.message}")
           }
       }
+    if (overrides != null) {
+      val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+      val violations = validateOverrides(overrides, daemon)
+      if (violations.isNotEmpty()) {
+        return errorCallToolResult("render_preview: ${violations.joinToString("; ")}")
+      }
+    }
     return runCatching {
         val bytes = renderAndReadBytes(uri, overrides = overrides)
         pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Validates [overrides] against the daemon's advertised
+   * `InitializeResult.capabilities.supportedOverrides` and `knownDevices`. Returns a list of
+   * human-readable violations (empty if everything checks out).
+   *
+   * **Falls open on pre-feature daemons.** When the daemon's `supportedOverrides` is empty (e.g.,
+   * it predates PR #441), every set field is allowed — clients see exactly the silent- no-op
+   * behaviour they had before the wire surface landed. Same for `knownDeviceIds` (#433): an empty
+   * catalog means we can't tell which ids are valid, so we accept any. This is the safe-pre-feature
+   * contract documented on `ServerCapabilities` itself.
+   *
+   * `device` ids that start with `spec:` (the inline geometry grammar) bypass the catalog check —
+   * `KNOWN_DEVICE_IDS` deliberately doesn't enumerate `spec:` shapes per the `DeviceDimensions`
+   * kdoc; the daemon parses them at resolve-time.
+   */
+  private fun validateOverrides(
+    overrides: PreviewOverrides,
+    daemon: SupervisedDaemon,
+  ): List<String> {
+    val violations = mutableListOf<String>()
+    val supported = daemon.supportedOverrides
+    if (supported.isNotEmpty()) {
+      // Each set field must appear in the daemon's advertised supportedOverrides; otherwise
+      // the backend would silently ignore it. Phrasing "this backend ignores it" so the agent
+      // knows the recovery is "use a different daemon" or "drop the field", not "the value
+      // was invalid".
+      fun check(name: String, set: Boolean) {
+        if (set && name !in supported) {
+          violations += "this backend does not apply '$name' overrides (supported: $supported)"
+        }
+      }
+      check("widthPx", overrides.widthPx != null)
+      check("heightPx", overrides.heightPx != null)
+      check("density", overrides.density != null)
+      check("localeTag", overrides.localeTag != null)
+      check("fontScale", overrides.fontScale != null)
+      check("uiMode", overrides.uiMode != null)
+      check("orientation", overrides.orientation != null)
+      check("device", overrides.device != null)
+    }
+    val deviceOverride = overrides.device
+    val knownIds = daemon.knownDeviceIds
+    if (
+      deviceOverride != null &&
+        knownIds.isNotEmpty() &&
+        !deviceOverride.startsWith("spec:") &&
+        deviceOverride !in knownIds
+    ) {
+      violations +=
+        "device='$deviceOverride' is not in the daemon's catalog (call list_devices to see valid ids; " +
+          "or use 'spec:width=…,height=…,dpi=…' for ad-hoc geometry)"
+    }
+    return violations
   }
 
   /**
