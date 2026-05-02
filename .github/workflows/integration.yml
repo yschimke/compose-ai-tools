@@ -317,14 +317,14 @@ jobs:
           echo "Rendered ${#pngs[@]} PNG file(s):"
           printf '  %s\n' "${pngs[@]}"
 
-      - name: Enable experimental daemon in consumer build
+      - name: Configure daemon in consumer build
         if: matrix.daemon
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
-          # Append the composePreview { experimental { daemon { enabled = true } } } block
-          # to the matrix module's build.gradle(.kts) so composePreviewDaemonStart writes
-          # `enabled: true` into the launch descriptor. Idempotent — skip if already there.
+          # Append the stable composePreview.daemon block to the matrix module's build.gradle(.kts)
+          # so composePreviewDaemonStart writes `enabled: true` into the launch descriptor.
+          # Idempotent — skip if a daemon block is already present.
           python3 - <<'PY'
           from pathlib import Path
           import os
@@ -339,10 +339,10 @@ jobs:
               if not p.exists():
                   continue
               text = p.read_text()
-              if "experimental.daemon" in text or "experimental {" in text and "daemon {" in text:
+              if "composePreview" in text and "daemon {" in text:
                   print(f"daemon block already present in {p}")
                   break
-              suffix = "\n\ncomposePreview {\n  experimental {\n    daemon {\n      enabled = true\n    }\n  }\n}\n"
+              suffix = "\n\ncomposePreview {\n  daemon {\n    enabled = true\n  }\n}\n"
               p.write_text(text + suffix)
               print(f"appended daemon enable block to {p}")
               break

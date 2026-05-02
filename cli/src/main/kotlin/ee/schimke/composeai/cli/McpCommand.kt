@@ -20,9 +20,9 @@ import kotlinx.serialization.json.jsonPrimitive
  *   traffic is the JSON-RPC frames the [DaemonMcpMain] reader/writer pair owns. Status / errors go
  *   to stderr.
  * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
- *   descriptor's `enabled` flag to `true` (`composePreview.experimental.daemon { enabled = true }`
- *   isn't required up-front this way), run `discoverPreviews`, and print the `claude mcp add`
- *   invocation an agent host needs.
+ *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
+ *   required up-front this way), run `discoverPreviews`, and print the `claude mcp add` invocation
+ *   an agent host needs.
  * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) without
  *   making any changes.
  *

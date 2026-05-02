@@ -358,7 +358,7 @@ def main() -> int:
     if not descriptor.get("enabled"):
         print(
             "[daemon-roundtrip] descriptor.enabled=false — set "
-            "composePreview.experimental.daemon.enabled=true. Skipping.",
+            "composePreview { daemon { enabled = true } }. Skipping.",
             file=sys.stderr,
         )
         return 2
