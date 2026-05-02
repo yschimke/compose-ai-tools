@@ -59,11 +59,6 @@ private val sampleItems = listOf(
 )
 
 @Composable
-private fun rememberCompositionId(): String = remember {
-    "preview"
-}
-
-@Composable
 fun WearApp() {
     MaterialTheme {
         AppScaffold(
@@ -147,7 +142,6 @@ fun ActivityListScreen() {
 @Composable
 private fun ButtonPreviewContent() {
     var taps by remember { mutableStateOf(0) }
-    val compositionId = rememberCompositionId()
     MaterialTheme {
         AppScaffold(
             timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
@@ -161,7 +155,7 @@ private fun ButtonPreviewContent() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Button(onClick = { taps += 1 }) {
-                        Text("Taps: $taps\n$compositionId")
+                        Text("Taps: $taps")
                     }
                 }
             }
@@ -171,7 +165,6 @@ private fun ButtonPreviewContent() {
 
 @Composable
 private fun CircularProgressPreviewContent() {
-    val compositionId = rememberCompositionId()
     MaterialTheme {
         AppScaffold(
             timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
@@ -187,7 +180,6 @@ private fun CircularProgressPreviewContent() {
                     CircularProgressIndicator(
                         modifier = Modifier.fillMaxSize(),
                     )
-                    Text(compositionId)
                 }
             }
         }
