@@ -252,6 +252,68 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun pointerUpUsesReleaseCoordinates() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-release-position").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = RELEASE_POSITION_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "release-position fixture should start red",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_DOWN,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 82,
+          )
+        )
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_MOVE,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 70,
+          )
+        )
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.POINTER_UP,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = 8,
+          )
+        )
+
+        val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val greenAfter = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "pointerUp should release at its command coordinates, not the last move; got " +
+            "${"%.2f".format(greenAfter * 100)}% green",
+          greenAfter >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun rotaryScrollDispatchesAsRsbInput() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
@@ -621,6 +683,16 @@ class AndroidInteractiveSessionTest {
           showBackground = true,
           outputBaseName = "interactive-scroll",
         )
+      RELEASE_POSITION_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "ReleasePositionSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-release-position",
+        )
       ROTARY_PREVIEW_ID ->
         RenderSpec(
           className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
@@ -675,6 +747,7 @@ class AndroidInteractiveSessionTest {
     private const val DARK_PREVIEW_ID = "interactive-darkaware"
     private const val CLICKABLE_PREVIEW_ID = "interactive-clickable"
     private const val SCROLL_PREVIEW_ID = "interactive-scroll"
+    private const val RELEASE_POSITION_PREVIEW_ID = "interactive-release-position"
     private const val ROTARY_PREVIEW_ID = "interactive-rsb"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96

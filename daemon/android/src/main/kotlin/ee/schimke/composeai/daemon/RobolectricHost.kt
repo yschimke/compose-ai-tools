@@ -1459,7 +1459,10 @@ open class RobolectricHost(
           rule.onRoot().performTouchInput { moveTo(position) }
         }
         "pointerUp" -> {
-          rule.onRoot().performTouchInput { up() }
+          rule.onRoot().performTouchInput {
+            moveTo(position)
+            up()
+          }
         }
         "rotaryScroll" -> {
           val delta = cmd.scrollDeltaY ?: 0f

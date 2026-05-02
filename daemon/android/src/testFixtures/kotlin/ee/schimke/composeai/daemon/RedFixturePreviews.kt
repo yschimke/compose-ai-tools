@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.unit.dp
@@ -154,6 +155,29 @@ fun DragScrollableSquare() {
     Box(modifier = Modifier.width(96.dp).height(96.dp).background(Color(0xFFEF5350)))
     Box(modifier = Modifier.width(96.dp).height(96.dp).background(Color(0xFF66BB6A)))
   }
+}
+
+@Composable
+fun ReleasePositionSquare() {
+  var releasedNearTop by androidx.compose.runtime.remember {
+    androidx.compose.runtime.mutableStateOf(false)
+  }
+  val color = if (releasedNearTop) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(color).pointerInput(Unit) {
+        awaitPointerEventScope {
+          awaitFirstDown()
+          while (true) {
+            val change = awaitPointerEvent().changes.first()
+            if (change.changedToUp()) {
+              releasedNearTop = change.position.y < 24f
+              break
+            }
+          }
+        }
+      }
+  )
 }
 
 @Composable
