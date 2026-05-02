@@ -277,6 +277,7 @@ class RenderEngine(
                   previewId = spec.outputBaseName,
                   findings = a11yResult.findings,
                   nodes = a11yResult.nodes,
+                  density = spec.density,
                   pngFile = outputFile,
                   isRound = isRound,
                   imageProcessors = imageProcessors,

@@ -182,7 +182,8 @@ build/compose-previews/
 ```
 
 So `a11y/hierarchy` for preview `com.example.Foo_bar` lands at
-`build/compose-previews/data/com.example.Foo_bar/a11y-hierarchy.json`.
+`build/compose-previews/data/com.example.Foo_bar/a11y-hierarchy.json`, and
+`a11y/touchTargets` lands beside it as `a11y-touchTargets.json`.
 The slash-to-dash substitution is mechanical (kind `a/b/c` → file
 `a-b-c.json`); kinds MUST NOT contain dashes themselves to keep the
 mapping reversible. The existing accessibility-per-preview directory
@@ -370,7 +371,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `a11y/atf`                 | a11y | low  | `AccessibilityFinding[]` from ATF. Drives diagnostic squigglies. Cheap enough for global attach. Carries the `overlay` PNG as an extra when one was generated. |
 | `a11y/hierarchy`           | a11y | low  | `AccessibilityNode[]` (label, role, states, bounds). Powers a local overlay in VS Code. **First implementation.** Carries the `overlay` PNG as an extra. |
 | `a11y/overlay`             | a11y | low  | Path to the Paparazzi-style annotated PNG produced by `AccessibilityImageProcessor`. Pure-image kind — `transport='path'`, no JSON payload. **D2.1 — image-processor surface.** |
-| `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. |
+| `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. **D2.2 — shipped inline payload.** Carries the `overlay` PNG as an extra. |
 | `layout/tree`              | default | low | View / Compose layout tree with bounds, paddings, source-line refs. Layout inspector. |
 | `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. **Android daemon implementation.** |
 | `compose/recomposition`    | instrumented | medium | `[{ nodeId, count, sinceFrameStreamId? }]`. Heat-map overlay. Static snapshot answers "what recomposed during initial composition"; the load-bearing case is **delta after a click** in interactive mode (see § Recomposition + interactive). Needs an instrumented re-render. |
@@ -493,8 +494,8 @@ Each data product is a **pair of modules** under `data/<product>/`:
   published — internal to the daemon process. For `a11y` this is
   `AccessibilityDataProducer` (writes per-render JSON sidecars +
   invokes registered image processors), `AccessibilityDataProductRegistry`
-  (advertises `a11y/atf`, `a11y/hierarchy`, `a11y/overlay` and serves
-  fetch / attach), and `AccessibilityImageProcessor`
+  (advertises `a11y/atf`, `a11y/hierarchy`, `a11y/touchTargets`,
+  `a11y/overlay` and serves fetch / attach), and `AccessibilityImageProcessor`
   (drives the overlay PNG into the data-product extras list).
 
 Why split: the core is reusable in non-daemon contexts (`:gradle-plugin`,

@@ -22,6 +22,22 @@
         "attachable": true,
         "fetchable": true,
         "requiresRerender": false
+      },
+      {
+        "kind": "a11y/touchTargets",
+        "schemaVersion": 1,
+        "transport": "inline",
+        "attachable": true,
+        "fetchable": true,
+        "requiresRerender": false
+      },
+      {
+        "kind": "a11y/overlay",
+        "schemaVersion": 1,
+        "transport": "path",
+        "attachable": true,
+        "fetchable": true,
+        "requiresRerender": false
       }
     ],
     "knownDevices": [
