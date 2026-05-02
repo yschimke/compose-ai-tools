@@ -141,6 +141,41 @@ fun ClickRecomposingSquare() {
 }
 
 /**
+ * v1 recording-mode component-preview fixture — a small (120×60-typical) tri-state square that
+ * cycles red → green → blue on successive clicks. Used by `DesktopRecordingSessionTest` to assert
+ * that a scripted timeline of `(tMs=0, click) + (tMs=500, click)` plays back as expected:
+ *
+ * - Frame 0 (after click@0 drains) paints green.
+ * - Frames 1..14 hold green — proving `remember`'d state survives between scripted events.
+ * - Frame 15 (at tMs=500, after click@500 drains) paints blue.
+ *
+ * Same `awaitFirstDown` loop pattern as [ClickRecomposingSquare] so the dispatch path doesn't
+ * depend on `Modifier.clickable`'s tap-gesture timing (which is awkward under
+ * [androidx.compose.ui.ImageComposeScene]'s manual clock).
+ */
+@Composable
+fun TristateClickSquare() {
+  var state by remember { mutableStateOf(0) }
+  val color =
+    when (state) {
+      0 -> Color(0xFFEF5350) // red
+      1 -> Color(0xFF66BB6A) // green
+      else -> Color(0xFF42A5F5) // blue
+    }
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(color).pointerInput(Unit) {
+        awaitPointerEventScope {
+          while (true) {
+            awaitFirstDown()
+            state += 1
+          }
+        }
+      }
+  )
+}
+
+/**
  * Reads `isSystemInDarkTheme()` and fills the box with white in light mode, black in dark mode.
  * Used by `OverrideIntegrationTest` (desktop) to prove `renderNow.overrides.uiMode` reaches
  * `LocalSystemTheme` — Compose Desktop's `isSystemInDarkTheme()` reads that local rather than the

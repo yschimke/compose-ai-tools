@@ -131,6 +131,13 @@ data class ServerCapabilities(
   // capability — clients treat absent and `false` identically.
   val interactive: Boolean = false,
   /**
+   * `true` when the daemon's host can drive a virtual-frame-clock recording session (the scripted
+   * screen-record surface — see RECORDING.md). Defaulted to `false` for old daemons that pre-date
+   * the capability; clients treat absent and `false` identically and fall back to surfacing
+   * "recording unsupported by this backend" when the toggle is offered.
+   */
+  val recording: Boolean = false,
+  /**
    * The `@Preview(device = ...)` ids the daemon's `DeviceDimensions` catalog recognises, paired
    * with their resolved geometry. Lets clients build a "render this preview at..." picker without
    * re-bundling the catalog. Empty list = pre-feature daemon (clients treat absent and `[]`
@@ -798,3 +805,110 @@ enum class PruneReasonWire {
   @SerialName("auto") AUTO,
   @SerialName("manual") MANUAL,
 }
+
+// =====================================================================
+// 5c. Recording (scripted screen-record) mode — see docs/daemon/RECORDING.md.
+//
+// A recording session is a held [androidx.compose.ui.ImageComposeScene] driven by a virtual
+// frame clock at a fixed `fps`. The agent posts a script of `(tMs, kind, pixelX, pixelY)`
+// events; on `recording/stop` the daemon plays the timeline back in virtual time, encoding
+// one PNG per frame to `<framesDir>/frame-NNNNN.png`. `recording/encode` then assembles those
+// frames into a single video file (APNG in v1; mp4 / webm in v2).
+//
+// "Feels like normal user time" property: agents that send "click at t=0ms, click at t=500ms"
+// produce a video with a full 500 ms of inter-click animation regardless of how long the
+// agent took to compose the script. The virtual clock decouples wire latency from playback
+// pacing.
+// =====================================================================
+
+/**
+ * `recording/start` parameters.
+ *
+ * @property previewId the discovery-time preview id to record. Same shape and resolution path as
+ *   `interactive/start.previewId` and `renderNow.previews[i]`.
+ * @property fps frames per second at the virtual clock. Must be in `[1, 120]`. Defaults to 30.
+ * @property scale output-frame size multiplier. Must be in `(0, 8]`. Defaults to 1.0. Coordinates
+ *   on the wire stay in image-natural pixel space — the Skiko surface is scaled at encode time, not
+ *   at composition time, so the agent's `pixelX`/`pixelY` always refer to the scene's own
+ *   coordinates.
+ * @property overrides per-render display overrides applied to the held scene; mirrors
+ *   `renderNow.overrides` exactly. Lets a `Button` preview be recorded at `widthPx: 240, heightPx:
+ *   80, backgroundColor: 0xFFFFFFFF` (or whatever the agent prefers) without editing source.
+ */
+@Serializable
+data class RecordingStartParams(
+  val previewId: String,
+  val fps: Int? = null,
+  val scale: Float? = null,
+  val overrides: PreviewOverrides? = null,
+)
+
+/**
+ * Opaque correlation token returned by `recording/start`. The client passes it back on every
+ * subsequent `recording/script`, `recording/stop`, and `recording/encode` so the daemon can route
+ * to the right held session.
+ */
+@Serializable data class RecordingStartResult(val recordingId: String)
+
+/** One scripted input event on the virtual timeline. */
+@Serializable
+data class RecordingScriptEvent(
+  /** Virtual time offset from `recording/start`, in milliseconds. Must be ≥ 0. */
+  val tMs: Long,
+  val kind: InteractiveInputKind,
+  /** Image-natural pixel coordinates. Same coordinate system as `interactive/input`. */
+  val pixelX: Int? = null,
+  val pixelY: Int? = null,
+  /** For `keyDown` / `keyUp` (no-op in v1; reserved for v2 key dispatch). */
+  val keyCode: String? = null,
+)
+
+@Serializable
+data class RecordingScriptParams(val recordingId: String, val events: List<RecordingScriptEvent>)
+
+@Serializable data class RecordingStopParams(val recordingId: String)
+
+/**
+ * Result of `recording/stop`. The daemon has played the script back in virtual time, written one
+ * PNG per virtual frame to [framesDir], and freed the held scene.
+ */
+@Serializable
+data class RecordingStopResult(
+  /**
+   * Number of frames written. Equals `ceil(durationMs * fps / 1000) + 1` (inclusive of frame 0).
+   */
+  val frameCount: Int,
+  /** Virtual duration covered by the recording, in milliseconds — `max(scriptEvent.tMs)` or 0. */
+  val durationMs: Long,
+  /** Absolute path of the directory containing `frame-NNNNN.png` files. */
+  val framesDir: String,
+  /** Frame width in pixels, after `scale`. */
+  val frameWidthPx: Int,
+  /** Frame height in pixels, after `scale`. */
+  val frameHeightPx: Int,
+)
+
+/**
+ * v1 supports only animated PNG (pure JVM, no native deps, plays in every browser/webview). mp4 /
+ * webm via `ffmpeg` shell-out land in v2 — the enum is open so new values don't bump
+ * `protocolVersion` per PROTOCOL.md § 7.
+ */
+@Serializable
+enum class RecordingFormat {
+  @SerialName("apng") APNG
+}
+
+@Serializable
+data class RecordingEncodeParams(
+  val recordingId: String,
+  val format: RecordingFormat = RecordingFormat.APNG,
+)
+
+@Serializable
+data class RecordingEncodeResult(
+  /** Absolute path of the encoded video file. */
+  val videoPath: String,
+  /** MIME type — `image/apng` for APNG; `video/mp4` / `video/webm` once v2 lands those. */
+  val mimeType: String,
+  val sizeBytes: Long,
+)
