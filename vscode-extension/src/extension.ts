@@ -506,7 +506,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     interactiveStatusItem.command = 'workbench.action.output.toggleOutput';
     context.subscriptions.push(interactiveStatusItem);
 
-    panel = new PreviewPanel(context.extensionUri, handleWebviewMessage);
+    panel = new PreviewPanel(
+        context.extensionUri,
+        handleWebviewMessage,
+        () => historyPanel?.isVisible() ?? false,
+    );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
         // on the message stream. The wrapper preserves the original

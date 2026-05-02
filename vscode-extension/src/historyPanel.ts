@@ -78,6 +78,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         this.view.webview.postMessage({ command: 'entryAdded', entry: params.entry });
     }
 
+    isVisible(): boolean {
+        return this.view?.visible ?? false;
+    }
+
     /** Force a re-list against the current scope. */
     async refresh(): Promise<void> {
         if (!this.view || !this.currentScope) {

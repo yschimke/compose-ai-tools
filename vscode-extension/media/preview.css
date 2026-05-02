@@ -491,58 +491,19 @@ body {
     animation: none;
 }
 
-/* Subtle red border telegraphs that the focused card is the current
-   live target. Bottom-right pill shows LIVE + a pulsing dot — the same
-   visual language as recording indicators in screen-share apps so the
-   meaning lands without a tooltip. */
+/* Subtle red border telegraphs that the card is an interactive target.
+   Keep the indicator outside the preview pixels: the toolbar stop button
+   carries the explicit control, while the image stays unobscured. */
 .preview-card.live {
-    /* 2px ringed border + a soft outer glow so the live state reads from across
-       the panel, not just on close inspection. The glow uses box-shadow so it
-       doesn't reflow neighbours; the border-color carries the same tint as the
-       LIVE badge dot for visual coherence. */
     border-color: var(--vscode-errorForeground, #f55);
-    border-width: 2px;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-errorForeground, #f55) 30%, transparent),
                 0 0 12px color-mix(in srgb, var(--vscode-errorForeground, #f55) 25%, transparent);
 }
 .preview-card.live .image-container {
     cursor: crosshair; /* signals "click here to dispatch into the live preview" */
 }
-.live-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    z-index: 4;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    /* Solid red chip — the previous transparent-with-blur version blended into
-       the underlying preview when the preview happened to be red/orange. Solid
-       background guarantees the LIVE state is unambiguous. */
-    background: var(--vscode-errorForeground, #f55);
-    color: var(--vscode-editor-background);
-    font-size: calc(var(--vscode-font-size) - 1px);
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    pointer-events: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-.live-badge-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--vscode-editor-background);
-    animation: liveBlink 1s ease-in-out infinite;
-}
-@keyframes liveBlink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-}
 
-/* Toggle button "live-on" state: red glyph echoing the badge. */
+/* Toggle button "live-on" state: red glyph matching the live card outline. */
 .icon-button.live-on {
     color: var(--vscode-errorForeground, #f55);
 }
