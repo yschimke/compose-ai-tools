@@ -121,9 +121,10 @@ fun main(args: Array<String>) {
           previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
         // D5 — see RecompositionDataProductRegistry KDoc. Producer learns about session
         // lifecycle here so it can install/dispose its CompositionObserver.
-        interactiveSessionListener = DesktopHost.InteractiveSessionListener {
-          previewId, scene -> recompositionRegistry.onSessionLifecycle(previewId, scene)
-        },
+        interactiveSessionListener =
+          DesktopHost.InteractiveSessionListener { previewId, scene ->
+            recompositionRegistry.onSessionLifecycle(previewId, scene)
+          },
       )
     }
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
@@ -209,7 +210,8 @@ fun main(args: Array<String>) {
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
-      // D5 — only the desktop daemon advertises `compose/recomposition` today. The PreviewManifestRouter
+      // D5 — only the desktop daemon advertises `compose/recomposition` today. The
+      // PreviewManifestRouter
       // path doesn't expose interactive sessions, so the producer's lookups will all return empty
       // for that host; a delta subscribe degrades to "advertise but useless" via the same code
       // path as a future Compose API rename. Wiring is intentionally global — kinds advertised

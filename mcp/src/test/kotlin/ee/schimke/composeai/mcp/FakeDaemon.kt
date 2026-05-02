@@ -71,6 +71,21 @@ class FakeDaemon : DaemonSpawn {
   @Volatile var advertisedDataProducts: List<DataProductCapability> = emptyList()
 
   /**
+   * `PreviewOverrides` field names the fake advertises in
+   * `initialize.capabilities.supportedOverrides`. Tests assign before the spawn calls `initialize`.
+   * Empty list (the default) keeps pre-feature behaviour — `DaemonMcpServer`'s validation falls
+   * open on an empty advertised set.
+   */
+  @Volatile var advertisedSupportedOverrides: List<String> = emptyList()
+
+  /**
+   * Devices the fake advertises in `initialize.capabilities.knownDevices`. Tests assign before the
+   * spawn calls `initialize`. Empty list keeps pre-feature behaviour.
+   */
+  @Volatile
+  var advertisedKnownDevices: List<ee.schimke.composeai.daemon.protocol.KnownDevice> = emptyList()
+
+  /**
    * D1 — fake handler for `data/fetch`. When set, the lambda receives `(previewId, kind, params,
    * inline)` and returns either the [DataFetchOutcome] the daemon should respond with. Default
    * returns [DataFetchOutcome.Unknown] so unconfigured tests see the wire-error path.
@@ -265,6 +280,8 @@ class FakeDaemon : DaemonSpawn {
                 sandboxRecycle = false,
                 leakDetection = emptyList(),
                 dataProducts = advertisedDataProducts,
+                knownDevices = advertisedKnownDevices,
+                supportedOverrides = advertisedSupportedOverrides,
               ),
             classpathFingerprint = "fake-fingerprint",
             manifest = Manifest(path = "", previewCount = 0),
@@ -276,7 +293,6 @@ class FakeDaemon : DaemonSpawn {
           (params?.get("previews") as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
             it.jsonPrimitive.contentOrNull
           } ?: emptyList()
-        renderRequests.offer(previews)
         val overrides =
           params
             ?.get("overrides")
@@ -287,7 +303,12 @@ class FakeDaemon : DaemonSpawn {
                 it,
               )
             }
+        // Populate the overrides slot BEFORE offering on `renderRequests` — tests poll on
+        // `renderRequests` and immediately check `renderOverrides`; reverse order opens a race
+        // window between the offer (which wakes the polling thread) and the add to the
+        // overrides list.
         renderOverrides.add(overrides)
+        renderRequests.offer(previews)
         val result = RenderNowResult(queued = previews, rejected = emptyList())
         sendResponse(id, json.encodeToJsonElement(RenderNowResult.serializer(), result))
         // Auto-emit renderFinished for any preview whose path the test pre-registered. The

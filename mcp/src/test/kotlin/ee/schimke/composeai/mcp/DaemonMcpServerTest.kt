@@ -646,6 +646,133 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_preview rejects overrides the daemon does not support`() {
+    // Daemon advertises supportedOverrides = ["widthPx", "uiMode"]; an agent passes localeTag
+    // (which the backend would silently ignore today). MCP rejects with a diagnostic instead
+    // of letting the wire round-trip succeed and the locale silently drop.
+    factory.daemonConfigurer = { d -> d.advertisedSupportedOverrides = listOf("widthPx", "uiMode") }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("overrides") {
+            put("widthPx", 600) // supported
+            put("localeTag", "fr-FR") // NOT supported on this fake's advertisement
+          }
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("does not apply 'localeTag'")
+    // No renderNow should have been issued — validation runs before the daemon dispatch.
+    assertThat(daemon.renderRequests).isEmpty()
+  }
+
+  @Test
+  fun `render_preview falls open when daemon advertises empty supportedOverrides`() {
+    // Pre-feature daemon: empty supportedOverrides means we can't tell which fields work.
+    // Validation must fall open — same behaviour as before #441 landed. The renderNow goes
+    // through unchanged.
+    factory.daemonConfigurer = { d ->
+      d.advertisedSupportedOverrides = emptyList()
+      d.autoRenderPngPath = { _ ->
+        java.io.File.createTempFile("preview", ".png").also { it.deleteOnExit() }.absolutePath
+      }
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        putJsonObject("overrides") { put("localeTag", "fr-FR") }
+      },
+      timeoutMs = 10_000,
+    )
+    // The daemon DID receive the renderNow with the overrides — validation fell open.
+    assertThat(daemon.renderOverrides).hasSize(1)
+    assertThat(daemon.renderOverrides[0]?.localeTag).isEqualTo("fr-FR")
+  }
+
+  @Test
+  fun `render_preview rejects unknown device id and accepts spec grammar`() {
+    // Daemon advertises a small known-devices catalog. Agent passes id:typo_phone — rejected.
+    // Then the same agent passes a spec: grammar — accepted (spec: is not enumerable, so
+    // validation passes through and the daemon parses it at resolve-time).
+    factory.daemonConfigurer = { d ->
+      d.advertisedSupportedOverrides = listOf("device", "widthPx", "heightPx", "density")
+      d.advertisedKnownDevices =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.KnownDevice(
+            id = "id:pixel_5",
+            widthDp = 393,
+            heightDp = 851,
+            density = 2.75f,
+          )
+        )
+      d.autoRenderPngPath = { _ ->
+        java.io.File.createTempFile("preview", ".png").also { it.deleteOnExit() }.absolutePath
+      }
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    // Unknown id rejected with a helpful pointer to list_devices + spec: escape hatch.
+    val rejectResp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("overrides") { put("device", "id:typo_phone") }
+        },
+      )
+    assertThat(rejectResp.isError()).isTrue()
+    val rejectMsg = rejectResp.firstTextContent()
+    assertThat(rejectMsg).contains("device='id:typo_phone' is not in the daemon's catalog")
+    assertThat(rejectMsg).contains("list_devices")
+    assertThat(daemon.renderRequests).isEmpty()
+
+    // spec: grammar accepted — passes validation, reaches the daemon as-is.
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        putJsonObject("overrides") { put("device", "spec:width=400dp,height=800dp,dpi=320") }
+      },
+      timeoutMs = 10_000,
+    )
+    assertThat(daemon.renderOverrides).hasSize(1)
+    assertThat(daemon.renderOverrides[0]?.device).isEqualTo("spec:width=400dp,height=800dp,dpi=320")
+  }
+
+  @Test
   fun `concurrent different-overrides render_preview calls are serialized per previewId`() {
     // Regression for the wrong-bytes hazard PR #432's "known limitation" note documented (and
     // mis-described as a hang). Pre-fix: two concurrent override-bearing render_preview calls

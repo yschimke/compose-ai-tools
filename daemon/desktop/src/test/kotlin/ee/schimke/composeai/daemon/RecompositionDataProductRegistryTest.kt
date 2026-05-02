@@ -22,27 +22,26 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * D5 — pins the `compose/recomposition` producer's contract for the desktop interactive
- * surface. See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)
- * § "Recomposition + interactive mode".
+ * D5 — pins the `compose/recomposition` producer's contract for the desktop interactive surface.
+ * See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) §
+ * "Recomposition + interactive mode".
  *
  * Three scenarios:
  *
- * 1. **Capabilities + delta-mode happy path** — the producer advertises
- *    `compose/recomposition` with `requiresRerender=true`, then a stateful preview
- *    ([ClickRecomposingSquare]) attaches a non-empty counter payload after a click. The
- *    second post-click attachment carries strictly fewer counts than the first (the delta
- *    has been reset between flushes), proving the inputSeq increments and counters reset.
+ * 1. **Capabilities + delta-mode happy path** — the producer advertises `compose/recomposition`
+ *    with `requiresRerender=true`, then a stateful preview ([ClickRecomposingSquare]) attaches a
+ *    non-empty counter payload after a click. The second post-click attachment carries strictly
+ *    fewer counts than the first (the delta has been reset between flushes), proving the inputSeq
+ *    increments and counters reset.
  * 2. **`mode=delta` against a non-live preview** — the producer falls back to snapshot at
- *    `onSubscribe` (per the D5 brief), so attachments still ship but with an empty payload
- *    until a live session arrives.
+ *    `onSubscribe` (per the D5 brief), so attachments still ship but with an empty payload until a
+ *    live session arrives.
  * 3. **Safety net** — when observer install throws (simulated by closing the scene before
  *    onSubscribe so reflection sees a torn-down state), the subscription still succeeds and
  *    `attachmentsFor` ships an empty `nodes: []` payload. The daemon doesn't crash.
  *
  * Driven against a real [DesktopHost] + [DesktopInteractiveSession] so the end-to-end Compose
- * runtime path (Recomposer, CompositionObserver, Modifier.clickable, mutableStateOf) is
- * covered.
+ * runtime path (Recomposer, CompositionObserver, Modifier.clickable, mutableStateOf) is covered.
  */
 class RecompositionDataProductRegistryTest {
 
@@ -99,11 +98,10 @@ class RecompositionDataProductRegistryTest {
         // Subscribe with delta mode AFTER the session is live — the listener has already
         // populated liveScenes for FIXTURE_PREVIEW_ID, so onSubscribe installs the observer
         // immediately rather than going through the snapshot-promotion path.
-        val subscribeParams =
-          buildJsonObject {
-            put("frameStreamId", JsonPrimitive("test-stream-1"))
-            put("mode", JsonPrimitive("delta"))
-          }
+        val subscribeParams = buildJsonObject {
+          put("frameStreamId", JsonPrimitive("test-stream-1"))
+          put("mode", JsonPrimitive("delta"))
+        }
         registry.onSubscribe(FIXTURE_PREVIEW_ID, "compose/recomposition", subscribeParams)
 
         // 1. Bootstrap render — initial composition runs the ClickRecomposingSquare body once.
@@ -139,14 +137,8 @@ class RecompositionDataProductRegistryTest {
         assertNotNull("delta payload must travel inline", postClick.payload)
         assertNull("compose/recomposition is INLINE-only; path must be null", postClick.path)
         val payload = postClick.payload!!.jsonObject
-        assertEquals(
-          "delta",
-          payload["mode"]?.jsonPrimitive?.content,
-        )
-        assertEquals(
-          "test-stream-1",
-          payload["sinceFrameStreamId"]?.jsonPrimitive?.content,
-        )
+        assertEquals("delta", payload["mode"]?.jsonPrimitive?.content)
+        assertEquals("test-stream-1", payload["sinceFrameStreamId"]?.jsonPrimitive?.content)
         // Two flushes have happened by now (the bootstrap-only and the post-click one), so
         // inputSeq is 2.
         assertEquals(
@@ -195,11 +187,10 @@ class RecompositionDataProductRegistryTest {
     // the subscription as snapshot. attachmentsFor still ships a payload (the brief: "advertise
     // but useless") with mode=snapshot and empty nodes.
     val registry = RecompositionDataProductRegistry()
-    val params =
-      buildJsonObject {
-        put("frameStreamId", JsonPrimitive("non-live-stream"))
-        put("mode", JsonPrimitive("delta"))
-      }
+    val params = buildJsonObject {
+      put("frameStreamId", JsonPrimitive("non-live-stream"))
+      put("mode", JsonPrimitive("delta"))
+    }
     registry.onSubscribe("non-live-preview", "compose/recomposition", params)
     val attachments = registry.attachmentsFor("non-live-preview", setOf("compose/recomposition"))
     assertEquals(1, attachments.size)
@@ -209,22 +200,17 @@ class RecompositionDataProductRegistryTest {
       "snapshot",
       payload["mode"]?.jsonPrimitive?.content,
     )
-    assertEquals(
-      "no live observer → no nodes",
-      0,
-      payload["nodes"]?.jsonArray?.size,
-    )
+    assertEquals("no live observer → no nodes", 0, payload["nodes"]?.jsonArray?.size)
     registry.onUnsubscribe("non-live-preview", "compose/recomposition")
   }
 
   @Test
   fun fetch_delta_against_non_live_preview_returns_not_available() {
     val registry = RecompositionDataProductRegistry()
-    val params =
-      buildJsonObject {
-        put("frameStreamId", JsonPrimitive("nope"))
-        put("mode", JsonPrimitive("delta"))
-      }
+    val params = buildJsonObject {
+      put("frameStreamId", JsonPrimitive("nope"))
+      put("mode", JsonPrimitive("delta"))
+    }
     val outcome =
       registry.fetch(
         previewId = "no-such-preview",
@@ -249,10 +235,7 @@ class RecompositionDataProductRegistryTest {
       "snapshot fetch must require a re-render in mode=recomposition; got $outcome",
       outcome is DataProductRegistry.Outcome.RequiresRerender,
     )
-    assertEquals(
-      "recomposition",
-      (outcome as DataProductRegistry.Outcome.RequiresRerender).mode,
-    )
+    assertEquals("recomposition", (outcome as DataProductRegistry.Outcome.RequiresRerender).mode)
   }
 
   @Test
@@ -278,21 +261,16 @@ class RecompositionDataProductRegistryTest {
       }
     val previewId = "preview-with-broken-instrumentation"
     val scene =
-      ImageComposeScene(
-        width = 32,
-        height = 32,
-        density = androidx.compose.ui.unit.Density(1.0f),
-      ) {
+      ImageComposeScene(width = 32, height = 32, density = androidx.compose.ui.unit.Density(1.0f)) {
         // Empty content — we just need a real scene to feed onSessionLifecycle, the override
         // above is what intercepts and throws.
       }
     try {
       registry.onSessionLifecycle(previewId, scene)
-      val params =
-        buildJsonObject {
-          put("frameStreamId", JsonPrimitive("broken-stream"))
-          put("mode", JsonPrimitive("delta"))
-        }
+      val params = buildJsonObject {
+        put("frameStreamId", JsonPrimitive("broken-stream"))
+        put("mode", JsonPrimitive("delta"))
+      }
       // The subscribe call must NOT propagate the LinkageError — that's the load-bearing
       // assertion. If the safety net is missing, this line throws and the test fails before
       // reaching any of the assertions below.
