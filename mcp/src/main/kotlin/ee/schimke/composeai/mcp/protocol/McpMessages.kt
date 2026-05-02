@@ -114,6 +114,21 @@ sealed interface ContentBlock {
   @Serializable
   @SerialName("image")
   data class Image(val data: String, val mimeType: String) : ContentBlock
+
+  /**
+   * MCP 2025-06-18 spec — `EmbeddedResource` content block. Wraps a [ResourceContents] (text or
+   * blob) so a tool can return non-image binary payloads (audio, video, arbitrary `application`
+   * mime types) without misusing the `image` block — strict clients reject mismatched mimeTypes on
+   * `image`.
+   *
+   * Use this for `record_preview` mp4/webm responses (mimeType `video/mp4` / `video/webm`) and any
+   * other tool that needs to inline non-image bytes. The wrapped [ResourceContents.Blob] carries
+   * the same `{uri, mimeType, blob}` shape `resources/read` uses, so a client that already knows
+   * how to render resources reads the same code path.
+   */
+  @Serializable
+  @SerialName("resource")
+  data class EmbeddedResource(val resource: ResourceContents) : ContentBlock
 }
 
 // =====================================================================

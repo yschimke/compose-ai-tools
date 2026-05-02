@@ -1027,6 +1027,73 @@ class DaemonMcpServerTest {
     assertThat(encodeCall).isNotNull()
     assertThat(encodeCall!!.format)
       .isEqualTo(ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4)
+
+    // Per the MCP 2025-06-18 spec, `video/mp4` belongs in an `EmbeddedResource` content block,
+    // not a `ContentBlock.Image` (strict clients reject mismatched mimeTypes on `image`). The
+    // sibling Text block still carries the metadata for callers that prefer the path.
+    val (blob, mime, blobUri) = resp.firstEmbeddedResourceBlob()
+    assertThat(mime).isEqualTo("video/mp4")
+    assertThat(blobUri).startsWith("compose-preview-recording://")
+    val decoded = Base64.getDecoder().decode(blob)
+    assertThat(decoded.size).isEqualTo(8) // matches the canned 8-byte payload above
+  }
+
+  @Test
+  fun `record_preview rejects malformed fps without spawning a session`() {
+    // Regression for Codex P2 — `args["fps"]?.toIntOrNull()` silently dropped typo'd values like
+    // "fast" into null and the daemon defaulted to 30 fps. We now distinguish absent (use default)
+    // from present-but-unparseable (error). Same shape for `scale`.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("fps", "fast") // string, not parseable as integer
+          putJsonArray("events") {}
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("invalid fps")
+    assertThat(msg).contains("fast")
+    // No daemon-side recording session was allocated when validation failed.
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
+  fun `record_preview rejects malformed scale without spawning a session`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("scale", "2x") // string suffix, not parseable as float
+          putJsonArray("events") {}
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("invalid scale")
+    assertThat(daemon.recordingStarts).isEmpty()
   }
 
   @Test
@@ -2045,6 +2112,25 @@ class McpToolResult(val raw: JsonObject) {
   fun textContents(): List<String> {
     val content = raw["content"]?.jsonArray ?: return emptyList()
     return content.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }
+  }
+
+  /**
+   * First `EmbeddedResource` content block (MCP `type: "resource"`); returns `(blobBase64,
+   * mimeType, uri)`. Used for non-image binary payloads (mp4 / webm) where `ContentBlock.Image`
+   * would be the wrong shape.
+   */
+  fun firstEmbeddedResourceBlob(): Triple<String, String, String> {
+    val content = raw["content"]?.jsonArray ?: error("tool result has no content array")
+    val block =
+      content.firstOrNull { it.jsonObject["type"]?.jsonPrimitive?.contentOrNull == "resource" }
+        ?: error("tool result has no resource content block (content=$content)")
+    val resource =
+      block.jsonObject["resource"]?.jsonObject
+        ?: error("embedded-resource block has no 'resource' object")
+    val blob = resource["blob"]?.jsonPrimitive?.content ?: error("resource has no 'blob'")
+    val mime = resource["mimeType"]?.jsonPrimitive?.content ?: error("resource has no 'mimeType'")
+    val uri = resource["uri"]?.jsonPrimitive?.content ?: error("resource has no 'uri'")
+    return Triple(blob, mime, uri)
   }
 
   fun isError(): Boolean = raw["isError"]?.jsonPrimitive?.contentOrNull == "true"

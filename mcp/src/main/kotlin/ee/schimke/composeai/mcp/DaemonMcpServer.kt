@@ -1828,8 +1828,20 @@ class DaemonMcpServer(
         .getOrElse {
           return errorCallToolResult("record_preview: invalid events: ${it.message}")
         }
-    val fps = args["fps"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-    val scale = args["scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+    // Strict numeric validation — distinguish "absent" (use daemon default) from "malformed"
+    // (return a clean diagnostic). The previous lenient `toIntOrNull` / `toFloatOrNull` swallowed
+    // typos like `"fps": "fast"` into a silently-defaulted recording, which is hard to trust
+    // when a script's timing is wrong but no error surfaces.
+    val fps =
+      runCatching { decodeOptionalInt("fps", args["fps"]) }
+        .getOrElse {
+          return errorCallToolResult("record_preview: invalid fps: ${it.message}")
+        }
+    val scale =
+      runCatching { decodeOptionalFloat("scale", args["scale"]) }
+        .getOrElse {
+          return errorCallToolResult("record_preview: invalid scale: ${it.message}")
+        }
     val formatStr = args["format"]?.jsonPrimitive?.contentOrNull?.lowercase()
     val format =
       when (formatStr) {
@@ -1916,18 +1928,49 @@ class DaemonMcpServer(
           put("frameWidthPx", stopResult.frameWidthPx)
           put("frameHeightPx", stopResult.frameHeightPx)
         }
-        CallToolResult(
-          content =
-            listOf(
-              ContentBlock.Image(
-                data = Base64.getEncoder().encodeToString(videoBytes),
-                mimeType = encoded.mimeType,
-              ),
-              ContentBlock.Text(payload.toString()),
+        // Per the MCP 2025-06-18 spec, only `image/*` mimeTypes belong in `ContentBlock.Image`;
+        // strict clients reject mismatches. APNG (`image/apng`) round-trips as an image; mp4 /
+        // webm route through `EmbeddedResource` wrapping a `Blob` so a client that already
+        // understands `resources/read` reads them via the same code path.
+        val base64 = Base64.getEncoder().encodeToString(videoBytes)
+        val mediaBlock: ContentBlock =
+          if (encoded.mimeType.startsWith("image/")) {
+            ContentBlock.Image(data = base64, mimeType = encoded.mimeType)
+          } else {
+            ContentBlock.EmbeddedResource(
+              resource =
+                ResourceContents.Blob(
+                  uri = "compose-preview-recording://$recordingId",
+                  mimeType = encoded.mimeType,
+                  blob = base64,
+                )
             )
-        )
+          }
+        CallToolResult(content = listOf(mediaBlock, ContentBlock.Text(payload.toString())))
       }
       .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Decode an optional integer arg from [elem]. Returns `null` when [elem] is `null` or JSON null
+   * (caller falls back to the daemon's default); throws [IllegalStateException] when [elem] is
+   * present but not parseable as an integer (e.g. `"fps": "fast"`). The throw maps to a
+   * `record_preview: invalid <name>` tool-level error so an agent typo surfaces clearly instead of
+   * silently producing a default-paced recording.
+   */
+  private fun decodeOptionalInt(name: String, elem: JsonElement?): Int? {
+    if (elem == null || elem is kotlinx.serialization.json.JsonNull) return null
+    val raw =
+      elem.jsonPrimitive.contentOrNull ?: error("'$name' must be a number; got null primitive")
+    return raw.toIntOrNull() ?: error("'$name' must be an integer; got '$raw'")
+  }
+
+  /** As [decodeOptionalInt] but for a floating-point arg (`scale`). */
+  private fun decodeOptionalFloat(name: String, elem: JsonElement?): Float? {
+    if (elem == null || elem is kotlinx.serialization.json.JsonNull) return null
+    val raw =
+      elem.jsonPrimitive.contentOrNull ?: error("'$name' must be a number; got null primitive")
+    return raw.toFloatOrNull() ?: error("'$name' must be a number; got '$raw'")
   }
 
   /**
