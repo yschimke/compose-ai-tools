@@ -94,6 +94,8 @@ The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code exte
 ## Git conventions
 
 - **Do not add `Co-Authored-By` trailers** to git commit messages. Commits should be attributed solely to the committer.
+- **Use conventional commits for PR titles and commit subjects** (`fix:`, `feat:`, `docs:`, `test:`, etc.) so squash merges feed release-please correctly.
+- **Before adding commits to an existing PR branch, check whether the PR has already landed.** Fetch `origin` and inspect the PR state or compare `origin/main` first. If the PR is merged, start a fresh branch from `origin/main` for follow-up work instead of stacking new commits onto the merged branch.
 - **Run the formatter before committing.** CI's `format` job runs `./gradlew ktfmtCheckAll` and it's a hard gate — `ktfmtCheck` aborts on the first unformatted file. Before each commit that touches `*.kt`/`*.kts`, run `./gradlew ktfmtFormat` (or `./gradlew :<module>:ktfmtFormatMain :<module>:ktfmtFormatTest` for the touched modules) and stage the result. For VS Code extension TypeScript changes, run `npm --prefix vscode-extension run format`. Don't push without re-running these — the fix-up round-trip costs more than running the formatter locally.
 
 ## Important constraints
