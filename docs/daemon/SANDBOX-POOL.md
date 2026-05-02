@@ -220,13 +220,10 @@ table when the picture changes (Robolectric upgrades, JDK upgrades, framework si
   previews would serialise through the EDT regardless of where they live; an in-JVM pool buys
   little until we move off-screen renders to software rendering on dedicated threads. Out of scope.
 
-## Follow-ups
+## Follow-Ups
 
-[SANDBOX-POOL-FOLLOWUPS.md](SANDBOX-POOL-FOLLOWUPS.md) sketches the three remaining items from
-the v1 work: per-slot user-class child loaders (lift the hot-reload incompatibility), per-slot
-sandbox recycle (smaller blast radius on heap-driven recycle), and affinity-aware dispatch
-(same preview always on the same sandbox so its caches accumulate). Each is independent — pick
-in any order.
+Open pool work is tracked in [ROADMAP.md](ROADMAP.md). The main remaining item is per-slot recycle
+so heap-driven recycle can restart one sandbox instead of the whole daemon JVM.
 
 ## Relation to existing docs
 

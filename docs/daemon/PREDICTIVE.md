@@ -420,7 +420,7 @@ move here first; they migrate to § 9 once resolved.
     defend against, but it leaks the sandbox classloader, not the JVM).
   - Regression test: submit a render, immediately invoke shutdown,
     assert the render still completes and the result is observable. See
-    TODO.md `B1.5-followup` for the test wiring. End-to-end variant
+    the existing harness patterns for the test wiring. End-to-end variant
     against a real daemon subprocess: scenario S2 in
     [TEST-HARNESS.md § 3](TEST-HARNESS.md#3-scenarios-catalogue).
 - **Hit-rate target (50%) accepted as a starting threshold, but

@@ -1,5 +1,4 @@
-// Latency baseline harness for the preview daemon work — see
-// docs/daemon/TODO.md task P0.1 and docs/daemon/DESIGN.md § 13.
+// Latency baseline harness for the preview daemon work — see docs/daemon/DESIGN.md § 13.
 //
 // This module is deliberately small (5 trivial @Preview functions, no
 // animations / scrolls / Wear / @PreviewParameter) so its `renderPreviews`
@@ -324,7 +323,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     sb.appendLine(
       "# baseline-latency.csv — captured by :samples:android-daemon-bench:benchPreviewLatency"
     )
-    sb.appendLine("# See docs/daemon/TODO.md P0.1 and DESIGN.md § 13. Hardware/JDK/etc captured")
+    sb.appendLine("# See docs/daemon/DESIGN.md § 13. Hardware/JDK/etc captured")
     sb.appendLine("# in docs/daemon/baseline-latency.md sidecar.")
     sb.appendLine("phase,scenario,run,milliseconds,notes")
     for (r in rows) {

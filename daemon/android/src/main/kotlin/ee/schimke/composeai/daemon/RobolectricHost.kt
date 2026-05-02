@@ -57,9 +57,8 @@ import org.robolectric.annotation.GraphicsMode
  * For B1.3 the render body is intentionally a stub — it does not touch
  * Compose, Roborazzi, or `setContent`. B1.4 (separate task) duplicates the
  * real render body in here; this task only proves that the dummy-`@Test`
- * holding-the-sandbox-open pattern actually works. Per TODO.md "Risks to
- * track", if this pattern fails for any reason we escalate rather than
- * silently switching to Robolectric's lower-level `Sandbox` API.
+ * holding-the-sandbox-open pattern actually works. If this pattern fails for any reason we
+ * escalate rather than silently switching to Robolectric's lower-level `Sandbox` API.
  *
  * **Render-body exceptions propagate** — when [RenderEngine.render] throws (e.g.
  * `BoomComposable`'s `error("boom")` inside the composition), the loop posts the Throwable onto
@@ -105,8 +104,8 @@ open class RobolectricHost(
    */
   val sandboxCount: Int = 1,
   /**
-   * Per-slot user-class loader factory — SANDBOX-POOL-FOLLOWUPS.md (#1, per-slot child loaders).
-   * When non-null, the host invokes the factory once per sandbox slot at first dispatch (with the
+   * Per-slot user-class loader factory. When non-null, the host invokes the factory once per sandbox
+   * slot at first dispatch (with the
    * slot's sandbox classloader) to allocate that slot's [UserClassLoaderHolder]. Each slot's
    * holder owns a child `URLClassLoader` parented to its own sandbox loader, so the framework
    * classes the child resolves match the sandbox the render runs in (no classloader-identity
@@ -389,7 +388,7 @@ open class RobolectricHost(
   }
 
   /**
-   * SANDBOX-POOL-FOLLOWUPS.md (#1) — lazily allocate the holder for [slotIdx] from
+   * Lazily allocate the holder for [slotIdx] from
    * [userClassloaderHolderFactory], using the slot's already-claimed sandbox classloader as
    * parent. Idempotent (CAS); subsequent calls return the same instance until [swapUserClassLoaders]
    * drops it. Returns `null` when no factory is wired, in which case slot 0's
@@ -426,7 +425,7 @@ open class RobolectricHost(
   }
 
   /**
-   * SANDBOX-POOL-FOLLOWUPS.md (#1) — broadcast `swap()` to every slot's holder. Each holder
+   * Broadcast `swap()` to every slot's holder. Each holder
    * lazily re-allocates its child `URLClassLoader` on next read, so the next render to that slot
    * sees the recompiled bytecode. No-op when no holder is wired (default in-process tests).
    */
@@ -493,8 +492,8 @@ open class RobolectricHost(
     // queue).
     val slotIdx = chooseSlotIndex(typed)
     val slot = DaemonHostBridge.slot(slotIdx)
-    // SANDBOX-POOL-FOLLOWUPS.md (#1) — publish the (possibly-just-swapped) child classloader to
-    // the slot the render is about to land on. `currentChildLoader()` is lazily allocated on
+    // Publish the (possibly-just-swapped) child classloader to the slot the render is about to land
+    // on. `currentChildLoader()` is lazily allocated on
     // first read after a swap, so this also amortises the allocation onto the host thread rather
     // than the render thread.
     publishChildLoaderForSlot(slotIdx)
@@ -1034,7 +1033,7 @@ open class RobolectricHost(
       // `parentSupplier` reads this ref to allocate the child URLClassLoader with the sandbox
       // loader as parent (not the host thread's app loader). Forensics-confirmed root cause for
       // the Android save-loop's classloader-identity skew. See
-      // `docs/daemon/classloader-forensics-diff.md` and the `sandboxClassLoaderRef` KDoc on
+      // `docs/daemon/CLASSLOADER-FORENSICS.md` and the `sandboxClassLoaderRef` KDoc on
       // `DaemonHostBridge`.
       // `this.javaClass.classLoader` is platform-typed to `ClassLoader?`, but
       // every JVM-loaded class except primitives / array stubs has a non-null
@@ -1153,7 +1152,7 @@ open class RobolectricHost(
       // on the sandbox classpath), the bridge returns null and we fall through to the sandbox's
       // own context classloader — the pre-B2.0 behaviour.
       //
-      // SANDBOX-POOL-FOLLOWUPS.md (#1) — this must read the current slot's child loader, not
+      // This must read the current slot's child loader, not
       // DaemonHostBridge.currentChildLoader(), which is the legacy slot-0 alias. A slot-1 render
       // running through a child loader parented to slot 0's Robolectric sandbox creates two
       // different Compose runtime Class<?> identities; getDeclaredComposableMethod then reports

@@ -1,5 +1,4 @@
-// Daemon end-to-end test harness — see docs/daemon/TEST-HARNESS.md and
-// docs/daemon/TODO.md § D-harness.v0.
+// Daemon end-to-end test harness — see docs/daemon/TEST-HARNESS.md.
 //
 // The harness plays the role of VS Code against a real daemon JVM over
 // JSON-RPC. Renderer-agnostic by construction: only depends on
@@ -159,7 +158,7 @@ tasks.register<JavaExec>("runFakeDaemonMain") {
 // Reads the two configuration dumps (Configuration A from `:renderer-android`'s
 // `ClassloaderForensicsTest`; Configuration B from `:daemon:android`'s
 // `ClassloaderForensicsDaemonTest`) and produces a diff (Markdown + JSON) under
-// `docs/daemon/classloader-forensics-diff.{md,json}` for human review.
+// `daemon/harness/build/reports/classloader-forensics/diff.{md,json}` for human review.
 //
 // Wired here (in :daemon:harness) rather than in either daemon module because the diff
 // is a developer-invoked diagnostic that crosses both modules' boundaries — putting it in either
@@ -182,7 +181,7 @@ dependencies { classloaderForensicsLib(project(":daemon:core")) }
 val dumpClassloaderDiff by tasks.registering {
   description =
     "Diff the standalone (:renderer-android) and daemon (:daemon:android) classloader " +
-      "forensics dumps. Writes docs/daemon/classloader-forensics-diff.{md,json}. v1 — " +
+      "forensics dumps. Writes daemon/harness/build/reports/classloader-forensics/diff.{md,json}. v1 — " +
       "developer-invoked diagnostic, not a CI gate."
   group = "verification"
   val standaloneJsonProvider =
@@ -195,10 +194,8 @@ val dumpClassloaderDiff by tasks.registering {
       .layout
       .buildDirectory
       .file("reports/classloader-forensics/daemon.json")
-  val diffMdFile =
-    rootProject.layout.projectDirectory.file("docs/daemon/classloader-forensics-diff.md")
-  val diffJsonFile =
-    rootProject.layout.projectDirectory.file("docs/daemon/classloader-forensics-diff.json")
+  val diffMdFile = layout.buildDirectory.file("reports/classloader-forensics/diff.md")
+  val diffJsonFile = layout.buildDirectory.file("reports/classloader-forensics/diff.json")
   inputs.file(standaloneJsonProvider)
   inputs.file(daemonJsonProvider)
   outputs.file(diffMdFile)
@@ -228,10 +225,12 @@ val dumpClassloaderDiff by tasks.registering {
     val instance = forensics.getField("INSTANCE").get(null)
     val fileClass = File::class.java
     val diffMethod = forensics.getMethod("diff", fileClass, fileClass, fileClass, fileClass)
-    diffMdFile.asFile.parentFile.mkdirs()
-    diffMethod.invoke(instance, standalone, daemon, diffMdFile.asFile, diffJsonFile.asFile)
-    logger.lifecycle("Classloader forensics diff written to: ${diffMdFile.asFile.absolutePath}")
-    logger.lifecycle("                                  + : ${diffJsonFile.asFile.absolutePath}")
+    val diffMd = diffMdFile.get().asFile
+    val diffJson = diffJsonFile.get().asFile
+    diffMd.parentFile.mkdirs()
+    diffMethod.invoke(instance, standalone, daemon, diffMd, diffJson)
+    logger.lifecycle("Classloader forensics diff written to: ${diffMd.absolutePath}")
+    logger.lifecycle("                                  + : ${diffJson.absolutePath}")
   }
 }
 

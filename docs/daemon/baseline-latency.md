@@ -184,8 +184,7 @@ produces the same final file.
 
 ## Notes for daemon comparison (future D2.1 work)
 
-The numbers here are the **Gradle path baseline** the daemon path
-(`docs/daemon/TODO.md` D2.1) needs to beat. Headline median targets:
+The numbers here are the **Gradle path baseline** the daemon path needs to beat. Headline median targets:
 
 - **Android daemon-warm focused-preview render** must be < 1s on this
   machine to meet DESIGN § 13's stated v1 target. With 5 previews

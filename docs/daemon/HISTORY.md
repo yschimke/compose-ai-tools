@@ -9,8 +9,8 @@
 > Outstanding: H4 (auto-prune), H5 (pixel-mode diff), H10b (gradle
 > plugin emits `composeai.daemon.gitRefHistory`), H11+ (`WRITE_LOCAL` /
 > `WRITE_PUSH` / LFS / squash GC), H7+ (VS Code panel — gated on the
-> extension picking up the surface). Full phase status in
-> [TODO.md § Phase H](TODO.md#phase-h--preview-history-parallel-to-phase-2).
+> extension picking up the surface). Open items are summarized in
+> [ROADMAP.md](ROADMAP.md).
 
 ## What this is
 

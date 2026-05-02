@@ -406,9 +406,7 @@ Sketch:
   available at AGP build time; needs to be exposed to the daemon via
   the launch descriptor.
 
-Tracked as **B2.0c — Per-preview resource-read tracking** in
-[TODO.md](TODO.md). Lands after B2.0's classloader split is stable;
-not blocking.
+Tracked in [ROADMAP.md](ROADMAP.md) as per-preview resource-read tracking. Not blocking.
 
 ## Future work
 

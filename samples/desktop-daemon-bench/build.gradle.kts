@@ -1,5 +1,5 @@
 // Desktop latency baseline harness for the preview daemon work — see
-// docs/daemon/TODO.md task P0.6 and docs/daemon/DESIGN.md § 13.
+// Desktop latency baseline harness for the preview daemon work — see docs/daemon/DESIGN.md § 13.
 //
 // Mirrors :samples:android-daemon-bench (P0.1) but renders through the
 // Compose-Desktop path (`renderer-desktop`) instead of the Robolectric

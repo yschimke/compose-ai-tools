@@ -96,8 +96,8 @@ class RobolectricHostPoolTest {
 
   @Test
   fun samePreviewIdAlwaysLandsOnSameSlot() {
-    // SANDBOX-POOL-FOLLOWUPS.md (#3, affinity-aware dispatch). Same previewId across many
-    // submits must hit the same sandbox slot every time so per-sandbox Compose snapshot caches +
+    // Same previewId across many submits must hit the same sandbox slot every time so per-sandbox
+    // Compose snapshot caches +
     // Robolectric shadow caches accumulate as intended; without this, repeat renders of the same
     // preview never warm a single sandbox.
     val host = RobolectricHost(sandboxCount = 2)
@@ -178,9 +178,8 @@ class RobolectricHostPoolTest {
 
   @Test
   fun rejectsLegacyHolderPlusFactory() {
-    // SANDBOX-POOL-FOLLOWUPS.md (#1) — the two constructor paths are mutually exclusive. Pre-#1
-    // the constraint was "no holder when sandboxCount > 1"; now the constraint is "use either
-    // form, not both."
+    // The two constructor paths are mutually exclusive: use either the legacy holder or the
+    // per-slot factory, not both.
     val holder =
       UserClassLoaderHolder(
         urls = emptyList(),
@@ -218,8 +217,8 @@ class RobolectricHostPoolTest {
 
   @Test
   fun perSlotHoldersHaveDistinctChildLoadersParentedToTheirSandbox() {
-    // SANDBOX-POOL-FOLLOWUPS.md (#1) — the load-bearing per-slot guarantee: each slot's holder is
-    // parented to that slot's sandbox classloader, so a render that lands on slot N resolves user
+    // The load-bearing per-slot guarantee: each slot's holder is parented to that slot's sandbox
+    // classloader, so a render that lands on slot N resolves user
     // classes against sandbox N's framework classes (no classloader-identity skew across slots).
     //
     // Implementation note: we record the sandbox classloader the factory was invoked with for
@@ -404,10 +403,8 @@ class RobolectricHostPoolTest {
 
   @Test
   fun swapUserClassLoadersBroadcastsToEverySlot() {
-    // SANDBOX-POOL-FOLLOWUPS.md (#1) — `fileChanged({ kind: "source" })` calls
-    // `host.swapUserClassLoaders()`, which must invalidate every slot's holder so the next render
-    // to any slot allocates a fresh child loader. Pre-#1 the equivalent code only swapped one
-    // shared holder.
+    // `fileChanged({ kind: "source" })` calls `host.swapUserClassLoaders()`, which must invalidate
+    // every slot's holder so the next render to any slot allocates a fresh child loader.
     val swapCallsPerSlot = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.atomic.AtomicInteger>()
     val factory: (ClassLoader) -> UserClassLoaderHolder = { sandboxClassLoader ->
       val key = System.identityHashCode(sandboxClassLoader)

@@ -14,7 +14,7 @@ import org.junit.Test
  * proposition collapses (every render would re-bootstrap the sandbox,
  * which is the multi-second cost we are trying to amortise; see DESIGN.md
  * § 13). If this test ever flips and starts seeing distinct classloader
- * hash codes per render, escalate per TODO.md "Risks to track" → B1.3.
+ * hash codes per render, treat it as a sandbox-reuse regression.
  */
 class RobolectricHostTest {
 

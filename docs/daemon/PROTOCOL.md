@@ -2,7 +2,7 @@
 
 > **Status:** v1 contract. Locked as of this document; further changes require a PR that updates both the daemon (Kotlin) and the VS Code client (TypeScript) in lockstep, plus a `protocolVersion` bump.
 
-This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md) and is the contract that Stream B (daemon core) and Stream C (VS Code client) implement against in parallel — see [TODO.md](TODO.md).
+This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md). Open protocol work is tracked in [ROADMAP.md](ROADMAP.md).
 
 ## 1. Transport
 

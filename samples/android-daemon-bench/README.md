@@ -1,8 +1,8 @@
 # `:samples:android-daemon-bench`
 
 Latency baseline harness for the preview-daemon work. See
-[`docs/daemon/TODO.md`](../../docs/daemon/TODO.md) task **P0.1** and
-[`docs/daemon/DESIGN.md` § 13](../../docs/daemon/DESIGN.md).
+[`docs/daemon/DESIGN.md` § 13](../../docs/daemon/DESIGN.md) and
+[`docs/daemon/baseline-latency.md`](../../docs/daemon/baseline-latency.md).
 
 ## Why this is a separate sample (Option A)
 

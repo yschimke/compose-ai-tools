@@ -65,7 +65,7 @@ class S3_5RecompileSaveLoopRealModeTest {
     val target = HarnessTestSupport.harnessTarget()
     // B2.0-followup — the Android-skip was originally diagnosed as
     // ASM-bytecode-clone-vs-Compose-compiler-method-mangling. The classloader forensics dump
-    // (CLASSLOADER-FORENSICS.md, the diff at docs/daemon/classloader-forensics-diff.md)
+    // (CLASSLOADER-FORENSICS.md, compare generated forensic diffs when this fails)
     // surfaced the actual root cause as classloader-identity skew: UserClassLoaderHolder's
     // child URLClassLoader had been inheriting the host thread's app loader as parent rather
     // than the Robolectric sandbox loader, so framework classes (Composer, Activity, etc.)
