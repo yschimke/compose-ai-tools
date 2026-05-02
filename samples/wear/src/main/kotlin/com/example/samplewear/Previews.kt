@@ -45,6 +45,7 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
 import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
+import java.util.UUID
 
 
 private data class Item(val title: String, val subtitle: String)
@@ -57,6 +58,12 @@ private val sampleItems = listOf(
     Item("Calories", "412 kcal"),
     Item("Timer", "12:30 remaining"),
 )
+
+@Composable
+private fun rememberCompositionId(): String = remember {
+    // TODO: Remove this live-preview diagnostic once interactive refreshes are stable.
+    UUID.randomUUID().toString().take(8)
+}
 
 @Composable
 fun WearApp() {
@@ -142,6 +149,7 @@ fun ActivityListScreen() {
 @Composable
 private fun ButtonPreviewContent() {
     var taps by remember { mutableStateOf(0) }
+    val compositionId = rememberCompositionId()
     MaterialTheme {
         AppScaffold(
             timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
@@ -155,7 +163,7 @@ private fun ButtonPreviewContent() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Button(onClick = { taps += 1 }) {
-                        Text("Taps: $taps")
+                        Text("Taps: $taps\n$compositionId")
                     }
                 }
             }
@@ -165,6 +173,7 @@ private fun ButtonPreviewContent() {
 
 @Composable
 private fun CircularProgressPreviewContent() {
+    val compositionId = rememberCompositionId()
     MaterialTheme {
         AppScaffold(
             timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
@@ -180,6 +189,7 @@ private fun CircularProgressPreviewContent() {
                     CircularProgressIndicator(
                         modifier = Modifier.fillMaxSize(),
                     )
+                    Text(compositionId)
                 }
             }
         }

@@ -389,6 +389,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
+            if (activeInteractiveStreams.has(previewId)) {
+                logLine(`[interactive] frame ${previewId} bytes=${imageBase64.length}`);
+            }
             // Capture index 0 — the daemon's v1 renderFinished targets the
             // representative capture only. Multi-capture (animated) renders
             // still come through the Gradle path; the daemon's predictive
