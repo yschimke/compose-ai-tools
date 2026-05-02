@@ -357,7 +357,7 @@ data class RenderNowResult(val queued: List<String>, val rejected: List<Rejected
 // D1 — data products (see docs/daemon/DATA-PRODUCTS.md).
 //
 // `params` is per-kind options carried as JsonElement so the dispatch surface
-// stays kind-agnostic — kinds that take params (e.g. `layout/tree` keyed by
+// stays kind-agnostic — kinds that take params (e.g. `layout/inspector` keyed by
 // nodeId) decode against their own serializer at producer time.
 // ---------------------------------------------------------------------------
 

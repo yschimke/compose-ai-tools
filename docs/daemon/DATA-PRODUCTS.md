@@ -234,7 +234,7 @@ asking for an unadvertised kind gets `DataProductUnknown` (-32020).
 {
   previewId: string;
   kind: string;
-  params?: Record<string, unknown>;  // per-kind options (e.g. { nodeId } for layout/tree)
+  params?: Record<string, unknown>;  // per-kind options (e.g. { nodeId } for layout/inspector)
   inline?: boolean;                  // true → daemon inlines payload (or bytes for blobs)
 }
 
@@ -372,7 +372,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `a11y/hierarchy`           | a11y | low  | `AccessibilityNode[]` (label, role, states, bounds). Powers a local overlay in VS Code. **First implementation.** Carries the `overlay` PNG as an extra. |
 | `a11y/overlay`             | a11y | low  | Path to the Paparazzi-style annotated PNG produced by `AccessibilityImageProcessor`. Pure-image kind — `transport='path'`, no JSON payload. **D2.1 — image-processor surface.** |
 | `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. **D2.2 — shipped inline payload.** Carries the `overlay` PNG as an extra. |
-| `layout/tree`              | default | low | View / Compose layout tree with bounds, paddings, source-line refs. Layout inspector. |
+| `layout/inspector`         | default | low | View / Compose hierarchy for layout-inspector style inspection: component tree, bounds, paddings, source-line refs. |
 | `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. **Android daemon implementation.** |
 | `compose/recomposition`    | instrumented | medium | `[{ nodeId, count, sinceFrameStreamId? }]`. Heat-map overlay. Static snapshot answers "what recomposed during initial composition"; the load-bearing case is **delta after a click** in interactive mode (see § Recomposition + interactive). Needs an instrumented re-render. |
 | `compose/theme`            | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed which tokens. |
@@ -505,7 +505,7 @@ The two also have different dependency profiles: the core only needs ATF +
 AndroidX, while the connector adds `:daemon:core` (protocol types) and
 exposes `ImageProcessor` to `RenderEngine`.
 
-The pattern generalises — when `layout/tree` or `compose/recomposition` get
+The pattern generalises — when `layout/inspector` or `compose/recomposition` get
 their own modules, they follow the same `:data-<product>-core` (published) +
 `:data-<product>-connector` (private) split. The `core` is optional: a
 data product whose entire surface is daemon-glue (no general-purpose Android
@@ -590,7 +590,7 @@ regions capped to the largest 50:
   re-render path for kinds the latest pass didn't compute. First
   consumer: agent-driven MCP calls that ask for `a11y/hierarchy`
   without first subscribing.
-- **D4 — `layout/tree`.** Layout inspector. Shares the View walk with
+- **D4 — `layout/inspector`.** Layout inspector. Shares the View walk with
   a11y; cheap enough for the same overlay panel surface.
 - **D5+** — pick from the catalogue based on demand. `compose/recomposition`
   in `mode: "delta"` is the highest-value next step for VS Code parity

@@ -727,8 +727,8 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
-                "kind":{"type":"string","description":"Data-product kind, e.g. a11y/hierarchy, a11y/atf, layout/tree, compose/semantics."},
-                "params":{"type":"object","description":"Optional per-kind parameters (e.g. {nodeId} for layout/tree). Forwarded verbatim to the daemon's data/fetch."},
+                "kind":{"type":"string","description":"Data-product kind, e.g. a11y/hierarchy, a11y/atf, layout/inspector, compose/semantics."},
+                "params":{"type":"object","description":"Optional per-kind parameters (e.g. {nodeId} for layout/inspector). Forwarded verbatim to the daemon's data/fetch."},
                 "inline":{"type":"boolean","description":"Default true. When false, the daemon returns a `path` to a sibling JSON file instead of inlining the payload."}
               },
               "required":["uri","kind"]
@@ -1506,7 +1506,7 @@ class DaemonMcpServer(
     // transport on a direct fetch, so falling through preserves the contract.
     //
     // Skip the cache when per-kind `params` are present — those select sub-views (e.g.
-    // `{ nodeId }` for `layout/tree`), and the cached entry is the no-params form.
+    // `{ nodeId }` for `layout/inspector`), and the cached entry is the no-params form.
     if (perKindParams == null) {
       val cached =
         dataProductCache[DataAttachKey(uri.workspaceId, uri.modulePath, uri.previewFqn, kind)]
