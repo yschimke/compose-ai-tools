@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "annotatedBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
@@ -11,7 +11,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
@@ -21,17 +21,9 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png",
-      "findings": [
-        {
-          "boundsInScreen": "144,144,240,240",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "android.widget.Button"
-        }
-      ],
+      "findings": [],
       "functionName": "BadWearButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
@@ -39,7 +31,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ButtonPreview",
@@ -49,7 +41,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "CircularProgressIndicatorPreview",
