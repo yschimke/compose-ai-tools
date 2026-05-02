@@ -496,40 +496,12 @@ open class RobolectricHost(
     // first read after a swap, so this also amortises the allocation onto the host thread rather
     // than the render thread.
     publishChildLoaderForSlot(slotIdx)
-    var raw = submitToSlotAndAwait(slot, typed, timeoutMs)
-    if (raw.isTransientComposableLookupFailure()) {
-      val holder = ensureHolderForSlot(slotIdx)
-      val beforeLoader = holder?.currentChildLoader()
-      val className = RenderSpec.parseFromPayloadOrNull(typed.payload)?.className
-      val beforeFingerprint =
-        if (beforeLoader != null && className != null) {
-          UserClassLoaderHolder.classFileFingerprint(beforeLoader, className)
-            ?: "fingerprint unavailable"
-        } else {
-          "fingerprint unavailable"
-        }
-      System.err.println(
-        "compose-ai-daemon: retrying ${typed.id} after composable method lookup failed; " +
-          "slot=$slotIdx payload='${typed.payload}' " +
-          "loaderId=${beforeLoader?.let { System.identityHashCode(it).toString(16) } ?: "<none>"} " +
-          "classFile=$beforeFingerprint urls=${holder?.urls()?.let(::urlsSummaryForLog) ?: "[]"}"
-      )
-      val afterLoader = refreshChildLoaderForSlot(slotIdx, holder)
-      val afterFingerprint =
-        if (afterLoader != null && className != null) {
-          UserClassLoaderHolder.classFileFingerprint(afterLoader, className)
-            ?: "fingerprint unavailable"
-        } else {
-          "fingerprint unavailable"
-        }
-      System.err.println(
-        "compose-ai-daemon: retrying ${typed.id} with refreshed child loader; " +
-          "slot=$slotIdx " +
-          "loaderId=${afterLoader?.let { System.identityHashCode(it).toString(16) } ?: "<none>"} " +
-          "classFile=$afterFingerprint"
-      )
-      raw = submitToSlotAndAwait(slot, typed, timeoutMs)
-    }
+    slot.requests.put(typed)
+    val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
+    val raw =
+      resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
+        ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
+    DaemonHostBridge.results.remove(typed.id)
     // The sandbox-side loop posts either a [RenderResult] (success / stub) or a [Throwable]
     // (engine body threw). Re-throw the Throwable so `JsonRpcServer.submitRenderAsync`'s catch
     // surfaces it as a `renderFailed` notification — the path `S5RenderFailedAndroidRealModeTest`
@@ -542,64 +514,6 @@ open class RobolectricHost(
     // instance of the host-side RenderResult class.
     return raw as? RenderResult ?: copyResultAcrossClassloaders(raw)
   }
-
-  private fun submitToSlotAndAwait(
-    slot: SandboxSlot,
-    typed: RenderRequest.Render,
-    timeoutMs: Long,
-  ): Any {
-    slot.requests.put(typed)
-    val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
-    val raw =
-      resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
-        ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
-    DaemonHostBridge.results.remove(typed.id)
-    return raw
-  }
-
-  private fun refreshChildLoaderForSlot(
-    slotIdx: Int,
-    holder: UserClassLoaderHolder? = ensureHolderForSlot(slotIdx),
-  ): ClassLoader? {
-    if (holder == null) return null
-    try {
-      Thread.sleep(50)
-    } catch (_: InterruptedException) {
-      Thread.currentThread().interrupt()
-    }
-    holder.swap()
-    val loader = holder.currentChildLoader()
-    DaemonHostBridge.slot(slotIdx).childLoaderRef.set(loader)
-    return loader
-  }
-
-  private fun Any.isTransientComposableLookupFailure(): Boolean {
-    if (this !is Throwable) return false
-    return causeChain().any { throwable ->
-      throwable is NoSuchMethodException &&
-        throwable.stackTrace.any { frame ->
-          frame.className.contains("ComposableMethod") ||
-            frame.className == RenderEngine::class.java.name ||
-            frame.className == SandboxRunner::class.java.name
-        }
-    }
-  }
-
-  private fun Throwable.causeChain(): Sequence<Throwable> =
-    generateSequence(this) { throwable -> throwable.cause }
-
-  private fun urlsSummaryForLog(urls: List<java.net.URL>): String =
-    urls.joinToString(prefix = "[", postfix = "]") { url ->
-      if (url.protocol == "file") {
-        val file = java.io.File(url.toURI())
-        val mtime =
-          if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()).toString()
-          else "missing"
-        "${file.absolutePath}(mtime=$mtime)"
-      } else {
-        url.toString()
-      }
-    }
 
   /**
    * SANDBOX-POOL.md (affinity-aware dispatch) — picks a slot for [render]. Uses the previewId
@@ -1102,7 +1016,7 @@ open class RobolectricHost(
             // surfaces it as `renderFailed` upstream.
             val result: Any =
               try {
-                dispatchRender(id, payload)
+                dispatchRender(slot, id, payload)
               } catch (t: Throwable) {
                 // [RenderEngine] dispatches the @Composable via `Method.invoke`, which wraps
                 // user-thrown exceptions in [java.lang.reflect.InvocationTargetException].
@@ -1129,7 +1043,7 @@ open class RobolectricHost(
      * `className=` (B1.3-era unit-test payloads of the form `render-N`) take the stub path so
      * `RobolectricHostTest`'s sandbox-reuse assertion keeps working through B1.4.
      */
-    private fun dispatchRender(id: Long, payload: String): RenderResult {
+    private fun dispatchRender(slot: SandboxSlot, id: Long, payload: String): RenderResult {
       // Forensic-dump branch — see docs/daemon/CLASSLOADER-FORENSICS.md § Implementation seam.
       // Routed through the existing `RenderRequest.Render.payload` free-form field rather than a
       // new `RenderRequest` variant, per CLASSLOADER-FORENSICS.md's "don't widen the core's
@@ -1141,15 +1055,21 @@ open class RobolectricHost(
       // active via `Thread.currentThread().contextClassLoader` — exactly the state a real render
       // sees, which is the whole point of the daemon-path dump.
       if (payload.startsWith(FORENSIC_DUMP_PREFIX)) {
-        return runForensicDump(id, payload)
+        return runForensicDump(slot, id, payload)
       }
       val spec = RenderSpec.parseFromPayloadOrNull(payload) ?: return renderStub(id)
       // B2.0 — pick up the disposable child classloader that the host thread has published into
       // the bridge. When no holder is wired (legacy in-process tests where the testFixtures live
       // on the sandbox classpath), the bridge returns null and we fall through to the sandbox's
       // own context classloader — the pre-B2.0 behaviour.
+      //
+      // SANDBOX-POOL-FOLLOWUPS.md (#1) — this must read the current slot's child loader, not
+      // DaemonHostBridge.currentChildLoader(), which is the legacy slot-0 alias. A slot-1 render
+      // running through a child loader parented to slot 0's Robolectric sandbox creates two
+      // different Compose runtime Class<?> identities; getDeclaredComposableMethod then reports
+      // the user's perfectly-valid @Composable function as missing.
       val classLoader: ClassLoader =
-        DaemonHostBridge.currentChildLoader()
+        slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
       return engine.render(spec, id, classLoader, sandboxStats = sandboxStats)
@@ -1168,14 +1088,14 @@ open class RobolectricHost(
      * static `capture(List, Object?, String, File)` method) so dropping the compile-time link is
      * cheap relative to the dependency-cycle risk of pulling forensics into the host's main code.
      */
-    private fun runForensicDump(id: Long, payload: String): RenderResult {
+    private fun runForensicDump(slot: SandboxSlot, id: Long, payload: String): RenderResult {
       val parsed = parseForensicPayload(payload)
       val outFile = java.io.File(parsed.outPath)
       val survey = parsed.survey
 
       val previousContext = Thread.currentThread().contextClassLoader
       val effectiveLoader: ClassLoader =
-        DaemonHostBridge.currentChildLoader()
+        slot.childLoaderRef.get()
           ?: previousContext
           ?: RenderEngine::class.java.classLoader
       Thread.currentThread().contextClassLoader = effectiveLoader

@@ -1,7 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -264,6 +267,78 @@ class RobolectricHostPoolTest {
   }
 
   @Test
+  fun realRenderUsesTheCurrentSlotsChildLoader() {
+    // Regression for the slot-1 NoSuchMethodException loop seen in VS Code after #536. Stub
+    // renders only report the sandbox classloader and never enter RenderEngine, so they cannot
+    // catch classloader-identity skew. This test drives real Compose reflection through a
+    // UserClassLoaderHolder-backed child loader:
+    //
+    // 1. Render a real fixture on slot 0 so the legacy slot-0 currentChildLoader alias is populated.
+    // 2. Render the same fixture on slot 1.
+    //
+    // The bug was that slot 1 read DaemonHostBridge.currentChildLoader() (slot 0's alias) instead
+    // of slot.childLoaderRef. That loaded RedFixturePreviewsKt with slot 0's sandbox as parent while
+    // executing inside slot 1's sandbox, so Compose's Composer parameter type did not match and
+    // getDeclaredComposableMethod reported the valid @Composable function as missing.
+    val userClassesDir = stageFixtureClassesDir()
+    val outputDir = Files.createTempDirectory("pool-real-renders").toFile()
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+
+    val probe = RobolectricHost(sandboxCount = 2)
+    val slot0PreviewId =
+      (0 until 128)
+        .map { i -> "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.slot0.$i" }
+        .first { previewId ->
+          probe.chooseSlotIndexForTest(
+            payload = renderPayload(previewId, outputBaseName = "probe"),
+            id = 1L,
+          ) == 0
+        }
+    val slot1PreviewId =
+      (0 until 128)
+        .map { i -> "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.slot1.$i" }
+        .first { previewId ->
+          probe.chooseSlotIndexForTest(
+            payload = renderPayload(previewId, outputBaseName = "probe"),
+            id = 2L,
+          ) == 1
+        }
+
+    val urls = listOf(userClassesDir.toURI().toURL())
+    val host =
+      RobolectricHost(
+        sandboxCount = 2,
+        userClassloaderHolderFactory = { sandboxClassLoader ->
+          UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
+        },
+      )
+    try {
+      host.start()
+
+      val slot0 =
+        host.submit(
+          RenderRequest.Render(payload = renderPayload(slot0PreviewId, outputBaseName = "slot-0")),
+          timeoutMs = 120_000,
+        )
+      assertNotNull("slot 0 real render should produce a PNG", slot0.pngPath)
+      assertTrue("slot 0 PNG should exist", File(slot0.pngPath!!).exists())
+
+      val slot1 =
+        host.submit(
+          RenderRequest.Render(payload = renderPayload(slot1PreviewId, outputBaseName = "slot-1")),
+          timeoutMs = 120_000,
+        )
+      assertNotNull("slot 1 real render should produce a PNG", slot1.pngPath)
+      assertTrue("slot 1 PNG should exist", File(slot1.pngPath!!).exists())
+    } finally {
+      host.shutdown()
+      outputDir.deleteRecursively()
+      userClassesDir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun swapUserClassLoadersBroadcastsToEverySlot() {
     // SANDBOX-POOL-FOLLOWUPS.md (#1) — `fileChanged({ kind: "source" })` calls
     // `host.swapUserClassLoaders()`, which must invalidate every slot's holder so the next render
@@ -315,5 +390,46 @@ class RobolectricHostPoolTest {
       )
     }
     throw AssertionError("expected ${expected.name} to be thrown")
+  }
+
+  private fun renderPayload(previewId: String, outputBaseName: String): String =
+    "previewId=$previewId;" +
+      "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+      "functionName=RedSquare;" +
+      "widthPx=64;heightPx=64;density=1.0;" +
+      "showBackground=true;" +
+      "outputBaseName=$outputBaseName"
+
+  private fun stageFixtureClassesDir(): File {
+    val tempDir = Files.createTempDirectory("pool-userClasses").toFile()
+    val resourceName = "ee/schimke/composeai/daemon/RedFixturePreviewsKt.class"
+    val url =
+      (Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader())
+        .getResource(resourceName)
+        ?: error("Can't locate testFixtures class on the test classpath: $resourceName")
+    val urlString = url.toString()
+    if (urlString.startsWith("file:")) {
+      val classFile = File(url.toURI())
+      val pkgDepth = "ee/schimke/composeai/daemon".count { it == '/' } + 1
+      var root: File = classFile.parentFile ?: error("classFile has no parent: $classFile")
+      repeat(pkgDepth) {
+        root = root.parentFile ?: error("ran off the top of the classes-dir walking up from $classFile")
+      }
+      root.copyRecursively(tempDir, overwrite = true)
+      return tempDir
+    }
+    if (urlString.startsWith("jar:file:")) {
+      val jarPath = urlString.removePrefix("jar:file:").substringBefore("!").let { File(it) }
+      java.util.zip.ZipFile(jarPath).use { jar ->
+        for (entry in jar.entries()) {
+          if (!entry.name.startsWith("ee/schimke/composeai/daemon/") || entry.isDirectory) continue
+          val out = File(tempDir, entry.name)
+          out.parentFile?.mkdirs()
+          jar.getInputStream(entry).use { input -> out.outputStream().use { input.copyTo(it) } }
+        }
+      }
+      return tempDir
+    }
+    error("Unsupported testFixtures URL shape: $urlString")
   }
 }
