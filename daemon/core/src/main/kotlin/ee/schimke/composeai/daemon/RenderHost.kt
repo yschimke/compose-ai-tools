@@ -155,7 +155,11 @@ interface RenderHost {
    *   doesn't drag stale bytecode into the held scene — the next `interactive/start` after a save
    *   gets a fresh loader.
    */
-  fun acquireInteractiveSession(previewId: String, classLoader: ClassLoader): InteractiveSession =
+  fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+    inspectionMode: Boolean? = null,
+  ): InteractiveSession =
     throw UnsupportedOperationException(
       "interactive mode unsupported by ${this::class.simpleName ?: this::class.java.name}"
     )

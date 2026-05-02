@@ -400,6 +400,8 @@ sealed interface InteractiveCommand {
     val uiMode: String? = null,
     /** `"portrait"` / `"landscape"` / `null`; overrides the size-derived guess. */
     val orientation: String? = null,
+    /** Held-session `LocalInspectionMode`; `null` preserves the runtime-like default (`false`). */
+    val inspectionMode: Boolean? = null,
   ) : InteractiveCommand
 
   /**

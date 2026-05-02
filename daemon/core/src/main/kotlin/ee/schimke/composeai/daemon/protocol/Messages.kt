@@ -717,7 +717,16 @@ data class HistoryReadResultDto(
 // emitting a fresh `renderFinished` for the target preview.
 // =====================================================================
 
-@Serializable data class InteractiveStartParams(val previewId: String)
+@Serializable
+data class InteractiveStartParams(
+  val previewId: String,
+  /**
+   * Optional `LocalInspectionMode` override for held interactive sessions. Null preserves the
+   * current runtime-like interactive default (`false`); set `true` for previews that need their
+   * preview/stub-data branch while still using a held session.
+   */
+  val inspectionMode: Boolean? = null,
+)
 
 /**
  * Opaque correlation token returned by `interactive/start`. The client passes it back on every

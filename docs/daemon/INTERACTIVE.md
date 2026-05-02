@@ -389,10 +389,11 @@ together force a real refactor:
 2. **Pointer dispatch.** The pixel coords carried in
    `interactive/input` need to reach the held scene via
    `ImageComposeScene.sendPointerEvent`.
-3. **Inspection-mode flip.** `LocalInspectionMode = false` for the
-   duration of the interactive session so previews that branch on
-   `isInspectionMode` show their non-inspection ("real") behaviour and
-   pointer-input modifiers actually fire.
+3. **Inspection-mode flip.** `LocalInspectionMode = false` by default
+   for the duration of the interactive session so previews that branch
+   on `isInspectionMode` show their non-inspection ("real") behaviour
+   and pointer-input modifiers actually fire. Callers may opt a held
+   session back into `true` with `interactive/start.inspectionMode`.
 
 ### 9.2 InteractiveSession — held scene per stream
 
@@ -505,10 +506,12 @@ data won't run that bypass. For v1 the trade-off was "pin
 inspection-mode-aware previews to a deterministic stub", which is why
 we set it to true everywhere.
 
-For v2 the call inverts: an interactive session is the user *wanting*
-real behaviour. `InteractiveSession.setUp` provides
-`LocalInspectionMode = false`; non-interactive renders (the existing
-save → discoveryUpdated → renderFinished flow) keep
+For v2 the default call inverts: an interactive session is the user
+*wanting* real behaviour. `interactive/start` therefore provides
+`LocalInspectionMode = false` unless the caller passes
+`inspectionMode: true` for previews that need their preview/stub-data
+branch while still using a held session. Non-interactive renders (the
+existing save → discoveryUpdated → renderFinished flow) keep
 `LocalInspectionMode = true`.
 
 The split is per-render, not per-engine: the same `RenderEngine`
