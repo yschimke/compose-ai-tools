@@ -164,8 +164,11 @@ object DeviceDimensions {
               if (parts.size == 2) parts[0].trim() to parts[1].trim().removeSuffix("dp") else null
             }
             .toMap()
-        val w = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
-        val h = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
+        val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
+        val parsedHeight = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
+        val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
+        val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
+        val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
         return DeviceSpec(w, h, density)
       }

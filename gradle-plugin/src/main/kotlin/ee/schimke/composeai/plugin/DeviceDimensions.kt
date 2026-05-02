@@ -169,8 +169,11 @@ object DeviceDimensions {
               if (parts.size == 2) parts[0].trim() to parts[1].trim().removeSuffix("dp") else null
             }
             .toMap()
-        val w = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
-        val h = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
+        val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
+        val parsedHeight = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
+        val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
+        val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
+        val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
         // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
         // — honour it if present, otherwise fall back to the AS default.
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY

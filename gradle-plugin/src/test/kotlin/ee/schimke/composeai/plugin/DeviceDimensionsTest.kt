@@ -66,6 +66,13 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun `spec string landscape orientation resolves landscape geometry`() {
+    val spec = DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=landscape")
+    assertThat(spec.widthDp).isEqualTo(800)
+    assertThat(spec.heightDp).isEqualTo(400)
+  }
+
+  @Test
   fun `wear device returns wear defaults`() {
     val spec = DeviceDimensions.resolve("id:wearos_large_round")
     assertThat(spec.widthDp).isEqualTo(227)
