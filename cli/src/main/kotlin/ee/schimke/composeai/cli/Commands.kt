@@ -637,6 +637,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       if (!runGradle(gradle, *tasks)) {
         reportRenderFailures(gradle)
         System.err.println("Render failed")
+        System.out.flush()
         exitProcess(2)
       }
 

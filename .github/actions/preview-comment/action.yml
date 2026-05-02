@@ -234,6 +234,24 @@ runs:
           --baseline-renders _resource_baselines/renders \
           --output-dir _pr_resource_renders
 
+    # Hand the user the actual `_previews.json` / `_resources.json` bytes when
+    # the JSON parse fails (or any later step in this composite trips). The
+    # diagnostic in `compare-previews.py` already prints a hex/repr head into
+    # the log, but the full file is what unblocks postmortem on a stdout-
+    # pollution bug — without this artifact, reproducing means re-running the
+    # whole render. Files are tiny (a few KB each) so always-upload on
+    # failure is fine.
+    - name: Upload CLI JSON output on failure
+      if: failure()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: preview-cli-output
+        path: |
+          _previews.json
+          _resources.json
+        if-no-files-found: ignore
+        retention-days: 14
+
     - name: Push PR renders
       shell: bash
       env:

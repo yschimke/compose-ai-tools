@@ -174,6 +174,34 @@ def _render_basename(png_path: str, preview_id: str) -> str:
     return f"{preview_id}.png"
 
 
+def _diagnose_cli_json(path: Path, raw_bytes: bytes, summary: str) -> str:
+    """Build the SystemExit message for unparseable ``compose-preview show --json``
+    output — adds a hex preview, a repr of the head, and the file's tail when
+    long enough, so the CI log carries enough breadcrumbs to root-cause without
+    re-running the workflow. See preview-comment/action.yml for the
+    artifact-upload step that hands the full file to the user as well.
+    """
+    size = len(raw_bytes)
+    head = raw_bytes[:200]
+    head_hex = head[:32].hex(" ")
+    head_repr = head.decode("utf-8", errors="replace")
+    lines = [
+        f"{path} {summary}.",
+        f"File size: {size} bytes.",
+        f"First {min(32, size)} bytes (hex): {head_hex}",
+        f"First {min(200, size)} chars (repr): {head_repr!r}",
+    ]
+    if size > 400:
+        tail = raw_bytes[-200:]
+        lines.append(f"Last 200 chars (repr): {tail.decode('utf-8', errors='replace')!r}")
+    lines.append(
+        "Check the upstream `compose-preview show --json` step's log for "
+        "non-JSON output bleeding into stdout. The full file is uploaded as "
+        "the `preview-cli-output` artifact for postmortem inspection."
+    )
+    return "\n".join(lines)
+
+
 def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     """Parse ``compose-preview show --json`` output into a keyed dict.
 
@@ -192,8 +220,8 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
     Rows carry the render PNG basename (``_SCROLL_end.png`` etc.) and a
     ``captureLabel`` for downstream markdown / filename handling.
     """
-    text = cli_json_path.read_text()
-    if not text.strip():
+    raw_bytes = cli_json_path.read_bytes()
+    if not raw_bytes.strip():
         # `compose-preview show --json` always emits an envelope — even the
         # no-previews case prints `{"schema": …, "previews": []}`. An empty
         # file means the upstream "Render previews" step lost its stdout
@@ -204,13 +232,37 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
             f"{cli_json_path} is empty — the upstream `compose-preview show "
             f"--json` step produced no output. Check that step's log."
         )
+    # Strip a UTF-8 BOM if the JVM emitted one. Python's json parser doesn't
+    # treat U+FEFF as whitespace and would die with "Expecting value: line 1
+    # col 1" on otherwise-valid output. Logged to stderr so the workaround
+    # stays visible in CI rather than silently masking a real CLI bug.
+    text_bytes = raw_bytes
+    if text_bytes.startswith(b"\xef\xbb\xbf"):
+        print(
+            f"warning: stripped UTF-8 BOM from {cli_json_path} "
+            f"(upstream `compose-preview show --json` emitted one)",
+            file=sys.stderr,
+        )
+        text_bytes = text_bytes[3:]
+    try:
+        text = text_bytes.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise SystemExit(
+            _diagnose_cli_json(
+                cli_json_path,
+                raw_bytes,
+                f"is not valid UTF-8 ({e.reason} at byte {e.start})",
+            )
+        ) from None
     try:
         raw = json.loads(text)
     except json.JSONDecodeError as e:
         raise SystemExit(
-            f"{cli_json_path} is not valid JSON ({e.msg} at line {e.lineno} "
-            f"col {e.colno}). Check the upstream `compose-preview show --json` "
-            f"step's log for non-JSON output bleeding into stdout."
+            _diagnose_cli_json(
+                cli_json_path,
+                raw_bytes,
+                f"is not valid JSON ({e.msg} at line {e.lineno} col {e.colno})",
+            )
         ) from None
     if isinstance(raw, dict) and "previews" in raw:
         entries = raw["previews"]

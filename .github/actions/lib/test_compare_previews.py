@@ -124,6 +124,36 @@ class LoadCliOutputTest(unittest.TestCase):
             cp.load_cli_output(path)
         self.assertIn("not valid JSON", str(ctx.exception))
 
+    def test_malformed_json_message_includes_diagnostic_breadcrumbs(self):
+        # The CI failure that motivated this — `_previews.json is not valid
+        # JSON (Expecting value at line 1 col 1)` — used to give us nothing
+        # to act on without re-running. Make sure the message now carries
+        # size / hex / repr so the user can root-cause from the log alone.
+        path = self.tmp / "bad.json"
+        # Leading ESC (0x1b) — not whitespace per .strip(), not valid JSON,
+        # exactly the "Expecting value at line 1 col 1" pattern.
+        path.write_bytes(b"\x1b]9;4;1;0\x1b\\{}\n")
+        with self.assertRaises(SystemExit) as ctx:
+            cp.load_cli_output(path)
+        msg = str(ctx.exception)
+        self.assertIn("not valid JSON", msg)
+        self.assertIn("File size:", msg)
+        self.assertIn("hex):", msg)
+        self.assertIn("repr):", msg)
+        self.assertIn("preview-cli-output", msg)
+
+    def test_utf8_bom_is_stripped_transparently(self):
+        # JVM PrintStream on some locales has been observed to emit a UTF-8
+        # BOM (0xef 0xbb 0xbf) before otherwise-valid JSON, which Python's
+        # json parser doesn't treat as whitespace. Recover transparently
+        # rather than failing the workflow on an entirely-correct payload.
+        path = self.tmp / "bom.json"
+        body = json.dumps({"schema": "compose-preview-show/v1", "previews": []})
+        path.write_bytes(b"\xef\xbb\xbf" + body.encode("utf-8"))
+        # Should not raise — empty previews list parses cleanly.
+        out = cp.load_cli_output(path)
+        self.assertEqual(out, {})
+
     def test_null_pngPath_and_sha_normalize_to_empty_string(self):
         # The downstream baselines/copy-changed logic uses truthiness on
         # these fields — null must become "" so `if not info["sha256"]`
