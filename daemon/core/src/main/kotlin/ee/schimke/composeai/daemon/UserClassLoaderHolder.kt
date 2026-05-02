@@ -285,6 +285,11 @@ class UserClassLoaderHolder(
      */
     fun classFileFingerprint(loader: ClassLoader, className: String): String? {
       val resourceName = className.replace('.', '/') + ".class"
+      if (loader is URLClassLoader) {
+        fingerprintFromUrls(loader.urLs, resourceName)?.let {
+          return it
+        }
+      }
       val url = loader.getResource(resourceName) ?: return null
       if (url.protocol != "file") return null
       val file =
@@ -296,6 +301,37 @@ class UserClassLoaderHolder(
       if (!file.exists()) return null
       val mtime = java.time.Instant.ofEpochMilli(file.lastModified()).toString()
       return "path=${file.absolutePath} mtime=$mtime size=${file.length()} sha=${sha256Short(file)}"
+    }
+
+    private fun fingerprintFromUrls(urls: Array<URL>, resourceName: String): String? {
+      for (url in urls) {
+        if (url.protocol != "file") continue
+        val root =
+          try {
+            java.io.File(url.toURI())
+          } catch (_: Throwable) {
+            continue
+          }
+        if (root.isDirectory) {
+          val file = root.resolve(resourceName)
+          if (file.exists()) {
+            val mtime = java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+            return "path=${file.absolutePath} mtime=$mtime size=${file.length()} sha=${sha256Short(file)}"
+          }
+        } else if (root.isFile) {
+          val hasEntry =
+            try {
+              java.util.jar.JarFile(root).use { jar -> jar.getEntry(resourceName) != null }
+            } catch (_: Throwable) {
+              false
+            }
+          if (hasEntry) {
+            val mtime = java.time.Instant.ofEpochMilli(root.lastModified()).toString()
+            return "jar=${root.absolutePath}!/$resourceName mtime=$mtime size=${root.length()} sha=${sha256Short(root)}"
+          }
+        }
+      }
+      return null
     }
 
     private fun sha256Short(file: java.io.File): String {
