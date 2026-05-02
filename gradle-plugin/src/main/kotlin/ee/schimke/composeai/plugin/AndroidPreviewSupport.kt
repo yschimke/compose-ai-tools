@@ -1351,6 +1351,10 @@ internal object AndroidPreviewSupport {
         resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
       )
       this.systemProperties.put("composeai.daemon.modulePath", project.path)
+      this.systemProperties.put(
+        "composeai.daemon.moduleProjectDir",
+        project.layout.projectDirectory.asFile.absolutePath,
+      )
       // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the
       // `daemonUserClassMarkers` List<String> (a configuration-time constant);
       // `classpath.elements` is a Provider<Set<FileSystemLocation>> wired via the task's

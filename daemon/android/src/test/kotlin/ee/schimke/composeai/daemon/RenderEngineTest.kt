@@ -5,6 +5,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -141,6 +142,59 @@ class RenderEngineTest {
         "RenderEngineTest 5-render warm-up: total=${totalMs}ms first=${firstMs}ms " +
           "warm-median=${warmMedianMs}ms per-render=$perRenderMs"
       )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun resourceReadsWriteResourcesUsedDataProduct() {
+    val outputDir = tempFolder.newFolder("renders-resources")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("composeai.daemon.moduleProjectDir", File("daemon/android").absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=ResourceReadingPreview;" +
+              "widthPx=64;heightPx=64;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=resource-reading"
+        )
+      host.submit(request, timeoutMs = 120_000)
+
+      val resourcesFile =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("resource-reading")
+          .resolve(ResourcesUsedDataProducer.FILE)
+      assertTrue(
+        "resources/used data product should be written next to render data: $resourcesFile",
+        resourcesFile.exists(),
+      )
+      val references =
+        Json.parseToJsonElement(resourcesFile.readText())
+          .jsonObject["references"]!!
+          .jsonArray
+          .map { it.jsonObject }
+      val byName = references.associateBy { it["resourceName"]!!.jsonPrimitive.content }
+      assertEquals("string", byName["compose_ai_resource_used_label"]!!["resourceType"]!!.jsonPrimitive.content)
+      assertEquals(
+        "Resource label",
+        byName["compose_ai_resource_used_label"]!!["resolvedValue"]!!.jsonPrimitive.content,
+      )
+      assertTrue(
+        byName["compose_ai_resource_used_label"]!!["resolvedFile"]!!
+          .jsonPrimitive
+          .content
+          .endsWith("src/main/res/values/resources_used.xml")
+      )
+      assertEquals("color", byName["compose_ai_resource_used_color"]!!["resourceType"]!!.jsonPrimitive.content)
+      assertEquals("dimen", byName["compose_ai_resource_used_size"]!!["resourceType"]!!.jsonPrimitive.content)
     } finally {
       host.shutdown()
     }

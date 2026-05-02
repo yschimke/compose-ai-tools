@@ -277,6 +277,10 @@ internal object ComposePreviewTasks {
         extension.daemon.warmSpare.map { it.toString() },
       )
       systemProperties.put("composeai.daemon.modulePath", project.path)
+      systemProperties.put(
+        "composeai.daemon.moduleProjectDir",
+        project.layout.projectDirectory.asFile.absolutePath,
+      )
       systemProperties.put("composeai.render.outputDir", rendersDirProvider)
       systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
       systemProperties.put("composeai.fonts.offline", daemonFontsOffline)

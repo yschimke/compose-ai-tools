@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_ai_resource_used_label">Resource label</string>
+    <color name="compose_ai_resource_used_color">#ff336699</color>
+    <dimen name="compose_ai_resource_used_size">32dp</dimen>
+</resources>
