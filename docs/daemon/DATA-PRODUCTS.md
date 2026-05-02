@@ -507,11 +507,22 @@ The two also have different dependency profiles: the core only needs ATF +
 AndroidX, while the connector adds `:daemon:core` (protocol types) and
 exposes `ImageProcessor` to `RenderEngine`.
 
-The pattern generalises — when `layout/inspector` or `compose/recomposition` get
-their own modules, they follow the same `:data-<product>-core` (published) +
-`:data-<product>-connector` (private) split. The `core` is optional: a
-data product whose entire surface is daemon-glue (no general-purpose Android
-code) can ship as a connector-only module.
+The same split now applies to the built-in daemon products with small,
+product-named modules:
+
+- `data/fonts/{core,connector}` for `fonts/used`.
+- `data/render/{core,connector}` for `render/trace`,
+  `render/composeAiTrace`, and `render/deviceClip`.
+- `data/history/connector` for `history/diff/regions`.
+- `data/layoutinspector/{core,connector}` for `compose/semantics`.
+- `data/resources/{core,connector}` for `resources/used`.
+- `data/strings/{core,connector}` for `text/strings` and `i18n/translations`.
+- `data/theme/connector` for `compose/theme`.
+- `data/recomposition/connector` for `compose/recomposition`.
+
+When a product has reusable producer/model code that does not need daemon
+protocol types, that code belongs in a `core` module. Connector modules are
+kept as daemon adapters and may depend on `:daemon:core`.
 
 The framework-level `ImageProcessor` interface lives in `:daemon:core` so
 every connector can implement it without circular module dependencies; the

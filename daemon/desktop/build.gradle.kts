@@ -59,6 +59,10 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
+  implementation(project(":data-render-connector"))
+  implementation(project(":data-history-connector"))
+  implementation(project(":data-theme-connector"))
+  implementation(project(":data-recomposition-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
