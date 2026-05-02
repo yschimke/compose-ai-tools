@@ -10,6 +10,9 @@ import androidx.compose.ui.test.hasRequestFocusAction
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.PreviewDeviceContext
+import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
@@ -571,6 +574,7 @@ open class RobolectricHost(
     val pngPath = cls.getMethod("getPngPath").invoke(raw) as String?
     @Suppress("UNCHECKED_CAST")
     val metrics = cls.getMethod("getMetrics").invoke(raw) as Map<String, Long>?
+    val previewContext = copyPreviewContextAcrossClassloaders(cls.getMethod("getPreviewContext").invoke(raw))
     return RenderResult(
       id = id,
       classLoaderHashCode = hash,
@@ -581,6 +585,90 @@ open class RobolectricHost(
       // a do-not-acquire boundary by default), so this is effectively a no-op copy. Done
       // explicitly so a future change to the metrics type is observable here.
       metrics = metrics?.let { LinkedHashMap(it) },
+      previewContext = previewContext,
+    )
+  }
+
+  private fun copyPreviewContextAcrossClassloaders(raw: Any?): PreviewContext? {
+    if (raw == null) return null
+    val cls = raw.javaClass
+    val builder =
+      PreviewContext.Builder(
+        previewId = cls.getMethod("getPreviewId").invoke(raw) as String?,
+        backend = cls.getMethod("getBackend").invoke(raw) as String?,
+        renderMode = cls.getMethod("getRenderMode").invoke(raw) as String?,
+        outputBaseName = cls.getMethod("getOutputBaseName").invoke(raw) as String?,
+      )
+    copyPreviewDeviceContext(cls.getMethod("getDevice").invoke(raw))?.let(builder::device)
+    val inspection = cls.getMethod("getInspection").invoke(raw)
+    val inspectionCls = inspection.javaClass
+    if (inspectionCls.getMethod("getParameterInformationCollected").invoke(inspection) as Boolean) {
+      builder.parameterInformationCollected()
+    }
+    @Suppress("UNCHECKED_CAST")
+    val values = inspectionCls.getMethod("getValues").invoke(inspection) as Map<String, Any?>
+    values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY]?.let(::copyThemePayloadAcrossClassloaders)?.let {
+      builder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
+    }
+    return builder.build()
+  }
+
+  private fun copyPreviewDeviceContext(raw: Any?): PreviewDeviceContext? {
+    if (raw == null) return null
+    val cls = raw.javaClass
+    return PreviewDeviceContext(
+      device = cls.getMethod("getDevice").invoke(raw) as String?,
+      widthDp = cls.getMethod("getWidthDp").invoke(raw) as Double?,
+      heightDp = cls.getMethod("getHeightDp").invoke(raw) as Double?,
+      density = cls.getMethod("getDensity").invoke(raw) as Float?,
+      resolvedDevice = copyPreviewDeviceSpec(cls.getMethod("getResolvedDevice").invoke(raw)),
+    )
+  }
+
+  private fun copyPreviewDeviceSpec(raw: Any?): PreviewDeviceSpec? {
+    if (raw == null) return null
+    val cls = raw.javaClass
+    return PreviewDeviceSpec(
+      widthDp = cls.getMethod("getWidthDp").invoke(raw) as Int,
+      heightDp = cls.getMethod("getHeightDp").invoke(raw) as Int,
+      density = cls.getMethod("getDensity").invoke(raw) as Float,
+      isRound = cls.getMethod("isRound").invoke(raw) as Boolean,
+    )
+  }
+
+  private fun copyThemePayloadAcrossClassloaders(raw: Any): ThemePayload {
+    val tokens = raw.javaClass.getMethod("getResolvedTokens").invoke(raw)
+    val tokenCls = tokens.javaClass
+    @Suppress("UNCHECKED_CAST")
+    val colorScheme = tokenCls.getMethod("getColorScheme").invoke(tokens) as Map<String, String>
+    @Suppress("UNCHECKED_CAST")
+    val shapes = tokenCls.getMethod("getShapes").invoke(tokens) as Map<String, String>
+    @Suppress("UNCHECKED_CAST")
+    val typographyRaw = tokenCls.getMethod("getTypography").invoke(tokens) as Map<String, Any>
+    val typography = typographyRaw.mapValues { (_, token) -> copyTypographyTokenAcrossClassloaders(token) }
+    return ThemePayload(
+      resolvedTokens =
+        ResolvedThemeTokens(
+          colorScheme = LinkedHashMap(colorScheme),
+          typography = LinkedHashMap(typography),
+          shapes = LinkedHashMap(shapes),
+        ),
+      consumers = emptyList(),
+    )
+  }
+
+  private fun copyTypographyTokenAcrossClassloaders(raw: Any): TypographyToken {
+    val cls = raw.javaClass
+    return TypographyToken(
+      fontFamily = cls.getMethod("getFontFamily").invoke(raw) as String?,
+      fontSize = cls.getMethod("getFontSize").invoke(raw) as Float?,
+      fontSizeUnit = cls.getMethod("getFontSizeUnit").invoke(raw) as String?,
+      fontWeight = cls.getMethod("getFontWeight").invoke(raw) as String?,
+      fontStyle = cls.getMethod("getFontStyle").invoke(raw) as String?,
+      lineHeight = cls.getMethod("getLineHeight").invoke(raw) as Float?,
+      lineHeightUnit = cls.getMethod("getLineHeightUnit").invoke(raw) as String?,
+      letterSpacing = cls.getMethod("getLetterSpacing").invoke(raw) as Float?,
+      letterSpacingUnit = cls.getMethod("getLetterSpacingUnit").invoke(raw) as String?,
     )
   }
 

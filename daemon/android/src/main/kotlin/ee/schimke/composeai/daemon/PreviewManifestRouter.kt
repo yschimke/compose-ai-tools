@@ -127,6 +127,7 @@ class PreviewManifestRouter(
         append("captureAdvanceMs=").append(it).append(';')
       }
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
+      inbound["mode"]?.let { append("mode=").append(it).append(';') }
       append("outputBaseName=").append(resolved.outputBaseName)
     }
   }

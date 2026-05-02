@@ -23,7 +23,7 @@ import kotlinx.serialization.json.JsonElement
 const val MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY: String = "compose.material3.themePayload"
 
 /**
- * Desktop v1 producer for `compose/theme`.
+ * Compose daemon producer for `compose/theme`.
  *
  * It snapshots the resolved Material 3 theme tokens when a render runs in `mode=theme` (or when a
  * subscribed preview renders). Per issue #449, node-level consumer tracking needs intrusive Compose
@@ -198,27 +198,43 @@ fun themePayloadFromPreviewContext(
   fallbackTypography: Typography?,
   fallbackShapes: Shapes?,
 ): ThemePayload? {
-  val materialThemeCalls =
+  val groups =
     context.inspection.slotTables
       .asSequence()
       .filterIsInstance<CompositionData>()
       .flatMap { data -> data.compositionGroups.asSequence() }
       .flatMap { group -> group.flattenGroups().asSequence() }
-      .filter { group -> group.sourceInfo?.startsWith("C(MaterialTheme)") == true }
       .toList()
+  val materialThemeCalls = groups.filter { group ->
+    group.sourceInfo?.startsWith("C(MaterialTheme)") == true
+  }
+  val namedMaterialThemeCalls = groups.filter { group ->
+    group.sourceInfo?.contains("MaterialTheme") == true &&
+      group.sourceInfo?.contains("CaptureMaterialTheme") != true
+  }
 
-  for (group in materialThemeCalls.asReversed()) {
-    val values = group.data.toList()
-    val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
-    val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
-    val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
-    return themePayloadFromThemeObjects(
-      colorSource = colorSource,
-      typographySource = typographySource,
-      shapesSource = shapesSource,
-      fallbackTypography = fallbackTypography,
-      fallbackShapes = fallbackShapes,
-    )
+  fun payloadFromGroups(groups: List<CompositionGroup>): ThemePayload? {
+    for (group in groups.asReversed()) {
+      val values = group.data.toList()
+      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
+      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
+      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
+      return themePayloadFromThemeObjects(
+        colorSource = colorSource,
+        typographySource = typographySource,
+        shapesSource = shapesSource,
+        fallbackTypography = fallbackTypography,
+        fallbackShapes = fallbackShapes,
+      )
+    }
+    return null
+  }
+
+  payloadFromGroups(materialThemeCalls)?.let {
+    return it
+  }
+  payloadFromGroups(namedMaterialThemeCalls)?.let {
+    return it
   }
   return context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload
 }

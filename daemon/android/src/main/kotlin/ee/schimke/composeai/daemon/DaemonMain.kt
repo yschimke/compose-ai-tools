@@ -248,6 +248,8 @@ fun main(args: Array<String>) {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
         System.err.println("compose-ai-tools daemon: RenderTraceDataProductRegistry active")
         add(RenderTraceDataProductRegistry())
+        System.err.println("compose-ai-tools daemon: ThemeDataProductRegistry active")
+        add(ThemeDataProductRegistry())
         if (historyManager != null) {
           System.err.println("compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active")
           add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
