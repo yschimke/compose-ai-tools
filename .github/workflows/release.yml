@@ -89,7 +89,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin, renderer-android, preview-annotations, daemon-* to GitHub Packages
+      - name: Publish plugin, renderer-android, data-a11y-core, preview-annotations, daemon-* to GitHub Packages
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,18 +97,20 @@ jobs:
         run: |
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
+            :data-a11y-core:publishAllPublicationsToGitHubPackagesRepository \
             :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
             :preview-annotations:publishAllPublicationsToGitHubPackagesRepository \
             :daemon:core:publishAllPublicationsToGitHubPackagesRepository \
             :daemon:desktop:publishAllPublicationsToGitHubPackagesRepository \
             :daemon:android:publishAllPublicationsToGitHubPackagesRepository
-      - name: Publish plugin, renderer-android, preview-annotations, daemon-* to Maven Central
+      - name: Publish plugin, renderer-android, data-a11y-core, preview-annotations, daemon-* to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
+            :data-a11y-core:publishAndReleaseToMavenCentral \
             :renderer-android:publishAndReleaseToMavenCentral \
             :preview-annotations:publishAndReleaseToMavenCentral \
             :daemon:core:publishAndReleaseToMavenCentral \
