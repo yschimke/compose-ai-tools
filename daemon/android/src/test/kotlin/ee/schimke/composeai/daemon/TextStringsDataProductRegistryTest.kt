@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.io.File
 import java.nio.file.Files
 import kotlinx.serialization.json.jsonArray
@@ -42,6 +43,9 @@ class TextStringsDataProductRegistryTest {
               "boundsInRoot": "10,20,90,40",
               "text": "Buy semantics",
               "layoutText": "Buy",
+              "layoutFontSize": "18.0sp",
+              "layoutForegroundColor": "#FF102030",
+              "layoutBackgroundColor": "#FFE0E0E0",
               "label": "Purchase item"
             },
             {
@@ -92,6 +96,9 @@ class TextStringsDataProductRegistryTest {
     assertEquals("layout", first["textSource"]!!.jsonPrimitive.content)
     assertEquals("Buy semantics", first["semanticsText"]!!.jsonPrimitive.content)
     assertEquals("Purchase item", first["semanticsLabel"]!!.jsonPrimitive.content)
+    assertEquals("18.0sp", first["fontSize"]!!.jsonPrimitive.content)
+    assertEquals("#FF102030", first["foregroundColor"]!!.jsonPrimitive.content)
+    assertEquals("#FFE0E0E0", first["backgroundColor"]!!.jsonPrimitive.content)
     assertEquals("2", first["nodeId"]!!.jsonPrimitive.content)
     assertEquals("10,20,90,40", first["boundsInScreen"]!!.jsonPrimitive.content)
     assertEquals("fr-FR", first["localeTag"]!!.jsonPrimitive.content)
@@ -99,7 +106,60 @@ class TextStringsDataProductRegistryTest {
 
     val second = texts[1].jsonObject
     assertNull("semantic-only entries omit text", second["text"])
+    assertNull("semantic-only entries omit text source", second["textSource"])
     assertEquals("Settings", second["semanticsLabel"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun `fetch reports locale and font scale from latest render overrides`() {
+    val previewId = "com.example.TextPreview"
+    writeSemantics(
+      previewId,
+      """{"root":{"nodeId":"1","boundsInRoot":"0,0,10,10","layoutText":"Hello"}}""",
+    )
+    val registry =
+      TextStringsDataProductRegistry(
+        rootDir = rootDir,
+        previewIndex =
+          PreviewIndex.fromMap(
+            path = null,
+            byId =
+              mapOf(
+                previewId to
+                  PreviewInfoDto(
+                    id = previewId,
+                    className = "com.example.TextKt",
+                    methodName = "TextPreview",
+                    params = PreviewParamsDto(locale = "en-US", fontScale = 1.0f),
+                  )
+              ),
+          ),
+      )
+    registry.onRender(
+      previewId = previewId,
+      result = RenderResult(id = 1L, classLoaderHashCode = 0, classLoaderName = "test"),
+      overrides = PreviewOverrides(localeTag = "ja-JP", fontScale = 2.0f),
+    )
+
+    val outcome =
+      registry.fetch(
+        previewId = previewId,
+        kind = TextStringsDataProductRegistry.KIND,
+        params = null,
+        inline = true,
+      )
+
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val entry =
+      (outcome as DataProductRegistry.Outcome.Ok)
+        .result
+        .payload!!
+        .jsonObject["texts"]!!
+        .jsonArray
+        .single()
+        .jsonObject
+    assertEquals("ja-JP", entry["localeTag"]!!.jsonPrimitive.content)
+    assertEquals("2.0", entry["fontScale"]!!.jsonPrimitive.content)
   }
 
   @Test

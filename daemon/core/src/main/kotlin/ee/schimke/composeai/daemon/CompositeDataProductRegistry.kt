@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -34,7 +35,11 @@ class CompositeDataProductRegistry(private val registries: List<DataProductRegis
     }
 
   override fun onRender(previewId: String, result: RenderResult) {
-    registries.forEach { it.onRender(previewId, result) }
+    registries.forEach { it.onRender(previewId, result, overrides = null) }
+  }
+
+  override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
+    registries.forEach { it.onRender(previewId, result, overrides) }
   }
 
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {

@@ -4,8 +4,10 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -28,6 +30,7 @@ class TextStringsDataProductRegistry(
     encodeDefaults = false
     ignoreUnknownKeys = true
   }
+  private val latestRenderMetadata = ConcurrentHashMap<String, RenderTextMetadata>()
 
   override val capabilities: List<DataProductCapability> =
     listOf(
@@ -65,6 +68,10 @@ class TextStringsDataProductRegistry(
     )
   }
 
+  override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
+    latestRenderMetadata[previewId] = metadataFor(previewId, overrides)
+  }
+
   override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
     if (KIND !in kinds) return emptyList()
     val payload =
@@ -87,11 +94,20 @@ class TextStringsDataProductRegistry(
     if (!file.exists()) return null
     val semantics =
       json.decodeFromString(ComposeSemanticsPayload.serializer(), file.readText())
-    val params = previewIndex.byId(previewId)?.params
-    val localeTag = params?.locale?.takeIf { it.isNotBlank() } ?: Locale.getDefault().toLanguageTag()
-    val fontScale = params?.fontScale ?: 1.0f
-    val texts = buildList { collectTexts(semantics.root, localeTag, fontScale) }
+    val metadata = latestRenderMetadata[previewId] ?: metadataFor(previewId, overrides = null)
+    val texts = buildList { collectTexts(semantics.root, metadata.localeTag, metadata.fontScale) }
     return TextStringsPayload(texts = texts)
+  }
+
+  private fun metadataFor(previewId: String, overrides: PreviewOverrides?): RenderTextMetadata {
+    val params = previewIndex.byId(previewId)?.params
+    return RenderTextMetadata(
+      localeTag =
+        overrides?.localeTag?.takeIf { it.isNotBlank() }
+          ?: params?.locale?.takeIf { it.isNotBlank() }
+          ?: Locale.getDefault().toLanguageTag(),
+      fontScale = overrides?.fontScale ?: params?.fontScale ?: 1.0f,
+    )
   }
 
   private fun MutableList<TextStringEntry>.collectTexts(
@@ -109,15 +125,12 @@ class TextStringsDataProductRegistry(
       add(
         TextStringEntry(
           text = text,
-          textSource =
-            when (text) {
-              node.layoutText -> "layout"
-              semanticsText -> "semantics"
-              node.editableText -> "editableText"
-              else -> null
-            },
+          textSource = textSourceFor(text, node, semanticsText),
           semanticsText = semanticsText,
           semanticsLabel = semanticsLabel,
+          fontSize = node.layoutFontSize?.takeIf { it.isNotBlank() },
+          foregroundColor = node.layoutForegroundColor?.takeIf { it.isNotBlank() },
+          backgroundColor = node.layoutBackgroundColor?.takeIf { it.isNotBlank() },
           editableText = node.editableText?.takeIf { it.isNotBlank() },
           inputText = node.inputText?.takeIf { it.isNotBlank() },
           nodeId = node.nodeId,
@@ -136,6 +149,22 @@ class TextStringsDataProductRegistry(
   }
 }
 
+private data class RenderTextMetadata(val localeTag: String, val fontScale: Float)
+
+private fun textSourceFor(
+  text: String?,
+  node: ComposeSemanticsNode,
+  semanticsText: String?,
+): String? {
+  if (text == null) return null
+  return when (text) {
+    node.layoutText?.takeIf { it.isNotBlank() } -> "layout"
+    semanticsText -> "semantics"
+    node.editableText?.takeIf { it.isNotBlank() } -> "editableText"
+    else -> null
+  }
+}
+
 @Serializable
 data class TextStringsPayload(val texts: List<TextStringEntry>)
 
@@ -145,6 +174,9 @@ data class TextStringEntry(
   val textSource: String? = null,
   val semanticsText: String? = null,
   val semanticsLabel: String? = null,
+  val fontSize: String? = null,
+  val foregroundColor: String? = null,
+  val backgroundColor: String? = null,
   val editableText: String? = null,
   val inputText: String? = null,
   val nodeId: String,

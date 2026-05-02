@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -60,6 +61,15 @@ interface DataProductRegistry {
    * snapshot it here; stateless producers can ignore it.
    */
   fun onRender(previewId: String, result: RenderResult) {}
+
+  /**
+   * Render lifecycle hook with the per-call overrides that produced [result], when available.
+   * Producers that need effective render metadata can use [overrides]; older stateless producers
+   * can keep overriding [onRender].
+   */
+  fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
+    onRender(previewId, result)
+  }
 
   /**
    * Producer-side subscription lifecycle hook. Called by the dispatcher when a client issues a
