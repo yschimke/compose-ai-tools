@@ -653,7 +653,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     // the card chrome, still consume it so enthusiastic scrolling cannot bubble to
                     // the list and push the live preview out of view.
                     const currentImg = card.querySelector('img.preview-image, img.preview-gif, img');
-                    const point = currentImg ? imagePoint(currentImg, evt) : null;
+                    const point = currentImg && eventInsideElement(currentImg, evt)
+                        ? imagePoint(currentImg, evt)
+                        : null;
                     if (currentImg && point) {
                         postInteractiveInput(id, currentImg, 'rotaryScroll', point, evt.deltaY);
                     }
@@ -764,6 +766,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 pixelX: Math.max(0, Math.min(natW - 1, pixelX)),
                 pixelY: Math.max(0, Math.min(natH - 1, pixelY)),
             };
+        }
+
+        function eventInsideElement(el, evt) {
+            const rect = el.getBoundingClientRect();
+            return evt.clientX >= rect.left && evt.clientX <= rect.right &&
+                evt.clientY >= rect.top && evt.clientY <= rect.bottom;
         }
 
         function postInteractiveInput(previewId, img, kind, point, scrollDeltaY) {
