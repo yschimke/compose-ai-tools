@@ -22,9 +22,13 @@ object FixedPreviewTimeSource : TimeSource {
     override fun currentTime(): String {
         var elapsedMinutes by remember { mutableLongStateOf(0L) }
         LaunchedEffect(Unit) {
+            var startFrameNanos = -1L
             while (true) {
                 withFrameNanos { frameNanos ->
-                    elapsedMinutes = frameNanos / nanosPerMinute
+                    if (startFrameNanos < 0L) {
+                        startFrameNanos = frameNanos
+                    }
+                    elapsedMinutes = (frameNanos - startFrameNanos) / nanosPerMinute
                 }
             }
         }
