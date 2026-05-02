@@ -611,6 +611,7 @@ open class RobolectricHost(
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     if (sandboxCount < 2) {
       throw UnsupportedOperationException(
@@ -681,6 +682,7 @@ open class RobolectricHost(
             RenderSpec.SpecOrientation.LANDSCAPE -> "landscape"
             null -> null
           },
+        inspectionMode = inspectionMode,
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -1342,16 +1344,17 @@ open class RobolectricHost(
               PerfettoTraceDataProducer.recorder(start.outputBaseName, backend = "android-live")
             setupTrace.section("compose:setContent") {
               rule.setContent {
-              androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalInspectionMode provides false
-              ) {
-                androidx.compose.foundation.layout.Box(
-                  modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                androidx.compose.runtime.CompositionLocalProvider(
+                  androidx.compose.ui.platform.LocalInspectionMode provides
+                    (start.inspectionMode ?: false)
                 ) {
-                  InvokeHeldComposable(composableMethod)
+                  androidx.compose.foundation.layout.Box(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                  ) {
+                    InvokeHeldComposable(composableMethod)
+                  }
                 }
               }
-            }
             }
             // Two Choreographer ticks under the paused clock — same settle window
             // RenderEngine.render uses before its single capture. Enough for the initial

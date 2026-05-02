@@ -228,12 +228,15 @@ open class DesktopHost(
    * [UnsupportedOperationException] which `JsonRpcServer` catches and falls back to the v1
    * stateless dispatch path.
    *
-   * The held scene composes with `LocalInspectionMode = false` so `Modifier.clickable {}` and other
-   * pointer-input modifiers fire on `interactive/input` notifications — the v2 payoff.
+   * The held scene composes with `LocalInspectionMode = false` by default so `Modifier.clickable
+   * {}` and other pointer-input modifiers fire on `interactive/input` notifications — the v2
+   * payoff. `interactive/start.inspectionMode=true` opts previews back into the preview/stub-data
+   * branch when they need it.
    */
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     val resolver =
       previewSpecResolver
@@ -247,7 +250,7 @@ open class DesktopHost(
           "DesktopHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
-    val state = engine.setUp(spec, classLoader, inspectionMode = false)
+    val state = engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
     val session =
       DesktopInteractiveSession(
         previewId = previewId,

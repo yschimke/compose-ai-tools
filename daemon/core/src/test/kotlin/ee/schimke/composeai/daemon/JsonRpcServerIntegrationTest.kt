@@ -1392,6 +1392,7 @@ private class DisconnectFakeHost : RenderHost {
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     acquireCount.incrementAndGet()
     val session = RecordingDisconnectSession(previewId)

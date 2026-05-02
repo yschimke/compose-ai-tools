@@ -1813,7 +1813,7 @@ class JsonRpcServer(
           host.userClassloaderHolder?.currentChildLoader()
             ?: this::class.java.classLoader
             ?: ClassLoader.getSystemClassLoader()
-        host.acquireInteractiveSession(params.previewId, classLoader)
+        host.acquireInteractiveSession(params.previewId, classLoader, params.inspectionMode)
       } catch (t: UnsupportedOperationException) {
         fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
         null

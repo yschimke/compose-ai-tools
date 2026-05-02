@@ -193,6 +193,27 @@ class InteractiveSessionPlumbingTest {
   }
 
   @Test(timeout = 30_000)
+  fun start_threads_inspection_mode_to_held_session_acquire() {
+    val tmp = Files.createTempDirectory("interactive-session-inspection-mode").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = SessionAwareFakeHost(pngFile)
+
+    val (_, _, clientToServerOut, received, _) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":10,"method":"interactive/start","params":{"previewId":"preview-A","inspectionMode":true}}""",
+    )
+
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+    assertNotNull(startResp)
+    assertEquals(true, host.lastInspectionMode)
+  }
+
+  @Test(timeout = 30_000)
   fun supported_host_acquire_failure_fails_noisily() {
     val tmp = Files.createTempDirectory("interactive-session-failure").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -412,6 +433,7 @@ private class SessionAwareFakeHost(
 ) : RenderHost {
 
   val acquireCalls = AtomicInteger(0)
+  @Volatile var lastInspectionMode: Boolean? = null
   private val sessions = ConcurrentHashMap<Long, RecordingSession>()
   private val nextSessionKey = AtomicLong(1)
 
@@ -436,8 +458,10 @@ private class SessionAwareFakeHost(
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     acquireCalls.incrementAndGet()
+    lastInspectionMode = inspectionMode
     val pngFile = perPreview[previewId] ?: defaultPng
     val session = RecordingSession(previewId = previewId, pngFile = pngFile)
     sessions[nextSessionKey.getAndIncrement()] = session
@@ -530,6 +554,7 @@ private class FailingSessionHost(private val defaultPng: File) : RenderHost {
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     throw IllegalStateException("boom")
   }

@@ -510,7 +510,7 @@ export interface DataSubscribeResult {
 // lockstep with the daemon work. Adding these methods is additive per
 // PROTOCOL.md § 7 — no `protocolVersion` bump required.
 
-export interface InteractiveStartParams { previewId: string }
+export interface InteractiveStartParams { previewId: string; inspectionMode?: boolean }
 export interface InteractiveStartResult {
     /** Opaque correlation id; the client passes it back on every input
      *  notification so the daemon can route inputs to the right warm

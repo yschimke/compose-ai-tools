@@ -287,8 +287,10 @@ Key invariants:
 - `setContent` is called **exactly once** per session, before the
   drain loop. Compose's "no second setContent on the same Activity"
   constraint is satisfied.
-- `LocalInspectionMode = false` for the duration of the session, so
-  `Modifier.clickable` / `pointerInput` modifiers actually fire.
+- `LocalInspectionMode = false` by default for the duration of the
+  session, so `Modifier.clickable` / `pointerInput` modifiers actually
+  fire. `interactive/start.inspectionMode=true` opts previews back into
+  their preview/stub-data branch when needed.
 - Compose's `mainClock` is paused; we advance it manually after each
   dispatch + before each render so the gesture-detection pipeline
   observes time progression. Same `CAPTURE_ADVANCE_MS` constant the

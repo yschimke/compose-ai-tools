@@ -252,6 +252,7 @@ private class SlowFakeHost(private val pngFile: File, private val renderDelayMs:
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
+    inspectionMode: Boolean?,
   ): InteractiveSession {
     val session = SlowSession(previewId, pngFile, renderDelayMs)
     sessions[nextSessionKey.getAndIncrement()] = session
