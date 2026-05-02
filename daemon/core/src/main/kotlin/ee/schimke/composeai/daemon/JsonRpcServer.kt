@@ -33,6 +33,7 @@ import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.JsonRpcResponse
+import ee.schimke.composeai.daemon.protocol.KnownDevice
 import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
 import ee.schimke.composeai.daemon.protocol.Orientation
@@ -584,6 +585,13 @@ class JsonRpcServer(
             // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
             // default (FakeHost, RobolectricHost today) — clients fall back to v1 dispatch.
             interactive = host.supportsInteractive,
+            // PROTOCOL.md § 3 — surface the daemon's `DeviceDimensions` catalog so clients can
+            // build a `renderNow.overrides.device` picker without re-bundling the list. The
+            // catalog itself lives in `:daemon:core/.../daemon/devices/DeviceDimensions.kt`;
+            // we project each entry into a wire-friendly shape (id + dp dims + density) so
+            // clients can render labels like "Pixel 5 — 393×851 dp @ 2.75x" without
+            // re-resolving.
+            knownDevices = buildKnownDevices(),
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty
@@ -2313,6 +2321,18 @@ class JsonRpcServer(
     } catch (_: Throwable) {
       // Fallback for environments where ProcessHandle is unavailable.
       ManagementFactory.getRuntimeMXBean().name.substringBefore('@').toLongOrNull() ?: -1L
+    }
+
+  /**
+   * Project the daemon's `DeviceDimensions` catalog into the wire shape advertised on
+   * `InitializeResult.capabilities.knownDevices`. Sorted by id so the client sees a stable order
+   * across runs (the underlying map is insertion-ordered today, but spelling that out here keeps
+   * the contract independent of catalog-edit ordering).
+   */
+  private fun buildKnownDevices(): List<KnownDevice> =
+    ee.schimke.composeai.daemon.devices.DeviceDimensions.KNOWN_DEVICE_IDS.sorted().map { id ->
+      val spec = ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(id)
+      KnownDevice(id = id, widthDp = spec.widthDp, heightDp = spec.heightDp, density = spec.density)
     }
 
   /** Tagged failure carrier for the watcher loop. */

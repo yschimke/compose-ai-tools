@@ -61,6 +61,14 @@ describe('daemon protocol — golden fixtures', () => {
         assert.strictEqual(result.capabilities.sandboxRecycle, true);
         assert.strictEqual(result.classpathFingerprint.length, 64);
         assert.deepStrictEqual(result.capabilities.leakDetection, ['light', 'heavy']);
+        // PROTOCOL.md § 3 — `knownDevices` is the daemon's catalog of `@Preview(device = ...)`
+        // ids, projected to wire shape so panels can build a picker without re-bundling.
+        const known = result.capabilities.knownDevices ?? [];
+        assert.ok(known.length >= 1, 'fixture should advertise at least one known device');
+        const pixel5 = known.find(d => d.id === 'id:pixel_5');
+        assert.ok(pixel5, 'fixture should include id:pixel_5');
+        assert.strictEqual(pixel5!.widthDp, 393);
+        assert.strictEqual(pixel5!.density, 2.75);
     });
 
     it('parses client-fileChanged.json with all required fields', () => {
