@@ -40,7 +40,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * pointer so downstream tools can locate the sidecar report. The file itself is produced later by
    * the render task / verify task.
    */
-  @get:Input abstract val accessibilityChecksEnabled: Property<Boolean>
+  @get:Input abstract val a11yDataProductsEnabled: Property<Boolean>
 
   /**
    * When `true` and discovery produces zero previews, emit a diagnostics block to the lifecycle log
@@ -197,7 +197,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
-        accessibilityReport = "accessibility.json".takeIf { accessibilityChecksEnabled.get() },
+        accessibilityReport = "accessibility.json".takeIf { a11yDataProductsEnabled.get() },
       )
 
     val outFile = outputFile.get().asFile

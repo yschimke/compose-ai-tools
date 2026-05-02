@@ -18,10 +18,10 @@ import org.gradle.api.tasks.TaskAction
 /**
  * Aggregates the per-preview ATF reports emitted by [RobolectricRenderTestBase] into a single
  * `accessibility.json` keyed by previewId, and fails the build when findings exceed the thresholds
- * configured on [AccessibilityChecksExtension].
+ * configured on the built-in `a11y` data-product plugin.
  *
  * Runs once per Android module after `renderPreviews`. Only registered when
- * `composePreview.accessibilityChecks.enabled = true`.
+ * `composePreview.dataPlugins { a11y { enableAllChecks() } }`.
  */
 @CacheableTask
 abstract class VerifyAccessibilityTask : DefaultTask() {
@@ -124,7 +124,7 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
       throw GradleException(
         "Accessibility check failed: ${failures.joinToString(", ")}. " +
           "See ${out.absolutePath} for the full report, or disable the " +
-          "relevant `failOn*` flag in `composePreview.accessibilityChecks` " +
+          "relevant `failOn*` flag in `composePreview.dataPlugins.a11y` " +
           "to downgrade to a warning."
       )
     }

@@ -324,8 +324,9 @@ from a phone's. Specifically watch for:
 
 - **Tap-target size** — `androidx.wear.compose.material3.Button` defaults
   meet the spec, but custom `Box`/`IconButton` content can fall below the
-  48dp ATF threshold. Enable `composePreview { accessibilityChecks {
-  enabled = true } }` and run `compose-preview a11y` to surface these.
+  48dp ATF threshold. Enable `composePreview { dataPlugins {
+  a11y { enableAllChecks() } } }` and run `compose-preview a11y`
+  to surface these.
 - **Content descriptions** — Wear UI relies more heavily on icons; an
   unlabelled `Button { Icon(...) }` triggers ATF errors.
 - **Edge-clipped touch targets** — round-face renders crop content at the

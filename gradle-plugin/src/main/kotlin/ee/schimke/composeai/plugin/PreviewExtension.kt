@@ -4,6 +4,8 @@ import ee.schimke.composeai.plugin.daemon.DaemonExtension
 import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
 import javax.inject.Inject
 import org.gradle.api.Action
+import org.gradle.api.Named
+import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -78,24 +80,11 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val manageDependencies: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
-  /**
-   * ATF (Accessibility Test Framework) checks, run against each rendered preview. Off by default —
-   * turning it on surfaces findings in the CLI, VSCode diagnostics, and `accessibility.json`, but
-   * does NOT break the build. Set `failOnErrors = true` / `failOnWarnings = true` to gate builds on
-   * findings.
-   *
-   *     composePreview {
-   *         accessibilityChecks {
-   *             enabled = true
-   *             failOnErrors = true  // opt in to build gating
-   *         }
-   *     }
-   */
-  val accessibilityChecks: AccessibilityChecksExtension =
-    objects.newInstance(AccessibilityChecksExtension::class.java)
+  /** Generic selector for plugins that produce data products alongside preview PNGs. */
+  val dataPlugins: DataPluginsExtension = objects.newInstance(DataPluginsExtension::class.java)
 
-  fun accessibilityChecks(action: Action<AccessibilityChecksExtension>) {
-    action.execute(accessibilityChecks)
+  fun dataPlugins(action: Action<DataPluginsExtension>) {
+    action.execute(dataPlugins)
   }
 
   /**
@@ -131,9 +120,50 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   }
 }
 
-abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectFactory) {
-  /** Default: `false`. Enabling turns on ATF checks and the `verifyAccessibility` task. */
-  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+abstract class DataPluginsExtension @Inject constructor(objects: ObjectFactory) {
+  val plugins: NamedDomainObjectContainer<DataPluginExtension> =
+    objects.domainObjectContainer(DataPluginExtension::class.java) { name ->
+      objects.newInstance(DataPluginExtension::class.java, name)
+    }
+
+  val a11y: A11yDataPluginExtension =
+    objects.newInstance(A11yDataPluginExtension::class.java, "a11y")
+
+  /** Configure the built-in accessibility data plugin. */
+  fun a11y(action: Action<A11yDataPluginExtension>) {
+    action.execute(a11y)
+  }
+
+  /**
+   * Configure one producer plugin by id. [DataPluginExtension.enableAllChecks] enables every check
+   * that plugin provides; [DataPluginExtension.checks] enables only named checks for that plugin.
+   */
+  fun plugin(name: String, action: Action<DataPluginExtension>) {
+    action.execute(plugins.maybeCreate(name))
+  }
+}
+
+abstract class DataPluginExtension
+@Inject
+constructor(private val pluginName: String, objects: ObjectFactory) : Named {
+  override fun getName(): String = pluginName
+
+  /** Internal state behind [enableAllChecks]. Default: false. */
+  internal val allChecksEnabled: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
+  /** Enable every check/data product this plugin provides. */
+  fun enableAllChecks() {
+    allChecksEnabled.set(true)
+  }
+
+  /**
+   * Specific check ids to enable for this plugin when [enableAllChecks] has not been called. For
+   * the built-in a11y producer, `atf`, `hierarchy`, and `overlay` all turn on the accessibility
+   * render pass.
+   */
+  val checks: ListProperty<String> =
+    objects.listProperty(String::class.java).convention(emptyList())
 
   /**
    * Fail the build if any ERROR-level ATF finding is reported. Default: `false` — findings are
@@ -158,6 +188,10 @@ abstract class AccessibilityChecksExtension @Inject constructor(objects: ObjectF
   val annotateScreenshots: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 }
+
+abstract class A11yDataPluginExtension
+@Inject
+constructor(pluginName: String, objects: ObjectFactory) : DataPluginExtension(pluginName, objects)
 
 abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFactory) {
   /**

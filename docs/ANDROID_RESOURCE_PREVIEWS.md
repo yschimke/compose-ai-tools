@@ -232,7 +232,7 @@ composePreview {
 }
 ```
 
-Default-on, in contrast to `accessibilityChecks`: the discovery walk is a cheap filesystem scan and the render task no-ops on modules with no matching XML, so the cost of registration is a single empty `resources.json` write. The flag exists for consumers who explicitly don't want `resources.json` produced (e.g. modules where the artifact would clutter their build output), not as a feature gate.
+Default-on, in contrast to opt-in data-product checks such as the built-in `a11y` producer: the discovery walk is a cheap filesystem scan and the render task no-ops on modules with no matching XML, so the cost of registration is a single empty `resources.json` write. The flag exists for consumers who explicitly don't want `resources.json` produced (e.g. modules where the artifact would clutter their build output), not as a feature gate.
 
 ## Phasing
 

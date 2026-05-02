@@ -61,13 +61,34 @@ kinds are silently ignored both ways.
    non-MCP agents) read those files directly — there is **no
    `--emit kind` flag** and the CLI surface stays as "render to disk,
    look in `build/`." Kinds are selected via the consumer's
-   `composePreview { ... }` Gradle config (the same channel that already
-   gates `accessibilityChecks.enabled`); duplicating that selection on
+   `composePreview { ... }` Gradle config (the same channel that gates
+   `dataPlugins { a11y { ... } }`); duplicating that selection on
    the CLI would just create two ways to express the same intent and
    let them drift. The agent ergonomics that justify a programmatic
    surface — `data/fetch` re-render, `data/subscribe` priming, kind
    discovery — live in the daemon protocol and its MCP front-end, not
    the CLI.
+
+Gradle-side selection is plugin-scoped:
+
+```kotlin
+composePreview {
+  dataPlugins {
+    // Well-known plugins get a typed DSL.
+    a11y { enableAllChecks() }
+
+    // Or leave the plugin disabled and enable only specific checks.
+    a11y { checks.add("atf") }
+
+    // Unknown/future plugins can still be addressed generically.
+    plugin("layout") { checks.add("tree") }
+  }
+}
+```
+
+The matching one-shot properties are
+`-PcomposePreview.dataPlugins.<plugin>.enableAllChecks=true` and
+`-PcomposePreview.dataPlugins.<plugin>.checks=checkA,checkB`.
 
 **Non-goals**:
 
