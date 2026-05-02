@@ -19,9 +19,10 @@ The VS Code extension surfaces the same findings in the Problems panel (via
 - **When to add a rule.** A new rule goes into
   [`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt)
   when a new AndroidX AAR adds an R.id field that older transitives don't
-  have, and we've seen a consumer hit the resulting runtime error. Add a test
-  in `CompatRulesTest.kt` with both the triggering and non-triggering paths.
-- **The three mitigation mechanisms** in the renderer/plugin that must move
+  have, or when Gradle can select a platform sibling whose bytecode shape does
+  not match the Android renderer's expectations. Add a test in
+  `CompatRulesTest.kt` with both the triggering and non-triggering paths.
+- **The four mitigation mechanisms** in the renderer/plugin that must move
   together — remove any one and the compat matrix re-opens:
   1. `compileOnly` for Compose / Activity / UI-test libs in
      [`renderer-android/build.gradle.kts`](../renderer-android/build.gradle.kts).
@@ -35,6 +36,15 @@ The VS Code extension surfaces the same findings in the Problems panel (via
      `testImplementation` (same file). AGP's manifest merger only walks the
      consumer's declared deps — the renderer AAR transitively carrying the
      activity entry isn't enough.
+  4. KMP sibling substitution on the Android renderer configuration (same
+     file). AndroidX and Compose Multiplatform publish platform-specific
+     coordinates such as `foo-android`, `foo-desktop`, and `foo-jvmstubs`.
+     Consumers without the Kotlin Android plugin's platform-type compatibility
+     rule can resolve desktop/JVM-stub siblings on an Android unit-test
+     classpath. The renderer config rewrites scoped `androidx.*` and
+     `org.jetbrains.compose.*` `-desktop` / `-jvmstubs` requests to the matching
+     `-android` coordinate; `compose-preview doctor` reports the same skew for
+     the consumer's own test tasks.
 
 ## Tile-rendering defaults
 
