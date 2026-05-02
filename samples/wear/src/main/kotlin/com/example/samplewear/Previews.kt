@@ -29,7 +29,6 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.ScrollIndicator
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
@@ -41,10 +40,6 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
-private object FixedTimeSource : TimeSource {
-    @Composable
-    override fun currentTime(): String = "10:10"
-}
 
 private data class Item(val title: String, val subtitle: String)
 
@@ -63,7 +58,7 @@ fun WearApp() {
         AppScaffold(
             // Real production app — let TimeText use the system clock.
             // Previews that want a deterministic time supply their own
-            // `AppScaffold` with a `FixedTimeSource` (see [ActivityListPreview]).
+            // `AppScaffold` with a `FixedPreviewTimeSource` (see [ActivityListPreview]).
             timeText = { TimeText() },
         ) {
             ActivityListScreen()
@@ -142,7 +137,7 @@ fun ActivityListScreen() {
 private fun ButtonPreviewContent() {
     MaterialTheme {
         AppScaffold(
-            timeText = { TimeText(timeSource = FixedTimeSource) },
+            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
         ) {
             ScreenScaffold { contentPadding ->
                 Box(
@@ -165,7 +160,7 @@ private fun ButtonPreviewContent() {
 @Composable
 fun ActivityListPreview() {
     MaterialTheme {
-        AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) {
+        AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
             ActivityListScreen()
         }
     }
@@ -175,7 +170,7 @@ fun ActivityListPreview() {
 @Composable
 fun ActivityListFontScalesPreview() {
     MaterialTheme {
-        AppScaffold(timeText = { TimeText(timeSource = FixedTimeSource) }) {
+        AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
             ActivityListScreen()
         }
     }
@@ -213,7 +208,7 @@ fun BadWearButtonPreview() {
  * `@ScrollingPreview(modes = [LONG])` capture doesn't pick up a fading
  * indicator at random opacities. The screen does NOT compose its own
  * `MaterialTheme` / `AppScaffold` — its caller (the preview, or production)
- * does, which keeps the preview free to swap in a [FixedTimeSource].
+ * does, which keeps the preview free to swap in a [FixedPreviewTimeSource].
  * `ScreenScaffold` reveals the `EdgeButton` only when the list is pinned to
  * the bottom, so "Start workout" appears once, at the final slice.
  */
@@ -295,7 +290,7 @@ fun LongActivityListScreen() {
 fun ActivityListLongPreview() {
     MaterialTheme {
         AppScaffold(
-            timeText = { TimeText(timeSource = FixedTimeSource) },
+            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
         ) {
             LongActivityListScreen()
         }
@@ -308,7 +303,7 @@ fun ActivityListLongPreview() {
 fun ActivityListGifPreview() {
     MaterialTheme {
         AppScaffold(
-            timeText = { TimeText(timeSource = FixedTimeSource) },
+            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
         ) {
             LongActivityListScreen()
         }
