@@ -95,6 +95,20 @@ data class Options(
    * over a long hang. Values ≤ 0 fall back to the default.
    */
   val maxRenderMs: Long? = null,
+  /**
+   * Initialize-time override for the daemon's default history pruning policy. Each present value
+   * wins over the matching JVM sysprop/default; null fields preserve the daemon-configured value.
+   * Values ≤ 0 keep the existing pruning semantics for that knob: disabled.
+   */
+  val historyPrune: HistoryPruneOptions? = null,
+)
+
+@Serializable
+data class HistoryPruneOptions(
+  val maxEntriesPerPreview: Int? = null,
+  val maxAgeDays: Int? = null,
+  val maxTotalSizeBytes: Long? = null,
+  val autoIntervalMs: Long? = null,
 )
 
 @Serializable

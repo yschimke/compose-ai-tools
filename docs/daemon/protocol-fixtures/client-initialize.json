@@ -13,6 +13,12 @@
     "warmSpare": true,
     "detectLeaks": "light",
     "foreground": false,
-    "maxRenderMs": 600000
+    "maxRenderMs": 600000,
+    "historyPrune": {
+      "maxEntriesPerPreview": 100,
+      "maxAgeDays": 30,
+      "maxTotalSizeBytes": 1000000000,
+      "autoIntervalMs": 3600000
+    }
   }
 }
