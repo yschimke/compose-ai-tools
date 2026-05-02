@@ -747,6 +747,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor?.document.languageId === 'kotlin') {
                 const filePath = editor.document.uri.fsPath;
+                if (!isPreviewSourceFile(filePath)) { return; }
                 // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
                 // event with the same Kotlin file. Re-running refresh there
                 // just cancels any in-flight render, flashes spinners, and
@@ -949,13 +950,20 @@ function sameScope(a: string[], b: string[]): boolean {
 }
 
 function isSourceFile(filePath: string): boolean {
-    if (filePath.includes(`${path.sep}build${path.sep}`)) { return false; }
+    if (isGeneratedOutputPath(filePath)) { return false; }
     return /\.(kt|xml|json|properties)$/i.test(filePath);
 }
 
-/** True iff this is a Kotlin source file (.kt) — not a Gradle build script. */
+function isGeneratedOutputPath(filePath: string): boolean {
+    const segments = filePath.split(/[\\/]+/);
+    return segments.includes('build') || segments.includes('bin');
+}
+
+/** True iff this is a Kotlin source file (.kt), not generated output or a Gradle build script. */
 function isPreviewSourceFile(filePath: string): boolean {
-    return filePath.endsWith('.kt') && !filePath.endsWith('.gradle.kts');
+    return filePath.endsWith('.kt')
+        && !filePath.endsWith('.gradle.kts')
+        && !isGeneratedOutputPath(filePath);
 }
 
 /**
@@ -974,7 +982,9 @@ function isPreviewSourceFile(filePath: string): boolean {
  * for logging.
  */
 function resolveScopeFile(forFilePath?: string): { file?: string; source: string } {
-    if (forFilePath) { return { file: forFilePath, source: 'caller' }; }
+    if (forFilePath && isPreviewSourceFile(forFilePath)) {
+        return { file: forFilePath, source: 'caller' };
+    }
 
     const active = vscode.window.activeTextEditor?.document;
     if (active && active.languageId === 'kotlin' && isPreviewSourceFile(active.uri.fsPath)) {
