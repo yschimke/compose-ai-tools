@@ -65,6 +65,58 @@ include(":data-a11y-connector")
 
 project(":data-a11y-connector").projectDir = file("data/a11y/connector")
 
+include(":data-fonts-core")
+
+project(":data-fonts-core").projectDir = file("data/fonts/core")
+
+include(":data-fonts-connector")
+
+project(":data-fonts-connector").projectDir = file("data/fonts/connector")
+
+include(":data-render-core")
+
+project(":data-render-core").projectDir = file("data/render/core")
+
+include(":data-render-connector")
+
+project(":data-render-connector").projectDir = file("data/render/connector")
+
+include(":data-history-connector")
+
+project(":data-history-connector").projectDir = file("data/history/connector")
+
+include(":data-layoutinspector-connector")
+
+project(":data-layoutinspector-connector").projectDir = file("data/layoutinspector/connector")
+
+include(":data-layoutinspector-core")
+
+project(":data-layoutinspector-core").projectDir = file("data/layoutinspector/core")
+
+include(":data-resources-connector")
+
+project(":data-resources-connector").projectDir = file("data/resources/connector")
+
+include(":data-resources-core")
+
+project(":data-resources-core").projectDir = file("data/resources/core")
+
+include(":data-strings-connector")
+
+project(":data-strings-connector").projectDir = file("data/strings/connector")
+
+include(":data-strings-core")
+
+project(":data-strings-core").projectDir = file("data/strings/core")
+
+include(":data-theme-connector")
+
+project(":data-theme-connector").projectDir = file("data/theme/connector")
+
+include(":data-recomposition-connector")
+
+project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
+
 include(":daemon:android")
 
 include(":daemon:desktop")
