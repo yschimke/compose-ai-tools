@@ -94,6 +94,16 @@ dependencies {
   // module to apply Compose plugins. The Compose runtime/ui deps below mirror the test
   // declarations above; only the foundation + runtime + ui surface area the fixtures actually
   // touch is needed here.
+  //
+  // `compose.desktop.currentOs` is added so the harness (which consumes
+  // `testFixtures(project(":daemon:desktop"))`) inherits the per-OS Skiko native bundle
+  // transitively. Without it the spawned daemon JVM dies in `ImageComposeScene.<init>` with
+  // `LibraryLoadException: Cannot find libskiko-linux-x64.so.sha256` — the production
+  // `compileOnly(compose.desktop.currentOs)` above keeps the bundle off the published POM, so
+  // nothing else on the harness's classpath would otherwise pull it. testFixtures variants are
+  // skipped from the publishable component (see the `afterEvaluate` block below), so this stays
+  // out of `daemon-desktop`'s POM too.
+  "testFixturesImplementation"(compose.desktop.currentOs)
   "testFixturesImplementation"(compose.runtime)
   "testFixturesImplementation"(compose.foundation)
   "testFixturesImplementation"(compose.ui)
