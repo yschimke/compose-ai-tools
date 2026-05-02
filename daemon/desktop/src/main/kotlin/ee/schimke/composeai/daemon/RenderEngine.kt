@@ -17,7 +17,6 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.tooling.CompositionData
-import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
@@ -27,6 +26,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.daemon.protocol.BackendKind
 import java.io.File
 import java.util.Collections
 import java.util.WeakHashMap
@@ -179,9 +179,15 @@ class RenderEngine(
     Thread.currentThread().contextClassLoader = classLoader
 
     val localeProviders = localeProviders(spec.localeTag)
-    val themeSlotTableCapture =
+    val themeFallbackCapture =
       if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
-        ThemeSlotTableCapture()
+        MaterialThemeFallbackCapture()
+      } else {
+        null
+      }
+    val slotTableCapture =
+      if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+        PreviewSlotTableCapture()
       } else {
         null
       }
@@ -225,7 +231,7 @@ class RenderEngine(
           ) {
             if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
               CaptureMaterialTheme { _, typography, shapes, payload ->
-                themeSlotTableCapture?.captureFallbackValues(typography, shapes)
+                themeFallbackCapture?.capture(typography, shapes)
                 themeCapture.capture(spec.previewId, payload)
               }
             }
@@ -242,8 +248,8 @@ class RenderEngine(
                 InvokeComposable(composableMethod)
               }
             }
-            if (themeSlotTableCapture != null) {
-              InspectableThemeContent(themeSlotTableCapture, content)
+            if (slotTableCapture != null) {
+              InspectablePreviewContent(slotTableCapture, content)
             } else {
               content()
             }
@@ -267,7 +273,8 @@ class RenderEngine(
       density = density,
       outputFile = outputFile,
       previousContext = previousContext,
-      themeSlotTableCapture = themeSlotTableCapture,
+      slotTableCapture = slotTableCapture,
+      themeFallbackCapture = themeFallbackCapture,
     )
   }
 
@@ -297,8 +304,23 @@ class RenderEngine(
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
     val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
-    state.themeSlotTableCapture?.themePayloadFromMaterialThemeCall()?.let { payload ->
-      themeCapture?.capture(state.spec.previewId, payload)
+    state.slotTableCapture?.let { capture ->
+      val context =
+        PreviewContext.Builder(
+            previewId = state.spec.previewId,
+            backend = BackendKind.DESKTOP,
+            renderMode = state.spec.renderMode,
+            outputBaseName = state.spec.outputBaseName,
+          )
+          .parameterInformationCollected()
+          .addSlotTables(capture.snapshot())
+          .build()
+      themePayloadFromPreviewContext(
+          context = context,
+          fallbackTypography = state.themeFallbackCapture?.typography,
+          fallbackShapes = state.themeFallbackCapture?.shapes,
+        )
+        ?.let { payload -> themeCapture?.capture(state.spec.previewId, payload) }
     }
 
     val pngData =
@@ -363,7 +385,8 @@ class RenderEngine(
     val density: Density,
     val outputFile: File,
     internal val previousContext: ClassLoader?,
-    internal val themeSlotTableCapture: ThemeSlotTableCapture?,
+    internal val slotTableCapture: PreviewSlotTableCapture?,
+    internal val themeFallbackCapture: MaterialThemeFallbackCapture?,
   )
 
   interface ThemeCapture {
@@ -558,49 +581,32 @@ private fun CaptureMaterialTheme(
   }
 }
 
-internal class ThemeSlotTableCapture {
+internal class PreviewSlotTableCapture {
   val store: MutableSet<CompositionData> = Collections.newSetFromMap(WeakHashMap())
-  private var fallbackTypography: Typography? = null
-  private var fallbackShapes: Shapes? = null
 
-  fun themePayloadFromMaterialThemeCall(): ThemePayload? {
-    val materialThemeCalls =
-      store
-        .flatMap { data -> data.compositionGroups.flatMap { it.flattenGroups() } }
-        .filter { group -> group.sourceInfo?.startsWith("C(MaterialTheme)") == true }
+  fun snapshot(): List<CompositionData> = store.filterNotNull()
+}
 
-    for (group in materialThemeCalls.asReversed()) {
-      val values = group.data.toList()
-      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
-      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
-      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
-      return themePayloadFromThemeObjects(
-        colorSource = colorSource,
-        typographySource = typographySource,
-        shapesSource = shapesSource,
-        fallbackTypography = fallbackTypography,
-        fallbackShapes = fallbackShapes,
-      )
-    }
-    return null
-  }
+internal class MaterialThemeFallbackCapture {
+  var typography: Typography? = null
+    private set
 
-  fun captureFallbackValues(typography: Typography, shapes: Shapes) {
-    fallbackTypography = typography
-    fallbackShapes = shapes
+  var shapes: Shapes? = null
+    private set
+
+  fun capture(typography: Typography, shapes: Shapes) {
+    this.typography = typography
+    this.shapes = shapes
   }
 }
 
 @OptIn(InternalComposeApi::class)
 @androidx.compose.runtime.Composable
-private fun InspectableThemeContent(
-  capture: ThemeSlotTableCapture,
+private fun InspectablePreviewContent(
+  capture: PreviewSlotTableCapture,
   content: @androidx.compose.runtime.Composable () -> Unit,
 ) {
   currentComposer.collectParameterInformation()
   capture.store.add(currentComposer.compositionData)
   CompositionLocalProvider(LocalInspectionTables provides capture.store, content = content)
 }
-
-private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
-  listOf(this) + compositionGroups.flatMap { it.flattenGroups() }

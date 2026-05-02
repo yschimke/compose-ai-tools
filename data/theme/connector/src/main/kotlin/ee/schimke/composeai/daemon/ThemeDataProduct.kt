@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.tooling.CompositionData
+import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
@@ -175,6 +177,36 @@ fun themePayloadFromThemeObjects(
   )
 }
 
+fun themePayloadFromPreviewContext(
+  context: PreviewContext,
+  fallbackTypography: Typography?,
+  fallbackShapes: Shapes?,
+): ThemePayload? {
+  val materialThemeCalls =
+    context.inspection.slotTables
+      .asSequence()
+      .filterIsInstance<CompositionData>()
+      .flatMap { data -> data.compositionGroups.asSequence() }
+      .flatMap { group -> group.flattenGroups().asSequence() }
+      .filter { group -> group.sourceInfo?.startsWith("C(MaterialTheme)") == true }
+      .toList()
+
+  for (group in materialThemeCalls.asReversed()) {
+    val values = group.data.toList()
+    val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
+    val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
+    val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
+    return themePayloadFromThemeObjects(
+      colorSource = colorSource,
+      typographySource = typographySource,
+      shapesSource = shapesSource,
+      fallbackTypography = fallbackTypography,
+      fallbackShapes = fallbackShapes,
+    )
+  }
+  return null
+}
+
 fun colorTokens(source: Any?): Map<String, String> =
   when (source) {
     null -> emptyMap()
@@ -310,3 +342,6 @@ private fun TextStyle.token(): TypographyToken =
     letterSpacing = letterSpacing.takeIf { it.isSpecified }?.value,
     letterSpacingUnit = letterSpacing.takeIf { it.isSpecified }?.type?.toString(),
   )
+
+private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
+  listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
