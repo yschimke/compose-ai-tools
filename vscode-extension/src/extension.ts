@@ -3062,7 +3062,9 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         // fresh availability ping so the chip reverts cleanly.
         panel?.postMessage({
             command: 'setInteractiveAvailability',
-            moduleId, ready: false,
+            moduleId,
+            ready: false,
+            interactiveSupported: false,
         });
         return;
     }
@@ -3178,6 +3180,7 @@ function publishInteractiveAvailability(moduleId: string): void {
         command: 'setInteractiveAvailability',
         moduleId,
         ready,
+        interactiveSupported: ready && (daemonGate?.isInteractiveSupported(moduleId) ?? false),
     });
 }
 

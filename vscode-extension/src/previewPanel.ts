@@ -337,7 +337,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // interactivePreviewIds via the early-exit-on-focus-change path.
         // moduleDaemonReady tracks per-module daemon readiness pushed by the
         // extension via setInteractiveAvailability; the button enables only
-        // when the focused card's owning module is ready.
+        // when the focused card's owning module is ready. moduleInteractiveSupported
+        // distinguishes full v2 live mode from the Android/v1 fallback where
+        // renders refresh but pointer input doesn't mutate held composition state.
         //
         // interactivePreviewIds is a Set so Shift+click on the LIVE toggle
         // can add/remove a preview without disturbing others (multi-stream
@@ -347,6 +349,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // set before adding the new one — so casual users don't accidentally
         // pile up live streams.
         const moduleDaemonReady = new Map();
+        const moduleInteractiveSupported = new Map();
         const interactivePreviewIds = new Set();
 
         // Restore layout preference
@@ -405,6 +408,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             return false;
         }
 
+        function isFocusedInteractiveSupported() {
+            for (const [moduleId, ready] of moduleDaemonReady.entries()) {
+                if (ready && moduleInteractiveSupported.get(moduleId) === true) return true;
+            }
+            return false;
+        }
+
         function applyInteractiveButtonState() {
             const inFocus = layoutMode.value === 'focus';
             // Hide outright when not in focus mode — the toolbar already
@@ -439,6 +449,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             }
             const previewId = card.dataset.previewId;
             const ready = isFocusedDaemonReady();
+            const supported = isFocusedInteractiveSupported();
             const live = !!previewId && interactivePreviewIds.has(previewId);
             const otherLiveCount = interactivePreviewIds.size - (live ? 1 : 0);
             btnInteractive.disabled = !ready && !live;
@@ -448,10 +459,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 ? 'Daemon not ready — live mode unavailable'
                 : (live
                     ? 'Live · click to exit · Shift+click to leave others on'
+                    : (!supported
+                        ? 'Live v1 fallback — renders refresh, but clicks do not preserve Compose state'
                     : (otherLiveCount > 0
                         ? otherLiveCount + ' other live · click to make this one live too · '
                           + 'Shift+click to add without unsubscribing the rest'
-                        : 'Enter live mode (stream renders) · Shift+click to add to multi-stream'));
+                        : 'Enter live mode (stream renders) · Shift+click to add to multi-stream')));
             btnInteractive.innerHTML = live
                 ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
                 : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
@@ -2559,6 +2572,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 }
                 case 'setInteractiveAvailability': {
                     moduleDaemonReady.set(msg.moduleId, !!msg.ready);
+                    moduleInteractiveSupported.set(msg.moduleId, !!msg.interactiveSupported);
                     // Daemon went away while a card was live — drop the live
                     // state so the user doesn't keep seeing a LIVE badge on
                     // a card whose stream has stopped. Today the panel is

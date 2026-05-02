@@ -394,8 +394,16 @@ export type ExtensionToWebview =
      * ready or unhealthy. The webview uses this to enable/disable the
      * focus-mode "LIVE" toggle for any focused preview owned by the
      * module. See docs/daemon/INTERACTIVE.md § 3 for the UI surface.
+     * `interactiveSupported=false` means the daemon accepts the live-mode
+     * request but cannot dispatch inputs into a held composition (Android/v1
+     * fallback; see #422).
      */
-    | { command: 'setInteractiveAvailability'; moduleId: string; ready: boolean }
+    | {
+          command: 'setInteractiveAvailability';
+          moduleId: string;
+          ready: boolean;
+          interactiveSupported?: boolean;
+      }
     /**
      * Drop every active interactive (live-stream) UI state on the panel side.
      * Posted by the extension when the user moves focus away from the panel's
