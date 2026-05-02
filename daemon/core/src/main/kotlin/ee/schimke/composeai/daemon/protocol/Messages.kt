@@ -158,14 +158,15 @@ data class ServerCapabilities(
   /**
    * The `PreviewOverrides` field names this daemon's host actually applies (see PROTOCOL.md § 5
    * `renderNow.overrides`). Names match the JSON spelling on the wire: `widthPx`, `heightPx`,
-   * `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`. Lets clients grey out
-   * unsupported sliders and lets MCP warn agents who set fields the backend would silently ignore.
-   * Empty list = pre-feature daemon (clients treat absent and `[]` identically and assume any field
-   * they pass might be ignored).
+   * `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`, `captureAdvanceMs`,
+   * `inspectionMode`. Lets clients grey out unsupported sliders and lets MCP warn agents who set
+   * fields the backend would silently ignore. Empty list = pre-feature daemon (clients treat absent
+   * and `[]` identically and assume any field they pass might be ignored).
    *
-   * Today: `RobolectricHost` advertises all eight; `DesktopHost` omits `localeTag` (Compose Desktop
-   * has no `LocalLocale` CompositionLocal + `Locale.setDefault(...)` is JVM-thread- unsafe) and
-   * `orientation` (no rotation concept on `ImageComposeScene`).
+   * Today: `RobolectricHost` advertises every field; `DesktopHost` omits `localeTag` (Compose
+   * Desktop has no `LocalLocale` CompositionLocal + `Locale.setDefault(...)` is JVM-thread-
+   * unsafe), `orientation` (no rotation concept on `ImageComposeScene`), and Android-only timing
+   * knobs.
    */
   val supportedOverrides: List<String> = emptyList(),
   /**
@@ -328,6 +329,12 @@ data class PreviewOverrides(
    * it (no paused-clock concept).
    */
   val captureAdvanceMs: Long? = null,
+  /**
+   * Per-render `LocalInspectionMode` value for one-shot renders. Null preserves the backend's
+   * default preview behaviour (`true` for renderNow). Set `false` to render as runtime-like content
+   * without allocating a held interactive session.
+   */
+  val inspectionMode: Boolean? = null,
 )
 
 @Serializable

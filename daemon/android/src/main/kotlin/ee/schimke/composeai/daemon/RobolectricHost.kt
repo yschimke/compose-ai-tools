@@ -222,10 +222,11 @@ open class RobolectricHost(
 
   /**
    * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the Robolectric
-   * renderer applies all eight `PreviewOverrides` fields. Size / density / locale / uiMode /
+   * renderer applies all `PreviewOverrides` fields. Size / density / locale / uiMode /
    * orientation / device flow into `RuntimeEnvironment.setQualifiers`; `fontScale` flows into
-   * `RuntimeEnvironment.setFontScale` (a Configuration knob, not a qualifier — see
-   * `daemon/android/.../RenderEngine.kt` for the call site).
+   * `RuntimeEnvironment.setFontScale` (a Configuration knob, not a qualifier); `captureAdvanceMs`
+   * controls the paused-clock settle point; `inspectionMode` flows into `LocalInspectionMode`.
+   * See `daemon/android/.../RenderEngine.kt` for the call sites.
    */
   override val supportedOverrides: Set<String> =
     setOf(
@@ -238,6 +239,7 @@ open class RobolectricHost(
       "orientation",
       "device",
       "captureAdvanceMs",
+      "inspectionMode",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */

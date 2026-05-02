@@ -803,9 +803,9 @@ class JsonRpcServer(
    *
    * - `previewId=<id>` — the discovery-time identifier the per-backend `PreviewManifestRouter`
    *   resolves into a [RenderSpec] before dispatch.
-   * - Optional `widthPx`, `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`
-   *   — the [PreviewOverrides] from this `renderNow` call. Routers preserve these when rewriting
-   *   the payload, and they win over the manifest entry's per-preview defaults.
+   * - Optional `widthPx`, `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`,
+   *   `inspectionMode` — the [PreviewOverrides] from this `renderNow` call. Routers preserve these
+   *   when rewriting the payload, and they win over the manifest entry's per-preview defaults.
    *
    * **`device` resolution.** When `overrides.device` is set we resolve it against
    * [ee.schimke.composeai.daemon.devices.DeviceDimensions] and emit the derived `widthPx` /
@@ -883,6 +883,10 @@ class JsonRpcServer(
           if (isNotEmpty()) append(';')
           append("captureAdvanceMs=").append(it)
         }
+      overrides.inspectionMode?.let {
+        if (isNotEmpty()) append(';')
+        append("inspectionMode=").append(it)
+      }
     }
   }
 

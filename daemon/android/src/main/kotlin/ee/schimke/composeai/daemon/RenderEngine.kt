@@ -221,7 +221,8 @@ class RenderEngine(
               // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
               // through rather than parking under the paused clock — same trade
               // `RobolectricRenderTest.renderWithA11y` already pays.
-              CompositionLocalProvider(LocalInspectionMode provides !runAccessibility) {
+              val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
+              CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
                 Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
               }
             }
@@ -511,6 +512,11 @@ data class RenderSpec(
    * settle window without editing the render body.
    */
   val captureAdvanceMs: Long? = null,
+  /**
+   * Per-render `LocalInspectionMode` override for one-shot renders. Null preserves preview
+   * semantics (`true`); a11y mode still forces `false` so accessibility semantics are populated.
+   */
+  val inspectionMode: Boolean? = null,
 ) {
 
   enum class SpecUiMode {
@@ -529,8 +535,9 @@ data class RenderSpec(
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
      * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
-     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`). `className` and
-     * `functionName` are required; everything else falls back to the defaults on this data class.
+     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`), `inspectionMode`
+     * (`true`/`false`). `className` and `functionName` are required; everything else falls back to
+     * the defaults on this data class.
      * Returns `null` when the payload doesn't carry a `className=` token (the discriminator the
      * host uses to route legacy stub-payload requests through the classloader-identity path).
      */
@@ -572,6 +579,7 @@ data class RenderSpec(
             else -> null
           },
         captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
+        inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
       )
     }
   }

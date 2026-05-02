@@ -238,6 +238,10 @@ export interface PreviewOverrides {
      * Values ≤ 0 fall back to the default. Desktop ignores it.
      */
     captureAdvanceMs?: number;
+    /**
+     * Per-render LocalInspectionMode override. Undefined preserves normal preview behaviour.
+     */
+    inspectionMode?: boolean;
 }
 
 export interface RenderNowParams {

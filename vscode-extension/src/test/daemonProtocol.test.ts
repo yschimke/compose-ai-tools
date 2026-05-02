@@ -79,6 +79,7 @@ describe('daemon protocol — golden fixtures', () => {
         assert.ok(supported.includes('widthPx'), 'desktop should advertise widthPx');
         assert.ok(supported.includes('uiMode'), 'desktop should advertise uiMode');
         assert.ok(supported.includes('device'), 'desktop should advertise device');
+        assert.ok(supported.includes('inspectionMode'), 'desktop should advertise inspectionMode');
         assert.ok(!supported.includes('localeTag'), 'desktop should NOT advertise localeTag');
         assert.ok(!supported.includes('orientation'), 'desktop should NOT advertise orientation');
         // PROTOCOL.md § 3 — backend identifies the renderer; fixture mirrors a desktop daemon.
@@ -130,6 +131,7 @@ describe('daemon protocol — golden fixtures', () => {
         assert.strictEqual(params.overrides!.widthPx, 600);
         assert.strictEqual(params.overrides!.uiMode, 'dark');
         assert.strictEqual(params.overrides!.localeTag, 'fr-FR');
+        assert.strictEqual(params.overrides!.inspectionMode, false);
     });
 });
 

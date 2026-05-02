@@ -11,6 +11,7 @@
     "uiMode": "dark",
     "orientation": "portrait",
     "device": "id:pixel_5",
-    "captureAdvanceMs": 250
+    "captureAdvanceMs": 250,
+    "inspectionMode": false
   }
 }

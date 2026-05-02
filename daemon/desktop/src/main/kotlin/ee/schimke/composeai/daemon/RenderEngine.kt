@@ -91,7 +91,7 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
-    val state = setUp(spec, classLoader, inspectionMode = true)
+    val state = setUp(spec, classLoader, inspectionMode = spec.inspectionMode ?: true)
     try {
       return renderOnce(state, requestId, sandboxStats = sandboxStats)
     } finally {
@@ -360,6 +360,11 @@ data class RenderSpec(
    * is carried so a single payload string drives both backends.
    */
   val orientation: SpecOrientation? = null,
+  /**
+   * Per-render `LocalInspectionMode` override for one-shot renders. Null preserves preview
+   * semantics (`true`); held interactive/recording sessions pass their own runtime-like `false`.
+   */
+  val inspectionMode: Boolean? = null,
 ) {
 
   enum class SpecUiMode {
@@ -378,8 +383,9 @@ data class RenderSpec(
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
      * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
-     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`). `className` and
-     * `functionName` are required; everything else falls back to the defaults on this data class.
+     * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`), `inspectionMode`
+     * (`true`/`false`). `className` and `functionName` are required; everything else falls back to
+     * the defaults on this data class.
      *
      * Keeping this stringly-typed for v1 is deliberate (per the task brief). When `RenderRequest`
      * grows a typed `previewId: String?` field, [DesktopHost] will look the spec up in
@@ -425,6 +431,7 @@ data class RenderSpec(
             "landscape" -> SpecOrientation.LANDSCAPE
             else -> null
           },
+        inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
       )
     }
   }

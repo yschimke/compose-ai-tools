@@ -99,9 +99,10 @@ interface RenderHost {
   /**
    * Field names from `PreviewOverrides` (see PROTOCOL.md § 5 `renderNow.overrides`) that this host
    * actually applies during a render. Names match the JSON spelling on the wire: `widthPx`,
-   * `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`. Surfaced
-   * verbatim as `InitializeResult.capabilities.supportedOverrides` so clients can grey out
-   * unsupported sliders and MCP can warn agents who set fields the backend would silently ignore.
+   * `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`,
+   * `captureAdvanceMs`, `inspectionMode`. Surfaced verbatim as
+   * `InitializeResult.capabilities.supportedOverrides` so clients can grey out unsupported sliders
+   * and MCP can warn agents who set fields the backend would silently ignore.
    *
    * The default empty set is the safe pre-feature value — clients treat absent and `[]` identically
    * and assume any field they pass might be ignored. Real backends override: `RobolectricHost`
