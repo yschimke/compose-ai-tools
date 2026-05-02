@@ -54,6 +54,19 @@ internal object AndroidPreviewSupport {
       "org.jetbrains.compose.ui" to "ui-tooling-preview",
     )
 
+  internal fun kmpAndroidSiblingName(group: String, name: String): String? {
+    if (!group.startsWith("androidx.") && !group.startsWith("org.jetbrains.compose.")) {
+      return null
+    }
+    val replacementSuffix =
+      when {
+        name.endsWith("-desktop") -> "-desktop"
+        name.endsWith("-jvmstubs") -> "-jvmstubs"
+        else -> return null
+      }
+    return name.removeSuffix(replacementSuffix) + "-android"
+  }
+
   fun configure(project: Project, extension: PreviewExtension) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
@@ -616,9 +629,9 @@ internal object AndroidPreviewSupport {
           copyAttributes(attributes, testConfig.attributes)
           extendsFrom(testConfig)
         }
-        // Force AndroidX KMP-published modules (lifecycle 2.8+, savedstate
-        // 1.3+, activity 1.10+ ship `-android` / `-desktop` / `-jvmstubs`
-        // siblings of the same coordinate) to their Android sibling on the
+        // Force AndroidX / Compose Multiplatform KMP-published modules
+        // (`-android` / `-desktop` / `-jvmstubs` siblings of the same
+        // coordinate) to their Android sibling on the
         // renderer test JVM. Kotlin's `org.jetbrains.kotlin.platform.type`
         // attribute (`androidJvm` vs `jvm`) is the official disambiguator,
         // but its compatibility/disambiguation rules are only registered when
@@ -648,38 +661,24 @@ internal object AndroidPreviewSupport {
         // `-android` sibling, so this rule doesn't pin AndroidX to a stale
         // floor.
         //
-        // Scoped to `androidx.*` because every AndroidX KMP module that
-        // publishes a `-desktop` or `-jvmstubs` sibling also publishes an
-        // `-android` sibling at the same version — the convention is enforced
-        // upstream. Non-AndroidX `-jvm` artifacts (kotlinx-coroutines, okio,
-        // kotlin-stdlib) are genuinely JVM-only at the published name and
-        // must not be rewritten.
+        // Scoped to `androidx.*` and `org.jetbrains.compose.*` because those
+        // KMP module families publish matching `-android` siblings for their
+        // `-desktop` / `-jvmstubs` artifacts. Other JVM artifacts
+        // (kotlinx-coroutines, okio, kotlin-stdlib) are genuinely JVM-only at
+        // the published name and must not be rewritten.
         resolutionStrategy.eachDependency {
           val req = requested
-          if (req.group.startsWith("androidx.")) {
-            val replacementSuffix =
-              when {
-                req.name.endsWith("-desktop") -> "-desktop"
-                req.name.endsWith("-jvmstubs") -> "-jvmstubs"
-                else -> null
-              }
-            if (replacementSuffix != null) {
-              useTarget(
-                mapOf(
-                  "group" to req.group,
-                  "name" to req.name.removeSuffix(replacementSuffix) + "-android",
-                  "version" to req.version,
-                )
-              )
-              because(
-                "Gradle resolved the `$replacementSuffix` KMP sibling on a config without the " +
-                  "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
-                  "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
-                  "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
-                  "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
-                  "removed in the KMP rewrite)."
-              )
-            }
+          val targetName = kmpAndroidSiblingName(req.group, req.name)
+          if (targetName != null) {
+            useTarget(mapOf("group" to req.group, "name" to targetName, "version" to req.version))
+            because(
+              "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
+                "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
+                "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
+                "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
+                "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
+                "removed in the KMP rewrite)."
+            )
           }
         }
         // Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
