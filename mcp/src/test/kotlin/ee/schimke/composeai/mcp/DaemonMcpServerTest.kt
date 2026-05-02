@@ -646,6 +646,101 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `concurrent different-overrides render_preview calls are serialized per previewId`() {
+    // Regression for the wrong-bytes hazard PR #432's "known limitation" note documented (and
+    // mis-described as a hang). Pre-fix: two concurrent override-bearing render_preview calls
+    // for the same URI would each fire a renderNow; the daemon coalesced the second; the MCP's
+    // by-previewId fanout woke BOTH waiters with the FIRST render's bytes. Caller B (with O2)
+    // silently received caller A's O1 bytes.
+    //
+    // Post-fix: previewQueues serializes per-previewId — caller B's renderNow doesn't fire
+    // until caller A's renderFinished arrives. Each caller observes a renderNow with their
+    // own overrides on the daemon, in the order they arrived.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytesA = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 1, 1)
+    val pngBytesB = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 2, 2, 2)
+    val pngFileA = tmp.newFile("a.png").also { Files.write(it.toPath(), pngBytesA) }
+    val pngFileB = tmp.newFile("b.png").also { Files.write(it.toPath(), pngBytesB) }
+    // Deliberately NO autoRenderPngPath — we drive renderFinished manually so the test
+    // controls timing.
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    val callerExecutor =
+      java.util.concurrent.Executors.newFixedThreadPool(2) { r ->
+        Thread(r, "test-render-caller").apply { isDaemon = true }
+      }
+    try {
+      // Caller A — overrides {widthPx=100}.
+      val callA =
+        callerExecutor.submit<McpToolResult> {
+          client.callTool(
+            "render_preview",
+            buildJsonObject {
+              put("uri", uri)
+              putJsonObject("overrides") { put("widthPx", 100) }
+            },
+            timeoutMs = 10_000,
+          )
+        }
+
+      // Wait for the daemon to record A's renderNow before launching B — guarantees A is in
+      // the queue first.
+      val firstPreviews = daemon.renderRequests.poll(5, TimeUnit.SECONDS)
+      assertThat(firstPreviews).isEqualTo(listOf(previewId))
+      assertThat(daemon.renderOverrides).hasSize(1)
+      assertThat(daemon.renderOverrides[0]?.widthPx).isEqualTo(100)
+
+      // Caller B — overrides {widthPx=200}. Should queue behind A; no new renderNow yet.
+      val callB =
+        callerExecutor.submit<McpToolResult> {
+          client.callTool(
+            "render_preview",
+            buildJsonObject {
+              put("uri", uri)
+              putJsonObject("overrides") { put("widthPx", 200) }
+            },
+            timeoutMs = 10_000,
+          )
+        }
+
+      // Brief settle for B's awaitNextRender to register its future. Without serialization, a
+      // second renderNow would fire here. With serialization, the queue holds B until A drains.
+      Thread.sleep(300)
+      assertThat(daemon.renderRequests.poll(0, TimeUnit.MILLISECONDS)).isNull()
+      assertThat(daemon.renderOverrides).hasSize(1)
+
+      // Drain A — the head pop should promote B and dispatch B's renderNow.
+      daemon.emitRenderFinished(previewId, pngFileA.absolutePath)
+
+      // B's renderNow now arrives, with B's overrides (not A's).
+      val secondPreviews = daemon.renderRequests.poll(5, TimeUnit.SECONDS)
+      assertThat(secondPreviews).isEqualTo(listOf(previewId))
+      assertThat(daemon.renderOverrides).hasSize(2)
+      assertThat(daemon.renderOverrides[1]?.widthPx).isEqualTo(200)
+
+      // Drain B.
+      daemon.emitRenderFinished(previewId, pngFileB.absolutePath)
+
+      // Both calls returned successfully — pre-fix B would have completed early with A's bytes
+      // (wrong-bytes); post-fix B blocks until its own renderFinished and gets B's bytes. The
+      // load-bearing wire-side assertion is the order and count of renderNows the daemon
+      // observed above; we just confirm both callers unblocked here.
+      callA.get(5, TimeUnit.SECONDS)
+      callB.get(5, TimeUnit.SECONDS)
+    } finally {
+      callerExecutor.shutdownNow()
+    }
+  }
+
+  @Test
   fun `resources read round-trips through renderNow and returns base64 PNG`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")

@@ -76,20 +76,21 @@ class DaemonMcpServer(
     ConcurrentHashMap()
 
   /**
-   * Outstanding `resources/read` waiters, keyed by `(workspace, module, previewId)`. Each call adds
-   * its own `CompletableFuture` so concurrent reads of the same URI all wake up on the next
-   * `renderFinished` — `LinkedBlockingQueue` semantics would have served the outcome to one waiter
-   * and timed out the rest. The list type is `CopyOnWriteArrayList` because the read path
-   * (snapshot-and-complete inside `compute`) is rare; each render produces one fan-out, while a
-   * single render-in-flight is a quiet line.
+   * Per-(workspace, module, previewId) FIFO of [PendingRenderGroup]s awaiting a render. The HEAD
+   * group is the one whose `renderNow` has been sent to the daemon (in-flight); subsequent groups
+   * wait for their predecessor's `renderFinished` before their own `renderNow` is sent. Groups are
+   * created per distinct `PreviewOverrides` value: same-overrides waiters dedup onto the tail group
+   * (multi-waiter dedup, preserving the pre-#432 contract for concurrent same-call reads),
+   * different-overrides waiters serialize behind their predecessor (the load-bearing fix versus the
+   * daemon-side coalesce rule, PROTOCOL.md § 5).
+   *
+   * Without this serialization, two concurrent override-bearing calls for the same URI would race
+   * the daemon's coalesce: only one `renderNow` is accepted, the second is rejected, and the MCP
+   * server's by-previewId fanout would wake both waiters with the FIRST render's bytes. Caller B
+   * (with `O2`) silently received caller A's `O1` bytes — the real bug PR #432 papered over (its
+   * kdoc said "hangs to renderTimeoutMs" but the actual symptom is wrong-bytes).
    */
-  private val pendingRenders =
-    ConcurrentHashMap<
-      RenderKey,
-      java.util.concurrent.CopyOnWriteArrayList<
-        java.util.concurrent.CompletableFuture<RenderOutcome>
-      >,
-    >()
+  private val previewQueues = ConcurrentHashMap<PreviewIdKey, ArrayDeque<PendingRenderGroup>>()
 
   /**
    * Per-(workspace, module) counter of consecutive `classpathDirty` self-loops since the last clean
@@ -329,13 +330,13 @@ class DaemonMcpServer(
    * [overrides] forwards the per-call display-property overrides PROTOCOL.md § 5 documents on
    * `renderNow`. Defaults to null (use discovery-time RenderSpec); the auto-render fallback in
    * `get_preview_data` leaves it null on purpose since it just wants any render so the kind becomes
-   * available. The value is also folded into [RenderKey] so that two concurrent `render_preview`
-   * calls for the same URI but different overrides do NOT share a single render future — without
-   * that re-key, caller B with `overrides=O2` would silently receive the bytes from caller A's
-   * `overrides=O1` render. **Known limitation:** when concurrent override-bearing calls race the
-   * daemon-side coalesce rule, the second `renderNow` is rejected with `coalesced` and the second
-   * waiter currently hangs until [renderTimeoutMs]. Sequential agent calls — the dominant MCP usage
-   * pattern — are unaffected.
+   * available. Concurrent calls for the same URI are serialized per-`previewId`: the head group's
+   * `renderNow` is in flight, subsequent groups wait for the head's `renderFinished` before their
+   * own `renderNow` is sent. Same-overrides callers dedup onto the tail group; different-overrides
+   * callers append a new group. Without this, the daemon's coalesce rule (PROTOCOL.md § 5
+   * `renderNow.overrides`) would reject the second `renderNow` and the by-previewId fanout would
+   * wake caller B with caller A's bytes — the real bug PR #432's "known limitation" note papered
+   * over.
    */
   private fun awaitNextRender(
     uri: PreviewUri,
@@ -344,36 +345,62 @@ class DaemonMcpServer(
     overrides: PreviewOverrides? = null,
   ): RenderOutcome.Finished {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
-    val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn, overrides)
-    // Multi-waiter dedup: each call adds its own CompletableFuture to the per-key list, so
-    // concurrent `resources/read` for the same URI all wake up on the next `renderFinished`
-    // — they all asked "what's the current bytes for this preview?" and the daemon's reply
-    // satisfies every concurrent reader. Crucially, the future is published BEFORE
-    // `renderNow` is sent, so the daemon's notification can't arrive ahead of the wait.
+    val key = PreviewIdKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
     val future = java.util.concurrent.CompletableFuture<RenderOutcome>()
-    pendingRenders.compute(key) { _, list ->
-      val l = list ?: java.util.concurrent.CopyOnWriteArrayList()
-      l.add(future)
-      l
+    // Atomically join the right group. `becameFront` (captured outside the compute lambda)
+    // tracks whether we created a brand-new head group: in that case we own the `renderNow`
+    // dispatch (must happen outside the per-key lock so we don't hold it across IPC). When we
+    // dedup onto an existing group OR append a non-head group, no `renderNow` fires here — the
+    // in-flight head will wake us via onRenderFinished, or the head's completion will promote
+    // our group to the head and dispatch our `renderNow` then.
+    var becameFront = false
+    previewQueues.compute(key) { _, queue ->
+      val q = queue ?: ArrayDeque()
+      val tail = q.lastOrNull()
+      if (tail != null && tail.overrides == overrides) {
+        // Same-overrides dedup. If the tail is the head (in flight), we get the head's bytes.
+        // If the tail is a queued non-head, we get woken when that group is dispatched and
+        // completes. Either way, no fresh `renderNow`.
+        tail.futures.add(future)
+      } else {
+        val group = PendingRenderGroup(overrides = overrides)
+        group.futures.add(future)
+        if (q.isEmpty()) {
+          group.sent = true
+          becameFront = true
+        }
+        q.addLast(group)
+      }
+      q
     }
-    // Shard render fan-out across replicas: same previewFqn → same replica (cache locality +
-    // dedup), different previewFqns → spread across replicas so concurrent renders run in
-    // parallel. With replicasPerDaemon = 0 this collapses to the primary, preserving the
-    // single-daemon path.
-    daemon
-      .clientForRender(uri.previewFqn)
-      .renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL, overrides = overrides)
     // Optional `notifications/progress` beat: when the client opted in via
     // `_meta.progressToken`, fire periodic monotonic progress notifications so a UI can show a
     // spinner / progress bar while the slow render completes. Beat thread is daemon-flagged
     // and exits as soon as the future completes (or the timeout cleanup path runs).
     val progressBeat = startProgressBeatIfNeeded(session, progressToken, future, uri)
+    if (becameFront) {
+      // Shard render fan-out across replicas: same previewFqn → same replica (cache locality +
+      // dedup), different previewFqns → spread across replicas so concurrent renders run in
+      // parallel. With replicasPerDaemon = 0 this collapses to the primary.
+      daemon
+        .clientForRender(uri.previewFqn)
+        .renderNow(previews = listOf(uri.previewFqn), tier = RenderTier.FULL, overrides = overrides)
+    }
     val outcome =
       try {
         future.get(renderTimeoutMs, TimeUnit.MILLISECONDS)
       } catch (e: java.util.concurrent.TimeoutException) {
-        // Best-effort cleanup so a stuck daemon doesn't leak futures forever.
-        pendingRenders.computeIfPresent(key) { _, list -> list.also { it.remove(future) } }
+        // Best-effort cleanup. Drop our future from its group; if the group becomes empty AND
+        // it's not the in-flight head, drop the group from the queue. (An empty head stays —
+        // the daemon's eventual renderFinished will pop it cleanly via popHeadAndPromoteNext.)
+        previewQueues.computeIfPresent(key) { _, q ->
+          val containing = q.firstOrNull { it.futures.contains(future) }
+          containing?.futures?.remove(future)
+          if (containing != null && containing.futures.isEmpty() && q.first() !== containing) {
+            q.remove(containing)
+          }
+          if (q.isEmpty()) null else q
+        }
         progressBeat?.cancel(true)
         error("awaitNextRender: timed out after ${renderTimeoutMs}ms for $uri")
       } finally {
@@ -383,6 +410,41 @@ class DaemonMcpServer(
       is RenderOutcome.Failed ->
         error("awaitNextRender failed for $uri: ${outcome.kind} ${outcome.message}")
       is RenderOutcome.Finished -> outcome
+    }
+  }
+
+  /**
+   * Pop the head group of [previewQueues]'s entry for [key], wake its waiters with [outcome], and
+   * dispatch the next group's `renderNow` if one is queued. Called from `onRenderFinished` and
+   * `onRenderFailed`. The dispatch happens outside the per-key compute lambda so we never hold the
+   * lock across IPC. Returns silently if the queue is missing or empty (defensive — the daemon
+   * could in principle emit a stray `renderFinished` for a previewId we never queued).
+   */
+  private fun popHeadAndPromoteNext(
+    daemon: SupervisedDaemon,
+    key: PreviewIdKey,
+    outcome: RenderOutcome,
+  ) {
+    var poppedFutures: List<java.util.concurrent.CompletableFuture<RenderOutcome>> = emptyList()
+    var nextHead: PendingRenderGroup? = null
+    previewQueues.compute(key) { _, queue ->
+      if (queue == null || queue.isEmpty()) return@compute queue
+      poppedFutures = queue.removeFirst().futures.toList()
+      nextHead = queue.firstOrNull()?.also { it.sent = true }
+      if (queue.isEmpty()) null else queue
+    }
+    poppedFutures.forEach { it.complete(outcome) }
+    val next = nextHead
+    if (next != null) {
+      // clientForRender's hash routes by previewFqn, same as the original dispatch in
+      // awaitNextRender; preserves cache-locality / replica-affinity across promoted groups.
+      daemon
+        .clientForRender(key.previewId)
+        .renderNow(
+          previews = listOf(key.previewId),
+          tier = RenderTier.FULL,
+          overrides = next.overrides,
+        )
     }
   }
 
@@ -1497,23 +1559,12 @@ class DaemonMcpServer(
   private fun onRenderFinished(daemon: SupervisedDaemon, params: JsonObject?) {
     val previewId = params?.get("id")?.jsonPrimitive?.contentOrNull ?: return
     val pngPath = params["pngPath"]?.jsonPrimitive?.contentOrNull ?: return
-    // 1. Wake every pending resources/read awaiter for this URI. The renderFinished notification
-    //    doesn't carry override info, so we wake every (URI, *) key — including override-bearing
-    //    waiters whose own renderNow may have been coalesced by the daemon (PROTOCOL.md § 5).
-    //    Pragmatic fanout: under daemon coalescing only one renderNow per previewId is actually
-    //    rendering at a time, so the bytes we hand back match SOME caller's request; the tradeoff
-    //    is that an off-overrides waiter may receive bytes rendered for a different overrides set.
-    //    See [awaitNextRender]'s "Known limitation" note. Concurrent same-overrides callers
-    //    (the dedup target) get the right bytes.
-    pendingRenders.keys
-      .filter {
-        it.workspaceId == daemon.workspaceId &&
-          it.modulePath == daemon.modulePath &&
-          it.previewId == previewId
-      }
-      .forEach { key ->
-        pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Finished(pngPath)) }
-      }
+    // 1. Pop the head group of this URI's queue, wake its waiters with the rendered bytes, and
+    //    promote-and-dispatch the next group's renderNow if one is queued. This is the
+    //    serialization core that PR #432's by-previewId fanout (now removed) tried to paper
+    //    over — see `popHeadAndPromoteNext` and `awaitNextRender`'s kdoc for the rationale.
+    val key = PreviewIdKey(daemon.workspaceId, daemon.modulePath, previewId)
+    popHeadAndPromoteNext(daemon, key, RenderOutcome.Finished(pngPath))
     // 2. Refresh the data-product attachment cache for this `(uri)`. Any kind the daemon attached
     //    on this render is the new fresh payload; any kind it didn't attach is stale and gets
     //    dropped (the daemon stops attaching kinds the MCP server unsubscribed from, so a missing
@@ -1584,20 +1635,14 @@ class DaemonMcpServer(
     val errorObj = params["error"] as? JsonObject
     val kind = errorObj?.get("kind")?.jsonPrimitive?.contentOrNull ?: "unknown"
     val message = errorObj?.get("message")?.jsonPrimitive?.contentOrNull ?: "no message"
-    // Same fanout pattern as `onRenderFinished` — wake every (URI, *) waiter whose previewId
-    // matches; renderFailed doesn't carry override info either. Failure for one render fails
-    // every waiter for that previewId, which is the right call: if the underlying composable
-    // throws under O1, it almost certainly throws under O2 too, and surfacing the failure
-    // immediately beats hanging until renderTimeoutMs.
-    pendingRenders.keys
-      .filter {
-        it.workspaceId == daemon.workspaceId &&
-          it.modulePath == daemon.modulePath &&
-          it.previewId == previewId
-      }
-      .forEach { key ->
-        pendingRenders.remove(key)?.forEach { it.complete(RenderOutcome.Failed(kind, message)) }
-      }
+    // Same pop-and-promote shape as `onRenderFinished` — failure of the head group does NOT
+    // sympathetically fail queued non-head groups. Different overrides could plausibly succeed
+    // even when O1 throws (e.g., a composable that fails only at small widths), so we keep the
+    // queue draining: pop the failed head, wake its waiters with the failure, and dispatch the
+    // next group's renderNow normally. If a follow-up group's render also fails, the same path
+    // surfaces it.
+    val key = PreviewIdKey(daemon.workspaceId, daemon.modulePath, previewId)
+    popHeadAndPromoteNext(daemon, key, RenderOutcome.Failed(kind, message))
   }
 
   /**
@@ -1673,14 +1718,17 @@ class DaemonMcpServer(
     val modulePath = daemon.modulePath
 
     // Fail any in-flight render waiters for this daemon — the daemon is exiting and won't
-    // produce a `renderFinished` for them.
-    pendingRenders.keys
-      .filter { it.workspaceId == workspaceId && it.modulePath == modulePath }
-      .forEach { key ->
-        pendingRenders.remove(key)?.forEach {
-          it.complete(RenderOutcome.Failed("classpathDirty", "daemon exiting: $detail"))
-        }
-      }
+    // produce `renderFinished` for them. Drain every group of every previewQueue belonging to
+    // this (workspace, module): the head AND any queued follow-ups, since the next-group
+    // dispatch in popHeadAndPromoteNext is only triggered by a daemon notification we'll
+    // never receive.
+    val matchingKeys =
+      previewQueues.keys.filter { it.workspaceId == workspaceId && it.modulePath == modulePath }
+    matchingKeys.forEach { key ->
+      val drained = previewQueues.remove(key) ?: return@forEach
+      val outcome = RenderOutcome.Failed("classpathDirty", "daemon exiting: $detail")
+      drained.forEach { group -> group.futures.forEach { it.complete(outcome) } }
+    }
 
     // Forget the daemon + cached state. With `replicasPerDaemon > 0`, multiple replicas of the
     // same group may race to emit `classpathDirty` (they all see the same stale classpath). The
@@ -1732,17 +1780,32 @@ class DaemonMcpServer(
   private data class PreviewEntry(val fqn: String, val displayName: String?, val config: String?)
 
   /**
-   * Dedup key for [pendingRenders]. [overrides] is part of the equality so two concurrent
-   * `render_preview` calls for the same URI but different overrides don't share a future; see
-   * [awaitNextRender]'s "Known limitation" note for the residual coalesce-race behaviour.
-   * `PreviewOverrides` is a `data class`, so `equals`/`hashCode` cover the field-by-field compare
-   * we need.
+   * Per-previewId queue key for [previewQueues]. `(workspace, module, previewId)` identifies the
+   * render target; the queue's groups discriminate by `PreviewOverrides`. No `overrides` field on
+   * the key itself — that's what makes serialization possible (see [awaitNextRender]).
    */
-  private data class RenderKey(
+  private data class PreviewIdKey(
     val workspaceId: WorkspaceId,
     val modulePath: String,
     val previewId: String,
-    val overrides: PreviewOverrides? = null,
+  )
+
+  /**
+   * One batch of waiters with shared `PreviewOverrides` queued behind the head group of a
+   * [previewQueues] entry. `sent = true` when this group's `renderNow` has been issued to the
+   * daemon (head group always has `sent = true` once the queue becomes non-empty). `futures` is
+   * `CopyOnWriteArrayList` for the same reason the prior `pendingRenders` value type was — the
+   * fanout-on-renderFinished happens outside the queue's compute lambda, and same-overrides dedup
+   * adds inside `compute`, so iteration safety dominates over append throughput.
+   */
+  private class PendingRenderGroup(
+    val overrides: PreviewOverrides?,
+    val futures:
+      java.util.concurrent.CopyOnWriteArrayList<
+        java.util.concurrent.CompletableFuture<RenderOutcome>
+      > =
+      java.util.concurrent.CopyOnWriteArrayList(),
+    @Volatile var sent: Boolean = false,
   )
 
   /**
