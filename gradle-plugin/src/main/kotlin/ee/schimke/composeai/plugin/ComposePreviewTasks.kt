@@ -8,6 +8,7 @@ import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskProvider
 
 private val previewManifestJson = Json { ignoreUnknownKeys = true }
@@ -485,6 +486,7 @@ internal object ComposePreviewTasks {
     // check the failure surfaces only in downstream tools (CLI / VSCode).
     val manifestFile = previewOutputDir.map { it.file("previews.json") }
     val rendersDir = previewOutputDir.map { it.dir("renders") }
+    val validationMarker = previewOutputDir.map { it.file("renderAllPreviews.validated") }
     // Captured at config time so the `doLast` body doesn't reach for
     // `project` at execution (config-cache safe). Resolves at execution
     // to "fast" or "full"; "fast" tells the post-condition to tolerate
@@ -497,6 +499,12 @@ internal object ComposePreviewTasks {
     project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
+      inputs
+        .file(manifestFile)
+        .withPathSensitivity(PathSensitivity.NONE)
+        .withPropertyName("manifest")
+      inputs.property("tier", tierProvider)
+      outputs.file(validationMarker).withPropertyName("validationMarker")
       // `verifyAccessibility` runs AFTER rendering so PNGs always exist
       // even when the check fails. `finalizedBy` (instead of `dependsOn`)
       // lets the build still produce artefacts for CLI/VSCode to
@@ -592,6 +600,9 @@ internal object ComposePreviewTasks {
               "testClassesDirs. Run with --info to see the task outcome."
           )
         }
+        val marker = validationMarker.get().asFile
+        marker.parentFile?.mkdirs()
+        marker.writeText("validated\n")
       }
     }
   }
