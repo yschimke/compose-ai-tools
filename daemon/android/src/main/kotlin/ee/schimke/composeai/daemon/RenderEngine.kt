@@ -86,6 +86,14 @@ class RenderEngine(
    */
   private val dataDir: File? =
     (outputDir.parentFile ?: outputDir).resolve("data"),
+  /**
+   * D2.1 — image processors that run after the PNG + JSON artefacts are written. Defaults to
+   * a single [AccessibilityImageProcessor] so the Paparazzi-style overlay PNG lands under
+   * `<dataDir>/<previewId>/a11y-overlay.png` whenever a11y mode produced findings or nodes.
+   * Empty list disables — useful for the harness's fake-mode runs that don't exercise the
+   * processor surface.
+   */
+  private val imageProcessors: List<ImageProcessor> = listOf(AccessibilityImageProcessor()),
 ) {
 
   /**
@@ -251,6 +259,9 @@ class RenderEngine(
                   previewId = spec.outputBaseName,
                   findings = a11yResult.findings,
                   nodes = a11yResult.nodes,
+                  pngFile = outputFile,
+                  isRound = isRound,
+                  imageProcessors = imageProcessors,
                 )
               } catch (t: Throwable) {
                 System.err.println(

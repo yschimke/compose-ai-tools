@@ -279,16 +279,32 @@ export interface RenderMetrics {
 }
 
 /**
+ * One additional non-JSON output a producer wrote alongside its primary
+ * payload — typically a derived image such as the Paparazzi-style a11y
+ * overlay PNG. Pointer-only on the wire; the client reads the file
+ * directly. See docs/daemon/DATA-PRODUCTS.md § "Image processors and
+ * extras".
+ */
+export interface DataProductExtra {
+    name: string;
+    path: string;
+    mediaType?: string;
+    sizeBytes?: number;
+}
+
+/**
  * One data-product attachment riding on a `renderFinished` notification.
  * `payload` is per-kind JSON when `transport='inline'`; `path` is an
  * absolute path to a sibling file when `transport='path'`. Exactly one of
- * the two is set per entry.
+ * the two is set per entry. `extras` is the producer's derived non-JSON
+ * outputs (PNGs etc.); absent / empty are interchangeable.
  */
 export interface DataProductAttachment {
     kind: string;
     schemaVersion: number;
     payload?: unknown;
     path?: string;
+    extras?: DataProductExtra[];
 }
 
 export interface RenderFinishedParams {
@@ -459,6 +475,9 @@ export interface DataFetchResult {
     /** Base64 — set only when caller passed `inline: true` and the kind's
      *  transport is blob-shaped. Reserved for non-local clients. */
     bytes?: string;
+    /** Derived non-JSON outputs the producer wrote alongside (e.g. a11y
+     *  overlay PNG). Absent / empty are interchangeable on the wire. */
+    extras?: DataProductExtra[];
 }
 
 export interface DataSubscribeParams {

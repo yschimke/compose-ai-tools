@@ -37,12 +37,13 @@ class AccessibilityDataProductRegistryTest {
   }
 
   @Test
-  fun `capabilities advertise a11y atf and hierarchy with the documented transports`() {
+  fun `capabilities advertise a11y atf hierarchy and overlay with the documented transports`() {
     val registry = AccessibilityDataProductRegistry(rootDir)
     val byKind = registry.capabilities.associateBy { it.kind }
-    assertEquals(setOf("a11y/atf", "a11y/hierarchy"), byKind.keys)
+    assertEquals(setOf("a11y/atf", "a11y/hierarchy", "a11y/overlay"), byKind.keys)
     assertEquals(DataProductTransport.INLINE, byKind.getValue("a11y/atf").transport)
     assertEquals(DataProductTransport.PATH, byKind.getValue("a11y/hierarchy").transport)
+    assertEquals(DataProductTransport.PATH, byKind.getValue("a11y/overlay").transport)
     for (cap in registry.capabilities) {
       assertTrue(cap.attachable)
       assertTrue(cap.fetchable)
@@ -161,5 +162,84 @@ class AccessibilityDataProductRegistryTest {
     assertNotNull(result.path)
     assertNull(result.payload)
     assertTrue(File(result.path!!).exists())
+  }
+
+  @Test
+  fun `attachmentsFor surfaces overlay PNG as an extra under a11y atf and hierarchy when present`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.HomeKt#HomePreview"
+    AccessibilityDataProducer.writeArtifacts(
+      rootDir = rootDir,
+      previewId = previewId,
+      findings = emptyList(),
+      nodes = emptyList(),
+    )
+    // Simulate the AccessibilityImageProcessor having written the overlay PNG into the
+    // per-preview data dir alongside the JSON artefacts. The registry doesn't care how the
+    // bytes got there; it just surfaces the file as an extra.
+    val previewDir = File(rootDir, previewId).also { it.mkdirs() }
+    val overlay = File(previewDir, AccessibilityDataProducer.FILE_OVERLAY)
+    overlay.writeBytes(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+
+    val attachments =
+      registry.attachmentsFor(
+        previewId = previewId,
+        kinds = setOf("a11y/atf", "a11y/hierarchy", "a11y/overlay"),
+      )
+    val byKind = attachments.associateBy { it.kind }
+    val atfExtras = byKind.getValue("a11y/atf").extras
+    assertNotNull("extras must populate when overlay PNG is on disk", atfExtras)
+    assertEquals(1, atfExtras!!.size)
+    assertEquals("overlay", atfExtras[0].name)
+    assertEquals("image/png", atfExtras[0].mediaType)
+    assertEquals(overlay.absolutePath, atfExtras[0].path)
+
+    val overlayKind = byKind.getValue("a11y/overlay")
+    assertNotNull(overlayKind.path)
+    assertEquals(overlay.absolutePath, overlayKind.path)
+    assertNull(overlayKind.payload)
+  }
+
+  @Test
+  fun `fetch on a11y overlay returns the path and the same extra as the JSON kinds`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.X"
+    AccessibilityDataProducer.writeArtifacts(
+      rootDir = rootDir,
+      previewId = previewId,
+      findings = emptyList(),
+      nodes = emptyList(),
+    )
+    val previewDir = File(rootDir, previewId).also { it.mkdirs() }
+    val overlay = File(previewDir, AccessibilityDataProducer.FILE_OVERLAY)
+    overlay.writeBytes(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+
+    val outcome =
+      registry.fetch(previewId = previewId, kind = "a11y/overlay", params = null, inline = false)
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val result = (outcome as DataProductRegistry.Outcome.Ok).result
+    assertEquals(overlay.absolutePath, result.path)
+    assertNull("a11y/overlay must not be parsed as JSON", result.payload)
+    val extras = result.extras
+    assertNotNull(extras)
+    assertEquals(1, extras!!.size)
+    assertEquals(overlay.absolutePath, extras[0].path)
+  }
+
+  @Test
+  fun `attachmentsFor omits extras when the overlay PNG never landed`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.NoOverlay"
+    AccessibilityDataProducer.writeArtifacts(
+      rootDir = rootDir,
+      previewId = previewId,
+      findings = emptyList(),
+      nodes = emptyList(),
+    )
+    val attachments =
+      registry.attachmentsFor(previewId = previewId, kinds = setOf("a11y/atf", "a11y/hierarchy"))
+    for (att in attachments) {
+      assertNull("extras must be absent when overlay PNG is missing", att.extras)
+    }
   }
 }

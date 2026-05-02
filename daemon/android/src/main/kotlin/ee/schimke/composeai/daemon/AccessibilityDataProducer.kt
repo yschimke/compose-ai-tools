@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
@@ -41,24 +42,41 @@ object AccessibilityDataProducer {
   /** `a11y/hierarchy` — accessibility-relevant nodes with bounds + label + states. */
   const val KIND_HIERARCHY: String = "a11y/hierarchy"
 
+  /**
+   * D2.1 — `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style
+   * annotated PNG produced by [AccessibilityImageProcessor]. Lets clients fetch the picture
+   * directly without first asking for the JSON kinds. Also surfaces as an `overlay` extra on
+   * the JSON kinds, so a panel that subscribed to `a11y/atf` still has the PNG path handy.
+   */
+  const val KIND_OVERLAY: String = "a11y/overlay"
+
   /** File names under `<rootDir>/<previewId>/`. */
   const val FILE_ATF: String = "a11y-atf.json"
   const val FILE_HIERARCHY: String = "a11y-hierarchy.json"
+  const val FILE_OVERLAY: String = "a11y-overlay.png"
 
   @Serializable internal data class AtfPayload(val findings: List<AccessibilityFinding>)
 
   @Serializable internal data class HierarchyPayload(val nodes: List<AccessibilityNode>)
 
   /**
-   * Writes both files to `<rootDir>/<previewId>/` (creating the directory tree if needed).
-   * Idempotent — overwrites prior files. Called from [RenderEngine.render]'s a11y branch
-   * with the result of [ee.schimke.composeai.renderer.AccessibilityChecker.analyze].
+   * Writes both JSON files to `<rootDir>/<previewId>/` (creating the directory tree if needed).
+   * Idempotent — overwrites prior files. Called from [RenderEngine.render]'s a11y branch with
+   * the result of [ee.schimke.composeai.renderer.AccessibilityChecker.analyze].
+   *
+   * When [pngFile] is supplied (the captured screenshot), the configured [imageProcessors]
+   * also run — for the daemon's default wiring that means [AccessibilityImageProcessor]
+   * generates `a11y-overlay.png`. Each processor failure is logged + skipped so a single
+   * bad processor never strands the JSON the consumer already cares about.
    */
   fun writeArtifacts(
     rootDir: File,
     previewId: String,
     findings: List<AccessibilityFinding>,
     nodes: List<AccessibilityNode>,
+    pngFile: File? = null,
+    isRound: Boolean = false,
+    imageProcessors: List<ImageProcessor> = emptyList(),
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
@@ -68,6 +86,26 @@ object AccessibilityDataProducer {
     previewDir
       .resolve(FILE_HIERARCHY)
       .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    if (pngFile == null || imageProcessors.isEmpty()) return
+    val input =
+      ImageProcessorInput(
+        previewId = previewId,
+        pngFile = pngFile,
+        dataDir = rootDir,
+        isRound = isRound,
+        accessibility =
+          ImageProcessorInput.AccessibilityResult(findings = findings, nodes = nodes),
+      )
+    for (processor in imageProcessors) {
+      try {
+        processor.process(input)
+      } catch (t: Throwable) {
+        System.err.println(
+          "AccessibilityDataProducer: image processor '${processor.name}' failed " +
+            "for $previewId: ${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
   }
 }
 
@@ -108,6 +146,14 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         fetchable = true,
         requiresRerender = false,
       ),
+      DataProductCapability(
+        kind = AccessibilityDataProducer.KIND_OVERLAY,
+        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+        transport = DataProductTransport.PATH,
+        attachable = true,
+        fetchable = true,
+        requiresRerender = false,
+      ),
     )
 
   override fun fetch(
@@ -123,9 +169,23 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         AccessibilityDataProducer.KIND_HIERARCHY ->
           fileFor(previewId, AccessibilityDataProducer.FILE_HIERARCHY) to
             DataProductTransport.PATH
+        AccessibilityDataProducer.KIND_OVERLAY ->
+          fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY) to DataProductTransport.PATH
         else -> return DataProductRegistry.Outcome.Unknown
       }
     if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
+    val extras = extrasFor(previewId, kind)
+    // The overlay kind is binary (PNG); never parse it as JSON. Path-only.
+    if (kind == AccessibilityDataProducer.KIND_OVERLAY) {
+      return DataProductRegistry.Outcome.Ok(
+        DataFetchResult(
+          kind = kind,
+          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+          path = file.absolutePath,
+          extras = extras.takeIf { it.isNotEmpty() },
+        )
+      )
+    }
     val payloadElement: JsonElement? =
       try {
         json.parseToJsonElement(file.readText())
@@ -141,6 +201,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
             kind = kind,
             schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
             payload = payloadElement,
+            extras = extras.takeIf { it.isNotEmpty() },
           )
         transport == DataProductTransport.INLINE ->
           // Even when the caller didn't ask for inline, the `inline` transport kind has no
@@ -150,15 +211,44 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
             kind = kind,
             schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
             payload = payloadElement,
+            extras = extras.takeIf { it.isNotEmpty() },
           )
         else ->
           DataFetchResult(
             kind = kind,
             schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
             path = file.absolutePath,
+            extras = extras.takeIf { it.isNotEmpty() },
           )
       }
     return DataProductRegistry.Outcome.Ok(result)
+  }
+
+  /**
+   * Builds the [DataProductExtra] list for [kind] by scanning [previewId]'s data dir for
+   * known sibling outputs. Today the only extra is the a11y overlay PNG, attached to all
+   * three a11y kinds. Returns an empty list when no extras are available — the caller wraps
+   * the result in `takeIf { it.isNotEmpty() }` so the wire field stays absent in that case.
+   */
+  private fun extrasFor(previewId: String, kind: String): List<DataProductExtra> {
+    val attaches =
+      when (kind) {
+        AccessibilityDataProducer.KIND_ATF,
+        AccessibilityDataProducer.KIND_HIERARCHY,
+        AccessibilityDataProducer.KIND_OVERLAY -> true
+        else -> false
+      }
+    if (!attaches) return emptyList()
+    val overlay = fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY)
+    if (!overlay.exists()) return emptyList()
+    return listOf(
+      DataProductExtra(
+        name = AccessibilityImageProcessor.OVERLAY_NAME,
+        path = overlay.absolutePath,
+        mediaType = "image/png",
+        sizeBytes = overlay.length().takeIf { it > 0 },
+      )
+    )
   }
 
   override fun attachmentsFor(
@@ -167,6 +257,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
   ): List<DataProductAttachment> {
     val out = mutableListOf<DataProductAttachment>()
     for (kind in kinds) {
+      val extras = extrasFor(previewId, kind).takeIf { it.isNotEmpty() }
       when (kind) {
         AccessibilityDataProducer.KIND_ATF -> {
           val file = fileFor(previewId, AccessibilityDataProducer.FILE_ATF)
@@ -185,6 +276,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
               kind = kind,
               schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
               payload = parsed,
+              extras = extras,
             )
           )
         }
@@ -196,6 +288,19 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
               kind = kind,
               schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
               path = file.absolutePath,
+              extras = extras,
+            )
+          )
+        }
+        AccessibilityDataProducer.KIND_OVERLAY -> {
+          val file = fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY)
+          if (!file.exists()) continue
+          out.add(
+            DataProductAttachment(
+              kind = kind,
+              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+              path = file.absolutePath,
+              extras = extras,
             )
           )
         }

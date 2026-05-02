@@ -772,6 +772,74 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
+      ToolDef(
+        name = "render_preview_overlay",
+        description =
+          "Render a preview and return the annotated overlay PNG instead of (or alongside) the bare " +
+            "screenshot. Drives the daemon's image-processor surface — when `kind` is `a11y/overlay` " +
+            "(the default), the response carries a base64-encoded image with ATF findings and " +
+            "Paparazzi-style accessibility legend painted on top. " +
+            "Use this when you want a single tool call that (1) triggers a render in the right mode, " +
+            "(2) lets the producer compose its derived image, and (3) hands you back the bytes — no " +
+            "separate `render_preview` + `get_preview_data` round trip. The overlay PNG also lands on " +
+            "disk under `<dataDir>/<previewId>/a11y-overlay.png` so callers that prefer the path can " +
+            "set `inline=false`. " +
+            "Errors: DataProductUnknown when the daemon has no producer for `kind` (no a11y wiring or " +
+            "`composeai.daemon.attachA11y=false`).",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "kind":{"type":"string","description":"Overlay kind. Default 'a11y/overlay'. Anything advertised by list_data_products with media-bearing extras can be used here.","default":"a11y/overlay"},
+                "inline":{"type":"boolean","description":"Default true. When true, returns the overlay bytes as a base64 image content block. When false, returns the on-disk path only."},
+                "overrides":{
+                  "type":"object",
+                  "description":"Per-call display overrides forwarded to render_preview. Same shape as render_preview.overrides.",
+                  "properties":{
+                    "widthPx":{"type":"integer"},
+                    "heightPx":{"type":"integer"},
+                    "density":{"type":"number"},
+                    "localeTag":{"type":"string"},
+                    "fontScale":{"type":"number"},
+                    "uiMode":{"type":"string","enum":["light","dark"]},
+                    "orientation":{"type":"string","enum":["portrait","landscape"]},
+                    "device":{"type":"string"}
+                  }
+                }
+              },
+              "required":["uri"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "get_preview_extras",
+        description =
+          "List the extra (non-JSON) outputs the producer wrote alongside a data product — typically " +
+            "PNGs like the a11y overlay. Returns one entry per extra: `{name, path, mediaType?, sizeBytes?}`. " +
+            "Hits the in-memory cache when the kind is subscribed/attached, otherwise round-trips a " +
+            "data/fetch with `inline=false` to pick up the path-shaped result and its `extras`. Use this " +
+            "when a panel UI wants to enumerate everything a producer made available without committing " +
+            "to one transport (e.g. show a thumbnail of `overlay` alongside the JSON viewer).",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string"},
+                "kind":{"type":"string","description":"Data-product kind whose extras to enumerate. Use list_data_products to discover candidates."}
+              },
+              "required":["uri","kind"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -796,6 +864,8 @@ class DaemonMcpServer(
       "history_diff" -> toolHistoryDiff(args)
       "list_data_products" -> toolListDataProducts(args)
       "get_preview_data" -> toolGetPreviewData(args)
+      "render_preview_overlay" -> toolRenderPreviewOverlay(args)
+      "get_preview_extras" -> toolGetPreviewExtras(args)
       "subscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = true)
       "unsubscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = false)
       else -> errorCallToolResult("unknown tool: $name")
@@ -1423,8 +1493,184 @@ class DaemonMcpServer(
       val attachedPath = entry.path
       if (inline && attachedPayload != null) put("payload", attachedPayload)
       if (!inline && attachedPath != null) put("path", JsonPrimitive(attachedPath))
+      val extras = entry.extras
+      if (extras != null) put("extras", extras)
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * D2.1 — `render_preview_overlay`. Triggers a render (so the producer's image processor runs) and
+   * returns the resulting overlay PNG. Default `kind` is `a11y/overlay`; callers can target any
+   * path-transport kind whose producer emits PNG-shaped extras.
+   *
+   * Flow: render → `data/fetch` for the overlay kind (cache short-circuited when possible) → read
+   * PNG bytes → return as base64 image content. With `inline=false` the response stays text-shaped
+   * and just carries the path the agent can read directly. Overrides forward to the underlying
+   * `renderNow` exactly the same way `render_preview` does.
+   */
+  private fun toolRenderPreviewOverlay(args: JsonObject): CallToolResult {
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("render_preview_overlay: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("render_preview_overlay: invalid uri: $uriStr")
+    val kind =
+      args["kind"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: DEFAULT_OVERLAY_KIND
+    val inline = args["inline"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+    val overrides =
+      args["overrides"]?.let {
+        runCatching { decodePreviewOverrides(it) }
+          .getOrElse { e ->
+            return errorCallToolResult("render_preview_overlay: invalid overrides: ${e.message}")
+          }
+      }
+    if (supervisor.project(uri.workspaceId) == null) {
+      return errorCallToolResult(
+        "render_preview_overlay: workspace '${uri.workspaceId.value}' not registered"
+      )
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("render_preview_overlay: daemon spawn failed: ${it.message}")
+        }
+    if (overrides != null) {
+      val violations = validateOverrides(overrides, daemon)
+      if (violations.isNotEmpty()) {
+        return errorCallToolResult("render_preview_overlay: ${violations.joinToString("; ")}")
+      }
+    }
+    if (daemon.dataProductCapabilities.none { it.kind == kind }) {
+      return errorCallToolResult(
+        "render_preview_overlay: DataProductUnknown: kind '$kind' not advertised by " +
+          "${uri.workspaceId.value}/${uri.modulePath}"
+      )
+    }
+    return runCatching {
+        // Force a fresh render so the image processor runs against the current source state;
+        // this is the "generate previews with an overlay" entry point that callers expect
+        // to be deterministic vs. cached PNGs.
+        awaitNextRender(uri, overrides = overrides)
+        val fetchResult =
+          daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+        val pngPath =
+          fetchResult.path
+            ?: return@runCatching errorCallToolResult(
+              "render_preview_overlay: producer for '$kind' returned no path; expected an " +
+                "image-bearing kind"
+            )
+        if (inline) {
+          val file = File(pngPath)
+          if (!file.isFile) {
+            return@runCatching errorCallToolResult(
+              "render_preview_overlay: overlay PNG missing at $pngPath"
+            )
+          }
+          pngCallToolResult(Base64.getEncoder().encodeToString(Files.readAllBytes(file.toPath())))
+        } else {
+          val payload = buildJsonObject {
+            put("kind", kind)
+            put("schemaVersion", fetchResult.schemaVersion)
+            put("path", pngPath)
+            val extras = fetchResult.extras
+            if (!extras.isNullOrEmpty()) {
+              putJsonArray("extras") {
+                for (extra in extras) {
+                  add(
+                    buildJsonObject {
+                      put("name", extra.name)
+                      put("path", extra.path)
+                      if (extra.mediaType != null) put("mediaType", extra.mediaType)
+                      if (extra.sizeBytes != null) put("sizeBytes", extra.sizeBytes)
+                    }
+                  )
+                }
+              }
+            }
+          }
+          textCallToolResult(payload.toString())
+        }
+      }
+      .getOrElse { e ->
+        when (e) {
+          is DataProductWireException ->
+            errorCallToolResult("render_preview_overlay: ${nameOf(e.code)}: ${e.wireMessage}")
+          else -> errorCallToolResult("render_preview_overlay failed: ${e.message}")
+        }
+      }
+  }
+
+  /**
+   * D2.1 — `get_preview_extras`. Enumerates the producer's extras for `(uri, kind)`. Same cache
+   * short-circuit as `get_preview_data`; on a miss we round-trip a `data/fetch` with `inline=false`
+   * to pick up the path-shaped result so the daemon hands back the extras list in one call instead
+   * of forcing a re-render path. Returns an `extras` array (possibly empty); callers iterate to
+   * find the `(name, path, mediaType?, sizeBytes?)` they want.
+   */
+  private fun toolGetPreviewExtras(args: JsonObject): CallToolResult {
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("get_preview_extras: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("get_preview_extras: invalid uri: $uriStr")
+    val kind =
+      args["kind"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("get_preview_extras: missing 'kind'")
+    if (supervisor.project(uri.workspaceId) == null) {
+      return errorCallToolResult(
+        "get_preview_extras: workspace '${uri.workspaceId.value}' not registered"
+      )
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("get_preview_extras: daemon spawn failed: ${it.message}")
+        }
+    val cached =
+      dataProductCache[DataAttachKey(uri.workspaceId, uri.modulePath, uri.previewFqn, kind)]
+    val cachedExtras = cached?.extras as? JsonArray
+    val payload = buildJsonObject {
+      put("kind", kind)
+      put("uri", uriStr)
+      if (cachedExtras != null) {
+        put("cached", true)
+        put("extras", cachedExtras)
+      } else {
+        val fetched =
+          runCatching {
+              try {
+                daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+              } catch (e: DataProductWireException) {
+                if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+                awaitNextRender(uri)
+                daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+              }
+            }
+            .getOrElse { e ->
+              return when (e) {
+                is DataProductWireException ->
+                  errorCallToolResult("get_preview_extras: ${nameOf(e.code)}: ${e.wireMessage}")
+                else -> errorCallToolResult("get_preview_extras failed: ${e.message}")
+              }
+            }
+        putJsonArray("extras") {
+          for (extra in fetched.extras.orEmpty()) {
+            add(
+              buildJsonObject {
+                put("name", extra.name)
+                put("path", extra.path)
+                if (extra.mediaType != null) put("mediaType", extra.mediaType)
+                if (extra.sizeBytes != null) put("sizeBytes", extra.sizeBytes)
+              }
+            )
+          }
+        }
+      }
+    }
+    return textCallToolResult(payload.toString())
   }
 
   /**
@@ -1451,12 +1697,27 @@ class DaemonMcpServer(
     val resultPayload = result.payload
     val resultPath = result.path
     val resultBytes = result.bytes
+    val resultExtras = result.extras
     val payload = buildJsonObject {
       put("kind", result.kind)
       put("schemaVersion", result.schemaVersion)
       if (resultPayload != null) put("payload", resultPayload)
       if (resultPath != null) put("path", JsonPrimitive(resultPath))
       if (resultBytes != null) put("bytes", JsonPrimitive(resultBytes))
+      if (!resultExtras.isNullOrEmpty()) {
+        putJsonArray("extras") {
+          for (extra in resultExtras) {
+            add(
+              buildJsonObject {
+                put("name", extra.name)
+                put("path", extra.path)
+                if (extra.mediaType != null) put("mediaType", extra.mediaType)
+                if (extra.sizeBytes != null) put("sizeBytes", extra.sizeBytes)
+              }
+            )
+          }
+        }
+      }
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
@@ -1677,8 +1938,9 @@ class DaemonMcpServer(
         obj["schemaVersion"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
       val payload = obj["payload"]
       val path = obj["path"]?.jsonPrimitive?.contentOrNull
+      val extras = obj["extras"]
       val key = DataAttachKey(daemon.workspaceId, daemon.modulePath, previewId, kind)
-      dataProductCache[key] = DataAttachmentEntry(schemaVersion, payload, path)
+      dataProductCache[key] = DataAttachmentEntry(schemaVersion, payload, path, extras)
     }
   }
 
@@ -1884,12 +2146,14 @@ class DaemonMcpServer(
   /**
    * Cached `(payload | path)` from one `renderFinished.dataProducts[*]` entry. Mirrors the wire
    * shape; carries `schemaVersion` so a cache hit reports the same version the agent would see on a
-   * direct `data/fetch`.
+   * direct `data/fetch`. `extras` carries the producer's derived files (e.g. the a11y overlay PNG)
+   * so a cache hit on `get_preview_data` exposes the same paths the daemon would have returned.
    */
   private data class DataAttachmentEntry(
     val schemaVersion: Int,
     val payload: JsonElement?,
     val path: String?,
+    val extras: JsonElement? = null,
   )
 
   private sealed interface RenderOutcome {
@@ -1965,5 +2229,13 @@ class DaemonMcpServer(
      * replica-spawn pool cap.
      */
     private const val DAEMON_LIFECYCLE_THREADS: Int = 4
+
+    /**
+     * D2.1 — default `kind` for `render_preview_overlay` when the caller doesn't specify one.
+     * `a11y/overlay` is the only image-bearing kind in the catalogue today (it also serves as an
+     * extra under `a11y/atf` and `a11y/hierarchy`); future kinds with PNG-shaped extras become
+     * valid arguments without code changes here.
+     */
+    private const val DEFAULT_OVERLAY_KIND: String = "a11y/overlay"
   }
 }

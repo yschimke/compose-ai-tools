@@ -350,6 +350,15 @@ data class DataFetchResult(
   // Reserved for non-local clients; populated only when caller passes
   // `inline: true` and the kind's transport is blob-shaped.
   val bytes: String? = null,
+  /**
+   * Additional non-JSON outputs the producer wrote alongside the primary payload — typically
+   * derived images such as the a11y overlay PNG. Each entry points at a sibling file under the
+   * preview's data dir; clients read the file directly. Always omitted (`null` on the wire) when no
+   * extras landed for this fetch — older clients ignore the field. See
+   * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "Image
+   * processors and extras".
+   */
+  val extras: List<DataProductExtra>? = null,
 )
 
 /**
@@ -420,6 +429,9 @@ data class RenderFinishedParams(
  * One data-product attachment riding on a `renderFinished`. `payload` is per-kind JSON when the
  * producer's transport is `inline`; `path` is an absolute path to a sibling file when the
  * producer's transport is `path`. Exactly one of the two is set per attachment.
+ *
+ * `extras` carries derived non-JSON outputs the producer wrote alongside (e.g. the a11y overlay
+ * PNG). Always omitted on the wire when empty so pre-feature clients ignore it.
  */
 @Serializable
 data class DataProductAttachment(
@@ -427,6 +439,31 @@ data class DataProductAttachment(
   val schemaVersion: Int,
   val payload: JsonElement? = null,
   val path: String? = null,
+  val extras: List<DataProductExtra>? = null,
+)
+
+/**
+ * One additional output a data-product producer wrote alongside its primary payload. Used for
+ * derived images (the Paparazzi-style a11y overlay PNG, layout-tree visualisations, recomposition
+ * heat maps) that the producer emits as a side effect of running. The wire format is intentionally
+ * minimal — pointer-only, no inlining — because the file is typically tens of KB and the daemon
+ * already lives on the client's filesystem.
+ *
+ * `name` is a producer-stable, human-readable identifier (`"overlay"`, `"diff"`); the registry uses
+ * it as the cache key for fetch-on-demand and also as the suggested file basename when the producer
+ * writes the extra to disk. `mediaType` is the IANA media type when known (`image/png`), left null
+ * when the producer doesn't classify the file. `sizeBytes` is the file size at write time; clients
+ * use it for "show this only when small enough to inline" UI heuristics.
+ *
+ * See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "Image
+ * processors and extras".
+ */
+@Serializable
+data class DataProductExtra(
+  val name: String,
+  val path: String,
+  val mediaType: String? = null,
+  val sizeBytes: Long? = null,
 )
 
 @Serializable

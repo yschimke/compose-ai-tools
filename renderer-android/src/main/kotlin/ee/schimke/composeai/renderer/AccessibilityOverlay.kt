@@ -30,7 +30,11 @@ import kotlin.math.min
  * match the per-child screenshot fills, so the legend stays short and the
  * parent/child grouping reads at a glance.
  */
-internal object AccessibilityOverlay {
+// D2.1 — promoted from `internal` so `:daemon:android`'s `AccessibilityImageProcessor` can
+// reuse the same overlay generator the standalone Gradle / CLI path drives. The renderer-side
+// home stays the single source of truth for the visual language; the daemon adapter writes the
+// output under the data-product extras directory rather than next to the primary PNG.
+object AccessibilityOverlay {
 
     /** Width of the legend panel beside the screenshot. */
     private const val LEGEND_WIDTH = 540
@@ -96,13 +100,32 @@ internal object AccessibilityOverlay {
     )
 
     /**
-     * Writes the annotated PNG next to [sourcePng]. No-op when [findings] and
-     * [nodes] are both empty. Returns the destination [File] when written.
+     * Writes the annotated PNG next to [sourcePng] (`<basename>.a11y.png`). No-op when
+     * [findings] and [nodes] are both empty. Returns the destination [File] when written.
      */
     fun generate(
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        isRound: Boolean = false,
+    ): File? = generate(
+        sourcePng = sourcePng,
+        findings = findings,
+        nodes = nodes,
+        destPng = File(sourcePng.parentFile, "${sourcePng.nameWithoutExtension}.a11y.png"),
+        isRound = isRound,
+    )
+
+    /**
+     * Writes the annotated PNG to [destPng] (creating parent directories as needed). Same
+     * generator as the no-arg overload — the daemon's data-product producer drops the file
+     * under `<dataDir>/<previewId>/a11y-overlay.png` rather than next to the primary PNG.
+     */
+    fun generate(
+        sourcePng: File,
+        findings: List<AccessibilityFinding>,
+        nodes: List<AccessibilityNode>,
+        destPng: File,
         isRound: Boolean = false,
     ): File? {
         if (findings.isEmpty() && nodes.isEmpty()) return null
@@ -116,7 +139,7 @@ internal object AccessibilityOverlay {
             return null
         }
         return try {
-            generateInternal(sourcePng, findings, nodes, isRound)
+            generateInternal(sourcePng, findings, nodes, destPng, isRound)
         } catch (t: Throwable) {
             // Without this catch, a Canvas / Bitmap.createBitmap blow-up
             // would propagate through writePerPreviewReport and skip the
@@ -135,6 +158,7 @@ internal object AccessibilityOverlay {
         sourcePng: File,
         findings: List<AccessibilityFinding>,
         nodes: List<AccessibilityNode>,
+        destPng: File,
         isRound: Boolean,
     ): File? {
         val source = BitmapFactory.decodeFile(sourcePng.absolutePath)
@@ -146,11 +170,11 @@ internal object AccessibilityOverlay {
             return null
         }
         val composite = compose(source, findings, nodes, isRound)
-        val dest = File(sourcePng.parentFile, "${sourcePng.nameWithoutExtension}.a11y.png")
-        dest.outputStream().use { composite.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        destPng.parentFile?.mkdirs()
+        destPng.outputStream().use { composite.compress(Bitmap.CompressFormat.PNG, 100, it) }
         source.recycle()
         composite.recycle()
-        return dest
+        return destPng
     }
 
     /**

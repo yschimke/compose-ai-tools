@@ -1,5 +1,13 @@
 {
   "kind": "a11y/hierarchy",
   "schemaVersion": 1,
-  "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/data/com.example.HomeKt-HomePreview/a11y-hierarchy.json"
+  "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/data/com.example.HomeKt-HomePreview/a11y-hierarchy.json",
+  "extras": [
+    {
+      "name": "overlay",
+      "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/data/com.example.HomeKt-HomePreview/a11y-overlay.png",
+      "mediaType": "image/png",
+      "sizeBytes": 38912
+    }
+  ]
 }
