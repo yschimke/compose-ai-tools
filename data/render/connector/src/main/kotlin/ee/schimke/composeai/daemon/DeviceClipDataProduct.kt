@@ -1,19 +1,37 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Stateless metadata product describing the device-frame clip implied by `@Preview(device = ...)`.
+ * Metadata product describing the device-frame clip implied by the preview render context.
+ *
+ * The registry seeds contexts from [PreviewIndex] so clients can fetch the product before a render
+ * has completed. When a render finishes, the actual [PreviewContext] replaces the seed so runtime
+ * overrides and backend-resolved dimensions win.
  */
-class DeviceClipDataProductRegistry(private val previewIndex: PreviewIndex) : DataProductRegistry {
+class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductRegistry {
+  private val contexts: ConcurrentHashMap<String, PreviewContext> =
+    ConcurrentHashMap(
+      previewIndex.snapshot().mapValues { (_, preview) ->
+        PreviewContext.Builder(
+            previewId = preview.id,
+            backend = null,
+            renderMode = null,
+            outputBaseName = null,
+          )
+          .device(PreviewDeviceContext.fromPreviewInfo(preview))
+          .build()
+      }
+    )
+
   override val capabilities: List<DataProductCapability> =
     listOf(
       DataProductCapability(
@@ -47,16 +65,17 @@ class DeviceClipDataProductRegistry(private val previewIndex: PreviewIndex) : Da
     )
   }
 
+  override fun onRender(previewId: String, result: RenderResult) {
+    val context = result.previewContext ?: return
+    contexts[previewId] = context
+  }
+
   private fun payloadFor(previewId: String): JsonElement? {
-    val preview = previewIndex.byId(previewId) ?: return null
-    val params = preview.params
-    val device = params?.device?.takeIf { it.isNotBlank() }
-    val deviceSpec = device?.let(DeviceDimensions::resolve)
-    val isRound = deviceSpec?.isRound == true
-    val widthDp = params?.widthDp ?: deviceSpec?.widthDp
-    val heightDp = params?.heightDp ?: deviceSpec?.heightDp
+    val device = contexts[previewId]?.device ?: return null
+    val widthDp = device.widthDp
+    val heightDp = device.heightDp
     val clip =
-      if (isRound && widthDp != null && heightDp != null) {
+      if (device.isRound && widthDp != null && heightDp != null) {
         val diameter = minOf(widthDp, heightDp)
         val radius = diameter / 2.0
         buildJsonObject {

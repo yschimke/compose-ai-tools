@@ -304,17 +304,22 @@ class RenderEngine(
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
     val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    val contextBuilder =
+      PreviewContext.Builder(
+          previewId = state.spec.previewId,
+          backend = BackendKind.DESKTOP,
+          renderMode = state.spec.renderMode,
+          outputBaseName = state.spec.outputBaseName,
+        )
+        .deviceFromRenderPixels(
+          state.spec.device,
+          state.spec.widthPx,
+          state.spec.heightPx,
+          state.spec.density,
+        )
     state.slotTableCapture?.let { capture ->
       val context =
-        PreviewContext.Builder(
-            previewId = state.spec.previewId,
-            backend = BackendKind.DESKTOP,
-            renderMode = state.spec.renderMode,
-            outputBaseName = state.spec.outputBaseName,
-          )
-          .parameterInformationCollected()
-          .addSlotTables(capture.snapshot())
-          .build()
+        contextBuilder.parameterInformationCollected().addSlotTables(capture.snapshot()).build()
       themePayloadFromPreviewContext(
           context = context,
           fallbackTypography = state.themeFallbackCapture?.typography,
@@ -322,6 +327,7 @@ class RenderEngine(
         )
         ?.let { payload -> themeCapture?.capture(state.spec.previewId, payload) }
     }
+    val previewContext = contextBuilder.build()
 
     val pngData =
       trace.section("render:encodePng") {
@@ -343,6 +349,7 @@ class RenderEngine(
       classLoaderName = state.classLoader.javaClass.name,
       pngPath = state.outputFile.absolutePath,
       metrics = metrics,
+      previewContext = previewContext,
     )
   }
 

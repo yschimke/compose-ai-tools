@@ -273,6 +273,9 @@ sealed interface RenderRequest {
  * B2.3 once the daemon tracks heap / sandbox-age etc.). Both default to `null` so the B1.5-era stub
  * paths in `JsonRpcServer.renderFinishedFromResult` keep emitting the placeholder
  * `daemon-stub-${id}.png`.
+ *
+ * [previewContext] carries the effective render metadata and optional inspection captures that data
+ * products can project from after the render completes.
  */
 data class RenderResult(
   val id: Long,
@@ -280,4 +283,5 @@ data class RenderResult(
   val classLoaderName: String,
   val pngPath: String? = null,
   val metrics: Map<String, Long>? = null,
+  val previewContext: PreviewContext? = null,
 )

@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.daemon.protocol.BackendKind
 import ee.schimke.composeai.renderer.AccessibilityChecker
 import java.io.File
 
@@ -395,12 +396,22 @@ class RenderEngine(
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
     dataDir?.let(trace::write)
+    val previewContext =
+      PreviewContext.Builder(
+          previewId = spec.previewId,
+          backend = BackendKind.ANDROID,
+          renderMode = null,
+          outputBaseName = spec.outputBaseName,
+        )
+        .deviceFromRenderPixels(spec.device, spec.widthPx, spec.heightPx, spec.density)
+        .build()
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
       classLoaderName = classLoader.javaClass.name,
       pngPath = outputFile.absolutePath,
       metrics = metrics,
+      previewContext = previewContext,
     )
   }
 

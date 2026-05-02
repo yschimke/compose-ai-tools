@@ -533,7 +533,10 @@ that the matching processor downcasts at runtime.
 ## Built-in render metadata products
 
 `render/deviceClip` is a cheap, inline, fetchable and attachable data product
-derived from the daemon's `PreviewIndex` plus `DeviceDimensions`. Its payload is:
+derived from `PreviewContext.device`. The registry seeds that context from the
+daemon's `PreviewIndex`, so clients can fetch it before the first render; after
+a render completes, the actual render context replaces the seed so overrides and
+backend-resolved dimensions win. Its payload is:
 
 ```json
 { "clip": null }
