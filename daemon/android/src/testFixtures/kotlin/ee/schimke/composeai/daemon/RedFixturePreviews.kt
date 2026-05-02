@@ -1,15 +1,27 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.unit.dp
 
 /**
  * Test fixtures for [RenderEngineTest] and the D-harness.v2 Android real-mode scenarios. Lives in
@@ -120,5 +132,46 @@ fun ClickToggleSquare() {
           clicked = true
         }
       }
+  )
+}
+
+@Composable
+fun ClickableToggleSquare() {
+  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .clickable { clicked = true }
+        .background(color)
+  )
+}
+
+@Composable
+fun DragScrollableSquare() {
+  val scrollState = rememberScrollState()
+  Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
+    Box(modifier = Modifier.width(96.dp).height(96.dp).background(Color(0xFFEF5350)))
+    Box(modifier = Modifier.width(96.dp).height(96.dp).background(Color(0xFF66BB6A)))
+  }
+}
+
+@Composable
+fun RotaryToggleSquare() {
+  var scrolled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val requester = androidx.compose.runtime.remember { FocusRequester() }
+  LaunchedEffect(Unit) { requester.requestFocus() }
+  val color = if (scrolled) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .onRotaryScrollEvent {
+          scrolled = true
+          true
+        }
+        .focusRequester(requester)
+        .focusable()
+        .background(color)
   )
 }
