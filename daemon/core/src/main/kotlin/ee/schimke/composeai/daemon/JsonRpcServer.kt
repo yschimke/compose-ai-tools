@@ -413,6 +413,18 @@ class JsonRpcServer(
     StartupTimings.mark("read loop entering")
     try {
       readLoop()
+      // The read loop exited — either an EOF on the input stream (client transport closed,
+      // typically because the panel crashed or the websocket dropped) or a recoverable error
+      // we couldn't continue past. Close any held interactive sessions IMMEDIATELY before the
+      // post-EOF idle-timeout grace window. Without this, an interactive slot stays pinned for
+      // up to [idleTimeoutMs] (default 5s) until [cleanShutdown] runs — which on backends that
+      // support multiple held sessions (or in v3 Android where slot 1 is single-tenant) means a
+      // visible "ghost" pin that survives the client disappearing. The lease watchdog on
+      // AndroidInteractiveSession would catch this within 60s, but we have a definitive signal
+      // here (transport EOF means the client is gone) so close now and let the slot recycle.
+      // [closeAllInteractiveSessions] is idempotent, so the second call inside [cleanShutdown]
+      // is a safe no-op on this path.
+      closeAllInteractiveSessions()
       // EOF without exit notification — PROTOCOL.md § 3 idle-timeout exit.
       if (!shutdownRequested.get()) {
         try {
