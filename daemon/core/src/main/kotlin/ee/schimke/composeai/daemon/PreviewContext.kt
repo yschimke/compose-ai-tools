@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.BackendKind
 
 /**
@@ -15,6 +16,7 @@ data class PreviewContext(
   val backend: BackendKind?,
   val renderMode: String?,
   val outputBaseName: String?,
+  val device: PreviewDeviceContext = PreviewDeviceContext(),
   val frameTime: PreviewFrameTime = PreviewFrameTime(),
   val inspection: PreviewInspectionContext = PreviewInspectionContext(),
   val animation: PreviewAnimationContext? = null,
@@ -25,10 +27,22 @@ data class PreviewContext(
     private val renderMode: String?,
     private val outputBaseName: String?,
   ) {
+    private var device: PreviewDeviceContext = PreviewDeviceContext()
     private var frameTime: PreviewFrameTime = PreviewFrameTime()
     private var animation: PreviewAnimationContext? = null
     private val slotTables = mutableListOf<Any>()
     private var parameterInformationCollected: Boolean = false
+
+    fun device(device: PreviewDeviceContext): Builder = apply { this.device = device }
+
+    fun deviceFromRenderPixels(
+      device: String?,
+      widthPx: Int,
+      heightPx: Int,
+      density: Float,
+    ): Builder = apply {
+      this.device = PreviewDeviceContext.fromRenderPixels(device, widthPx, heightPx, density)
+    }
 
     fun frameTime(frameTime: PreviewFrameTime): Builder = apply { this.frameTime = frameTime }
 
@@ -46,6 +60,7 @@ data class PreviewContext(
         backend = backend,
         renderMode = renderMode,
         outputBaseName = outputBaseName,
+        device = device,
         frameTime = frameTime,
         inspection =
           PreviewInspectionContext(
@@ -54,6 +69,58 @@ data class PreviewContext(
           ),
         animation = animation,
       )
+  }
+}
+
+/**
+ * Device and size metadata resolved for a preview render.
+ *
+ * [device] is the raw `@Preview(device = ...)` string when known. [widthDp], [heightDp], and
+ * [density] describe the effective rendered surface. [resolvedDevice] carries catalog metadata such
+ * as roundness; dimensions may differ from [resolvedDevice] when runtime overrides change the
+ * render size.
+ */
+data class PreviewDeviceContext(
+  val device: String? = null,
+  val widthDp: Double? = null,
+  val heightDp: Double? = null,
+  val density: Float? = null,
+  val resolvedDevice: DeviceDimensions.DeviceSpec? = null,
+) {
+  val isRound: Boolean
+    get() = resolvedDevice?.isRound == true
+
+  companion object {
+    fun fromPreviewInfo(info: PreviewInfoDto): PreviewDeviceContext = fromPreviewParams(info.params)
+
+    fun fromPreviewParams(params: PreviewParamsDto?): PreviewDeviceContext {
+      val device = params?.device?.takeIf { it.isNotBlank() }
+      val resolvedDevice = device?.let(DeviceDimensions::resolve)
+      return PreviewDeviceContext(
+        device = device,
+        widthDp = params?.widthDp?.toDouble() ?: resolvedDevice?.widthDp?.toDouble(),
+        heightDp = params?.heightDp?.toDouble() ?: resolvedDevice?.heightDp?.toDouble(),
+        density = params?.density ?: resolvedDevice?.density,
+        resolvedDevice = resolvedDevice,
+      )
+    }
+
+    fun fromRenderPixels(
+      device: String?,
+      widthPx: Int,
+      heightPx: Int,
+      density: Float,
+    ): PreviewDeviceContext {
+      val safeDensity = density.takeIf { it > 0f }
+      val resolvedDevice = device?.takeIf { it.isNotBlank() }?.let(DeviceDimensions::resolve)
+      return PreviewDeviceContext(
+        device = device?.takeIf { it.isNotBlank() },
+        widthDp = safeDensity?.let { widthPx / it.toDouble() },
+        heightDp = safeDensity?.let { heightPx / it.toDouble() },
+        density = safeDensity,
+        resolvedDevice = resolvedDevice,
+      )
+    }
   }
 }
 

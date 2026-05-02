@@ -155,6 +155,64 @@ class DeviceClipDataProductRegistryTest {
   }
 
   @Test
+  fun `render context replaces discovery seed`() {
+    val registry =
+      DeviceClipDataProductRegistry(
+        PreviewIndex.fromMap(
+          path = null,
+          byId =
+            mapOf(
+              "wear" to
+                PreviewInfoDto(
+                  id = "wear",
+                  className = "com.example.WearKt",
+                  methodName = "Wear",
+                  params = PreviewParamsDto(device = "id:wearos_small_round"),
+                )
+            ),
+        )
+      )
+    registry.onRender(
+      previewId = "wear",
+      result =
+        RenderResult(
+          id = 1,
+          classLoaderHashCode = 1,
+          classLoaderName = "loader",
+          previewContext =
+            PreviewContext.Builder(
+                previewId = "wear",
+                backend = null,
+                renderMode = null,
+                outputBaseName = "wear",
+              )
+              .deviceFromRenderPixels(
+                "id:wearos_large_round",
+                widthPx = 600,
+                heightPx = 600,
+                density = 2f,
+              )
+              .build(),
+        ),
+    )
+
+    val outcome =
+      registry.fetch(
+        previewId = "wear",
+        kind = DeviceClipDataProductRegistry.KIND,
+        params = null,
+        inline = true,
+      )
+
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val payload = (outcome as DataProductRegistry.Outcome.Ok).result.payload!!.jsonObject
+    val clip = payload["clip"]!!.jsonObject
+    assertEquals("150.0", clip["centerXDp"]!!.jsonPrimitive.content)
+    assertEquals("150.0", clip["centerYDp"]!!.jsonPrimitive.content)
+    assertEquals("150.0", clip["radiusDp"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun `unknown preview is not available`() {
     val registry = DeviceClipDataProductRegistry(PreviewIndex.empty())
 
