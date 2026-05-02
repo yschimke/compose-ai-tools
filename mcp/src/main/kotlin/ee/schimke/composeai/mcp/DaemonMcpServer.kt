@@ -429,6 +429,20 @@ class DaemonMcpServer(
         inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
       ),
       ToolDef(
+        name = "list_devices",
+        description =
+          "List the `@Preview(device = ...)` ids the daemon's catalog recognises, paired with " +
+            "resolved geometry (widthDp/heightDp/density). Use these as the `device` field of " +
+            "`render_preview.overrides` to flip a preview to any catalog device without editing " +
+            "annotations. The free-form `spec:width=…,height=…,dpi=…` grammar is not enumerable " +
+            "and is not returned here — pass it as a `device` override and the daemon parses it " +
+            "at resolve-time. Mirror of every daemon's " +
+            "`InitializeResult.capabilities.knownDevices`; read directly from the shared " +
+            "`DeviceDimensions` rather than going through a daemon, so it works before any " +
+            "daemon has spawned.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
+      ToolDef(
         name = "render_preview",
         description =
           "Force-render a preview by URI, bypassing any cache. Returns the rendered PNG inline. " +
@@ -708,6 +722,7 @@ class DaemonMcpServer(
       "register_project" -> toolRegisterProject(args)
       "unregister_project" -> toolUnregisterProject(args)
       "list_projects" -> toolListProjects()
+      "list_devices" -> toolListDevices()
       "render_preview" -> toolRenderPreview(args)
       "watch" -> toolWatch(session, args)
       "unwatch" -> toolUnwatch(session, args)
@@ -772,6 +787,36 @@ class DaemonMcpServer(
                 }
               }
               put("branch", JsonPrimitive(detectBranch(project.path)))
+            }
+          )
+        }
+      }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * `list_devices` MCP tool — returns the daemon's `DeviceDimensions` catalog projected to `{id,
+   * widthDp, heightDp, density}`. Reads directly from the shared `:daemon:core` `Device Dimensions`
+   * object rather than round-tripping through a daemon's `InitializeResult.
+   * capabilities.knownDevices`. Same data either way (the daemon's
+   * `JsonRpcServer.buildKnownDevices` pulls from the same source); reading directly avoids forcing
+   * a daemon spawn just to enumerate the catalog. If a future change makes the daemon-advertised
+   * catalog backend-specific, this tool will need to consult a specific daemon —
+   * `KNOWN_DEVICE_IDS`'s kdoc flags that.
+   */
+  private fun toolListDevices(): CallToolResult {
+    val payload = buildJsonObject {
+      putJsonArray("devices") {
+        ee.schimke.composeai.daemon.devices.DeviceDimensions.KNOWN_DEVICE_IDS.sorted().forEach { id
+          ->
+          val spec = ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(id)
+          add(
+            buildJsonObject {
+              put("id", id)
+              put("widthDp", spec.widthDp)
+              put("heightDp", spec.heightDp)
+              put("density", spec.density.toDouble())
             }
           )
         }

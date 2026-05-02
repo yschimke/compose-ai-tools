@@ -93,6 +93,7 @@ class DaemonMcpServerTest {
         "register_project",
         "unregister_project",
         "list_projects",
+        "list_devices",
         "render_preview",
         "watch",
         "unwatch",
@@ -126,6 +127,32 @@ class DaemonMcpServerTest {
     assertThat(payload["workspaceId"]?.jsonPrimitive?.contentOrNull).startsWith("test-project-")
     val n = client.expectNotification("notifications/resources/list_changed", 2_000)
     assertThat(n.method).isEqualTo("notifications/resources/list_changed")
+  }
+
+  @Test
+  fun `list_devices returns the daemon catalog projected to id widthDp heightDp density`() {
+    // No daemon needs to be spawned — list_devices reads directly from the shared
+    // :daemon:core DeviceDimensions catalog.
+    client.initialize()
+    val result = client.callTool("list_devices")
+    val payload = json.parseToJsonElement(result.firstTextContent()).jsonObject
+    val devices =
+      payload["devices"]?.jsonArray ?: error("list_devices payload must include 'devices' array")
+    // Spot-check a few well-known catalog entries — full enumeration would couple this test to
+    // the catalog membership, which is exactly the kind of hardcoded duplication the wire
+    // surface aims to remove. Pick one phone, one Wear, one TV; verify shape + a couple of
+    // dimensions to prove the mapping reaches the JSON.
+    val byId = devices.associateBy { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
+    val pixel5 =
+      byId["id:pixel_5"]?.jsonObject ?: error("expected id:pixel_5 in list_devices output")
+    assertThat(pixel5["widthDp"]?.jsonPrimitive?.contentOrNull?.toInt()).isEqualTo(393)
+    assertThat(pixel5["heightDp"]?.jsonPrimitive?.contentOrNull?.toInt()).isEqualTo(851)
+    assertThat(pixel5["density"]?.jsonPrimitive?.contentOrNull?.toDouble()).isEqualTo(2.75)
+    assertThat(byId).containsKey("id:wearos_small_round")
+    assertThat(byId).containsKey("id:tv_1080p")
+    // Sorted alphabetically — same contract as InitializeResult.capabilities.knownDevices.
+    val ids = devices.map { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull!! }
+    assertThat(ids).isInOrder()
   }
 
   @Test
