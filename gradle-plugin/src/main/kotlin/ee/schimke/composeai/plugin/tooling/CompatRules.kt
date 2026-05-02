@@ -78,6 +78,7 @@ internal object CompatRules {
     checkComposeUiVsCore(mainV, testV, main)?.let(findings::add)
     checkComposeBom(main)?.let(findings::add)
     checkHamcrestSkew(test)?.let(findings::add)
+    checkKmpAndroidSiblingMismatch(test)?.let(findings::add)
     findings += checkOldDeps(mainV, testV, main, test)
     return findings
   }
@@ -137,6 +138,57 @@ internal object CompatRules {
           "}",
         ),
       docsUrl = DOCS_HAMCREST_SKEW,
+    )
+  }
+
+  /**
+   * KMP-published AndroidX / Compose Multiplatform modules ship platform siblings under separate
+   * coordinates (`foo-android`, `foo-desktop`, sometimes `foo-jvmstubs`). Kotlin's
+   * `org.jetbrains.kotlin.platform.type` compat rule normally steers Android test classpaths to the
+   * Android sibling, but consumers that build Kotlin through AGP alone may not have that rule
+   * registered. The renderer configuration substitutes these back to `-android`; this finding
+   * surfaces the same latent skew for consumer-owned unit-test tasks.
+   */
+  private fun checkKmpAndroidSiblingMismatch(test: Map<String, String>): ModuleFindingData? {
+    val mismatches =
+      test.keys
+        .filter { coordinate ->
+          val separator = coordinate.indexOf(':')
+          if (separator <= 0) return@filter false
+          val group = coordinate.substring(0, separator)
+          val name = coordinate.substring(separator + 1)
+          (group.startsWith("androidx.") || group.startsWith("org.jetbrains.compose.")) &&
+            (name.endsWith("-desktop") || name.endsWith("-jvmstubs"))
+        }
+        .sorted()
+    if (mismatches.isEmpty()) return null
+    val rendered = mismatches.joinToString(", ") { "$it:${test.getValue(it)}" }
+    return ModuleFindingData(
+      id = "kmp-android-sibling-mismatch",
+      severity = "error",
+      message = "desktop/JVM-stub KMP sibling resolved on the unit-test classpath ($rendered)",
+      detail =
+        "AndroidX and Compose Multiplatform KMP modules publish Android and desktop/JVM-stub " +
+          "siblings as separate coordinates. Android unit tests need the `-android` sibling so " +
+          "AGP-flavoured bytecode links against the expected class shapes. If the Kotlin Android " +
+          "plugin is absent, Gradle may resolve a desktop/JVM-stub sibling instead; the renderer " +
+          "configuration substitutes it back to `-android`, but consumer-owned unit-test tasks " +
+          "still see the mismatch.",
+      remediationSummary =
+        "Apply `org.jetbrains.kotlin.android`, or add a unit-test classpath substitution from `-desktop` / `-jvmstubs` to `-android`.",
+      remediationCommands =
+        listOf(
+          "configurations.matching { it.name.endsWith(\"UnitTestRuntimeClasspath\") }.configureEach {",
+          "  resolutionStrategy.eachDependency {",
+          "    if ((requested.group.startsWith(\"androidx.\") || requested.group.startsWith(\"org.jetbrains.compose.\")) &&",
+          "        (requested.name.endsWith(\"-desktop\") || requested.name.endsWith(\"-jvmstubs\"))) {",
+          "      val suffix = if (requested.name.endsWith(\"-desktop\")) \"-desktop\" else \"-jvmstubs\"",
+          "      useTarget(\"${'$'}{requested.group}:${'$'}{requested.name.removeSuffix(suffix)}-android:${'$'}{requested.version}\")",
+          "    }",
+          "  }",
+          "}",
+        ),
+      docsUrl = null,
     )
   }
 

@@ -243,6 +243,44 @@ class CompatRulesTest {
   }
 
   @Test
+  fun `kmp desktop sibling on test classpath fires error`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.lifecycle:lifecycle-viewmodel-desktop" to "2.8.7") +
+        ("org.jetbrains.compose.ui:ui-desktop" to "1.10.0")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    val f = findings.single { it.id == "kmp-android-sibling-mismatch" }
+    assertEquals("error", f.severity)
+    assertTrue("lifecycle-viewmodel-desktop:2.8.7" in f.message)
+    assertTrue("org.jetbrains.compose.ui:ui-desktop:1.10.0" in f.message)
+    assertTrue(f.remediationCommands.any { "removeSuffix" in it })
+  }
+
+  @Test
+  fun `kmp jvmstubs sibling on test classpath fires error`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.savedstate:savedstate-jvmstubs" to "1.3.0")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    val f = findings.single { it.id == "kmp-android-sibling-mismatch" }
+    assertEquals("error", f.severity)
+    assertTrue("androidx.savedstate:savedstate-jvmstubs:1.3.0" in f.message)
+  }
+
+  @Test
+  fun `kmp android sibling and unscoped desktop artifacts are quiet`() {
+    val test =
+      mainWithBom() +
+        ("androidx.compose.ui:ui-test-manifest" to "1.10.6") +
+        ("androidx.lifecycle:lifecycle-viewmodel-android" to "2.8.7") +
+        ("org.jetbrains.kotlinx:kotlinx-coroutines-swing-desktop" to "1.10.2")
+    val findings = CompatRules.evaluate(mainWithBom(), test)
+    assertNull(findings.firstOrNull { it.id == "kmp-android-sibling-mismatch" })
+  }
+
+  @Test
   fun `semver parses and compares`() {
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))
