@@ -16,9 +16,9 @@ import kotlinx.serialization.json.Json
  * `:daemon:core` from depending on `:gradle-plugin`. The plugin owns the authoritative
  * [PreviewInfo] type (`gradle-plugin/.../PreviewData.kt`) and writes it to disk via
  * kotlinx-serialization; the daemon parses the same JSON shape with this minimal mirror, capturing
- * only the fields the daemon actually needs. Extra fields the plugin emits (params block, captures
- * list, accessibility report pointer, …) are ignored at parse time via `ignoreUnknownKeys`, so
- * adding new plugin-side fields does NOT break the daemon's parser.
+ * only the fields the daemon actually needs. Extra fields the plugin emits (captures list,
+ * accessibility report pointer, …) are ignored at parse time via `ignoreUnknownKeys`, so adding new
+ * plugin-side fields does NOT break the daemon's parser.
  *
  * **Why duplicate instead of share.** Sharing the type would either pull `:gradle-plugin` onto the
  * daemon's classpath (heavy, and a layering inversion) or carve a third "shared protocol" module
@@ -32,6 +32,14 @@ import kotlinx.serialization.json.Json
  * sides but a tracked field changed" (a renamed preview, a `group =` rewrite). Both fields are
  * optional in `previews.json` and absent in older fixtures; the diff treats `null == null` as
  * unchanged.
+ *
+ * **Issue #420** added the nested [params] block so the v2 interactive resolver can build a
+ * [RenderSpec][ee.schimke.composeai.daemon.RenderSpec]-shaped scene that matches `@Preview(widthDp
+ * = …, heightDp = …, density = …, …)` exactly. All sub-fields are optional and default to `null` so
+ * older `previews.json` fixtures (and the harness's flat fake schema) still parse — the resolver
+ * falls back to its built-in `320x320 / density 2.0` defaults when a field is absent. Additive per
+ * [PROTOCOL.md § 7](../../../../../../../docs/daemon/PROTOCOL.md#7-versioning) — no
+ * `protocolVersion` bump.
  */
 @Serializable
 data class PreviewInfoDto(
@@ -56,7 +64,81 @@ data class PreviewInfoDto(
    * detection.
    */
   val group: String? = null,
+  /**
+   * Display-property block sourced from the gradle plugin's `PreviewParams`. Optional — fixtures
+   * predating issue #420 omit it; the v2 interactive resolver falls back to its built-in defaults
+   * for every absent sub-field (per-field, not per-block). The block is also tracked by [diff], so
+   * a `widthDp =` edit on an existing `@Preview` shows up as a `changed` entry on the next
+   * incremental rescan.
+   */
+  val params: PreviewParamsDto? = null,
 )
+
+/**
+ * Per-`@Preview` display properties carried over the wire by the gradle plugin's `PreviewParams`
+ * (see `gradle-plugin/.../PreviewData.kt`). All fields are optional / nullable so `previews.json`
+ * fixtures predating issue #420 — and the harness's flat fake schema, which omits the `params`
+ * block entirely — still parse cleanly.
+ *
+ * Names mirror the plugin's `PreviewParams` JSON keys verbatim. The daemon side maps subsets of
+ * these onto `RenderSpec` (`widthDp`/`heightDp`/`density` → pixel dimensions; `localeTag` from
+ * `locale`; `uiMode` bitmask → `SpecUiMode`; `fontScale` straight through). Backends that don't
+ * model a particular knob (desktop has no resource-qualifier system; `localeTag` / `orientation`
+ * are no-ops there) ignore the field but still carry it for wire parity with `PreviewOverrides` —
+ * see [PROTOCOL.md § 5](../../../../../../../docs/daemon/PROTOCOL.md#5-client--daemon-requests).
+ *
+ * `uiMode` here is the raw Android `Configuration.uiMode` bitmask the plugin reads off the
+ * `@Preview` annotation (`0` means unset; bit `0x20` = `UI_MODE_NIGHT_YES`). The daemon decodes it
+ * via [uiModeIsNight] when constructing a `RenderSpec`; `orientation` is the same string the
+ * `PreviewOverrides` wire enum uses (`"portrait"` / `"landscape"`), but the plugin doesn't emit it
+ * today — present here so a future plugin-side addition lands without another DTO bump.
+ */
+@Serializable
+data class PreviewParamsDto(
+  val widthDp: Int? = null,
+  val heightDp: Int? = null,
+  val density: Float? = null,
+  val fontScale: Float? = null,
+  /** BCP-47 locale tag — the plugin's `PreviewParams.locale`. Android-only at render time. */
+  val locale: String? = null,
+  /**
+   * Raw `@Preview(uiMode = …)` bitmask. `null` and `0` are interchangeable on the daemon side (both
+   * mean "unset, fall back to renderer default"). Decoded via [uiModeIsNight].
+   */
+  val uiMode: Int? = null,
+  /**
+   * Raw `@Preview(device = …)` string when set. The desktop interactive resolver uses this only
+   * when no explicit `widthDp`/`heightDp` came through; the device catalog lookup happens at
+   * resolve time, not at parse time, so unknown device ids degrade to the catalog's default
+   * (400x800 dp at xxhdpi).
+   */
+  val device: String? = null,
+  /**
+   * `@Preview(showBackground = …)`. Threaded into `RenderSpec.showBackground` so a preview that
+   * opted in continues to paint a white background under the interactive scene.
+   */
+  val showBackground: Boolean? = null,
+  /**
+   * `@Preview(backgroundColor = …)`. Same plumbing as [showBackground]; encoded as Long because the
+   * plugin's annotation reader hands back the raw `0xAARRGGBB` value.
+   */
+  val backgroundColor: Long? = null,
+)
+
+/**
+ * `true` when [uiMode] decodes to night/dark via Android's `UI_MODE_NIGHT_YES` bit (0x20). `null`
+ * (and `0`) decode to `false` — the daemon treats both as "unset". Pulled into a free function so
+ * the desktop daemon's `previewIndexBackedSpecResolver` and the daemon-android side can share the
+ * decode without re-importing Android's `Configuration` constants on the desktop classpath.
+ */
+fun uiModeIsNight(uiMode: Int?): Boolean {
+  if (uiMode == null) return false
+  return (uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+}
+
+private const val UI_MODE_NIGHT_MASK: Int = 0x30
+
+private const val UI_MODE_NIGHT_YES: Int = 0x20
 
 /**
  * Wire-shape of `previews.json`'s top-level object — only the fields the index needs. The plugin
