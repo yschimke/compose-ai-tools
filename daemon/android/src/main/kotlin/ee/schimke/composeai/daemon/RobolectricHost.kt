@@ -140,7 +140,6 @@ open class RobolectricHost(
     System.getProperty(AndroidInteractiveSession.IDLE_LEASE_PROP)?.toLongOrNull()
       ?: AndroidInteractiveSession.DEFAULT_IDLE_LEASE_MS,
 ) : RenderHost {
-
   /**
    * INTERACTIVE-ANDROID.md § 2 — interactive sessions on Android need one pinned sandbox slot in
    * addition to the always-on slot 0 that drains normal renders, so the capability bit reads
@@ -238,6 +237,8 @@ open class RobolectricHost(
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
   override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =
     ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
+
+  override val androidSdk: Int = ANDROID_SDK
 
   init {
     require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
@@ -775,6 +776,8 @@ open class RobolectricHost(
    * exit. Idempotent.
    */
   companion object {
+    const val ANDROID_SDK: Int = 35
+
     /** Same sysprop the desktop side uses; honoured on Android too. */
     const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
 
@@ -884,7 +887,7 @@ open class RobolectricHost(
    * once `@RunWith` triggers sandbox bootstrap. Its single `@Test` method
    * holds the sandbox open until it returns.
    *
-   * `@Config(sdk = [35])` matches the SDK pinned in renderer-android's
+   * `@Config(sdk = [ANDROID_SDK])` matches the SDK pinned in renderer-android's
    * generated `robolectric.properties`. We declare it here directly because
    * the daemon module doesn't generate that file (the consumer module does
    * for the existing JUnit path).
@@ -895,7 +898,7 @@ open class RobolectricHost(
    * didn't need it but the annotation is harmless when the body is a stub.
    */
   @RunWith(SandboxHoldingRunner::class)
-  @Config(sdk = [35])
+  @Config(sdk = [ANDROID_SDK])
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   class SandboxRunner {
 

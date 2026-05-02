@@ -19,6 +19,11 @@ import org.junit.Test
 class RobolectricHostTest {
 
   @Test
+  fun advertisesPinnedAndroidSdk() {
+    assertEquals(35, RobolectricHost().androidSdk)
+  }
+
+  @Test
   fun tenRendersShareOneSandboxClassloader() {
     val host = RobolectricHost()
     host.start()

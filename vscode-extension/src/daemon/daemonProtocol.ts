@@ -170,6 +170,11 @@ export interface InitializeResult {
          * classified themselves (e.g. test fakes); clients should treat both as "unknown".
          */
         backend?: 'desktop' | 'android' | null;
+        /**
+         * Fixed Android SDK level this daemon renders against. Present on Robolectric /
+         * Android backends, absent or null on Desktop and other non-Android backends.
+         */
+        androidSdk?: number | null;
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };

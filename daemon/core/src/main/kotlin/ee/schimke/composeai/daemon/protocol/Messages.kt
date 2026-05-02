@@ -177,6 +177,11 @@ data class ServerCapabilities(
    * future stub backend; clients should treat absent and `null` as "unknown".
    */
   val backend: BackendKind? = null,
+  /**
+   * Fixed Android SDK level the backend renders against. Populated by the Robolectric backend from
+   * its pinned `@Config(sdk = ...)` value; `null` on Desktop and other non-Android backends.
+   */
+  val androidSdk: Int? = null,
 )
 
 /**

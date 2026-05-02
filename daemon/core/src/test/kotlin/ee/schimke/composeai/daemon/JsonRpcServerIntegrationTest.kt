@@ -65,7 +65,7 @@ class JsonRpcServerIntegrationTest {
     val serverToClientOut = PipedOutputStream()
     val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
 
-    val host = FakeRenderHost()
+    val host = FakeRenderHost(androidSdkToAdvertise = 35)
     val exitCode = AtomicInteger(-1)
     val exitLatch = CountDownLatch(1)
     val server =
@@ -124,6 +124,10 @@ class JsonRpcServerIntegrationTest {
       assertEquals(1, initResult["protocolVersion"]?.jsonPrimitive?.intOrNull)
       assertEquals("test", initResult["daemonVersion"]?.jsonPrimitive?.contentOrNull)
       assertNotNull("pid should be present", initResult["pid"])
+      assertEquals(
+        35,
+        initResult["capabilities"]?.jsonObject?.get("androidSdk")?.jsonPrimitive?.intOrNull,
+      )
 
       // 2. initialized notification
       writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
@@ -1293,8 +1297,12 @@ private class FakeRenderHost(
    * by the B2.3 integration tests to drive `JsonRpcServer.renderFinishedFromResult` through its
    * happy / partial / null branches.
    */
-  private val metricsToReturn: Map<String, Long>? = null
+  private val metricsToReturn: Map<String, Long>? = null,
+  private val androidSdkToAdvertise: Int? = null,
 ) : RenderHost {
+
+  override val androidSdk: Int?
+    get() = androidSdkToAdvertise
 
   val interruptCount = java.util.concurrent.atomic.AtomicInteger(0)
   private val queue = LinkedBlockingQueue<RenderRequest>()

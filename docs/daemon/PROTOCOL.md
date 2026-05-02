@@ -123,6 +123,7 @@ Result:
     knownDevices?: KnownDevice[];    // catalog of @Preview(device=...) ids the daemon recognises
     supportedOverrides?: string[];   // PreviewOverrides field names this host actually applies
     backend?: "desktop" | "android"; // which renderer backend this daemon implements
+    androidSdk?: number | null;      // fixed Robolectric SDK, absent/null on non-Android backends
   };
   // KnownDevice — one entry per id in DeviceDimensions.KNOWN_DEVICE_IDS, projected to wire shape.
   // `id` is the string a caller passes via renderNow.overrides.device; widthDp/heightDp/density
@@ -138,6 +139,10 @@ Result:
   // Today: Robolectric advertises all eight; Desktop omits "localeTag" (no `LocalLocale`
   // CompositionLocal + `Locale.setDefault(...)` is JVM-thread-unsafe) and "orientation"
   // (no rotation concept on `ImageComposeScene`).
+  //
+  // androidSdk — fixed Android SDK level the backend renders against. Populated by the
+  // Robolectric backend from its pinned @Config(sdk = ...) value; absent/null on Desktop and
+  // other non-Android backends.
   classpathFingerprint: string;      // SHA-256 hex of the resolved test classpath
   manifest: {
     path: string;                    // absolute path to the daemon's working previews.json

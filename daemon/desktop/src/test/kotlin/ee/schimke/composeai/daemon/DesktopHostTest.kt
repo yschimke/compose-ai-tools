@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,6 +19,11 @@ import org.junit.Test
  * runtime per request, this test would catch it.
  */
 class DesktopHostTest {
+
+  @Test
+  fun desktopDoesNotAdvertiseAndroidSdk() {
+    assertNull(DesktopHost().androidSdk)
+  }
 
   @Test
   fun tenRendersShareOneRenderThreadClassloader() {
