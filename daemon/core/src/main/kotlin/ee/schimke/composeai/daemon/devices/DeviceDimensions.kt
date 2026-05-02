@@ -168,7 +168,8 @@ object DeviceDimensions {
             .split(",")
             .mapNotNull {
               val parts = it.split("=", limit = 2)
-              if (parts.size == 2) parts[0].trim() to parts[1].trim().removeSuffix("dp") else null
+              if (parts.size == 2) parts[0].trim().lowercase() to parts[1].trim().removeSuffix("dp")
+              else null
             }
             .toMap()
         val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
@@ -176,7 +177,9 @@ object DeviceDimensions {
         val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
         val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
         val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
-        val isRound = params["isRound"]?.toBooleanStrictOrNull() == true
+        val isRound =
+          params["isround"]?.equals("true", ignoreCase = true) == true ||
+            params["shape"]?.equals("round", ignoreCase = true) == true
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
         return DeviceSpec(w, h, density, isRound = isRound)
       }
