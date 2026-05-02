@@ -60,6 +60,14 @@ android {
 }
 
 dependencies {
+  // D2.2 — `AccessibilityChecker`, `AccessibilityOverlay`, and the
+  // `AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry` model classes used to
+  // live in this module. They moved to `:data-a11y-core` (published as
+  // `data-a11y-core`); `api` re-exposes them so existing imports of
+  // `ee.schimke.composeai.renderer.AccessibilityChecker` etc. still resolve and downstream
+  // consumers (`RobolectricRenderTest`) compile unchanged.
+  api(project(":data-a11y-core"))
+
   implementation(libs.robolectric)
   implementation(libs.junit)
   implementation(libs.kotlinx.serialization.json)

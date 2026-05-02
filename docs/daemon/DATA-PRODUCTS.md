@@ -452,6 +452,49 @@ Migration impact on the VS Code extension:
   produced for CLI consumers and stays in `accessibility.json` for
   back-compat — but VS Code stops reading it.
 
+## Module split (D2.2)
+
+Each data product is a **pair of modules** under `data/<product>/`:
+
+- **`:data-<product>-core`** — generic Android / Compose / AndroidX-test API
+  code. No daemon coupling. **Published to Maven Central** so consumers can
+  pull the primitives from a Robolectric / JUnit setup without standing up the
+  daemon. For `a11y` this is `AccessibilityChecker` (ATF wrapper),
+  `AccessibilityOverlay` (Paparazzi-style annotated PNG generator), the JSON
+  models (`AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry`
+  / `AccessibilityReport`), and the round-device helpers
+  (`isRoundDevice` / `applyCircularClip`). Coordinates:
+  `ee.schimke.composeai:data-a11y-core`.
+
+- **`:data-<product>-connector`** — daemon glue. Implements the data-product
+  APIs (`DataProductRegistry`, `ImageProcessor`) on top of the core's
+  primitives and the daemon's wire types from `:daemon:core`. Not
+  published — internal to the daemon process. For `a11y` this is
+  `AccessibilityDataProducer` (writes per-render JSON sidecars +
+  invokes registered image processors), `AccessibilityDataProductRegistry`
+  (advertises `a11y/atf`, `a11y/hierarchy`, `a11y/overlay` and serves
+  fetch / attach), and `AccessibilityImageProcessor`
+  (drives the overlay PNG into the data-product extras list).
+
+Why split: the core is reusable in non-daemon contexts (`:gradle-plugin`,
+`:cli`, third-party Robolectric tests) and benefits from a stable Maven
+coordinate. The connector is a thin adapter and ships with the daemon AAR.
+The two also have different dependency profiles: the core only needs ATF +
+AndroidX, while the connector adds `:daemon:core` (protocol types) and
+exposes `ImageProcessor` to `RenderEngine`.
+
+The pattern generalises — when `layout/tree` or `compose/recomposition` get
+their own modules, they follow the same `:data-<product>-core` (published) +
+`:data-<product>-connector` (private) split. The `core` is optional: a
+data product whose entire surface is daemon-glue (no general-purpose Android
+code) can ship as a connector-only module.
+
+The framework-level `ImageProcessor` interface lives in `:daemon:core` so
+every connector can implement it without circular module dependencies; the
+generic `ImageProcessorInput.context: Any?` field carries connector-specific
+typed payloads (e.g. `AccessibilityImageContext` for the a11y connector)
+that the matching processor downcasts at runtime.
+
 ## Phase plan
 
 - **D1 — primitive on the wire.** `initialize.capabilities.dataProducts`,
@@ -476,6 +519,12 @@ Migration impact on the VS Code extension:
   with Android Studio, but it's gated on interactive mode landing so the
   click-driven path has a `frameStreamId` to bind to. Static `mode:
   "snapshot"` recomposition can ship earlier as a stepping stone.
+- **D2.2 — module split.** Per-product `:data-<product>-core` (published) +
+  `:data-<product>-connector` (daemon-only) pair. Lifts the a11y wrapper
+  and overlay generator into a standalone Maven artifact so non-daemon
+  consumers (Gradle plugin, CLI, third-party Robolectric tests) can pull
+  the primitives without the daemon dependency tree. See § "Module split
+  (D2.2)" above for the rationale and pattern.
 
 ## Test coverage
 

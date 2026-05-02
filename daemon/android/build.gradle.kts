@@ -76,11 +76,18 @@ dependencies {
   // re-declare it here.
   implementation(project(":daemon:core"))
 
-  // Inherit the renderer's Compose/Roborazzi helpers (AccessibilityChecker,
-  // GoogleFontInterceptor, AnimationInspector, ScrollDriver,
-  // PixelSystemFontAliases, RenderManifest, PreviewRenderStrategy, etc.) —
-  // see DESIGN.md § 7.
+  // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
+  // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,
+  // PreviewRenderStrategy, etc.) — see DESIGN.md § 7.
   implementation(project(":renderer-android"))
+
+  // D2.2 — accessibility data product (registry + producer + image processor) lives in its
+  // own module pair: `:data-a11y-connector` brings `:data-a11y-core` (the generic ATF +
+  // overlay code, published) along transitively. `RenderEngine.kt` constructs
+  // `AccessibilityImageProcessor` and calls `AccessibilityDataProducer.writeArtifacts(...)`
+  // through this dep. `api` so downstream `:samples:android-daemon-bench` etc. can also see
+  // `AccessibilityFinding` / `AccessibilityNode` without adding their own project dep.
+  api(project(":data-a11y-connector"))
 
   // The daemon process holds a Robolectric sandbox open via a dummy @Test
   // (DESIGN.md § 9), so JUnit + Robolectric must be on the *main* classpath,

@@ -47,6 +47,24 @@ include(":renderer-android")
 
 include(":daemon:core")
 
+// Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
+// Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
+// See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)".
+//
+// Project paths use flat names rather than `:data:a11y:core` because Gradle resolves project
+// dependencies by `<group>:<projectName>` and `:data:a11y:core`'s leaf name "core" collides
+// with `:daemon:core`'s — same group, same name, "by conflict resolution" substitutes one for
+// the other. Flat names avoid the collision; the directory layout on disk stays nested under
+// `data/<product>/`. Published Maven coordinates are set explicitly in each module's
+// `mavenPublishing { coordinates(...) }` block.
+include(":data-a11y-core")
+
+project(":data-a11y-core").projectDir = file("data/a11y/core")
+
+include(":data-a11y-connector")
+
+project(":data-a11y-connector").projectDir = file("data/a11y/connector")
+
 include(":daemon:android")
 
 include(":daemon:desktop")
