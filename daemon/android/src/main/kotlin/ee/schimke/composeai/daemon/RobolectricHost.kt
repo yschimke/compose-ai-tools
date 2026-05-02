@@ -1425,8 +1425,10 @@ open class RobolectricHost(
      * confirmed this reaches `Modifier.pointerInput { awaitFirstDown() }` under a paused
      * `mainClock` provided we advance the clock by [POINTER_HOLD_MS] after the dispatch.
      *
-     * `click` synthesises ACTION_DOWN + ACTION_UP at the same coords; `pointerDown` /
-     * `pointerMove` / `pointerUp` send a single event each. `rotaryScroll` dispatches a generic
+     * `click` synthesises touchscreen/finger ACTION_DOWN + ACTION_UP at the same coords;
+     * `pointerDown` / `pointerMove` / `pointerUp` send single touchscreen/finger events. This means
+     * the VS Code mouse gesture is interpreted as a finger tap/drag by Android previews, which is
+     * what scrollable mobile composables expect. `rotaryScroll` dispatches a generic
      * SOURCE_ROTARY_ENCODER ACTION_SCROLL so Wear Compose receives it like an RSB turn. Unknown kinds
      * are silently dropped — the host-side
      * [AndroidInteractiveSession.dispatch] already filters key events out, so we should never
@@ -1448,13 +1450,12 @@ open class RobolectricHost(
         when (cmd.kind) {
           "click" -> {
             val down =
-              android.view.MotionEvent.obtain(
+              obtainFingerTouchEvent(
                 now,
                 now,
                 android.view.MotionEvent.ACTION_DOWN,
                 x,
                 y,
-                /* metaState = */ 0,
               )
             try {
               decor.dispatchTouchEvent(down)
@@ -1462,13 +1463,12 @@ open class RobolectricHost(
               down.recycle()
             }
             val up =
-              android.view.MotionEvent.obtain(
+              obtainFingerTouchEvent(
                 now,
                 now + POINTER_HOLD_MS,
                 android.view.MotionEvent.ACTION_UP,
                 x,
                 y,
-                /* metaState = */ 0,
               )
             try {
               decor.dispatchTouchEvent(up)
@@ -1479,13 +1479,12 @@ open class RobolectricHost(
           "pointerDown" -> {
             heldPointerDownTimeMs = now
             val ev =
-              android.view.MotionEvent.obtain(
+              obtainFingerTouchEvent(
                 heldPointerDownTimeMs,
                 now,
                 android.view.MotionEvent.ACTION_DOWN,
                 x,
                 y,
-                /* metaState = */ 0,
               )
             try {
               decor.dispatchTouchEvent(ev)
@@ -1496,13 +1495,12 @@ open class RobolectricHost(
           "pointerMove" -> {
             val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
             val ev =
-              android.view.MotionEvent.obtain(
+              obtainFingerTouchEvent(
                 downTime,
                 now,
                 android.view.MotionEvent.ACTION_MOVE,
                 x,
                 y,
-                /* metaState = */ 0,
               )
             try {
               decor.dispatchTouchEvent(ev)
@@ -1513,13 +1511,12 @@ open class RobolectricHost(
           "pointerUp" -> {
             val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
             val ev =
-              android.view.MotionEvent.obtain(
+              obtainFingerTouchEvent(
                 downTime,
                 now,
                 android.view.MotionEvent.ACTION_UP,
                 x,
                 y,
-                /* metaState = */ 0,
               )
             try {
               decor.dispatchTouchEvent(ev)
@@ -1575,6 +1572,45 @@ open class RobolectricHost(
           }
         }
       }
+    }
+
+    private fun obtainFingerTouchEvent(
+      downTimeMs: Long,
+      eventTimeMs: Long,
+      action: Int,
+      x: Float,
+      y: Float,
+    ): android.view.MotionEvent {
+      val props =
+        arrayOf(
+          android.view.MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
+          }
+        )
+      val coords =
+        arrayOf(
+          android.view.MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+          }
+        )
+      return android.view.MotionEvent.obtain(
+        downTimeMs,
+        eventTimeMs,
+        action,
+        1,
+        props,
+        coords,
+        /* metaState = */ 0,
+        /* buttonState = */ 0,
+        /* xPrecision = */ 1f,
+        /* yPrecision = */ 1f,
+        /* deviceId = */ 0,
+        /* edgeFlags = */ 0,
+        android.view.InputDevice.SOURCE_TOUCHSCREEN,
+        /* flags = */ 0,
+      )
     }
 
     private fun pxToDp(px: Int, density: Float): Int {
