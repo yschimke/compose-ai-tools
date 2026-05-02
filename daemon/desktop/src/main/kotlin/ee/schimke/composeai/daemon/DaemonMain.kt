@@ -97,6 +97,19 @@ fun main(args: Array<String>) {
   // data/subscribe). Constructed unconditionally on desktop — it advertises one kind, and a
   // panel that doesn't subscribe pays nothing.
   val recompositionRegistry = RecompositionDataProductRegistry()
+  val themeRegistry = ThemeDataProductRegistry()
+  val renderEngine =
+    RenderEngine(
+      themeCapture =
+        object : RenderEngine.ThemeCapture {
+          override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
+            themeRegistry.shouldCapture(previewId, renderMode)
+
+          override fun capture(previewId: String?, payload: ThemePayload) {
+            themeRegistry.capture(previewId, payload)
+          }
+        }
+    )
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
@@ -106,9 +119,14 @@ fun main(args: Array<String>) {
         "compose-ai-tools desktop daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
       )
-      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = userClassloaderHolder)
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine = renderEngine,
+        userClassloaderHolder = userClassloaderHolder,
+      )
     } else {
       DesktopHost(
+        engine = renderEngine,
         userClassloaderHolder = userClassloaderHolder,
         // v2 — resolve `previewId` via PreviewIndex for the interactive session path. Issue #420
         // wired the `params` block on `PreviewInfoDto`, so when the discovery JSON carries
@@ -206,6 +224,7 @@ fun main(args: Array<String>) {
       buildList {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
         add(RenderTraceDataProductRegistry())
+        add(themeRegistry)
         add(recompositionRegistry)
         if (PerfettoTraceDataProducer.enabled()) {
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->

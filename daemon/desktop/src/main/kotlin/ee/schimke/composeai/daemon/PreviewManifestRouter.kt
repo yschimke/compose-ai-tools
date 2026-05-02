@@ -76,6 +76,8 @@ class PreviewManifestRouter(
         id = typed.id,
         payload =
           buildString {
+            append("previewId=").append(entry.id).append(';')
+            inbound["mode"]?.let { append("mode=").append(it).append(';') }
             append("className=").append(entry.className).append(';')
             append("functionName=").append(entry.functionName).append(';')
             // Inbound explicit override wins over both the device-derived value and the
