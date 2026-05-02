@@ -163,6 +163,25 @@ open class RobolectricHost(
   private val activeInteractiveStreamId: AtomicReference<String?> = AtomicReference(null)
 
   /**
+   * Live reference to the held [AndroidInteractiveSession]. Used by the host's lifecycle hooks
+   * ([swapUserClassLoaders], [shutdown]) to force-close the session before performing operations
+   * that would otherwise strand the held composition with stale state.
+   *
+   * Wired in two places:
+   *  * [acquireInteractiveSession] sets this after a successful acquire.
+   *  * [AndroidInteractiveSession.close] clears it via the `onCloseHook` callback the host
+   *    passes at construction time, so an explicit `interactive/stop` doesn't leave a dangling
+   *    reference here.
+   *
+   * The host-side close path reads + atomically nulls this ref before invoking
+   * [AndroidInteractiveSession.close] so a concurrent explicit close doesn't double-fire (the
+   * session's own close is idempotent, but the AtomicReference guard makes the host-driven path
+   * single-shot too).
+   */
+  private val activeInteractiveSession: AtomicReference<AndroidInteractiveSession?> =
+    AtomicReference(null)
+
+  /**
    * Monotonic counter for `streamId`s the host hands out. Persisted as a host-level counter
    * (rather than `RenderHost.nextRequestId`) because the wire-side `streamId` is purely a
    * host-internal correlation key — it doesn't share number space with render ids.
@@ -376,8 +395,43 @@ open class RobolectricHost(
    * sees the recompiled bytecode. No-op when no holder is wired (default in-process tests).
    */
   override fun swapUserClassLoaders() {
+    // INTERACTIVE-ANDROID.md § 6 (Lifecycle-on-classpath-dirty) — when the user's source
+    // recompiles (`fileChanged{kind: "source"}`), the held composition's `Class.forName`
+    // references stale bytecode that the upcoming swap is about to invalidate. Tear the held
+    // session down BEFORE swapping so the next `interactive/start` after the save sees a fresh
+    // child loader and resolves the recompiled class. Without this, a held session would either
+    // serve stale paint until idle-lease expiry or crash on the next dispatch when the loader's
+    // backing JAR is gone.
+    forceCloseActiveInteractiveSession(reason = "user classloader swap (source recompile)")
     for (i in 0 until sandboxCount) {
       perSlotHolders.get(i)?.swap()
+    }
+  }
+
+  /**
+   * Force-closes any active interactive session. Idempotent — if no session is active, returns
+   * immediately. Used by the host's lifecycle hooks ([swapUserClassLoaders] and [shutdown])
+   * before performing operations that would strand the held composition with stale state.
+   *
+   * The session's own `close()` is the close path: it stops the watchdog, posts the bridge
+   * `Close` command, awaits the held loop's reply, clears `activeStreamRef`, and finally fires
+   * `onCloseHook` which nulls [activeInteractiveSession] here. We `compareAndSet` rather than
+   * `getAndSet` so a fresh acquire that races us doesn't get its ref clobbered.
+   */
+  private fun forceCloseActiveInteractiveSession(reason: String) {
+    val session = activeInteractiveSession.get() ?: return
+    if (!activeInteractiveSession.compareAndSet(session, null)) return
+    System.err.println(
+      "compose-ai-daemon: RobolectricHost: force-closing held session " +
+        "'${session.streamId}' (previewId='${session.previewId}'): $reason"
+    )
+    try {
+      session.close()
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: RobolectricHost.forceCloseActiveInteractiveSession threw: " +
+          "${t.javaClass.simpleName}: ${t.message}"
+      )
     }
   }
 
@@ -560,6 +614,25 @@ open class RobolectricHost(
         outputBaseName = spec.outputBaseName,
         replyLatch = replyLatch,
         replyError = replyError,
+        // INTERACTIVE-ANDROID.md § 10.3 / PR C — thread the rest of the v1 RenderSpec qualifiers
+        // through Start so the held composition observes the same `Configuration` overrides a
+        // one-shot render would. Strings are bridge-package-compatible (java.lang.String); the
+        // SpecUiMode / SpecOrientation enums are in the instrumented daemon package and would
+        // re-load across the sandbox boundary if passed directly.
+        localeTag = spec.localeTag,
+        fontScale = spec.fontScale,
+        uiMode =
+          when (spec.uiMode) {
+            RenderSpec.SpecUiMode.LIGHT -> "light"
+            RenderSpec.SpecUiMode.DARK -> "dark"
+            null -> null
+          },
+        orientation =
+          when (spec.orientation) {
+            RenderSpec.SpecOrientation.PORTRAIT -> "portrait"
+            RenderSpec.SpecOrientation.LANDSCAPE -> "landscape"
+            null -> null
+          },
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -579,13 +652,23 @@ open class RobolectricHost(
         startError,
       )
     }
-    return AndroidInteractiveSession(
-      previewId = previewId,
-      streamId = streamId,
-      slot = slot,
-      activeStreamRef = activeInteractiveStreamId,
-      idleLeaseMs = interactiveIdleLeaseMs,
-    )
+    // Hold the session in a one-element array so the onCloseHook lambda can reference it via
+    // closure-capture without a forward declaration. compareAndSet-from-self guards against a
+    // close racing a fresh acquire — without the CAS we could clobber the new session's ref
+    // when the prior session's close fires late (e.g. from the watchdog).
+    val sessionBox = arrayOfNulls<AndroidInteractiveSession>(1)
+    val session =
+      AndroidInteractiveSession(
+        previewId = previewId,
+        streamId = streamId,
+        slot = slot,
+        activeStreamRef = activeInteractiveStreamId,
+        idleLeaseMs = interactiveIdleLeaseMs,
+        onCloseHook = { activeInteractiveSession.compareAndSet(sessionBox[0], null) },
+      )
+    sessionBox[0] = session
+    activeInteractiveSession.set(session)
+    return session
   }
 
   /**
@@ -650,6 +733,15 @@ open class RobolectricHost(
   }
 
   override fun shutdown(timeoutMs: Long) {
+    // INTERACTIVE-ANDROID.md § 11.4 (Dispatch-on-shutdown) — close any held interactive session
+    // BEFORE setting the global shutdown flag and posting the slot poison pills. Without this,
+    // the slot-1 worker would be sitting inside the held-rule loop's `take()` on
+    // `interactiveCommands` and would never see the `RenderRequest.Shutdown` we enqueue on the
+    // `requests` queue — `shutdown()` would then time out joining the worker thread. The
+    // session's `close()` posts `InteractiveCommand.Close` to the same queue the held loop is
+    // blocked on, which lets the held loop return cleanly and the slot revert to draining
+    // `requests` (where the poison pill is waiting).
+    forceCloseActiveInteractiveSession(reason = "host shutdown")
     DaemonHostBridge.shutdown.set(true)
     // Belt-and-braces: also enqueue a Shutdown on every slot's queue so each worker wakes from
     // poll() promptly rather than waiting out the 100ms cycle.
@@ -1040,22 +1132,39 @@ open class RobolectricHost(
           )
         )
 
-      // Minimal qualifier set — size + density + round-device. PR C threads through the rest of
-      // the v1 RenderSpec qualifiers (locale, fontScale, uiMode, orientation) once the held
-      // session needs them; for v3's first ship the basics keep parity with what the panel
-      // already shows in non-interactive mode.
+      // INTERACTIVE-ANDROID.md § 10.3 / PR C — full v1 RenderSpec qualifier set. Mirrors
+      // RenderEngine.applyPreviewQualifiers's grammar verbatim (locale, width, height, round,
+      // orientation, uiMode, density) so a held-session capture matches a one-shot capture for
+      // the same RenderSpec bit-for-bit. fontScale rides RuntimeEnvironment.setFontScale rather
+      // than the qualifier string — same Configuration knob RoborazziCompose's FontScaleOption
+      // uses on the standalone JUnit path.
       val widthDp = pxToDp(start.widthPx, start.density)
       val heightDp = pxToDp(start.heightPx, start.density)
       val isRound = isRoundDevice(start.device)
+      val derivedOrientation =
+        when (start.orientation) {
+          "portrait" -> "port"
+          "landscape" -> "land"
+          else ->
+            if (widthDp > 0 && heightDp > 0) (if (widthDp > heightDp) "land" else "port") else null
+        }
       val qualifiers = buildList {
+        if (!start.localeTag.isNullOrBlank()) add(localeTagToQualifier(start.localeTag))
         if (widthDp > 0) add("w${widthDp}dp")
         if (heightDp > 0) add("h${heightDp}dp")
         if (isRound) add("round")
-        if (widthDp > 0 && heightDp > 0) add(if (widthDp > heightDp) "land" else "port")
+        if (derivedOrientation != null) add(derivedOrientation)
+        when (start.uiMode) {
+          "light" -> add("notnight")
+          "dark" -> add("night")
+        }
         if (start.density > 0f) add("${(start.density * 160).toInt()}dpi")
       }
       if (qualifiers.isNotEmpty()) {
         org.robolectric.RuntimeEnvironment.setQualifiers("+${qualifiers.joinToString("-")}")
+      }
+      if (start.fontScale != null && start.fontScale > 0f) {
+        org.robolectric.RuntimeEnvironment.setFontScale(start.fontScale)
       }
 
       val outputDir =
@@ -1300,6 +1409,20 @@ open class RobolectricHost(
     private fun pxToDp(px: Int, density: Float): Int {
       if (density <= 0f) return px
       return (px / density).toInt().coerceAtLeast(1)
+    }
+
+    /**
+     * Translates a BCP-47 locale tag (`en-US`, `fr`, `ja-JP`) to Robolectric's BCP-47 qualifier
+     * spelling (`b+en+US`, `b+fr`, `b+ja+JP`). Mirrors `RenderEngine.localeTagToQualifier`'s
+     * formula exactly so a held-session capture matches a one-shot capture for the same locale.
+     * The `b+` prefix is mandatory for tags with non-empty regions or scripts under Android's
+     * resource framework; we apply it unconditionally for simplicity (single-tag forms like
+     * `b+en` are accepted).
+     */
+    private fun localeTagToQualifier(tag: String): String {
+      val parts = tag.split('-', '_').filter { it.isNotBlank() }
+      if (parts.isEmpty()) return ""
+      return "b+${parts.joinToString("+")}"
     }
 
     companion object {

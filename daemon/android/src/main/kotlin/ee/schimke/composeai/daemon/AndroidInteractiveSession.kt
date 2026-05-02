@@ -91,6 +91,19 @@ internal constructor(
    */
   private val idleLeaseMs: Long =
     System.getProperty(IDLE_LEASE_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_LEASE_MS,
+  /**
+   * Invoked from [close] (after the bridge round-trip and `activeStreamRef` clear) so the host
+   * can drop its own reference to this session — see
+   * [RobolectricHost.activeInteractiveSession]. PR C wired this so the host's lifecycle hooks
+   * ([RobolectricHost.swapUserClassLoaders] and [RobolectricHost.shutdown]) can force-close a
+   * held session without keeping a strong reference that would survive an explicit
+   * `interactive/stop`.
+   *
+   * Default is a no-op so tests and other callers that construct sessions directly don't have
+   * to wire a hook. Called exactly once per session — after the first [close]. Subsequent
+   * [close] calls (idempotent) skip the hook.
+   */
+  private val onCloseHook: () -> Unit = {},
 ) : InteractiveSession {
 
   @Volatile private var closed: Boolean = false
@@ -261,6 +274,17 @@ internal constructor(
     // CAS-from-our-streamId so concurrent close() calls don't clobber a fresh session that the
     // host has already started binding to the slot. Idempotent against a missing entry.
     activeStreamRef.compareAndSet(streamId, null)
+    // PR C — let the host drop its own reference to this session. Wrapped in try/catch because
+    // the hook runs on whatever thread called close() (could be the watchdog) and a
+    // mis-configured hook shouldn't take down the watchdog.
+    try {
+      onCloseHook()
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: AndroidInteractiveSession.onCloseHook for stream " +
+          "'$streamId' threw: ${t.javaClass.simpleName}: ${t.message}"
+      )
+    }
   }
 
   private fun copyResultAcrossClassloaders(raw: Any): RenderResult {

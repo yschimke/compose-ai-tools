@@ -297,18 +297,157 @@ class AndroidInteractiveSessionTest {
     }
   }
 
-  private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
-    if (previewId == INTERACTIVE_PREVIEW_ID) {
-      RenderSpec(
-        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-        functionName = "ClickToggleSquare",
-        widthPx = INTERACTIVE_WIDTH_PX,
-        heightPx = INTERACTIVE_HEIGHT_PX,
-        density = 1.0f,
-        showBackground = true,
-        outputBaseName = "interactive-clicktoggle",
+  @Test
+  fun uiModeOverrideReachesHeldSession() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("dark-overrides").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host =
+      RobolectricHost(
+        sandboxCount = 2,
+        previewSpecResolver = previewSpecResolver(),
       )
-    } else null
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = DARK_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val result = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull("dark-mode held render must produce a PNG", result.pngPath)
+        val img = decode(File(result.pngPath!!))
+        // DarkAwareSquare paints white in light, black in dark. The DARK uiMode override should
+        // route through `night` qualifier → `Configuration.UI_MODE_NIGHT_YES` → the composable's
+        // `isSystemInDarkTheme()` returns true → black.
+        val blackPct = pixelMatchPct(img, BLACK_RGB, perChannelTolerance = 8)
+        val whitePct = pixelMatchPct(img, WHITE_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "uiMode=DARK should drive DarkAwareSquare to ≥95% black (got " +
+            "${"%.2f".format(blackPct * 100)}% black, ${"%.2f".format(whitePct * 100)}% white) " +
+            "— qualifier didn't reach the held composition's Configuration",
+          blackPct >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun swapUserClassLoadersForceClosesHeldSession() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("classpath-dirty").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host =
+      RobolectricHost(
+        sandboxCount = 2,
+        previewSpecResolver = previewSpecResolver(),
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        ) as AndroidInteractiveSession
+      assertFalse("session must be open after acquire", session.isClosed)
+
+      // Simulate a `fileChanged{kind: "source"}` save while a session is held. The host's
+      // `swapUserClassLoaders` should tear the held composition down BEFORE swapping the
+      // per-slot child loaders so the next acquire sees fresh bytecode.
+      host.swapUserClassLoaders()
+
+      assertTrue(
+        "session must be closed after swapUserClassLoaders — held composition references stale " +
+          "bytecode that swap is about to invalidate",
+        session.isClosed,
+      )
+
+      // After the force-close, a fresh acquire must succeed — the host should have cleared its
+      // active-session state.
+      val followup =
+        host.acquireInteractiveSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      followup.close()
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun shutdownClosesHeldSessionCleanly() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("shutdown-drain").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host =
+      RobolectricHost(
+        sandboxCount = 2,
+        previewSpecResolver = previewSpecResolver(),
+      )
+    host.start()
+    val session =
+      host.acquireInteractiveSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        classLoader = javaClass.classLoader!!,
+      ) as AndroidInteractiveSession
+
+    // host.shutdown() should drain the held session before posting slot poison pills. Without
+    // PR C's wiring, slot 1's worker would be stuck in `interactiveCommands.take()` and
+    // shutdown would time out joining the thread (see the IllegalStateException path in
+    // shutdown). We assert it returns within a generous budget AND the session is closed.
+    val startMs = System.currentTimeMillis()
+    host.shutdown(timeoutMs = 30_000L)
+    val elapsedMs = System.currentTimeMillis() - startMs
+
+    assertTrue(
+      "shutdown() must close the held session — without that drain, slot 1's worker sits in " +
+        "interactiveCommands.take() and shutdown times out",
+      session.isClosed,
+    )
+    assertTrue(
+      "shutdown() should complete well under the timeout (got ${elapsedMs}ms / 30000ms) when " +
+        "the held session is drained correctly",
+      elapsedMs < 25_000L,
+    )
+  }
+
+  private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
+    when (previewId) {
+      INTERACTIVE_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "ClickToggleSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-clicktoggle",
+        )
+      DARK_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "DarkAwareSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-darkaware",
+          uiMode = RenderSpec.SpecUiMode.DARK,
+        )
+      else -> null
+    }
   }
 
   private fun decode(file: File): java.awt.image.BufferedImage {
@@ -348,9 +487,12 @@ class AndroidInteractiveSessionTest {
 
   companion object {
     private const val INTERACTIVE_PREVIEW_ID = "interactive-clicktoggle"
+    private const val DARK_PREVIEW_ID = "interactive-darkaware"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350
     private const val GREEN_RGB = 0x66BB6A
+    private const val BLACK_RGB = 0x000000
+    private const val WHITE_RGB = 0xFFFFFF
   }
 }
