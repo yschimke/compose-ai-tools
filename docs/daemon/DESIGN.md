@@ -1,6 +1,6 @@
 # Persistent preview server — design
 
-> **Status:** v1 implemented and ships behind `composePreview.experimental.daemon=true`. Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
+> **Status:** v1 implemented and enabled by default for editor integrations through `composePreview.daemon`. Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the CI-canonical render path.
 
 ## 1. Goals & non-goals
 
@@ -133,7 +133,7 @@ daemon/desktop/             NEW — depends on renderer-desktop + core
 gradle-plugin/                       ADDITIVE ONLY (one helper extraction)
   src/main/kotlin/.../plugin/daemon/
     DaemonBootstrapTask.kt           Emits launch-descriptor JSON
-    DaemonExtension.kt               composePreview.experimental.daemon { … }
+    DaemonExtension.kt               composePreview.daemon { … }
     DaemonClasspathDescriptor.kt     Serialises the JVM launch spec
                                      (target-aware: picks android-daemon vs
                                      desktop-daemon classpath based on the
@@ -418,7 +418,7 @@ const renderer = daemonGate.isEnabled(config)
 await renderer.renderPreviews(module, tier);
 ```
 
-`daemonGate` checks `composePreview.experimental.daemon` and verifies daemon health. On daemon failure, falls back to `gradleService` automatically and surfaces a notification. Existing `gradleService.ts`, file watcher, and debouncer in `extension.ts` are untouched — the daemon client receives the same calls, plus visibility/focus signals from the webview.
+`daemonGate` checks `composePreview.daemon.enabled` and launches the daemon. On daemon failure while enabled, the extension surfaces an error instead of silently falling back to Gradle. Users can explicitly disable the daemon setting as a temporary Gradle escape hatch.
 
 ## 13. Latency budget
 

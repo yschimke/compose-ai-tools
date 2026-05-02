@@ -8,47 +8,23 @@ import { pickRefreshModeFor } from '../refreshMode';
  * every branch without stubbing the VS Code API.
  */
 describe('pickRefreshModeFor', () => {
-    const ready = (id: string) => id === 'mod';
-    const notReady = () => false;
-
     it('returns gradle when the daemon flag is off', () => {
         assert.strictEqual(
-            pickRefreshModeFor('/x.kt', /* enabled */ false, 'mod', ready),
+            pickRefreshModeFor('/x.kt', /* enabled */ false, 'mod'),
             'gradle',
         );
     });
 
     it('returns gradle when the file resolves to no module', () => {
         assert.strictEqual(
-            pickRefreshModeFor('/outside.kt', true, null, ready),
+            pickRefreshModeFor('/outside.kt', true, null),
             'gradle',
         );
     });
 
-    it('returns gradle when the daemon for the module is not ready', () => {
+    it('returns daemon when enabled and the file resolves to a module', () => {
         assert.strictEqual(
-            pickRefreshModeFor('/x.kt', true, 'mod', notReady),
-            'gradle',
-        );
-    });
-
-    it('returns daemon only when all three preconditions hold', () => {
-        assert.strictEqual(
-            pickRefreshModeFor('/x.kt', true, 'mod', ready),
-            'daemon',
-        );
-    });
-
-    it('isDaemonReady is consulted per-module — a different module that\'s not warm stays on gradle', () => {
-        // Two modules in the same workspace; one daemon is up, the other
-        // isn't. The save picks the path keyed off the saved file's
-        // module, not the union of all daemon health.
-        assert.strictEqual(
-            pickRefreshModeFor('/x.kt', true, 'cold-module', ready),
-            'gradle',
-        );
-        assert.strictEqual(
-            pickRefreshModeFor('/x.kt', true, 'mod', ready),
+            pickRefreshModeFor('/x.kt', true, 'mod'),
             'daemon',
         );
     });

@@ -89,7 +89,7 @@ New `DaemonBootstrapTask` that, given a variant, emits `build/compose-previews/d
 
 #### A1.2 — `DaemonExtension` DSL ✅
 
-Add `composePreview.experimental.daemon { … }` extension with `enabled`, `maxHeapMb`, `maxRendersPerSandbox`, `warmSpare` fields. No-op when disabled. Documented in `docs/daemon/CONFIG.md` (new).
+Add `composePreview.daemon { … }` extension with `enabled`, `maxHeapMb`, `maxRendersPerSandbox`, `warmSpare` fields. No-op when disabled. Documented in `docs/daemon/CONFIG.md` (new).
 
 - **Depends on:** A1.1
 - **DoD:** unit test on the extension's defaults (`DaemonExtensionTest`). README of daemon docs links to [CONFIG.md](CONFIG.md).
@@ -258,7 +258,7 @@ Stdio JSON-RPC over the spawned process. Methods mirror those used by `gradleSer
 
 #### C1.4 — `daemonGate.ts` router shim
 
-Read `composePreview.experimental.daemon` setting. If enabled and daemon healthy → use `daemonClient`; else fall back to `gradleService`. One call site in `extension.ts`. On daemon failure, log + notification + auto-fallback for the remainder of the session.
+Read `composePreview.daemon` setting. If enabled and daemon healthy → use `daemonClient`; explicit disable falls back to `gradleService`. One call site in `extension.ts`. On daemon failure while enabled, log + notification + no silent Gradle fallback.
 
 - **Depends on:** C1.3
 - **DoD:** manual smoke test in VS Code: enable flag, observe daemon spawn on first preview action, render works. Disable flag, observe normal Gradle path.
@@ -635,7 +635,7 @@ Adds dwell-hover, file-explorer-click, recently-focused-history reasons. Persist
 All CI gates from `DESIGN.md` § 15 green. Bench numbers meet the < 1s focused-preview target. Soak stable for one week of nightly runs.
 
 - **Depends on:** D2.2, D2.3
-- **DoD:** PR opened to flip the default of `composePreview.experimental.daemon` from `false` → still `false` but with "stable preview" label; or hold at experimental for another release cycle.
+- **DoD:** PR opened to flip the default of `composePreview.daemon` to `true` and remove the experimental gate from the primary DSL.
 
 ---
 
@@ -705,8 +705,8 @@ Tracking the daemon-side history phases from [HISTORY.md § "Phasing"](HISTORY.m
 - **H11+ — `GitRefHistorySource` WRITE modes, git-LFS, squash GC** — still open
 - H6+ (MCP / VS Code / cross-worktree merging) — see HISTORY.md table.
 
-H1+H2 + H3 + H10-read ship behind the existing `composePreview.experimental.daemon { enabled =
-true }` gate. The gradle plugin's daemon launch descriptor will gain `composeai.daemon.historyDir`
+H1+H2 + H3 + H10-read ship behind the existing `composePreview.daemon { enabled = true }` gate.
+The gradle plugin's daemon launch descriptor will gain `composeai.daemon.historyDir`
 + `composeai.daemon.gitRefHistory` emission in a follow-up (H10b); until then, agents and ad-hoc
 launches set the sysprops directly.
 

@@ -5,9 +5,8 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 
 /**
- * `composePreview.experimental.daemon { … }` block. See `docs/daemon/CONFIG.md` for field
- * semantics, defaults, and ranges, and `docs/daemon/DESIGN.md` § 9 for the lifecycle policy these
- * knobs feed into.
+ * `composePreview.daemon { … }` block. See `docs/daemon/CONFIG.md` for field semantics, defaults,
+ * and ranges, and `docs/daemon/DESIGN.md` § 9 for the lifecycle policy these knobs feed into.
  *
  * This block is read by [DaemonBootstrapTask] (Phase 1, Stream A) at config time and baked into
  * `daemon-launch.json`. The daemon JVM reads the same values back at startup; a value change
@@ -15,26 +14,25 @@ import org.gradle.api.provider.Property
  * `classpathDirty`-style restart, since heap size and recycle thresholds can't be changed
  * in-flight).
  *
- * Defaults are [DESIGN.md § 9]; intentionally conservative for v1 — the daemon is opt-in behind
- * [enabled] anyway.
+ * Defaults are [DESIGN.md § 9]. The daemon is on by default for editor integrations; consumers may
+ * disable it temporarily with [enabled].
  */
 abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
   /**
-   * Master switch. Default: `false`.
+   * Master switch. Default: `true`.
    *
    * When `false`, `composePreviewDaemonStart` still runs and writes a descriptor with `enabled:
    * false` so the VS Code extension can sniff the file and learn the user explicitly opted out —
    * but the extension must NOT spawn the daemon JVM in that case.
    *
    * When `true`, the descriptor's `enabled: true` flag is set and the VS Code extension may launch
-   * the daemon per its `composePreview.experimental.daemon` setting.
+   * the daemon per its `composePreview.daemon.enabled` setting.
    *
-   * Flip via build script (`composePreview { experimental { daemon { enabled = true } } }`), or
-   * transiently via `-PcomposePreview.experimental.daemon.enabled=true`. The Gradle property
+   * Flip via build script (`composePreview { daemon { enabled = false } }`). The Gradle property
    * override is intentionally NOT wired here — it would key the config cache on a property that VS
    * Code flips frequently. See `CONFIG.md`.
    */
-  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
    * Maximum heap (post-GC) the daemon JVM may use, in MiB. Default: `1024`.
@@ -87,10 +85,9 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * who don't care about a11y in the daemon path. Diagnostic squigglies still flow via the Gradle
    * sidecar reader as today — toggling this off only affects the daemon's data-product surface.
    *
-   * Flip via build script (`composePreview { experimental { daemon { attachA11y = false } } }`) to
-   * opt out at the producer side. Pairs with the VS Code-side `composePreview.a11y.alwaysSubscribe`
-   * setting (which controls whether the *consumer* side subscribes ambient or only on the
-   * focus-mode toggle).
+   * Flip via build script (`composePreview { daemon { attachA11y = false } }`) to opt out at the
+   * producer side. Pairs with the VS Code-side `composePreview.a11y.alwaysSubscribe` setting (which
+   * controls whether the *consumer* side subscribes ambient or only on the focus-mode toggle).
    */
   val attachA11y: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 }

@@ -10,7 +10,7 @@ A persistent preview server that replaces the per-save Gradle invocation with a 
 - **`:daemon:harness`** — end-to-end harness driving real daemons over JSON-RPC; ten scenarios (S1–S10) covering lifecycle, drain, render-after-edit, visibility, failures, latency-record, classpath-dirty, history.
 - **`:mcp`** — top-level MCP server multiplexing per-(workspace, module) daemons behind one MCP surface; tools for project registration, watches, render, history; resource subscriptions for push.
 
-The daemon ships behind `composePreview.experimental.daemon { enabled = true }`. The Gradle `renderPreviews` task remains the always-available fallback and the CI-canonical render path.
+The daemon is configured with `composePreview.daemon { ... }` and defaults on for editor use. The Gradle `renderPreviews` task remains the CI-canonical render path.
 
 ## What's open
 
@@ -28,7 +28,7 @@ The daemon ships behind `composePreview.experimental.daemon { enabled = true }`.
 - **[DESIGN.md](DESIGN.md)** — daemon architecture: scope, module layout, staleness cascade, lifecycle, leak defense, validation strategy, decisions log.
 - **[LAYERING.md](LAYERING.md)** — the rule that keeps Gradle/CLI, daemon, and MCP additive. Module-boundary list, integration seams, removal procedures.
 - **[PROTOCOL.md](PROTOCOL.md)** — locked v1 wire format between client (VS Code, harness, MCP shim) and daemon.
-- **[CONFIG.md](CONFIG.md)** — `composePreview.experimental.daemon { … }` DSL reference.
+- **[CONFIG.md](CONFIG.md)** — `composePreview.daemon { … }` DSL reference.
 
 ### Subsystems
 

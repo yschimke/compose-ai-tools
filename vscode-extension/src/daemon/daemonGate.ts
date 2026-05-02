@@ -3,19 +3,18 @@ import { GradleService } from '../gradleService';
 import { LogFilter } from '../logFilter';
 import { DaemonClient, DaemonClientEvents, DaemonClientLogger } from './daemonClient';
 import { readLaunchDescriptor, spawnDaemon, SpawnedDaemon } from './daemonProcess';
+import { DaemonLaunchDescriptor } from './daemonProtocol';
 
-const SETTING_ENABLED = 'experimental.daemon.enabled';
+const SETTING_ENABLED = 'daemon.enabled';
+const LEGACY_SETTING_ENABLED = 'experimental.daemon.enabled';
 
 /**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
  *
- * Controlled by the `composePreview.experimental.daemon.enabled` setting
- * (true by default). Even when enabled, the gate falls back to
- * `gradleService.renderPreviews` whenever the daemon isn't healthy:
- * descriptor missing, descriptor disabled by the build config, JVM died,
- * classpath dirty, or RPC failed. Failures are logged but never thrown to
- * the caller — the rest of the extension is unaware whether a render came
- * from the daemon or from Gradle.
+ * Controlled by the `composePreview.daemon.enabled` setting (true by default).
+ * When enabled, daemon startup/render failures are surfaced to the user rather
+ * than silently falling back to `renderPreviews`. Users can explicitly disable
+ * the daemon setting to use the Gradle path temporarily.
  *
  * One daemon per Gradle module (per `:samples:android`, etc.). Modules are
  * spawned lazily on first use and shut down on extension dispose.
@@ -23,6 +22,8 @@ const SETTING_ENABLED = 'experimental.daemon.enabled';
 export class DaemonGate {
     private readonly daemons = new Map<string, ManagedDaemon>();
     private disposed = false;
+    private warnedUserDisabled = false;
+    private readonly warnedBuildDisabled = new Set<string>();
 
     constructor(
         private readonly workspaceRoot: string,
@@ -33,20 +34,34 @@ export class DaemonGate {
 
     /** Reads the user setting freshly each time so toggles don't need a reload. */
     isEnabled(): boolean {
-        return vscode.workspace
-            .getConfiguration('composePreview')
-            .get<boolean>(SETTING_ENABLED, true);
+        const config = vscode.workspace.getConfiguration('composePreview');
+        const current = config.inspect<boolean>(SETTING_ENABLED);
+        const legacy = config.inspect<boolean>(LEGACY_SETTING_ENABLED);
+        const value =
+            current?.workspaceFolderValue ??
+            current?.workspaceValue ??
+            current?.globalValue ??
+            legacy?.workspaceFolderValue ??
+            legacy?.workspaceValue ??
+            legacy?.globalValue ??
+            true;
+        if (!value && !this.warnedUserDisabled) {
+            this.warnedUserDisabled = true;
+            this.logger.appendLine(
+                '[daemon] WARNING: composePreview.daemon.enabled is false; using the Gradle render path. ' +
+                'The daemon will become required by the VS Code extension in a future release.',
+            );
+        }
+        return value;
     }
 
     /**
-     * Returns a healthy daemon for [moduleId], spawning one if needed. Returns
-     * null when the daemon path isn't usable for this module — caller must
-     * fall back to [GradleService]. Reasons null is returned:
+     * Returns a healthy daemon for [moduleId], spawning one if needed. Returns null when the daemon
+     * path has been explicitly disabled by user or build config. Throws when the daemon is enabled
+     * but unavailable, so callers can surface the failure instead of silently rendering via Gradle.
+     * Reasons null is returned:
      *   - Setting disabled.
-     *   - `daemon-launch.json` missing (consumer hasn't run
-     *     `composePreviewDaemonStart` yet, or the plugin isn't applied).
      *   - Descriptor's `enabled: false` (user didn't opt in at the build level).
-     *   - Spawn failed.
      */
     async getOrSpawn(
         moduleId: string,
@@ -62,68 +77,88 @@ export class DaemonGate {
 
         const descriptor = readLaunchDescriptor(this.workspaceRoot, moduleId, this.logger);
         if (!descriptor) {
-            this.logger.appendLine(
+            const message =
                 `[daemon] no launch descriptor for ${moduleId}; ` +
-                `run :${moduleId.replace(/\//g, ':')}:composePreviewDaemonStart first`,
-            );
-            return null;
+                `run :${moduleId.replace(/\//g, ':')}:composePreviewDaemonStart first`;
+            this.logger.appendLine(message);
+            throw new Error(message);
         }
         if (!descriptor.enabled) {
-            this.logger.appendLine(
-                `[daemon] descriptor for ${moduleId} has enabled=false; ` +
-                'set composePreview.experimental.daemon.enabled = true in build.gradle.kts',
-            );
+            if (!this.warnedBuildDisabled.has(moduleId)) {
+                this.warnedBuildDisabled.add(moduleId);
+                this.logger.appendLine(
+                    `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
+                    'using the Gradle render path for now. The daemon will become required by ' +
+                    'the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.',
+                );
+            }
             return null;
         }
 
         try {
-            const composed = composeEvents(events, () => {
-                // On channel close drop the entry so the next caller spawns a
-                // fresh JVM. Avoid awaiting `exited` here — events fires as
-                // soon as the stream ends, exit code may lag by a tick.
-                this.daemons.delete(moduleId);
-            });
-            const spawned = await spawnDaemon({
-                workspaceRoot: this.workspaceRoot,
-                descriptor,
-                clientVersion: this.clientVersion,
-                events: composed,
-                logger: this.logger,
-                logFilter: this.logFilter,
-            });
-            this.daemons.set(moduleId, { spawned, client: spawned.client });
-            const readyLine =
-                `[daemon] ready for ${moduleId} ` +
-                `(daemonVersion=${spawned.initializeResult.daemonVersion}, ` +
-                `pid=${spawned.initializeResult.pid}, ` +
-                `previews=${spawned.initializeResult.manifest.previewCount})`;
-            if (this.logFilter.shouldEmitInformational(readyLine)) {
-                this.logger.appendLine(readyLine);
-            }
-            return spawned.client;
+            return await this.spawn(moduleId, descriptor, events);
         } catch (err) {
-            this.logger.appendLine(
-                `[daemon] spawn failed for ${moduleId}: ${(err as Error).message}`,
-            );
-            return null;
+            const message = `[daemon] spawn failed for ${moduleId}: ${(err as Error).message}`;
+            this.logger.appendLine(message);
+            throw new Error(message);
         }
+    }
+
+    isBuildDisabled(moduleId: string): boolean {
+        const descriptor = readLaunchDescriptor(this.workspaceRoot, moduleId, this.logger);
+        if (descriptor?.enabled === false) {
+            if (!this.warnedBuildDisabled.has(moduleId)) {
+                this.warnedBuildDisabled.add(moduleId);
+                this.logger.appendLine(
+                    `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
+                    'using the Gradle render path for now. The daemon will become required by ' +
+                    'the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.',
+                );
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private async spawn(
+        moduleId: string,
+        descriptor: DaemonLaunchDescriptor,
+        events: DaemonClientEvents,
+    ): Promise<DaemonClient> {
+        const composed = composeEvents(events, () => {
+            // On channel close drop the entry so the next caller spawns a
+            // fresh JVM. Avoid awaiting `exited` here — events fires as
+            // soon as the stream ends, exit code may lag by a tick.
+            this.daemons.delete(moduleId);
+        });
+        const spawned = await spawnDaemon({
+            workspaceRoot: this.workspaceRoot,
+            descriptor,
+            clientVersion: this.clientVersion,
+            events: composed,
+            logger: this.logger,
+            logFilter: this.logFilter,
+        });
+        this.daemons.set(moduleId, { spawned, client: spawned.client });
+        const readyLine =
+            `[daemon] ready for ${moduleId} ` +
+            `(daemonVersion=${spawned.initializeResult.daemonVersion}, ` +
+            `pid=${spawned.initializeResult.pid}, ` +
+            `previews=${spawned.initializeResult.manifest.previewCount})`;
+        if (this.logFilter.shouldEmitInformational(readyLine)) {
+            this.logger.appendLine(readyLine);
+        }
+        return spawned.client;
     }
 
     /**
      * Ensures the consumer's `daemon-launch.json` exists by running the
-     * Gradle bootstrap task once per module. Cheap and cacheable. Swallows
-     * failures — a missing descriptor on first launch just means we silently
-     * fall back to Gradle, which is the safe default.
+     * Gradle bootstrap task once per module. Cheap and cacheable. Propagates failures so callers
+     * can surface daemon-enabled bootstrap errors instead of falling back to Gradle.
      */
     async bootstrap(gradleService: GradleService, moduleId: string): Promise<void> {
         if (!this.isEnabled()) { return; }
-        try {
-            await gradleService.runDaemonBootstrap(moduleId);
-        } catch (err) {
-            this.logger.appendLine(
-                `[daemon] bootstrap task failed for ${moduleId}: ${(err as Error).message}`,
-            );
-        }
+        await gradleService.runDaemonBootstrap(moduleId);
     }
 
     /** True iff a healthy daemon is already up for this module — warm path

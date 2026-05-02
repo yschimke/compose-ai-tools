@@ -70,8 +70,8 @@ export interface SpawnOptions {
  * `renderNow` requests.
  *
  * Throws when:
- *   - `descriptor.enabled === false` (the user hasn't opted in via
- *     `composePreview { experimental { daemon { enabled = true } } }`),
+ *   - `descriptor.enabled === false` (the user opted out via
+ *     `composePreview { daemon { enabled = false } }`),
  *   - the JVM exits before `initialize` completes,
  *   - `initialize` returns an error.
  */
@@ -81,9 +81,7 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const logFilter = opts.logFilter ?? new LogFilter(() => 'verbose');
 
     if (!descriptor.enabled) {
-        throw new Error(
-            'Daemon disabled in build config: set composePreview.experimental.daemon.enabled = true',
-        );
+        throw new Error('Daemon disabled in build config: set composePreview.daemon.enabled = true');
     }
 
     const javaPath = descriptor.javaLauncher ?? findJavaOnPath();

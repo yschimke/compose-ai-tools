@@ -234,10 +234,10 @@ internal object ComposePreviewTasks {
       // `variant` field for debug/log purposes only — VS Code's `daemonProcess.ts` doesn't key
       // off it.
       variant.set("desktop")
-      daemonEnabled.set(extension.experimental.daemon.enabled)
-      maxHeapMb.set(extension.experimental.daemon.maxHeapMb)
-      maxRendersPerSandbox.set(extension.experimental.daemon.maxRendersPerSandbox)
-      warmSpare.set(extension.experimental.daemon.warmSpare)
+      daemonEnabled.set(extension.daemon.enabled)
+      maxHeapMb.set(extension.daemon.maxHeapMb)
+      maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
+      warmSpare.set(extension.daemon.warmSpare)
       // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
       // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
       // jar is FIRST on the classpath below, so this loads the Compose-Multiplatform path.
@@ -256,7 +256,7 @@ internal object ComposePreviewTasks {
       // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
       // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
       // ImageComposeScene-specific opens if profiling shows a need.
-      jvmArgs.add(extension.experimental.daemon.maxHeapMb.map { "-Xmx${it}m" })
+      jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
 
       // Desktop sysprops are a strict subset of the Android side — no Robolectric / Roborazzi
       // keys. Per-key `put(...)` so each Provider chain captures only serialisable references
@@ -265,15 +265,15 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       systemProperties.put(
         "composeai.daemon.maxHeapMb",
-        extension.experimental.daemon.maxHeapMb.map { it.toString() },
+        extension.daemon.maxHeapMb.map { it.toString() },
       )
       systemProperties.put(
         "composeai.daemon.maxRendersPerSandbox",
-        extension.experimental.daemon.maxRendersPerSandbox.map { it.toString() },
+        extension.daemon.maxRendersPerSandbox.map { it.toString() },
       )
       systemProperties.put(
         "composeai.daemon.warmSpare",
-        extension.experimental.daemon.warmSpare.map { it.toString() },
+        extension.daemon.warmSpare.map { it.toString() },
       )
       systemProperties.put("composeai.daemon.modulePath", project.path)
       systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)

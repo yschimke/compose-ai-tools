@@ -143,8 +143,8 @@ export class DaemonScheduler {
     /**
      * Bring up the daemon for a module if necessary and ensure subsequent
      * notifications go to the right client. Returns true iff a client is
-     * available (caller can use the daemon path); false means "fall back
-     * to Gradle for this module."
+     * available (caller can use the daemon path); false means the daemon was explicitly disabled.
+     * Enabled-but-broken daemon failures throw so callers do not silently fall back to Gradle.
      */
     async ensureModule(moduleId: string): Promise<boolean> {
         const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
@@ -161,9 +161,9 @@ export class DaemonScheduler {
      *
      * `progress` fires through `'bootstrapping'` while the Gradle task
      * runs, `'spawning'` while the JVM comes up, and `'ready'` once
-     * `initialize` is acknowledged. `'fallback'` fires on any failure —
-     * the next save will run Gradle as today. No-op when the gate is
-     * disabled.
+     * `initialize` is acknowledged. `'fallback'` fires only when the daemon is explicitly disabled.
+     * Enabled-but-broken daemon failures throw so the UI can surface the error. No-op when the gate
+     * is disabled.
      */
     async warmModule(
         gradleService: GradleService,
@@ -182,11 +182,18 @@ export class DaemonScheduler {
             this.logger.appendLine(
                 `[daemon] bootstrap task failed for ${moduleId}: ${(err as Error).message}`,
             );
-            progress?.('fallback');
-            return false;
+            throw err;
         }
         progress?.('spawning');
-        const ok = await this.ensureModule(moduleId);
+        let ok = false;
+        try {
+            ok = await this.ensureModule(moduleId);
+        } catch (err) {
+            this.logger.appendLine(
+                `[daemon] warm failed for ${moduleId}: ${(err as Error).message}`,
+            );
+            throw err;
+        }
         progress?.(ok ? 'ready' : 'fallback');
         return ok;
     }
