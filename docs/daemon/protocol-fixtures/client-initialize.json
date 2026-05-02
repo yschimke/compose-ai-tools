@@ -12,6 +12,7 @@
     "maxHeapMb": 1024,
     "warmSpare": true,
     "detectLeaks": "light",
-    "foreground": false
+    "foreground": false,
+    "maxRenderMs": 600000
   }
 }

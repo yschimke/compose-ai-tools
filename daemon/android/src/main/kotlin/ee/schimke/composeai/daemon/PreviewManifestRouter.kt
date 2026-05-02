@@ -107,6 +107,9 @@ class PreviewManifestRouter(
             inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
             inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
             inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
+            inbound["captureAdvanceMs"]?.let {
+              append("captureAdvanceMs=").append(it).append(';')
+            }
             append("outputBaseName=").append(resolved.outputBaseName)
           },
       )

@@ -270,6 +270,15 @@ class JsonRpcServer(
   @Volatile private var globalAttachKinds: Set<String> = emptySet()
 
   /**
+   * Per-render timeout (ms) the daemon enforces on `host.submit(...)`. Defaults to
+   * [DEFAULT_RENDER_TIMEOUT_MS] (5 minutes — generous enough for Robolectric cold-sandbox bootstrap
+   * plus a heavy render). Overridden at handshake time by `initialize.options.maxRenderMs` if
+   * positive; values ≤ 0 are ignored and the default applies. See PROTOCOL.md § 3
+   * (`initialize.options.maxRenderMs`).
+   */
+  @Volatile private var renderTimeoutMs: Long = DEFAULT_RENDER_TIMEOUT_MS
+
+  /**
    * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. The map is keyed
    * by previewId so [setVisible] can drop entries for previews that are no longer on screen — see
    * [pruneSubscriptionsToVisible]. Inner sets are wrapped via [ConcurrentHashMap.newKeySet] so
@@ -565,6 +574,9 @@ class JsonRpcServer(
     val attachableKinds = dataProducts.capabilities.filter { it.attachable }.map { it.kind }.toSet()
     globalAttachKinds =
       (params.options?.attachDataProducts ?: emptyList()).toSet().intersect(attachableKinds)
+    // PROTOCOL.md § 3 — per-render timeout override. Positive values win; null / ≤ 0 keeps the
+    // 5-minute default. Survives across renders for this client's session lifetime.
+    params.options?.maxRenderMs?.takeIf { it > 0 }?.let { renderTimeoutMs = it }
     val result =
       InitializeResult(
         protocolVersion = PROTOCOL_VERSION,
@@ -723,7 +735,7 @@ class JsonRpcServer(
             val raw =
               host.submit(
                 RenderRequest.Render(id = hostId, payload = payload),
-                timeoutMs = 5 * 60_000,
+                timeoutMs = renderTimeoutMs,
               )
             renderResultsQueue.put(raw)
           } catch (e: Throwable) {
@@ -800,6 +812,12 @@ class JsonRpcServer(
         ?.let {
           if (isNotEmpty()) append(';')
           append("device=").append(it)
+        }
+      overrides.captureAdvanceMs
+        ?.takeIf { it > 0L }
+        ?.let {
+          if (isNotEmpty()) append(';')
+          append("captureAdvanceMs=").append(it)
         }
     }
   }
@@ -1519,7 +1537,7 @@ class JsonRpcServer(
             val raw =
               host.submit(
                 RenderRequest.Render(id = hostId, payload = payload),
-                timeoutMs = 5 * 60_000,
+                timeoutMs = renderTimeoutMs,
               )
             renderResultsQueue.put(raw)
           } catch (e: Throwable) {
@@ -2414,6 +2432,13 @@ class JsonRpcServer(
      * but the shutdown response will be sent.
      */
     private const val DRAIN_TIMEOUT_MS: Long = 60_000L
+
+    /**
+     * Default per-render `host.submit(...)` timeout — 5 minutes. Generous enough for the first
+     * render in a daemon's life (Robolectric cold sandbox bootstrap, ~5–15s) plus a heavy
+     * single-render render body. Overridable per-session via `initialize.options.maxRenderMs`.
+     */
+    const val DEFAULT_RENDER_TIMEOUT_MS: Long = 5 * 60_000L
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
     private const val DEFAULT_HISTORY_DIR: String = ".compose-preview-history"

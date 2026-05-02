@@ -103,6 +103,8 @@ Params:
     warmSpare?: boolean;
     detectLeaks?: "off" | "light" | "heavy";
     foreground?: boolean;            // true when launched via `--foreground`
+    maxRenderMs?: number;            // per-render host.submit timeout. Default 5*60_000;
+                                     // values ≤ 0 are ignored.
   };
 }
 ```
@@ -221,6 +223,8 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
   device?: string;                   // "id:pixel_5", "id:wearos_small_round", "spec:width=400dp,height=800dp,dpi=320".
                                      // Resolved by the daemon's catalog into widthPx/heightPx/density;
                                      // explicit widthPx/heightPx/density above take precedence.
+  captureAdvanceMs?: number;         // Paused-clock advance (ms) before capture. Android-only;
+                                     // default ≈ 32ms. Bump for animation-heavy previews.
 }
 
 // result

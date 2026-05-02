@@ -221,7 +221,9 @@ class RenderEngine(
             // CAPTURE_ADVANCE_MS is the same paused-clock advance `RobolectricRenderTest` uses —
             // ≈ 2 Choreographer frames. Enough to settle initial composition + one
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
-            rule.mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)
+            // PROTOCOL.md § 5 (`renderNow.overrides.captureAdvanceMs`) — animation-heavy
+            // previews can override.
+            rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
 
             outputFile.parentFile?.mkdirs()
             // `applyDeviceCrop = true` is what produces the circular alpha mask Roborazzi paints
@@ -273,7 +275,7 @@ class RenderEngine(
             // to disposal. Wrapped in try/catch so a thrown render body doesn't strand the next
             // render at a bad clock state.
             try {
-              rule.mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)
+              rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
             } catch (t: Throwable) {
               System.err.println(
                 "RenderEngine: post-capture mainClock advance failed for ${spec.className}.${spec.functionName}: ${t.message}"
@@ -472,6 +474,13 @@ data class RenderSpec(
   val uiMode: SpecUiMode? = null,
   /** Portrait/landscape override → `port` / `land` qualifier. Overrides the size-derived guess. */
   val orientation: SpecOrientation? = null,
+  /**
+   * Paused-clock advance (ms) before capture. Null defaults to [CAPTURE_ADVANCE_MS]; values
+   * `<= 0` are treated as null (default). Routes per-render via PROTOCOL.md § 5
+   * (`renderNow.overrides.captureAdvanceMs`); animation-heavy previews can request a longer
+   * settle window without editing the render body.
+   */
+  val captureAdvanceMs: Long? = null,
 ) {
 
   enum class SpecUiMode {
@@ -532,6 +541,7 @@ data class RenderSpec(
             "landscape" -> SpecOrientation.LANDSCAPE
             else -> null
           },
+        captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
       )
     }
   }

@@ -80,6 +80,14 @@ export interface InitializeParams {
          * See `docs/daemon/DATA-PRODUCTS.md` § "Wire surface".
          */
         attachDataProducts?: string[];
+        /**
+         * Per-render `host.submit(...)` timeout (ms) the daemon enforces for this client's
+         * session. Defaults to 5 minutes (`5 * 60_000`) — generous enough for Robolectric
+         * cold-sandbox bootstrap plus any single render. Bump for CI-style runs that render
+         * many heavy previews and want headroom; lower for interactive sessions that prefer
+         * a fast failure over a long hang. Values ≤ 0 fall back to the default.
+         */
+        maxRenderMs?: number;
     };
 }
 
@@ -217,6 +225,12 @@ export interface PreviewOverrides {
      * on this same object take precedence.
      */
     device?: string;
+    /**
+     * Paused-clock advance (ms) before capture — Android-only today. Default ≈ 32ms (≈ 2
+     * Choreographer frames); bump for animation-heavy previews that need longer to settle.
+     * Values ≤ 0 fall back to the default. Desktop ignores it.
+     */
+    captureAdvanceMs?: number;
 }
 
 export interface RenderNowParams {
