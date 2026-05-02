@@ -12,6 +12,7 @@
 plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
+  application
 }
 
 group = "ee.schimke.composeai"
@@ -24,6 +25,20 @@ version =
       val (major, minor, patch) = current.split(".").map { it.toInt() }
       "$major.$minor.${patch + 1}-SNAPSHOT"
     }
+
+base { archivesName.set("compose-preview-mcp") }
+
+application {
+  applicationName = "compose-preview-mcp"
+  mainClass.set("ee.schimke.composeai.mcp.DaemonMcpMain")
+}
+
+// Match `:cli` — `archiveExtension = "tar.gz"` keeps the in-archive root as
+// `compose-preview-mcp-<version>/` rather than leaking `.tar.gz` into the dir name.
+tasks.named<Tar>("distTar") {
+  archiveExtension.set("tar.gz")
+  compression = Compression.GZIP
+}
 
 dependencies {
   implementation(libs.kotlinx.coroutines.core)

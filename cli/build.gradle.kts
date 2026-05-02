@@ -38,6 +38,10 @@ dependencies {
   implementation("org.gradle:gradle-tooling-api:9.3.1")
   runtimeOnly("org.slf4j:slf4j-nop:2.0.16")
 
+  // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
+  // the consumer install story stays a single tarball + a single launcher.
+  implementation(project(":mcp"))
+
   testImplementation(kotlin("test"))
 }
 

@@ -43,6 +43,7 @@ fun main(args: Array<String>) {
       "doctor",
       "share-gist",
       "publish-images",
+      "mcp",
       "update",
       "version",
       "help",
@@ -86,6 +87,7 @@ fun main(args: Array<String>) {
     "doctor" -> DoctorCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
     "publish-images" -> PublishImagesCommand(allArgs).run()
+    "mcp" -> McpCommand(allArgs).run()
     "update" -> UpdateCommand(allArgs).run()
     "version" -> println("compose-preview $BUNDLE_VERSION")
     "help" -> printUsage()
@@ -116,6 +118,7 @@ private fun printUsage() {
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       share-gist       Create a gist from a markdown file plus image attachments
       publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
+      mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
       version          Print the installed bundle version and exit
       help             Show this help message
