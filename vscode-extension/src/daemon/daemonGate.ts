@@ -133,6 +133,27 @@ export class DaemonGate {
         return existing != null && !existing.client.isClosed();
     }
 
+    /**
+     * v2 interactive-mode support flag from the daemon's `initialize` response
+     * (INTERACTIVE.md § 9 / `InitializeResult.capabilities.interactive`).
+     * `true` means clicks dispatched via `interactive/input` actually mutate
+     * composition state (desktop with v2 wiring); `false` means the daemon
+     * accepts `interactive/start` but inputs trigger stateless re-renders (v1
+     * fallback — Robolectric/Android, or any host that doesn't override
+     * `acquireInteractiveSession`). Returns `false` when no daemon is up for
+     * the module — the caller can't drive interactive mode either way.
+     *
+     * Pre-#425 daemons omit the capability bit entirely; we treat absent as
+     * `false` (the safer default) so pre-v2 daemons surface the unsupported
+     * hint instead of silently leaving the user wondering why clicks don't
+     * mutate state.
+     */
+    isInteractiveSupported(moduleId: string): boolean {
+        const existing = this.daemons.get(moduleId);
+        if (existing == null || existing.client.isClosed()) { return false; }
+        return existing.spawned.initializeResult.capabilities.interactive === true;
+    }
+
     async dispose(): Promise<void> {
         this.disposed = true;
         const entries = [...this.daemons.values()];
