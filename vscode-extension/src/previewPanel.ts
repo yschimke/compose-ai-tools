@@ -7,10 +7,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private extensionUri: vscode.Uri;
     private onMessage: (msg: WebviewToExtension) => void;
+    private shouldRestoreVisibility: () => boolean;
 
-    constructor(extensionUri: vscode.Uri, onMessage: (msg: WebviewToExtension) => void) {
+    constructor(
+        extensionUri: vscode.Uri,
+        onMessage: (msg: WebviewToExtension) => void,
+        shouldRestoreVisibility: () => boolean = () => false,
+    ) {
         this.extensionUri = extensionUri;
         this.onMessage = onMessage;
+        this.shouldRestoreVisibility = shouldRestoreVisibility;
     }
 
     resolveWebviewView(
@@ -26,6 +32,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.webview.onDidReceiveMessage((msg: WebviewToExtension) => {
             this.onMessage(msg);
+        });
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible || !this.shouldRestoreVisibility()) { return; }
+            void vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
         });
     }
 
@@ -90,6 +100,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             </select>
             <i class="codicon codicon-chevron-down select-chevron" aria-hidden="true"></i>
         </div>
+        <button class="icon-button" id="btn-stop-interactive-global" title="Stop live preview"
+                aria-label="Stop live preview" hidden>
+            <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
+        </button>
     </div>
 
     <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -118,6 +132,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 aria-label="Toggle live (interactive) mode" aria-pressed="false" disabled hidden>
             <i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-stop-interactive" title="Stop live preview"
+                aria-label="Stop live preview" hidden>
+            <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
+        </button>
         <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
             <i class="codicon codicon-close" aria-hidden="true"></i>
         </button>
@@ -142,6 +160,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnLaunchDevice = document.getElementById('btn-launch-device');
         const btnA11yOverlay = document.getElementById('btn-a11y-overlay');
         const btnInteractive = document.getElementById('btn-interactive');
+        const btnStopInteractiveGlobal = document.getElementById('btn-stop-interactive-global');
+        const btnStopInteractive = document.getElementById('btn-stop-interactive');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
         // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
@@ -361,6 +381,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // remove just this one. Plain click keeps the single-target single-card UX casual users
         // expect.
         btnInteractive.addEventListener('click', (e) => toggleInteractive(e.shiftKey));
+        btnStopInteractiveGlobal.addEventListener('click', () => stopAllInteractive());
+        btnStopInteractive.addEventListener('click', () => stopAllInteractive());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
         // ----- Interactive (live-stream) mode helpers -----
@@ -389,6 +411,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // hides itself, but this keeps aria-pressed correct for tests
             // that snapshot the button in either layout.
             btnInteractive.hidden = !inFocus;
+            const hasLive = interactivePreviewIds.size > 0;
+            btnStopInteractiveGlobal.hidden = !hasLive;
+            btnStopInteractiveGlobal.disabled = !hasLive;
+            btnStopInteractive.hidden = !inFocus || !hasLive;
+            btnStopInteractive.disabled = !hasLive;
             if (!inFocus) {
                 // Cheap fast-path: applyLayout fires this on every layout
                 // change (filter tweaks, focus nav, every setPreviews). In
@@ -482,26 +509,28 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // off the now-not-live card. Then re-stamp every still-live preview.
             document.querySelectorAll('.preview-card.live').forEach(c => {
                 c.classList.remove('live');
-                const badge = c.querySelector('.live-badge');
-                if (badge) badge.remove();
             });
             if (interactivePreviewIds.size === 0) return;
             interactivePreviewIds.forEach(previewId => {
                 const card = document.getElementById('preview-' + sanitizeId(previewId));
                 if (!card) return;
                 card.classList.add('live');
-                if (card.querySelector('.live-badge')) return;
-                const badge = document.createElement('div');
-                badge.className = 'live-badge';
-                badge.setAttribute('aria-hidden', 'true');
-                const dot = document.createElement('span');
-                dot.className = 'live-badge-dot';
-                badge.appendChild(dot);
-                const text = document.createElement('span');
-                text.textContent = 'LIVE';
-                badge.appendChild(text);
-                card.appendChild(badge);
             });
+        }
+
+        function stopAllInteractive() {
+            if (interactivePreviewIds.size === 0) return;
+            const ids = Array.from(interactivePreviewIds);
+            interactivePreviewIds.clear();
+            ids.forEach(previewId => {
+                vscode.postMessage({
+                    command: 'setInteractive',
+                    previewId,
+                    enabled: false,
+                });
+            });
+            applyLiveBadge();
+            applyInteractiveButtonState();
         }
 
         function toggleInteractive(shift) {
@@ -746,8 +775,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     card.classList.remove('focused', 'hidden-by-focus');
                 });
             }
-            const tooltip = mode === 'focus' ? 'Double-click to exit focus' : 'Double-click to focus';
-            document.querySelectorAll('.image-container').forEach(c => c.title = tooltip);
+            document.querySelectorAll('.image-container').forEach(c => c.removeAttribute('title'));
             publishScopedPreview();
             // Single-target follow-focus: when there's exactly one live stream and the user
             // navigates off it, drop the stream so the LIVE chip follows the focused card.
@@ -1247,7 +1275,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
             const imgContainer = document.createElement('div');
             imgContainer.className = 'image-container';
-            imgContainer.title = 'Click to enter live mode';
             const skeleton = document.createElement('div');
             skeleton.className = 'skeleton';
             skeleton.setAttribute('aria-label', 'Loading preview');

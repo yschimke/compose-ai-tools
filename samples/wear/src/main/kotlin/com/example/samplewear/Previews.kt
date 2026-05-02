@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
@@ -135,6 +139,7 @@ fun ActivityListScreen() {
 
 @Composable
 private fun ButtonPreviewContent() {
+    var taps by remember { mutableStateOf(0) }
     MaterialTheme {
         AppScaffold(
             timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
@@ -147,8 +152,8 @@ private fun ButtonPreviewContent() {
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Button(onClick = {}) {
-                        Text("Tap me!")
+                    Button(onClick = { taps += 1 }) {
+                        Text("Taps: $taps")
                     }
                 }
             }
