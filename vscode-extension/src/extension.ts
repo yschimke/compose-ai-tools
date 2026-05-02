@@ -1417,13 +1417,93 @@ function visiblePreviewCount(module: string, filePath: string): number {
 }
 
 async function refreshAfterDaemonReady(filePath: string, reason: string): Promise<void> {
-    if (!daemonGate || !gradleService) { return; }
+    if (!daemonGate || !gradleService || !panel) { return; }
     const module = gradleService.resolveModule(filePath);
     if (!module || !daemonGate.isDaemonReady(module)) { return; }
     if (currentScopeFile && currentScopeFile !== filePath) { return; }
-    const outcome = await refresh(false, filePath);
-    if (outcome !== 'completed') { return; }
+    if (pendingRefresh || refreshInFlight) {
+        logLine(`daemon: skip post-warm refresh for ${module}; refresh already active`);
+        return;
+    }
+    const reconciled = await reconcilePreviewManifestAfterDaemonReady(module, filePath);
+    if (!reconciled) { return; }
     await warmShownPreviewsForFile(filePath, reason);
+    panel.postMessage({
+        command: 'setProgress',
+        phase: 'daemon',
+        label: 'Preview daemon ready',
+        percent: 1,
+        slow: false,
+    });
+}
+
+async function reconcilePreviewManifestAfterDaemonReady(
+    module: string,
+    filePath: string,
+): Promise<boolean> {
+    if (!gradleService || !panel) { return false; }
+    try {
+        panel.postMessage({
+            command: 'setProgress',
+            phase: 'daemon',
+            label: 'Checking preview list',
+            percent: 0.86,
+            slow: false,
+        });
+        gradleService.invalidateCache(module);
+        const manifest = await gradleService.discoverPreviews(module);
+        if (!manifest) { return false; }
+        if (currentScopeFile && currentScopeFile !== filePath) { return false; }
+
+        const fresh = manifest.previews;
+        const freshIds = new Set(fresh.map(p => p.id));
+        for (const [id, owner] of [...previewModuleMap.entries()]) {
+            if (owner === module && !freshIds.has(id)) {
+                previewModuleMap.delete(id);
+            }
+        }
+        for (const p of fresh) {
+            for (const capture of p.captures) {
+                capture.label = captureLabel(capture);
+            }
+            previewModuleMap.set(p.id, module);
+        }
+        moduleManifestCache.set(module, fresh);
+        registry.replaceModule(module, fresh);
+
+        const filterFile = packageQualifiedSourcePath(filePath);
+        const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
+        if (visiblePreviews.length === 0) {
+            if (!hasPreviewsLoaded) {
+                panel.postMessage({
+                    command: 'showMessage',
+                    text: fresh.length > 0
+                        ? `No @Preview functions in this file (${fresh.length} in other files in this module).`
+                        : 'No @Preview functions found in this module',
+                });
+                panel.postMessage({ command: 'clearProgress' });
+            }
+            return false;
+        }
+
+        const heavyStaleIds = fastTierModules.has(module)
+            ? visiblePreviews
+                .filter(hasHeavyCapture)
+                .map(p => p.id)
+            : [];
+        panel.postMessage({
+            command: 'setPreviews',
+            previews: visiblePreviews,
+            moduleDir: module,
+            heavyStaleIds,
+        });
+        panel.postMessage({ command: 'markAllLoading' });
+        hasPreviewsLoaded = true;
+        return true;
+    } catch (err) {
+        logLine(`daemon: post-warm discover failed for ${module}: ${(err as Error).message}`);
+        return false;
+    }
 }
 
 async function warmShownPreviewsForFile(filePath: string, reason: string): Promise<void> {
