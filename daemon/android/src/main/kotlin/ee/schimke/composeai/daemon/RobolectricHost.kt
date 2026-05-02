@@ -632,12 +632,13 @@ open class RobolectricHost(
           "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
-    return acquireInteractiveSession(previewId = previewId, spec = spec)
+    return acquireInteractiveSession(previewId = previewId, spec = spec, inspectionMode = inspectionMode)
   }
 
   private fun acquireInteractiveSession(
     previewId: String,
     spec: RenderSpec,
+    inspectionMode: Boolean? = spec.inspectionMode,
   ): AndroidInteractiveSession {
     val streamId = "android-stream-${nextStreamCounter.getAndIncrement()}"
     if (!activeInteractiveStreamId.compareAndSet(null, streamId)) {

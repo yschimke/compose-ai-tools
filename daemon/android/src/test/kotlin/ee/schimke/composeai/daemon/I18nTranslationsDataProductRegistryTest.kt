@@ -118,6 +118,24 @@ class I18nTranslationsDataProductRegistryTest {
   }
 
   @Test
+  fun `catalog ignores non-translatable default strings`() {
+    val resDir = rootDir.resolve("res")
+    writeStrings(
+      resDir.resolve("values/strings.xml"),
+      """<resources><string name="build_id" translatable="false">debug</string><string name="title">Title</string></resources>""",
+    )
+    writeStrings(
+      resDir.resolve("values-de/strings.xml"),
+      """<resources><string name="build_id">debug</string><string name="title">Titel</string></resources>""",
+    )
+
+    val catalog = AndroidStringCatalog.load(resDirs = listOf(resDir), defaultLocale = "en")
+
+    assertNull(catalog.match("debug", renderedLocale = "en"))
+    assertEquals("R.string.title", catalog.match("Titel", renderedLocale = "de")?.resourceName)
+  }
+
+  @Test
   fun `attachmentsFor emits path only after render wrote translations file`() {
     val previewId = "com.example.I18nPreview"
     val registry = I18nTranslationsDataProductRegistry(rootDir)

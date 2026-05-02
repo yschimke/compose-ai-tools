@@ -234,6 +234,7 @@ internal data class AndroidStringCatalog(
   companion object {
     fun load(resDirs: List<File>, defaultLocale: String): AndroidStringCatalog {
       val entries = linkedMapOf<String, AndroidStringEntry>()
+      val nonTranslatable = linkedSetOf<String>()
       val locales = linkedSetOf(defaultLocale)
       resDirs.filter { it.isDirectory }.forEach { resDir ->
         resDir.listFiles()
@@ -244,7 +245,7 @@ internal data class AndroidStringCatalog(
             locales.add(locale)
             valuesDir.listFiles { file -> file.isFile && file.extension == "xml" }
               ?.sortedBy { it.name }
-              ?.forEach { xml -> parseStringsXml(xml, locale, defaultLocale, entries) }
+              ?.forEach { xml -> parseStringsXml(xml, locale, defaultLocale, entries, nonTranslatable) }
           }
       }
       return AndroidStringCatalog(
@@ -259,6 +260,7 @@ internal data class AndroidStringCatalog(
       locale: String,
       defaultLocale: String,
       entries: MutableMap<String, AndroidStringEntry>,
+      nonTranslatable: MutableSet<String>,
     ) {
       val doc =
         runCatching {
@@ -275,7 +277,12 @@ internal data class AndroidStringCatalog(
       for (i in 0 until nodes.length) {
         val element = nodes.item(i) as? Element ?: continue
         val name = element.getAttribute("name").takeIf { it.isNotBlank() } ?: continue
-        if (element.getAttribute("translatable") == "false" && locale != defaultLocale) continue
+        if (element.getAttribute("translatable") == "false") {
+          nonTranslatable.add(name)
+          entries.remove(name)
+          continue
+        }
+        if (name in nonTranslatable) continue
         val value = element.textContent?.trim()?.takeIf { it.isNotBlank() } ?: continue
         val entry = entries.getOrPut(name) { AndroidStringEntry(name = name) }
         if (locale == defaultLocale) {

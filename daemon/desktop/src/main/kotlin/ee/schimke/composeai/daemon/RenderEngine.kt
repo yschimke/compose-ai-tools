@@ -64,7 +64,7 @@ class RenderEngine(
       System.getProperty(OUTPUT_DIR_PROP)
         ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
     ),
-  private val dataDir: File? = outputDir.parentFile?.resolve("data"),
+  private val dataDir: File = (outputDir.parentFile ?: outputDir).resolve("data"),
   private val themeCapture: ThemeCapture? = null,
   private val frameNanoTime: () -> Long = System::nanoTime,
 ) {
@@ -107,7 +107,7 @@ class RenderEngine(
       }
     } finally {
       trace.section("compose:tearDown") { tearDown(state) }
-      dataDir?.let(trace::write)
+      trace.write(dataDir)
     }
   }
 
@@ -287,7 +287,7 @@ class RenderEngine(
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
-    dataDir?.let(trace::write)
+    trace.write(dataDir)
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(state.classLoader),

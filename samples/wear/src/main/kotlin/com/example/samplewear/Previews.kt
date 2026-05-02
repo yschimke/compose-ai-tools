@@ -45,7 +45,6 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
 import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
-import java.util.UUID
 
 
 private data class Item(val title: String, val subtitle: String)
@@ -61,8 +60,7 @@ private val sampleItems = listOf(
 
 @Composable
 private fun rememberCompositionId(): String = remember {
-    // TODO: Remove this live-preview diagnostic once interactive refreshes are stable.
-    UUID.randomUUID().toString().take(8)
+    "preview"
 }
 
 @Composable

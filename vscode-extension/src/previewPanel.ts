@@ -2648,7 +2648,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     // different editor). Drop our UI-side bookkeeping in lockstep — the
                     // extension already stopped the streams server-side, so we MUST NOT post
                     // setInteractive messages back; that would race the flush.
-                    if (interactivePreviewIds.size > 0) {
+                    if (msg.previewId) {
+                        interactivePreviewIds.delete(msg.previewId);
+                        applyLiveBadge();
+                        applyInteractiveButtonState();
+                    } else if (interactivePreviewIds.size > 0) {
                         interactivePreviewIds.clear();
                         applyLiveBadge();
                         applyInteractiveButtonState();

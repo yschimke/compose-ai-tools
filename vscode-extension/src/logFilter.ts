@@ -235,6 +235,11 @@ export class LogFilter {
         return true;
     }
 
+    /** Returns true only when verbose logging is enabled. */
+    shouldEmitVerbose(): boolean {
+        return this.level() === 'verbose';
+    }
+
     /** Resets dedupe state — call at session boundaries (extension activation in tests). */
     reset(): void {
         this.warnedOnce.clear();

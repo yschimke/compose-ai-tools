@@ -185,7 +185,6 @@ class PerfettoTraceDataProductRegistry(private val rootDir: File) : DataProductR
         kind = PerfettoTraceDataProducer.KIND,
         schemaVersion = PerfettoTraceDataProducer.SCHEMA_VERSION,
         path = file.absolutePath,
-        payload = metadataPayload(file),
         extras = listOf(traceExtra(file)),
       )
     )

@@ -420,7 +420,7 @@ export type ExtensionToWebview =
      * without sending its own `setInteractive` messages back (those would
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
-    | { command: 'clearInteractive' };
+    | { command: 'clearInteractive'; previewId?: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =

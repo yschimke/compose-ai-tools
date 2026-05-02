@@ -342,7 +342,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
             if (!panel) { return; }
-            if (activeInteractiveStreams.has(previewId)) {
+            if (activeInteractiveStreams.has(previewId) && logFilter.shouldEmitVerbose()) {
                 logLine(`[interactive] frame ${previewId} bytes=${imageBase64.length}`);
             }
             // Capture index 0 — the daemon's v1 renderFinished targets the
@@ -3180,14 +3180,14 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
     }
     try {
         const result = await client.interactiveStart({ previewId });
-        if (result.heldSession !== true) {
+        if (result.heldSession === false) {
             client.interactiveStop({ frameStreamId: result.frameStreamId });
             logLine(
                 `[interactive] live mode unavailable for ${previewId}: daemon returned ` +
                 `stateless stream ${result.frameStreamId}` +
                 (result.fallbackReason ? ` (${result.fallbackReason})` : ''),
             );
-            panel?.postMessage({ command: 'clearInteractive' });
+            panel?.postMessage({ command: 'clearInteractive', previewId });
             updateInteractiveStatus();
             return;
         }
@@ -3204,7 +3204,7 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         logLine(
             `[interactive] live mode failed for ${previewId}: ${(err as Error).message}`,
         );
-        panel?.postMessage({ command: 'clearInteractive' });
+        panel?.postMessage({ command: 'clearInteractive', previewId });
         updateInteractiveStatus();
         return;
     }
@@ -3227,7 +3227,7 @@ function queueInteractiveMutation(previewId: string, enabled: boolean): void {
         .then(() => handleSetInteractive(previewId, enabled))
         .catch((err) => {
             logLine(`[interactive] setInteractive failed for ${previewId}: ${(err as Error).message}`);
-            panel?.postMessage({ command: 'clearInteractive' });
+            panel?.postMessage({ command: 'clearInteractive', previewId });
         });
 }
 
