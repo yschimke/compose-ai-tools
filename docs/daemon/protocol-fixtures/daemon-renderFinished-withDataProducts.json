@@ -46,6 +46,29 @@
       ]
     },
     {
+      "kind": "a11y/touchTargets",
+      "schemaVersion": 1,
+      "payload": {
+        "targets": [
+          {
+            "nodeId": "node-0",
+            "boundsInScreen": "120,440,184,504",
+            "widthDp": 32.0,
+            "heightDp": 32.0,
+            "findings": ["belowMinimum"]
+          }
+        ]
+      },
+      "extras": [
+        {
+          "name": "overlay",
+          "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/data/com.example.HomeKt-HomePreview/a11y-overlay.png",
+          "mediaType": "image/png",
+          "sizeBytes": 38912
+        }
+      ]
+    },
+    {
       "kind": "a11y/overlay",
       "schemaVersion": 1,
       "path": "/home/dev/projects/my-app/samples/android/build/compose-previews/data/com.example.HomeKt-HomePreview/a11y-overlay.png",

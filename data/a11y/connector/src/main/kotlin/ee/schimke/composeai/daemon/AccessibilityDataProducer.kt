@@ -22,6 +22,8 @@ import kotlinx.serialization.json.JsonElement
  *   so the registry can distinguish "no findings on this render" from "a11y didn't run".
  * - `a11y-hierarchy.json` — `{ "nodes": AccessibilityNode[] }`. Path-transport kind
  *   (`a11y/hierarchy`) returns this file's absolute path; VS Code's webview reads it.
+ * - `a11y-touchTargets.json` — `{ "targets": TouchTarget[] }`. Inline-transport kind
+ *   (`a11y/touchTargets`) derives clickable target sizes + overlaps from the hierarchy.
  *
  * On-disk layout pinned by [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)
  * § "On-disk layout".
@@ -42,6 +44,9 @@ object AccessibilityDataProducer {
   /** `a11y/hierarchy` — accessibility-relevant nodes with bounds + label + states. */
   const val KIND_HIERARCHY: String = "a11y/hierarchy"
 
+  /** `a11y/touchTargets` — clickable node sizes and overlap findings derived from hierarchy. */
+  const val KIND_TOUCH_TARGETS: String = "a11y/touchTargets"
+
   /**
    * D2.1 — `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style
    * annotated PNG produced by [AccessibilityImageProcessor]. Lets clients fetch the picture
@@ -53,11 +58,24 @@ object AccessibilityDataProducer {
   /** File names under `<rootDir>/<previewId>/`. */
   const val FILE_ATF: String = "a11y-atf.json"
   const val FILE_HIERARCHY: String = "a11y-hierarchy.json"
+  const val FILE_TOUCH_TARGETS: String = "a11y-touchTargets.json"
   const val FILE_OVERLAY: String = "a11y-overlay.png"
 
   @Serializable internal data class AtfPayload(val findings: List<AccessibilityFinding>)
 
   @Serializable internal data class HierarchyPayload(val nodes: List<AccessibilityNode>)
+
+  @Serializable internal data class TouchTargetsPayload(val targets: List<TouchTarget>)
+
+  @Serializable
+  internal data class TouchTarget(
+    val nodeId: String,
+    val boundsInScreen: String,
+    val widthDp: Float,
+    val heightDp: Float,
+    val findings: List<String>,
+    val overlappingNodeIds: List<String>? = null,
+  )
 
   /**
    * Writes both JSON files to `<rootDir>/<previewId>/` (creating the directory tree if needed).
@@ -74,6 +92,7 @@ object AccessibilityDataProducer {
     previewId: String,
     findings: List<AccessibilityFinding>,
     nodes: List<AccessibilityNode>,
+    density: Float = 1f,
     pngFile: File? = null,
     isRound: Boolean = false,
     imageProcessors: List<ImageProcessor> = emptyList(),
@@ -86,6 +105,14 @@ object AccessibilityDataProducer {
     previewDir
       .resolve(FILE_HIERARCHY)
       .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    previewDir
+      .resolve(FILE_TOUCH_TARGETS)
+      .writeText(
+        json.encodeToString(
+          TouchTargetsPayload.serializer(),
+          TouchTargetsPayload(buildTouchTargets(nodes, density)),
+        )
+      )
     if (pngFile == null || imageProcessors.isEmpty()) return
     val input =
       ImageProcessorInput(
@@ -106,6 +133,80 @@ object AccessibilityDataProducer {
       }
     }
   }
+
+  private fun buildTouchTargets(nodes: List<AccessibilityNode>, density: Float): List<TouchTarget> {
+    val scale = density.takeIf { it > 0f } ?: 1f
+    val candidates =
+      nodes.mapIndexedNotNull { index, node ->
+        if (!node.states.any { it == "clickable" || it == "long-clickable" }) return@mapIndexedNotNull null
+        val rect = parseBounds(node.boundsInScreen) ?: return@mapIndexedNotNull null
+        Candidate(
+          nodeId = "node-$index",
+          boundsInScreen = node.boundsInScreen,
+          rect = rect,
+          widthDp = rect.widthPx / scale,
+          heightDp = rect.heightPx / scale,
+        )
+      }
+
+    for (i in candidates.indices) {
+      for (j in i + 1 until candidates.size) {
+        val a = candidates[i]
+        val b = candidates[j]
+        if (a.rect.overlaps(b.rect) && !a.rect.contains(b.rect) && !b.rect.contains(a.rect)) {
+          a.overlappingNodeIds += b.nodeId
+          b.overlappingNodeIds += a.nodeId
+        }
+      }
+    }
+
+    return candidates.map { candidate ->
+      val findings = mutableListOf<String>()
+      if (candidate.widthDp < MIN_TOUCH_TARGET_DP || candidate.heightDp < MIN_TOUCH_TARGET_DP) {
+        findings += FINDING_BELOW_MINIMUM
+      }
+      if (candidate.overlappingNodeIds.isNotEmpty()) findings += FINDING_OVERLAPPING
+      TouchTarget(
+        nodeId = candidate.nodeId,
+        boundsInScreen = candidate.boundsInScreen,
+        widthDp = candidate.widthDp,
+        heightDp = candidate.heightDp,
+        findings = findings,
+        overlappingNodeIds = candidate.overlappingNodeIds.takeIf { it.isNotEmpty() },
+      )
+    }
+  }
+
+  private data class Candidate(
+    val nodeId: String,
+    val boundsInScreen: String,
+    val rect: BoundsRect,
+    val widthDp: Float,
+    val heightDp: Float,
+    val overlappingNodeIds: MutableList<String> = mutableListOf(),
+  )
+
+  private data class BoundsRect(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    val widthPx: Int = (right - left).coerceAtLeast(0)
+    val heightPx: Int = (bottom - top).coerceAtLeast(0)
+
+    fun overlaps(other: BoundsRect): Boolean =
+      left < other.right && right > other.left && top < other.bottom && bottom > other.top
+
+    fun contains(other: BoundsRect): Boolean =
+      left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
+  }
+
+  private fun parseBounds(bounds: String): BoundsRect? {
+    val parts = bounds.split(',')
+    if (parts.size != 4) return null
+    val values = parts.map { it.trim().toIntOrNull() ?: return null }
+    return BoundsRect(values[0], values[1], values[2], values[3])
+  }
+
+  private const val MIN_TOUCH_TARGET_DP = 48f
+  private const val FINDING_BELOW_MINIMUM = "belowMinimum"
+  private const val FINDING_OVERLAPPING = "overlapping"
 }
 
 /**
@@ -146,6 +247,14 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         requiresRerender = false,
       ),
       DataProductCapability(
+        kind = AccessibilityDataProducer.KIND_TOUCH_TARGETS,
+        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+        transport = DataProductTransport.INLINE,
+        attachable = true,
+        fetchable = true,
+        requiresRerender = false,
+      ),
+      DataProductCapability(
         kind = AccessibilityDataProducer.KIND_OVERLAY,
         schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
         transport = DataProductTransport.PATH,
@@ -168,6 +277,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         AccessibilityDataProducer.KIND_HIERARCHY ->
           fileFor(previewId, AccessibilityDataProducer.FILE_HIERARCHY) to
             DataProductTransport.PATH
+        AccessibilityDataProducer.KIND_TOUCH_TARGETS ->
+          fileFor(previewId, AccessibilityDataProducer.FILE_TOUCH_TARGETS) to
+            DataProductTransport.INLINE
         AccessibilityDataProducer.KIND_OVERLAY ->
           fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY) to DataProductTransport.PATH
         else -> return DataProductRegistry.Outcome.Unknown
@@ -234,6 +346,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
       when (kind) {
         AccessibilityDataProducer.KIND_ATF,
         AccessibilityDataProducer.KIND_HIERARCHY,
+        AccessibilityDataProducer.KIND_TOUCH_TARGETS,
         AccessibilityDataProducer.KIND_OVERLAY -> true
         else -> false
       }
@@ -287,6 +400,27 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
               kind = kind,
               schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
               path = file.absolutePath,
+              extras = extras,
+            )
+          )
+        }
+        AccessibilityDataProducer.KIND_TOUCH_TARGETS -> {
+          val file = fileFor(previewId, AccessibilityDataProducer.FILE_TOUCH_TARGETS)
+          if (!file.exists()) continue
+          val parsed =
+            try {
+              json.parseToJsonElement(file.readText())
+            } catch (t: Throwable) {
+              System.err.println(
+                "AccessibilityDataProductRegistry: parse $kind failed for $previewId: ${t.message}"
+              )
+              continue
+            }
+          out.add(
+            DataProductAttachment(
+              kind = kind,
+              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+              payload = parsed,
               extras = extras,
             )
           )

@@ -5,6 +5,7 @@ import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
 import java.io.File
 import java.nio.file.Files
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -37,12 +38,13 @@ class AccessibilityDataProductRegistryTest {
   }
 
   @Test
-  fun `capabilities advertise a11y atf hierarchy and overlay with the documented transports`() {
+  fun `capabilities advertise a11y atf hierarchy touch targets and overlay with the documented transports`() {
     val registry = AccessibilityDataProductRegistry(rootDir)
     val byKind = registry.capabilities.associateBy { it.kind }
-    assertEquals(setOf("a11y/atf", "a11y/hierarchy", "a11y/overlay"), byKind.keys)
+    assertEquals(setOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets", "a11y/overlay"), byKind.keys)
     assertEquals(DataProductTransport.INLINE, byKind.getValue("a11y/atf").transport)
     assertEquals(DataProductTransport.PATH, byKind.getValue("a11y/hierarchy").transport)
+    assertEquals(DataProductTransport.INLINE, byKind.getValue("a11y/touchTargets").transport)
     assertEquals(DataProductTransport.PATH, byKind.getValue("a11y/overlay").transport)
     for (cap in registry.capabilities) {
       assertTrue(cap.attachable)
@@ -104,13 +106,86 @@ class AccessibilityDataProductRegistryTest {
   }
 
   @Test
+  fun `touch targets derive clickable sizes and non-containment overlaps from hierarchy`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.TouchTargets"
+    AccessibilityDataProducer.writeArtifacts(
+      rootDir = rootDir,
+      previewId = previewId,
+      findings = emptyList(),
+      nodes =
+        listOf(
+          AccessibilityNode(
+            label = "Small",
+            role = "Button",
+            states = listOf("clickable"),
+            boundsInScreen = "0,0,80,80",
+          ),
+          AccessibilityNode(
+            label = "Neighbor",
+            role = "Button",
+            states = listOf("clickable"),
+            boundsInScreen = "60,60,180,180",
+          ),
+          AccessibilityNode(
+            label = "Containing card",
+            role = "Button",
+            states = listOf("clickable"),
+            boundsInScreen = "0,0,240,240",
+          ),
+          AccessibilityNode(label = "Static", boundsInScreen = "250,0,300,50"),
+        ),
+      density = 2f,
+    )
+
+    val touchFile = File(rootDir, "$previewId/${AccessibilityDataProducer.FILE_TOUCH_TARGETS}")
+    val payload =
+      Json.decodeFromString(
+        AccessibilityDataProducer.TouchTargetsPayload.serializer(),
+        touchFile.readText(),
+      )
+    assertEquals(3, payload.targets.size)
+
+    val small = payload.targets[0]
+    assertEquals("node-0", small.nodeId)
+    assertEquals(40f, small.widthDp)
+    assertEquals(40f, small.heightDp)
+    assertEquals(listOf("belowMinimum", "overlapping"), small.findings)
+    assertEquals(listOf("node-1"), small.overlappingNodeIds)
+
+    val neighbor = payload.targets[1]
+    assertEquals(60f, neighbor.widthDp)
+    assertEquals(60f, neighbor.heightDp)
+    assertEquals(listOf("overlapping"), neighbor.findings)
+    assertEquals(listOf("node-0"), neighbor.overlappingNodeIds)
+
+    val parent = payload.targets[2]
+    assertEquals(emptyList<String>(), parent.findings)
+    assertNull("parent-child containment should not be reported as overlap", parent.overlappingNodeIds)
+
+    val attachment =
+      registry
+        .attachmentsFor(previewId = previewId, kinds = setOf("a11y/touchTargets"))
+        .single()
+    assertNotNull("a11y/touchTargets should travel inline", attachment.payload)
+    assertNull("a11y/touchTargets must not also carry a path", attachment.path)
+
+    val outcome =
+      registry.fetch(previewId = previewId, kind = "a11y/touchTargets", params = null, inline = false)
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val result = (outcome as DataProductRegistry.Outcome.Ok).result
+    assertNotNull(result.payload)
+    assertNull(result.path)
+  }
+
+  @Test
   fun `attachmentsFor skips kinds with no on-disk file rather than emitting an empty entry`() {
     val registry = AccessibilityDataProductRegistry(rootDir)
     // No producer has run for this preview yet — neither file exists.
     val attachments =
       registry.attachmentsFor(
         previewId = "com.example.NoRender",
-        kinds = setOf("a11y/atf", "a11y/hierarchy"),
+        kinds = setOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets"),
       )
     assertEquals(emptyList<Any>(), attachments)
   }
@@ -165,7 +240,7 @@ class AccessibilityDataProductRegistryTest {
   }
 
   @Test
-  fun `attachmentsFor surfaces overlay PNG as an extra under a11y atf and hierarchy when present`() {
+  fun `attachmentsFor surfaces overlay PNG as an extra under a11y JSON kinds when present`() {
     val registry = AccessibilityDataProductRegistry(rootDir)
     val previewId = "com.example.HomeKt#HomePreview"
     AccessibilityDataProducer.writeArtifacts(
@@ -184,7 +259,7 @@ class AccessibilityDataProductRegistryTest {
     val attachments =
       registry.attachmentsFor(
         previewId = previewId,
-        kinds = setOf("a11y/atf", "a11y/hierarchy", "a11y/overlay"),
+        kinds = setOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets", "a11y/overlay"),
       )
     val byKind = attachments.associateBy { it.kind }
     val atfExtras = byKind.getValue("a11y/atf").extras
@@ -193,6 +268,9 @@ class AccessibilityDataProductRegistryTest {
     assertEquals("overlay", atfExtras[0].name)
     assertEquals("image/png", atfExtras[0].mediaType)
     assertEquals(overlay.absolutePath, atfExtras[0].path)
+    val touchExtras = byKind.getValue("a11y/touchTargets").extras
+    assertNotNull("touch target extras must populate when overlay PNG is on disk", touchExtras)
+    assertEquals(overlay.absolutePath, touchExtras!![0].path)
 
     val overlayKind = byKind.getValue("a11y/overlay")
     assertNotNull(overlayKind.path)
