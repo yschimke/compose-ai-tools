@@ -46,7 +46,17 @@ import kotlinx.serialization.json.Json
 class PreviewManifestRouter(
   private val manifest: PreviewManifest,
   userClassloaderHolder: UserClassLoaderHolder? = null,
-) : RobolectricHost(userClassloaderHolder = userClassloaderHolder) {
+  sandboxCount: Int = 1,
+  userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
+    null,
+) : RobolectricHost(
+  userClassloaderHolder = userClassloaderHolder,
+  sandboxCount = sandboxCount,
+  userClassloaderHolderFactory = userClassloaderHolderFactory,
+  previewSpecResolver = { previewId ->
+    manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()
+  },
+) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 
@@ -139,6 +149,21 @@ class PreviewManifestRouter(
       return json.decodeFromString(PreviewManifest.serializer(), file.readText())
     }
   }
+}
+
+private fun PreviewManifestEntry.renderSpec(): RenderSpec {
+  val resolved = resolved()
+  return RenderSpec(
+    className = className,
+    functionName = functionName,
+    widthPx = resolved.widthPx,
+    heightPx = resolved.heightPx,
+    density = resolved.density,
+    showBackground = resolved.showBackground,
+    backgroundColor = resolved.backgroundColor,
+    device = resolved.device,
+    outputBaseName = resolved.outputBaseName,
+  )
 }
 
 @Serializable data class PreviewManifest(val previews: List<PreviewManifestEntry>)
