@@ -10,6 +10,7 @@
     "fontScale": 1.3,
     "uiMode": "dark",
     "orientation": "portrait",
-    "device": "id:pixel_5"
+    "device": "id:pixel_5",
+    "captureAdvanceMs": 250
   }
 }

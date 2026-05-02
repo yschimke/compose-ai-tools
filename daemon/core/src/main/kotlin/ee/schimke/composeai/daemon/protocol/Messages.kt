@@ -87,6 +87,14 @@ data class Options(
   // docs/daemon/DATA-PRODUCTS.md § "Wire surface". Most clients leave this
   // null/empty and use `data/subscribe` for sticky-while-visible attachment.
   val attachDataProducts: List<String>? = null,
+  /**
+   * Per-render timeout (in milliseconds) the daemon enforces on every `host.submit(...)` call for
+   * this client's session. Defaults to 5 minutes (`5 * 60_000`) — generous enough for Robolectric
+   * cold-sandbox bootstrap (5–15s) plus any single render. Bump for CI-style runs that render many
+   * heavy previews and want headroom; lower for interactive sessions that prefer a fast failure
+   * over a long hang. Values ≤ 0 fall back to the default.
+   */
+  val maxRenderMs: Long? = null,
 )
 
 @Serializable
@@ -282,6 +290,16 @@ data class PreviewOverrides(
    * Unknown device ids fall back to the default (400×800 dp at xxhdpi).
    */
   val device: String? = null,
+  /**
+   * Paused-clock advance (in milliseconds) before the renderer captures the PNG. Android-only today
+   * — the Robolectric backend uses `mainClock.advanceTimeBy(...)` to tick a deterministic snapshot
+   * point past initial composition + any `LaunchedEffect` settle. Default (~32ms ≈ 2 Choreographer
+   * frames) is enough for static previews and one `LaunchedEffect` pass; bump for animation-heavy
+   * previews that need longer to settle (e.g. staged enter animations, `rememberInfiniteTransition`
+   * chains where you want a specific phase). Values ≤ 0 fall back to the default. Desktop ignores
+   * it (no paused-clock concept).
+   */
+  val captureAdvanceMs: Long? = null,
 )
 
 @Serializable

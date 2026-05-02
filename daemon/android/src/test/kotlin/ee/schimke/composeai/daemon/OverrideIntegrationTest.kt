@@ -167,6 +167,43 @@ class OverrideIntegrationTest {
     }
   }
 
+  @Test
+  fun captureAdvanceMsOverrideThreadsThroughTheRenderPath() {
+    // PROTOCOL.md § 5 (`renderNow.overrides.captureAdvanceMs`) — the override should reach the
+    // Android RenderEngine's `mainClock.advanceTimeBy(...)` call site without breaking the
+    // render. Smoke test only — verifying the actual paused-clock effect needs a fixture with a
+    // `LaunchedEffect`-driven state flip and per-frame mainClock alignment, which is fragile in
+    // a single-pass integration test. The wire round-trip + parser are covered by MessagesTest.
+    val outputDir = tempFolder.newFolder("renders-advance")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "red-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "red-advance",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val img =
+        renderAndDecode(host, "previewId=red-square;captureAdvanceMs=200", "advance-200")
+      assertEquals(32, img.width)
+      assertEquals(32, img.height)
+    } finally {
+      host.shutdown()
+    }
+  }
+
   /**
    * Asserts [actual] is within ±4px of [expected]. The Android backend's qualifier path round-trips
    * px → dp (via integer division) → px again inside `applyPreviewQualifiers`, so a request for

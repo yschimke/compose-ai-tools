@@ -122,6 +122,7 @@ open class RobolectricHost(
       "uiMode",
       "orientation",
       "device",
+      "captureAdvanceMs",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
