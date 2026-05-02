@@ -505,18 +505,27 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         }
 
         function toggleInteractive(shift) {
+            // Drives the LIVE button in the focus-mode toolbar — operates on the currently
+            // focused card. Body factored into setInteractiveForCard so the in-card click handler
+            // (any layout) can reuse the same plain-vs-Shift logic.
             if (layoutMode.value !== 'focus') return;
             const visible = getVisibleCards();
             const card = visible[focusIndex];
             if (!card) return;
+            setInteractiveForCard(card, shift);
+        }
+
+        /**
+         * Toggle interactive mode for [card] honouring plain/Shift semantics:
+         *  - Plain: single-target. Drop every prior live target before adding (or re-removing)
+         *    this one — keeps the casual UX matching v1's "one card live at a time" mental model.
+         *  - Shift: multi-target. Toggle just this preview in/out of the live set without
+         *    touching the others.
+         */
+        function setInteractiveForCard(card, shift) {
             const previewId = card.dataset.previewId;
             if (!previewId) return;
             const wasLive = interactivePreviewIds.has(previewId);
-            // Plain click: single-target. Drop every prior live target before adding (or
-            // re-removing) this one — keeps the casual UX matching v1's "one card live at a
-            // time" mental model.
-            // Shift+click: multi-target. Toggle just this preview in/out of the live set without
-            // touching the others.
             if (!shift) {
                 interactivePreviewIds.forEach(prior => {
                     if (prior === previewId) return;
@@ -541,6 +550,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             });
             applyLiveBadge();
             applyInteractiveButtonState();
+        }
+
+        /**
+         * Single-click-to-LIVE entry point from the in-card image click handler. Ensures
+         * image clicks land here in any layout (focus, grid, flow, column) — the focus-mode
+         * LIVE button is a redundant affordance for the focus-mode user, this lets every layout
+         * reach interactive mode in one click. Subsequent clicks while LIVE forward to the
+         * daemon via the per-image handler in updateImage; that is a separate code path and
+         * the click here short-circuits.
+         */
+        function enterInteractiveOnCard(card, shift) {
+            setInteractiveForCard(card, shift);
         }
 
         // Idempotent attach. Adds a click listener to the live card's image
@@ -1194,6 +1215,27 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 titleRow.appendChild(icon);
             }
 
+            // Per-card focus icon. Replaces the previous "double-click image"
+            // affordance — single-click on the image is now reserved for
+            // entering LIVE (interactive) mode, so we need an explicit handle
+            // for "view this card by itself". Same hot zone toggles between
+            // enter-focus (other layouts) and exit-focus (focus layout).
+            const focusBtn = document.createElement('button');
+            focusBtn.type = 'button';
+            focusBtn.className = 'card-focus-btn';
+            focusBtn.innerHTML = '<i class="codicon codicon-screen-full" aria-hidden="true"></i>';
+            focusBtn.title = 'Focus this preview';
+            focusBtn.setAttribute('aria-label', 'Focus this preview');
+            focusBtn.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                if (layoutMode.value === 'focus') {
+                    exitFocus();
+                } else {
+                    focusOnCard(card);
+                }
+            });
+            titleRow.appendChild(focusBtn);
+
             // Stale-tier refresh button — only attached up front for cards
             // already known to be stale at setPreviews time. updateStaleBadges
             // also adds/removes it on subsequent renders. Placed before the
@@ -1205,24 +1247,29 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
             const imgContainer = document.createElement('div');
             imgContainer.className = 'image-container';
-            imgContainer.title = 'Double-click to focus';
+            imgContainer.title = 'Click to enter live mode';
             const skeleton = document.createElement('div');
             skeleton.className = 'skeleton';
             skeleton.setAttribute('aria-label', 'Loading preview');
             imgContainer.appendChild(skeleton);
             card.appendChild(imgContainer);
 
-            // Double-click the image to jump straight to focus mode on this
-            // preview, or back out of it. The dblclick handler stays on the
-            // image so single-clicks remain free for future selection
-            // affordances and don't interfere with the existing title /
-            // stale-badge / carousel buttons.
-            imgContainer.addEventListener('dblclick', () => {
-                if (layoutMode.value === 'focus') {
-                    exitFocus();
-                } else {
-                    focusOnCard(card);
-                }
+            // Single-click on the image enters LIVE for this preview (in any
+            // layout — focus, grid, flow, column). The first click toggles
+            // interactive on; subsequent clicks while LIVE forward as pointer
+            // events to the daemon (handled by ensureInteractiveClickHandler
+            // attached via updateImage). The handler is on the container, not
+            // the <img>, so clicks land before the image renders too. Modifier-
+            // aware: Shift+click follows the multi-stream semantics from
+            // toggleInteractive().
+            imgContainer.addEventListener('click', (evt) => {
+                const previewId = card.dataset.previewId;
+                if (!previewId) return;
+                // If we're already live for this preview, the per-image click
+                // handler routes to recordInteractiveClick — let that fire
+                // instead of toggling off.
+                if (interactivePreviewIds.has(previewId)) return;
+                enterInteractiveOnCard(card, evt.shiftKey);
             });
 
             // ATF legend + overlay layer — rendered in the webview (not
@@ -2070,8 +2117,25 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 for (const entry of entries) {
                     const id = entry.target.dataset.previewId;
                     if (!id) continue;
-                    if (entry.isIntersecting) intersecting.add(id);
-                    else intersecting.delete(id);
+                    if (entry.isIntersecting) {
+                        intersecting.add(id);
+                    } else {
+                        intersecting.delete(id);
+                        // Auto-stop interactive mode when a live preview scrolls out of view —
+                        // keeps the daemon from accumulating warm scenes the user can't see and
+                        // matches the "follow what the user is looking at" UX. Re-entering view
+                        // doesn't auto-resume; the user re-clicks if they want it back.
+                        if (interactivePreviewIds.has(id)) {
+                            interactivePreviewIds.delete(id);
+                            vscode.postMessage({
+                                command: 'setInteractive',
+                                previewId: id,
+                                enabled: false,
+                            });
+                            applyLiveBadge();
+                            applyInteractiveButtonState();
+                        }
+                    }
                 }
                 scheduleViewportPublish();
             }, { root: null, rootMargin: '0px', threshold: 0.1 })
@@ -2369,6 +2433,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         applyLiveBadge();
                     }
                     applyInteractiveButtonState();
+                    break;
+                }
+                case 'clearInteractive': {
+                    // Extension flushed daemon-side streams (e.g. user moved focus to a
+                    // different editor). Drop our UI-side bookkeeping in lockstep — the
+                    // extension already stopped the streams server-side, so we MUST NOT post
+                    // setInteractive messages back; that would race the flush.
+                    if (interactivePreviewIds.size > 0) {
+                        interactivePreviewIds.clear();
+                        applyLiveBadge();
+                        applyInteractiveButtonState();
+                    }
                     break;
                 }
                 case 'previewMainRefChanged': {

@@ -52,35 +52,48 @@ settings, the toggle vanishes on the next focus change.
 
 ## 3. UI surface
 
-Lives inside `focus-controls` next to the existing diff / launch-on-device
-buttons. Visible only when:
+Two equivalent affordances reach interactive mode:
 
-- `layout-mode === 'focus'`
-- The currently focused preview's module has a healthy daemon (extension
-  pushes a `setInteractiveAvailability` message on daemon up/down).
+1. **Click the preview image** in any layout (focus, grid, flow, column).
+   Single-click on a non-live card enters LIVE for that preview;
+   subsequent clicks while LIVE forward as pointer events to the
+   daemon. Plain click is single-target (drops every prior live
+   stream); Shift+click adds the preview to the live set without
+   disturbing others (multi-stream).
+2. **The LIVE button** in the focus-mode toolbar — same plain/Shift
+   semantics. Redundant for focus-mode users but useful for keyboard
+   navigation and as a visible exit.
 
-```
-[ ◄ ] 1/3 [ ► ]  [ ⟂HEAD ] [ ⟂main ] [ 🌐 device ]  [ 🔴 LIVE ] [ × ]
-                                                       ──new──
-```
+A small **focus button** sits in each card's title row
+(`codicon-screen-full`) so users can jump into focus mode without
+relying on a hidden double-click affordance — single-click on the
+image is reserved for entering LIVE.
 
-Toggle states:
+When LIVE for a card, that card carries:
 
-| State        | Icon                                 | Tooltip                                    |
-|--------------|--------------------------------------|--------------------------------------------|
-| Disabled     | `circle-large-outline` (codicon)     | "Daemon not ready — live mode unavailable" |
-| Off (ready)  | `circle-large-outline`               | "Enter live mode (stream renders)"         |
-| On           | `record` (red)                       | "Live · click to exit"                     |
-
-When ON, the focused card carries:
-
-- `.preview-card.live` class (CSS adds a 1-pixel red border and a
-  bottom-right pulsing **LIVE** chip).
+- `.preview-card.live` class (CSS draws a 2px red border + soft red
+  glow so the live state reads from across the panel, not just on
+  close inspection).
+- A solid red **LIVE** chip pinned top-right with a blinking dot.
 - `<img>` swaps clear `.fade-in`, so the next paint reads as a frame
   update, not a card reload.
-- Click on the image is handled by `recordInteractiveClick(card, event)`
-  which dispatches a `recordInteractiveClick` webview→extension message
-  with image-pixel coordinates (see § 6).
+- Crosshair cursor signalling "click here to dispatch into the live
+  preview".
+- Image click handler routes to `recordInteractiveClick(card, event)`
+  which posts a `recordInteractiveClick` webview→extension message
+  with image-natural pixel coordinates (see § 7).
+
+LIVE is **sticky for edits** — saves trigger fresh `renderFinished`
+notifications that the live card consumes. LIVE **auto-stops** when:
+
+- The user moves focus to a different editor (extension flushes via
+  `interactive/stop`, posts `clearInteractive` to the panel — both
+  sides reach the off state in lockstep without race).
+- A live card scrolls out of viewport (panel-side, hooked into the
+  existing IntersectionObserver). Re-entering view doesn't auto-
+  resume; the user re-clicks if they want it back.
+- The daemon's `interactive` capability flips to false (status-bar
+  hint surfaces in this case — see #431).
 
 ## 4. Lifecycle
 

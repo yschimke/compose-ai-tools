@@ -772,6 +772,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // just cancels any in-flight render, flashes spinners, and
                 // burns a Gradle invocation — all for a no-op.
                 if (filePath === currentScopeFile) { return; }
+                // INTERACTIVE.md § 3 — drop active interactive streams when
+                // the user moves focus to a different file. Daemon-side
+                // streams flushed here, panel cleared via clearInteractive
+                // below; the panel's own setPreviews flow would otherwise
+                // race this on the new file's manifest arrival.
+                void flushInteractiveStreams();
+                panel?.postMessage({ command: 'clearInteractive' });
                 refresh(false, filePath);
                 // Pre-warm the daemon for this file's module so the first
                 // save in the session collapses to "kotlinc + render"
@@ -786,6 +793,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             // sticky got covered/closed and we need to re-resolve (which may
             // blank the panel) — issue #145.
             if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+                // The sticky scope file is no longer on screen — same UX flush as the
+                // different-Kotlin-file branch above. The user can't see the source code
+                // backing the live preview; stop the stream so the daemon doesn't keep
+                // rendering into an invisible panel.
+                void flushInteractiveStreams();
+                panel?.postMessage({ command: 'clearInteractive' });
                 refresh(false);
             }
         }),

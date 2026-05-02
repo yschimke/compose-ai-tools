@@ -438,11 +438,11 @@ body {
     align-items: center;
     justify-content: center;
     background: var(--skeleton-bg);
-    cursor: zoom-in;
-}
-
-.preview-grid.layout-focus .preview-card.focused .image-container {
-    cursor: zoom-out;
+    /* Click on a preview enters live (interactive) mode in any layout — see
+       INTERACTIVE.md § 3. Pointer cursor signals "this is clickable" without
+       implying a specific affordance (the magnifier zoom-in/out cursor was
+       misleading; we don't zoom). */
+    cursor: pointer;
 }
 
 .image-container img {
@@ -496,36 +496,46 @@ body {
    visual language as recording indicators in screen-share apps so the
    meaning lands without a tooltip. */
 .preview-card.live {
-    border-color: color-mix(in srgb, var(--vscode-errorForeground, #f55) 60%, transparent);
+    /* 2px ringed border + a soft outer glow so the live state reads from across
+       the panel, not just on close inspection. The glow uses box-shadow so it
+       doesn't reflow neighbours; the border-color carries the same tint as the
+       LIVE badge dot for visual coherence. */
+    border-color: var(--vscode-errorForeground, #f55);
+    border-width: 2px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-errorForeground, #f55) 30%, transparent),
+                0 0 12px color-mix(in srgb, var(--vscode-errorForeground, #f55) 25%, transparent);
 }
 .preview-card.live .image-container {
-    cursor: crosshair; /* hint at the future click-input surface */
+    cursor: crosshair; /* signals "click here to dispatch into the live preview" */
 }
 .live-badge {
     position: absolute;
-    bottom: 6px;
+    top: 6px;
     right: 6px;
     z-index: 4;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    color: var(--vscode-errorForeground, #f55);
-    font-size: calc(var(--vscode-font-size) - 2px);
-    font-weight: 600;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    /* Solid red chip — the previous transparent-with-blur version blended into
+       the underlying preview when the preview happened to be red/orange. Solid
+       background guarantees the LIVE state is unambiguous. */
+    background: var(--vscode-errorForeground, #f55);
+    color: var(--vscode-editor-background);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    font-weight: 700;
     letter-spacing: 0.5px;
+    text-transform: uppercase;
     pointer-events: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .live-badge-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--vscode-errorForeground, #f55);
-    animation: liveBlink 1.2s ease-in-out infinite;
+    background: var(--vscode-editor-background);
+    animation: liveBlink 1s ease-in-out infinite;
 }
 @keyframes liveBlink {
     0%, 100% { opacity: 1; }
@@ -983,6 +993,36 @@ body {
     padding: 0;
     font: inherit;
     font-weight: 600;
+}
+
+/* Focus icon next to the title — clicking enters focus mode for that card.
+   Replaces the previous "double-click on the image" affordance, which collided
+   with the new single-click-to-LIVE behaviour. Subtle until hovered so the
+   title row stays uncluttered when the user isn't reaching for the affordance. */
+.card-focus-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+}
+.card-focus-btn:hover {
+    opacity: 1;
+    background: var(--toolbar-hover);
+}
+.card-focus-btn:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+/* In focus mode the icon flips to "exit focus" — same hot zone, opposite verb. */
+.preview-grid.layout-focus .preview-card.focused .card-focus-btn {
+    color: var(--vscode-foreground);
+    opacity: 1;
 }
 
 /* --- Accessibility (ATF) findings --- */
