@@ -40,6 +40,10 @@ object ComposeSemanticsDataProducer {
       nodeId = id.toString(),
       boundsInRoot = boundsInRoot.toWireBounds(),
       label = cfg.label(),
+      text = cfg.renderedText(),
+      layoutText = cfg.layoutText(),
+      editableText = cfg.getOrNull(SemanticsProperties.EditableText)?.text,
+      inputText = cfg.getOrNull(SemanticsProperties.InputText)?.text,
       role = cfg.getOrNull(SemanticsProperties.Role)?.toString(),
       testTag = cfg.getOrNull(SemanticsProperties.TestTag),
       mergeMode =
@@ -63,6 +67,28 @@ object ComposeSemanticsDataProducer {
       ?.takeIf { it.isNotBlank() }
   }
 
+  private fun SemanticsConfiguration.renderedText(): String? =
+    getOrNull(SemanticsProperties.Text)
+      ?.joinToString(" ") { it.text }
+      ?.takeIf { it.isNotBlank() }
+
+  private fun SemanticsConfiguration.layoutText(): String? {
+    val action = getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null
+    val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+    val ok =
+      try {
+        action(results)
+      } catch (_: Throwable) {
+        false
+      }
+    if (!ok && results.isEmpty()) return null
+    return results
+      .mapNotNull { it.layoutInput.text.text.takeIf { text -> text.isNotBlank() } }
+      .distinct()
+      .joinToString(" ")
+      .takeIf { it.isNotBlank() }
+  }
+
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
     "${left.toInt()},${top.toInt()},${right.toInt()},${bottom.toInt()}"
 }
@@ -75,6 +101,10 @@ data class ComposeSemanticsNode(
   val nodeId: String,
   val boundsInRoot: String,
   val label: String? = null,
+  val text: String? = null,
+  val layoutText: String? = null,
+  val editableText: String? = null,
+  val inputText: String? = null,
   val role: String? = null,
   val testTag: String? = null,
   val mergeMode: String? = null,
