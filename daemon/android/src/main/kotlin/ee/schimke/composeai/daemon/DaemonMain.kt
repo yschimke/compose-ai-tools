@@ -263,6 +263,10 @@ fun main(args: Array<String>) {
             )
             add(PerfettoTraceDataProductRegistry(rootDir = dataRoot))
           }
+          System.err.println(
+            "compose-ai-tools daemon: TextStringsDataProductRegistry active (dataRoot=$dataRoot)"
+          )
+          add(TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex))
           if (attachA11y) {
             System.err.println(
               "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"

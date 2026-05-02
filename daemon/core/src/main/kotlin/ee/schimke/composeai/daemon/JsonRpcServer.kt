@@ -263,6 +263,9 @@ class JsonRpcServer(
   /** Mapping host-side internal request id → caller's preview id string. */
   private val hostIdToPreviewId = ConcurrentHashMap<Long, String>()
 
+  /** Non-null per-call overrides keyed by host-side internal request id. */
+  private val hostIdToOverrides = ConcurrentHashMap<Long, PreviewOverrides>()
+
   /**
    * D1 — kinds the client wants attached to *every* render of *every* preview, supplied via
    * `initialize.options.attachDataProducts`. Pre-filtered against [DataProductRegistry.isKnown] +
@@ -743,6 +746,7 @@ class JsonRpcServer(
       }
       val hostId = RenderHost.nextRequestId()
       hostIdToPreviewId[hostId] = previewId
+      overrides?.let { hostIdToOverrides[hostId] = it }
       acceptedAtMs[hostId] = now
       inFlightRenders.add(hostId)
       // Submit to host on a worker thread so we don't block the read loop.
@@ -932,7 +936,7 @@ class JsonRpcServer(
     // and we emit `tookMs = 0`. Other RenderMetrics fields (heap / native / sandbox-age) stay
     // null until B2.3 wires the cost-model collection path.
     try {
-      dataProducts.onRender(previewId, result)
+      dataProducts.onRender(previewId, result, hostIdToOverrides.remove(result.id))
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRender failed for $previewId " +
@@ -1360,6 +1364,7 @@ class JsonRpcServer(
   private fun emitRenderFailed(failure: RenderResultOrFailure.Failure) {
     val previewId = hostIdToPreviewId.remove(failure.hostId) ?: failure.hostId.toString()
     acceptedAtMs.remove(failure.hostId)
+    hostIdToOverrides.remove(failure.hostId)
     inFlightRenders.remove(failure.hostId)
     previewIdsWithOverridesInFlight.remove(previewId)
     // D3 — wake any data/fetch waiter that queued this render so it can return
