@@ -770,6 +770,16 @@ class JsonRpcServer(
    *   — the [PreviewOverrides] from this `renderNow` call. Routers preserve these when rewriting
    *   the payload, and they win over the manifest entry's per-preview defaults.
    *
+   * **`device` resolution.** When `overrides.device` is set we resolve it against
+   * [ee.schimke.composeai.daemon.devices.DeviceDimensions] and emit the derived `widthPx` /
+   * `heightPx` / `density` into the payload — that's the contract `PreviewOverrides.device`
+   * advertises in [Messages.kt][ee.schimke.composeai.daemon.protocol.PreviewOverrides] and
+   * PROTOCOL.md § 5. Without this, `device=id:pixel_5` would only flow as a raw string token
+   * (consumed by the Android backend's wear-round-crop heuristic) and the production render path
+   * would fall through to the spec's defaults instead of Pixel 5's 1080×2340 — see #474. Explicit
+   * `widthPx` / `heightPx` / `density` overrides on the same call still win, matching the harness
+   * `PreviewManifestRouter`'s precedence order.
+   *
    * `;`-delimited so the existing `RenderSpec.parseFromPayload(OrNull)` parsers read each pair
    * directly. See PROTOCOL.md § 5 (`renderNow.overrides`) for the wire-level shape.
    */
@@ -777,15 +787,22 @@ class JsonRpcServer(
     return buildString {
       if (previewId.isNotEmpty()) append("previewId=").append(previewId)
       if (overrides == null) return@buildString
-      overrides.widthPx?.let {
+      val deviceToken = overrides.device?.takeIf { it.isNotBlank() }
+      val deviceSpec = deviceToken?.let {
+        ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
+      }
+      val deviceWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() }
+      val deviceHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() }
+      val deviceDensity = deviceSpec?.density
+      (overrides.widthPx ?: deviceWidthPx)?.let {
         if (isNotEmpty()) append(';')
         append("widthPx=").append(it)
       }
-      overrides.heightPx?.let {
+      (overrides.heightPx ?: deviceHeightPx)?.let {
         if (isNotEmpty()) append(';')
         append("heightPx=").append(it)
       }
-      overrides.density?.let {
+      (overrides.density ?: deviceDensity)?.let {
         if (isNotEmpty()) append(';')
         append("density=").append(it)
       }
@@ -819,12 +836,10 @@ class JsonRpcServer(
           }
         )
       }
-      overrides.device
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-          if (isNotEmpty()) append(';')
-          append("device=").append(it)
-        }
+      deviceToken?.let {
+        if (isNotEmpty()) append(';')
+        append("device=").append(it)
+      }
       overrides.captureAdvanceMs
         ?.takeIf { it > 0L }
         ?.let {
