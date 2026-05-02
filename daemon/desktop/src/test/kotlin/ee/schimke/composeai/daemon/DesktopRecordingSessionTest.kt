@@ -374,6 +374,180 @@ class DesktopRecordingSessionTest {
     )
   }
 
+  @Test
+  fun live_mode_captures_frames_at_fps_cadence_and_dispatches_inputs() {
+    // P4 — live mode test. The session runs a background tick thread at fps cadence using
+    // wall-clock-driven virtual time. We:
+    //   1. Allocate a live session against TristateClickSquare (red → green → blue on click).
+    //   2. Sleep a short window (250 ms wall) so several frames accumulate (initial-state red).
+    //   3. Post a click via postInput.
+    //   4. Sleep another window so the post-click state (green) renders into more frames.
+    //   5. Stop, then assert:
+    //      - Frame count is in a tolerant range — we expect ~3..30 frames at 30 fps over ~500 ms;
+    //        wide bounds because CI machines vary in timing precision and the JIT may need a few
+    //        frames to warm up the render path.
+    //      - The first frame is red (pre-click state).
+    //      - The last frame is green (post-click state, dispatched at some virtual tMs > 0).
+    //
+    // Wall-clock-based timing assertions are tolerant (range, not exact count) to keep the test
+    // portable across slower CI runners. The state-flip assertion is the load-bearing one — it
+    // proves the live tick loop is actually draining inputs and the held scene is mutating.
+    val outputDir = tempFolder.newFolder("live-engine-renders")
+    val recordingsRoot = tempFolder.newFolder("live-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TristateClickSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "tristate-click-square-live",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = FIXTURE_PREVIEW_ID,
+          recordingId = "test-rec-live",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+          live = true,
+        )
+      try {
+        // Pre-click window: let several initial-state frames render before we dispatch.
+        Thread.sleep(LIVE_PRE_CLICK_MS)
+
+        session.postInput(
+          ee.schimke.composeai.daemon.protocol.RecordingInputParams(
+            recordingId = "test-rec-live",
+            kind = ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK,
+            pixelX = COMPONENT_WIDTH_PX / 2,
+            pixelY = COMPONENT_HEIGHT_PX / 2,
+          )
+        )
+
+        // Post-click window: let a few more frames render so the post-click state (green) lands.
+        Thread.sleep(LIVE_POST_CLICK_MS)
+
+        val result = session.stop()
+        assertTrue(
+          "live recording should produce > 1 frame; got ${result.frameCount}",
+          result.frameCount > 1,
+        )
+        // Generous upper bound — slow CI runners might tick faster than fps in some configs.
+        assertTrue(
+          "live recording at 30 fps over ~500 ms should not exceed ${LIVE_MAX_FRAMES} frames; got ${result.frameCount}",
+          result.frameCount <= LIVE_MAX_FRAMES,
+        )
+
+        // First frame: pre-click state (red).
+        val frame0 = readPng(File(result.framesDir, "frame-00000.png"))
+        val redAt0 = pixelMatchPct(frame0, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+        assertTrue(
+          "live frame 0 expected ≥ 95% red pixels (pre-click); got ${"%.2f".format(redAt0 * 100)}%",
+          redAt0 >= 0.95,
+        )
+
+        // Last frame: post-click state (green) — proves the tick loop drained the input and the
+        // held scene mutated. Without this assertion, a regression that broke postInput would
+        // still pass the frame-count check.
+        val lastFrameIdx = result.frameCount - 1
+        val frameLast = readPng(File(result.framesDir, "frame-${"%05d".format(lastFrameIdx)}.png"))
+        val greenAtLast = pixelMatchPct(frameLast, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "live last frame ($lastFrameIdx) expected ≥ 95% green pixels (state=1 after live click); " +
+            "got ${"%.2f".format(greenAtLast * 100)}% — this is the load-bearing live-mode " +
+            "dispatch assertion",
+          greenAtLast >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun live_mode_postScript_throws() {
+    // Mode-mismatch guard: postScript on a live session is illegal. The wire-side handler
+    // catches the throw and logs it; we exercise the underlying contract here.
+    val outputDir = tempFolder.newFolder("live-mismatch-engine-renders")
+    val recordingsRoot = tempFolder.newFolder("live-mismatch-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TristateClickSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "tristate-click-square-mismatch",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = FIXTURE_PREVIEW_ID,
+          recordingId = "test-rec-mismatch",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+          live = true,
+        )
+      try {
+        val thrown =
+          runCatching {
+              session.postScript(
+                listOf(
+                  RecordingScriptEvent(
+                    tMs = 0L,
+                    kind = ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK,
+                  )
+                )
+              )
+            }
+            .exceptionOrNull()
+        assertTrue(
+          "postScript on a live session must throw IllegalStateException; got ${thrown?.javaClass}",
+          thrown is IllegalStateException,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)
@@ -416,5 +590,12 @@ class DesktopRecordingSessionTest {
     private const val COMPONENT_WIDTH_PX = 120
     private const val COMPONENT_HEIGHT_PX = 60
     private const val FPS = 30
+
+    // Live-mode timing windows. Tuned so frames accumulate on either side of the click without
+    // making the test slow. ~250 ms × 2 = ~500 ms wall total; at 30 fps that's ~15 frames in the
+    // ideal case but we accept anywhere in the range below to absorb CI jitter.
+    private const val LIVE_PRE_CLICK_MS: Long = 250L
+    private const val LIVE_POST_CLICK_MS: Long = 250L
+    private const val LIVE_MAX_FRAMES: Int = 60
   }
 }

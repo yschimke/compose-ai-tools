@@ -843,6 +843,12 @@ enum class PruneReasonWire {
  * @property overrides per-render display overrides applied to the held scene; mirrors
  *   `renderNow.overrides` exactly. Lets a `Button` preview be recorded at `widthPx: 240, heightPx:
  *   80, backgroundColor: 0xFFFFFFFF` (or whatever the agent prefers) without editing source.
+ * @property live when `true`, the recording captures real-time interactions instead of replaying a
+ *   scripted timeline. The daemon spins a background tick thread at [fps] cadence using a
+ *   wall-clock-driven virtual nanoTime; agents (or the panel) post `recording/input` notifications
+ *   that the tick loop drains and dispatches at the current virtual `tMs`. Mutually exclusive with
+ *   `recording/script` — once a session is allocated `live`, `recording/script` is rejected.
+ *   Defaults to `false` (scripted mode); see RECORDING.md § "live mode".
  */
 @Serializable
 data class RecordingStartParams(
@@ -850,6 +856,30 @@ data class RecordingStartParams(
   val fps: Int? = null,
   val scale: Float? = null,
   val overrides: PreviewOverrides? = null,
+  val live: Boolean = false,
+)
+
+/**
+ * `recording/input` notification — fire-and-forget input event for a `live = true` recording.
+ * Mirrors [InteractiveInputParams] modulo the routing key (recordingId vs frameStreamId).
+ *
+ * The daemon's tick loop drains pending events at every frame boundary and stamps them with the
+ * current virtual `tMs` (= wall-clock elapsed since `recording/start`); the `pixelX` / `pixelY` are
+ * dispatched through the held scene's pointer pipeline at the same virtual nanoTime as the
+ * surrounding frame's `scene.render(nanoTime = …)` call.
+ *
+ * Inputs against a `live = false` (scripted) recording are dropped silently on the daemon side —
+ * the analogous wire shape there is `recording/script`.
+ */
+@Serializable
+data class RecordingInputParams(
+  val recordingId: String,
+  val kind: InteractiveInputKind,
+  /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
+  val pixelX: Int? = null,
+  val pixelY: Int? = null,
+  /** For `keyDown` / `keyUp` (reserved; v1 dispatch is a no-op). */
+  val keyCode: String? = null,
 )
 
 /**
