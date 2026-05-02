@@ -67,27 +67,4 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * inline and emit a `daemonWarming` notification while the new sandbox builds.
    */
   val warmSpare: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
-
-  /**
-   * D2 — whether the daemon advertises and produces the `a11y/atf` + `a11y/hierarchy` data
-   * products. Default: `true`.
-   *
-   * When `true`, every render runs in a11y mode (`LocalInspectionMode = false`) so ATF can walk the
-   * semantics tree and the `AccessibilityDataProductRegistry` can surface findings + the hierarchy
-   * via `data/fetch` / `data/subscribe`. Cost is a few ms per render plus the usual a11y-mode side
-   * effect (animations don't park under the paused clock — see
-   * `RobolectricRenderTest.renderWithA11y`'s docstring).
-   *
-   * When `false`, the daemon advertises no a11y kinds at handshake time. Clients see an empty
-   * `capabilities.dataProducts` and the focus-mode "Show accessibility overlay" toggle in the VS
-   * Code panel becomes a no-op (its `data/subscribe` rejects with `DataProductUnknown`). The
-   * daemon's internal renderer skips the a11y branch entirely, which is the cheapest mode for users
-   * who don't care about a11y in the daemon path. Diagnostic squigglies still flow via the Gradle
-   * sidecar reader as today — toggling this off only affects the daemon's data-product surface.
-   *
-   * Flip via build script (`composePreview { daemon { attachA11y = false } }`) to opt out at the
-   * producer side. Pairs with the VS Code-side `composePreview.a11y.alwaysSubscribe` setting (which
-   * controls whether the *consumer* side subscribes ambient or only on the focus-mode toggle).
-   */
-  val attachA11y: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 }

@@ -237,10 +237,11 @@ fun main(args: Array<String>) {
     }
 
   // D2 — wire data-product registries. `compose/semantics` is default-mode data emitted by the
-  // Android render loop whenever a render output dir exists. The a11y registry remains gated by
-  // `composeai.daemon.attachA11y` because it flips LocalInspectionMode and runs ATF.
+  // Android render loop whenever a render output dir exists. A11y is selected through the generic
+  // data-plugin property emitted by Gradle, not a daemon-specific feature flag.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-  val attachA11y = System.getProperty(RenderEngine.ATTACH_A11Y_PROP) == "true"
+  val a11yDataPluginEnabled =
+    System.getProperty(RenderEngine.A11Y_DATA_PLUGIN_ENABLED_PROP) == "true"
   val dataProducts: DataProductRegistry =
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
@@ -279,14 +280,14 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: TextStringsDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex))
-          if (attachA11y) {
+          if (a11yDataPluginEnabled) {
             System.err.println(
               "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
             )
             add(AccessibilityDataProductRegistry(rootDir = dataRoot))
           } else {
             System.err.println(
-              "compose-ai-tools daemon: a11y data products disabled via composeai.daemon.attachA11y=false"
+              "compose-ai-tools daemon: a11y data product plugin disabled"
             )
           }
         }

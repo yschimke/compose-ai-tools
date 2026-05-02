@@ -790,8 +790,8 @@ class DaemonMcpServer(
             "separate `render_preview` + `get_preview_data` round trip. The overlay PNG also lands on " +
             "disk under `<dataDir>/<previewId>/a11y-overlay.png` so callers that prefer the path can " +
             "set `inline=false`. " +
-            "Errors: DataProductUnknown when the daemon has no producer for `kind` (no a11y wiring or " +
-            "`composeai.daemon.attachA11y=false`).",
+            "Errors: DataProductUnknown when the daemon has no producer for `kind` (for example, " +
+            "the a11y data plugin is not enabled).",
         inputSchema =
           parseSchema(
             """

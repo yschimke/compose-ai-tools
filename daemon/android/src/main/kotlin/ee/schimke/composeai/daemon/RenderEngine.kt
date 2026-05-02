@@ -128,12 +128,11 @@ class RenderEngine(
      * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
      * render, traded for simpler implementation than per-render kind threading.
      *
-     * Defaults to the [ATTACH_A11Y_PROP] system property — `composeai.daemon.attachA11y=true` set
-     * by [DaemonMain] when the a11y data-product registry is wired. False (the default) keeps the
-     * pre-D2 paused-clock + `LocalInspectionMode = true` fast path used by the harness's fake-mode
-     * tests.
+     * Defaults to the [A11Y_DATA_PLUGIN_ENABLED_PROP] system property set by the Gradle data-plugin
+     * selector. False (the default) keeps the pre-D2 paused-clock + `LocalInspectionMode = true`
+     * fast path used by the harness's fake-mode tests.
      */
-    runAccessibility: Boolean = System.getProperty(ATTACH_A11Y_PROP) == "true",
+    runAccessibility: Boolean = System.getProperty(A11Y_DATA_PLUGIN_ENABLED_PROP) == "true",
   ): RenderResult {
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
@@ -481,12 +480,12 @@ class RenderEngine(
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
 
     /**
-     * D2 — when set to `"true"` (by [DaemonMain] after wiring the a11y data-product registry)
-     * each render runs in a11y mode and writes `a11y-{atf,hierarchy}.json` artefacts under
-     * `<outputDir.parent>/data/<previewId>/`. Tests / pre-D2 callers leave it unset and the
-     * fast path stays unchanged.
+     * Data-plugin selector for the a11y producer. When set to `"true"`, each render runs in a11y
+     * mode and writes `a11y-{atf,hierarchy}.json` artefacts under
+     * `<outputDir.parent>/data/<previewId>/`. Tests and callers that do not enable the plugin leave
+     * it unset and the fast path stays unchanged.
      */
-    const val ATTACH_A11Y_PROP: String = "composeai.daemon.attachA11y"
+    const val A11Y_DATA_PLUGIN_ENABLED_PROP: String = "composeai.dataPlugins.a11y.enabled"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.

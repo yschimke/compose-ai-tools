@@ -143,7 +143,7 @@
                 "composePreview.a11y.alwaysSubscribe": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When on, the panel auto-subscribes to a11y data products (`a11y/atf` for diagnostic squigglies, `a11y/hierarchy` for the local overlay) for every visible preview in daemon mode — diagnostics fire ambient without entering focus mode. Off (the default) keeps the focus-mode 'Show accessibility overlay' button as the only opt-in. The producer side must also be on (Gradle: `composePreview { daemon { attachA11y = true } }`, the default); when the daemon advertises no a11y kinds this setting has no effect."
+                    "description": "When on, the panel auto-subscribes to a11y data products (`a11y/atf` for diagnostic squigglies, `a11y/hierarchy` for the local overlay) for every visible preview in daemon mode — diagnostics fire ambient without entering focus mode. Off (the default) keeps the focus-mode 'Show accessibility overlay' button as the only opt-in. The producer side must also be enabled with the Gradle data plugin (`composePreview { dataPlugins { a11y { enableAllChecks() } } }` or the matching `-PcomposePreview.dataPlugins.a11y.*` properties); when the daemon advertises no a11y kinds this setting has no effect."
                 },
                 "composePreview.logging.level": {
                     "type": "string",
