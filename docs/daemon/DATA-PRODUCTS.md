@@ -372,7 +372,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `a11y/overlay`             | a11y | low  | Path to the Paparazzi-style annotated PNG produced by `AccessibilityImageProcessor`. Pure-image kind — `transport='path'`, no JSON payload. **D2.1 — image-processor surface.** |
 | `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. |
 | `layout/tree`              | default | low | View / Compose layout tree with bounds, paddings, source-line refs. Layout inspector. |
-| `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode. |
+| `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. **Android daemon implementation.** |
 | `compose/recomposition`    | instrumented | medium | `[{ nodeId, count, sinceFrameStreamId? }]`. Heat-map overlay. Static snapshot answers "what recomposed during initial composition"; the load-bearing case is **delta after a click** in interactive mode (see § Recomposition + interactive). Needs an instrumented re-render. |
 | `compose/theme`            | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed which tokens. |
 | `resources/used`           | default | low | `R.*` references resolved during render. Jump-to-source. |

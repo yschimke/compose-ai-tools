@@ -236,28 +236,33 @@ fun main(args: Array<String>) {
       )
     }
 
-  // D2 — wire the accessibility data-product registry. The `composeai.daemon.attachA11y`
-  // sysprop (driven by `DaemonExtension.attachA11y`, default true) is the producer-side
-  // opt-out: when `false` we never construct the registry, no a11y kinds get advertised,
-  // and the renderer skips a11y mode for the per-render saving (see `RenderEngine.render`).
-  // The renders dir must also be resolvable, since `AccessibilityDataProductRegistry`
-  // reads its JSON sidecars relative to it; pre-D2 callers without the sysprop wired
-  // (harness fake-mode) keep the no-op `DataProductRegistry.Empty`.
+  // D2 — wire data-product registries. `compose/semantics` is default-mode data emitted by the
+  // Android render loop whenever a render output dir exists. The a11y registry remains gated by
+  // `composeai.daemon.attachA11y` because it flips LocalInspectionMode and runs ATF.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
   val attachA11y = System.getProperty(RenderEngine.ATTACH_A11Y_PROP) == "true"
   val dataProducts: DataProductRegistry =
-    if (renderOutputDir != null && attachA11y) {
+    if (renderOutputDir != null) {
       val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-      System.err.println(
-        "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
-      )
-      AccessibilityDataProductRegistry(rootDir = dataRoot)
+      val registries =
+        buildList {
+          System.err.println(
+            "compose-ai-tools daemon: ComposeSemanticsDataProductRegistry active (dataRoot=$dataRoot)"
+          )
+          add(ComposeSemanticsDataProductRegistry(rootDir = dataRoot))
+          if (attachA11y) {
+            System.err.println(
+              "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
+            )
+            add(AccessibilityDataProductRegistry(rootDir = dataRoot))
+          } else {
+            System.err.println(
+              "compose-ai-tools daemon: a11y data products disabled via composeai.daemon.attachA11y=false"
+            )
+          }
+        }
+      CompositeDataProductRegistry(registries)
     } else {
-      if (renderOutputDir != null && !attachA11y) {
-        System.err.println(
-          "compose-ai-tools daemon: a11y data products disabled via composeai.daemon.attachA11y=false"
-        )
-      }
       DataProductRegistry.Empty
     }
 

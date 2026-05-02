@@ -4,6 +4,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -82,6 +85,21 @@ class RenderEngineTest {
       assertTrue(
         "expected >= 95% of pixels close to #EF5350; got ${"%.2f".format(matchPct * 100)}%",
         matchPct >= 0.95,
+      )
+
+      val semanticsFile =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("red-square")
+          .resolve(ComposeSemanticsDataProducer.FILE)
+      assertTrue(
+        "compose/semantics data product should be written next to render data: $semanticsFile",
+        semanticsFile.exists(),
+      )
+      val semanticsJson = Json.parseToJsonElement(semanticsFile.readText()).jsonObject
+      assertEquals(
+        "0,0,64,64",
+        semanticsJson["root"]!!.jsonObject["boundsInRoot"]!!.jsonPrimitive.content,
       )
     } finally {
       host.shutdown()
