@@ -132,9 +132,30 @@ export interface InitializeResult {
          * Robolectric / Android backends.
          */
         interactive?: boolean;
+        /**
+         * The `@Preview(device = ...)` ids the daemon's catalog recognises, paired with
+         * resolved geometry. Lets clients build a "render this preview at..." picker without
+         * re-bundling the catalog. Empty list = pre-feature daemon (treat absent and `[]`
+         * identically). The `spec:width=…,height=…,dpi=…` grammar is not enumerable —
+         * clients pass it as a free-form `device` override and the daemon parses it at
+         * resolve-time.
+         */
+        knownDevices?: KnownDevice[];
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };
+}
+
+/**
+ * One entry in `ServerCapabilities.knownDevices`. The `id` is the string a caller passes via
+ * `renderNow.overrides.device` (or `@Preview(device = ...)` at discovery time); the geometry
+ * fields let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving.
+ */
+export interface KnownDevice {
+    id: string;
+    widthDp: number;
+    heightDp: number;
+    density: number;
 }
 
 // Client → daemon notifications (PROTOCOL.md § 4)

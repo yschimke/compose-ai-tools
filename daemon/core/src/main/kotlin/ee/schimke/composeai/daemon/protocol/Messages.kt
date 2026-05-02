@@ -122,7 +122,24 @@ data class ServerCapabilities(
   // mutating state (v1 fallback). Defaulted for old daemons that pre-date the
   // capability — clients treat absent and `false` identically.
   val interactive: Boolean = false,
+  /**
+   * The `@Preview(device = ...)` ids the daemon's `DeviceDimensions` catalog recognises, paired
+   * with their resolved geometry. Lets clients build a "render this preview at..." picker without
+   * re-bundling the catalog. Empty list = pre-feature daemon (clients treat absent and `[]`
+   * identically). The `spec:width=…,height=…,dpi=…` grammar is not enumerable — clients pass it as
+   * a free-form `device` override and the daemon parses it at resolve-time. See
+   * `daemon/core/.../daemon/devices/DeviceDimensions.kt` for the source of truth.
+   */
+  val knownDevices: List<KnownDevice> = emptyList(),
 )
+
+/**
+ * One entry in `ServerCapabilities.knownDevices`. The id is the string a caller passes via
+ * `renderNow.overrides.device` (or `@Preview(device = ...)` at discovery time); the geometry fields
+ * let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving.
+ */
+@Serializable
+data class KnownDevice(val id: String, val widthDp: Int, val heightDp: Int, val density: Float)
 
 /**
  * One advertised data-product kind. Mirrors `DataProductCapability` in
