@@ -11,6 +11,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -144,69 +145,158 @@ fun themePayloadFromMaterialTheme(
   ThemePayload(
     resolvedTokens =
       ResolvedThemeTokens(
-        colorScheme =
-          linkedMapOf(
-            "primary" to colorScheme.primary.hexArgb(),
-            "onPrimary" to colorScheme.onPrimary.hexArgb(),
-            "primaryContainer" to colorScheme.primaryContainer.hexArgb(),
-            "onPrimaryContainer" to colorScheme.onPrimaryContainer.hexArgb(),
-            "inversePrimary" to colorScheme.inversePrimary.hexArgb(),
-            "secondary" to colorScheme.secondary.hexArgb(),
-            "onSecondary" to colorScheme.onSecondary.hexArgb(),
-            "secondaryContainer" to colorScheme.secondaryContainer.hexArgb(),
-            "onSecondaryContainer" to colorScheme.onSecondaryContainer.hexArgb(),
-            "tertiary" to colorScheme.tertiary.hexArgb(),
-            "onTertiary" to colorScheme.onTertiary.hexArgb(),
-            "tertiaryContainer" to colorScheme.tertiaryContainer.hexArgb(),
-            "onTertiaryContainer" to colorScheme.onTertiaryContainer.hexArgb(),
-            "background" to colorScheme.background.hexArgb(),
-            "onBackground" to colorScheme.onBackground.hexArgb(),
-            "surface" to colorScheme.surface.hexArgb(),
-            "onSurface" to colorScheme.onSurface.hexArgb(),
-            "surfaceVariant" to colorScheme.surfaceVariant.hexArgb(),
-            "onSurfaceVariant" to colorScheme.onSurfaceVariant.hexArgb(),
-            "surfaceTint" to colorScheme.surfaceTint.hexArgb(),
-            "inverseSurface" to colorScheme.inverseSurface.hexArgb(),
-            "inverseOnSurface" to colorScheme.inverseOnSurface.hexArgb(),
-            "error" to colorScheme.error.hexArgb(),
-            "onError" to colorScheme.onError.hexArgb(),
-            "errorContainer" to colorScheme.errorContainer.hexArgb(),
-            "onErrorContainer" to colorScheme.onErrorContainer.hexArgb(),
-            "outline" to colorScheme.outline.hexArgb(),
-            "outlineVariant" to colorScheme.outlineVariant.hexArgb(),
-            "scrim" to colorScheme.scrim.hexArgb(),
-          ),
-        typography =
-          linkedMapOf(
-            "displayLarge" to typography.displayLarge.token(),
-            "displayMedium" to typography.displayMedium.token(),
-            "displaySmall" to typography.displaySmall.token(),
-            "headlineLarge" to typography.headlineLarge.token(),
-            "headlineMedium" to typography.headlineMedium.token(),
-            "headlineSmall" to typography.headlineSmall.token(),
-            "titleLarge" to typography.titleLarge.token(),
-            "titleMedium" to typography.titleMedium.token(),
-            "titleSmall" to typography.titleSmall.token(),
-            "bodyLarge" to typography.bodyLarge.token(),
-            "bodyMedium" to typography.bodyMedium.token(),
-            "bodySmall" to typography.bodySmall.token(),
-            "labelLarge" to typography.labelLarge.token(),
-            "labelMedium" to typography.labelMedium.token(),
-            "labelSmall" to typography.labelSmall.token(),
-          ),
-        shapes =
-          linkedMapOf(
-            "extraSmall" to shapes.extraSmall.toString(),
-            "small" to shapes.small.toString(),
-            "medium" to shapes.medium.toString(),
-            "large" to shapes.large.toString(),
-            "extraLarge" to shapes.extraLarge.toString(),
-          ),
+        colorScheme = colorTokens(colorScheme),
+        typography = typographyTokens(typography),
+        shapes = shapeTokens(shapes),
       ),
     consumers = emptyList(),
   )
 
-private fun Color.hexArgb(): String = "#%08X".format(toArgb())
+fun themePayloadFromThemeObjects(
+  colorSource: Any,
+  typographySource: Any?,
+  shapesSource: Any?,
+  fallbackTypography: Typography?,
+  fallbackShapes: Shapes?,
+): ThemePayload? {
+  val colorScheme = colorTokens(colorSource).takeIf { it.isNotEmpty() } ?: return null
+  val typography =
+    typographyTokens(typographySource).takeIf { it.isNotEmpty() }
+      ?: fallbackTypography?.let(::typographyTokens)
+      ?: emptyMap()
+  val shapes =
+    shapeTokens(shapesSource).takeIf { it.isNotEmpty() }
+      ?: fallbackShapes?.let(::shapeTokens)
+      ?: emptyMap()
+  return ThemePayload(
+    resolvedTokens =
+      ResolvedThemeTokens(colorScheme = colorScheme, typography = typography, shapes = shapes),
+    consumers = emptyList(),
+  )
+}
+
+fun colorTokens(source: Any?): Map<String, String> =
+  when (source) {
+    null -> emptyMap()
+    is ColorScheme ->
+      linkedMapOf(
+        "primary" to source.primary.hexArgb(),
+        "onPrimary" to source.onPrimary.hexArgb(),
+        "primaryContainer" to source.primaryContainer.hexArgb(),
+        "onPrimaryContainer" to source.onPrimaryContainer.hexArgb(),
+        "inversePrimary" to source.inversePrimary.hexArgb(),
+        "secondary" to source.secondary.hexArgb(),
+        "onSecondary" to source.onSecondary.hexArgb(),
+        "secondaryContainer" to source.secondaryContainer.hexArgb(),
+        "onSecondaryContainer" to source.onSecondaryContainer.hexArgb(),
+        "tertiary" to source.tertiary.hexArgb(),
+        "onTertiary" to source.onTertiary.hexArgb(),
+        "tertiaryContainer" to source.tertiaryContainer.hexArgb(),
+        "onTertiaryContainer" to source.onTertiaryContainer.hexArgb(),
+        "background" to source.background.hexArgb(),
+        "onBackground" to source.onBackground.hexArgb(),
+        "surface" to source.surface.hexArgb(),
+        "onSurface" to source.onSurface.hexArgb(),
+        "surfaceVariant" to source.surfaceVariant.hexArgb(),
+        "onSurfaceVariant" to source.onSurfaceVariant.hexArgb(),
+        "surfaceTint" to source.surfaceTint.hexArgb(),
+        "inverseSurface" to source.inverseSurface.hexArgb(),
+        "inverseOnSurface" to source.inverseOnSurface.hexArgb(),
+        "error" to source.error.hexArgb(),
+        "onError" to source.onError.hexArgb(),
+        "errorContainer" to source.errorContainer.hexArgb(),
+        "onErrorContainer" to source.onErrorContainer.hexArgb(),
+        "outline" to source.outline.hexArgb(),
+        "outlineVariant" to source.outlineVariant.hexArgb(),
+        "scrim" to source.scrim.hexArgb(),
+      )
+    else -> reflectedColorTokens(source)
+  }
+
+fun typographyTokens(source: Any?): Map<String, TypographyToken> =
+  when (source) {
+    null -> emptyMap()
+    is Typography ->
+      linkedMapOf(
+        "displayLarge" to source.displayLarge.token(),
+        "displayMedium" to source.displayMedium.token(),
+        "displaySmall" to source.displaySmall.token(),
+        "headlineLarge" to source.headlineLarge.token(),
+        "headlineMedium" to source.headlineMedium.token(),
+        "headlineSmall" to source.headlineSmall.token(),
+        "titleLarge" to source.titleLarge.token(),
+        "titleMedium" to source.titleMedium.token(),
+        "titleSmall" to source.titleSmall.token(),
+        "bodyLarge" to source.bodyLarge.token(),
+        "bodyMedium" to source.bodyMedium.token(),
+        "bodySmall" to source.bodySmall.token(),
+        "labelLarge" to source.labelLarge.token(),
+        "labelMedium" to source.labelMedium.token(),
+        "labelSmall" to source.labelSmall.token(),
+      )
+    else ->
+      linkedMapOf<String, TypographyToken>().also { tokens ->
+        for (method in source.javaClass.readableNoArgMethods()) {
+          val value = method.invokeOrNull(source)
+          if (value is TextStyle) tokens[method.propertyName()] = value.token()
+        }
+      }
+  }
+
+fun shapeTokens(source: Any?): Map<String, String> =
+  when (source) {
+    null -> emptyMap()
+    is Shapes ->
+      linkedMapOf(
+        "extraSmall" to source.extraSmall.toString(),
+        "small" to source.small.toString(),
+        "medium" to source.medium.toString(),
+        "large" to source.large.toString(),
+        "extraLarge" to source.extraLarge.toString(),
+      )
+    else ->
+      linkedMapOf<String, String>().also { tokens ->
+        for (method in source.javaClass.readableNoArgMethods()) {
+          val value = method.invokeOrNull(source) ?: continue
+          if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
+            tokens[method.propertyName()] = value.toString()
+          }
+        }
+      }
+  }
+
+private fun reflectedColorTokens(source: Any): Map<String, String> =
+  linkedMapOf<String, String>().also { tokens ->
+    for (method in source.javaClass.readableNoArgMethods()) {
+      val name = method.propertyName()
+      val value = method.invokeOrNull(source)
+      when (value) {
+        is Color -> tokens[name] = value.hexArgb()
+        is Long ->
+          if (method.returnType == java.lang.Long.TYPE)
+            tokens[name] = Color(value.toULong()).hexArgb()
+      }
+    }
+  }
+
+private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
+  method.parameterCount == 0 &&
+    method.name.startsWith("get") &&
+    method.name != "getClass" &&
+    method.returnType != java.lang.Void.TYPE
+}
+
+private fun Method.invokeOrNull(receiver: Any): Any? =
+  runCatching {
+      isAccessible = true
+      invoke(receiver)
+    }
+    .getOrNull()
+
+private fun Method.propertyName(): String =
+  name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
+
+fun Color.hexArgb(): String = "#%08X".format(toArgb())
 
 private fun TextStyle.token(): TypographyToken =
   TypographyToken(
