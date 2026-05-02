@@ -528,7 +528,7 @@ class DaemonMcpServer(
                     "widthPx":{"type":"integer","description":"Sandbox width in pixels."},
                     "heightPx":{"type":"integer","description":"Sandbox height in pixels."},
                     "density":{"type":"number","description":"Display density (1.0 = mdpi, 2.0 = xhdpi, etc.)."},
-                    "localeTag":{"type":"string","description":"BCP-47 locale tag (e.g. 'en-US', 'fr', 'ja-JP'). Android-only today."},
+                    "localeTag":{"type":"string","description":"BCP-47 locale tag (e.g. 'en-US', 'fr', 'ja-JP')."},
                     "fontScale":{"type":"number","description":"Font scale multiplier (1.0 = system default)."},
                     "uiMode":{"type":"string","enum":["light","dark"],"description":"Light/dark mode override. Android-only today."},
                     "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."},

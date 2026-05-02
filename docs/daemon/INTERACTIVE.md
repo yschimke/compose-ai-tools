@@ -348,17 +348,13 @@ toggle required.
 `applyPreviewQualifiers` + `RuntimeEnvironment.setFontScale`. The desktop
 renderer applies `widthPx` / `heightPx` / `density` (via
 `ImageComposeScene`'s constructor), `fontScale` (via `Density(density,
-fontScale)` re-provided as `LocalDensity`), and `uiMode` (via
+fontScale)` re-provided as `LocalDensity`), `uiMode` (via
 `LocalSystemTheme provides SystemTheme.Light/Dark`, which is what Compose
-Desktop's `isSystemInDarkTheme()` reads). `localeTag` and `orientation`
-remain no-ops on desktop:
+Desktop's `isSystemInDarkTheme()` reads), and `localeTag` when the Compose UI
+runtime exposes a providable locale list. `orientation` remains a no-op on
+desktop; older Compose Desktop runtimes also leave `localeTag` unsupported
+rather than mutating JVM-wide `Locale.setDefault(...)`:
 
-- **`localeTag`** — Compose Desktop has no `LocalLocale` CompositionLocal,
-  and `java.util.Locale.setDefault(...)` is unsafe to mutate transiently
-  because every other JVM thread (Skiko font / text-shaping workers,
-  default-locale formatters like `String.format` / `SimpleDateFormat`,
-  GC finalizers) sees the wrong value for the render's duration. The
-  Android backend honours it via `setQualifiers("b+lang+region")`.
 - **`orientation`** — `ImageComposeScene` has no display rotation
   concept; size override (`widthPx` / `heightPx`) is the natural lever.
 
