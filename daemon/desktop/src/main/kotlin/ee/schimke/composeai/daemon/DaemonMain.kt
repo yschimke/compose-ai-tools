@@ -224,16 +224,6 @@ fun main(args: Array<String>) {
       buildList {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
         add(RenderTraceDataProductRegistry())
-        val renderOutputDir =
-          File(
-            System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-              ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
-          )
-        val dataRoot = renderOutputDir.parentFile?.resolve("data") ?: renderOutputDir
-        System.err.println(
-          "compose-ai-tools desktop daemon: FontsUsedDataProductRegistry active (dataRoot=$dataRoot)"
-        )
-        add(FontsUsedDataProductRegistry(rootDir = dataRoot))
         add(themeRegistry)
         add(recompositionRegistry)
         if (PerfettoTraceDataProducer.enabled()) {
