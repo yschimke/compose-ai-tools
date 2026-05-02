@@ -134,7 +134,8 @@ later.
 | `register_project` | `path, rootProjectName?, modules?` | Register a workspace by absolute path. Returns the assigned `workspaceId`. Idempotent. |
 | `unregister_project` | `workspaceId` | Tear down all daemons for that workspace. |
 | `list_projects` | — | List registered workspaces with paths + branches. |
-| `render_preview` | `uri` | Force-render bypassing cache. Returns PNG inline. |
+| `list_devices` | — | List the `@Preview(device = ...)` ids the daemon's catalog recognises with resolved geometry (`widthDp`, `heightDp`, `density`). Use these as the `device` field of `render_preview.overrides` to flip a preview to a catalog device without editing annotations. |
+| `render_preview` | `uri, overrides?` | Force-render bypassing cache. Returns PNG inline. `overrides` applies per-call display-property overrides (size, density, locale, fontScale, uiMode, orientation, device) — see PROTOCOL.md § 5. |
 | `watch` | `workspaceId, module?, fqnGlob?` | Register an "area of interest" — propagates to daemon's `setVisible`/`setFocus`, fires `resources/updated` per render. Eagerly spawns matching daemons. |
 | `unwatch` | `workspaceId?, module?, fqnGlob?` | Remove watches matching the predicate (no args = remove all from this session). |
 | `list_watches` | — | This session's registered watches. |
@@ -144,7 +145,7 @@ later.
 | `history_list` | `workspaceId, module, previewId?, since?, until?, limit?, branch?, …` | Proxy daemon `history/list`. Each result entry is decorated with its `compose-preview-history://` URI. |
 | `history_diff` | `workspaceId, module, from, to` | Proxy daemon `history/diff` (METADATA mode). Cross-source: `from` may live on FS, `to` on a `preview/<branch>` ref. |
 | `list_data_products` | `workspaceId?, module?` | List the structured data kinds (a11y findings, a11y hierarchy, layout tree, recomposition heat-map, …) each spawned daemon advertises alongside its PNGs. See [`docs/daemon/DATA-PRODUCTS.md`](../docs/daemon/DATA-PRODUCTS.md) for the catalogue and per-kind schemas. |
-| `get_preview_data` | `uri, kind, params?, inline?` | Fetch one data product (e.g. `kind: "a11y/hierarchy"`) for a preview. Returns the per-kind JSON payload. Defaults `inline: true` so the agent gets the JSON inline rather than a sibling-file path. Re-render-on-demand kinds may pay a render cost; bounded by the daemon's per-request budget. |
+| `get_preview_data` | `uri, kind, params?, inline?` | Fetch one data product (e.g. `kind: "a11y/hierarchy"`) for a preview. Returns the per-kind JSON payload. Defaults `inline: true` so the agent gets the JSON inline rather than a sibling-file path. **Cache short-circuit:** when the kind has been subscribed (`subscribe_preview_data`), the latest `renderFinished` payload is served from the supervisor's in-memory cache with zero daemon round-trip — the response carries `cached: true`. Auto-renders the preview if it hasn't rendered yet (no need to call `render_preview` first). Re-render-on-demand kinds may pay a render cost; bounded by the daemon's per-request budget. |
 | `subscribe_preview_data` | `uri, kind` | Prime the daemon to compute `kind` on every render of `uri` (sticky-while-visible). Cuts subsequent `get_preview_data` latency. |
 | `unsubscribe_preview_data` | `uri, kind` | Drop a subscription. |
 
