@@ -8,7 +8,9 @@ Two modes:
                           ROOT that declares one of the Android/Compose
                           plugin ids we care about
 
-Idempotent: files that already reference the plugin id are skipped.
+Idempotent: files that already apply the requested plugin version are skipped.
+Files that apply an older compose-ai preview plugin are updated to the
+requested version so integration CI always exercises the freshly built plugin.
 
 The settings-level pluginManagement repositories are mutated separately by
 apply-compose-ai.init.gradle.kts so Gradle can resolve our plugin marker
@@ -48,26 +50,52 @@ ALIAS_RE = re.compile(
     r"(?:\b|\.)(?:android(?:Application|Library)|jetbrainsCompose)\b",
 )
 
+EXISTING_PLUGIN_RE = re.compile(
+    rf"""(?mx)
+    ^(?P<indent>[ \t]*)
+    (?:
+        id\("{re.escape(PLUGIN_ID)}"\)
+        |
+        id\s+["']{re.escape(PLUGIN_ID)}["']
+    )
+    (?:[ \t]+version(?:\s*\([ \t]*["'][^"']+["'][ \t]*\)|[ \t]+["'][^"']+["']))?
+    (?:[ \t]+apply[ \t]+false)?
+    [ \t]*$
+    """
+)
+
 
 def patch_plugins_block(path: Path, version: str) -> bool:
-    """Insert the plugin id into the first top-level `plugins { }` block.
+    """Insert or update the plugin id in the first top-level `plugins { }` block.
 
     Returns True if the file was modified.
     """
     text = path.read_text()
-    if PLUGIN_ID in text:
-        return False
 
     is_kts = path.suffix == ".kts"
-    line = (
-        f'    id("{PLUGIN_ID}") version "{version}"'
+    default_line = (
+        f'id("{PLUGIN_ID}") version "{version}"'
         if is_kts
-        else f'    id "{PLUGIN_ID}" version "{version}"'
+        else f'id "{PLUGIN_ID}" version "{version}"'
     )
+
+    def replacement_line(indent: str = "    ") -> str:
+        return f"{indent}{default_line}"
+
+    new_text, count = EXISTING_PLUGIN_RE.subn(
+        lambda m: replacement_line(m.group("indent")),
+        text,
+        count=1,
+    )
+    if count:
+        if new_text == text:
+            return False
+        path.write_text(new_text)
+        return True
 
     new_text, count = re.subn(
         r"(^plugins\s*\{)",
-        lambda m: m.group(1) + "\n" + line,
+        lambda m: m.group(1) + "\n" + replacement_line(),
         text,
         count=1,
         flags=re.MULTILINE,
