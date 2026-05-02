@@ -50,8 +50,14 @@ class DaemonSupervisor(
   /**
    * D1 — kinds the supervisor passes through `initialize.options.attachDataProducts` to every
    * spawned daemon. Configures "always-on" data products (e.g. `a11y/atf` for ambient diagnostic
-   * squigglies). Empty list (the default) keeps the wire absent — no global attach. Wired from the
-   * `--attach-data-product KIND` flag on [DaemonMcpMain].
+   * squigglies). Empty list (the default) keeps the wire absent — no global attach.
+   *
+   * No production entry point sets this today: [DaemonMcpMain] used to expose a
+   * `--attach-data-product KIND` CLI flag, but it was deemed speculative (the design doc reserves
+   * `attachDataProducts` for "always-on everywhere" cases that no real operator deployment needs
+   * yet) and dropped. The parameter stays so a future agent-driven negotiation tool — or embedding
+   * consumer that wires a non-default config — can populate it without re-plumbing the supervisor →
+   * `initialize` path. Tests use it directly (see `DaemonMcpServerTest`).
    */
   private val globalAttachDataProducts: List<String> = emptyList(),
 ) {
