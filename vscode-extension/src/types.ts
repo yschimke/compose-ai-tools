@@ -412,10 +412,9 @@ export type WebviewToExtension =
     | { command: 'openFile'; className: string; functionName: string }
     | { command: 'selectModule'; value: string }
     /**
-     * User clicked the stale-badge refresh icon on a heavy card. Triggers a
-     * `tier='full'` render of the owning module so the heavy capture is
-     * re-rendered. (A future per-preview filter would scope this to the
-     * single previewId; today it falls back to a full-module render.)
+     * User clicked a faded heavy card. The extension opts that preview into
+     * full-tier refreshes until focus moves to another source scope, and
+     * triggers an immediate full-tier render for the selected preview.
      */
     | { command: 'refreshHeavy'; previewId: string }
     /**

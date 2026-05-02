@@ -867,10 +867,11 @@ body {
 }
 
 /* Stale heavy capture: dim the rendered image so the user notices it isn't
-   fresh, and tint the warning icon. The badge button itself is the only
-   click target — clicking re-runs render at tier=full for this module. */
+   fresh. Clicking the faded image or warning icon opts this preview into
+   full-tier updates while the current source file remains focused. */
 .preview-card.is-stale .image-container img {
     opacity: 0.7;
+    cursor: pointer;
 }
 .card-stale-btn {
     color: var(--vscode-editorWarning-foreground, #cca700);

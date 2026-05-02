@@ -144,6 +144,11 @@ async function isSourceNewerThanRenders(
 }
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
+/**
+ * Heavy previews the user explicitly asked to keep fresh for the current
+ * editor focus scope. Cleared when focus leaves the backing Kotlin file.
+ */
+const heavyRefreshOptIns = new Map<string, Set<string>>();
 let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
@@ -748,6 +753,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // race this on the new file's manifest arrival.
                 void flushInteractiveStreams();
                 panel?.postMessage({ command: 'clearInteractive' });
+                clearHeavyRefreshOptIns();
                 refresh(false, filePath);
                 // Pre-warm the daemon for this file's module so the first
                 // save in the session collapses to "kotlinc + render"
@@ -768,6 +774,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // rendering into an invisible panel.
                 void flushInteractiveStreams();
                 panel?.postMessage({ command: 'clearInteractive' });
+                clearHeavyRefreshOptIns();
                 refresh(false);
             }
         }),
@@ -780,6 +787,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     context.subscriptions.push(
         vscode.window.onDidChangeVisibleTextEditors(() => {
             if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+                clearHeavyRefreshOptIns();
                 refresh(false);
             }
         }),
@@ -1059,7 +1067,7 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
     const moduleIsFastTier = fastTierModules.has(moduleId);
     const heavyStaleIds = moduleIsFastTier
         ? visiblePreviews
-            .filter(p => p.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD))
+            .filter(hasHeavyCapture)
             .map(p => p.id)
         : [];
     panel.postMessage({
@@ -1129,7 +1137,20 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     if (ids.length === 0) { return 'accepted'; }
     try {
         await daemonScheduler.setFocus(module, ids);
-        return (await daemonScheduler.renderNow(module, ids, 'fast', 'save')) ? 'accepted' : 'failed';
+        const fullIds = heavyOptInsFor(module, ids);
+        const fastIds = fullIds.length === 0
+            ? ids
+            : ids.filter(id => !fullIds.includes(id));
+
+        if (fastIds.length > 0) {
+            const ok = await daemonScheduler.renderNow(module, fastIds, 'fast', 'save');
+            if (!ok) { return 'failed'; }
+        }
+        if (fullIds.length > 0) {
+            const ok = await daemonScheduler.renderNow(module, fullIds, 'full', 'save-heavy-opt-in');
+            if (!ok) { return 'failed'; }
+        }
+        return 'accepted';
     } catch (err) {
         logLine(`daemon: ${String((err as Error).message ?? err)}`);
         return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
@@ -1583,6 +1604,26 @@ function sendModuleList() {
  */
 const fastTierModules = new Set<string>();
 
+function hasHeavyCapture(preview: PreviewInfo): boolean {
+    return preview.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD);
+}
+
+function optInHeavyRefresh(moduleId: string, previewId: string): void {
+    const current = heavyRefreshOptIns.get(moduleId) ?? new Set<string>();
+    current.add(previewId);
+    heavyRefreshOptIns.set(moduleId, current);
+}
+
+function clearHeavyRefreshOptIns(): void {
+    heavyRefreshOptIns.clear();
+}
+
+function heavyOptInsFor(moduleId: string, previewIds: string[]): string[] {
+    const opted = heavyRefreshOptIns.get(moduleId);
+    if (!opted || opted.size === 0) { return []; }
+    return previewIds.filter(id => opted.has(id));
+}
+
 /**
  * Main refresh entry point.
  * @param forceRender  If true, runs renderAllPreviews (not just discover).
@@ -1647,12 +1688,16 @@ async function refresh(
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
         currentScopeFile = null;
+        clearHeavyRefreshOptIns();
         historyScopeRef.current = null;
         historyPanel?.setScope(null);
         if (activeFile && isPreviewSourceFile(activeFile)) {
             maybeShowSetupPrompt(activeFile);
         }
         return 'no-module';
+    }
+    if (currentScopeFile && currentScopeFile !== activeFile) {
+        clearHeavyRefreshOptIns();
     }
     logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
 
@@ -1862,7 +1907,7 @@ async function refresh(
         const moduleIsFastTier = modules.some(mod => fastTierModules.has(mod));
         const heavyStaleIds = moduleIsFastTier
             ? visiblePreviews
-                .filter(p => p.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD))
+                .filter(hasHeavyCapture)
                 .map(p => p.id)
             : [];
 
@@ -2060,13 +2105,22 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             if (selectedModule) { refresh(false); }
             break;
         case 'refreshHeavy': {
-            // Click on the stale badge → full-tier render of the owning
-            // module. Once we have a `-PcomposePreview.previewIds=` filter
-            // we can scope this to just the requested capture; for now the
-            // user pays a full-module render for the freshness guarantee.
+            // Click on a faded heavy card opts it into full-tier renders for
+            // this editor focus scope. Future saves keep that preview fresh;
+            // changing focus clears the opt-in set.
             const mod = previewModuleMap.get(msg.previewId);
             if (mod) {
-                void refresh(true, currentScopeFile ?? undefined, 'full');
+                optInHeavyRefresh(mod, msg.previewId);
+                if (daemonGate?.isEnabled() && daemonScheduler) {
+                    void daemonScheduler.renderNow(
+                        mod,
+                        [msg.previewId],
+                        'full',
+                        'heavy-opt-in',
+                    );
+                } else {
+                    void refresh(true, currentScopeFile ?? undefined, 'full');
+                }
             }
             break;
         }

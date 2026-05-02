@@ -1378,6 +1378,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             imgContainer.addEventListener('click', (evt) => {
                 const previewId = card.dataset.previewId;
                 if (!previewId) return;
+                if (card.classList.contains('is-stale')) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    requestHeavyRefresh(card);
+                    return;
+                }
                 // If we're already live for this preview, the per-image click
                 // handler routes to recordInteractiveInput — let that fire
                 // instead of toggling off.
@@ -1894,6 +1900,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
          * editing source. Keeping it inside the title row puts it in the
          * same affordance band as the open-source buttons.
          */
+        function requestHeavyRefresh(card) {
+            const previewId = card.dataset.previewId;
+            if (!previewId) return;
+            vscode.postMessage({
+                command: 'refreshHeavy',
+                previewId,
+            });
+        }
+
         function applyStaleBadge(card, isStale) {
             const titleRow = card.querySelector('.card-title-row');
             if (!titleRow) return;
@@ -1901,14 +1916,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (isStale && !existing) {
                 const btn = document.createElement('button');
                 btn.className = 'icon-button card-stale-btn';
-                btn.title = 'Stale heavy capture — click to render at full tier';
-                btn.setAttribute('aria-label', 'Refresh stale capture');
+                btn.title = 'Stale heavy capture — click to keep fresh while focused';
+                btn.setAttribute('aria-label', 'Keep stale capture fresh');
                 btn.innerHTML = '<i class="codicon codicon-warning" aria-hidden="true"></i>';
-                btn.addEventListener('click', () => {
-                    vscode.postMessage({
-                        command: 'refreshHeavy',
-                        previewId: card.dataset.previewId,
-                    });
+                btn.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    requestHeavyRefresh(card);
                 });
                 titleRow.appendChild(btn);
                 card.classList.add('is-stale');
