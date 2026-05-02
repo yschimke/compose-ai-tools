@@ -91,7 +91,7 @@ class AndroidRecordingSession(
       framesDir.mkdirs()
       val sortedEvents = synchronized(timeline) { timeline.toList() }
       val durationMs: Long = sortedEvents.maxOfOrNull { it.tMs } ?: 0L
-      val totalFrames = (durationMs * fps / 1000).toInt() + 1
+      val totalFrames = ((durationMs * fps + 999L) / 1000L).toInt() + 1
 
       // Probe the natural frame size from the first interactive render so the per-frame copies +
       // optional scaling know the output dimensions without hard-coding the spec. Robolectric

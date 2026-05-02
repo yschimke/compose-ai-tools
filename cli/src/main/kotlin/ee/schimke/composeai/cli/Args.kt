@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli
 
 /**
- * Returns the value of `flag` from a positional argv (e.g. `--module foo`), or `null` if the flag
+ * Returns the value of `flag` from argv (`--module foo` or `--module=foo`), or `null` if the flag
  * is missing or unaccompanied.
  *
  * Trivial parser shared by every command. If we ever grow more flag types (repeatable, comma-list,
@@ -9,6 +9,10 @@ package ee.schimke.composeai.cli
  * call-site.
  */
 internal fun List<String>.flagValue(flag: String): String? {
+  firstOrNull { it.startsWith("$flag=") }
+    ?.let {
+      return it.substringAfter("=")
+    }
   val idx = indexOf(flag)
   return if (idx >= 0 && idx + 1 < size) this[idx + 1] else null
 }

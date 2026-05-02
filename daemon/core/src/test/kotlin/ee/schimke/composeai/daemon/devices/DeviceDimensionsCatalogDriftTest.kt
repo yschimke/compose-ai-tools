@@ -38,6 +38,27 @@ class DeviceDimensionsCatalogDriftTest {
     )
   }
 
+  @Test
+  fun readCatalogIgnoresCommentedEntries() {
+    val temp = Files.createTempFile("device-dimensions-catalog", ".kt")
+    try {
+      Files.writeString(
+        temp,
+        """
+        val KNOWN_DEVICES = mapOf(
+          // "commented" to DeviceSpec(1, 2, 3.0f),
+          "active" to DeviceSpec(4, 5, 6.0f),
+        )
+        """
+          .trimIndent(),
+      )
+
+      assertEquals(mapOf("active" to DeviceEntry(4, 5, 6.0f)), readCatalog(temp))
+    } finally {
+      Files.deleteIfExists(temp)
+    }
+  }
+
   private fun readCatalog(path: Path): Map<String, DeviceEntry> {
     val text = Files.readString(path)
     return entryRegex.findAll(text).associate { match ->
@@ -68,6 +89,6 @@ class DeviceDimensionsCatalogDriftTest {
 
   companion object {
     private val entryRegex =
-      Regex("\"([^\"]+)\"\\s+to\\s+DeviceSpec\\((\\d+),\\s*(\\d+),\\s*([0-9.]+)f\\)")
+      Regex("(?m)^\\s*\"([^\"]+)\"\\s+to\\s+DeviceSpec\\((\\d+),\\s*(\\d+),\\s*([0-9.]+)f\\)")
   }
 }

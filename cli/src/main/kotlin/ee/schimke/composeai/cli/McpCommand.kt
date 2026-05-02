@@ -30,8 +30,9 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 internal class McpCommand(args: List<String>) {
 
-  private val sub: String = args.firstOrNull { !it.startsWith("--") } ?: "help"
-  private val rest: List<String> = args.toMutableList().apply { remove(sub) }
+  private val parsed = parseSubcommand(args)
+  private val sub: String = parsed.first
+  private val rest: List<String> = parsed.second
 
   fun run() {
     when (sub) {
@@ -321,5 +322,25 @@ internal class McpCommand(args: List<String>) {
 
   private companion object {
     val JSON: Json = Json { prettyPrint = true }
+
+    private val VALUE_FLAGS = setOf("--project", "--module", "--replicas-per-daemon")
+
+    private fun parseSubcommand(args: List<String>): Pair<String, List<String>> {
+      var i = 0
+      while (i < args.size) {
+        val arg = args[i]
+        when {
+          arg in VALUE_FLAGS -> i += 2
+          VALUE_FLAGS.any { arg.startsWith("$it=") } -> i++
+          arg.startsWith("--") -> i++
+          arg.startsWith("-") -> i++
+          else -> {
+            val rest = args.toMutableList().apply { removeAt(i) }
+            return arg to rest
+          }
+        }
+      }
+      return "help" to args
+    }
   }
 }
