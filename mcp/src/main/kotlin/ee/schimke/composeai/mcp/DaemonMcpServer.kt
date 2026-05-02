@@ -98,6 +98,23 @@ class DaemonMcpServer(
    */
   private val respawnAttempts = ConcurrentHashMap<DaemonAddr, Int>()
 
+  /**
+   * D1 — `(workspace, module, previewId, kind) → latest payload from
+   * `renderFinished.dataProducts``. Populated whenever a daemon ships attachments alongside a
+   * render (which it only does for kinds the MCP server has subscribed to via
+   * `subscribe_preview_data`, or that are in the global `attachDataProducts` set passed at
+   * `initialize` time).
+   *
+   * Lets `get_preview_data` short-circuit to the cache for kinds that are already fresh — agents
+   * that do `subscribe_preview_data` once and then `get_preview_data` repeatedly pay one wire
+   * round-trip total instead of one per fetch.
+   *
+   * Eviction: each new `renderFinished` REPLACES every cached attachment for that `(uri)` —
+   * anything the daemon didn't include this render is no longer fresh. Daemon-level wipes
+   * (classpathDirty, onClose) drop every cached entry for the affected `(workspace, module)`.
+   */
+  private val dataProductCache = ConcurrentHashMap<DataAttachKey, DataAttachmentEntry>()
+
   private val watchPropagator =
     WatchPropagator(
       subscriptions = subscriptions,
@@ -148,6 +165,7 @@ class DaemonMcpServer(
     router.on("historyAdded") { daemon, params -> onHistoryAdded(daemon, params) }
     router.onClose { daemon ->
       catalog.remove(DaemonAddr(daemon.workspaceId, daemon.modulePath))
+      evictDataProductsForDaemon(daemon.workspaceId, daemon.modulePath)
       watchPropagator.forget(daemon)
     }
   }
@@ -295,7 +313,7 @@ class DaemonMcpServer(
     progressToken: JsonElement? = null,
     overrides: PreviewOverrides? = null,
   ): ByteArray {
-    val outcome = awaitNextRender(uri, session, progressToken)
+    val outcome = awaitNextRender(uri, session, progressToken, overrides)
     val file = File(outcome.pngPath)
     check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
     return Files.readAllBytes(file.toPath())
@@ -307,11 +325,17 @@ class DaemonMcpServer(
    * `get_preview_data`'s auto-render fallback (which doesn't care about the bytes — it just needs
    * the daemon to have rendered SOMETHING so a follow-up `data/fetch` returns the kind instead of
    * `DataProductNotAvailable`).
+   *
+   * [overrides] forwards the per-call display-property overrides PROTOCOL.md § 5 documents on
+   * `renderNow`. Defaults to null (use discovery-time RenderSpec); the auto-render fallback in
+   * `get_preview_data` leaves it null on purpose since it just wants any render so the kind becomes
+   * available.
    */
   private fun awaitNextRender(
     uri: PreviewUri,
     session: McpSession? = null,
     progressToken: JsonElement? = null,
+    overrides: PreviewOverrides? = null,
   ): RenderOutcome.Finished {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
     val key = RenderKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
@@ -610,7 +634,7 @@ class DaemonMcpServer(
       ToolDef(
         name = "get_preview_data",
         description =
-          "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Auto-renders the preview if it hasn't rendered yet (so the agent doesn't need to call render_preview first). When the daemon's latest render didn't compute the kind, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
+          "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Auto-renders the preview if it hasn't rendered yet (so the agent doesn't need to call render_preview first). Cache short-circuit: if the kind has been subscribed (subscribe_preview_data) or globally attached (--attach-data-product server flag), the latest renderFinished payload is served from an in-memory cache with zero daemon round-trip — the response carries `cached: true`. When the daemon's latest render didn't compute the kind and it's not cached, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
         inputSchema =
           parseSchema(
             """
@@ -1155,6 +1179,24 @@ class DaemonMcpServer(
         .getOrElse {
           return errorCallToolResult("get_preview_data: daemon spawn failed: ${it.message}")
         }
+    // Cache hit short-circuit: if a previous renderFinished attached this kind (because someone
+    // subscribed, or the kind is in the global attachDataProducts set), serve the cached payload
+    // and skip the wire round-trip entirely. The cache mirrors the latest render; a new render
+    // wipes stale entries via [refreshDataProductCache], so a hit is always fresh.
+    //
+    // Skip the cache when the caller asked for a path-shaped result (`inline = false`) but the
+    // cached entry is payload-shaped (or vice versa) — the daemon would have returned a different
+    // transport on a direct fetch, so falling through preserves the contract.
+    //
+    // Skip the cache when per-kind `params` are present — those select sub-views (e.g.
+    // `{ nodeId }` for `layout/tree`), and the cached entry is the no-params form.
+    if (perKindParams == null) {
+      val cached =
+        dataProductCache[DataAttachKey(uri.workspaceId, uri.modulePath, uri.previewFqn, kind)]
+      if (cached != null && transportMatches(cached, inline)) {
+        return renderCachedAttachment(kind, cached, inline)
+      }
+    }
     return runCatching {
         // Try the fetch directly first — works whenever the preview has rendered at least once.
         // On `DataProductNotAvailable` (-32021) the daemon is telling us the preview has never
@@ -1177,6 +1219,37 @@ class DaemonMcpServer(
           else -> errorCallToolResult("get_preview_data failed: ${e.message}")
         }
       }
+  }
+
+  /**
+   * `true` iff the cached entry can satisfy a request with the given [inline] flag without
+   * round-tripping the daemon. A `payload`-shaped cache entry serves any caller that asked for
+   * inline (the default); a `path`-shaped entry serves callers that explicitly passed `inline =
+   * false`. Mismatches fall through to a direct `data/fetch`, which lets the daemon pick the right
+   * transport.
+   */
+  private fun transportMatches(entry: DataAttachmentEntry, inline: Boolean): Boolean =
+    when {
+      inline && entry.payload != null -> true
+      !inline && entry.path != null -> true
+      else -> false
+    }
+
+  private fun renderCachedAttachment(
+    kind: String,
+    entry: DataAttachmentEntry,
+    inline: Boolean,
+  ): CallToolResult {
+    val payload = buildJsonObject {
+      put("kind", kind)
+      put("schemaVersion", entry.schemaVersion)
+      put("cached", true)
+      val attachedPayload = entry.payload
+      val attachedPath = entry.path
+      if (inline && attachedPayload != null) put("payload", attachedPayload)
+      if (!inline && attachedPath != null) put("path", JsonPrimitive(attachedPath))
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
 
   /**
@@ -1379,7 +1452,13 @@ class DaemonMcpServer(
     val key = RenderKey(daemon.workspaceId, daemon.modulePath, previewId)
     val toComplete = pendingRenders.remove(key)
     toComplete?.forEach { it.complete(RenderOutcome.Finished(pngPath)) }
-    // 2. Build the matching URI and notify subscribers + watchers.
+    // 2. Refresh the data-product attachment cache for this `(uri)`. Any kind the daemon attached
+    //    on this render is the new fresh payload; any kind it didn't attach is stale and gets
+    //    dropped (the daemon stops attaching kinds the MCP server unsubscribed from, so a missing
+    //    entry means "no longer requested" — caching the previous payload would serve stale data
+    //    to a future re-subscribe).
+    refreshDataProductCache(daemon, previewId, params["dataProducts"])
+    // 3. Build the matching URI and notify subscribers + watchers.
     val entry = catalog[DaemonAddr(daemon.workspaceId, daemon.modulePath)]?.get(previewId)
     val uri =
       PreviewUri(
@@ -1393,8 +1472,49 @@ class DaemonMcpServer(
     targets.addAll(subscriptions.sessionsSubscribedTo(uriStr))
     targets.addAll(subscriptions.sessionsWatching(uri))
     targets.forEach { it.notifyResourceUpdated(uriStr) }
-    // 3. Record history (no-op default).
+    // 4. Record history (no-op default).
     runCatching { historyStore.record(uri, pngPath, Instant.now()) }
+  }
+
+  /**
+   * Replaces the [dataProductCache] entries for `(daemon, previewId)` with whatever
+   * [attachmentsField] carried. Tolerant of missing / malformed entries: a single broken entry
+   * skips itself rather than poisoning the whole cache update. When [attachmentsField] is null or
+   * empty (the common case — no client subscribed), every previously-cached entry for this `(uri)`
+   * is evicted.
+   */
+  private fun refreshDataProductCache(
+    daemon: SupervisedDaemon,
+    previewId: String,
+    attachmentsField: JsonElement?,
+  ) {
+    // Drop everything the cache had for this preview — the daemon's latest render is the truth.
+    dataProductCache.keys.removeIf {
+      it.workspaceId == daemon.workspaceId &&
+        it.modulePath == daemon.modulePath &&
+        it.previewId == previewId
+    }
+    val arr = attachmentsField as? kotlinx.serialization.json.JsonArray ?: return
+    for (elem in arr) {
+      val obj = elem as? JsonObject ?: continue
+      val kind = obj["kind"]?.jsonPrimitive?.contentOrNull ?: continue
+      val schemaVersion =
+        obj["schemaVersion"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
+      val payload = obj["payload"]
+      val path = obj["path"]?.jsonPrimitive?.contentOrNull
+      val key = DataAttachKey(daemon.workspaceId, daemon.modulePath, previewId, kind)
+      dataProductCache[key] = DataAttachmentEntry(schemaVersion, payload, path)
+    }
+  }
+
+  /**
+   * Drops every cached attachment for `(workspace, module)`. Called from `onClose` and the
+   * `classpathDirty` respawn path — after the daemon goes away, the cached payloads are tied to a
+   * renderer state that no longer exists, so a follow-up `get_preview_data` should round-trip the
+   * (possibly respawned) daemon rather than serving a possibly-stale payload.
+   */
+  private fun evictDataProductsForDaemon(workspaceId: WorkspaceId, modulePath: String) {
+    dataProductCache.keys.removeIf { it.workspaceId == workspaceId && it.modulePath == modulePath }
   }
 
   private fun onRenderFailed(daemon: SupervisedDaemon, params: JsonObject?) {
@@ -1494,6 +1614,7 @@ class DaemonMcpServer(
     // respawn-counter bump and the respawn schedule, avoiding double-spawn under the race.
     val firstClassedDirty = supervisor.forgetDaemon(workspaceId, modulePath)
     catalog.remove(DaemonAddr(workspaceId, modulePath))
+    evictDataProductsForDaemon(workspaceId, modulePath)
     watchPropagator.forget(daemon)
     sessions.forEach { it.notifyResourceListChanged() }
     if (!firstClassedDirty) return
@@ -1540,6 +1661,28 @@ class DaemonMcpServer(
     val workspaceId: WorkspaceId,
     val modulePath: String,
     val previewId: String,
+  )
+
+  /**
+   * Cache key for [dataProductCache]. `(workspace, module, previewId)` identifies the render-target
+   * preview; `kind` discriminates the data-product attachment within that render.
+   */
+  private data class DataAttachKey(
+    val workspaceId: WorkspaceId,
+    val modulePath: String,
+    val previewId: String,
+    val kind: String,
+  )
+
+  /**
+   * Cached `(payload | path)` from one `renderFinished.dataProducts[*]` entry. Mirrors the wire
+   * shape; carries `schemaVersion` so a cache hit reports the same version the agent would see on a
+   * direct `data/fetch`.
+   */
+  private data class DataAttachmentEntry(
+    val schemaVersion: Int,
+    val payload: JsonElement?,
+    val path: String?,
   )
 
   private sealed interface RenderOutcome {

@@ -11,7 +11,9 @@ import kotlinx.serialization.json.JsonObject
  * **CLI:**
  *
  * ```
- * compose-preview-mcp [--project <path>[:<rootProjectName>]]... [--replicas-per-daemon <N>]
+ * compose-preview-mcp [--project <path>[:<rootProjectName>]]...
+ *                     [--replicas-per-daemon <N>]
+ *                     [--attach-data-product <KIND>]...
  * ```
  *
  * Each `--project` flag pre-registers a workspace with the supervisor at startup so connecting
@@ -25,6 +27,14 @@ import kotlinx.serialization.json.JsonObject
  * [DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON] (= 3, i.e. 4 sandboxes per daemon). Set `0` to opt
  * out and run a single sandbox per daemon.
  *
+ * `--attach-data-product KIND` (repeatable) configures ambient data-product kinds the supervisor
+ * passes through `initialize.options.attachDataProducts` to every spawned daemon. The daemon then
+ * attaches the kind's payload to every `renderFinished`, the supervisor caches it, and
+ * `get_preview_data` serves cache hits with no daemon round-trip. Reserved for "always on,
+ * everywhere" cases — e.g. `--attach-data-product a11y/atf` to keep accessibility findings ambient
+ * for every preview. Most agents leave this empty and use the per-call `subscribe_preview_data`
+ * tool instead. See `docs/daemon/DATA-PRODUCTS.md`.
+ *
  * On stdin EOF the server tears down every supervised daemon (sending `shutdown` + `exit` per
  * PROTOCOL.md § 3) and exits cleanly.
  */
@@ -33,11 +43,13 @@ object DaemonMcpMain {
   @JvmStatic
   fun main(args: Array<String>) {
     val replicasPerDaemon = parseReplicasPerDaemon(args)
+    val attachDataProducts = parseAttachDataProducts(args)
     val supervisor =
       DaemonSupervisor(
         descriptorProvider = DescriptorProvider.readingFromDisk(),
         clientFactory = SubprocessDaemonClientFactory(),
         replicasPerDaemon = replicasPerDaemon,
+        globalAttachDataProducts = attachDataProducts,
       )
     val server = DaemonMcpServer(supervisor)
 
@@ -88,6 +100,34 @@ object DaemonMcpMain {
     val idx = raw.lastIndexOf(':')
     return if (idx <= 0) raw to null
     else raw.substring(0, idx) to raw.substring(idx + 1).takeIf { it.isNotEmpty() }
+  }
+
+  /**
+   * Collects every `--attach-data-product KIND` (or `--attach-data-product=KIND`) occurrence into
+   * an ordered, de-duplicated list. Empty by default — most agents don't want ambient data products
+   * and use `subscribe_preview_data` per call. Wired through to every daemon's
+   * `initialize.options.attachDataProducts`.
+   */
+  private fun parseAttachDataProducts(args: Array<String>): List<String> {
+    val out = LinkedHashSet<String>()
+    var i = 0
+    while (i < args.size) {
+      val a = args[i]
+      when {
+        a == "--attach-data-product" && i + 1 < args.size -> {
+          val kind = args[i + 1]
+          if (kind.isNotBlank()) out.add(kind)
+          i += 2
+        }
+        a.startsWith("--attach-data-product=") -> {
+          val kind = a.removePrefix("--attach-data-product=")
+          if (kind.isNotBlank()) out.add(kind)
+          i++
+        }
+        else -> i++
+      }
+    }
+    return out.toList()
   }
 
   private fun parseReplicasPerDaemon(args: Array<String>): Int {
