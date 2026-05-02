@@ -8,12 +8,10 @@ package ee.schimke.composeai.preview
  * that want to use the annotation in their own code depend on
  * `ee.schimke.composeai:preview-annotations`.
  *
- * Each entry in [modes] fans out into its own capture. TOP / END / LONG produce a single PNG per
- * capture; GIF produces an animated `.gif`. Shared knobs — [axis], [maxScrollPx], [reduceMotion] —
- * apply to every capture produced by a single annotation instance. A single-mode annotation (e.g.
- * `modes = [ScrollMode.END]`) keeps the plain `renders/<id>.<ext>` filename; multi-mode annotations
- * disambiguate siblings with a `_SCROLL_<mode>` suffix (`renders/<id>_SCROLL_top.png`,
- * `renders/<id>_SCROLL_end.png`, `renders/<id>_SCROLL_gif.gif`, …).
+ * TOP / END produce normal preview captures. LONG and GIF are mapped to data products
+ * (`render/scroll/long`, `render/scroll/gif`) so tooling can request them without giving them a
+ * privileged place in the primary preview carousel. Shared knobs — [axis], [maxScrollPx],
+ * [reduceMotion] — apply to every output produced by a single annotation instance.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)

@@ -97,6 +97,11 @@ data class RenderPreviewEntry(
      * and the PNG path it lands at. Always at least one element.
      */
     val captures: List<RenderPreviewCapture> = listOf(RenderPreviewCapture()),
+    /**
+     * Annotation-sourced products available for this preview. These are rendered as data-product
+     * artefacts, not as primary screenshots in the preview capture list.
+     */
+    val dataProducts: List<RenderPreviewDataProduct> = emptyList(),
 )
 
 @Serializable
@@ -110,6 +115,15 @@ data class RenderPreviewCapture(
      * the plugin's `Capture.cost` for the full catalogue. Defaults to `1.0`
      * so older manifests parse as cheap-everywhere.
      */
+    val cost: Float = 1.0f,
+)
+
+@Serializable
+data class RenderPreviewDataProduct(
+    val kind: String,
+    val advanceTimeMillis: Long? = null,
+    val scroll: ScrollCapture? = null,
+    val output: String = "",
     val cost: Float = 1.0f,
 )
 

@@ -68,18 +68,23 @@ object PreviewManifestLoader {
         // not JSON-representable.
         val expanded = manifest.previews.flatMap { expandParameterProvider(it) }
         // Tier filter (set by the plugin via TierSystemPropProvider). When
-        // `fast`, drop captures classified HEAVY (`@AnimatedPreview` and
-        // non-TOP `@ScrollingPreview`) — the interactive save loop only
-        // re-renders cheap captures; heavy ones keep their previous PNG/GIF
-        // on disk and stay reachable via VS Code's per-card refresh action.
-        // Entries left with zero captures are dropped from sharding entirely
-        // so shards don't allocate a row for a no-op render.
+        // `fast`, drop heavyweight captures and annotation-sourced data
+        // products. Heavy outputs keep their previous files on disk and stay
+        // reachable via explicit product fetch / refresh paths.
+        // Entries left with no outputs are dropped from sharding entirely so
+        // shards don't allocate a row for a no-op render.
         val isFast = System.getProperty("composeai.render.tier", "full")
             .equals("fast", ignoreCase = true)
         val filtered = if (!isFast) expanded else expanded.mapNotNull { row ->
             val keep = row.entry.captures.filter { it.cost <= HEAVY_COST_THRESHOLD }
-            if (keep.isEmpty()) null
-            else PreviewRow(row.entry.copy(captures = keep), row.previewArgs)
+            val keepProducts = row.entry.dataProducts.filter { it.cost <= HEAVY_COST_THRESHOLD }
+            if (keep.isEmpty() && keepProducts.isEmpty()) null
+            else {
+                PreviewRow(
+                    row.entry.copy(captures = keep, dataProducts = keepProducts),
+                    row.previewArgs,
+                )
+            }
         }
         return assignToShard(filtered, shardCount, shardIndex)
             .map { arrayOf<Any>(it.entry, it.previewArgs) }
@@ -121,7 +126,8 @@ object PreviewManifestLoader {
         if (shardCount == 1) return rows
 
         val rowsWithCost = rows.map { row ->
-            row to row.entry.captures.sumOf { it.cost.toDouble() }
+            row to row.entry.captures.sumOf { it.cost.toDouble() } +
+                row.entry.dataProducts.sumOf { it.cost.toDouble() }
         }.sortedWith(
             compareByDescending<Pair<PreviewRow, Double>> { it.second }
                 .thenBy { it.first.entry.id },
@@ -160,8 +166,14 @@ object PreviewManifestLoader {
             val newCaptures = entry.captures.map { c ->
                 c.copy(renderOutput = insertBeforeExtension(c.renderOutput, paramSuffix))
             }
+            val newProducts = entry.dataProducts.map { p ->
+                p.copy(output = insertBeforeExtension(p.output, paramSuffix))
+            }
             val newId = entry.id + paramSuffix
-            PreviewRow(entry.copy(id = newId, captures = newCaptures), listOf(value))
+            PreviewRow(
+                entry.copy(id = newId, captures = newCaptures, dataProducts = newProducts),
+                listOf(value),
+            )
         }
         // The renderer is authoritative about which fan-out files will exist
         // for this preview — delete any `<stem>_*<ext>` files from prior runs
@@ -405,6 +417,33 @@ abstract class RobolectricRenderTestBase(
         return File(outputDir, leafName)
     }
 
+    private fun outputFileFor(product: RenderPreviewDataProduct, outputDir: File): File {
+        val rootDir = outputDir.parentFile ?: outputDir
+        return File(rootDir, product.output)
+    }
+
+    private sealed interface RenderJob {
+        val advanceTimeMillis: Long?
+        val scroll: ScrollCapture?
+        val outputFile: File
+    }
+
+    private data class CaptureRenderJob(
+        val capture: RenderPreviewCapture,
+        override val outputFile: File,
+    ) : RenderJob {
+        override val advanceTimeMillis: Long? = capture.advanceTimeMillis
+        override val scroll: ScrollCapture? = capture.scroll
+    }
+
+    private data class ProductRenderJob(
+        val product: RenderPreviewDataProduct,
+        override val outputFile: File,
+    ) : RenderJob {
+        override val advanceTimeMillis: Long? = product.advanceTimeMillis
+        override val scroll: ScrollCapture? = product.scroll
+    }
+
     /**
      * Default render path — paused `mainClock`, pump by [CAPTURE_ADVANCE_MS], capture.
      *
@@ -544,7 +583,8 @@ abstract class RobolectricRenderTestBase(
                 // transient UI stays visible at stitched seams). See
                 // [ScrollCaptureInProgressLocal].
                 val scrollCaptureInProgress =
-                    preview.captures.any { it.scroll?.mode == ScrollMode.LONG }
+                    preview.captures.any { it.scroll?.mode == ScrollMode.LONG } ||
+                        preview.dataProducts.any { it.scroll?.mode == ScrollMode.LONG }
                 val scrollCaptureProvidable =
                     if (scrollCaptureInProgress) ScrollCaptureInProgressLocal.get() else null
                 // Wear-only: flatten `TransformingLazyColumn` item scaling for
@@ -558,7 +598,8 @@ abstract class RobolectricRenderTestBase(
                 // Wear Compose compile dep; on non-Wear modules the lookup
                 // returns null and the flag is a no-op.
                 val reduceMotion =
-                    preview.captures.any { it.scroll?.reduceMotion == true }
+                    preview.captures.any { it.scroll?.reduceMotion == true } ||
+                        preview.dataProducts.any { it.scroll?.reduceMotion == true }
                 val reduceMotionLocal =
                     if (reduceMotion) WearReduceMotionLocal.get() else null
                 // @AnimatedPreview(showCurves = true): capture the slot table
@@ -630,10 +671,20 @@ abstract class RobolectricRenderTestBase(
                 // ascending `advanceTimeMillis`, so we accumulate forward-only.
                 var currentTime = 0L
                 val onRoot = rule.onRoot()
-                preview.captures.forEachIndexed { idx, capture ->
-                    val target = capture.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
+                val jobs =
+                    (
+                        preview.captures.map {
+                            CaptureRenderJob(it, outputFileFor(it, outputDir))
+                        } +
+                            preview.dataProducts.map {
+                                ProductRenderJob(it, outputFileFor(it, outputDir))
+                            }
+                        ).sortedBy { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
+                var captureIndex = 0
+                jobs.forEach { job ->
+                    val target = job.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
                     require(target >= currentTime) {
-                        "Preview ${preview.id}: capture advanceTimeMillis must be ascending " +
+                        "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                             "(got $target after clock was at $currentTime)"
                     }
                     val delta = target - currentTime
@@ -649,10 +700,10 @@ abstract class RobolectricRenderTestBase(
                     // viewport-height of scroll, then Java2D-stitched into one
                     // tall PNG with an optional Wear pill clip. See
                     // [handleLongCapture].
-                    val outputFile = outputFileFor(capture, outputDir)
+                    val outputFile = job.outputFile
                     outputFile.parentFile?.mkdirs()
 
-                    val scroll = capture.scroll
+                    val scroll = job.scroll
                     val longHandled = scroll != null &&
                         scroll.mode == ScrollMode.LONG &&
                         scroll.axis == ScrollAxis.VERTICAL &&
@@ -691,10 +742,11 @@ abstract class RobolectricRenderTestBase(
                     // `AnimationInspector` to sample property values across
                     // the same time window.
                     val animationHandled = !longHandled && !gifHandled &&
-                        capture.animation != null &&
+                        job is CaptureRenderJob &&
+                        job.capture.animation != null &&
                         handleAnimatedCapture(
                             rule = rule,
-                            animation = capture.animation,
+                            animation = job.capture.animation,
                             previewId = preview.id,
                             isRound = isRoundDevice(params.device) &&
                                 (params.showSystemUi || params.kind == PreviewKind.TILE),
@@ -705,7 +757,7 @@ abstract class RobolectricRenderTestBase(
                             // by the animation pass — keep our local marker in
                             // sync so any subsequent capture in the same
                             // composition asserts ascending time correctly.
-                            if (handled) currentTime += capture.animation.durationMs.toLong()
+                            if (handled) currentTime += job.capture.animation.durationMs.toLong()
                         }
 
                     if (!longHandled && !gifHandled && !animationHandled) {
@@ -748,7 +800,11 @@ abstract class RobolectricRenderTestBase(
                         )
                     }
 
-                    if (a11yEnabled && idx == a11yCaptureIndex()) {
+                    if (
+                        job is CaptureRenderJob &&
+                            a11yEnabled &&
+                            captureIndex == a11yCaptureIndex()
+                    ) {
                         // `fetchSemanticsNode().root as ViewRootForTest` is the
                         // exact view roborazzi-accessibility-check's
                         // `checkRoboAccessibility` walks — it's the only view
@@ -775,6 +831,7 @@ abstract class RobolectricRenderTestBase(
                                     preview.params.kind == PreviewKind.TILE),
                         )
                     }
+                    if (job is CaptureRenderJob) captureIndex++
                 }
             }
         }

@@ -558,6 +558,24 @@ for rectangular/default devices, or:
 for round Wear-style devices. It does not require a render pass and is
 available on both Android and desktop daemons.
 
+`render/scroll/long` and `render/scroll/gif` are annotation-sourced render
+products produced from `@ScrollingPreview(modes = [LONG, GIF])`. The typed
+annotation remains the authoring API; discovery maps those modes to data-product
+requests instead of adding long/GIF artefacts to the primary capture list. Gradle
+renders write path-backed product files under `build/compose-previews/data/`:
+
+```json
+{
+  "kind": "render/scroll/long",
+  "schemaVersion": 1,
+  "path": ".../build/compose-previews/data/render-scroll-long/Foo.png"
+}
+```
+
+`render/scroll/long` is a stitched PNG. `render/scroll/gif` is an animated GIF
+showing the scroll from top to bottom. Non-scrollable previews no-op through the
+same fallback behaviour as the renderer's scroll capture path.
+
 `history/diff/regions` is a cheap, inline, fetchable and attachable data product
 derived from the daemon history archive. It is advertised only when
 `HistoryManager` is active. Fetch and subscribe calls must pass an explicit

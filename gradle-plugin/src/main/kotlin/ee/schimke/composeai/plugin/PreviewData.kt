@@ -194,6 +194,28 @@ data class Capture(
   val cost: Float = STATIC_COST,
 )
 
+/**
+ * Annotation-sourced data product request for a preview. This keeps feature-specific authoring APIs
+ * (for example `@ScrollingPreview(modes = [LONG, GIF])`) type-safe while moving heavyweight,
+ * non-primary artefacts out of the privileged capture carousel.
+ */
+@Serializable
+data class PreviewDataProduct(
+  /** Data-product kind, e.g. `render/scroll/long`. */
+  val kind: String,
+  /**
+   * Optional virtual clock coordinate shared with [Capture.advanceTimeMillis]. `null` means the
+   * renderer's default capture advance.
+   */
+  val advanceTimeMillis: Long? = null,
+  /** Scroll intent when this product is backed by `@ScrollingPreview`; null for other products. */
+  val scroll: ScrollCapture? = null,
+  /** Module-relative product file path under `build/compose-previews`, e.g. `data/.../Foo.png`. */
+  val output: String = "",
+  /** Estimated render cost on the same scale as [Capture.cost]. */
+  val cost: Float = STATIC_COST,
+)
+
 @Serializable
 data class PreviewInfo(
   val id: String,
@@ -206,6 +228,11 @@ data class PreviewInfo(
    * capture with null dimensions; an animated / scrolled preview can have many.
    */
   val captures: List<Capture> = listOf(Capture()),
+  /**
+   * Additional annotation-sourced products available for this preview. These are not primary
+   * screenshots; clients fetch or surface them through the data-product path.
+   */
+  val dataProducts: List<PreviewDataProduct> = emptyList(),
 )
 
 @Serializable
