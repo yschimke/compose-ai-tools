@@ -123,7 +123,6 @@ export class DaemonScheduler {
      *  Stops the per-render ENOENT spam when the daemon (B1.5) emits
      *  synthetic `daemon-stub-N.png` paths that don't exist on disk. */
     private warnedStubModules = new Set<string>();
-    private settledBootstrapTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(
         private readonly gate: DaemonGate,
@@ -139,7 +138,6 @@ export class DaemonScheduler {
          * `vscode.workspace.getConfiguration('composePreview').get('a11y.alwaysSubscribe')`.
          */
         private readonly isA11yAlwaysSubscribed: () => boolean = () => false,
-        private readonly settledBootstrapDelayMs: number = 5_000,
     ) {}
 
     /**
@@ -175,7 +173,6 @@ export class DaemonScheduler {
         if (!this.gate.isEnabled()) { return false; }
         if (this.gate.isDaemonReady(moduleId)) {
             progress?.('ready');
-            this.scheduleSettledBootstrap(gradleService, moduleId);
             return true;
         }
         progress?.('spawning');
@@ -183,7 +180,6 @@ export class DaemonScheduler {
             const ok = await this.ensureModule(moduleId);
             if (ok) {
                 progress?.('ready');
-                this.scheduleSettledBootstrap(gradleService, moduleId);
                 return true;
             }
         } catch (err) {
@@ -213,29 +209,6 @@ export class DaemonScheduler {
         }
         progress?.(ok ? 'ready' : 'fallback');
         return ok;
-    }
-
-    private scheduleSettledBootstrap(gradleService: GradleService, moduleId: string): void {
-        if (this.settledBootstrapDelayMs < 0) { return; }
-        const existing = this.settledBootstrapTimers.get(moduleId);
-        if (existing) { clearTimeout(existing); }
-        const refresh = async () => {
-            this.settledBootstrapTimers.delete(moduleId);
-            try {
-                await gradleService.runDaemonBootstrap(moduleId);
-            } catch (err) {
-                this.logger.appendLine(
-                    `[daemon] settled bootstrap refresh failed for ${moduleId}: ${(err as Error).message}`,
-                );
-            }
-        };
-        if (this.settledBootstrapDelayMs === 0) {
-            void refresh();
-            return;
-        }
-        const timer = setTimeout(() => void refresh(), this.settledBootstrapDelayMs);
-        timer.unref?.();
-        this.settledBootstrapTimers.set(moduleId, timer);
     }
 
     /**
