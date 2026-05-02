@@ -31,45 +31,44 @@ import kotlinx.serialization.json.contentOrNull
  * - Advertises a single kind, `compose/recomposition`, schemaVersion=1, transport=INLINE,
  *   attachable=true, fetchable=true, requiresRerender=true.
  * - On `data/subscribe` with `params: { frameStreamId, mode: "delta" }` against a live
- *   [DesktopInteractiveSession]: looks up the live scene via [liveScenes], reaches the held
- *   scene's [androidx.compose.runtime.Recomposer] reflectively, and installs a
- *   [CompositionObserver] that increments per-[RecomposeScope] counters on each `onScopeExit`.
- * - On each `interactive/input` cycle the daemon's render watcher emits `renderFinished` and
- *   calls [attachmentsFor]; we snapshot the current counter map, attach it as a
- *   [RecompositionPayload], then reset counters to zero so the next input's payload is the
- *   delta *since the previous input*.
- * - On `data/unsubscribe` (or `setVisible` dropping the preview): tear down the observer and
- *   drop counter state.
+ *   [DesktopInteractiveSession]: looks up the live scene via [liveScenes], reaches the held scene's
+ *   [androidx.compose.runtime.Recomposer] reflectively, and installs a [CompositionObserver] that
+ *   increments per-[RecomposeScope] counters on each `onScopeExit`.
+ * - On each `interactive/input` cycle the daemon's render watcher emits `renderFinished` and calls
+ *   [attachmentsFor]; we snapshot the current counter map, attach it as a [RecompositionPayload],
+ *   then reset counters to zero so the next input's payload is the delta *since the previous
+ *   input*.
+ * - On `data/unsubscribe` (or `setVisible` dropping the preview): tear down the observer and drop
+ *   counter state.
  *
- * **Producer-side observation, not a registry-level flush hook.** Per the D5 brief: the
- * dispatcher (`JsonRpcServer`) stays unchanged. The producer collects counts as Compose runs
- * its own recomposition cycles, and `attachmentsFor` is the seam the dispatcher already calls
- * after every render — so we get an automatic flush-on-input from the existing wire path.
+ * **Producer-side observation, not a registry-level flush hook.** Per the D5 brief: the dispatcher
+ * (`JsonRpcServer`) stays unchanged. The producer collects counts as Compose runs its own
+ * recomposition cycles, and `attachmentsFor` is the seam the dispatcher already calls after every
+ * render — so we get an automatic flush-on-input from the existing wire path.
  *
  * **Stable id caveat (v2 problem).** [RecompositionNode.nodeId] is
- * `System.identityHashCode(scope).toString(16)`, scoped within the per-(previewId,
- * frameStreamId) subscription. That's stable for the *duration of the session* — enough for
- * the heat-map UI's "what recomposed when I clicked here" question — but NOT stable across
- * sessions. Stable ids require slot-table line:column extraction; deferred to v2.
+ * `System.identityHashCode(scope).toString(16)`, scoped within the per-(previewId, frameStreamId)
+ * subscription. That's stable for the *duration of the session* — enough for the heat-map UI's
+ * "what recomposed when I clicked here" question — but NOT stable across sessions. Stable ids
+ * require slot-table line:column extraction; deferred to v2.
  *
  * FOLLOWUP (D5 v2): swap the identityHashCode-based id for a slot-table-derived
  * `(file:line:column)` key so heat-map state survives daemon restarts and sandbox recycles.
  *
  * **Safety net.** [androidx.compose.runtime.tooling.CompositionObserver] is
  * `@ExperimentalComposeRuntimeApi`. Compose may rename or restructure these surfaces between
- * runtime releases. Every observer-install path is wrapped in
- * `try/catch (LinkageError | NoSuchMethodError)` so a future API rename degrades the producer
- * to "advertise but useless" (subscriptions succeed, `nodes: []` ships) rather than crashing
- * the daemon JVM.
+ * runtime releases. Every observer-install path is wrapped in `try/catch (LinkageError |
+ * NoSuchMethodError)` so a future API rename degrades the producer to "advertise but useless"
+ * (subscriptions succeed, `nodes: []` ships) rather than crashing the daemon JVM.
  */
 open class RecompositionDataProductRegistry : DataProductRegistry {
 
   /**
-   * Per-previewId tracking of the currently-held [ImageComposeScene], populated by
-   * [DesktopHost]'s interactive-session lifecycle hook (see
-   * [DesktopHost.InteractiveSessionListener] — this class implements that interface via
-   * [onSessionLifecycle]). The producer uses this map both as its "is there a live session?"
-   * lookup at subscribe time and as the source of the scene whose recomposer it instruments.
+   * Per-previewId tracking of the currently-held [ImageComposeScene], populated by [DesktopHost]'s
+   * interactive-session lifecycle hook (see [DesktopHost.InteractiveSessionListener] — this class
+   * implements that interface via [onSessionLifecycle]). The producer uses this map both as its "is
+   * there a live session?" lookup at subscribe time and as the source of the scene whose recomposer
+   * it instruments.
    */
   private val liveScenes: ConcurrentHashMap<String, ImageComposeScene> = ConcurrentHashMap()
 
@@ -82,14 +81,14 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     @Volatile var observerHandle: CompositionObserverHandle? = null,
     /**
      * `true` when the observer install path threw a `LinkageError` / `NoSuchMethodError`. The
-     * subscription stays in [subscriptions] so `attachmentsFor` keeps shipping payloads — they
-     * just carry `nodes: []` until the panel re-subscribes against a working build.
+     * subscription stays in [subscriptions] so `attachmentsFor` keeps shipping payloads — they just
+     * carry `nodes: []` until the panel re-subscribes against a working build.
      */
     @Volatile var instrumentationUnavailable: Boolean = false,
     /**
-     * Map of identity-hashcode-of-RecomposeScope → its current delta-window count. Cleared on
-     * each [snapshotAndReset]. Concurrent because the observer fires from Compose's recomposer
-     * thread while [attachmentsFor] runs from JsonRpcServer's render watcher.
+     * Map of identity-hashcode-of-RecomposeScope → its current delta-window count. Cleared on each
+     * [snapshotAndReset]. Concurrent because the observer fires from Compose's recomposer thread
+     * while [attachmentsFor] runs from JsonRpcServer's render watcher.
      */
     val counters: ConcurrentHashMap<Int, Int> = ConcurrentHashMap(),
   )
@@ -169,10 +168,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     }
   }
 
-  override fun attachmentsFor(
-    previewId: String,
-    kinds: Set<String>,
-  ): List<DataProductAttachment> {
+  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
     if (KIND !in kinds) return emptyList()
     val state = subscriptions[previewId] ?: return emptyList()
     // Bump the input-seq counter once per attachment build — that's exactly one per
@@ -219,8 +215,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     // DataProductRegistry.onSubscribe contract: "Producers that need 'reset on re-subscribe'
     // semantics use that as the signal."
     subscriptions.remove(previewId)?.disposeObserver()
-    val state =
-      SubscriptionState(frameStreamId = frameStreamId, mode = effectiveMode)
+    val state = SubscriptionState(frameStreamId = frameStreamId, mode = effectiveMode)
     subscriptions[previewId] = state
     if (effectiveMode == MODE_DELTA) {
       val scene = liveScenes[previewId]
@@ -236,17 +231,17 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
   }
 
   /**
-   * [DesktopHost.InteractiveSessionListener] entry point — wires this producer into the held-
-   * scene lifecycle so the observer install path can fire on session-up *or* on a
+   * [DesktopHost.InteractiveSessionListener] entry point — wires this producer into the held- scene
+   * lifecycle so the observer install path can fire on session-up *or* on a
    * subscribe-while-snapshot promotion. Idempotent.
    *
    * - `scene != null` → session acquired. Track in [liveScenes]. If a delta-mode subscription
    *   already exists for [previewId], install the observer now. If a snapshot-mode subscription
-   *   exists, replace it with a fresh delta entry and install — the panel asked for delta but
-   *   the daemon couldn't honour it at subscribe time; promote on session-up.
-   * - `scene == null` → session released. Drop from [liveScenes] and dispose the observer
-   *   handle (subscription state itself stays so `attachmentsFor` keeps shipping empty
-   *   payloads until the client unsubscribes).
+   *   exists, replace it with a fresh delta entry and install — the panel asked for delta but the
+   *   daemon couldn't honour it at subscribe time; promote on session-up.
+   * - `scene == null` → session released. Drop from [liveScenes] and dispose the observer handle
+   *   (subscription state itself stays so `attachmentsFor` keeps shipping empty payloads until the
+   *   client unsubscribes).
    */
   fun onSessionLifecycle(previewId: String, scene: ImageComposeScene?) {
     if (scene == null) {
@@ -278,9 +273,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
             val key = System.identityHashCode(scope)
             state.counters.merge(key, 1, Int::plus)
           },
-          onScopeDisposed = { scope ->
-            state.counters.remove(System.identityHashCode(scope))
-          },
+          onScopeDisposed = { scope -> state.counters.remove(System.identityHashCode(scope)) },
         )
       } catch (t: Throwable) {
         // The brief mandates LinkageError / NoSuchMethodError specifically; we widen to any
@@ -300,16 +293,16 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
   }
 
   /**
-   * The actual observer install. Walks `ImageComposeScene.scene` (BaseComposeScene) →
-   * `recomposer` (ComposeSceneRecomposer) → `recomposer` (androidx.compose.runtime.Recomposer)
-   * via reflection on the private fields, then registers a [CompositionRegistrationObserver]
-   * which calls [ObservableComposition.setObserver] for each existing + future composition.
+   * The actual observer install. Walks `ImageComposeScene.scene` (BaseComposeScene) → `recomposer`
+   * (ComposeSceneRecomposer) → `recomposer` (androidx.compose.runtime.Recomposer) via reflection on
+   * the private fields, then registers a [CompositionRegistrationObserver] which calls
+   * [ObservableComposition.setObserver] for each existing + future composition.
    *
-   * The walk is reflective because Compose UI doesn't expose the held [Recomposer] publicly —
-   * see the discussion in [RecompositionDataProductRegistry] KDoc. The
+   * The walk is reflective because Compose UI doesn't expose the held [Recomposer] publicly — see
+   * the discussion in [RecompositionDataProductRegistry] KDoc. The
    * `addCompositionRegistrationObserver$runtime` path the public `Recomposer.observe` extension
-   * delegates to also reports every *currently registered* composition synchronously, so even
-   * a subscribe-after-render install picks up the live composition tree on the same call.
+   * delegates to also reports every *currently registered* composition synchronously, so even a
+   * subscribe-after-render install picks up the live composition tree on the same call.
    */
   @OptIn(ExperimentalComposeRuntimeApi::class)
   protected open fun installObserver(
@@ -321,9 +314,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     val perCompositionHandles = mutableListOf<CompositionObserverHandle>()
     val perCompositionObserver =
       object : CompositionObserver {
-        override fun onBeginComposition(
-          composition: ObservableComposition,
-        ) {
+        override fun onBeginComposition(composition: ObservableComposition) {
           // No-op — we count post-recomposition via onScopeExit. onBeginComposition fires once
           // per composition cycle (not per scope) so it doesn't carry the per-scope info.
         }
@@ -343,9 +334,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
           onScopeRecomposed(scope)
         }
 
-        override fun onEndComposition(
-          composition: ObservableComposition,
-        ) {
+        override fun onEndComposition(composition: ObservableComposition) {
           // No-op for v1. A future "settle frame" hook could batch counts here, but the
           // attachmentsFor seam already runs once per renderFinished so there's nothing to add.
         }
@@ -400,12 +389,12 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
    * Reflectively reach the [androidx.compose.runtime.Recomposer] that drives [scene]'s held
    * composition. The chain is:
    *
-   * `ImageComposeScene` (public) → field `scene: ComposeScene` (private) →
-   * concrete `BaseComposeScene` → field `recomposer: ComposeSceneRecomposer` (private) →
-   * field `recomposer: Recomposer` (private).
+   * `ImageComposeScene` (public) → field `scene: ComposeScene` (private) → concrete
+   * `BaseComposeScene` → field `recomposer: ComposeSceneRecomposer` (private) → field `recomposer:
+   * Recomposer` (private).
    *
-   * Throws on any link breaking — caller wraps in the LinkageError/NoSuchMethodError safety
-   * net so a future Compose-UI refactor degrades to "instrumentation unavailable".
+   * Throws on any link breaking — caller wraps in the LinkageError/NoSuchMethodError safety net so
+   * a future Compose-UI refactor degrades to "instrumentation unavailable".
    */
   private fun reflectRecomposer(scene: ImageComposeScene): androidx.compose.runtime.Recomposer {
     val sceneField = ImageComposeScene::class.java.getDeclaredField("scene")
@@ -421,8 +410,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     val recomposerField = findDeclaredField(sceneRecomposer.javaClass, "recomposer")
     recomposerField.isAccessible = true
     val recomposer =
-      recomposerField.get(sceneRecomposer)
-        ?: error("ComposeSceneRecomposer.recomposer was null")
+      recomposerField.get(sceneRecomposer) ?: error("ComposeSceneRecomposer.recomposer was null")
     return recomposer as androidx.compose.runtime.Recomposer
   }
 
@@ -494,16 +482,16 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
 
     /**
      * Render mode tag the dispatcher forwards to the renderer-agnostic seam when this producer
-     * returns [DataProductRegistry.Outcome.RequiresRerender]. Renderer-side wiring of this tag
-     * is a follow-up — the desktop renderer doesn't yet write a recomposition sidecar — so
-     * snapshot fetches today complete the budget timer without producing a payload.
+     * returns [DataProductRegistry.Outcome.RequiresRerender]. Renderer-side wiring of this tag is a
+     * follow-up — the desktop renderer doesn't yet write a recomposition sidecar — so snapshot
+     * fetches today complete the budget timer without producing a payload.
      */
     const val MODE_RECOMPOSITION_RENDER: String = "recomposition"
 
     /**
-     * `encodeDefaults = true` so empty `nodes: []` lists ride the wire instead of being
-     * dropped — clients that read `nodes.length` on every payload can rely on the field's
-     * presence regardless of whether instrumentation is unavailable or just no-op-this-frame.
+     * `encodeDefaults = true` so empty `nodes: []` lists ride the wire instead of being dropped —
+     * clients that read `nodes.length` on every payload can rely on the field's presence regardless
+     * of whether instrumentation is unavailable or just no-op-this-frame.
      */
     private val json = Json {
       encodeDefaults = true
@@ -513,14 +501,14 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
 }
 
 /**
- * Wire shape for `compose/recomposition` payloads (schemaVersion=1). Mirrors the JSON the
- * VS Code panel's heat-map overlay decodes. See
+ * Wire shape for `compose/recomposition` payloads (schemaVersion=1). Mirrors the JSON the VS Code
+ * panel's heat-map overlay decodes. See
  * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) §
  * "Recomposition + interactive mode".
  *
- * [sinceFrameStreamId] / [inputSeq] are populated only in delta mode — the snapshot mode is
- * a one-shot answer to "what recomposed during the initial composition" with no temporal
- * baseline to track.
+ * [sinceFrameStreamId] / [inputSeq] are populated only in delta mode — the snapshot mode is a
+ * one-shot answer to "what recomposed during the initial composition" with no temporal baseline to
+ * track.
  */
 @Serializable
 data class RecompositionPayload(
@@ -534,8 +522,8 @@ data class RecompositionPayload(
 data class RecompositionNode(
   /**
    * Identity-hashcode-of-RecomposeScope encoded as base-16 — stable for the duration of one
-   * interactive session. NOT stable across sessions. See [RecompositionDataProductRegistry]
-   * KDoc for the v2 followup (slot-table-derived `(file:line:column)` keys).
+   * interactive session. NOT stable across sessions. See [RecompositionDataProductRegistry] KDoc
+   * for the v2 followup (slot-table-derived `(file:line:column)` keys).
    */
   val nodeId: String,
   val count: Int,

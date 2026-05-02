@@ -91,22 +91,23 @@ open class DesktopHost(
   private val previewSpecResolver: ((String) -> RenderSpec?)? = null,
   /**
    * D5 — interactive-session lifecycle listener for the `compose/recomposition` producer
-   * ([RecompositionDataProductRegistry]). Called with the held [androidx.compose.ui.ImageComposeScene]
-   * after [acquireInteractiveSession] succeeds, and with `null` when the session is closed
-   * (either via the returned session's `close()` or via daemon shutdown).
+   * ([RecompositionDataProductRegistry]). Called with the held
+   * [androidx.compose.ui.ImageComposeScene] after [acquireInteractiveSession] succeeds, and with
+   * `null` when the session is closed (either via the returned session's `close()` or via daemon
+   * shutdown).
    *
    * Decoupled from the registry interface itself because (a) the held-scene contract is desktop-
-   * only — no Android equivalent exists today — and (b) the renderer-agnostic
-   * [DataProductRegistry] surface intentionally doesn't expose
-   * [androidx.compose.ui.ImageComposeScene]. The listener seam stays in the desktop module.
+   * only — no Android equivalent exists today — and (b) the renderer-agnostic [DataProductRegistry]
+   * surface intentionally doesn't expose [androidx.compose.ui.ImageComposeScene]. The listener seam
+   * stays in the desktop module.
    */
   private val interactiveSessionListener: InteractiveSessionListener? = null,
 ) : RenderHost {
 
   /**
-   * D5 — session lifecycle hook. Fires on `acquireInteractiveSession` success (with the held
-   * scene) and on session `close()` (with `scene = null`). Implementations are expected to be
-   * cheap and side-effect-isolated — they run on whatever thread called `acquire` / `close`.
+   * D5 — session lifecycle hook. Fires on `acquireInteractiveSession` success (with the held scene)
+   * and on session `close()` (with `scene = null`). Implementations are expected to be cheap and
+   * side-effect-isolated — they run on whatever thread called `acquire` / `close`.
    */
   fun interface InteractiveSessionListener {
     fun onSessionLifecycle(previewId: String, scene: androidx.compose.ui.ImageComposeScene?)
