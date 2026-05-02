@@ -301,8 +301,19 @@ data class DataFetchResult(
   val bytes: String? = null,
 )
 
-/** Shared params shape for `data/subscribe` and `data/unsubscribe`. */
-@Serializable data class DataSubscribeParams(val previewId: String, val kind: String)
+/** Shared params shape for `data/subscribe` and `data/unsubscribe`.
+ *
+ * `params` is the per-kind subscription option bag — e.g. `compose/recomposition` consumes
+ * `{ frameStreamId, mode: "delta" }` from it. Stateless kinds (`a11y/atf`, `a11y/hierarchy`)
+ * leave it null. See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)
+ * § "Recomposition + interactive mode".
+ */
+@Serializable
+data class DataSubscribeParams(
+  val previewId: String,
+  val kind: String,
+  val params: JsonElement? = null,
+)
 
 /** Acknowledgement-only result; trivial by design so growing it stays additive. */
 @OptIn(ExperimentalSerializationApi::class)

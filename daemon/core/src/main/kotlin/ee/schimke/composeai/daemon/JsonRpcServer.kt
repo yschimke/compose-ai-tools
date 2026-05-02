@@ -1619,11 +1619,20 @@ class JsonRpcServer(
       subscriptions
         .computeIfAbsent(params.previewId) { ConcurrentHashMap.newKeySet() }
         .add(params.kind)
+      // Notify producers AFTER bookkeeping so a producer that throws during onSubscribe still
+      // leaves the dispatcher state consistent with the client's view (a subsequent unsubscribe
+      // will clear it). Re-subscribes pass the latest `params` through verbatim — producers that
+      // care about reset-on-re-subscribe handle that themselves.
+      dataProducts.onSubscribe(params.previewId, params.kind, params.params)
     } else {
-      subscriptions[params.previewId]?.remove(params.kind)
+      val existed = subscriptions[params.previewId]?.remove(params.kind) == true
       // Drop the inner set when its last subscription cleared so the bookkeeping doesn't
       // accumulate empty entries for previews the user has cycled through.
       subscriptions.computeIfPresent(params.previewId) { _, v -> if (v.isEmpty()) null else v }
+      // Notify the producer — but only if there was actually a live subscription. Calling
+      // onUnsubscribe for a never-subscribed pair would invite producers to log spurious
+      // "no such subscription" warnings.
+      if (existed) dataProducts.onUnsubscribe(params.previewId, params.kind)
     }
     sendResponse(req.id, encode(DataSubscribeResult.serializer(), DataSubscribeResult.OK))
   }
@@ -1633,10 +1642,17 @@ class JsonRpcServer(
    * `setVisible` set, drop subscription state for previews that fell out of it. The UI is invited
    * to re-subscribe when the preview returns to view rather than the daemon retaining state for
    * unseen cards.
+   *
+   * Notifies the registry via [DataProductRegistry.onUnsubscribe] for every dropped pair so
+   * producers with per-subscription state (`compose/recomposition`'s delta counters, etc.) can
+   * tear down even when the client doesn't send an explicit `data/unsubscribe`.
    */
   private fun pruneSubscriptionsToVisible(visible: Set<String>) {
     val toDrop = subscriptions.keys - visible
-    for (id in toDrop) subscriptions.remove(id)
+    for (id in toDrop) {
+      val droppedKinds = subscriptions.remove(id) ?: continue
+      for (kind in droppedKinds) dataProducts.onUnsubscribe(id, kind)
+    }
   }
 
   // --------------------------------------------------------------------------

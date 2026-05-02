@@ -1,0 +1,8 @@
+{
+  "previewId": "com.example.HomeKt#HomePreview",
+  "kind": "compose/recomposition",
+  "params": {
+    "frameStreamId": "stream-1",
+    "mode": "delta"
+  }
+}

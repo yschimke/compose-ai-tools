@@ -92,6 +92,10 @@ class MessagesTest {
   fun roundTripDataSubscribeParams() = roundTrip<DataSubscribeParams>("client-dataSubscribe.json")
 
   @Test
+  fun roundTripDataSubscribeParamsWithParams() =
+    roundTrip<DataSubscribeParams>("client-dataSubscribe-withParams.json")
+
+  @Test
   fun roundTripDataSubscribeResult() =
     roundTrip<DataSubscribeResult>("daemon-dataSubscribeResult.json")
 
@@ -149,6 +153,7 @@ class MessagesTest {
         "client-dataFetch.json",
         "daemon-dataFetchResult.json",
         "client-dataSubscribe.json",
+        "client-dataSubscribe-withParams.json",
         "daemon-dataSubscribeResult.json",
         "daemon-renderFinished-withDataProducts.json",
       )
