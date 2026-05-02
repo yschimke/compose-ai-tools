@@ -244,6 +244,24 @@ class RenderEngine(
               .onRoot()
               .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
 
+            // compose/semantics data product. This is default-mode data, independent of the
+            // accessibility checker: clients get a compact SemanticsNode projection for inspector
+            // overlays without paying ATF costs.
+            if (dataDir != null) {
+              try {
+                ComposeSemanticsDataProducer.writeArtifacts(
+                  rootDir = dataDir,
+                  previewId = spec.outputBaseName,
+                  root = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode(),
+                )
+              } catch (t: Throwable) {
+                System.err.println(
+                  "RenderEngine: compose semantics data write failed for ${spec.outputBaseName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}"
+                )
+              }
+            }
+
             // D2 — a11y data products. Walk the same `ViewRootForTest` ATF can populate, dump
             // `a11y-atf.json` (findings) and `a11y-hierarchy.json` (nodes) next to the PNG. The
             // dispatcher reads these on `data/fetch` / `data/subscribe` attachment via
