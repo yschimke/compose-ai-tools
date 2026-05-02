@@ -85,7 +85,7 @@ android-compose-screenshot = "0.0.1-alpha14"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "3.49.0"
+checker-qual = "4.0.0"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
