@@ -37,68 +37,71 @@ in [`docs/daemon/MCP-KOTLIN.md`](../docs/daemon/MCP-KOTLIN.md).
 
 ## Quick start
 
-The server is a standalone JVM. The `claude mcp add` invocation tells
-your MCP client (Claude Code, an SDK harness, …) how to spawn it.
+The CLI bundles `:mcp` so the consumer-facing path is two commands —
+`compose-preview mcp install` then `claude mcp add`. The standalone
+`:mcp:installDist` launcher is the alternative path for embedders that
+don't ship the CLI.
 
-### 1. Build the jar + dependencies
+### Path A: via the bundled CLI (recommended)
+
+```bash
+# Bootstrap descriptors + previews.json for every plugin-applied module
+# in your project. Idempotent — patches each daemon-launch.json's
+# `enabled` flag to true and runs discoverPreviews.
+compose-preview mcp install --project /abs/path/to/your-repo
+
+# Verify per-module state.
+compose-preview mcp doctor --project /abs/path/to/your-repo
+
+# `mcp install` printed the exact `claude mcp add` line; copy/paste it.
+claude mcp add compose-preview-mcp -- compose-preview mcp serve \
+  --project=/abs/path/to/your-repo
+```
+
+`compose-preview mcp serve` runs the MCP server in-process; status goes
+to stderr and stdout is reserved for JSON-RPC framing.
+
+The consumer-facing skill doc is
+[`skills/compose-preview/design/MCP.md`](../skills/compose-preview/design/MCP.md);
+the PR-review variant (two workspaces, base + head) is
+[`skills/compose-preview-review/design/MCP_REVIEW.md`](../skills/compose-preview-review/design/MCP_REVIEW.md).
+
+### Path B: standalone `:mcp:installDist`
+
+Useful when embedding the server outside the CLI launcher (a custom
+agent host, a downstream IDE plugin, etc.).
 
 ```bash
 ./gradlew :mcp:installDist
 ```
 
-This produces `mcp/build/install/mcp/` with a launcher script and all
-runtime dependencies. (Today the module doesn't actually wire the
-`application` plugin — see [issue tracker]; until then build the jars
-manually:)
+Produces `mcp/build/install/compose-preview-mcp/` with a launcher script
+(`bin/compose-preview-mcp`) and all runtime jars under `lib/`.
 
-```bash
-./gradlew :mcp:jar :daemon:core:jar
-```
-
-### 2. Bootstrap the daemon for the modules you want to expose
-
-For each Android module:
+Bootstrap descriptors per module the same way — either via
+`compose-preview mcp install` (still the easiest, even when you're not
+using its `serve` subcommand) or by hand:
 
 ```bash
 ./gradlew :samples:wear:composePreviewDaemonStart \
-  -PcomposePreview.experimental.daemon.enabled=true
+          :samples:wear:discoverPreviews
+sed -i 's/"enabled": false/"enabled": true/' \
+  samples/wear/build/compose-previews/daemon-launch.json
 ```
 
-For each Compose-Desktop module:
-
-```bash
-./gradlew :samples:cmp:composePreviewDaemonStart \
-  -PcomposePreview.experimental.daemon.enabled=true
-```
-
-The task writes
-`<module>/build/compose-previews/daemon-launch.json` — a JSON descriptor
-with the classpath, JVM args, and system properties the supervisor needs
-to launch the daemon JVM. The descriptor's `enabled: false` field is
-load-bearing — flip it to `true` either in the build script
+The descriptor's `enabled: false` field is load-bearing — flip it to
+`true` either in the build script
 (`composePreview { experimental { daemon { enabled = true } } }`) or by
 editing the JSON directly. (Direct `-P` propagation is intentionally not
 wired; see `DaemonExtension.kt` KDoc for rationale.)
 
-Also run `discoverPreviews` so `previews.json` exists alongside:
+Then attach:
 
 ```bash
-./gradlew :samples:wear:discoverPreviews :samples:cmp:discoverPreviews
+claude mcp add compose-preview-mcp \
+  -- /abs/path/to/mcp/build/install/compose-preview-mcp/bin/compose-preview-mcp \
+  --project=/abs/path/to/your-repo
 ```
-
-### 3. Register the MCP server with your client
-
-```bash
-# Claude Code:
-claude mcp add compose-preview \
-  -- java -cp "<classpath>" ee.schimke.composeai.mcp.DaemonMcpMain \
-  --project=/abs/path/to/your-repo:my-project
-```
-
-The classpath needs `mcp/build/libs/mcp-*.jar` plus
-`daemon/core/build/libs/core-*.jar` plus the kotlinx runtime jars. See
-[`scripts/real_e2e_smoke.py`](scripts/real_e2e_smoke.py) for a concrete
-classpath assembly.
 
 `--project=<path>[:<rootProjectName>]` pre-registers a workspace at
 startup; you can also call the `register_project` tool from the agent

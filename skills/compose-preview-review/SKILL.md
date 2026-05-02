@@ -68,6 +68,7 @@ Pick the workflow that matches the task:
 |---|---|
 | [design/AGENT_PR.md](./design/AGENT_PR.md) | Full PR review + agent PR authoring guidance: comment structure, image hosting choices, things to flag, integration with `preview-comment` CI when present. |
 | [design/CI_PREVIEWS.md](./design/CI_PREVIEWS.md) | `compose-preview/main` baselines branch + PR-comment GitHub Actions: workflow YAML, action inputs, branch durability. |
+| [design/MCP_REVIEW.md](./design/MCP_REVIEW.md) | Driving a PR review through the MCP server (two-workspace base+head flow, push notifications, edit-on-top iteration). |
 
 ## Related
 
