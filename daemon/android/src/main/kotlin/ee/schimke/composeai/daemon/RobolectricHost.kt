@@ -1679,7 +1679,10 @@ open class RobolectricHost(
             android.view.MotionEvent.PointerCoords().apply {
               x = position.x
               y = position.y
-              setAxisValue(android.view.MotionEvent.AXIS_SCROLL, if (delta > 0f) -1f else 1f)
+              setAxisValue(
+                android.view.MotionEvent.AXIS_SCROLL,
+                if (delta > 0f) -ROTARY_SCROLL_STEP else ROTARY_SCROLL_STEP,
+              )
             }
           ),
           /* metaState = */ 0,
@@ -1743,6 +1746,8 @@ open class RobolectricHost(
       private const val POINTER_HOLD_MS: Long = 100L
 
       private const val POINTER_MOVE_MS: Long = 16L
+
+      private const val ROTARY_SCROLL_STEP: Float = 1f / 3f
     }
   }
 }
