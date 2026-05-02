@@ -413,6 +413,10 @@ body {
     pointer-events: auto;
 }
 
+.preview-card.live .card-header {
+    display: none;
+}
+
 .card-title {
     font-weight: 600;
     font-size: calc(var(--vscode-font-size) - 1px);
