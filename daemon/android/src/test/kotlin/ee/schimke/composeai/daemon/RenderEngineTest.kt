@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -147,6 +148,77 @@ class RenderEngineTest {
       assertEquals("normal", serif!!["style"]!!.jsonPrimitive.content)
       assertEquals("400", serif["weight"]!!.jsonPrimitive.content)
       assertTrue(serif["resolvedFamily"]!!.jsonPrimitive.content.isNotBlank())
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun themeModeRenderCapturesMaterialThemeDataProduct() {
+    val outputDir = tempFolder.newFolder("renders-theme")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    val registry = ThemeDataProductRegistry()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "previewId=android-theme;" +
+                "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedPrimarySquare;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "mode=theme;" +
+                "outputBaseName=android-theme"
+          ),
+          timeoutMs = 120_000,
+        )
+      registry.onRender("android-theme", result)
+
+      val fetch =
+        registry.fetch("android-theme", "compose/theme", params = null, inline = true)
+          as DataProductRegistry.Outcome.Ok
+      val colorScheme =
+        fetch.result.payload!!.jsonObject["resolvedTokens"]!!.jsonObject["colorScheme"]!!.jsonObject
+      assertTrue(colorScheme["primary"]!!.jsonPrimitive.content.matches(Regex("#[0-9A-F]{8}")))
+      assertEquals("theme", result.previewContext!!.renderMode)
+      assertTrue(result.previewContext!!.inspection.parameterInformationCollected)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun subscribedPreviewCapturesThemeOnDefaultRender() {
+    val outputDir = tempFolder.newFolder("renders-theme-subscribe")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    val registry = ThemeDataProductRegistry()
+    registry.onSubscribe("android-theme-subscribed", "compose/theme", JsonPrimitive("ignored"))
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "previewId=android-theme-subscribed;" +
+                "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedPrimarySquare;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=android-theme-subscribed"
+          ),
+          timeoutMs = 120_000,
+        )
+      registry.onRender("android-theme-subscribed", result)
+
+      val outcome =
+        registry.fetch("android-theme-subscribed", "compose/theme", params = null, inline = true)
+      assertTrue(outcome is DataProductRegistry.Outcome.Ok)
     } finally {
       host.shutdown()
     }

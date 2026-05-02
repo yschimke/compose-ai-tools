@@ -4,17 +4,24 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.InternalComposeApi
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFontFamilyResolver
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
@@ -151,6 +158,8 @@ class RenderEngine(
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     val startNs = System.nanoTime()
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "android")
+    val slotTableCapture = PreviewSlotTableCapture()
+    val themeFallbackCapture = MaterialThemeFallbackCapture()
 
     val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
     val composableMethod: ComposableMethod =
@@ -239,7 +248,14 @@ class RenderEngine(
                   LocalFontFamilyResolver provides
                     recordingFontFamilyResolver(baseFontResolver, fontRecorder),
                 ) {
-                  Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                  CaptureMaterialTheme { _, typography, shapes, payload ->
+                    themeFallbackCapture.capture(typography, shapes)
+                    themeFallbackCapture.capture(payload)
+                  }
+                  val content: @Composable () -> Unit = {
+                    Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                  }
+                  InspectablePreviewContent(slotTableCapture, content)
                 }
               }
             }
@@ -399,11 +415,12 @@ class RenderEngine(
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
     dataDir?.let(trace::write)
-    val previewContext =
+    val slotTables = slotTableCapture.snapshot()
+    val rawPreviewContext =
       PreviewContext.Builder(
           previewId = spec.previewId,
           backend = PreviewBackends.ANDROID,
-          renderMode = null,
+          renderMode = spec.renderMode,
           outputBaseName = spec.outputBaseName,
         )
         .deviceFromRenderPixels(
@@ -413,7 +430,35 @@ class RenderEngine(
           spec.density,
           resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
         )
+        .parameterInformationCollected()
+        .addSlotTables(slotTables)
         .build()
+    val materialThemePayload =
+      themePayloadFromPreviewContext(
+        context = rawPreviewContext,
+        fallbackTypography = themeFallbackCapture.typography,
+        fallbackShapes = themeFallbackCapture.shapes,
+      ) ?: themeFallbackCapture.payload
+    val previewContextBuilder =
+      PreviewContext.Builder(
+          previewId = spec.previewId,
+          backend = PreviewBackends.ANDROID,
+          renderMode = spec.renderMode,
+          outputBaseName = spec.outputBaseName,
+        )
+        .deviceFromRenderPixels(
+          spec.device,
+          spec.widthPx,
+          spec.heightPx,
+          spec.density,
+          resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+        )
+        .parameterInformationCollected()
+        .addSlotTables(slotTables)
+    materialThemePayload?.let {
+      previewContextBuilder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
+    }
+    val previewContext = previewContextBuilder.build()
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
@@ -545,6 +590,60 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
   composableMethod.invoke(currentComposer, null)
 }
 
+@Composable
+private fun CaptureMaterialTheme(
+  onCaptured: (ColorScheme, Typography, Shapes, ThemePayload) -> Unit
+) {
+  val colorScheme = MaterialTheme.colorScheme
+  val typography = MaterialTheme.typography
+  val shapes = MaterialTheme.shapes
+  SideEffect {
+    onCaptured(
+      colorScheme,
+      typography,
+      shapes,
+      themePayloadFromMaterialTheme(colorScheme, typography, shapes),
+    )
+  }
+}
+
+internal class PreviewSlotTableCapture {
+  var compositionData: CompositionData? = null
+
+  fun snapshot(): List<CompositionData> = listOfNotNull(compositionData)
+}
+
+internal class MaterialThemeFallbackCapture {
+  var typography: Typography? = null
+    private set
+
+  var shapes: Shapes? = null
+    private set
+
+  var payload: ThemePayload? = null
+    private set
+
+  fun capture(typography: Typography, shapes: Shapes) {
+    this.typography = typography
+    this.shapes = shapes
+  }
+
+  fun capture(payload: ThemePayload) {
+    this.payload = payload
+  }
+}
+
+@OptIn(InternalComposeApi::class)
+@Composable
+private fun InspectablePreviewContent(
+  capture: PreviewSlotTableCapture,
+  content: @Composable () -> Unit,
+) {
+  currentComposer.collectParameterInformation()
+  capture.compositionData = currentComposer.compositionData
+  content()
+}
+
 /**
  * What [RenderEngine.render] needs to produce a single PNG. Decoupled from the protocol's
  * `RenderRequest` so the engine has no dependency on the JSON-RPC envelope shapes.
@@ -577,6 +676,8 @@ data class RenderSpec(
    * a no-op. Mirrors the standalone renderer's `RenderPreviewParams.device` for the v1 subset.
    */
   val device: String? = null,
+  /** Optional data-product render mode, e.g. `theme` for `compose/theme` fetch rerenders. */
+  val renderMode: String? = null,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
   /**
@@ -653,6 +754,7 @@ data class RenderSpec(
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
+        renderMode = map["mode"]?.takeIf { it.isNotBlank() },
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
         localeTag = map["localeTag"]?.takeIf { it.isNotBlank() },
         fontScale = map["fontScale"]?.toFloatOrNull(),

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,6 +56,13 @@ fun RedSquare() {
 @Composable
 fun BlueSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFF42A5F5)))
+}
+
+@Composable
+fun ThemedPrimarySquare() {
+  MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF123456))) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary))
+  }
 }
 
 @Composable

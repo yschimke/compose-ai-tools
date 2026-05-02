@@ -81,6 +81,7 @@ dependencies {
   implementation(project(":data-layoutinspector-connector"))
   implementation(project(":data-resources-connector"))
   implementation(project(":data-strings-connector"))
+  implementation(project(":data-theme-connector"))
 
   // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,
@@ -147,6 +148,7 @@ dependencies {
   "testFixturesImplementation"(platform(libs.compose.bom.compat))
   "testFixturesImplementation"(libs.compose.runtime)
   "testFixturesImplementation"(libs.compose.foundation)
+  "testFixturesImplementation"(libs.compose.material3)
   "testFixturesImplementation"(libs.compose.ui)
 }
 
