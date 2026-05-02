@@ -97,6 +97,10 @@ fun main(args: Array<String>) {
   // data/subscribe). Constructed unconditionally on desktop — it advertises one kind, and a
   // panel that doesn't subscribe pays nothing.
   val recompositionRegistry = RecompositionDataProductRegistry()
+  val dataProducts =
+    CompositeDataProductRegistry(
+      listOf(DeviceClipDataProductRegistry(previewIndex = previewIndex), recompositionRegistry)
+    )
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
@@ -216,7 +220,7 @@ fun main(args: Array<String>) {
       // for that host; a delta subscribe degrades to "advertise but useless" via the same code
       // path as a future Compose API rename. Wiring is intentionally global — kinds advertised
       // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
-      dataProducts = recompositionRegistry,
+      dataProducts = dataProducts,
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)

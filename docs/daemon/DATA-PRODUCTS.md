@@ -517,6 +517,31 @@ generic `ImageProcessorInput.context: Any?` field carries connector-specific
 typed payloads (e.g. `AccessibilityImageContext` for the a11y connector)
 that the matching processor downcasts at runtime.
 
+## Built-in render metadata products
+
+`render/deviceClip` is a cheap, inline, fetchable and attachable data product
+derived from the daemon's `PreviewIndex` plus `DeviceDimensions`. Its payload is:
+
+```json
+{ "clip": null }
+```
+
+for rectangular/default devices, or:
+
+```json
+{
+  "clip": {
+    "shape": "circle",
+    "centerXDp": 113.5,
+    "centerYDp": 113.5,
+    "radiusDp": 113.5
+  }
+}
+```
+
+for round Wear-style devices. It does not require a render pass and is
+available on both Android and desktop daemons.
+
 ## Phase plan
 
 - **D1 — primitive on the wire.** `initialize.capabilities.dataProducts`,
