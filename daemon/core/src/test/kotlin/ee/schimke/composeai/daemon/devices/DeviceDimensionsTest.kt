@@ -46,6 +46,14 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun specStringLandscapeOrientationResolvesLandscapeGeometry() {
+    assertEquals(
+      DeviceDimensions.DeviceSpec(800, 400, DeviceDimensions.DEFAULT_DENSITY),
+      DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=landscape"),
+    )
+  }
+
+  @Test
   fun specStringWithoutDpiUsesDefaultDensity() {
     assertEquals(
       DeviceDimensions.DeviceSpec(400, 800, DeviceDimensions.DEFAULT_DENSITY),
