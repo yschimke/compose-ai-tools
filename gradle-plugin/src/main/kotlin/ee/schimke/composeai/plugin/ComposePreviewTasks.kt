@@ -173,27 +173,31 @@ internal object ComposePreviewTasks {
     val useLocalDaemon =
       daemonProjectDir.resolve("build.gradle.kts").exists() ||
         daemonProjectDir.resolve("build.gradle").exists()
-    if (!useLocalDaemon) {
-      project.logger.debug(
-        "compose-ai-tools: :daemon:desktop is not yet published; experimental.daemon only " +
-          "works with the in-repo source layout."
-      )
-      return
-    }
 
     val daemonRendererConfig =
       project.configurations.maybeCreate("composePreviewDesktopDaemon").apply {
         isCanBeResolved = true
         isCanBeConsumed = false
       }
-    try {
+    if (useLocalDaemon) {
+      try {
+        project.dependencies.add(
+          daemonRendererConfig.name,
+          project.dependencies.project(mapOf("path" to ":daemon:desktop")),
+        )
+      } catch (e: org.gradle.api.UnknownProjectException) {
+        project.logger.debug("compose-ai-tools: :daemon:desktop project not found, skipping", e)
+        return
+      }
+    } else {
+      // External-consumer mode: pull `daemon-desktop` from Maven Central — published as part of
+      // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
+      // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
+      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
       project.dependencies.add(
         daemonRendererConfig.name,
-        project.dependencies.project(mapOf("path" to ":daemon:desktop")),
+        "ee.schimke.composeai:daemon-desktop:${PluginVersion.value}",
       )
-    } catch (e: org.gradle.api.UnknownProjectException) {
-      project.logger.debug("compose-ai-tools: :daemon:desktop project not found, skipping", e)
-      return
     }
 
     // Mirror the Android registration's eager-resolved values (see
