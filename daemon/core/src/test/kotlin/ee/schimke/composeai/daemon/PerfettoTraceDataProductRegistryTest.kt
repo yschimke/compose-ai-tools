@@ -6,6 +6,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,6 +76,7 @@ class PerfettoTraceDataProductRegistryTest {
     assertEquals(1, attachments.size)
     assertEquals("render/composeAiTrace", attachments.single().kind)
     assertNotNull(attachments.single().path)
+    assertNull(attachments.single().payload)
     assertEquals("perfetto", attachments.single().extras?.single()?.name)
   }
 }
