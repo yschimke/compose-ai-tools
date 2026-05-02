@@ -245,6 +245,8 @@ fun main(args: Array<String>) {
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        System.err.println("compose-ai-tools daemon: RenderTraceDataProductRegistry active")
+        add(RenderTraceDataProductRegistry())
         if (historyManager != null) {
           System.err.println("compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active")
           add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))

@@ -931,6 +931,14 @@ class JsonRpcServer(
     // `<previewId>.metrics.json` carries a `tookMs` entry) populate this; stub hosts return null
     // and we emit `tookMs = 0`. Other RenderMetrics fields (heap / native / sandbox-age) stay
     // null until B2.3 wires the cost-model collection path.
+    try {
+      dataProducts.onRender(previewId, result)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: data product onRender failed for $previewId " +
+          "(${t.javaClass.simpleName}: ${t.message})"
+      )
+    }
     val tookMs = result.metrics?.get("tookMs") ?: 0L
     val finished = renderFinishedFromResult(previewId, result, tookMs = tookMs)
 

@@ -55,6 +55,13 @@ interface DataProductRegistry {
   fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment>
 
   /**
+   * Render lifecycle hook. Called after a host returns [result] and before `renderFinished`
+   * attachments are collected. Producers whose payload is derived from the latest render result can
+   * snapshot it here; stateless producers can ignore it.
+   */
+  fun onRender(previewId: String, result: RenderResult) {}
+
+  /**
    * Producer-side subscription lifecycle hook. Called by the dispatcher when a client issues a
    * successful `data/subscribe` for `(previewId, kind)`. [params] carries the per-kind subscription
    * option bag — `compose/recomposition` reads `{ frameStreamId, mode }` from it; stateless kinds

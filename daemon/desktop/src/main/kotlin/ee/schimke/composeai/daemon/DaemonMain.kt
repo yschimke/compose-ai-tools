@@ -205,6 +205,7 @@ fun main(args: Array<String>) {
     CompositeDataProductRegistry(
       buildList {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        add(RenderTraceDataProductRegistry())
         add(recompositionRegistry)
         if (historyManager != null) {
           System.err.println(
