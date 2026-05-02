@@ -215,6 +215,9 @@ class DaemonSupervisor(
       // they were before the capability landed.
       supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
       supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
+      // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
+      // open and `record_preview` calls round-trip without the diagnostic.
+      supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
       // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
       // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
       // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
@@ -325,6 +328,18 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    */
   @Volatile
   var knownDeviceIds: Set<String> = emptySet()
+    internal set
+
+  /**
+   * RECORDING.md § "encoded formats" — wire format spellings the daemon's host can produce
+   * (`"apng"`, `"mp4"`, `"webm"`). Populated by [DaemonSupervisor.spawn] right after the initialize
+   * round-trip. Read by `DaemonMcpServer.toolRecordPreview` to reject formats the daemon doesn't
+   * advertise before `record_preview` round-trips a request that would only fail. Empty set on
+   * pre-feature daemons — validation falls open (assume any format might work; caller sees the
+   * underlying error if it doesn't), matching the same pattern `supportedOverrides` uses.
+   */
+  @Volatile
+  var recordingFormats: Set<String> = emptySet()
     internal set
 
   /**

@@ -632,6 +632,11 @@ class JsonRpcServer(
             // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
             // `MethodNotFound` reply so clients can grey out the toggle.
             recording = host.supportsRecording,
+            // RECORDING.md § "encoded formats" — list of wire format spellings the host can
+            // produce (`"apng"`, `"mp4"`, `"webm"`). APNG is always present when recording is
+            // enabled; MP4 / WEBM appear only when an `ffmpeg` binary was detected at host
+            // construction time. Sorted for stable wire ordering.
+            recordingFormats = host.supportedRecordingFormats.sorted(),
             // PROTOCOL.md § 3 — surface the daemon's `DeviceDimensions` catalog so clients can
             // build a `renderNow.overrides.device` picker without re-bundling the list. The
             // catalog itself lives in `:daemon:core/.../daemon/devices/DeviceDimensions.kt`;
