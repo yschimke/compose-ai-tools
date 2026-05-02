@@ -1,6 +1,8 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -191,6 +193,7 @@ class DeviceClipDataProductRegistryTest {
                 widthPx = 600,
                 heightPx = 600,
                 density = 2f,
+                resolvedDevice = PreviewDeviceSpec(227, 227, 2f, isRound = true),
               )
               .build(),
         ),

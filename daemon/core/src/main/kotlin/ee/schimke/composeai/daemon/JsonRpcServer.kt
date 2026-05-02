@@ -950,7 +950,12 @@ class JsonRpcServer(
     // and we emit `tookMs = 0`. Other RenderMetrics fields (heap / native / sandbox-age) stay
     // null until B2.3 wires the cost-model collection path.
     try {
-      dataProducts.onRender(previewId, result, hostIdToOverrides.remove(result.id))
+      dataProducts.onRender(
+        previewId,
+        result,
+        hostIdToOverrides.remove(result.id),
+        result.previewContext,
+      )
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRender failed for $previewId " +

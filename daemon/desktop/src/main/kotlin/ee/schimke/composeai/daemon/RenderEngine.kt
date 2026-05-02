@@ -26,7 +26,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
-import ee.schimke.composeai.daemon.protocol.BackendKind
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.data.render.PreviewBackends
+import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import java.io.File
 import java.util.Collections
 import java.util.WeakHashMap
@@ -78,7 +81,7 @@ class RenderEngine(
         ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
     ),
   private val dataDir: File = (outputDir.parentFile ?: outputDir).resolve("data"),
-  private val themeCapture: ThemeCapture? = null,
+  private val previewContextCapture: PreviewContextCapture? = null,
   private val frameNanoTime: () -> Long = System::nanoTime,
 ) {
 
@@ -180,13 +183,13 @@ class RenderEngine(
 
     val localeProviders = localeProviders(spec.localeTag)
     val themeFallbackCapture =
-      if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+      if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
         MaterialThemeFallbackCapture()
       } else {
         null
       }
     val slotTableCapture =
-      if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+      if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
         PreviewSlotTableCapture()
       } else {
         null
@@ -229,10 +232,10 @@ class RenderEngine(
             LocalDensity provides density,
             *localeProviders,
           ) {
-            if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+            if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
               CaptureMaterialTheme { _, typography, shapes, payload ->
                 themeFallbackCapture?.capture(typography, shapes)
-                themeCapture.capture(spec.previewId, payload)
+                themeFallbackCapture?.capture(payload)
               }
             }
             val content: @Composable () -> Unit = {
@@ -304,30 +307,7 @@ class RenderEngine(
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
     val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
-    val contextBuilder =
-      PreviewContext.Builder(
-          previewId = state.spec.previewId,
-          backend = BackendKind.DESKTOP,
-          renderMode = state.spec.renderMode,
-          outputBaseName = state.spec.outputBaseName,
-        )
-        .deviceFromRenderPixels(
-          state.spec.device,
-          state.spec.widthPx,
-          state.spec.heightPx,
-          state.spec.density,
-        )
-    state.slotTableCapture?.let { capture ->
-      val context =
-        contextBuilder.parameterInformationCollected().addSlotTables(capture.snapshot()).build()
-      themePayloadFromPreviewContext(
-          context = context,
-          fallbackTypography = state.themeFallbackCapture?.typography,
-          fallbackShapes = state.themeFallbackCapture?.shapes,
-        )
-        ?.let { payload -> themeCapture?.capture(state.spec.previewId, payload) }
-    }
-    val previewContext = contextBuilder.build()
+    val previewContext = state.previewContext()
 
     val pngData =
       trace.section("render:encodePng") {
@@ -394,12 +374,57 @@ class RenderEngine(
     internal val previousContext: ClassLoader?,
     internal val slotTableCapture: PreviewSlotTableCapture?,
     internal val themeFallbackCapture: MaterialThemeFallbackCapture?,
-  )
+  ) {
+    internal fun previewContext(): PreviewContext {
+      val slotTables = slotTableCapture?.snapshot().orEmpty()
+      val rawContext =
+        PreviewContext.Builder(
+            previewId = spec.previewId,
+            backend = PreviewBackends.DESKTOP,
+            renderMode = spec.renderMode,
+            outputBaseName = spec.outputBaseName,
+          )
+          .deviceFromRenderPixels(
+            spec.device,
+            spec.widthPx,
+            spec.heightPx,
+            spec.density,
+            resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+          )
+          .parameterInformationCollected()
+          .addSlotTables(slotTables)
+          .build()
+      val materialThemePayload =
+        themePayloadFromPreviewContext(
+          context = rawContext,
+          fallbackTypography = themeFallbackCapture?.typography,
+          fallbackShapes = themeFallbackCapture?.shapes,
+        ) ?: themeFallbackCapture?.payload
+      val builder =
+        PreviewContext.Builder(
+            previewId = spec.previewId,
+            backend = PreviewBackends.DESKTOP,
+            renderMode = spec.renderMode,
+            outputBaseName = spec.outputBaseName,
+          )
+          .deviceFromRenderPixels(
+            spec.device,
+            spec.widthPx,
+            spec.heightPx,
+            spec.density,
+            resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+          )
+          .parameterInformationCollected()
+          .addSlotTables(slotTables)
+      materialThemePayload?.let {
+        builder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
+      }
+      return builder.build()
+    }
+  }
 
-  interface ThemeCapture {
+  interface PreviewContextCapture {
     fun shouldCapture(previewId: String?, renderMode: String?): Boolean
-
-    fun capture(previewId: String?, payload: ThemePayload)
   }
 
   companion object {
@@ -601,9 +626,16 @@ internal class MaterialThemeFallbackCapture {
   var shapes: Shapes? = null
     private set
 
+  var payload: ThemePayload? = null
+    private set
+
   fun capture(typography: Typography, shapes: Shapes) {
     this.typography = typography
     this.shapes = shapes
+  }
+
+  fun capture(payload: ThemePayload) {
+    this.payload = payload
   }
 }
 
@@ -617,3 +649,6 @@ private fun InspectablePreviewContent(
   capture.store.add(currentComposer.compositionData)
   CompositionLocalProvider(LocalInspectionTables provides capture.store, content = content)
 }
+
+private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
+  PreviewDeviceSpec(widthDp = widthDp, heightDp = heightDp, density = density, isRound = isRound)

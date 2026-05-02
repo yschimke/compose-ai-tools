@@ -42,31 +42,29 @@ class ThemeDataProductRegistryTest {
     val engine =
       RenderEngine(
         outputDir = outputDir,
-        themeCapture =
-          object : RenderEngine.ThemeCapture {
+        previewContextCapture =
+          object : RenderEngine.PreviewContextCapture {
             override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
               registry.shouldCapture(previewId, renderMode)
-
-            override fun capture(previewId: String?, payload: ThemePayload) {
-              registry.capture(previewId, payload)
-            }
           },
       )
 
-    engine.render(
-      spec =
-        RenderSpec(
-          previewId = "preview-1",
-          renderMode = "theme",
-          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-          functionName = "RedSquare",
-          widthPx = 32,
-          heightPx = 32,
-          density = 1.0f,
-          outputBaseName = "theme-red-square",
-        ),
-      requestId = RenderHost.nextRequestId(),
-    )
+    val result =
+      engine.render(
+        spec =
+          RenderSpec(
+            previewId = "preview-1",
+            renderMode = "theme",
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "RedSquare",
+            widthPx = 32,
+            heightPx = 32,
+            density = 1.0f,
+            outputBaseName = "theme-red-square",
+          ),
+        requestId = RenderHost.nextRequestId(),
+      )
+    registry.onRender("preview-1", result)
 
     val fetch =
       registry.fetch("preview-1", "compose/theme", params = null, inline = true)
@@ -101,31 +99,29 @@ class ThemeDataProductRegistryTest {
     val engine =
       RenderEngine(
         outputDir = outputDir,
-        themeCapture =
-          object : RenderEngine.ThemeCapture {
+        previewContextCapture =
+          object : RenderEngine.PreviewContextCapture {
             override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
               registry.shouldCapture(previewId, renderMode)
-
-            override fun capture(previewId: String?, payload: ThemePayload) {
-              registry.capture(previewId, payload)
-            }
           },
       )
 
-    engine.render(
-      spec =
-        RenderSpec(
-          previewId = "preview-local-theme",
-          renderMode = "theme",
-          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-          functionName = "ThemedPrimarySquare",
-          widthPx = 32,
-          heightPx = 32,
-          density = 1.0f,
-          outputBaseName = "theme-local-square",
-        ),
-      requestId = RenderHost.nextRequestId(),
-    )
+    val result =
+      engine.render(
+        spec =
+          RenderSpec(
+            previewId = "preview-local-theme",
+            renderMode = "theme",
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "ThemedPrimarySquare",
+            widthPx = 32,
+            heightPx = 32,
+            density = 1.0f,
+            outputBaseName = "theme-local-square",
+          ),
+        requestId = RenderHost.nextRequestId(),
+      )
+    registry.onRender("preview-local-theme", result)
 
     val fetch =
       registry.fetch("preview-local-theme", "compose/theme", params = null, inline = true)
@@ -143,30 +139,28 @@ class ThemeDataProductRegistryTest {
     val engine =
       RenderEngine(
         outputDir = outputDir,
-        themeCapture =
-          object : RenderEngine.ThemeCapture {
+        previewContextCapture =
+          object : RenderEngine.PreviewContextCapture {
             override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
               registry.shouldCapture(previewId, renderMode)
-
-            override fun capture(previewId: String?, payload: ThemePayload) {
-              registry.capture(previewId, payload)
-            }
           },
       )
 
-    engine.render(
-      spec =
-        RenderSpec(
-          previewId = "preview-2",
-          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-          functionName = "RedSquare",
-          widthPx = 32,
-          heightPx = 32,
-          density = 1.0f,
-          outputBaseName = "subscribed-theme-red-square",
-        ),
-      requestId = RenderHost.nextRequestId(),
-    )
+    val result =
+      engine.render(
+        spec =
+          RenderSpec(
+            previewId = "preview-2",
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "RedSquare",
+            widthPx = 32,
+            heightPx = 32,
+            density = 1.0f,
+            outputBaseName = "subscribed-theme-red-square",
+          ),
+        requestId = RenderHost.nextRequestId(),
+      )
+    registry.onRender("preview-2", result)
 
     val outcome = registry.fetch("preview-2", "compose/theme", params = null, inline = true)
     assertTrue(outcome is DataProductRegistry.Outcome.Ok)
@@ -179,14 +173,10 @@ class ThemeDataProductRegistryTest {
     val engine =
       RenderEngine(
         outputDir = outputDir,
-        themeCapture =
-          object : RenderEngine.ThemeCapture {
+        previewContextCapture =
+          object : RenderEngine.PreviewContextCapture {
             override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
               registry.shouldCapture(previewId, renderMode)
-
-            override fun capture(previewId: String?, payload: ThemePayload) {
-              registry.capture(previewId, payload)
-            }
           },
       )
     val host =

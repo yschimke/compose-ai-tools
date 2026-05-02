@@ -9,6 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.tooling.data.asTree
+import ee.schimke.composeai.data.render.PreviewAnimationContext
+import ee.schimke.composeai.data.render.PreviewBackends
+import ee.schimke.composeai.data.render.PreviewContext
 import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicReference
 
@@ -97,7 +100,10 @@ internal class AnimationInspector private constructor(
          * static preview); throws with a Compose-version diagnostic if the
          * tooling API isn't available.
          */
-        fun attach(capture: SlotTreeCapture): AnimationInspector? {
+        fun attach(capture: SlotTreeCapture): AnimationInspector? =
+            attach(capture.previewContext(previewId = null, renderMode = null, outputBaseName = null))
+
+        fun attach(context: PreviewContext): AnimationInspector? {
             val clockClass = loadClass(PREVIEW_ANIMATION_CLOCK_FQN)
                 ?: failNotInstalled(PREVIEW_ANIMATION_CLOCK_FQN)
             val searchClass = loadClass(ANIMATION_SEARCH_FQN)
@@ -105,7 +111,7 @@ internal class AnimationInspector private constructor(
             val animatedPropertyClass = loadClass(COMPOSE_ANIMATED_PROPERTY_FQN)
                 ?: failNotInstalled(COMPOSE_ANIMATED_PROPERTY_FQN)
 
-            val compositionData = capture.compositionData
+            val compositionData = context.inspection.slotTables.filterIsInstance<CompositionData>().firstOrNull()
             if (compositionData == null) {
                 System.err.println(
                     "@AnimatedPreview(showCurves=true): composition didn't populate the slot " +
@@ -327,6 +333,23 @@ internal class SlotTreeCapture {
         set(value) {
             ref.set(value)
         }
+
+    fun previewContext(
+        previewId: String?,
+        renderMode: String?,
+        outputBaseName: String?,
+        animation: PreviewAnimationContext? = null,
+    ): PreviewContext =
+        PreviewContext.Builder(
+                previewId = previewId,
+                backend = PreviewBackends.ANDROID,
+                renderMode = renderMode,
+                outputBaseName = outputBaseName,
+            )
+            .parameterInformationCollected()
+            .addSlotTables(listOfNotNull(compositionData))
+            .animation(animation)
+            .build()
 }
 
 /**

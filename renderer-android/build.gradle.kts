@@ -67,6 +67,7 @@ dependencies {
   // `ee.schimke.composeai.renderer.AccessibilityChecker` etc. still resolve and downstream
   // consumers (`RobolectricRenderTest`) compile unchanged.
   api(project(":data-a11y-core"))
+  implementation(project(":data-render-core"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)

@@ -1,19 +1,16 @@
-package ee.schimke.composeai.daemon
-
-import ee.schimke.composeai.daemon.devices.DeviceDimensions
-import ee.schimke.composeai.daemon.protocol.BackendKind
+package ee.schimke.composeai.data.render
 
 /**
  * Per-render context passed from a renderer backend to data products.
  *
- * The core module deliberately keeps renderer objects opaque. Compose-backed renderers may attach
- * slot-table roots (currently `androidx.compose.runtime.tooling.CompositionData`) through
- * [inspection]; data products that understand that runtime can cast and inspect them, while the
- * daemon protocol and non-Compose producers stay decoupled from Compose internals.
+ * Renderer objects stay opaque. Compose-backed renderers may attach slot-table roots (currently
+ * `androidx.compose.runtime.tooling.CompositionData`) through [inspection]; data products that
+ * understand that runtime can cast and inspect them, while standalone renderers, daemon adapters,
+ * and non-Compose producers stay decoupled from Compose internals.
  */
 data class PreviewContext(
   val previewId: String?,
-  val backend: BackendKind?,
+  val backend: String?,
   val renderMode: String?,
   val outputBaseName: String?,
   val device: PreviewDeviceContext = PreviewDeviceContext(),
@@ -23,7 +20,7 @@ data class PreviewContext(
 ) {
   class Builder(
     private val previewId: String?,
-    private val backend: BackendKind?,
+    private val backend: String?,
     private val renderMode: String?,
     private val outputBaseName: String?,
   ) {
@@ -31,6 +28,7 @@ data class PreviewContext(
     private var frameTime: PreviewFrameTime = PreviewFrameTime()
     private var animation: PreviewAnimationContext? = null
     private val slotTables = mutableListOf<Any>()
+    private val inspectionValues = linkedMapOf<String, Any>()
     private var parameterInformationCollected: Boolean = false
 
     fun device(device: PreviewDeviceContext): Builder = apply { this.device = device }
@@ -40,8 +38,10 @@ data class PreviewContext(
       widthPx: Int,
       heightPx: Int,
       density: Float,
+      resolvedDevice: PreviewDeviceSpec? = null,
     ): Builder = apply {
-      this.device = PreviewDeviceContext.fromRenderPixels(device, widthPx, heightPx, density)
+      this.device =
+        PreviewDeviceContext.fromRenderPixels(device, widthPx, heightPx, density, resolvedDevice)
     }
 
     fun frameTime(frameTime: PreviewFrameTime): Builder = apply { this.frameTime = frameTime }
@@ -51,6 +51,10 @@ data class PreviewContext(
     }
 
     fun addSlotTables(tables: Iterable<Any>): Builder = apply { slotTables.addAll(tables) }
+
+    fun putInspectionValue(key: String, value: Any): Builder = apply {
+      inspectionValues[key] = value
+    }
 
     fun parameterInformationCollected(): Builder = apply { parameterInformationCollected = true }
 
@@ -65,11 +69,17 @@ data class PreviewContext(
         inspection =
           PreviewInspectionContext(
             slotTables = slotTables.toList(),
+            values = inspectionValues.toMap(),
             parameterInformationCollected = parameterInformationCollected,
           ),
         animation = animation,
       )
   }
+}
+
+object PreviewBackends {
+  const val DESKTOP: String = "desktop"
+  const val ANDROID: String = "android"
 }
 
 /**
@@ -85,34 +95,20 @@ data class PreviewDeviceContext(
   val widthDp: Double? = null,
   val heightDp: Double? = null,
   val density: Float? = null,
-  val resolvedDevice: DeviceDimensions.DeviceSpec? = null,
+  val resolvedDevice: PreviewDeviceSpec? = null,
 ) {
   val isRound: Boolean
     get() = resolvedDevice?.isRound == true
 
   companion object {
-    fun fromPreviewInfo(info: PreviewInfoDto): PreviewDeviceContext = fromPreviewParams(info.params)
-
-    fun fromPreviewParams(params: PreviewParamsDto?): PreviewDeviceContext {
-      val device = params?.device?.takeIf { it.isNotBlank() }
-      val resolvedDevice = device?.let(DeviceDimensions::resolve)
-      return PreviewDeviceContext(
-        device = device,
-        widthDp = params?.widthDp?.toDouble() ?: resolvedDevice?.widthDp?.toDouble(),
-        heightDp = params?.heightDp?.toDouble() ?: resolvedDevice?.heightDp?.toDouble(),
-        density = params?.density ?: resolvedDevice?.density,
-        resolvedDevice = resolvedDevice,
-      )
-    }
-
     fun fromRenderPixels(
       device: String?,
       widthPx: Int,
       heightPx: Int,
       density: Float,
+      resolvedDevice: PreviewDeviceSpec? = null,
     ): PreviewDeviceContext {
       val safeDensity = density.takeIf { it > 0f }
-      val resolvedDevice = device?.takeIf { it.isNotBlank() }?.let(DeviceDimensions::resolve)
       return PreviewDeviceContext(
         device = device?.takeIf { it.isNotBlank() },
         widthDp = safeDensity?.let { widthPx / it.toDouble() },
@@ -123,6 +119,13 @@ data class PreviewDeviceContext(
     }
   }
 }
+
+data class PreviewDeviceSpec(
+  val widthDp: Int,
+  val heightDp: Int,
+  val density: Float,
+  val isRound: Boolean = false,
+)
 
 /**
  * Frame-clock semantics for the data represented by a [PreviewContext].
@@ -150,11 +153,13 @@ data class PreviewFrameTime(
  * Inspection capability captured during composition.
  *
  * [slotTables] is intentionally `Any`: on Compose backends each entry is a `CompositionData`, but
- * core must not expose a Compose dependency. The capture wrapper must call Compose's parameter-info
- * collection before composing content when consumers need call-site values from the slot table.
+ * this module must not expose a Compose dependency. The capture wrapper must call Compose's
+ * parameter-info collection before composing content when consumers need call-site values from the
+ * slot table.
  */
 data class PreviewInspectionContext(
   val slotTables: List<Any> = emptyList(),
+  val values: Map<String, Any> = emptyMap(),
   val parameterInformationCollected: Boolean = false,
 )
 
