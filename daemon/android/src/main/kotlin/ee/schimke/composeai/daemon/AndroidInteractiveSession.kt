@@ -197,7 +197,9 @@ internal constructor(
       when (input.kind) {
         InteractiveInputKind.CLICK -> "click"
         InteractiveInputKind.POINTER_DOWN -> "pointerDown"
+        InteractiveInputKind.POINTER_MOVE -> "pointerMove"
         InteractiveInputKind.POINTER_UP -> "pointerUp"
+        InteractiveInputKind.ROTARY_SCROLL -> "rotaryScroll"
         // Key events are no-op on Android v3 — same shape as desktop v2's silent drop. Wire shape
         // accepts them so a forward-looking client doesn't get rejected; the dispatch lands in
         // the sandbox loop and is intentionally ignored there.
@@ -214,6 +216,7 @@ internal constructor(
         kind = kind,
         pixelX = px,
         pixelY = py,
+        scrollDeltaY = input.scrollDeltaY,
         replyLatch = replyLatch,
         replyError = replyError,
       )

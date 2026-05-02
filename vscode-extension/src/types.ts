@@ -487,20 +487,19 @@ export type WebviewToExtension =
      */
     | { command: 'setInteractive'; previewId: string; enabled: boolean }
     /**
-     * Click on the focused image while interactive mode is on. v0 logs
-     * the coordinates to the output channel (no daemon call yet); the
-     * payload shape matches the future `interactive/input` RPC so the
-     * panel side won't change when the daemon implementation lands.
+     * Pointer/rotary input on the focused image while interactive mode is on.
      * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate
      * system the renderer thinks in. See docs/daemon/INTERACTIVE.md § 6/§ 7.
      */
     | {
-          command: 'recordInteractiveClick';
+          command: 'recordInteractiveInput';
           previewId: string;
+          kind: 'click' | 'pointerDown' | 'pointerMove' | 'pointerUp' | 'rotaryScroll';
           pixelX: number;
           pixelY: number;
           imageWidth: number;
           imageHeight: number;
+          scrollDeltaY?: number;
       }
     /**
      * D2 — focus-mode toggle for the local a11y overlay. When `enabled`, the

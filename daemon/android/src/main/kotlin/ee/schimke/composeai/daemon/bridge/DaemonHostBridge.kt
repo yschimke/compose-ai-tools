@@ -404,8 +404,8 @@ sealed interface InteractiveCommand {
 
   /**
    * Synthesise + dispatch a [android.view.MotionEvent] on the rule's main thread. [kind] mirrors
-   * the v2 wire `interactive/input` `kind` field — `"click"` / `"pointerDown"` / `"pointerUp"`
-   * for v3; key events fall through to a no-op until v4. Pixel coordinates are in the held
+   * the v2 wire `interactive/input` `kind` field — pointer events plus `"rotaryScroll"` for Wear
+   * previews; key events fall through to a no-op until v4. Pixel coordinates are in the held
    * composition's own pixel space — the host has already scaled from any `pixelDensity` ratio.
    */
   data class Dispatch(
@@ -413,6 +413,7 @@ sealed interface InteractiveCommand {
     val kind: String,
     val pixelX: Int,
     val pixelY: Int,
+    val scrollDeltaY: Float? = null,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
   ) : InteractiveCommand

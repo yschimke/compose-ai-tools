@@ -716,6 +716,8 @@ data class InteractiveInputParams(
   /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
+  /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
+  val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. */
   val keyCode: String? = null,
 )
@@ -724,7 +726,9 @@ data class InteractiveInputParams(
 enum class InteractiveInputKind {
   @SerialName("click") CLICK,
   @SerialName("pointerDown") POINTER_DOWN,
+  @SerialName("pointerMove") POINTER_MOVE,
   @SerialName("pointerUp") POINTER_UP,
+  @SerialName("rotaryScroll") ROTARY_SCROLL,
   @SerialName("keyDown") KEY_DOWN,
   @SerialName("keyUp") KEY_UP,
 }
