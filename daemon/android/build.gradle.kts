@@ -75,6 +75,8 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
+  implementation(project(":data-daemon-connector"))
+  implementation(project(":data-android-connector"))
 
   // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,

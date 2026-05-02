@@ -65,6 +65,22 @@ include(":data-a11y-connector")
 
 project(":data-a11y-connector").projectDir = file("data/a11y/connector")
 
+include(":data-daemon-connector")
+
+project(":data-daemon-connector").projectDir = file("data/daemon/connector")
+
+include(":data-daemon-core")
+
+project(":data-daemon-core").projectDir = file("data/daemon/core")
+
+include(":data-android-connector")
+
+project(":data-android-connector").projectDir = file("data/android/connector")
+
+include(":data-desktop-connector")
+
+project(":data-desktop-connector").projectDir = file("data/desktop/connector")
+
 include(":daemon:android")
 
 include(":daemon:desktop")
