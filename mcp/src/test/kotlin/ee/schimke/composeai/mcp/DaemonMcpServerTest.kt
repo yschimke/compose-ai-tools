@@ -109,6 +109,7 @@ class DaemonMcpServerTest {
         "unsubscribe_preview_data",
         "render_preview_overlay",
         "get_preview_extras",
+        "record_preview",
       )
   }
 
@@ -772,6 +773,167 @@ class DaemonMcpServerTest {
     )
     assertThat(daemon.renderOverrides).hasSize(1)
     assertThat(daemon.renderOverrides[0]?.device).isEqualTo("spec:width=400dp,height=800dp,dpi=320")
+  }
+
+  @Test
+  fun `record_preview drives start-script-stop-encode and returns base64 APNG inline`() {
+    // P2: end-to-end MCP exercise of the recording surface. The MCP `record_preview` tool drives
+    // the four daemon RPCs in sequence and packages the encoded bytes into an image content
+    // block. Asserts:
+    //   1. Each of the four daemon-side handlers observed exactly one call with the expected
+    //      arguments — `recording/start` with previewId/fps/scale, `recording/script` with the
+    //      script timeline, `recording/stop` with the recordingId, `recording/encode` with format.
+    //   2. The tool result carries an image content block (mimeType = image/apng) whose data
+    //      decodes to the canned APNG bytes the fake daemon wrote.
+    //   3. A sibling text block carries the metadata (recordingId, frameCount, durationMs,
+    //      sizeBytes) so an agent that prefers the path / metrics doesn't need to base64-decode
+    //      the bytes to find them.
+    //
+    // The fake daemon doesn't actually render anything — its `recording/encode` handler writes
+    // the pre-loaded bytes to a temp file and the MCP server reads them back. That's enough to
+    // verify the wire flow without standing up a real Compose backend.
+    val recordingsDir = tmp.newFolder("recordings-out")
+    val cannedApngBytes =
+      // PNG signature + an arbitrary tail. The MCP server reads these verbatim; we don't decode.
+      byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02, 0x03, 0x04, 0x05)
+    factory.daemonConfigurer = { d ->
+      d.recordingEncodedBytes = cannedApngBytes
+      d.recordingEncodeDir = recordingsDir
+      d.recordingStopResult =
+        ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+          frameCount = 16,
+          durationMs = 500L,
+          framesDir = "${recordingsDir.absolutePath}/frames",
+          frameWidthPx = 240,
+          frameHeightPx = 80,
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.MyButton"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("fps", 30)
+          put("scale", 4.0)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "click")
+                put("pixelX", 120)
+                put("pixelY", 40)
+              }
+            )
+            add(
+              buildJsonObject {
+                put("tMs", 500)
+                put("kind", "click")
+                put("pixelX", 120)
+                put("pixelY", 40)
+              }
+            )
+          }
+          putJsonObject("overrides") {
+            put("widthPx", 240)
+            put("heightPx", 80)
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    assertThat(resp.isError()).isFalse()
+
+    // 1. Wire-level: each handler saw exactly one call with the expected arguments.
+    val startCall = daemon.recordingStarts.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(startCall).isNotNull()
+    assertThat(startCall!!.previewId).isEqualTo(previewId)
+    assertThat(startCall.fps).isEqualTo(30)
+    assertThat(startCall.scale).isEqualTo(4.0f)
+    assertThat(startCall.overrides?.widthPx).isEqualTo(240)
+    assertThat(startCall.overrides?.heightPx).isEqualTo(80)
+
+    val scriptCall = daemon.recordingScripts.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(scriptCall).isNotNull()
+    assertThat(scriptCall!!.events).hasSize(2)
+    assertThat(scriptCall.events[0].tMs).isEqualTo(0L)
+    assertThat(scriptCall.events[0].kind)
+      .isEqualTo(ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK)
+    assertThat(scriptCall.events[0].pixelX).isEqualTo(120)
+    assertThat(scriptCall.events[0].pixelY).isEqualTo(40)
+    assertThat(scriptCall.events[1].tMs).isEqualTo(500L)
+
+    val stopCall = daemon.recordingStops.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(stopCall).isNotNull()
+    val encodeCall = daemon.recordingEncodes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(encodeCall).isNotNull()
+    assertThat(encodeCall!!.format)
+      .isEqualTo(ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG)
+    // start, script, stop, encode all reference the same recordingId.
+    assertThat(stopCall).isEqualTo(encodeCall.recordingId)
+
+    // 2. Image content block: mime + decoded bytes match the canned bytes.
+    val (base64Data, mime) = resp.firstImageContent()
+    assertThat(mime).isEqualTo("image/apng")
+    val decoded = Base64.getDecoder().decode(base64Data)
+    assertThat(decoded).isEqualTo(cannedApngBytes)
+
+    // 3. Sibling text block carries the metadata payload.
+    val textBlocks = resp.textContents()
+    assertThat(textBlocks).isNotEmpty()
+    val metadata = json.parseToJsonElement(textBlocks.last()).jsonObject
+    assertThat(metadata["recordingId"]?.jsonPrimitive?.contentOrNull).isEqualTo(stopCall)
+    assertThat(metadata["mimeType"]?.jsonPrimitive?.contentOrNull).isEqualTo("image/apng")
+    assertThat(metadata["frameCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(16)
+    assertThat(metadata["durationMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()).isEqualTo(500L)
+    assertThat(metadata["frameWidthPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(240)
+    assertThat(metadata["frameHeightPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(80)
+    assertThat(metadata["sizeBytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull())
+      .isEqualTo(cannedApngBytes.size.toLong())
+  }
+
+  @Test
+  fun `record_preview rejects unknown event kind without spawning a session`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "scroll") // not a recognised InteractiveInputKind
+                put("pixelX", 10)
+                put("pixelY", 10)
+              }
+            )
+          }
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("invalid events")
+    // No daemon-side recording session should have been allocated when validation fails.
+    assertThat(daemon.recordingStarts).isEmpty()
   }
 
   @Test
@@ -1772,6 +1934,24 @@ class McpToolResult(val raw: JsonObject) {
     val content = raw["content"]?.jsonArray ?: error("tool result has no content array")
     val first = content.first().jsonObject
     return first["text"]?.jsonPrimitive?.content ?: error("first content block is not text")
+  }
+
+  /** First image-content block; returns `(base64Data, mimeType)`. */
+  fun firstImageContent(): Pair<String, String> {
+    val content = raw["content"]?.jsonArray ?: error("tool result has no content array")
+    val image =
+      content.firstOrNull { it.jsonObject["type"]?.jsonPrimitive?.contentOrNull == "image" }
+        ?: error("tool result has no image content block (content=$content)")
+    val obj = image.jsonObject
+    val data = obj["data"]?.jsonPrimitive?.content ?: error("image block has no 'data'")
+    val mime = obj["mimeType"]?.jsonPrimitive?.content ?: error("image block has no 'mimeType'")
+    return data to mime
+  }
+
+  /** Returns the first text-content block among the tool result's content blocks, if any. */
+  fun textContents(): List<String> {
+    val content = raw["content"]?.jsonArray ?: return emptyList()
+    return content.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }
   }
 
   fun isError(): Boolean = raw["isError"]?.jsonPrimitive?.contentOrNull == "true"
