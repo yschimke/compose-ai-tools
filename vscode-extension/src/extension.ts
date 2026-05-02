@@ -3164,9 +3164,9 @@ function lookupPreviewLabel(previewId: string): string | undefined {
  * forwarding via [activeInteractiveStreams]. Exit calls `interactive/stop`
  * (notification, drop-and-go) and clears the cached stream id.
  *
- * Always falls back to the original setFocus + renderNow path so cards
- * still receive a fresh first frame — `interactive/start` itself does
- * not trigger a render, it just pins the slot.
+ * On daemons with held interactive sessions, `interactive/start` drives
+ * the live frame loop itself. Older v1 fallback daemons still receive the
+ * original setFocus + renderNow request so cards get a fresh first frame.
  */
 async function handleSetInteractive(previewId: string, enabled: boolean): Promise<void> {
     if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
@@ -3207,11 +3207,16 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         const result = await client.interactiveStart({ previewId });
         activeInteractiveStreams.set(previewId, result.frameStreamId);
         updateInteractiveStatus();
+        const interactiveSupported = daemonGate?.isInteractiveSupported(moduleId) ?? false;
         logLine(
             `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
             `streamId=${result.frameStreamId}, ` +
-            `v2=${daemonGate?.isInteractiveSupported(moduleId) ?? false})`,
+            `v2=${interactiveSupported})`,
         );
+        if (interactiveSupported) {
+            await daemonScheduler.setFocus(moduleId, [previewId]);
+            return;
+        }
     } catch (err) {
         // MethodNotFound on a daemon that predates the interactive RPC — fall through
         // to the focus + renderNow path so the card still gets a fresh first frame.

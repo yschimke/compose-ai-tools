@@ -153,6 +153,42 @@ class InteractiveSessionPlumbingTest {
   }
 
   @Test(timeout = 30_000)
+  fun start_with_live_frame_loop_renders_without_input() {
+    val tmp = Files.createTempDirectory("interactive-session-live-loop").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = SessionAwareFakeHost(pngFile)
+
+    val (_, _, clientToServerOut, received, _) =
+      bringUpServer(host, interactiveFrameIntervalMs = 25)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":10,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+    assertNotNull(startResp)
+    val streamId =
+      startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+
+    val finished =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+    assertNotNull("live frame loop should render without waiting for input", finished)
+    assertEquals("preview-A", finished!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull)
+    assertTrue(
+      "session.render should be driven by the live frame loop",
+      host.lastSession()!!.renderCount.get() >= 1,
+    )
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","method":"interactive/stop","params":{"frameStreamId":"$streamId"}}""",
+    )
+  }
+
+  @Test(timeout = 30_000)
   fun host_unsupported_falls_back_to_v1_dispatch_path() {
     // A host whose acquireInteractiveSession throws UnsupportedOperationException (the
     // RenderHost default body) means "no v2 session". The daemon still accepts interactive/start
@@ -244,7 +280,7 @@ class InteractiveSessionPlumbingTest {
     val exitLatch: CountDownLatch,
   )
 
-  private fun bringUpServer(host: RenderHost): ServerHarness {
+  private fun bringUpServer(host: RenderHost, interactiveFrameIntervalMs: Long = 0): ServerHarness {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
     val serverToClientOut = PipedOutputStream()
@@ -256,6 +292,7 @@ class InteractiveSessionPlumbingTest {
         output = serverToClientOut,
         host = host,
         daemonVersion = "test",
+        interactiveFrameIntervalMs = interactiveFrameIntervalMs,
         onExit = { _ -> exitLatch.countDown() },
       )
     val thread =

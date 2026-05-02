@@ -178,10 +178,8 @@ private fun CircularProgressPreviewContent() {
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(
-                        progress = { 0.72f },
                         modifier = Modifier.fillMaxSize(),
                     )
-                    Text("72%")
                 }
             }
         }

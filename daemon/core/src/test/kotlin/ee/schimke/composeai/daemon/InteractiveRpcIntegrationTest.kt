@@ -335,6 +335,7 @@ class InteractiveRpcIntegrationTest {
         output = serverToClientOut,
         host = host,
         daemonVersion = "test",
+        interactiveFrameIntervalMs = 0,
         onExit = { _ -> exitLatch.countDown() },
       )
     val thread = Thread({ server.run() }, "interactive-rpc-server").apply { isDaemon = true }

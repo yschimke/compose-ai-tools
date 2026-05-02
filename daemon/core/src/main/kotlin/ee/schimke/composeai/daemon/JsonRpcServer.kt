@@ -196,6 +196,7 @@ class JsonRpcServer(
   private val dataFetchRerenderBudgetMs: Long =
     System.getProperty(DATA_FETCH_RERENDER_BUDGET_PROP)?.toLongOrNull()
       ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
+  private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -371,6 +372,9 @@ class JsonRpcServer(
    * re-claims and re-iterates.
    */
   private val interactiveRenderInFlight = ConcurrentHashMap<String, Boolean>()
+
+  /** Per-held-session frame loops for live previews with time-based animations. */
+  private val interactiveFrameLoops = ConcurrentHashMap<String, Thread>()
 
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
@@ -784,6 +788,7 @@ class JsonRpcServer(
             renderResultsQueue.put(raw)
           } catch (e: Throwable) {
             System.err.println("compose-ai-daemon: host.submit($hostId) failed: ${e.message}")
+            e.printStackTrace(System.err)
             renderResultsQueue.put(RenderResultOrFailure.Failure(hostId, e))
           }
         },
@@ -1806,13 +1811,16 @@ class JsonRpcServer(
       }
     interactiveTargets[streamId] =
       InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
-    if (session != null) interactiveSessions[streamId] = session
     // Wipe any cached hash for this preview so the first interactive frame always paints.
     // Without this a `start` after a previous identical render would suppress the bootstrap
     // frame and the client's LIVE chip would have nothing to paint until the user clicks.
     // Per-preview wipe (not per-stream): two streams targeting the same preview both want a
     // fresh first frame, and the dedup state is shared by design.
     lastFrameHashes.remove(params.previewId)
+    if (session != null) {
+      interactiveSessions[streamId] = session
+      startInteractiveFrameLoop(streamId, params.previewId, session)
+    }
     sendResponse(
       req.id,
       encode(
@@ -1828,6 +1836,7 @@ class JsonRpcServer(
     // Idempotent on stale or unknown stream ids per INTERACTIVE.md § 8 — `remove` is a no-op
     // when the key isn't present, which is exactly the contract we want.
     interactiveTargets.remove(params.frameStreamId)
+    stopInteractiveFrameLoop(params.frameStreamId)
     // Release any held v2 session. close() is idempotent; failures from a host's session
     // teardown shouldn't propagate to the wire (the stop notification is fire-and-forget).
     interactiveSessions.remove(params.frameStreamId)?.let { session ->
@@ -1839,6 +1848,52 @@ class JsonRpcServer(
             "(${t.javaClass.simpleName}: ${t.message}); continuing"
         )
       }
+    }
+  }
+
+  private fun startInteractiveFrameLoop(
+    streamId: String,
+    previewId: String,
+    session: InteractiveSession,
+  ) {
+    if (interactiveFrameIntervalMs <= 0L) return
+    stopInteractiveFrameLoop(streamId)
+    val thread =
+      Thread(
+        {
+          while (
+            running.get() &&
+              !shutdownRequested.get() &&
+              interactiveTargets.containsKey(streamId) &&
+              interactiveSessions[streamId] === session
+          ) {
+            requestInteractiveRender(streamId, previewId, session)
+            try {
+              Thread.sleep(interactiveFrameIntervalMs)
+            } catch (_: InterruptedException) {
+              Thread.currentThread().interrupt()
+              return@Thread
+            }
+          }
+        },
+        "compose-ai-daemon-interactive-live-$streamId",
+      )
+    thread.isDaemon = true
+    interactiveFrameLoops[streamId] = thread
+    thread.start()
+  }
+
+  private fun stopInteractiveFrameLoop(streamId: String) {
+    interactiveFrameLoops.remove(streamId)?.interrupt()
+  }
+
+  private fun requestInteractiveRender(
+    streamId: String,
+    previewId: String,
+    session: InteractiveSession,
+  ) {
+    if (interactiveRenderInFlight.putIfAbsent(streamId, true) == null) {
+      submitInteractiveRenderAsync(streamId, previewId, session)
     }
   }
 
@@ -1864,9 +1919,7 @@ class JsonRpcServer(
         .add(params)
       // Try to claim the in-flight slot. Whoever wins owns the render thread; whoever loses
       // already had their input queued and the winner will dispatch it.
-      if (interactiveRenderInFlight.putIfAbsent(params.frameStreamId, true) == null) {
-        submitInteractiveRenderAsync(params.frameStreamId, target.previewId, session)
-      }
+      requestInteractiveRender(params.frameStreamId, target.previewId, session)
       return
     }
     // v1 fallback: each input enqueues a fresh stateless render of the target preview. The
@@ -1918,6 +1971,7 @@ class JsonRpcServer(
             System.err.println(
               "compose-ai-daemon: interactive session render($hostId) failed: ${e.message}"
             )
+            e.printStackTrace(System.err)
             renderResultsQueue.put(RenderResultOrFailure.Failure(hostId, e))
           } finally {
             // Release the in-flight slot, then check if more inputs arrived during the render.
@@ -2535,6 +2589,9 @@ class JsonRpcServer(
   private fun closeAllInteractiveSessions() {
     val sessions = interactiveSessions.values.toList()
     interactiveSessions.clear()
+    val frameLoops = interactiveFrameLoops.values.toList()
+    interactiveFrameLoops.clear()
+    frameLoops.forEach { it.interrupt() }
     // v2 phase 3 — drop any pending coalesced inputs and in-flight claims. The render workers
     // they refer to may still be running; they observe the cleared sessions map on their post-
     // finally re-claim and exit cleanly without re-spawning.
@@ -2789,6 +2846,9 @@ class JsonRpcServer(
 
     /** RECORDING.md — default `recording/start.fps` when the caller doesn't specify one. */
     const val DEFAULT_RECORDING_FPS: Int = 30
+
+    /** Live interactive preview frame cadence. Conservative to avoid saturating Android renders. */
+    const val INTERACTIVE_FRAME_INTERVAL_MS: Long = 250L
 
     /** RECORDING.md — minimum legal `recording/start.fps`. */
     const val MIN_RECORDING_FPS: Int = 1
