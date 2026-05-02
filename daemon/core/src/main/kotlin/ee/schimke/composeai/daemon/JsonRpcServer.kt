@@ -2717,7 +2717,13 @@ class JsonRpcServer(
   private fun buildKnownDevices(): List<KnownDevice> =
     ee.schimke.composeai.daemon.devices.DeviceDimensions.KNOWN_DEVICE_IDS.sorted().map { id ->
       val spec = ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(id)
-      KnownDevice(id = id, widthDp = spec.widthDp, heightDp = spec.heightDp, density = spec.density)
+      KnownDevice(
+        id = id,
+        widthDp = spec.widthDp,
+        heightDp = spec.heightDp,
+        density = spec.density,
+        isRound = spec.isRound,
+      )
     }
 
   /** Tagged failure carrier for the watcher loop. */

@@ -18,7 +18,7 @@ class DeviceDimensionsTest {
       DeviceDimensions.resolve("id:pixel_fold"),
     )
     assertEquals(
-      DeviceDimensions.DeviceSpec(192, 192, 2.0f),
+      DeviceDimensions.DeviceSpec(192, 192, 2.0f, isRound = true),
       DeviceDimensions.resolve("id:wearos_small_round"),
     )
     assertEquals(
@@ -50,6 +50,14 @@ class DeviceDimensionsTest {
     assertEquals(
       DeviceDimensions.DeviceSpec(800, 400, DeviceDimensions.DEFAULT_DENSITY),
       DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=landscape"),
+    )
+  }
+
+  @Test
+  fun specStringPreservesIsRoundParameter() {
+    assertEquals(
+      DeviceDimensions.DeviceSpec(227, 227, 2.0f, isRound = true),
+      DeviceDimensions.resolve("spec:width=227dp,height=227dp,dpi=320,isRound=true"),
     )
   }
 

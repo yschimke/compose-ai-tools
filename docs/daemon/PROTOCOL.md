@@ -127,7 +127,8 @@ Result:
   };
   // KnownDevice — one entry per id in DeviceDimensions.KNOWN_DEVICE_IDS, projected to wire shape.
   // `id` is the string a caller passes via renderNow.overrides.device; widthDp/heightDp/density
-  // let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving.
+  // let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving. isRound marks
+  // circular Wear-style displays.
   // Empty list = pre-feature daemon; treat absent and `[]` identically.
   // The `spec:width=…,height=…,dpi=…` grammar is not enumerable — clients pass it as a
   // free-form `device` override and the daemon parses it at resolve-time.
