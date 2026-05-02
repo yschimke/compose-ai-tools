@@ -512,7 +512,9 @@ export interface InteractiveStopParams { frameStreamId: string }
 export type InteractiveInputKind =
     | 'click'
     | 'pointerDown'
+    | 'pointerMove'
     | 'pointerUp'
+    | 'rotaryScroll'
     | 'keyDown'
     | 'keyUp';
 
@@ -523,6 +525,8 @@ export interface InteractiveInputParams {
      *  last-render density. Omit for keyboard events. */
     pixelX?: number;
     pixelY?: number;
+    /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
+    scrollDeltaY?: number;
     /** For `keyDown` / `keyUp`. */
     keyCode?: string;
 }

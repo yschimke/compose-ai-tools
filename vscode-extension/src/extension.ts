@@ -2121,12 +2121,13 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case 'setInteractive':
             void handleSetInteractive(msg.previewId, msg.enabled);
             break;
-        case 'recordInteractiveClick':
+        case 'recordInteractiveInput':
             logLine(
-                `[interactive] click ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
-                + `image=${msg.imageWidth}x${msg.imageHeight}`,
+                `[interactive] ${msg.kind} ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
+                + `image=${msg.imageWidth}x${msg.imageHeight}`
+                + (msg.scrollDeltaY != null ? ` deltaY=${msg.scrollDeltaY}` : ''),
             );
-            void forwardInteractiveClick(msg.previewId, msg.pixelX, msg.pixelY);
+            void forwardInteractiveInput(msg);
             break;
         case 'setA11yOverlay':
             void handleSetA11yOverlay(msg.previewId, msg.enabled);
@@ -2850,16 +2851,15 @@ function updateInteractiveStatus(): void {
 }
 
 /**
- * Forward a panel-side click on a live preview to the daemon's `interactive/input`
+ * Forward panel-side input on a live preview to the daemon's `interactive/input`
  * notification. Drops silently when the previewId isn't currently in interactive mode
  * — callers don't need to coordinate with the start/stop dance.
  */
-async function forwardInteractiveClick(
-    previewId: string,
-    pixelX: number,
-    pixelY: number,
+async function forwardInteractiveInput(
+    input: Extract<WebviewToExtension, { command: 'recordInteractiveInput' }>,
 ): Promise<void> {
     if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    const previewId = input.previewId;
     const streamId = activeInteractiveStreams.get(previewId);
     if (!streamId) { return; }
     const moduleId = previewModuleMap.get(previewId);
@@ -2870,9 +2870,10 @@ async function forwardInteractiveClick(
     if (!client) { return; }
     client.interactiveInput({
         frameStreamId: streamId,
-        kind: 'click',
-        pixelX,
-        pixelY,
+        kind: input.kind,
+        pixelX: input.pixelX,
+        pixelY: input.pixelY,
+        scrollDeltaY: input.scrollDeltaY,
     });
 }
 

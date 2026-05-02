@@ -84,6 +84,15 @@ class DesktopInteractiveSession(
           buttons = PointerButtons(isPrimaryPressed = true),
         )
       }
+      InteractiveInputKind.POINTER_MOVE -> {
+        if (px == null || py == null) return
+        state.scene.sendPointerEvent(
+          eventType = PointerEventType.Move,
+          position = sceneOffset(px, py),
+          button = PointerButton.Primary,
+          buttons = PointerButtons(isPrimaryPressed = true),
+        )
+      }
       InteractiveInputKind.POINTER_UP -> {
         if (px == null || py == null) return
         state.scene.sendPointerEvent(
@@ -93,6 +102,7 @@ class DesktopInteractiveSession(
           buttons = PointerButtons(),
         )
       }
+      InteractiveInputKind.ROTARY_SCROLL,
       InteractiveInputKind.KEY_DOWN,
       InteractiveInputKind.KEY_UP -> {
         // No-op for v2 — see class KDoc. Wire shape accepts the input so the daemon doesn't reject

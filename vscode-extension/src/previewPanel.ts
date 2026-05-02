@@ -593,30 +593,101 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             setInteractiveForCard(card, shift);
         }
 
-        // Idempotent attach. Adds a click listener to the live card's image
+        // Idempotent attach. Adds pointer + wheel listeners to the live card's image
         // exactly once; flagged via dataset so a second updateImage on the
         // same element doesn't stack listeners. Detached the moment live
         // mode exits, so non-live cards never carry the handler.
-        function ensureInteractiveClickHandler(card, img) {
+        function ensureInteractiveInputHandlers(card, img) {
             const previewId = card.dataset.previewId;
             const shouldHandle = !!previewId && interactivePreviewIds.has(previewId);
             if (shouldHandle && img.dataset.interactiveBound !== '1') {
                 img.dataset.interactiveBound = '1';
-                img.addEventListener('click', (evt) => {
+                const state = {
+                    pointerId: null,
+                    start: null,
+                    last: null,
+                    dragging: false,
+                    sentDown: false,
+                };
+                img.addEventListener('pointerdown', (evt) => {
                     const id = card.dataset.previewId;
                     if (!id || !interactivePreviewIds.has(id)) return;
-                    recordInteractiveClick(id, img, evt);
+                    if (evt.button !== 0) return;
+                    state.pointerId = evt.pointerId;
+                    state.start = imagePoint(img, evt);
+                    state.last = state.start;
+                    state.dragging = false;
+                    state.sentDown = false;
+                    img.setPointerCapture?.(evt.pointerId);
+                    evt.preventDefault();
+                    evt.stopPropagation();
                 });
-            } else if (!shouldHandle && img.dataset.interactiveBound === '1') {
-                // Listener leak isn't worth a clone+replace dance — set the
-                // flag so the early-return inside the listener short-circuits
-                // future clicks, and let the element's lifetime clean things
-                // up. Re-entering live mode rebinds via the bound check above.
-                delete img.dataset.interactiveBound;
+                img.addEventListener('pointermove', (evt) => {
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (state.pointerId !== evt.pointerId || !state.start) return;
+                    const next = imagePoint(img, evt);
+                    if (!next) return;
+                    const dx = next.clientX - state.start.clientX;
+                    const dy = next.clientY - state.start.clientY;
+                    if (!state.dragging && Math.hypot(dx, dy) >= 4) {
+                        state.dragging = true;
+                    }
+                    if (state.dragging) {
+                        if (!state.sentDown) {
+                            postInteractiveInput(id, img, 'pointerDown', state.start);
+                            state.sentDown = true;
+                        }
+                        postInteractiveInput(id, img, 'pointerMove', next);
+                        state.last = next;
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                    }
+                });
+                img.addEventListener('pointerup', (evt) => {
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (state.pointerId !== evt.pointerId || !state.start) return;
+                    const point = imagePoint(img, evt) || state.last || state.start;
+                    if (state.dragging) {
+                        if (!state.sentDown) {
+                            postInteractiveInput(id, img, 'pointerDown', state.start);
+                        }
+                        postInteractiveInput(id, img, 'pointerUp', point);
+                    } else {
+                        postInteractiveInput(id, img, 'click', point);
+                    }
+                    img.releasePointerCapture?.(evt.pointerId);
+                    state.pointerId = null;
+                    state.start = null;
+                    state.last = null;
+                    state.dragging = false;
+                    state.sentDown = false;
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                });
+                img.addEventListener('pointercancel', (evt) => {
+                    if (state.pointerId !== evt.pointerId) return;
+                    img.releasePointerCapture?.(evt.pointerId);
+                    state.pointerId = null;
+                    state.start = null;
+                    state.last = null;
+                    state.dragging = false;
+                    state.sentDown = false;
+                });
+                img.addEventListener('wheel', (evt) => {
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id) || card.dataset.wearPreview !== '1') return;
+                    const point = imagePoint(img, evt);
+                    if (!point) return;
+                    postInteractiveInput(id, img, 'rotaryScroll', point, evt.deltaY);
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                }, { passive: false });
             }
         }
 
-        function recordInteractiveClick(previewId, img, evt) {
+        function imagePoint(img, evt) {
             // Image-natural pixel coords — same space the daemon's renderer
             // works in. The webview's offsetX/Y is in CSS pixels of the
             // displayed image; scale by the displayed/natural ratio to
@@ -624,18 +695,32 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const natW = img.naturalWidth || 0;
             const natH = img.naturalHeight || 0;
             const rect = img.getBoundingClientRect();
-            if (!natW || !natH || rect.width === 0 || rect.height === 0) return;
+            if (!natW || !natH || rect.width === 0 || rect.height === 0) return null;
             const clientX = evt.clientX - rect.left;
             const clientY = evt.clientY - rect.top;
             const pixelX = Math.round(clientX * (natW / rect.width));
             const pixelY = Math.round(clientY * (natH / rect.height));
+            return {
+                clientX,
+                clientY,
+                pixelX: Math.max(0, Math.min(natW - 1, pixelX)),
+                pixelY: Math.max(0, Math.min(natH - 1, pixelY)),
+            };
+        }
+
+        function postInteractiveInput(previewId, img, kind, point, scrollDeltaY) {
+            const natW = img.naturalWidth || 0;
+            const natH = img.naturalHeight || 0;
+            if (!point || !natW || !natH) return;
             vscode.postMessage({
-                command: 'recordInteractiveClick',
+                command: 'recordInteractiveInput',
                 previewId,
-                pixelX,
-                pixelY,
+                kind,
+                pixelX: point.pixelX,
+                pixelY: point.pixelY,
                 imageWidth: natW,
                 imageHeight: natH,
+                scrollDeltaY,
             });
         }
 
@@ -1204,6 +1289,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             card.dataset.group = p.params.group || '';
             card.dataset.previewId = p.id;
             card.dataset.className = p.className;
+            card.dataset.wearPreview = isWearPreview(p) ? '1' : '0';
             card.dataset.currentIndex = '0';
             cardCaptures.set(p.id, captures.map(c => ({
                 label: c.label || '',
@@ -1284,7 +1370,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // Single-click on the image enters LIVE for this preview (in any
             // layout — focus, grid, flow, column). The first click toggles
             // interactive on; subsequent clicks while LIVE forward as pointer
-            // events to the daemon (handled by ensureInteractiveClickHandler
+            // events to the daemon (handled by ensureInteractiveInputHandlers
             // attached via updateImage). The handler is on the container, not
             // the <img>, so clicks land before the image renders too. Modifier-
             // aware: Shift+click follows the multi-stream semantics from
@@ -1293,7 +1379,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 const previewId = card.dataset.previewId;
                 if (!previewId) return;
                 // If we're already live for this preview, the per-image click
-                // handler routes to recordInteractiveClick — let that fire
+                // handler routes to recordInteractiveInput — let that fire
                 // instead of toggling off.
                 if (interactivePreviewIds.has(previewId)) return;
                 enterInteractiveOnCard(card, evt.shiftKey);
@@ -1477,6 +1563,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 }
                 img.src = 'data:' + mimeFor(capture.renderOutput) + ';base64,' + capture.imageData;
                 img.className = 'fade-in';
+                ensureInteractiveInputHandlers(card, img);
             } else if (capture.errorMessage || capture.renderError) {
                 const existingErr = container.querySelector('.error-message');
                 if (existingErr) existingErr.remove();
@@ -1516,6 +1603,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         function updateCardMetadata(card, p) {
             card.dataset.function = p.functionName;
             card.dataset.group = p.params.group || '';
+            card.dataset.wearPreview = isWearPreview(p) ? '1' : '0';
             const title = card.querySelector('.card-title');
             if (title) {
                 title.textContent = p.functionName + (p.params.name ? ' — ' + p.params.name : '');
@@ -1657,6 +1745,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         function shortDevice(d) {
             if (!d) return '';
             return d.replace(/^id:/, '').replace(/_/g, ' ');
+        }
+
+        function isWearPreview(p) {
+            const device = (p.params.device || '').toLowerCase();
+            if (device.includes('wear')) return true;
+            const w = p.params.widthDp || 0;
+            const h = p.params.heightDp || 0;
+            return w > 0 && h > 0 && w === h && w <= 260;
         }
 
         function buildTooltip(p) {
@@ -1986,7 +2082,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // than a sequence of independent renders. See INTERACTIVE.md § 3.
             const isLive = interactivePreviewIds.has(previewId);
             img.className = isLive ? 'live-frame' : 'fade-in';
-            ensureInteractiveClickHandler(card, img);
+            ensureInteractiveInputHandlers(card, img);
 
             if (caps) updateFrameIndicator(card);
 

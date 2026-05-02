@@ -489,6 +489,7 @@ body {
 .image-container img.live-frame {
     /* No animation: the next frame replaces the current one with no fade. */
     animation: none;
+    touch-action: none;
 }
 
 /* Subtle red border telegraphs that the card is an interactive target.

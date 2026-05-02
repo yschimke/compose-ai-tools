@@ -907,6 +907,8 @@ open class RobolectricHost(
      */
     private val engine: RenderEngine by lazy { RenderEngine() }
 
+    private var heldPointerDownTimeMs: Long = 0L
+
     /**
      * B2.3 — per-sandbox lifecycle counters, instantiated inside the sandbox so `sandboxAgeMs`
      * is wall-clock since `holdSandboxOpen` started (i.e. since the sandbox booted, not since
@@ -1424,7 +1426,9 @@ open class RobolectricHost(
      * `mainClock` provided we advance the clock by [POINTER_HOLD_MS] after the dispatch.
      *
      * `click` synthesises ACTION_DOWN + ACTION_UP at the same coords; `pointerDown` /
-     * `pointerUp` send a single event each. Unknown kinds are silently dropped — the host-side
+     * `pointerMove` / `pointerUp` send a single event each. `rotaryScroll` dispatches a generic
+     * SOURCE_ROTARY_ENCODER ACTION_SCROLL so Wear Compose receives it like an RSB turn. Unknown kinds
+     * are silently dropped — the host-side
      * [AndroidInteractiveSession.dispatch] already filters key events out, so we should never
      * see them here.
      */
@@ -1473,9 +1477,10 @@ open class RobolectricHost(
             }
           }
           "pointerDown" -> {
+            heldPointerDownTimeMs = now
             val ev =
               android.view.MotionEvent.obtain(
-                now,
+                heldPointerDownTimeMs,
                 now,
                 android.view.MotionEvent.ACTION_DOWN,
                 x,
@@ -1488,10 +1493,28 @@ open class RobolectricHost(
               ev.recycle()
             }
           }
-          "pointerUp" -> {
+          "pointerMove" -> {
+            val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
             val ev =
               android.view.MotionEvent.obtain(
+                downTime,
                 now,
+                android.view.MotionEvent.ACTION_MOVE,
+                x,
+                y,
+                /* metaState = */ 0,
+              )
+            try {
+              decor.dispatchTouchEvent(ev)
+            } finally {
+              ev.recycle()
+            }
+          }
+          "pointerUp" -> {
+            val downTime = if (heldPointerDownTimeMs != 0L) heldPointerDownTimeMs else now
+            val ev =
+              android.view.MotionEvent.obtain(
+                downTime,
                 now,
                 android.view.MotionEvent.ACTION_UP,
                 x,
@@ -1502,6 +1525,52 @@ open class RobolectricHost(
               decor.dispatchTouchEvent(ev)
             } finally {
               ev.recycle()
+              heldPointerDownTimeMs = 0L
+            }
+          }
+          "rotaryScroll" -> {
+            val delta = cmd.scrollDeltaY ?: 0f
+            if (delta != 0f) {
+              val props =
+                arrayOf(
+                  android.view.MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = android.view.MotionEvent.TOOL_TYPE_UNKNOWN
+                  }
+                )
+              val coords =
+                arrayOf(
+                  android.view.MotionEvent.PointerCoords().apply {
+                    this.x = x
+                    this.y = y
+                    setAxisValue(
+                      android.view.MotionEvent.AXIS_SCROLL,
+                      if (delta > 0f) -1f else 1f,
+                    )
+                  }
+                )
+              val ev =
+                android.view.MotionEvent.obtain(
+                  now,
+                  now,
+                  android.view.MotionEvent.ACTION_SCROLL,
+                  1,
+                  props,
+                  coords,
+                  /* metaState = */ 0,
+                  /* buttonState = */ 0,
+                  /* xPrecision = */ 1f,
+                  /* yPrecision = */ 1f,
+                  /* deviceId = */ 0,
+                  /* edgeFlags = */ 0,
+                  android.view.InputDevice.SOURCE_ROTARY_ENCODER,
+                  /* flags = */ 0,
+                )
+              try {
+                decor.dispatchGenericMotionEvent(ev)
+              } finally {
+                ev.recycle()
+              }
             }
           }
         }

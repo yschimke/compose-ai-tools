@@ -457,6 +457,16 @@ class DesktopRecordingSession(
           buttons = PointerButtons(isPrimaryPressed = true),
         )
       }
+      InteractiveInputKind.POINTER_MOVE -> {
+        if (px == null || py == null) return
+        state.scene.sendPointerEvent(
+          eventType = PointerEventType.Move,
+          position = sceneOffset(px, py),
+          timeMillis = tMs,
+          button = PointerButton.Primary,
+          buttons = PointerButtons(isPrimaryPressed = true),
+        )
+      }
       InteractiveInputKind.POINTER_UP -> {
         if (px == null || py == null) return
         state.scene.sendPointerEvent(
@@ -467,6 +477,7 @@ class DesktopRecordingSession(
           buttons = PointerButtons(),
         )
       }
+      InteractiveInputKind.ROTARY_SCROLL,
       InteractiveInputKind.KEY_DOWN,
       InteractiveInputKind.KEY_UP -> {
         // Reserved for v2 key dispatch; same no-op as DesktopInteractiveSession.
