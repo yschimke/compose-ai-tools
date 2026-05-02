@@ -555,6 +555,70 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_preview with overrides forwards them to the daemon's renderNow`() {
+    // Regression for the broken main / mismatched-bytes pair:
+    //   1. PR #413 split renderAndReadBytes into renderAndReadBytes + awaitNextRender, but
+    //      didn't thread the new `overrides` parameter through — the latter just reused a
+    //      symbol-not-in-scope `overrides` reference, leaving main with an unresolved-reference
+    //      error and the MCP tool's overrides silently dropped on every call. This test asserts
+    //      the daemon actually sees them.
+    //   2. Two concurrent render_preview calls for the same URI but different overrides used to
+    //      share a single CompletableFuture in pendingRenders, returning whichever rendered
+    //      first's bytes to BOTH callers. RenderKey now includes overrides so that fanout splits
+    //      cleanly. The serial-call assertion below is the minimum — the dedup fix is documented
+    //      via the kdoc on awaitNextRender.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3)
+    val pngFile = tmp.newFile("override-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        put(
+          "overrides",
+          buildJsonObject {
+            put("widthPx", 600)
+            put("heightPx", 800)
+            put("uiMode", "dark")
+            put("device", "id:pixel_5")
+          },
+        )
+      },
+      timeoutMs = 10_000,
+    )
+
+    // The daemon recorded one renderNow whose overrides match what we sent. Without the
+    // compile fix, `renderOverrides[0]` would be `null` because the param was dropped on the
+    // floor on its way through awaitNextRender.
+    assertThat(daemon.renderOverrides).hasSize(1)
+    val firstOverrides = daemon.renderOverrides[0]
+    assertThat(firstOverrides).isNotNull()
+    assertThat(firstOverrides!!.widthPx).isEqualTo(600)
+    assertThat(firstOverrides.heightPx).isEqualTo(800)
+    assertThat(firstOverrides.uiMode).isEqualTo(ee.schimke.composeai.daemon.protocol.UiMode.DARK)
+    assertThat(firstOverrides.device).isEqualTo("id:pixel_5")
+
+    // A second render_preview call WITHOUT overrides now uses a different RenderKey and triggers
+    // a fresh renderNow rather than dedup'ing onto the first. Pre-fix, the now-stale shared key
+    // path would have skipped the renderNow and the request would have hung.
+    client.callTool("render_preview", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+    assertThat(daemon.renderOverrides).hasSize(2)
+    assertThat(daemon.renderOverrides[1]).isNull()
+  }
+
+  @Test
   fun `resources read round-trips through renderNow and returns base64 PNG`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")

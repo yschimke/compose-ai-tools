@@ -55,6 +55,13 @@ class FakeDaemon : DaemonSpawn {
   val focusSets = java.util.concurrent.LinkedBlockingQueue<List<String>>()
   /** `renderNow` invocations the fake observed. */
   val renderRequests = java.util.concurrent.LinkedBlockingQueue<List<String>>()
+  /**
+   * `renderNow.overrides` payloads the fake observed (in lockstep with [renderRequests]).
+   * `LinkedBlockingQueue` rejects null elements, so we use `CopyOnWriteArrayList` and tests poll by
+   * index rather than by [LinkedBlockingQueue.poll] timeout.
+   */
+  val renderOverrides: MutableList<ee.schimke.composeai.daemon.protocol.PreviewOverrides?> =
+    java.util.concurrent.CopyOnWriteArrayList()
 
   /**
    * D1 — kinds the fake advertises in `initialize.capabilities.dataProducts`. Tests assign before
@@ -270,6 +277,17 @@ class FakeDaemon : DaemonSpawn {
             it.jsonPrimitive.contentOrNull
           } ?: emptyList()
         renderRequests.offer(previews)
+        val overrides =
+          params
+            ?.get("overrides")
+            ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+            ?.let {
+              json.decodeFromJsonElement(
+                ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
+                it,
+              )
+            }
+        renderOverrides.add(overrides)
         val result = RenderNowResult(queued = previews, rejected = emptyList())
         sendResponse(id, json.encodeToJsonElement(RenderNowResult.serializer(), result))
         // Auto-emit renderFinished for any preview whose path the test pre-registered. The
