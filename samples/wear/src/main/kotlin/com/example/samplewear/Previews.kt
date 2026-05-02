@@ -24,6 +24,8 @@ import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.ListHeader
@@ -161,6 +163,31 @@ private fun ButtonPreviewContent() {
     }
 }
 
+@Composable
+private fun CircularProgressPreviewContent() {
+    MaterialTheme {
+        AppScaffold(
+            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
+        ) {
+            ScreenScaffold { contentPadding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding)
+                        .padding(CircularProgressIndicatorDefaults.FullScreenPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        progress = { 0.72f },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Text("72%")
+                }
+            }
+        }
+    }
+}
+
 @WearPreviewDevices
 @Composable
 fun ActivityListPreview() {
@@ -186,6 +213,13 @@ fun ActivityListFontScalesPreview() {
 @Composable
 fun ButtonPreview() {
     ButtonPreviewContent()
+}
+
+@WearPreviewSmallRound
+@WearPreviewLargeRound
+@Composable
+fun CircularProgressIndicatorPreview() {
+    CircularProgressPreviewContent()
 }
 
 /**
