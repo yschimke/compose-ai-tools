@@ -362,7 +362,16 @@ sealed interface InteractiveCommand {
    * Allocate the rule + ActivityScenario, run `setContent`, signal ready via [replyLatch]. The
    * preview reference travels as separate FQN + function-name strings (the sandbox resolves them
    * via `Class.forName` against the slot's child classloader), and dimension/qualifier fields
-   * mirror the v1 [`RenderSpec`] subset the held composition needs.
+   * mirror the v1 `RenderSpec` subset the held composition needs.
+   *
+   * **Qualifier fields are encoded as primitives + Strings** rather than the daemon-side
+   * [`RenderSpec.SpecUiMode`] / [`RenderSpec.SpecOrientation`] enums because those enums live in
+   * the instrumented `ee.schimke.composeai.daemon.*` package — passing them across the bridge
+   * would re-load the enum class inside the sandbox, breaking `==` equality. Strings cross the
+   * boundary as `java.lang.String` (do-not-acquire by default). PR C wired the extra qualifiers
+   * (`localeTag`, `fontScale`, `uiMode`, `orientation`) so the held composition reflects the
+   * same Configuration overrides a one-shot render would; PR B's Start carried only the v1
+   * size/density/round subset.
    *
    * @param replyError the sandbox sets this before counting down [replyLatch] when `setContent`
    *   throws; the host then surfaces a clean failure on the v2 `interactive/start` reply rather
@@ -383,6 +392,14 @@ sealed interface InteractiveCommand {
     val outputBaseName: String,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
+    /** BCP-47 locale tag (e.g. `"en-US"`); `null` = no `b+lang+region` qualifier. */
+    val localeTag: String? = null,
+    /** Font scale multiplier; `null` = leave Robolectric's `RuntimeEnvironment.setFontScale` at 1.0. */
+    val fontScale: Float? = null,
+    /** `"light"` / `"dark"` / `null`; resolved sandbox-side to the `notnight` / `night` qualifier. */
+    val uiMode: String? = null,
+    /** `"portrait"` / `"landscape"` / `null`; overrides the size-derived guess. */
+    val orientation: String? = null,
   ) : InteractiveCommand
 
   /**
