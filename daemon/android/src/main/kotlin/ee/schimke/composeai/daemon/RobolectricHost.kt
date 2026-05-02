@@ -1,8 +1,17 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.onRoot
+import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.bridge.InteractiveCommand
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Test
 import org.junit.runner.JUnitCore
 import org.junit.runner.RunWith
@@ -103,7 +112,62 @@ open class RobolectricHost(
    */
   val userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
     null,
+  /**
+   * v3 (INTERACTIVE-ANDROID.md § 7) — resolves a wire-side `previewId` to a concrete [RenderSpec]
+   * for the held interactive scene. Without a resolver, [acquireInteractiveSession] throws
+   * `UnsupportedOperationException` and `JsonRpcServer` falls back to the v1 stateless dispatch
+   * path; the panel surfaces the "v1 fallback" hint via the same #431 path the desktop side uses.
+   *
+   * `null` (the default) keeps every pre-v3 caller's behaviour — the host advertises no
+   * interactive support. Production wiring in [DaemonMain] passes a resolver backed by
+   * `PreviewIndex`, with the same shape `:daemon:desktop`'s `DesktopHost` already uses. The two
+   * resolvers can share an implementation when v3 lifecycle hardening (PR C) lands.
+   */
+  private val previewSpecResolver: ((String) -> RenderSpec?)? = null,
+  /**
+   * v3 zombie-session safeguard — auto-close a held interactive session when no input or render
+   * has arrived for this many milliseconds. Forwarded to [AndroidInteractiveSession]'s
+   * idle-lease watchdog. Defaults to [AndroidInteractiveSession.DEFAULT_IDLE_LEASE_MS] (1 minute);
+   * tests pass a smaller value (or zero to disable) when they want to drive the lease path
+   * without sleeping CI for a minute.
+   *
+   * Without this lease, a panel that crashes or a websocket that drops mid-session would hold
+   * slot 1 for the rest of the daemon's lifetime — interactive capacity is one held session at
+   * a time per host (INTERACTIVE-ANDROID.md § 2.1), so a single zombie burns the whole pool.
+   */
+  private val interactiveIdleLeaseMs: Long =
+    System.getProperty(AndroidInteractiveSession.IDLE_LEASE_PROP)?.toLongOrNull()
+      ?: AndroidInteractiveSession.DEFAULT_IDLE_LEASE_MS,
 ) : RenderHost {
+
+  /**
+   * INTERACTIVE-ANDROID.md § 2 — interactive sessions on Android need one pinned sandbox slot in
+   * addition to the always-on slot 0 that drains normal renders, so the capability bit reads
+   * `true` only when both `sandboxCount >= 2` and a [previewSpecResolver] is wired. With
+   * `sandboxCount == 1` the single sandbox can't be sacrificed without taking normal renders down,
+   * so [acquireInteractiveSession] throws `Unsupported` and `JsonRpcServer` falls back to v1.
+   *
+   * Daemon-level capability — surfaced once in `InitializeResult.capabilities.interactive`, not
+   * re-probed per call. The panel reads it at `initialize` and renders the v1-fallback hint when
+   * it's `false`.
+   */
+  override val supportsInteractive: Boolean
+    get() = sandboxCount >= 2 && previewSpecResolver != null
+
+  /**
+   * Identifier of the currently-held interactive session, or `null` when no session is active.
+   * v3 supports one held session at a time per host; concurrent acquire calls CAS through this
+   * ref so the second loses cleanly with `Unsupported` rather than racing the slot's bridge
+   * queue. Cleared by [AndroidInteractiveSession.close] via the same ref.
+   */
+  private val activeInteractiveStreamId: AtomicReference<String?> = AtomicReference(null)
+
+  /**
+   * Monotonic counter for `streamId`s the host hands out. Persisted as a host-level counter
+   * (rather than `RenderHost.nextRequestId`) because the wire-side `streamId` is purely a
+   * host-internal correlation key — it doesn't share number space with render ids.
+   */
+  private val nextStreamCounter: AtomicLong = AtomicLong(1)
 
   /**
    * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the Robolectric
@@ -420,6 +484,111 @@ open class RobolectricHost(
   }
 
   /**
+   * v3 (INTERACTIVE-ANDROID.md § 7) — allocate an [AndroidInteractiveSession] backed by a held
+   * `createAndroidComposeRule` on the interactive sandbox slot. Throws
+   * `UnsupportedOperationException` (which `JsonRpcServer` translates to `MethodNotFound (-32601)`
+   * on the wire) when:
+   *  * [sandboxCount] is < 2 — only one sandbox is configured and we can't sacrifice it without
+   *    taking normal renders down for the session's lifetime.
+   *  * [previewSpecResolver] wasn't wired at construction — production [DaemonMain] passes one;
+   *    in-process tests that don't pass one explicitly opt out of v3.
+   *  * The resolver returns `null` for the wire-side [previewId] — the manifest doesn't know
+   *    about this preview, so we can't hand the held composition the class+method+dimensions it
+   *    needs.
+   *  * Another session is already held — v3 supports one held session at a time per host.
+   *  * The held-rule statement fails to set up `setContent` within
+   *    [INTERACTIVE_START_TIMEOUT_MS] (e.g. the user composable's body throws). In that case
+   *    [InteractiveCommand.Start.replyError] carries the underlying cause through to the wire.
+   *
+   * The [classLoader] argument is forwarded into the bridge for parity with desktop, but the
+   * sandbox-side held-rule loop reads the slot's child classloader directly via the
+   * `DaemonHostBridge`'s slot-level `childLoaderRef` (the host already publishes it on
+   * [submit]). Carrying the explicit ClassLoader through the bridge would double-load it across
+   * the sandbox boundary; not worth it for a value already mirrored on the slot.
+   */
+  override fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+  ): InteractiveSession {
+    if (sandboxCount < 2) {
+      throw UnsupportedOperationException(
+        "RobolectricHost: interactive sessions require sandboxCount >= 2 " +
+          "(have $sandboxCount); v3 pins one sandbox slot per held session and slot 0 must stay " +
+          "available for normal renders. See docs/daemon/INTERACTIVE-ANDROID.md § 2."
+      )
+    }
+    val resolver =
+      previewSpecResolver
+        ?: throw UnsupportedOperationException(
+          "RobolectricHost has no previewSpecResolver; pass one at construction time to enable " +
+            "v3 interactive sessions"
+        )
+    val spec =
+      resolver(previewId)
+        ?: throw UnsupportedOperationException(
+          "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
+            "interactive session not allocated"
+        )
+    val streamId = "android-stream-${nextStreamCounter.getAndIncrement()}"
+    if (!activeInteractiveStreamId.compareAndSet(null, streamId)) {
+      val held = activeInteractiveStreamId.get() ?: "<concurrent close>"
+      throw UnsupportedOperationException(
+        "RobolectricHost: interactive session already held for stream '$held'; " +
+          "v3 supports one held session at a time per host (INTERACTIVE-ANDROID.md § 2.1)"
+      )
+    }
+    // Publish the slot's child classloader before the sandbox-side held-rule loop reads it. The
+    // legacy normal-render path does this on every `submit`; we do it once here because the held
+    // session uses one classloader for its entire lifetime. A subsequent file-changed-driven
+    // [swapUserClassLoaders] won't be picked up mid-session (PR C wires that — at which point
+    // the host posts an InteractiveCommand.Close and the next acquire starts fresh).
+    publishChildLoaderForSlot(INTERACTIVE_SLOT_INDEX)
+    val slot = DaemonHostBridge.slot(INTERACTIVE_SLOT_INDEX)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    slot.interactiveCommands.put(
+      InteractiveCommand.Start(
+        streamId = streamId,
+        previewClassName = spec.className,
+        previewFunctionName = spec.functionName,
+        widthPx = spec.widthPx,
+        heightPx = spec.heightPx,
+        density = spec.density,
+        backgroundColor = spec.backgroundColor,
+        showBackground = spec.showBackground,
+        device = spec.device,
+        outputBaseName = spec.outputBaseName,
+        replyLatch = replyLatch,
+        replyError = replyError,
+      )
+    )
+    if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+      activeInteractiveStreamId.compareAndSet(streamId, null)
+      throw UnsupportedOperationException(
+        "RobolectricHost.acquireInteractiveSession timed out after " +
+          "${INTERACTIVE_START_TIMEOUT_MS}ms for previewId='$previewId' — the held-rule loop on " +
+          "slot $INTERACTIVE_SLOT_INDEX did not register setContent in time"
+      )
+    }
+    val startError = replyError.get()
+    if (startError != null) {
+      activeInteractiveStreamId.compareAndSet(streamId, null)
+      throw UnsupportedOperationException(
+        "RobolectricHost.acquireInteractiveSession failed for previewId='$previewId': " +
+          "${startError.javaClass.simpleName}: ${startError.message}",
+        startError,
+      )
+    }
+    return AndroidInteractiveSession(
+      previewId = previewId,
+      streamId = streamId,
+      slot = slot,
+      activeStreamRef = activeInteractiveStreamId,
+      idleLeaseMs = interactiveIdleLeaseMs,
+    )
+  }
+
+  /**
    * Sends the poison pill, waits up to [timeoutMs] for the worker thread to
    * exit. Idempotent.
    */
@@ -461,6 +630,23 @@ open class RobolectricHost(
      * same sandbox slot. Mirrors the prefix `PreviewManifestRouter.parsePreviewId` recognises.
      */
     private const val PREVIEW_ID_KEY: String = "previewId="
+
+    /**
+     * INTERACTIVE-ANDROID.md § 7 — slot index pinned to interactive sessions in v3. Slot 0 stays
+     * the always-on normal-render slot; the held-rule loop runs exclusively on slot 1. Any future
+     * multi-target (v4) lift would expand this to a slot range and gate per-session slot
+     * allocation through a free-list.
+     */
+    internal const val INTERACTIVE_SLOT_INDEX: Int = 1
+
+    /**
+     * Upper bound on `interactive/start` round-trip — sandbox bootstraps the held rule, the
+     * `setContent` lands, the start latch counts down. 30 s covers a cold sandbox 0→1 transition
+     * (ActivityScenario launch + first composition + first paint); warm starts on slot 1 already
+     * being free are well under a second. If this trips, the held-rule loop is wedged or the
+     * preview composable's body is genuinely stuck.
+     */
+    internal const val INTERACTIVE_START_TIMEOUT_MS: Long = 30_000L
   }
 
   override fun shutdown(timeoutMs: Long) {
@@ -558,6 +744,31 @@ open class RobolectricHost(
       val slot = DaemonHostBridge.slot(slotIndex)
 
       while (!DaemonHostBridge.shutdown.get()) {
+        // INTERACTIVE-ANDROID.md § 4 — interactive priority. Non-blocking poll on the slot's
+        // [InteractiveCommand] queue: a queued [InteractiveCommand.Start] pins the slot to a held
+        // interactive session before the next normal render lands; orphan Dispatch/Render/Close
+        // (a wire-level race where the host enqueued without an active session) is logged and
+        // dropped. Slot 0 never receives an interactive command in v3 — host-side acquire pins
+        // everything to slot 1 — but the poll happens on every slot for symmetry.
+        //
+        // Direct type matching is safe here (unlike the `RenderRequest` block below, which uses
+        // [Class.simpleName] because [RenderRequest] lives in the instrumented
+        // `ee.schimke.composeai.daemon.*` package): [InteractiveCommand] sits in the
+        // `bridge` package which is `doNotAcquirePackage` under [SandboxHoldingRunner], so the
+        // host-side and sandbox-side `Class` objects are identical and `is` works.
+        val interactive = slot.interactiveCommands.poll()
+        if (interactive != null) {
+          if (interactive is InteractiveCommand.Start) {
+            runHeldInteractiveSession(slot, interactive)
+            continue
+          }
+          System.err.println(
+            "compose-ai-daemon: orphan interactive command on slot $slotIndex: " +
+              "${interactive.javaClass.simpleName} streamId=${interactive.streamId} " +
+              "(no session held; dropping)"
+          )
+          continue
+        }
         val request = slot.requests.poll(100, TimeUnit.MILLISECONDS) ?: continue
         // Match by simple class name rather than `is` so a future
         // classloader-rule change reintroducing instrumentation of
@@ -762,5 +973,364 @@ open class RobolectricHost(
       }
       return current
     }
+
+    /**
+     * INTERACTIVE-ANDROID.md § 4 — held-rule loop. Pins this slot to a single interactive session
+     * for the duration of [start.streamId]: allocates `createAndroidComposeRule<ComponentActivity>`,
+     * runs `setContent` once with [androidx.compose.ui.platform.LocalInspectionMode] flipped off
+     * so `Modifier.pointerInput` / `Modifier.clickable` actually fire, then drains
+     * [InteractiveCommand.Dispatch] / [InteractiveCommand.Render] / [InteractiveCommand.Close]
+     * commands until [InteractiveCommand.Close] returns control to [holdSandboxOpen].
+     *
+     * **Held statement blocks the slot's queue-drain.** Constraint (1) from
+     * INTERACTIVE-ANDROID.md § 1: `rule.apply().evaluate()` is a synchronous call from this
+     * thread (the slot's worker thread). While the held statement runs, this slot serves no
+     * normal renders — that's why v3 requires `sandboxCount >= 2`, so slot 0 keeps draining
+     * while slot 1 is pinned (host-side acquire enforces the pinning to slot 1).
+     *
+     * **MotionEvent dispatch.** The probe in `RobolectricInteractiveProbeTest` empirically
+     * confirmed that `decorView.dispatchTouchEvent` inside `rule.runOnUiThread` reaches Compose's
+     * pointer-input pipeline under a paused `mainClock`, and that a subsequent `captureRoboImage`
+     * on the same composition reflects state mutated by the dispatch. We use the same recipe
+     * here verbatim.
+     *
+     * **Failure surfacing.** If anything before the start latch counts down throws (most likely
+     * the user composable's body in `setContent`), the outer try/catch sets [start.replyError]
+     * and counts the latch down so the host's `acquireInteractiveSession` sees the failure
+     * rather than a 30s timeout. After the latch counts down, exceptions on individual
+     * [Dispatch] / [Render] commands ride [InteractiveCommand.Dispatch.replyError] /
+     * [DaemonHostBridge.results] respectively.
+     */
+    private fun runHeldInteractiveSession(
+      slot: ee.schimke.composeai.daemon.bridge.SandboxSlot,
+      start: InteractiveCommand.Start,
+    ) {
+      // Mirror `roborazzi.test.record` defaulting from RenderEngine.render — the held capture
+      // path uses the same `captureRoboImage` and needs record mode enabled.
+      if (System.getProperty("roborazzi.test.record") == null) {
+        System.setProperty("roborazzi.test.record", "true")
+      }
+
+      val classLoader: ClassLoader =
+        DaemonHostBridge.currentChildLoader()
+          ?: Thread.currentThread().contextClassLoader
+          ?: RenderEngine::class.java.classLoader
+      val composableMethod =
+        try {
+          val clazz = Class.forName(start.previewClassName, true, classLoader)
+          clazz.getDeclaredComposableMethod(start.previewFunctionName)
+        } catch (t: Throwable) {
+          // Resolution failure (class missing / method missing / signature mismatch) — surface
+          // immediately on the start reply so the host doesn't wait out the 30s timeout.
+          start.replyError.set(unwrapInvocationTarget(t))
+          start.replyLatch.countDown()
+          return
+        }
+
+      // Activity registration — same idempotent shape RenderEngine.render uses. Robolectric
+      // 4.13+ requires `ComponentActivity` to be reachable through `ShadowPackageManager` before
+      // `createAndroidComposeRule` can launch it.
+      val appContext: android.app.Application =
+        androidx.test.core.app.ApplicationProvider.getApplicationContext()
+      org.robolectric.Shadows.shadowOf(appContext.packageManager)
+        .addActivityIfNotPresent(
+          android.content.ComponentName(
+            appContext.packageName,
+            androidx.activity.ComponentActivity::class.java.name,
+          )
+        )
+
+      // Minimal qualifier set — size + density + round-device. PR C threads through the rest of
+      // the v1 RenderSpec qualifiers (locale, fontScale, uiMode, orientation) once the held
+      // session needs them; for v3's first ship the basics keep parity with what the panel
+      // already shows in non-interactive mode.
+      val widthDp = pxToDp(start.widthPx, start.density)
+      val heightDp = pxToDp(start.heightPx, start.density)
+      val isRound = isRoundDevice(start.device)
+      val qualifiers = buildList {
+        if (widthDp > 0) add("w${widthDp}dp")
+        if (heightDp > 0) add("h${heightDp}dp")
+        if (isRound) add("round")
+        if (widthDp > 0 && heightDp > 0) add(if (widthDp > heightDp) "land" else "port")
+        if (start.density > 0f) add("${(start.density * 160).toInt()}dpi")
+      }
+      if (qualifiers.isNotEmpty()) {
+        org.robolectric.RuntimeEnvironment.setQualifiers("+${qualifiers.joinToString("-")}")
+      }
+
+      val outputDir =
+        java.io.File(
+          System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
+            ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
+        )
+      outputDir.mkdirs()
+      val outputFile = java.io.File(outputDir, "${start.outputBaseName}.png")
+      val roborazziOptions =
+        com.github.takahirom.roborazzi.RoborazziOptions(
+          recordOptions =
+            com.github.takahirom.roborazzi.RoborazziOptions.RecordOptions(applyDeviceCrop = isRound)
+        )
+
+      val backgroundArgb =
+        when {
+          start.backgroundColor != 0L ->
+            androidx.compose.ui.graphics.Color(start.backgroundColor.toInt())
+              .toArgb()
+          start.showBackground -> androidx.compose.ui.graphics.Color.White.toArgb()
+          else -> androidx.compose.ui.graphics.Color.Transparent.toArgb()
+        }
+
+      @Suppress("DEPRECATION")
+      val rule =
+        androidx.compose.ui.test.junit4.createAndroidComposeRule<
+          androidx.activity.ComponentActivity
+        >()
+      val description =
+        org.junit.runner.Description.createTestDescription(
+          SandboxRunner::class.java,
+          "interactive_${start.streamId}",
+        )
+
+      val statement =
+        object : org.junit.runners.model.Statement() {
+          @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+          override fun evaluate() {
+            rule.mainClock.autoAdvance = false
+            rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(backgroundArgb) }
+            rule.setContent {
+              androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalInspectionMode provides false
+              ) {
+                androidx.compose.foundation.layout.Box(
+                  modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                ) {
+                  InvokeHeldComposable(composableMethod)
+                }
+              }
+            }
+            // Two Choreographer ticks under the paused clock — same settle window
+            // RenderEngine.render uses before its single capture. Enough for the initial
+            // composition + first LaunchedEffect-equivalent pass to land.
+            rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+            // Start succeeded — count the latch down before draining further commands so the host
+            // doesn't wait out the start timeout.
+            start.replyLatch.countDown()
+
+            // Per-session drain loop. Single-threaded (this is `evaluate()`, the rule's wrapper
+            // statement runs us synchronously); InteractiveCommand subtypes are matched directly
+            // because the bridge package is do-not-acquire so the Class objects are identical
+            // host-side and sandbox-side.
+            while (true) {
+              val cmd = slot.interactiveCommands.take()
+              when (cmd) {
+                is InteractiveCommand.Dispatch -> {
+                  try {
+                    dispatchHeldMotion(rule, cmd)
+                    rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.Render -> {
+                  val resultOrError: Any =
+                    try {
+                      rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                      rule
+                        .onRoot()
+                        .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                      val cl = Thread.currentThread().contextClassLoader
+                      RenderResult(
+                        id = cmd.requestId,
+                        classLoaderHashCode = System.identityHashCode(cl),
+                        classLoaderName = cl?.javaClass?.name ?: "<null>",
+                        pngPath = outputFile.absolutePath,
+                        metrics =
+                          mapOf<String, Long>(
+                            "tookMs" to 0L,
+                            "interactive" to 1L,
+                          ),
+                      )
+                    } catch (t: Throwable) {
+                      t
+                    }
+                  DaemonHostBridge.results
+                    .computeIfAbsent(cmd.requestId) { LinkedBlockingQueue() }
+                    .put(resultOrError)
+                }
+                is InteractiveCommand.Close -> {
+                  cmd.replyLatch.countDown()
+                  return
+                }
+                is InteractiveCommand.Start -> {
+                  // Nested-start race — host-side acquire CAS should already have refused, but
+                  // belt-and-braces: if a Start lands while we're held, surface a fail back so
+                  // the requesting acquire path errors instead of hanging.
+                  cmd.replyError.set(
+                    IllegalStateException(
+                      "nested interactive/start for stream '${cmd.streamId}' while " +
+                        "stream '${start.streamId}' is still held"
+                    )
+                  )
+                  cmd.replyLatch.countDown()
+                }
+              }
+            }
+          }
+        }
+
+      // Install the child classloader as the contextClassLoader for the rule's whole lifetime —
+      // same discipline RenderEngine.render uses. Compose's reflection-driven helpers (e.g.
+      // PreviewParameter providers) consult the context classloader; without this install they
+      // would miss user classes that aren't on the parent (sandbox) classpath.
+      val previousContext = Thread.currentThread().contextClassLoader
+      Thread.currentThread().contextClassLoader = classLoader
+      try {
+        rule.apply(statement, description).evaluate()
+      } catch (t: Throwable) {
+        // Rule lifecycle failed (e.g. setContent threw; ActivityScenario couldn't launch). If
+        // we never counted the start latch down, surface the error there so the host's acquire
+        // sees it. Otherwise log and let the slot return to draining normal renders.
+        if (start.replyLatch.count > 0) {
+          start.replyError.set(unwrapInvocationTarget(t))
+          start.replyLatch.countDown()
+        } else {
+          System.err.println(
+            "compose-ai-daemon: held-rule for stream ${start.streamId} threw after " +
+              "interactive/start succeeded: ${t.javaClass.simpleName}: ${t.message}"
+          )
+        }
+      } finally {
+        Thread.currentThread().contextClassLoader = previousContext
+      }
+    }
+
+    /**
+     * INTERACTIVE-ANDROID.md § 5 (Option A) — synthesise + dispatch a [android.view.MotionEvent]
+     * on the rule's UI thread. The probe at `RobolectricInteractiveProbeTest` empirically
+     * confirmed this reaches `Modifier.pointerInput { awaitFirstDown() }` under a paused
+     * `mainClock` provided we advance the clock by [POINTER_HOLD_MS] after the dispatch.
+     *
+     * `click` synthesises ACTION_DOWN + ACTION_UP at the same coords; `pointerDown` /
+     * `pointerUp` send a single event each. Unknown kinds are silently dropped — the host-side
+     * [AndroidInteractiveSession.dispatch] already filters key events out, so we should never
+     * see them here.
+     */
+    private fun dispatchHeldMotion(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.Dispatch,
+    ) {
+      rule.runOnUiThread {
+        val decor = rule.activity.window.decorView
+        val now = android.os.SystemClock.uptimeMillis()
+        val x = cmd.pixelX.toFloat()
+        val y = cmd.pixelY.toFloat()
+        when (cmd.kind) {
+          "click" -> {
+            val down =
+              android.view.MotionEvent.obtain(
+                now,
+                now,
+                android.view.MotionEvent.ACTION_DOWN,
+                x,
+                y,
+                /* metaState = */ 0,
+              )
+            try {
+              decor.dispatchTouchEvent(down)
+            } finally {
+              down.recycle()
+            }
+            val up =
+              android.view.MotionEvent.obtain(
+                now,
+                now + POINTER_HOLD_MS,
+                android.view.MotionEvent.ACTION_UP,
+                x,
+                y,
+                /* metaState = */ 0,
+              )
+            try {
+              decor.dispatchTouchEvent(up)
+            } finally {
+              up.recycle()
+            }
+          }
+          "pointerDown" -> {
+            val ev =
+              android.view.MotionEvent.obtain(
+                now,
+                now,
+                android.view.MotionEvent.ACTION_DOWN,
+                x,
+                y,
+                /* metaState = */ 0,
+              )
+            try {
+              decor.dispatchTouchEvent(ev)
+            } finally {
+              ev.recycle()
+            }
+          }
+          "pointerUp" -> {
+            val ev =
+              android.view.MotionEvent.obtain(
+                now,
+                now,
+                android.view.MotionEvent.ACTION_UP,
+                x,
+                y,
+                /* metaState = */ 0,
+              )
+            try {
+              decor.dispatchTouchEvent(ev)
+            } finally {
+              ev.recycle()
+            }
+          }
+        }
+      }
+    }
+
+    private fun pxToDp(px: Int, density: Float): Int {
+      if (density <= 0f) return px
+      return (px / density).toInt().coerceAtLeast(1)
+    }
+
+    companion object {
+      /**
+       * Virtual time to advance before each capture in the paused-`mainClock` path, in
+       * milliseconds. Mirrors `RenderEngine.CAPTURE_ADVANCE_MS` (private) — held captures use
+       * the same settle point so a frame from a held session matches a frame from the one-shot
+       * path.
+       */
+      private const val HELD_CAPTURE_ADVANCE_MS: Long = 32L
+
+      /**
+       * Hold time between an ACTION_DOWN and its ACTION_UP for `click`, and the post-dispatch
+       * `mainClock` advance for any kind. 100 ms is the same window
+       * `:daemon:desktop`'s `DesktopInteractiveSession.CLICK_HOLD_MS` uses — long enough for
+       * `detectTapGestures` to register an unambiguous tap, short enough that the click feels
+       * instant.
+       */
+      private const val POINTER_HOLD_MS: Long = 100L
+    }
   }
+}
+
+/**
+ * Tiny @Composable trampoline — same shape as `RenderEngine.kt`'s top-level private
+ * `InvokeComposable`, duplicated here because Kotlin top-level `private` is file-scoped and the
+ * held-rule loop in `SandboxRunner` lives in this file. Reflectively invokes a
+ * [androidx.compose.runtime.reflect.ComposableMethod] so the held composition can host any
+ * @Preview-shaped function the user resolves.
+ */
+@androidx.compose.runtime.Composable
+private fun InvokeHeldComposable(method: androidx.compose.runtime.reflect.ComposableMethod) {
+  method.invoke(androidx.compose.runtime.currentComposer, null)
 }

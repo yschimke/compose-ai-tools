@@ -1,0 +1,323 @@
+package ee.schimke.composeai.daemon
+
+import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.bridge.InteractiveCommand
+import ee.schimke.composeai.daemon.bridge.SandboxSlot
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+
+/**
+ * Android (Robolectric) [InteractiveSession]. Mirrors `:daemon:desktop`'s
+ * [DesktopInteractiveSession] at the protocol surface; the difference is all in cross-classloader
+ * marshalling — Compose pointer / Roborazzi capture types can't cross the sandbox boundary, so
+ * `dispatch` / `render` ride [InteractiveCommand] envelopes through the
+ * [bridge.DaemonHostBridge] and the actual `MotionEvent.dispatchTouchEvent` +
+ * `captureRoboImage` happens inside the sandbox-side [RobolectricHost.SandboxRunner.runHeldInteractiveSession]
+ * loop.
+ *
+ * **Sandbox pinning** (INTERACTIVE-ANDROID.md § 2). Each session pins exactly one sandbox slot for
+ * its lifetime. v3 ships with `INTERACTIVE_SLOT_INDEX = 1` so slot 0 stays the always-on
+ * normal-render slot — that's enforced host-side in [RobolectricHost.acquireInteractiveSession]
+ * (the constraint that `sandboxCount >= 2`). The session itself is slot-agnostic; it only carries
+ * a reference to the slot it was constructed against.
+ *
+ * **Threading.** Per the [InteractiveSession] contract, callers are serialised — `JsonRpcServer`
+ * dispatches one input per session at a time. Each public method enqueues an
+ * [InteractiveCommand] and blocks the caller's thread on the per-command reply latch (or, for
+ * [render], on the shared [DaemonHostBridge.results] queue). The sandbox-side held-rule statement
+ * is single-threaded by construction (one `evaluate()` call), so command ordering on the wire
+ * matches dispatch order in the composition.
+ *
+ * **Lifecycle** (INTERACTIVE-ANDROID.md § 7).
+ * - **Allocate** at `interactive/start`. The host enqueues [InteractiveCommand.Start] onto slot 1's
+ *   [SandboxSlot.interactiveCommands]; the sandbox's idle loop picks it up and enters
+ *   `runHeldInteractiveSession`, which constructs the rule + ActivityScenario + paused-clock
+ *   `setContent`, then counts down [InteractiveCommand.Start.replyLatch] before draining further
+ *   commands. The host blocks on that latch in [RobolectricHost.acquireInteractiveSession] so
+ *   `interactive/start` only returns after `setContent` has landed.
+ * - **Drive** at `interactive/input` and `renderNow` while held. [dispatch] enqueues
+ *   [InteractiveCommand.Dispatch] (synthesised `MotionEvent`); [render] enqueues
+ *   [InteractiveCommand.Render] and polls the global results map.
+ * - **Release** at `interactive/stop` or daemon shutdown. [close] enqueues
+ *   [InteractiveCommand.Close]; the held-rule statement returns from `evaluate()`, which causes
+ *   the rule's outer wrapper to close the `ActivityScenario` — the same disposal point a one-shot
+ *   render hits.
+ */
+class AndroidInteractiveSession
+internal constructor(
+  override val previewId: String,
+  /**
+   * Stream identifier echoed back on every [InteractiveCommand]. Generated host-side at
+   * [RobolectricHost.acquireInteractiveSession] so the host can detect a nested-start race (#3 of
+   * the held-loop's open questions) and route its reply correctly.
+   */
+  internal val streamId: String,
+  /**
+   * The sandbox slot this session was acquired against — almost always slot 1 in v3 (slot 0 is the
+   * always-on normal-render slot). Carried explicitly rather than re-derived because the host's
+   * routing code (`acquireInteractiveSession`) already chose it; passing it in keeps the session
+   * itself slot-policy-agnostic so v4 (multi-target Android) can reuse this class unchanged.
+   */
+  private val slot: SandboxSlot,
+  /**
+   * Cleared by [close] so [RobolectricHost.acquireInteractiveSession] can reuse the slot for the
+   * next interactive/start. Wrapped in [AtomicReference] so the host's CAS-on-acquire race-check
+   * sees the same instance the session writes to.
+   */
+  private val activeStreamRef: AtomicReference<String?>,
+  /**
+   * Idle lease — auto-close the session if no [dispatch] / [render] arrives for this many
+   * milliseconds. Defaults to [DEFAULT_IDLE_LEASE_MS] (1 minute) and is overridable via the
+   * `composeai.daemon.interactive.idleLeaseMs` sysprop so operators can tune for slow networks
+   * and tests can drive a sub-second lease without sleeping CI for a minute.
+   *
+   * Without this lease, a panel that crashes or a websocket that drops mid-session would leak a
+   * pinned sandbox slot for the rest of the daemon's lifetime — slot 1 stays held with no
+   * `interactive/stop` ever arriving. v3 supports one held session at a time per host, so a
+   * single zombie burns the whole interactive capacity. Symmetry with the desktop story comes
+   * via the panel's auto-stop on editor change/scroll (#427); the lease is the daemon-side
+   * belt-and-braces.
+   *
+   * Setting this to a non-positive value disables the watchdog entirely — useful for tests that
+   * verify the lease itself or for scenarios where an external lifecycle (e.g. a smoke test
+   * driver) owns the session's close path explicitly.
+   */
+  private val idleLeaseMs: Long =
+    System.getProperty(IDLE_LEASE_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_LEASE_MS,
+) : InteractiveSession {
+
+  @Volatile private var closed: Boolean = false
+
+  /**
+   * Wall-clock millis at the most recent [dispatch] / [render] call (or session construction, the
+   * implicit "first use"). The watchdog reads this every [idleLeaseMs]/4 ticks and triggers
+   * auto-close when the gap exceeds [idleLeaseMs]. Updated **before** the bridge enqueue so
+   * a long-running render doesn't look idle from the watchdog's perspective.
+   */
+  private val lastUsedAtMs: AtomicLong = AtomicLong(System.currentTimeMillis())
+
+  /**
+   * Set to a non-null human-readable string when the watchdog auto-closes. Surfaced via
+   * [autoClosedReason] so PR C's panel-side handler can distinguish "host force-closed because
+   * idle" from "client hit interactive/stop".
+   */
+  @Volatile private var autoClosedReason: String? = null
+
+  /**
+   * Daemon-thread executor that runs the idle-lease check. Allocated lazily so a session
+   * constructed with `idleLeaseMs <= 0` doesn't pay the executor allocation. Cancelled by
+   * [close] — the executor is single-threaded so cancellation is bounded.
+   */
+  private val watchdog: ScheduledExecutorService? =
+    if (idleLeaseMs > 0L) {
+      Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "compose-ai-daemon-interactive-watchdog-$streamId").apply {
+          isDaemon = true
+        }
+      }
+    } else null
+
+  init {
+    // Schedule the lease check at idleLeaseMs/4 intervals so we close within at most 25% over
+    // the configured timeout. Doesn't run on `idleLeaseMs <= 0` (watchdog is null) — that's the
+    // explicit opt-out path for tests that own the session lifecycle directly.
+    watchdog?.scheduleWithFixedDelay(
+      ::checkIdleLease,
+      idleLeaseMs,
+      (idleLeaseMs / 4).coerceAtLeast(50L),
+      TimeUnit.MILLISECONDS,
+    )
+  }
+
+  /**
+   * `true` when the session has been closed (either via explicit [close] or the idle-lease
+   * watchdog). Subsequent [dispatch] returns silently; [render] throws. Exposed for PR C's
+   * panel-side handler that wants to redraw the v1 fallback hint when the daemon force-closes a
+   * stream out from under it.
+   */
+  val isClosed: Boolean
+    get() = closed
+
+  /**
+   * Non-null when the session was force-closed by the idle-lease watchdog (rather than by an
+   * explicit [close] call). Carries the lease config + idle duration for diagnostics. Stays
+   * `null` when the session was closed explicitly — PR C's wire handler checks this to decide
+   * whether to surface a status-bar hint or treat the close as routine.
+   */
+  fun autoClosedReason(): String? = autoClosedReason
+
+  private fun checkIdleLease() {
+    if (closed) return
+    val now = System.currentTimeMillis()
+    val idle = now - lastUsedAtMs.get()
+    if (idle >= idleLeaseMs) {
+      autoClosedReason =
+        "idle for ${idle}ms (lease ${idleLeaseMs}ms); auto-closing held session " +
+          "'$streamId' (previewId='$previewId')"
+      System.err.println("compose-ai-daemon: AndroidInteractiveSession: $autoClosedReason")
+      // close() handles activeStreamRef CAS + bridge Close enqueue + watchdog shutdown.
+      // Running it on this scheduled thread blocks the scheduler for at most CLOSE_TIMEOUT_SEC
+      // — bounded, no leak.
+      try {
+        close()
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: AndroidInteractiveSession watchdog close threw: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
+  }
+
+  override fun dispatch(input: InteractiveInputParams) {
+    if (closed) return
+    val px = input.pixelX
+    val py = input.pixelY
+    val kind =
+      when (input.kind) {
+        InteractiveInputKind.CLICK -> "click"
+        InteractiveInputKind.POINTER_DOWN -> "pointerDown"
+        InteractiveInputKind.POINTER_UP -> "pointerUp"
+        // Key events are no-op on Android v3 — same shape as desktop v2's silent drop. Wire shape
+        // accepts them so a forward-looking client doesn't get rejected; the dispatch lands in
+        // the sandbox loop and is intentionally ignored there.
+        InteractiveInputKind.KEY_DOWN,
+        InteractiveInputKind.KEY_UP -> return
+      }
+    if (px == null || py == null) return
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    slot.interactiveCommands.put(
+      InteractiveCommand.Dispatch(
+        streamId = streamId,
+        kind = kind,
+        pixelX = px,
+        pixelY = py,
+        replyLatch = replyLatch,
+        replyError = replyError,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatch timed out after ${DISPATCH_TIMEOUT_SEC}s for stream " +
+          "'$streamId' (kind=$kind, px=$px, py=$py). Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+  }
+
+  override fun render(requestId: Long): RenderResult {
+    check(!closed) { "AndroidInteractiveSession.render() called after close()" }
+    lastUsedAtMs.set(System.currentTimeMillis())
+    slot.interactiveCommands.put(
+      InteractiveCommand.Render(streamId = streamId, requestId = requestId)
+    )
+    val resultQueue =
+      DaemonHostBridge.results.computeIfAbsent(requestId) { LinkedBlockingQueue() }
+    val raw =
+      resultQueue.poll(RENDER_TIMEOUT_SEC, TimeUnit.SECONDS)
+        ?: error(
+          "AndroidInteractiveSession.render timed out after ${RENDER_TIMEOUT_SEC}s for stream " +
+            "'$streamId', request $requestId"
+        )
+    DaemonHostBridge.results.remove(requestId)
+    if (raw is Throwable) throw raw
+    // Same cross-classloader copy `RobolectricHost.submit` uses — the sandbox-side `RenderResult`
+    // is loaded by Robolectric's `InstrumentingClassLoader`, the host-side caller expects the
+    // host-loader's class. Reflective copy collapses the two.
+    return raw as? RenderResult ?: copyResultAcrossClassloaders(raw)
+  }
+
+  override fun close() {
+    if (closed) return
+    closed = true
+    // Stop the watchdog **before** waiting on the close latch — we don't want the watchdog
+    // double-firing close() on this same session while the bridge round-trip is in flight.
+    //
+    // `shutdown()` (non-interrupting) rather than `shutdownNow()`: the watchdog tick that fired
+    // the auto-close is itself running on this executor's worker thread and is in the middle of
+    // calling us. `shutdownNow()` would interrupt that tick mid-flight; the interrupt status
+    // would propagate into our subsequent `replyLatch.await(...)` and throw
+    // `InterruptedException` before `activeStreamRef` gets cleared. `shutdown()` lets the
+    // current task finish naturally (we're past the scheduled work, the rest of close() runs to
+    // completion) and just prevents future ticks — exactly what we want.
+    watchdog?.shutdown()
+    val replyLatch = CountDownLatch(1)
+    slot.interactiveCommands.put(
+      InteractiveCommand.Close(streamId = streamId, replyLatch = replyLatch)
+    )
+    // Bounded wait — if the held-rule statement is wedged we don't want `interactive/stop` to
+    // hang the JsonRpcServer thread forever. After this returns we always clear the active-stream
+    // ref so the host doesn't think a session is still pinned.
+    replyLatch.await(CLOSE_TIMEOUT_SEC, TimeUnit.SECONDS)
+    // CAS-from-our-streamId so concurrent close() calls don't clobber a fresh session that the
+    // host has already started binding to the slot. Idempotent against a missing entry.
+    activeStreamRef.compareAndSet(streamId, null)
+  }
+
+  private fun copyResultAcrossClassloaders(raw: Any): RenderResult {
+    val cls = raw.javaClass
+    val id = cls.getMethod("getId").invoke(raw) as Long
+    val hash = cls.getMethod("getClassLoaderHashCode").invoke(raw) as Int
+    val name = cls.getMethod("getClassLoaderName").invoke(raw) as String
+    val pngPath = cls.getMethod("getPngPath").invoke(raw) as String?
+    @Suppress("UNCHECKED_CAST")
+    val metrics = cls.getMethod("getMetrics").invoke(raw) as Map<String, Long>?
+    return RenderResult(
+      id = id,
+      classLoaderHashCode = hash,
+      classLoaderName = name,
+      pngPath = pngPath,
+      metrics = metrics?.let { LinkedHashMap(it) },
+    )
+  }
+
+  companion object {
+    /**
+     * Upper bound on a single `interactive/input` round-trip — sandbox synthesises the
+     * MotionEvent, dispatches on the UI thread, advances `mainClock` by `POINTER_HOLD_MS`, signals
+     * back. 30 s is generous; in practice well under 100 ms post-cold-boot.
+     */
+    private const val DISPATCH_TIMEOUT_SEC: Long = 30L
+
+    /**
+     * Upper bound on a single capture — Roborazzi's `captureRoboImage` plus the disk write.
+     * Matches the v1 `RobolectricHost.submit` default (60s) so a slow first-render after the
+     * Roborazzi static init doesn't trip the timeout.
+     */
+    private const val RENDER_TIMEOUT_SEC: Long = 60L
+
+    /**
+     * Upper bound on session teardown. Closes the ActivityScenario via the rule's outer wrapper —
+     * fast (single Activity.onDestroy + Compose disposal pass). 10 s is the slack for a degenerate
+     * case where a `LaunchedEffect` cleanup blocks the dispatcher; if it ever times out, the
+     * activeStreamRef is still cleared so the next acquire isn't blocked.
+     */
+    private const val CLOSE_TIMEOUT_SEC: Long = 10L
+
+    /**
+     * Sysprop knob for the idle-lease timeout (millis). When unset, sessions auto-close after
+     * [DEFAULT_IDLE_LEASE_MS] of inactivity. Operators can tune this for slow networks; tests
+     * pass a non-default via the constructor parameter directly.
+     */
+    const val IDLE_LEASE_PROP: String = "composeai.daemon.interactive.idleLeaseMs"
+
+    /**
+     * Default idle-lease timeout — 1 minute. Long enough that a user thinking about their
+     * preview between clicks doesn't get yanked out from under, short enough that a panel crash
+     * or a websocket drop returns the pinned slot to normal-render duty within a minute. The
+     * panel's own auto-stop on editor change/scroll already handles the "user moved on" case;
+     * this lease catches the "client disappeared" case PR C will explicitly wire to
+     * `JsonRpcServer.onChannelClosed`.
+     */
+    const val DEFAULT_IDLE_LEASE_MS: Long = 60_000L
+  }
+}
