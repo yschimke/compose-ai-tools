@@ -21,6 +21,15 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.Options
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RecordingEncodeParams
+import ee.schimke.composeai.daemon.protocol.RecordingEncodeResult
+import ee.schimke.composeai.daemon.protocol.RecordingFormat
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptParams
+import ee.schimke.composeai.daemon.protocol.RecordingStartParams
+import ee.schimke.composeai.daemon.protocol.RecordingStartResult
+import ee.schimke.composeai.daemon.protocol.RecordingStopParams
+import ee.schimke.composeai.daemon.protocol.RecordingStopResult
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
@@ -36,6 +45,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -316,6 +326,96 @@ class DaemonClient(
     if (errorElem != null) error("$method failed: $errorElem")
     val resultElem = response["result"] ?: error("$method: no result — full=$response")
     return json.decodeFromJsonElement(DataSubscribeResult.serializer(), resultElem)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recording (scripted screen-record) — see RECORDING.md / Messages.kt § 5c.
+  //
+  // The MCP `record_preview` tool drives the four calls below in sequence:
+  // start → script → stop → encode. `script` is a notification (fire-and-forget); the others
+  // round-trip through `sendAndAwait` and surface daemon-side errors as exceptions so the
+  // tool wrapper can format them for the agent.
+  // ---------------------------------------------------------------------------
+
+  /** Drives `recording/start`. Returns the daemon-allocated `recordingId`. */
+  fun recordingStart(
+    previewId: String,
+    fps: Int? = null,
+    scale: Float? = null,
+    overrides: PreviewOverrides? = null,
+    timeout: Duration = 30.seconds,
+  ): RecordingStartResult {
+    val id = nextId.getAndIncrement()
+    val params =
+      RecordingStartParams(previewId = previewId, fps = fps, scale = scale, overrides = overrides)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "recording/start",
+        params = json.encodeToJsonElement(RecordingStartParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val errorElem = response["error"] as? JsonObject
+    if (errorElem != null) {
+      val message = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: "recording/start failed"
+      error(message)
+    }
+    val resultElem = response["result"] ?: error("recording/start: no result — full=$response")
+    return json.decodeFromJsonElement(RecordingStartResult.serializer(), resultElem)
+  }
+
+  /** Drives `recording/script` (notification — no response). */
+  fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>) =
+    sendNotification(
+      "recording/script",
+      json.encodeToJsonElement(
+        RecordingScriptParams.serializer(),
+        RecordingScriptParams(recordingId = recordingId, events = events),
+      ),
+    )
+
+  /** Drives `recording/stop`. Blocks until the daemon's playback loop finishes writing frames. */
+  fun recordingStop(recordingId: String, timeout: Duration = 5.minutes): RecordingStopResult {
+    val id = nextId.getAndIncrement()
+    val params = RecordingStopParams(recordingId = recordingId)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "recording/stop",
+        params = json.encodeToJsonElement(RecordingStopParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val errorElem = response["error"] as? JsonObject
+    if (errorElem != null) {
+      val message = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: "recording/stop failed"
+      error(message)
+    }
+    val resultElem = response["result"] ?: error("recording/stop: no result — full=$response")
+    return json.decodeFromJsonElement(RecordingStopResult.serializer(), resultElem)
+  }
+
+  /** Drives `recording/encode`. Returns `{ videoPath, mimeType, sizeBytes }`. */
+  fun recordingEncode(
+    recordingId: String,
+    format: RecordingFormat = RecordingFormat.APNG,
+    timeout: Duration = 60.seconds,
+  ): RecordingEncodeResult {
+    val id = nextId.getAndIncrement()
+    val params = RecordingEncodeParams(recordingId = recordingId, format = format)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "recording/encode",
+        params = json.encodeToJsonElement(RecordingEncodeParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val errorElem = response["error"] as? JsonObject
+    if (errorElem != null) {
+      val message = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: "recording/encode failed"
+      error(message)
+    }
+    val resultElem = response["result"] ?: error("recording/encode: no result — full=$response")
+    return json.decodeFromJsonElement(RecordingEncodeResult.serializer(), resultElem)
   }
 
   /**

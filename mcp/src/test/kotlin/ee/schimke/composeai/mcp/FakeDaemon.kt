@@ -102,6 +102,73 @@ class FakeDaemon : DaemonSpawn {
   /** Recorded `data/unsubscribe` calls — same shape. */
   val dataUnsubscribes = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
 
+  // ---------------------------------------------------------------------------
+  // Recording (RECORDING.md) — fake state for the four-call flow.
+  // Tests assign the handler before the spawn calls `initialize` (synchronous in
+  // [DaemonSupervisor.spawn]); the `record_preview` tool drives start/script/stop/encode in
+  // sequence and the fake records each call into the maps below + the corresponding queue.
+  // ---------------------------------------------------------------------------
+
+  /** Recorded `recording/start` calls in arrival order — `(previewId, fps, scale, overrides?)`. */
+  data class RecordingStartCall(
+    val previewId: String,
+    val fps: Int?,
+    val scale: Float?,
+    val overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  )
+
+  val recordingStarts = java.util.concurrent.LinkedBlockingQueue<RecordingStartCall>()
+
+  /** Recorded `recording/script` calls — `(recordingId, events)`. */
+  data class RecordingScriptCall(
+    val recordingId: String,
+    val events: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvent>,
+  )
+
+  val recordingScripts = java.util.concurrent.LinkedBlockingQueue<RecordingScriptCall>()
+
+  /** Recorded `recording/stop` calls — just the recordingId. */
+  val recordingStops = java.util.concurrent.LinkedBlockingQueue<String>()
+
+  /** Recorded `recording/encode` calls — `(recordingId, format)`. */
+  data class RecordingEncodeCall(
+    val recordingId: String,
+    val format: ee.schimke.composeai.daemon.protocol.RecordingFormat,
+  )
+
+  val recordingEncodes = java.util.concurrent.LinkedBlockingQueue<RecordingEncodeCall>()
+
+  /**
+   * Fake byte payload returned by the next `recording/encode` call. Tests preload this with the
+   * expected APNG bytes; the fake writes them to a temp file and responds with the path / size /
+   * mime so [DaemonClient.recordingEncode] can return the file the MCP server then reads back into
+   * a base64 image content block. Defaults to a tiny non-empty stub (the PNG signature) so tests
+   * that don't care about exact bytes still get a non-zero `sizeBytes`.
+   */
+  @Volatile var recordingEncodedBytes: ByteArray = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+
+  /**
+   * Optional override directory for the encoded video file. When null, the fake writes to a temp
+   * file under `java.io.tmpdir`. Tests pass an explicit folder when they want predictable paths.
+   */
+  @Volatile var recordingEncodeDir: java.io.File? = null
+
+  /**
+   * Pre-canned response shape for `recording/stop`. Tests override per scenario; defaults match
+   * "30fps × 500ms script" — 16 frames at 120×60.
+   */
+  @Volatile
+  var recordingStopResult: ee.schimke.composeai.daemon.protocol.RecordingStopResult =
+    ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+      frameCount = 16,
+      durationMs = 500L,
+      framesDir = "/tmp/fake-frames",
+      frameWidthPx = 120,
+      frameHeightPx = 60,
+    )
+
+  private val nextRecordingId = java.util.concurrent.atomic.AtomicLong(1)
+
   /**
    * Optional capture hook for the params object the fake received on `initialize`. Tests use this
    * to assert what the supervisor passes through (e.g. `options.attachDataProducts`). Default is a
@@ -428,6 +495,69 @@ class FakeDaemon : DaemonSpawn {
           sendResponse(id, buildJsonObject { put("ok", true) })
         }
       }
+      "recording/start" -> {
+        val previewId = params?.get("previewId")?.jsonPrimitive?.contentOrNull ?: ""
+        val fps = params?.get("fps")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        val scale = params?.get("scale")?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+        val overrides =
+          params
+            ?.get("overrides")
+            ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+            ?.let {
+              json.decodeFromJsonElement(
+                ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
+                it,
+              )
+            }
+        recordingStarts.offer(
+          RecordingStartCall(previewId = previewId, fps = fps, scale = scale, overrides = overrides)
+        )
+        val recordingId = "fake-rec-${nextRecordingId.getAndIncrement()}"
+        sendResponse(
+          id,
+          json.encodeToJsonElement(
+            ee.schimke.composeai.daemon.protocol.RecordingStartResult.serializer(),
+            ee.schimke.composeai.daemon.protocol.RecordingStartResult(recordingId = recordingId),
+          ),
+        )
+      }
+      "recording/stop" -> {
+        val recordingId = params?.get("recordingId")?.jsonPrimitive?.contentOrNull ?: ""
+        recordingStops.offer(recordingId)
+        sendResponse(
+          id,
+          json.encodeToJsonElement(
+            ee.schimke.composeai.daemon.protocol.RecordingStopResult.serializer(),
+            recordingStopResult,
+          ),
+        )
+      }
+      "recording/encode" -> {
+        val recordingId = params?.get("recordingId")?.jsonPrimitive?.contentOrNull ?: ""
+        val format =
+          when (params?.get("format")?.jsonPrimitive?.contentOrNull) {
+            null,
+            "apng" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG
+            else -> ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG
+          }
+        recordingEncodes.offer(RecordingEncodeCall(recordingId, format))
+        // Materialise the canned bytes onto disk so DaemonMcpServer's `Files.readAllBytes` works.
+        val dir = recordingEncodeDir ?: java.io.File(System.getProperty("java.io.tmpdir"))
+        dir.mkdirs()
+        val out = java.io.File(dir, "$recordingId.apng")
+        out.writeBytes(recordingEncodedBytes)
+        sendResponse(
+          id,
+          json.encodeToJsonElement(
+            ee.schimke.composeai.daemon.protocol.RecordingEncodeResult.serializer(),
+            ee.schimke.composeai.daemon.protocol.RecordingEncodeResult(
+              videoPath = out.absolutePath,
+              mimeType = "image/apng",
+              sizeBytes = out.length(),
+            ),
+          ),
+        )
+      }
       else -> {
         // Unknown methods: error response so the client doesn't hang.
         sendError(id, -32601, "method not found: $method")
@@ -471,6 +601,18 @@ class FakeDaemon : DaemonSpawn {
             it.jsonPrimitive.contentOrNull
           } ?: emptyList()
         focusSets.offer(ids)
+      }
+      "recording/script" -> {
+        val recordingId = params?.get("recordingId")?.jsonPrimitive?.contentOrNull ?: ""
+        val eventsArr = params?.get("events") as? kotlinx.serialization.json.JsonArray
+        val events =
+          eventsArr?.map {
+            json.decodeFromJsonElement(
+              ee.schimke.composeai.daemon.protocol.RecordingScriptEvent.serializer(),
+              it,
+            )
+          } ?: emptyList()
+        recordingScripts.offer(RecordingScriptCall(recordingId, events))
       }
       "exit" -> running.set(false)
       else -> {}

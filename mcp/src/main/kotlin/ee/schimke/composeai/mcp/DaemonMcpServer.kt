@@ -2,8 +2,11 @@ package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RecordingFormat
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.mcp.protocol.CallToolResult
@@ -840,6 +843,74 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
+      ToolDef(
+        name = "record_preview",
+        description =
+          "Record a scripted screen-recording of an interactive preview and return the encoded " +
+            "video bytes. Drives the daemon's recording surface (RECORDING.md) end-to-end: open a " +
+            "held-scene session at the requested fps + scale, post the script of `(tMs, kind, " +
+            "pixelX, pixelY)` events, play back the timeline at virtual frame time, encode to APNG " +
+            "and return the bytes inline as a base64 image content block. " +
+            "**Why virtual time matters.** Pointer events and `scene.render` both key off the " +
+            "session's virtual nanoTime, so a script of `(tMs=0, click) + (tMs=500, click)` always " +
+            "produces 500ms of inter-click animation in the output regardless of how long the " +
+            "agent took to assemble the script. `LaunchedEffect`, `withFrameNanos`, and " +
+            "`rememberInfiniteTransition` advance with virtual time, not wall-clock — agents can " +
+            "compose a multi-second timeline in milliseconds of agent latency and the video plays " +
+            "back at human cadence. " +
+            "**Component previews.** Pass `overrides.{widthPx,heightPx,backgroundColor}` to record " +
+            "a button-sized preview at native size with a custom background; raise `scale` to " +
+            "upsample for legibility. Pointer coords always reference image-natural pixels, never " +
+            "the scaled output canvas. " +
+            "**Errors.** MethodNotFound when the daemon's host doesn't support recording (today: " +
+            "Android backend, missing previewSpecResolver); InvalidParams on out-of-range fps / " +
+            "scale or unknown previewId.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
+                "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
+                "format":{"type":"string","enum":["apng"],"description":"Encoded video format. Default 'apng'. mp4/webm reserved for v3."},
+                "events":{
+                  "type":"array",
+                  "description":"Scripted timeline. Empty array records a single bootstrap frame.",
+                  "items":{
+                    "type":"object",
+                    "properties":{
+                      "tMs":{"type":"integer","description":"Virtual time offset from recording/start, in milliseconds. Must be ≥ 0."},
+                      "kind":{"type":"string","enum":["click","pointerDown","pointerUp","keyDown","keyUp"],"description":"Input event kind. 'click' is Press+Release at the same virtual tMs."},
+                      "pixelX":{"type":"integer","description":"X coord in image-natural pixel space (the preview's own widthPx)."},
+                      "pixelY":{"type":"integer","description":"Y coord in image-natural pixel space."},
+                      "keyCode":{"type":"string","description":"For 'keyDown'/'keyUp' (reserved; v1 dispatch is a no-op)."}
+                    },
+                    "required":["tMs","kind"]
+                  }
+                },
+                "overrides":{
+                  "type":"object",
+                  "description":"Per-call display overrides applied to the held scene. Same shape as render_preview.overrides.",
+                  "properties":{
+                    "widthPx":{"type":"integer"},
+                    "heightPx":{"type":"integer"},
+                    "density":{"type":"number"},
+                    "localeTag":{"type":"string"},
+                    "fontScale":{"type":"number"},
+                    "uiMode":{"type":"string","enum":["light","dark"]},
+                    "orientation":{"type":"string","enum":["portrait","landscape"]},
+                    "device":{"type":"string"}
+                  }
+                }
+              },
+              "required":["uri","events"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -868,6 +939,7 @@ class DaemonMcpServer(
       "get_preview_extras" -> toolGetPreviewExtras(args)
       "subscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = true)
       "unsubscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = false)
+      "record_preview" -> toolRecordPreview(args)
       else -> errorCallToolResult("unknown tool: $name")
     }
   }
@@ -1720,6 +1792,154 @@ class DaemonMcpServer(
       }
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * `record_preview` — drives the daemon's `recording/start | script | stop | encode` flow
+   * end-to-end and returns the encoded video bytes inline. See RECORDING.md.
+   *
+   * The agent passes the URI, an optional `fps` / `scale` / `format`, the scripted timeline, and
+   * optional per-render `overrides`. We resolve the URI to a daemon, validate `overrides` against
+   * the daemon's advertised `supportedOverrides`, then run the four-call sequence. The script is
+   * decoded into typed [RecordingScriptEvent]s with per-element validation so a malformed event
+   * surfaces as a clean tool-level error rather than dying inside the daemon.
+   *
+   * Errors surface as `isError = true` text content blocks; success returns a single image content
+   * block carrying the base64-encoded video bytes (mime `image/apng` for v1 — the only format the
+   * daemon advertises today). The on-disk path is included in a sibling text block so an agent that
+   * prefers a path can pick it up without re-decoding.
+   *
+   * The session is closed best-effort if any of the four daemon calls fail mid-flight, so the
+   * daemon doesn't leak a held scene when the script is malformed or the encoder breaks. We
+   * deliberately don't suppress the original error — tool callers see what actually went wrong.
+   */
+  private fun toolRecordPreview(args: JsonObject): CallToolResult {
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("record_preview: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("record_preview: invalid uri: $uriStr")
+    val eventsRaw =
+      (args["events"] as? JsonArray)
+        ?: return errorCallToolResult("record_preview: missing 'events' (must be array)")
+    val events =
+      runCatching { decodeRecordingEvents(eventsRaw) }
+        .getOrElse {
+          return errorCallToolResult("record_preview: invalid events: ${it.message}")
+        }
+    val fps = args["fps"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+    val scale = args["scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+    val format =
+      args["format"]?.jsonPrimitive?.contentOrNull?.let {
+        when (it.lowercase()) {
+          "apng" -> RecordingFormat.APNG
+          else ->
+            return errorCallToolResult(
+              "record_preview: unsupported 'format' '$it' — only 'apng' is supported in v1"
+            )
+        }
+      } ?: RecordingFormat.APNG
+    val overrides =
+      args["overrides"]?.let {
+        runCatching { decodePreviewOverrides(it) }
+          .getOrElse { e ->
+            return errorCallToolResult("record_preview: invalid overrides: ${e.message}")
+          }
+      }
+    if (supervisor.project(uri.workspaceId) == null) {
+      return errorCallToolResult(
+        "record_preview: workspace '${uri.workspaceId.value}' not registered"
+      )
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("record_preview: daemon spawn failed: ${it.message}")
+        }
+    if (overrides != null) {
+      val violations = validateOverrides(overrides, daemon)
+      if (violations.isNotEmpty()) {
+        return errorCallToolResult("record_preview: ${violations.joinToString("; ")}")
+      }
+    }
+
+    val started =
+      runCatching {
+          daemon.client.recordingStart(
+            previewId = uri.previewFqn,
+            fps = fps,
+            scale = scale,
+            overrides = overrides,
+          )
+        }
+        .getOrElse {
+          return errorCallToolResult("record_preview: recording/start failed: ${it.message}")
+        }
+    val recordingId = started.recordingId
+    return runCatching {
+        if (events.isNotEmpty()) {
+          daemon.client.recordingScript(recordingId, events)
+        }
+        val stopResult = daemon.client.recordingStop(recordingId)
+        val encoded = daemon.client.recordingEncode(recordingId, format)
+        val videoBytes = Files.readAllBytes(File(encoded.videoPath).toPath())
+        val payload = buildJsonObject {
+          put("recordingId", recordingId)
+          put("videoPath", encoded.videoPath)
+          put("mimeType", encoded.mimeType)
+          put("sizeBytes", encoded.sizeBytes)
+          put("frameCount", stopResult.frameCount)
+          put("durationMs", stopResult.durationMs)
+          put("frameWidthPx", stopResult.frameWidthPx)
+          put("frameHeightPx", stopResult.frameHeightPx)
+        }
+        CallToolResult(
+          content =
+            listOf(
+              ContentBlock.Image(
+                data = Base64.getEncoder().encodeToString(videoBytes),
+                mimeType = encoded.mimeType,
+              ),
+              ContentBlock.Text(payload.toString()),
+            )
+        )
+      }
+      .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Translate the MCP `record_preview.events` JSON array into typed [RecordingScriptEvent]s.
+   * Validates each entry has a non-negative `tMs` and a known `kind`; throws on malformed input so
+   * the wrapper surfaces "invalid events: …" rather than dying inside the daemon's notification
+   * decoder. Unknown extra keys are tolerated for forward compatibility (same shape rule the
+   * `decodePreviewOverrides` helper uses).
+   */
+  private fun decodeRecordingEvents(arr: JsonArray): List<RecordingScriptEvent> {
+    return arr.mapIndexed { idx, elem ->
+      val obj = (elem as? JsonObject) ?: error("event[$idx] must be an object")
+      val tMs =
+        obj["tMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+          ?: error("event[$idx] missing or invalid 'tMs'")
+      require(tMs >= 0) { "event[$idx] tMs must be ≥ 0; got $tMs" }
+      val kindStr = obj["kind"]?.jsonPrimitive?.contentOrNull ?: error("event[$idx] missing 'kind'")
+      val kind =
+        when (kindStr) {
+          "click" -> InteractiveInputKind.CLICK
+          "pointerDown" -> InteractiveInputKind.POINTER_DOWN
+          "pointerUp" -> InteractiveInputKind.POINTER_UP
+          "keyDown" -> InteractiveInputKind.KEY_DOWN
+          "keyUp" -> InteractiveInputKind.KEY_UP
+          else -> error("event[$idx] unknown kind '$kindStr'")
+        }
+      RecordingScriptEvent(
+        tMs = tMs,
+        kind = kind,
+        pixelX = obj["pixelX"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        pixelY = obj["pixelY"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        keyCode = obj["keyCode"]?.jsonPrimitive?.contentOrNull,
+      )
+    }
   }
 
   private fun nameOf(code: Int): String =
