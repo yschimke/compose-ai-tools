@@ -375,6 +375,178 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+.focus-inspector {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.8fr) minmax(240px, 1.6fr) minmax(150px, 0.8fr);
+    gap: 8px;
+    padding: 0 8px 8px;
+}
+
+.focus-inspector[hidden] {
+    display: none;
+}
+
+.focus-panel {
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--text-secondary));
+    min-width: 0;
+}
+
+.focus-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.focus-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+}
+
+.focus-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: var(--control-height);
+    padding: 2px 8px;
+    border: 1px solid var(--card-border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.focus-action:hover:not(:disabled) {
+    background: var(--toolbar-hover);
+}
+
+.focus-action:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.focus-product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 4px;
+    padding: 8px;
+}
+
+.focus-product-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 5px 6px;
+    border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--text-secondary) 6%, transparent);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.focus-product-chip:hover,
+.focus-product-chip[aria-pressed="true"] {
+    background: var(--toolbar-hover);
+}
+
+.focus-product-chip:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.focus-product-chip[data-state="ok"] {
+    border-color: color-mix(in srgb, var(--vscode-charts-green, #89d185) 45%, var(--card-border));
+}
+
+.focus-product-chip[data-state="warn"] {
+    border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 55%, var(--card-border));
+}
+
+.focus-product-chip > .codicon {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+}
+
+.focus-product-chip[data-state="ok"] > .codicon {
+    color: var(--vscode-charts-green, #89d185);
+}
+
+.focus-product-chip[data-state="warn"] > .codicon {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.focus-product-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.focus-product-name,
+.focus-product-value {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.focus-product-name {
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 1px);
+}
+
+.focus-product-value {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 3px);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-placeholder-list {
+    grid-column: 1 / -1;
+}
+
+.focus-placeholder-list .focus-panel-header {
+    border-bottom: none;
+}
+
+.focus-placeholder {
+    border-top: 1px solid var(--card-border);
+}
+
+.focus-placeholder > summary {
+    padding: 6px 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.focus-placeholder > summary:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-placeholder-body {
+    padding: 0 8px 8px 22px;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+@media (max-width: 560px) {
+    .focus-inspector {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* -- Preview card ----------------------------------------------------- */
 
 .preview-card {
