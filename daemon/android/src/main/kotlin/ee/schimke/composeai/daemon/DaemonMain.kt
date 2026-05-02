@@ -124,12 +124,16 @@ fun main(args: Array<String>) {
         "compose-ai-tools daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
       )
-      // The harness's PreviewManifestRouter wraps a single RobolectricHost; sandbox pooling is
-      // an optimisation for the production daemon path, not the harness mode (which exists to
-      // exercise the wire protocol against in-process fakes). Stay at sandboxCount=1 here and
-      // use the legacy single-instance holder (PreviewManifestRouter still takes that form).
+      // The Gradle plugin also sets the historical "harness" manifest sysprop for production
+      // Android daemons so previewId renderNow calls still route through the manifest. In that
+      // production shape we must preserve the warm-spare pool and per-slot user classloaders;
+      // otherwise the router silently downgrades the daemon to v1 interactive mode and scroll/click
+      // inputs only trigger stateless re-renders. Standalone harness launchers have no preview
+      // index/user class dirs, so they keep the old single-sandbox route.
+      val productionManifestRoute = previewIndex.size > 0 || hasUserClasses
+      val routerSandboxCount = if (productionManifestRoute) sandboxCount else 1
       val singletonHolder: UserClassLoaderHolder? =
-        userClassloaderHolderFactory?.let { factory ->
+        if (routerSandboxCount == 1) userClassloaderHolderFactory?.let { factory ->
           UserClassLoaderHolder(
             urls = userClassUrls,
             parentSupplier = {
@@ -141,8 +145,19 @@ fun main(args: Array<String>) {
                 )
             },
           )
-        }
-      PreviewManifestRouter(manifest = manifest, userClassloaderHolder = singletonHolder)
+        } else null
+      if (routerSandboxCount > 1) {
+        System.err.println(
+          "compose-ai-tools daemon: sandbox pool active (sandboxCount=$routerSandboxCount)"
+        )
+      }
+      PreviewManifestRouter(
+        manifest = manifest,
+        userClassloaderHolder = singletonHolder,
+        sandboxCount = routerSandboxCount,
+        userClassloaderHolderFactory =
+          if (routerSandboxCount > 1) userClassloaderHolderFactory else null,
+      )
     } else {
       if (sandboxCount > 1) {
         System.err.println(

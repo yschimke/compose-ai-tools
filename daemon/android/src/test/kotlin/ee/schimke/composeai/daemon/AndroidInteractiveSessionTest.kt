@@ -384,6 +384,33 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun previewManifestRouterPreservesInteractiveCapabilityWhenPooled() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = INTERACTIVE_PREVIEW_ID,
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "ClickToggleSquare",
+              widthPx = INTERACTIVE_WIDTH_PX,
+              heightPx = INTERACTIVE_HEIGHT_PX,
+              density = 1.0f,
+            )
+          )
+      )
+
+    assertFalse(
+      "single-sandbox router must keep the v1 fallback capability",
+      PreviewManifestRouter(manifest = manifest, sandboxCount = 1).supportsInteractive,
+    )
+    assertTrue(
+      "pooled production router must advertise held interactive sessions",
+      PreviewManifestRouter(manifest = manifest, sandboxCount = 2).supportsInteractive,
+    )
+  }
+
+  @Test
   fun acquireWithSandboxCountOneThrowsUnsupported() {
     // sandboxCount = 1 should refuse interactive even when a resolver is wired — the single slot
     // can't be sacrificed without taking normal renders down.
