@@ -380,7 +380,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `text/strings`             | default | low | Text drawn on screen with locale, fontScale, bounds. |
 | `render/trace`             | default | low | Phase breakdown (compose / measure / layout / draw). Exposes existing `Trace.beginSection` markers. |
 | `fonts/used`               | default | low | Font families with weight/style fallback chain. |
-| `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. |
+| `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. **D6 — shipped inline payload when daemon history is enabled.** |
 | `test/failure`             | failed render | low | Partial bitmap + last Snapshot state + pending `LaunchedEffect` queue. |
 
 "Mode" picks which render configuration produces the data; "cost" is
@@ -541,6 +541,37 @@ for rectangular/default devices, or:
 
 for round Wear-style devices. It does not require a render pass and is
 available on both Android and desktop daemons.
+
+`history/diff/regions` is a cheap, inline, fetchable and attachable data product
+derived from the daemon history archive. It is advertised only when
+`HistoryManager` is active. Fetch and subscribe calls must pass an explicit
+baseline:
+
+```json
+{
+  "baselineHistoryId": "20260502-100000-1234abcd",
+  "thresholdAlphaDelta": 4
+}
+```
+
+The producer reads the latest history entry for the requested `previewId`,
+compares its PNG against the baseline entry, and returns connected changed-pixel
+regions capped to the largest 50:
+
+```json
+{
+  "baselineHistoryId": "20260502-100000-1234abcd",
+  "totalPixelsChanged": 42,
+  "changedFraction": 0.0012,
+  "regions": [
+    {
+      "bounds": "10,20,40,32",
+      "pixelCount": 360,
+      "avgDelta": { "r": 12.0, "g": -4.0, "b": 0.0, "a": 0.0 }
+    }
+  ]
+}
+```
 
 ## Phase plan
 

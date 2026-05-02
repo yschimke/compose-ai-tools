@@ -245,6 +245,10 @@ fun main(args: Array<String>) {
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        if (historyManager != null) {
+          System.err.println("compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active")
+          add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
+        }
         if (renderOutputDir != null) {
           val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
           System.err.println(

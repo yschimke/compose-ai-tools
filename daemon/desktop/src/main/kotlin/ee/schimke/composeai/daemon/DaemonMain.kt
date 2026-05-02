@@ -97,10 +97,6 @@ fun main(args: Array<String>) {
   // data/subscribe). Constructed unconditionally on desktop — it advertises one kind, and a
   // panel that doesn't subscribe pays nothing.
   val recompositionRegistry = RecompositionDataProductRegistry()
-  val dataProducts =
-    CompositeDataProductRegistry(
-      listOf(DeviceClipDataProductRegistry(previewIndex = previewIndex), recompositionRegistry)
-    )
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
@@ -204,6 +200,20 @@ fun main(args: Array<String>) {
       pruneConfig = pruneConfig,
     )
   }
+
+  val dataProducts =
+    CompositeDataProductRegistry(
+      buildList {
+        add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        add(recompositionRegistry)
+        if (historyManager != null) {
+          System.err.println(
+            "compose-ai-tools desktop daemon: HistoryDiffRegionsDataProductRegistry active"
+          )
+          add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
+        }
+      }
+    )
 
   val server =
     JsonRpcServer(
