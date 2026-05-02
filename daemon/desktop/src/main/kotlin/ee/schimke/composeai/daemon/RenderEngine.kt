@@ -66,6 +66,7 @@ class RenderEngine(
     ),
   private val dataDir: File? = outputDir.parentFile?.resolve("data"),
   private val themeCapture: ThemeCapture? = null,
+  private val frameNanoTime: () -> Long = System::nanoTime,
 ) {
 
   /**
@@ -246,10 +247,17 @@ class RenderEngine(
     )
   }
 
+  internal fun currentFrameNanoTime(): Long = frameNanoTime()
+
   /**
    * v2 phase 2 — drive the held scene through enough frames to settle (two `scene.render()` calls,
    * same heuristic as the one-shot path) and encode the latest pixels to PNG. Reusable across
    * inputs in the interactive path; called exactly once by the [render] wrapper.
+   *
+   * [ImageComposeScene.render] defaults `nanoTime` to zero, and that timestamp is the frame clock
+   * seen by `withFrameNanos` / Compose animations. The one-shot preview path keeps that old
+   * deterministic frame-zero behavior, while live interactive preview passes monotonic wall-clock
+   * timestamps so animations advance at real elapsed time instead of repainting a frozen timeline.
    */
   fun renderOnce(
     state: SceneState,
@@ -257,13 +265,14 @@ class RenderEngine(
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(state.spec.outputBaseName, backend = "desktop"),
+    useWallClockFrameTime: Boolean = false,
   ): RenderResult {
     val startNs = System.nanoTime()
 
     // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
     // as `:renderer-desktop`'s renderPreview.
-    trace.section("compose:frame") { state.scene.render() }
-    val image = trace.section("compose:captureFrame") { state.scene.render() }
+    trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
+    val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
 
     val pngData =
       trace.section("render:encodePng") {
@@ -287,6 +296,13 @@ class RenderEngine(
       metrics = metrics,
     )
   }
+
+  private fun renderFrame(state: SceneState, useWallClockFrameTime: Boolean) =
+    if (useWallClockFrameTime) {
+      state.scene.render(nanoTime = currentFrameNanoTime())
+    } else {
+      state.scene.render()
+    }
 
   /**
    * v2 phase 3 — close the held scene (frees the Skia [org.jetbrains.skia.Surface]) and restore the
