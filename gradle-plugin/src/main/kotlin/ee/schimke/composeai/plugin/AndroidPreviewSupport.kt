@@ -1314,6 +1314,15 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.warmSpare",
         extension.experimental.daemon.warmSpare.map { it.toString() },
       )
+      // D2 — opt-out for the a11y data products (see `DaemonExtension.attachA11y`). When
+      // `false`, `DaemonMain` constructs `DataProductRegistry.Empty` and the renderer skips
+      // a11y mode, which saves the per-render ATF cost for users who don't consume the
+      // overlay. Pairs with the VS Code `composePreview.a11y.alwaysSubscribe` setting on the
+      // consumer side.
+      this.systemProperties.put(
+        "composeai.daemon.attachA11y",
+        extension.experimental.daemon.attachA11y.map { it.toString() },
+      )
       this.systemProperties.put("composeai.daemon.modulePath", project.path)
       // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the
       // `daemonUserClassMarkers` List<String> (a configuration-time constant);

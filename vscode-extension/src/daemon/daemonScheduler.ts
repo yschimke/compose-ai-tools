@@ -128,6 +128,16 @@ export class DaemonScheduler {
         private readonly gate: DaemonGate,
         private readonly events: SchedulerEvents,
         private readonly logger: { appendLine(s: string): void } = { appendLine() {} },
+        /**
+         * D2 — read freshly per `setVisible` so toggling the user setting
+         * `composePreview.a11y.alwaysSubscribe` doesn't need a reload. When `true`,
+         * newly-visible previews are auto-subscribed to a11y data products
+         * ([A11Y_OVERLAY_KINDS] + the ambient atf kind); when `false` (the default),
+         * the focus-mode toggle is the only path — no wire traffic for unfocused
+         * cards. Tests pass a constant lambda; production wires
+         * `vscode.workspace.getConfiguration('composePreview').get('a11y.alwaysSubscribe')`.
+         */
+        private readonly isA11yAlwaysSubscribed: () => boolean = () => false,
     ) {}
 
     /**
@@ -233,7 +243,7 @@ export class DaemonScheduler {
 
         // D2 — drop bookkeeping for previews that fell out of view. The daemon already
         // pruned its side on the same `setVisible`, so this just keeps our local dedup
-        // set in sync. Subscriptions themselves are now opt-in per focused preview via
+        // set in sync. Subscriptions themselves are opt-in per focused preview via
         // [setDataProductSubscription]; the panel calls in when the user toggles the
         // a11y overlay in focus mode.
         const visibleSetForSub = new Set(visible);
@@ -244,6 +254,29 @@ export class DaemonScheduler {
             const sep = rest.indexOf('::');
             const id = sep < 0 ? rest : rest.slice(0, sep);
             if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
+        }
+
+        // D2 — when the user opted into ambient a11y via
+        // `composePreview.a11y.alwaysSubscribe`, subscribe every newly-visible preview to
+        // [A11Y_OVERLAY_KINDS] so diagnostics + the hierarchy overlay fire without entering
+        // focus mode. dataSubscribe rejects gracefully (DataProductUnknown) when the daemon
+        // wasn't built with `attachA11y = true` on the producer side; that path absorbs the
+        // rejection and rolls back the bookkeeping (matching `setDataProductSubscription`).
+        if (this.isA11yAlwaysSubscribed()) {
+            for (const id of visible) {
+                for (const kind of A11Y_OVERLAY_KINDS) {
+                    const subKey = `${moduleId}::${id}::${kind}`;
+                    if (this.subscribedPairs.has(subKey)) { continue; }
+                    this.subscribedPairs.add(subKey);
+                    client.dataSubscribe({ previewId: id, kind }).catch((err) => {
+                        const msg = (err as Error)?.message ?? String(err);
+                        this.logger.appendLine(
+                            `[daemon] alwaysSubscribe dataSubscribe(${id}, ${kind}) failed: ${msg}`,
+                        );
+                        this.subscribedPairs.delete(subKey);
+                    });
+                }
+            }
         }
 
         if (predicted.length === 0) { return; }
