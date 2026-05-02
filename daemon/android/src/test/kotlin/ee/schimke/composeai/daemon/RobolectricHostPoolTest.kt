@@ -339,6 +339,70 @@ class RobolectricHostPoolTest {
   }
 
   @Test
+  fun interactiveStartUsesTheCurrentSlotsChildLoader() {
+    val userClassesDir = stageFixtureClassesDir()
+    val outputDir = Files.createTempDirectory("pool-interactive-renders").toFile()
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+
+    val probe = RobolectricHost(sandboxCount = 2)
+    val slot0PreviewId =
+      (0 until 128)
+        .map { i -> "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.interactive.slot0.$i" }
+        .first { previewId ->
+          probe.chooseSlotIndexForTest(
+            payload = renderPayload(previewId, outputBaseName = "probe"),
+            id = 1L,
+          ) == 0
+        }
+
+    val urls = listOf(userClassesDir.toURI().toURL())
+    val host =
+      RobolectricHost(
+        sandboxCount = 2,
+        userClassloaderHolderFactory = { sandboxClassLoader ->
+          UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
+        },
+        previewSpecResolver = { previewId ->
+          RenderSpec(
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "RedSquare",
+            widthPx = 64,
+            heightPx = 64,
+            density = 1.0f,
+            showBackground = true,
+            outputBaseName = previewId,
+          )
+        },
+      )
+    try {
+      host.start()
+
+      host.submit(
+        RenderRequest.Render(payload = renderPayload(slot0PreviewId, outputBaseName = "slot-0")),
+        timeoutMs = 120_000,
+      )
+
+      val session =
+        host.acquireInteractiveSession(
+          previewId = "interactive-red",
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val result = session.render(RenderHost.nextRequestId())
+        assertNotNull("interactive render should produce a PNG", result.pngPath)
+        assertTrue("interactive PNG should exist", File(result.pngPath!!).exists())
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+      outputDir.deleteRecursively()
+      userClassesDir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun swapUserClassLoadersBroadcastsToEverySlot() {
     // SANDBOX-POOL-FOLLOWUPS.md (#1) — `fileChanged({ kind: "source" })` calls
     // `host.swapUserClassLoaders()`, which must invalidate every slot's holder so the next render

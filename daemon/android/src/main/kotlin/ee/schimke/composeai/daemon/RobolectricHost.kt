@@ -1235,7 +1235,7 @@ open class RobolectricHost(
       }
 
       val classLoader: ClassLoader =
-        DaemonHostBridge.currentChildLoader()
+        slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
       val composableMethod =
