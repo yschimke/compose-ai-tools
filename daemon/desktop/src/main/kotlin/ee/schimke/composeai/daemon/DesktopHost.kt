@@ -89,7 +89,28 @@ open class DesktopHost(
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).
    */
   private val previewSpecResolver: ((String) -> RenderSpec?)? = null,
+  /**
+   * D5 — interactive-session lifecycle listener for the `compose/recomposition` producer
+   * ([RecompositionDataProductRegistry]). Called with the held [androidx.compose.ui.ImageComposeScene]
+   * after [acquireInteractiveSession] succeeds, and with `null` when the session is closed
+   * (either via the returned session's `close()` or via daemon shutdown).
+   *
+   * Decoupled from the registry interface itself because (a) the held-scene contract is desktop-
+   * only — no Android equivalent exists today — and (b) the renderer-agnostic
+   * [DataProductRegistry] surface intentionally doesn't expose
+   * [androidx.compose.ui.ImageComposeScene]. The listener seam stays in the desktop module.
+   */
+  private val interactiveSessionListener: InteractiveSessionListener? = null,
 ) : RenderHost {
+
+  /**
+   * D5 — session lifecycle hook. Fires on `acquireInteractiveSession` success (with the held
+   * scene) and on session `close()` (with `scene = null`). Implementations are expected to be
+   * cheap and side-effect-isolated — they run on whatever thread called `acquire` / `close`.
+   */
+  fun interface InteractiveSessionListener {
+    fun onSessionLifecycle(previewId: String, scene: androidx.compose.ui.ImageComposeScene?)
+  }
 
   /**
    * INTERACTIVE.md § 9 — `true` only when a [previewSpecResolver] was wired at construction.
@@ -195,12 +216,64 @@ open class DesktopHost(
             "interactive session not allocated"
         )
     val state = engine.setUp(spec, classLoader, inspectionMode = false)
-    return DesktopInteractiveSession(
-      previewId = previewId,
-      engine = engine,
-      state = state,
-      sandboxStats = sandboxStats,
-    )
+    val session =
+      DesktopInteractiveSession(
+        previewId = previewId,
+        engine = engine,
+        state = state,
+        sandboxStats = sandboxStats,
+      )
+    val listener = interactiveSessionListener
+    if (listener == null) {
+      return session
+    }
+    // D5 — fire onSessionLifecycle(previewId, scene) so the recomposition producer can install
+    // its CompositionObserver against the live scene. Wrap the session so that close() also
+    // fires onSessionLifecycle(previewId, null) — without the wrapper the producer would leak
+    // the observer handle past `interactive/stop`.
+    try {
+      listener.onSessionLifecycle(previewId, state.scene)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: DesktopHost: interactiveSessionListener.acquire threw " +
+          "(${t.javaClass.simpleName}: ${t.message}); continuing with session"
+      )
+    }
+    return ListenerNotifyingSession(delegate = session, listener = listener, previewId = previewId)
+  }
+
+  /**
+   * Thin [InteractiveSession] wrapper that fires [interactiveSessionListener]'s "released"
+   * notification on [close]. All other calls forward to the wrapped [DesktopInteractiveSession].
+   * Idempotent: a second [close] is a no-op (matches the [DesktopInteractiveSession.close]
+   * contract).
+   */
+  private class ListenerNotifyingSession(
+    private val delegate: InteractiveSession,
+    private val listener: InteractiveSessionListener,
+    override val previewId: String,
+  ) : InteractiveSession {
+
+    @Volatile private var closed = false
+
+    override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) =
+      delegate.dispatch(input)
+
+    override fun render(requestId: Long): RenderResult = delegate.render(requestId)
+
+    override fun close() {
+      if (closed) return
+      closed = true
+      try {
+        listener.onSessionLifecycle(previewId, null)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: DesktopHost: interactiveSessionListener.release threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing with session.close()"
+        )
+      }
+      delegate.close()
+    }
   }
 
   /**

@@ -20,5 +20,7 @@ D1 (data products — see [../DATA-PRODUCTS.md](../DATA-PRODUCTS.md)):
 - `client-dataFetch.json`, `daemon-dataFetchResult.json` — `data/fetch` request and response (§ "Wire surface").
 - `client-dataSubscribe.json`, `daemon-dataSubscribeResult.json` — `data/subscribe` (and the symmetric `data/unsubscribe`, same shape) request and response.
 - `daemon-renderFinished-withDataProducts.json` — `renderFinished` carrying a populated `dataProducts` field; the existing `daemon-renderFinished.json` continues to cover the "no attachments" case.
+- `client-dataSubscribe-withParams.json` — `data/subscribe` carrying a per-kind `params` bag (e.g. `compose/recomposition`'s `{frameStreamId, mode}`).
+- `daemon-renderFinished-withRecomposition.json` — `renderFinished` carrying a `compose/recomposition` delta payload (D5). Pairs with the click-driven flush path in `RecompositionDataProductRegistry`.
 
 Stream C (TypeScript) loads the same files in C1.1.

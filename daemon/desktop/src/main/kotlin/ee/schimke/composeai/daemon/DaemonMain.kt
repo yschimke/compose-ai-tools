@@ -91,6 +91,13 @@ fun main(args: Array<String>) {
       PreviewIndex.empty()
     }
 
+  // D5 — wire the `compose/recomposition` data-product producer. The producer is itself a
+  // [DesktopHost.InteractiveSessionListener]; we pass it to both the host (so it learns about
+  // session lifecycle) and the JsonRpcServer (so it surfaces capabilities + handles
+  // data/subscribe). Constructed unconditionally on desktop — it advertises one kind, and a
+  // panel that doesn't subscribe pays nothing.
+  val recompositionRegistry = RecompositionDataProductRegistry()
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -112,6 +119,11 @@ fun main(args: Array<String>) {
         // See INTERACTIVE.md § 9 ("RenderHost surface").
         previewSpecResolver =
           previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
+        // D5 — see RecompositionDataProductRegistry KDoc. Producer learns about session
+        // lifecycle here so it can install/dispose its CompositionObserver.
+        interactiveSessionListener = DesktopHost.InteractiveSessionListener {
+          previewId, scene -> recompositionRegistry.onSessionLifecycle(previewId, scene)
+        },
       )
     }
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
@@ -197,6 +209,12 @@ fun main(args: Array<String>) {
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
+      // D5 — only the desktop daemon advertises `compose/recomposition` today. The PreviewManifestRouter
+      // path doesn't expose interactive sessions, so the producer's lookups will all return empty
+      // for that host; a delta subscribe degrades to "advertise but useless" via the same code
+      // path as a future Compose API rename. Wiring is intentionally global — kinds advertised
+      // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
+      dataProducts = recompositionRegistry,
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)
