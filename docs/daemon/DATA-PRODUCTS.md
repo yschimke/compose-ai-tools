@@ -378,7 +378,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `compose/theme`            | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed which tokens. |
 | `resources/used`           | default | low | `R.*` references resolved during render. Jump-to-source. |
 | `text/strings`             | default | low | Text drawn on screen with locale, fontScale, bounds. |
-| `render/trace`             | default | low | Phase breakdown (compose / measure / layout / draw). Exposes existing `Trace.beginSection` markers. |
+| `render/trace`             | default | low | Phase breakdown. **Android + desktop daemon implementation:** v1 exposes the latest render as a trace-shaped payload from render metrics; nested `Trace.beginSection` markers are a follow-up. |
 | `fonts/used`               | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. **D6 — shipped inline payload when daemon history is enabled.** |
 | `test/failure`             | failed render | low | Partial bitmap + last Snapshot state + pending `LaunchedEffect` queue. |

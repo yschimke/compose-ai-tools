@@ -97,6 +97,9 @@ class DataFetchRerenderTest {
         "render payload should carry previewId, was: $payload",
         payload.contains("previewId=com.example.Foo_bar"),
       )
+      assertEquals("producer should observe the completed render", 1, producer.onRenderCalls.get())
+      assertEquals("com.example.Foo_bar", producer.lastOnRenderPreviewId)
+      assertEquals(3L, producer.lastOnRenderMetrics?.get("tookMs"))
     }
   }
 
@@ -276,6 +279,9 @@ class DataFetchRerenderTest {
     val renderSubmits = AtomicInteger(0)
     @Volatile var lastRenderPayload: String? = null
     @Volatile var renderObserved: Boolean = false
+    val onRenderCalls = AtomicInteger(0)
+    @Volatile var lastOnRenderPreviewId: String? = null
+    @Volatile var lastOnRenderMetrics: Map<String, Long>? = null
 
     override val capabilities: List<DataProductCapability> =
       modeForKind.keys
@@ -330,6 +336,12 @@ class DataFetchRerenderTest {
     override fun attachmentsFor(previewId: String, kinds: Set<String>) =
       emptyList<ee.schimke.composeai.daemon.protocol.DataProductAttachment>()
 
+    override fun onRender(previewId: String, result: RenderResult) {
+      onRenderCalls.incrementAndGet()
+      lastOnRenderPreviewId = previewId
+      lastOnRenderMetrics = result.metrics
+    }
+
     /** Called by [TestRenderHost] when the dispatcher submits a render. */
     fun observeRenderSubmit(payload: String) {
       renderSubmits.incrementAndGet()
@@ -374,7 +386,12 @@ class DataFetchRerenderTest {
                     continue
                   }
                   val result =
-                    RenderResult(id = req.id, classLoaderHashCode = 0, classLoaderName = "test")
+                    RenderResult(
+                      id = req.id,
+                      classLoaderHashCode = 0,
+                      classLoaderName = "test",
+                      metrics = mapOf("tookMs" to 3L),
+                    )
                   results.computeIfAbsent(req.id) { LinkedBlockingQueue() }.put(result)
                 }
                 RenderRequest.Shutdown -> return@Thread

@@ -33,6 +33,10 @@ class CompositeDataProductRegistry(private val registries: List<DataProductRegis
       else registry.attachmentsFor(previewId, supportedKinds)
     }
 
+  override fun onRender(previewId: String, result: RenderResult) {
+    registries.forEach { it.onRender(previewId, result) }
+  }
+
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
     registries.firstOrNull { it.isKnown(kind) }?.onSubscribe(previewId, kind, params)
   }
