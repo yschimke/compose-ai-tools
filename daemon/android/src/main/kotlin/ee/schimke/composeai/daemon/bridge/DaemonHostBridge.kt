@@ -263,6 +263,11 @@ object DaemonHostBridge {
     // top-level field. Slot 0's other refs alias the top-level AtomicReferences directly so they
     // were already cleared by the lines above.
     slot0Eager.sandboxReadyLatchRef.set(sandboxReadyLatch)
+    // INTERACTIVE-ANDROID.md § 3 — drain any queued interactive commands so a previous host
+    // lifecycle's leftover Start/Dispatch/Close don't leak into the next start. Slot 0's queue is
+    // an instance field on [SandboxSlot] (not aliased to a top-level @JvmField like [requests]),
+    // so the explicit clear is necessary even on the single-slot path.
+    slot0Eager.interactiveCommands.clear()
     // Drop any extended slots back to the canonical single-slot list. Multi-slot configuration is
     // re-applied by the next [configureSlotCount] call (typically from `RobolectricHost.start`).
     // Render IDs (RenderHost.nextRequestId) deliberately stay monotonic across host restarts
@@ -299,6 +304,17 @@ internal constructor(
    * reference held by callers.
    */
   @JvmField val sandboxReadyLatchRef: AtomicReference<CountDownLatch>,
+  /**
+   * Inbound interactive-mode command queue (INTERACTIVE-ANDROID.md § 3 — v3 Android interactive).
+   * The held-rule loop in `SandboxRunner.holdSandboxOpen` (lands in PR B) drains this queue when
+   * the slot is in interactive-mode; until PR B lands, the queue exists as part of the bridge
+   * surface but no sandbox-side code reads from it (callers can enqueue, nothing happens).
+   *
+   * Separate from [requests] because the held-rule loop's lifecycle is different: it's allocated
+   * on `Start`, drained until `Close`, then the slot returns to draining [requests]. A single
+   * mixed queue would force the sandbox-side loop to discriminate per-poll.
+   */
+  @JvmField val interactiveCommands: LinkedBlockingQueue<InteractiveCommand> = LinkedBlockingQueue(),
 ) {
   /** Convenience: blocks until this slot's sandbox is ready. */
   fun awaitSandboxReady(timeoutMs: Long): Boolean =
@@ -316,4 +332,89 @@ internal constructor(
         sandboxReadyLatchRef = AtomicReference(CountDownLatch(1)),
       )
   }
+}
+
+/**
+ * Cross-classloader command for the v3 Android-interactive held-rule loop (INTERACTIVE-ANDROID.md
+ * § 3). The sandbox-side `SandboxRunner` reads from [SandboxSlot.interactiveCommands] when its
+ * slot is pinned to an interactive session; commands are routed to the held rule's main thread.
+ *
+ * **Bridge-package-only.** This sealed interface and every member must use only `java.*` types or
+ * other types in this `bridge` package — see the file KDoc on [DaemonHostBridge] for the
+ * Robolectric do-not-acquire boundary the package relies on. Specifically: no Compose pointer
+ * types, no Roborazzi capture types, no `ee.schimke.composeai.daemon.*` imports outside this
+ * package. Pixel coordinates ride as primitives; the sandbox synthesises the `MotionEvent` itself.
+ *
+ * **Wire-only in PR A.** The host enqueues nothing yet; no sandbox-side loop drains the queue.
+ * PR B (INTERACTIVE-ANDROID.md § 4 + § 7) wires both ends and ships
+ * `RobolectricHost.acquireInteractiveSession`. Lands here first so PR B doesn't have to widen
+ * the bridge surface mid-rollout.
+ */
+sealed interface InteractiveCommand {
+  /**
+   * Stream identifier echoed back to the host so a single slot can reject nested-start races
+   * (INTERACTIVE-ANDROID.md § 4: "A nested Start while a session is held is an error"). Opaque to
+   * the bridge — the host generates it, the sandbox carries it back unchanged.
+   */
+  val streamId: String
+
+  /**
+   * Allocate the rule + ActivityScenario, run `setContent`, signal ready via [replyLatch]. The
+   * preview reference travels as separate FQN + function-name strings (the sandbox resolves them
+   * via `Class.forName` against the slot's child classloader), and dimension/qualifier fields
+   * mirror the v1 [`RenderSpec`] subset the held composition needs.
+   *
+   * @param replyError the sandbox sets this before counting down [replyLatch] when `setContent`
+   *   throws; the host then surfaces a clean failure on the v2 `interactive/start` reply rather
+   *   than a wire-level timeout. Wrapping in [AtomicReference] keeps the field assignable from
+   *   the sandbox classloader without requiring Throwable types to cross the boundary as
+   *   anything other than the standard `java.lang.Throwable`.
+   */
+  data class Start(
+    override val streamId: String,
+    val previewClassName: String,
+    val previewFunctionName: String,
+    val widthPx: Int,
+    val heightPx: Int,
+    val density: Float,
+    val backgroundColor: Long,
+    val showBackground: Boolean,
+    val device: String?,
+    val outputBaseName: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+  ) : InteractiveCommand
+
+  /**
+   * Synthesise + dispatch a [android.view.MotionEvent] on the rule's main thread. [kind] mirrors
+   * the v2 wire `interactive/input` `kind` field — `"click"` / `"pointerDown"` / `"pointerUp"`
+   * for v3; key events fall through to a no-op until v4. Pixel coordinates are in the held
+   * composition's own pixel space — the host has already scaled from any `pixelDensity` ratio.
+   */
+  data class Dispatch(
+    override val streamId: String,
+    val kind: String,
+    val pixelX: Int,
+    val pixelY: Int,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+  ) : InteractiveCommand
+
+  /**
+   * Capture current pixels via the same `captureRoboImage` path the one-shot `RenderEngine` uses,
+   * and emit a `RenderResult` on [DaemonHostBridge.results] keyed by [requestId]. The host's
+   * `AndroidInteractiveSession.render()` polls that map exactly like the v1
+   * `RobolectricHost.submit` does today — no new result channel needed because render ids are
+   * already globally monotonic.
+   */
+  data class Render(override val streamId: String, val requestId: Long) : InteractiveCommand
+
+  /**
+   * Tear down the rule + ActivityScenario; the held statement returns and the slot reverts to
+   * draining normal renders from [SandboxSlot.requests]. [replyLatch] counts down before the
+   * statement exits so the host knows the ActivityScenario has actually closed before the next
+   * `interactive/start` would race against the same slot.
+   */
+  data class Close(override val streamId: String, val replyLatch: CountDownLatch) :
+    InteractiveCommand
 }
