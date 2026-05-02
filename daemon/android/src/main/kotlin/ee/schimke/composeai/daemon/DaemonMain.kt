@@ -85,8 +85,8 @@ fun main(args: Array<String>) {
     (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: defaultSandboxCount)
       .coerceAtLeast(1)
 
-  // SANDBOX-POOL-FOLLOWUPS.md (#1) — per-slot child loaders. The factory closes over the URL
-  // list and constructs one holder per slot, parented to the slot's own sandbox classloader. The
+  // Per-slot child loaders. The factory closes over the URL list and constructs one holder per
+  // slot, parented to the slot's own sandbox classloader. The
   // host invokes the factory lazily on first dispatch to each slot, after the sandbox prologue
   // has registered its loader on `DaemonHostBridge.slot(i).sandboxClassLoaderRef`.
   val userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =

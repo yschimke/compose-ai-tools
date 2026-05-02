@@ -12,14 +12,10 @@ A persistent preview server that replaces the per-save Gradle invocation with a 
 
 The daemon is configured with `composePreview.daemon { ... }` and defaults on for editor use. The Gradle `renderPreviews` task remains the CI-canonical render path.
 
-## What's open
+## What's Open
 
-- **B2.4 / B2.5 / B2.6** — sandbox recycle, warm spare, leak detection. Wire-format surface (`sandboxRecycle`, `daemonReady`, `daemonWarming`, `LeakDetectionMode`) is reserved in PROTOCOL.md but not yet emitted.
-- **B2.0c** — per-preview resource-read tracking (smart `fileChanged({ kind: "resource" })` invalidation).
-- **H4 / H5** — history auto-prune + pixel-mode `history/diff`.
-- **H10b / H11+** — gradle-plugin emission of `composeai.daemon.gitRefHistory`; `GitRefHistorySource` write modes; LFS / squash GC.
-- **P2.5.x** — predictive prefetch (multi-tier render queue, `setPredicted` IPC, scroll-ahead, filter-dropdown).
-- **STARTUP.md follow-ups** — machine-resident daemon (option A), AppCDS (B), instrumented-bytecode cache (C).
+Open work lives in [ROADMAP.md](ROADMAP.md). Keep this index focused on stable design and reference
+documents.
 
 ## Files
 
@@ -33,7 +29,7 @@ The daemon is configured with `composePreview.daemon { ... }` and defaults on fo
 ### Subsystems
 
 - **[CLASSLOADER.md](CLASSLOADER.md)** — disposable user classloader (B2.0). The save-loop fix.
-- **[CLASSLOADER-FORENSICS.md](CLASSLOADER-FORENSICS.md)** — forensic-dump library used to diagnose the Android save-loop classloader-identity skew.
+- **[CLASSLOADER-FORENSICS.md](CLASSLOADER-FORENSICS.md)** — short runbook for the classloader forensic dump tools.
 - **[ROBOLECTRIC-PRIMER.md](ROBOLECTRIC-PRIMER.md)** — primer on Robolectric internals (sandbox lifecycle, classloader delegation, bytecode instrumentation, shadows). Read when reasoning about classloader behaviour while debugging.
 - **[STARTUP.md](STARTUP.md)** — daemon startup latency analysis. Where the time goes; menu of options to attack each cost.
 - **[HISTORY.md](HISTORY.md)** — preview history archive: on-disk schema, JSON-RPC API, MCP and VS Code mappings, branch/worktree provenance, pluggable `HistorySource` backends.
@@ -45,18 +41,14 @@ The daemon is configured with `composePreview.daemon { ... }` and defaults on fo
 
 ### Future work
 
+- **[ROADMAP.md](ROADMAP.md)** — current open work, without historical task diaries.
 - **[PREDICTIVE.md](PREDICTIVE.md)** — predictive prefetch design (v1.1+).
 - **[TEST-HARNESS.md](TEST-HARNESS.md)** — harness design: scenarios, FakeHost vs real-mode, image-baseline strategy, CI workflow.
 
 ### Reference data
 
 - **[baseline-latency.md](baseline-latency.md)** + **[baseline-latency.csv](baseline-latency.csv)** — captured per-target / per-scenario timing baselines from the bench harnesses.
-- **[classloader-forensics-diff.md](classloader-forensics-diff.md)** + **[classloader-forensics-diff.json](classloader-forensics-diff.json)** — captured forensic dumps from the Android save-loop investigation.
 - **[protocol-fixtures/](protocol-fixtures/)** — golden JSON message corpus consumed by both the Kotlin and TypeScript test suites.
-
-### Planning
-
-- **[TODO.md](TODO.md)** — work breakdown. Most items are landed; remaining open work is enumerated in the "What's open" section above.
 
 ## Non-goals (v1)
 

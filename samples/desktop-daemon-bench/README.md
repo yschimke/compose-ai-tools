@@ -2,7 +2,6 @@
 
 Desktop latency baseline harness for the preview-daemon work — the
 counterpart to [`:samples:android-daemon-bench`](../android-daemon-bench)
-(P0.1). See [`docs/daemon/TODO.md`](../../docs/daemon/TODO.md) task **P0.6**
 and [`docs/daemon/DESIGN.md` § 13](../../docs/daemon/DESIGN.md).
 
 ## Why a separate sample (Option A)

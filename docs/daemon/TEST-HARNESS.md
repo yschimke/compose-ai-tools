@@ -1,8 +1,7 @@
 # Preview daemon — end-to-end test harness
 
 > **Status:** implemented as `:daemon:harness`. Scenarios S1–S10 ship
-> across both desktop and android targets in fake and real modes (per
-> [TODO.md § Phase D-harness](TODO.md)); CI runs `desktop-fake`,
+> across both desktop and android targets in fake and real modes; CI runs `desktop-fake`,
 > `desktop-real`, and `android-real` jobs in
 > `.github/workflows/daemon-harness.yml`. Outstanding work tracked in
 > the v3 ladder (§ 9): session-mode soak, weekly drift-report workflow,
@@ -576,4 +575,3 @@ move here first; they migrate to § 11 once resolved.
   `-Pharness.host=fake|real` switches between the two; default flips
   to `real` per target once that target's real renderer wiring has
   landed.
-

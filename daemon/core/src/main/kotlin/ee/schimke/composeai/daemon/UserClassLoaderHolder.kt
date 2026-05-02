@@ -48,8 +48,7 @@ import java.net.URLClassLoader
  *   inherit the **sandbox classloader** as its parent — otherwise framework classes (Compose
  *   runtime, Robolectric internals) load via the app loader instead of the instrumented sandbox
  *   loader, and `getDeclaredComposableMethod` fails on classloader-identity skew
- *   (forensics-confirmed, see
- *   [`docs/daemon/classloader-forensics-diff.md`](../../../../../../docs/daemon/classloader-forensics-diff.md)).
+ *   (forensics-confirmed; see `docs/daemon/CLASSLOADER-FORENSICS.md` for the diagnostic tool).
  *   Android's `DaemonMain` passes a supplier that reads `DaemonHostBridge.sandboxClassLoaderRef`,
  *   set inside the sandbox by `SandboxHoldingRunner.holdSandboxOpen`. Desktop's default supplier
  *   resolves to the JVM app loader, which is the right parent there.

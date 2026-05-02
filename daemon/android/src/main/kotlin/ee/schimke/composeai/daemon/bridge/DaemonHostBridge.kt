@@ -108,7 +108,7 @@ object DaemonHostBridge {
    * sandbox loader**, not the host's app loader. Forensics-confirmed root cause for the B2.0
    * Android failure: without this wiring, every framework class (Compose runtime, Robolectric
    * internals, Android APIs) loads via the JVM app loader instead of the instrumented sandbox
-   * loader. See [`docs/daemon/classloader-forensics-diff.md`](../../../../../../../docs/daemon/classloader-forensics-diff.md).
+   * loader. See `docs/daemon/CLASSLOADER-FORENSICS.md`.
    *
    * The [sandboxReadyLatch] counts down once the ref is set, so the host can block until the
    * sandbox is initialised before calling `holder.currentChildLoader()` (which would otherwise

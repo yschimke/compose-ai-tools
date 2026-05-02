@@ -95,7 +95,7 @@ JSON-RPC over stdio.
 - `sandboxRecycle({ reason, ageMs, renderCount })` — informational; expected periodically.
 - `daemonWarming({ etaMs })` — recycle in progress, no spare ready.
 
-The protocol must be locked in Phase 0 of the implementation work — see [TODO.md](TODO.md). Both daemon and VS Code client teams depend on the protocol shape being stable.
+The protocol is locked in [PROTOCOL.md](PROTOCOL.md). Daemon and client protocol changes must land in lockstep with fixture updates.
 
 ## 6. Module layout
 
@@ -171,7 +171,7 @@ samples/
 
 A four-tier cascade. Each tier is cheaper than the next; stop at the cheapest "no work" answer.
 
-> **Implementation note (post-v2):** Tier 2's "preview source changed" trigger is necessary but not sufficient on its own. Once discovery has identified a stale preview, the daemon still needs to *load fresh bytecode for that preview's class* — Robolectric's `InstrumentingClassLoader` and the desktop daemon's app classloader both cache by class name and silently return stale bytes after a recompile. The fix is the parent/child classloader split spec'd in [CLASSLOADER.md](CLASSLOADER.md) (B2.0 in TODO.md). Until B2.0 lands, the daemon's "warm render" numbers in [§ 13](#13-latency-budget) and [`baseline-latency.csv`](baseline-latency.csv) only describe rendering the *same* preview repeatedly against an unchanged classpath — not the actual edit-then-render save loop.
+> **Implementation note:** Tier 2's "preview source changed" trigger is necessary but not sufficient on its own. Once discovery has identified a stale preview, the daemon still needs to load fresh bytecode for that preview class. The parent/child classloader split in [CLASSLOADER.md](CLASSLOADER.md) is the source of truth for that save loop.
 
 ### Tier 1 — project fundamentally changed
 

@@ -80,10 +80,8 @@ replica was wasted on duplicated baselines.
 
 Compatible with the gradle plugin's hot-reload path. Each sandbox slot allocates its own child
 `URLClassLoader` parented to its own sandbox classloader, so `fileChanged({ kind: "source" })`
-broadcasts a `swap()` to every slot's holder — see
-[SANDBOX-POOL-FOLLOWUPS.md](SANDBOX-POOL-FOLLOWUPS.md) "#1 Per-slot user-class child loaders" for
-the design and the per-slot factory the host accepts in place of the legacy single-instance
-holder.
+broadcasts a `swap()` to every slot's holder. See [SANDBOX-POOL.md](SANDBOX-POOL.md) for the pool
+model.
 
 ## Gradle properties
 

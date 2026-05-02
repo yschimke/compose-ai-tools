@@ -109,7 +109,7 @@ stdio. Constraints:
   boot. No bi-directional Gradle ↔ daemon API.
 - **Daemon does not call back into Gradle** at runtime. Daemons fail
   to a `classpathDirty` notification + graceful exit when the world
-  changes underneath them ([B2.1](TODO.md#b21--classpathfingerprint-tier-1-)).
+  changes underneath them.
   The client (extension or supervisor) is responsible for restart.
 - **Daemon trust model is parent-PID-bound, stdio-only.** No network
   sockets, no listeners. Layer 3's MCP server, if used, is the thing
