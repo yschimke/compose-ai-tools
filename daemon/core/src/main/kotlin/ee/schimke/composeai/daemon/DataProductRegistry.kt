@@ -55,6 +55,29 @@ interface DataProductRegistry {
   fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment>
 
   /**
+   * Producer-side subscription lifecycle hook. Called by the dispatcher when a client issues a
+   * successful `data/subscribe` for `(previewId, kind)`. [params] carries the per-kind subscription
+   * option bag — `compose/recomposition` reads `{ frameStreamId, mode }` from it; stateless kinds
+   * see `null`.
+   *
+   * Default body is a no-op so existing producers (`a11y/atf`, `a11y/hierarchy`, `Empty`) need no
+   * change. Producers that maintain per-subscription state — recomposition counters, slot-table
+   * snapshots, anything that has to reset when the panel opens — override this to install the
+   * bookkeeping, then tear down in [onUnsubscribe].
+   *
+   * Idempotent on the wire: a re-subscribe (same `(previewId, kind)`) calls this again with the
+   * latest `params`. Producers that need "reset on re-subscribe" semantics use that as the signal.
+   */
+  fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {}
+
+  /**
+   * Producer-side subscription teardown. Fires from `data/unsubscribe`, from a `setVisible` that
+   * drops [previewId] (subscriptions are sticky-while-visible per the spec), and from a daemon
+   * shutdown. Default no-op; producers with per-subscription state should clear it here.
+   */
+  fun onUnsubscribe(previewId: String, kind: String) {}
+
+  /**
    * Tagged outcome of a [fetch]. The dispatcher maps each case to its wire-error counterpart in
    * `JsonRpcServer.handleDataFetch`.
    */
