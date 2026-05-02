@@ -107,6 +107,8 @@ class DaemonMcpServerTest {
         "get_preview_data",
         "subscribe_preview_data",
         "unsubscribe_preview_data",
+        "render_preview_overlay",
+        "get_preview_extras",
       )
   }
 

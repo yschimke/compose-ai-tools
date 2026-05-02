@@ -116,6 +116,39 @@ A producer picks one transport per kind, advertised in capabilities. A
 producer MAY support both `inline` and `path`; the caller picks via
 the `inline` flag on `data/fetch`.
 
+### Image processors and extras
+
+A kind's primary payload is JSON or a JSON-shaped path. Some producers
+also want to ship **derived images** alongside — the Paparazzi-style
+a11y overlay PNG is the load-bearing example. Two seams cover this:
+
+- **`extras` field** — additive on `DataProductAttachment` and
+  `DataFetchResult`. List of `{name, path, mediaType?, sizeBytes?}`
+  entries pointing at sibling files the producer wrote. Pointer-only
+  (no inlining) because the files are typically tens of KB and the
+  daemon already lives on the client's filesystem. Empty / absent
+  are interchangeable on the wire.
+- **`ImageProcessor` interface** (`daemon/android`) — pluggable
+  post-render hook the renderer's [`RenderEngine`] runs after the PNG
+  is captured. Each processor gets `(previewId, pngFile, dataDir,
+  isRound, accessibility?)` and returns a `Map<kind, List<extra>>` so
+  the registry can attach the same derived file to multiple kinds (the
+  a11y overlay rides under `a11y/atf`, `a11y/hierarchy`, AND the
+  dedicated `a11y/overlay` kind).
+
+The first concrete processor is `AccessibilityImageProcessor`, which
+adapts the existing renderer-side `AccessibilityOverlay.generate(...)`
+into the new contract. Output lands at
+`<dataDir>/<previewId>/a11y-overlay.png`; same directory the JSON
+artefacts live in. The Gradle / CLI path keeps its own overlay bake
+via `AccessibilityChecker.writePerPreviewReport` — same generator,
+different writer — so on-disk consumers are unchanged.
+
+For pure-image kinds (`a11y/overlay`), `transport='path'` and the
+fetch returns the PNG path directly. Clients that want both the JSON
+and the picture can subscribe once to `a11y/atf` and read the overlay
+out of the resulting attachment's `extras` list — no second round-trip.
+
 ### On-disk layout
 
 Today a11y-per-preview lives at
@@ -313,8 +346,9 @@ SHIPPED; everything else is "we know the shape, no code yet."
 
 | Kind                       | Mode | Cost | Notes |
 |----------------------------|------|------|-------|
-| `a11y/atf`                 | a11y | low  | `AccessibilityFinding[]` from ATF. Drives diagnostic squigglies. Cheap enough for global attach. |
-| `a11y/hierarchy`           | a11y | low  | `AccessibilityNode[]` (label, role, states, bounds). Powers a local overlay in VS Code. **First implementation.** |
+| `a11y/atf`                 | a11y | low  | `AccessibilityFinding[]` from ATF. Drives diagnostic squigglies. Cheap enough for global attach. Carries the `overlay` PNG as an extra when one was generated. |
+| `a11y/hierarchy`           | a11y | low  | `AccessibilityNode[]` (label, role, states, bounds). Powers a local overlay in VS Code. **First implementation.** Carries the `overlay` PNG as an extra. |
+| `a11y/overlay`             | a11y | low  | Path to the Paparazzi-style annotated PNG produced by `AccessibilityImageProcessor`. Pure-image kind — `transport='path'`, no JSON payload. **D2.1 — image-processor surface.** |
 | `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. |
 | `layout/tree`              | default | low | View / Compose layout tree with bounds, paddings, source-line refs. Layout inspector. |
 | `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode. |
