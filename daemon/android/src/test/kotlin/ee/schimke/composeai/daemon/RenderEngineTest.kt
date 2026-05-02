@@ -108,6 +108,51 @@ class RenderEngineTest {
   }
 
   @Test
+  fun serifTextWritesFontsUsedDataProduct() {
+    val outputDir = tempFolder.newFolder("renders-fonts")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "previewId=serif-text;" +
+                "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=SerifTextPreview;" +
+                "widthPx=160;heightPx=48;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=serif-text"
+          ),
+          timeoutMs = 120_000,
+        )
+      assertNotNull(result.pngPath)
+
+      val fontsFile =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("serif-text")
+          .resolve(FontsUsedDataProducer.FILE)
+      assertTrue("fonts/used data product should be written: $fontsFile", fontsFile.exists())
+      val payload = Json.parseToJsonElement(fontsFile.readText()).jsonObject
+      val fonts = payload["fonts"]!!.jsonArray
+      assertTrue("expected at least one resolved font entry", fonts.isNotEmpty())
+      val serif =
+        fonts
+          .map { it.jsonObject }
+          .firstOrNull { it["requestedFamily"]?.jsonPrimitive?.content == "serif" }
+      assertNotNull("expected FontFamily.Serif request in $fonts", serif)
+      assertEquals("normal", serif!!["style"]!!.jsonPrimitive.content)
+      assertEquals("400", serif["weight"]!!.jsonPrimitive.content)
+      assertTrue(serif["resolvedFamily"]!!.jsonPrimitive.content.isNotBlank())
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun fiveSequentialRendersExposeWarmRuntime() {
     val outputDir = tempFolder.newFolder("renders-warmup")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)

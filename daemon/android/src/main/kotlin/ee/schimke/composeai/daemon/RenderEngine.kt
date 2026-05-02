@@ -12,6 +12,7 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewRootForTest
@@ -218,6 +219,7 @@ class RenderEngine(
             val bgArgb = resolveBackgroundColor(spec).toArgb()
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bgArgb) }
             val resourceRecorder = ResourcesUsedDataProducer.recorder(rule.activity)
+            val fontRecorder = FontResolverRecorder(rule.activity)
 
             trace.section("compose:setContent") {
               rule.setContent {
@@ -227,9 +229,12 @@ class RenderEngine(
                 // through rather than parking under the paused clock — same trade
                 // `RobolectricRenderTest.renderWithA11y` already pays.
                 val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
+                val baseFontResolver = LocalFontFamilyResolver.current
                 CompositionLocalProvider(
                   LocalInspectionMode provides inspectionMode,
                   LocalContext provides ResourcesUsedDataProducer.context(rule.activity, resourceRecorder),
+                  LocalFontFamilyResolver provides
+                    recordingFontFamilyResolver(baseFontResolver, fontRecorder),
                 ) {
                   Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
                 }
@@ -259,6 +264,23 @@ class RenderEngine(
                   it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
                 }
               }
+
+            if (dataDir != null) {
+              try {
+                trace.section("compose:fontsUsedDataProduct") {
+                  FontsUsedDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.previewId ?: spec.outputBaseName,
+                    payload = fontRecorder.payload(),
+                  )
+                }
+              } catch (t: Throwable) {
+                System.err.println(
+                  "RenderEngine: fonts/used data write failed for ${spec.outputBaseName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}"
+                )
+              }
+            }
 
             if (dataDir != null) {
               try {
@@ -516,6 +538,7 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
  * cross-backend driver can drive both backends with the same payload string.
  */
 data class RenderSpec(
+  val previewId: String? = null,
   /** Fully-qualified name of the class containing the @Preview function. */
   val className: String,
   /** Method name of the @Preview function (parameterless overload). */
@@ -599,6 +622,7 @@ data class RenderSpec(
       val functionName = map["functionName"] ?: return null
       val defaults = RenderSpec(className = className, functionName = functionName)
       return RenderSpec(
+        previewId = map["previewId"]?.takeIf { it.isNotBlank() },
         className = className,
         functionName = functionName,
         widthPx = map["widthPx"]?.toIntOrNull() ?: defaults.widthPx,

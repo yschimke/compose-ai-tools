@@ -265,6 +265,10 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: I18nTranslationsDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(I18nTranslationsDataProductRegistry(rootDir = dataRoot))
+          System.err.println(
+            "compose-ai-tools daemon: FontsUsedDataProductRegistry active (dataRoot=$dataRoot)"
+          )
+          add(FontsUsedDataProductRegistry(rootDir = dataRoot))
           if (PerfettoTraceDataProducer.enabled()) {
             System.err.println(
               "compose-ai-tools daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
@@ -327,13 +331,15 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
  * resource uiMode threaded through so a live Wear preview matches the one-shot render.
  */
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
-  val defaults = RenderSpec(className = info.className, functionName = info.methodName)
+  val defaults =
+    RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
   val widthPx = params.widthDp?.let { (it * density).toInt() } ?: defaults.widthPx
   val heightPx = params.heightDp?.let { (it * density).toInt() } ?: defaults.heightPx
   val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
+    previewId = info.id,
     className = info.className,
     functionName = info.methodName,
     widthPx = widthPx,
