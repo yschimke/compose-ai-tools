@@ -3,14 +3,22 @@ package ee.schimke.composeai.daemon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.runtime.tooling.CompositionData
+import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.SystemTheme
@@ -20,6 +28,8 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import java.io.File
+import java.util.Collections
+import java.util.WeakHashMap
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
@@ -169,6 +179,12 @@ class RenderEngine(
     Thread.currentThread().contextClassLoader = classLoader
 
     val localeProviders = localeProviders(spec.localeTag)
+    val themeSlotTableCapture =
+      if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+        ThemeSlotTableCapture()
+      } else {
+        null
+      }
 
     // PROTOCOL.md § 5 (`renderNow.overrides.fontScale`) — Compose Desktop has no resource-qualifier
     // system, but `LocalDensity` carries `fontScale` as part of `Density`, and `Text` / `TextStyle`
@@ -208,18 +224,28 @@ class RenderEngine(
             *localeProviders,
           ) {
             if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
-              CaptureMaterialTheme { payload -> themeCapture.capture(spec.previewId, payload) }
-            }
-            val bgColor =
-              when {
-                spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
-                spec.showBackground -> Color.White
-                else -> Color.Transparent
+              CaptureMaterialTheme { _, typography, shapes, payload ->
+                themeSlotTableCapture?.captureFallbackValues(typography, shapes)
+                themeCapture.capture(spec.previewId, payload)
               }
-            Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-              // Trampoline through a @Composable so the reflective invocation lands inside the
-              // running composition. Mirrors `:renderer-desktop`'s InvokeComposable.
-              InvokeComposable(composableMethod)
+            }
+            val content: @Composable () -> Unit = {
+              val bgColor =
+                when {
+                  spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
+                  spec.showBackground -> Color.White
+                  else -> Color.Transparent
+                }
+              Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+                // Trampoline through a @Composable so the reflective invocation lands inside the
+                // running composition. Mirrors `:renderer-desktop`'s InvokeComposable.
+                InvokeComposable(composableMethod)
+              }
+            }
+            if (themeSlotTableCapture != null) {
+              InspectableThemeContent(themeSlotTableCapture, content)
+            } else {
+              content()
             }
           }
         }
@@ -241,6 +267,7 @@ class RenderEngine(
       density = density,
       outputFile = outputFile,
       previousContext = previousContext,
+      themeSlotTableCapture = themeSlotTableCapture,
     )
   }
 
@@ -270,6 +297,9 @@ class RenderEngine(
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
     val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    state.themeSlotTableCapture?.themePayloadFromMaterialThemeCall()?.let { payload ->
+      themeCapture?.capture(state.spec.previewId, payload)
+    }
 
     val pngData =
       trace.section("render:encodePng") {
@@ -325,13 +355,15 @@ class RenderEngine(
    * because [DesktopInteractiveSession] holds one across `interactive/input` notifications;
    * one-shot [render] callers don't need to look at it.
    */
-  class SceneState(
+  class SceneState
+  internal constructor(
     val spec: RenderSpec,
     val classLoader: ClassLoader,
     val scene: ImageComposeScene,
     val density: Density,
     val outputFile: File,
     internal val previousContext: ClassLoader?,
+    internal val themeSlotTableCapture: ThemeSlotTableCapture?,
   )
 
   interface ThemeCapture {
@@ -509,10 +541,66 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
   composableMethod.invoke(currentComposer, null)
 }
 
-@androidx.compose.runtime.Composable
-private fun CaptureMaterialTheme(onCaptured: (ThemePayload) -> Unit) {
+@Composable
+private fun CaptureMaterialTheme(
+  onCaptured: (ColorScheme, Typography, Shapes, ThemePayload) -> Unit
+) {
   val colorScheme = MaterialTheme.colorScheme
   val typography = MaterialTheme.typography
   val shapes = MaterialTheme.shapes
-  SideEffect { onCaptured(themePayloadFromMaterialTheme(colorScheme, typography, shapes)) }
+  SideEffect {
+    onCaptured(
+      colorScheme,
+      typography,
+      shapes,
+      themePayloadFromMaterialTheme(colorScheme, typography, shapes),
+    )
+  }
 }
+
+internal class ThemeSlotTableCapture {
+  val store: MutableSet<CompositionData> = Collections.newSetFromMap(WeakHashMap())
+  private var fallbackTypography: Typography? = null
+  private var fallbackShapes: Shapes? = null
+
+  fun themePayloadFromMaterialThemeCall(): ThemePayload? {
+    val materialThemeCalls =
+      store
+        .flatMap { data -> data.compositionGroups.flatMap { it.flattenGroups() } }
+        .filter { group -> group.sourceInfo?.startsWith("C(MaterialTheme)") == true }
+
+    for (group in materialThemeCalls.asReversed()) {
+      val values = group.data.toList()
+      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
+      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
+      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
+      return themePayloadFromThemeObjects(
+        colorSource = colorSource,
+        typographySource = typographySource,
+        shapesSource = shapesSource,
+        fallbackTypography = fallbackTypography,
+        fallbackShapes = fallbackShapes,
+      )
+    }
+    return null
+  }
+
+  fun captureFallbackValues(typography: Typography, shapes: Shapes) {
+    fallbackTypography = typography
+    fallbackShapes = shapes
+  }
+}
+
+@OptIn(InternalComposeApi::class)
+@androidx.compose.runtime.Composable
+private fun InspectableThemeContent(
+  capture: ThemeSlotTableCapture,
+  content: @androidx.compose.runtime.Composable () -> Unit,
+) {
+  currentComposer.collectParameterInformation()
+  capture.store.add(currentComposer.compositionData)
+  CompositionLocalProvider(LocalInspectionTables provides capture.store, content = content)
+}
+
+private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
+  listOf(this) + compositionGroups.flatMap { it.flattenGroups() }

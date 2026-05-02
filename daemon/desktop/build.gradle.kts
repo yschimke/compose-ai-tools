@@ -112,6 +112,7 @@ dependencies {
   "testFixturesImplementation"(compose.runtime)
   "testFixturesImplementation"(compose.foundation)
   "testFixturesImplementation"(compose.ui)
+  "testFixturesImplementation"(compose.material3)
 }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }

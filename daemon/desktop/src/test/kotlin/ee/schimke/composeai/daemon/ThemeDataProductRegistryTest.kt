@@ -95,6 +95,47 @@ class ThemeDataProductRegistryTest {
   }
 
   @Test
+  fun theme_mode_prefers_preview_local_material_theme_tokens() {
+    val outputDir = tempFolder.newFolder("renders-local-theme")
+    val registry = ThemeDataProductRegistry()
+    val engine =
+      RenderEngine(
+        outputDir = outputDir,
+        themeCapture =
+          object : RenderEngine.ThemeCapture {
+            override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
+              registry.shouldCapture(previewId, renderMode)
+
+            override fun capture(previewId: String?, payload: ThemePayload) {
+              registry.capture(previewId, payload)
+            }
+          },
+      )
+
+    engine.render(
+      spec =
+        RenderSpec(
+          previewId = "preview-local-theme",
+          renderMode = "theme",
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "ThemedPrimarySquare",
+          widthPx = 32,
+          heightPx = 32,
+          density = 1.0f,
+          outputBaseName = "theme-local-square",
+        ),
+      requestId = RenderHost.nextRequestId(),
+    )
+
+    val fetch =
+      registry.fetch("preview-local-theme", "compose/theme", params = null, inline = true)
+        as DataProductRegistry.Outcome.Ok
+    val colorScheme =
+      fetch.result.payload!!.jsonObject["resolvedTokens"]!!.jsonObject["colorScheme"]!!.jsonObject
+    assertEquals("#FF123456", colorScheme["primary"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun subscribed_preview_captures_on_default_render() {
     val outputDir = tempFolder.newFolder("renders")
     val registry = ThemeDataProductRegistry()
