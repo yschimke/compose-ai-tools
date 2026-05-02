@@ -465,7 +465,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
@@ -501,6 +501,20 @@
     "functionName": "ButtonPreview",
     "renderBasename": "PreviewsKt.ButtonPreview_Devices_-_Small_Round.png",
     "sha256": "dea77597dd979175a9e201c05054ccb8a409de271d54420746635a4fbf38b906",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "CircularProgressIndicatorPreview",
+    "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
+    "sha256": "a1684d8dd51e00fbb7920d3aafad187143516c312a12580fe54f19d71e460d50",
+    "sourceFile": "com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Small Round": {
+    "captureLabel": "",
+    "functionName": "CircularProgressIndicatorPreview",
+    "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png",
+    "sha256": "5e05d1a8a78ad4937731786b48095c9e88db70e49a32638891c7e322349fe723",
     "sourceFile": "com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
