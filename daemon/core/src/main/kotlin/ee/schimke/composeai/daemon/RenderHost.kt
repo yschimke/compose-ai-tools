@@ -124,6 +124,14 @@ interface RenderHost {
     get() = null
 
   /**
+   * Fixed Android SDK level this host renders against. Android/Robolectric backends expose the
+   * `@Config(sdk = ...)` value so clients can reason about backend compatibility without scraping
+   * daemon logs. Non-Android backends return `null`.
+   */
+  val androidSdk: Int?
+    get() = null
+
+  /**
    * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
    * documented in
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).

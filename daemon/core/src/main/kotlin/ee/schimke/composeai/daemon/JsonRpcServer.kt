@@ -654,6 +654,10 @@ class JsonRpcServer(
             // per-call probing. Defaulted to `null` for hosts that don't classify themselves
             // (FakeHost, in-test stubs); production hosts always populate.
             backend = host.backendKind,
+            // PROTOCOL.md § 3 — Android/Robolectric hosts advertise their fixed SDK level so
+            // clients can reason about backend compatibility without scraping logs. Desktop and
+            // test fakes inherit null.
+            androidSdk = host.androidSdk,
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty
