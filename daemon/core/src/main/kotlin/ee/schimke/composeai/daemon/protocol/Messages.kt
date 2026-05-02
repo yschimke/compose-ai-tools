@@ -724,7 +724,17 @@ data class HistoryReadResultDto(
  * subsequent `interactive/input` and `interactive/stop` so the daemon can route the input to the
  * right frame stream and drop stale ids cleanly.
  */
-@Serializable data class InteractiveStartResult(val frameStreamId: String)
+@Serializable
+data class InteractiveStartResult(
+  val frameStreamId: String,
+  /**
+   * True when the daemon acquired a held composition for this stream. False means the stream is
+   * using the backwards-compatible v1 path where inputs trigger stateless renders.
+   */
+  val heldSession: Boolean,
+  /** Human-readable reason for v1 fallback, when known. */
+  val fallbackReason: String? = null,
+)
 
 @Serializable data class InteractiveStopParams(val frameStreamId: String)
 

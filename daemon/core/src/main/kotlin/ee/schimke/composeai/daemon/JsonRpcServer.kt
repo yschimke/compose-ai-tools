@@ -1793,6 +1793,7 @@ class JsonRpcServer(
     // "interactive/start always succeeds and returns a streamId; inputs route through whatever
     // path the host supports". A v2-aware client gets the held-state semantics; a v1 client
     // doesn't notice the difference. See INTERACTIVE.md § 9 for the rollout rationale.
+    var fallbackReason: String? = null
     val session: InteractiveSession? =
       try {
         val classLoader =
@@ -1800,19 +1801,41 @@ class JsonRpcServer(
             ?: this::class.java.classLoader
             ?: ClassLoader.getSystemClassLoader()
         host.acquireInteractiveSession(params.previewId, classLoader)
-      } catch (_: UnsupportedOperationException) {
+      } catch (t: UnsupportedOperationException) {
+        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
         null
       } catch (t: Throwable) {
+        val reason = "${t.javaClass.simpleName}: ${t.message}"
+        if (host.supportsInteractive) {
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_INTERNAL,
+            message =
+              "interactive/start: host advertises held sessions but failed to acquire one for " +
+                "previewId='${params.previewId}': $reason",
+          )
+          return
+        }
         // Host overrode the method but failed to allocate (e.g. preview class not found, scene
         // setup threw). Surface as a log notification — the wire-level start still succeeds with
         // the v1 fall-back path so the client gets a usable streamId.
         System.err.println(
           "compose-ai-daemon: interactive/start: acquireInteractiveSession failed for " +
-            "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}; " +
-            "falling back to v1 dispatch"
+            "previewId='${params.previewId}': $reason; falling back to v1 dispatch"
         )
+        fallbackReason = reason
         null
       }
+    if (session == null && host.supportsInteractive) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INTERNAL,
+        message =
+          "interactive/start: host advertises held sessions but did not acquire one for " +
+            "previewId='${params.previewId}': ${fallbackReason ?: "unknown reason"}",
+      )
+      return
+    }
     interactiveTargets[streamId] =
       InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
     // Wipe any cached hash for this preview so the first interactive frame always paints.
@@ -1829,7 +1852,11 @@ class JsonRpcServer(
       req.id,
       encode(
         ee.schimke.composeai.daemon.protocol.InteractiveStartResult.serializer(),
-        ee.schimke.composeai.daemon.protocol.InteractiveStartResult(frameStreamId = streamId),
+        ee.schimke.composeai.daemon.protocol.InteractiveStartResult(
+          frameStreamId = streamId,
+          heldSession = session != null,
+          fallbackReason = fallbackReason,
+        ),
       ),
     )
   }

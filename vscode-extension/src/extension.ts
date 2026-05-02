@@ -2545,7 +2545,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             }
             break;
         case 'setInteractive':
-            void handleSetInteractive(msg.previewId, msg.enabled);
+            queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
         case 'recordInteractiveInput':
             logLine(
@@ -3167,9 +3167,9 @@ function lookupPreviewLabel(previewId: string): string | undefined {
  * forwarding via [activeInteractiveStreams]. Exit calls `interactive/stop`
  * (notification, drop-and-go) and clears the cached stream id.
  *
- * On daemons with held interactive sessions, `interactive/start` drives
- * the live frame loop itself. Older v1 fallback daemons still receive the
- * original setFocus + renderNow request so cards get a fresh first frame.
+ * `interactive/start` must return a held session before the panel is allowed to stay LIVE.
+ * Stateless fallback streams are stopped immediately; otherwise the UI would show a LIVE badge
+ * while every frame comes from a fresh composition.
  */
 async function handleSetInteractive(previewId: string, enabled: boolean): Promise<void> {
     if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
@@ -3208,28 +3208,34 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
     }
     try {
         const result = await client.interactiveStart({ previewId });
+        if (result.heldSession !== true) {
+            client.interactiveStop({ frameStreamId: result.frameStreamId });
+            logLine(
+                `[interactive] live mode unavailable for ${previewId}: daemon returned ` +
+                `stateless stream ${result.frameStreamId}` +
+                (result.fallbackReason ? ` (${result.fallbackReason})` : ''),
+            );
+            panel?.postMessage({ command: 'clearInteractive' });
+            updateInteractiveStatus();
+            return;
+        }
         activeInteractiveStreams.set(previewId, result.frameStreamId);
         updateInteractiveStatus();
-        const interactiveSupported = daemonGate?.isInteractiveSupported(moduleId) ?? false;
         logLine(
             `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
             `streamId=${result.frameStreamId}, ` +
-            `v2=${interactiveSupported})`,
+            `heldSession=${result.heldSession})`,
         );
-        if (interactiveSupported) {
-            await daemonScheduler.setFocus(moduleId, [previewId]);
-            return;
-        }
+        await daemonScheduler.setFocus(moduleId, [previewId]);
+        return;
     } catch (err) {
-        // MethodNotFound on a daemon that predates the interactive RPC — fall through
-        // to the focus + renderNow path so the card still gets a fresh first frame.
         logLine(
-            `[interactive] interactive/start unsupported for ${moduleId}: ` +
-            `${(err as Error).message}; falling back to setFocus + renderNow`,
+            `[interactive] live mode failed for ${previewId}: ${(err as Error).message}`,
         );
+        panel?.postMessage({ command: 'clearInteractive' });
+        updateInteractiveStatus();
+        return;
     }
-    await daemonScheduler.setFocus(moduleId, [previewId]);
-    await daemonScheduler.renderNow(moduleId, [previewId], 'fast', 'interactive-on');
 }
 
 /**
@@ -3240,6 +3246,18 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
  * (MethodNotFound), or has already been stopped" — drop the click.
  */
 const activeInteractiveStreams = new Map<string, string>();
+
+let interactiveMutationQueue: Promise<void> = Promise.resolve();
+
+function queueInteractiveMutation(previewId: string, enabled: boolean): void {
+    interactiveMutationQueue = interactiveMutationQueue
+        .catch(() => {})
+        .then(() => handleSetInteractive(previewId, enabled))
+        .catch((err) => {
+            logLine(`[interactive] setInteractive failed for ${previewId}: ${(err as Error).message}`);
+            panel?.postMessage({ command: 'clearInteractive' });
+        });
+}
 
 /**
  * Update the v1-fallback status-bar hint (#425). Visible only when at least one active

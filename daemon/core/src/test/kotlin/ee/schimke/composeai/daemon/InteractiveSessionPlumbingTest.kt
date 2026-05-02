@@ -13,7 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -71,6 +73,7 @@ class InteractiveSessionPlumbingTest {
     assertNotNull(startResp)
     val streamId =
       startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    assertEquals(true, startResp["result"]!!.jsonObject["heldSession"]!!.jsonPrimitive.boolean)
     assertEquals(
       "host.acquireInteractiveSession should fire exactly once per start",
       1,
@@ -172,6 +175,7 @@ class InteractiveSessionPlumbingTest {
     assertNotNull(startResp)
     val streamId =
       startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    assertEquals(true, startResp["result"]!!.jsonObject["heldSession"]!!.jsonPrimitive.boolean)
 
     val finished =
       pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
@@ -186,6 +190,30 @@ class InteractiveSessionPlumbingTest {
       clientToServerOut,
       """{"jsonrpc":"2.0","method":"interactive/stop","params":{"frameStreamId":"$streamId"}}""",
     )
+  }
+
+  @Test(timeout = 30_000)
+  fun supported_host_acquire_failure_fails_noisily() {
+    val tmp = Files.createTempDirectory("interactive-session-failure").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = FailingSessionHost(pngFile)
+
+    val (_, serverThread, clientToServerOut, received, exitLatch) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":10,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+    assertNotNull(startResp)
+    val error = startResp!!["error"]!!.jsonObject
+    assertEquals(-32603, error["code"]!!.jsonPrimitive.int)
+    assertTrue(error["message"]!!.jsonPrimitive.contentOrNull!!.contains("failed to acquire"))
+
+    teardownServer(clientToServerOut, received, serverThread, exitLatch)
   }
 
   @Test(timeout = 30_000)
@@ -213,6 +241,7 @@ class InteractiveSessionPlumbingTest {
     )
     val streamId =
       startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    assertEquals(false, startResp["result"]!!.jsonObject["heldSession"]!!.jsonPrimitive.boolean)
 
     writeFrame(
       clientToServerOut,
@@ -401,6 +430,9 @@ private class SessionAwareFakeHost(
 
   override fun shutdown(timeoutMs: Long) {}
 
+  override val supportsInteractive: Boolean
+    get() = true
+
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
@@ -474,4 +506,31 @@ private class NoSessionFakeHost(private val defaultPng: File) : RenderHost {
   }
 
   override fun shutdown(timeoutMs: Long) {}
+}
+
+private class FailingSessionHost(private val defaultPng: File) : RenderHost {
+  override val supportsInteractive: Boolean
+    get() = true
+
+  override fun start() {}
+
+  override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
+    require(request is RenderRequest.Render)
+    return RenderResult(
+      id = request.id,
+      classLoaderHashCode = 0,
+      classLoaderName = "failing-session-fake",
+      pngPath = defaultPng.absolutePath,
+      metrics = mapOf("tookMs" to 0L),
+    )
+  }
+
+  override fun shutdown(timeoutMs: Long) {}
+
+  override fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+  ): InteractiveSession {
+    throw IllegalStateException("boom")
+  }
 }

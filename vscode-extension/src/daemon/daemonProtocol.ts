@@ -516,6 +516,10 @@ export interface InteractiveStartResult {
      *  notification so the daemon can route inputs to the right warm
      *  sandbox even if the user toggles between previews. */
     frameStreamId: string;
+    /** True when this stream is backed by a held composition rather than stateless fallback. */
+    heldSession: boolean;
+    /** Human-readable reason for stateless fallback, when the daemon reports one. */
+    fallbackReason?: string;
 }
 
 export interface InteractiveStopParams { frameStreamId: string }
