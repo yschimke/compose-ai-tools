@@ -261,6 +261,10 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: ResourcesUsedDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(ResourcesUsedDataProductRegistry(rootDir = dataRoot))
+          System.err.println(
+            "compose-ai-tools daemon: I18nTranslationsDataProductRegistry active (dataRoot=$dataRoot)"
+          )
+          add(I18nTranslationsDataProductRegistry(rootDir = dataRoot))
           if (PerfettoTraceDataProducer.enabled()) {
             System.err.println(
               "compose-ai-tools daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
