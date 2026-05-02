@@ -513,21 +513,65 @@ open class DesktopHost(
    */
   private fun dispatchRender(request: RenderRequest.Render): RenderResult {
     val parseable = request.payload.contains("className=")
-    return if (!parseable) {
-      renderStubFallback(request.id)
-    } else {
-      val spec = RenderSpec.parseFromPayload(request.payload)
-      // B2.0 — resolve preview classes via the disposable child loader when the holder is wired
-      // (production path; the Gradle plugin's daemon launch descriptor sets
-      // `composeai.daemon.userClassDirs` and DaemonMain mounts the holder). Falls back to the
-      // engine's default classloader when the holder is null (the in-process unit-test path,
-      // where testFixtures live on `java.class.path`).
-      val classLoader: ClassLoader =
-        userClassloaderHolder?.currentChildLoader()
-          ?: RenderEngine::class.java.classLoader
-          ?: ClassLoader.getSystemClassLoader()
-      engine.render(spec, request.id, classLoader, sandboxStats = sandboxStats)
+    val spec =
+      if (parseable) {
+        RenderSpec.parseFromPayload(request.payload)
+      } else {
+        specFromPreviewIdPayload(request.payload) ?: return renderStubFallback(request.id)
+      }
+    // B2.0 — resolve preview classes via the disposable child loader when the holder is wired
+    // (production path; the Gradle plugin's daemon launch descriptor sets
+    // `composeai.daemon.userClassDirs` and DaemonMain mounts the holder). Falls back to the
+    // engine's default classloader when the holder is null (the in-process unit-test path,
+    // where testFixtures live on `java.class.path`).
+    val classLoader: ClassLoader =
+      userClassloaderHolder?.currentChildLoader()
+        ?: RenderEngine::class.java.classLoader
+        ?: ClassLoader.getSystemClassLoader()
+    return engine.render(spec, request.id, classLoader, sandboxStats = sandboxStats)
+  }
+
+  private fun specFromPreviewIdPayload(payload: String): RenderSpec? {
+    val map = parsePayloadMap(payload)
+    val previewId = map["previewId"]?.takeIf { it.isNotBlank() } ?: return null
+    val resolver = previewSpecResolver ?: return null
+    val base = resolver(previewId) ?: return null
+    return base.copy(
+      previewId = previewId,
+      renderMode = map["mode"]?.takeIf { it.isNotBlank() },
+      widthPx = map["widthPx"]?.toIntOrNull() ?: base.widthPx,
+      heightPx = map["heightPx"]?.toIntOrNull() ?: base.heightPx,
+      density = map["density"]?.toFloatOrNull() ?: base.density,
+      localeTag = map["localeTag"]?.takeIf { it.isNotBlank() } ?: base.localeTag,
+      fontScale = map["fontScale"]?.toFloatOrNull() ?: base.fontScale,
+      uiMode =
+        when (map["uiMode"]?.lowercase()) {
+          "light" -> RenderSpec.SpecUiMode.LIGHT
+          "dark" -> RenderSpec.SpecUiMode.DARK
+          else -> base.uiMode
+        },
+      orientation =
+        when (map["orientation"]?.lowercase()) {
+          "portrait" -> RenderSpec.SpecOrientation.PORTRAIT
+          "landscape" -> RenderSpec.SpecOrientation.LANDSCAPE
+          else -> base.orientation
+        },
+      inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
+    )
+  }
+
+  private fun parsePayloadMap(payload: String): Map<String, String> {
+    val map = mutableMapOf<String, String>()
+    for (entry in payload.split(';')) {
+      val trimmed = entry.trim()
+      if (trimmed.isEmpty()) continue
+      val eq = trimmed.indexOf('=')
+      if (eq <= 0) continue
+      val key = trimmed.substring(0, eq).trim()
+      val value = trimmed.substring(eq + 1).trim()
+      if (value.isNotEmpty()) map[key] = value
     }
+    return map
   }
 
   /**

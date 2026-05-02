@@ -3,7 +3,9 @@ package ee.schimke.composeai.daemon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
@@ -63,6 +65,7 @@ class RenderEngine(
         ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
     ),
   private val dataDir: File? = outputDir.parentFile?.resolve("data"),
+  private val themeCapture: ThemeCapture? = null,
 ) {
 
   /**
@@ -206,6 +209,9 @@ class RenderEngine(
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
           ) {
+            if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+              CaptureMaterialTheme { payload -> themeCapture.capture(spec.previewId, payload) }
+            }
             val bgColor =
               when {
                 spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
@@ -315,6 +321,12 @@ class RenderEngine(
     internal val previousContext: ClassLoader?,
   )
 
+  interface ThemeCapture {
+    fun shouldCapture(previewId: String?, renderMode: String?): Boolean
+
+    fun capture(previewId: String?, payload: ThemePayload)
+  }
+
   companion object {
     /**
      * System property carrying the absolute path of the renders directory. Same name the Android
@@ -334,6 +346,8 @@ class RenderEngine(
  * `:daemon:core`.
  */
 data class RenderSpec(
+  val previewId: String? = null,
+  val renderMode: String? = null,
   /** Fully-qualified name of the class containing the @Preview function. */
   val className: String,
   /** Method name of the @Preview function (parameterless overload). */
@@ -401,8 +415,8 @@ data class RenderSpec(
      * [RenderSpec]. Recognised keys: `className`, `functionName`, `widthPx`, `heightPx`, `density`,
      * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
      * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`), `inspectionMode`
-     * (`true`/`false`). `className` and `functionName` are required; everything else falls back to
-     * the defaults on this data class.
+     * (`true`/`false`), and data-product routing keys `previewId` / `mode`. `className` and
+     * `functionName` are required; everything else falls back to the defaults on this data class.
      *
      * Keeping this stringly-typed for v1 is deliberate (per the task brief). When `RenderRequest`
      * grows a typed `previewId: String?` field, [DesktopHost] will look the spec up in
@@ -425,6 +439,8 @@ data class RenderSpec(
           ?: error("RenderSpec.parseFromPayload: missing 'functionName' in '$payload'")
       val defaults = RenderSpec(className = className, functionName = functionName)
       return RenderSpec(
+        previewId = map["previewId"]?.takeIf { it.isNotBlank() },
+        renderMode = map["mode"]?.takeIf { it.isNotBlank() },
         className = className,
         functionName = functionName,
         widthPx = map["widthPx"]?.toIntOrNull() ?: defaults.widthPx,
@@ -462,4 +478,12 @@ data class RenderSpec(
 @androidx.compose.runtime.Composable
 private fun InvokeComposable(composableMethod: ComposableMethod) {
   composableMethod.invoke(currentComposer, null)
+}
+
+@androidx.compose.runtime.Composable
+private fun CaptureMaterialTheme(onCaptured: (ThemePayload) -> Unit) {
+  val colorScheme = MaterialTheme.colorScheme
+  val typography = MaterialTheme.typography
+  val shapes = MaterialTheme.shapes
+  SideEffect { onCaptured(themePayloadFromMaterialTheme(colorScheme, typography, shapes)) }
 }

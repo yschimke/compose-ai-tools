@@ -68,6 +68,7 @@ dependencies {
   implementation(compose.runtime)
   implementation(compose.foundation)
   implementation(compose.ui)
+  implementation(compose.material3)
   implementation(compose.components.uiToolingPreview)
 
   // `compose.desktop.currentOs` bakes the *build host's* Skiko platform into
