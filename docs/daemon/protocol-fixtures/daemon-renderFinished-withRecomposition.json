@@ -1,0 +1,21 @@
+{
+  "id": "com.example.HomeKt#HomePreview",
+  "pngPath": "/home/dev/projects/my-app/samples/android/build/compose-previews/renders/com.example.HomeKt-HomePreview.png",
+  "tookMs": 38,
+  "dataProducts": [
+    {
+      "kind": "compose/recomposition",
+      "schemaVersion": 1,
+      "payload": {
+        "mode": "delta",
+        "sinceFrameStreamId": "stream-1",
+        "inputSeq": 7,
+        "nodes": [
+          { "nodeId": "1a2b3c4d", "count": 2 },
+          { "nodeId": "5e6f7a8b", "count": 1 },
+          { "nodeId": "9c0d1e2f", "count": 3 }
+        ]
+      }
+    }
+  ]
+}

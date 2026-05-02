@@ -103,6 +103,10 @@ class MessagesTest {
   fun roundTripRenderFinishedParamsWithDataProducts() =
     roundTrip<RenderFinishedParams>("daemon-renderFinished-withDataProducts.json")
 
+  @Test
+  fun roundTripRenderFinishedParamsWithRecomposition() =
+    roundTrip<RenderFinishedParams>("daemon-renderFinished-withRecomposition.json")
+
   @Test fun roundTripJsonRpcRequest() = roundTrip<JsonRpcRequest>("envelope-request.json")
 
   @Test fun roundTripJsonRpcResponse() = roundTrip<JsonRpcResponse>("envelope-response.json")
@@ -156,6 +160,7 @@ class MessagesTest {
         "client-dataSubscribe-withParams.json",
         "daemon-dataSubscribeResult.json",
         "daemon-renderFinished-withDataProducts.json",
+        "daemon-renderFinished-withRecomposition.json",
       )
     val missing = expected - present
     assertEquals("missing protocol fixtures: $missing", emptySet<String>(), missing)
