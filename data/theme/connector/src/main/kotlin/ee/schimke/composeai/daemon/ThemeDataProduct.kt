@@ -13,11 +13,14 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.PreviewContext
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+
+const val MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY: String = "compose.material3.themePayload"
 
 /**
  * Desktop v1 producer for `compose/theme`.
@@ -86,6 +89,19 @@ class ThemeDataProductRegistry : DataProductRegistry {
   }
 
   override fun onRender(previewId: String, result: RenderResult) {
+    onRender(previewId, result, overrides = null, previewContext = result.previewContext)
+  }
+
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
+    previewContext
+      ?.takeIf { shouldCapture(previewId, it.renderMode) }
+      ?.let(::themePayloadFromPreviewContext)
+      ?.let { capture(previewId, it) }
     if (!capturedThisRender.remove(previewId)) {
       latestPayloads.remove(previewId)
     }
@@ -204,8 +220,11 @@ fun themePayloadFromPreviewContext(
       fallbackShapes = fallbackShapes,
     )
   }
-  return null
+  return context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload
 }
+
+fun themePayloadFromPreviewContext(context: PreviewContext): ThemePayload? =
+  themePayloadFromPreviewContext(context, fallbackTypography = null, fallbackShapes = null)
 
 fun colorTokens(source: Any?): Map<String, String> =
   when (source) {

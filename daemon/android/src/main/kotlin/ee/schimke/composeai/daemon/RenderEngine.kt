@@ -21,7 +21,10 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
-import ee.schimke.composeai.daemon.protocol.BackendKind
+import ee.schimke.composeai.data.render.PreviewBackends
+import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.renderer.AccessibilityChecker
 import java.io.File
 
@@ -399,11 +402,17 @@ class RenderEngine(
     val previewContext =
       PreviewContext.Builder(
           previewId = spec.previewId,
-          backend = BackendKind.ANDROID,
+          backend = PreviewBackends.ANDROID,
           renderMode = null,
           outputBaseName = spec.outputBaseName,
         )
-        .deviceFromRenderPixels(spec.device, spec.widthPx, spec.heightPx, spec.density)
+        .deviceFromRenderPixels(
+          spec.device,
+          spec.widthPx,
+          spec.heightPx,
+          spec.density,
+          resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+        )
         .build()
     return RenderResult(
       id = requestId,
@@ -506,6 +515,9 @@ class RenderEngine(
     private const val CAPTURE_ADVANCE_MS = 32L
   }
 }
+
+private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
+  PreviewDeviceSpec(widthDp = widthDp, heightDp = heightDp, density = density, isRound = isRound)
 
 /**
  * Detects whether a Compose `@Preview(device = ...)` string refers to a round (circular) display —

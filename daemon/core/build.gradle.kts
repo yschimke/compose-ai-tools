@@ -31,6 +31,8 @@ version =
     }
 
 dependencies {
+  api(project(":data-render-core"))
+
   // Protocol message types are @Serializable. Exposed as `api` so downstream
   // daemon modules (e.g. :daemon:android) get
   // kotlinx-serialization-json on their compile classpath without re-declaring

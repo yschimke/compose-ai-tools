@@ -27,6 +27,7 @@ import com.github.takahirom.roborazzi.inspectionMode
 import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
+import ee.schimke.composeai.data.render.PreviewAnimationContext
 import java.awt.image.BufferedImage
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -1346,7 +1347,20 @@ private fun handleAnimatedCapture(
     // the slot table.
     rule.mainClock.advanceTimeByFrame()
     val inspector = if (animation.showCurves && curveCapture != null) {
-        runCatching { AnimationInspector.attach(curveCapture) }
+        val context =
+            curveCapture.previewContext(
+                previewId = previewId,
+                renderMode = "animation",
+                outputBaseName = outputFile.nameWithoutExtension,
+                animation =
+                    PreviewAnimationContext(
+                        showCurves = true,
+                        requestedDurationMs = animation.durationMs,
+                        effectiveDurationMs = null,
+                        frameIntervalMs = frameIntervalMs,
+                    ),
+            )
+        runCatching { AnimationInspector.attach(context) }
             .onFailure { e ->
                 // Graceful degradation: incompat Compose UI Tooling (e.g. consumers
                 // on a Compose runtime older than the AnimationInspector reflective

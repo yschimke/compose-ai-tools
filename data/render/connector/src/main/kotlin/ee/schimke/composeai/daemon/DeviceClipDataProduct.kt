@@ -1,9 +1,13 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.PreviewDeviceContext
+import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -27,7 +31,7 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
             renderMode = null,
             outputBaseName = null,
           )
-          .device(PreviewDeviceContext.fromPreviewInfo(preview))
+          .device(preview.previewDeviceContext())
           .build()
       }
     )
@@ -95,3 +99,19 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
     const val SCHEMA_VERSION: Int = 1
   }
 }
+
+private fun PreviewInfoDto.previewDeviceContext(): PreviewDeviceContext {
+  val params = params
+  val device = params?.device?.takeIf { it.isNotBlank() }
+  val resolvedDevice = device?.let(DeviceDimensions::resolve)
+  return PreviewDeviceContext(
+    device = device,
+    widthDp = params?.widthDp?.toDouble() ?: resolvedDevice?.widthDp?.toDouble(),
+    heightDp = params?.heightDp?.toDouble() ?: resolvedDevice?.heightDp?.toDouble(),
+    density = params?.density ?: resolvedDevice?.density,
+    resolvedDevice = resolvedDevice?.previewDeviceSpec(),
+  )
+}
+
+private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
+  PreviewDeviceSpec(widthDp = widthDp, heightDp = heightDp, density = density, isRound = isRound)

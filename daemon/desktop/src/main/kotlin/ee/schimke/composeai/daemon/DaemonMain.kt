@@ -100,14 +100,10 @@ fun main(args: Array<String>) {
   val themeRegistry = ThemeDataProductRegistry()
   val renderEngine =
     RenderEngine(
-      themeCapture =
-        object : RenderEngine.ThemeCapture {
+      previewContextCapture =
+        object : RenderEngine.PreviewContextCapture {
           override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
             themeRegistry.shouldCapture(previewId, renderMode)
-
-          override fun capture(previewId: String?, payload: ThemePayload) {
-            themeRegistry.capture(previewId, payload)
-          }
         }
     )
 

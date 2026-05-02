@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.PreviewContext
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -69,6 +70,21 @@ interface DataProductRegistry {
    */
   fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
     onRender(previewId, result)
+  }
+
+  /**
+   * Render lifecycle hook with renderer-collected context. Producers that need slot tables,
+   * composition-local snapshots, frame-clock semantics, or animation sampling metadata should read
+   * them from [previewContext] here. Older producers can keep overriding the two- or three-argument
+   * [onRender] overloads; the default forwards to the existing override chain.
+   */
+  fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
+    onRender(previewId, result, overrides)
   }
 
   /**
