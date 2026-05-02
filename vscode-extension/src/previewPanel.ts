@@ -2507,6 +2507,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         const captureIndex = msg.command === 'setImageError' ? (msg.captureIndex || 0) : 0;
                         const renderError = msg.command === 'setImageError' ? (msg.renderError || null) : null;
                         const caps = cardCaptures.get(msg.previewId);
+                        const replaceExisting = msg.command !== 'setImageError'
+                            || msg.replaceExisting !== false;
+                        const existingImageData = caps && caps[captureIndex]
+                            ? caps[captureIndex].imageData
+                            : null;
+                        const container = errCard.querySelector('.image-container');
+                        const existingImg = container.querySelector('img');
+                        if (!replaceExisting && (existingImageData || existingImg)) {
+                            break;
+                        }
                         if (caps && caps[captureIndex]) {
                             caps[captureIndex].errorMessage = msg.message;
                             caps[captureIndex].renderError = renderError;
@@ -2516,7 +2526,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         if (caps && cur !== captureIndex) break;
 
                         errCard.classList.add('has-error');
-                        const container = errCard.querySelector('.image-container');
                         const previousErr = container.querySelector('.error-message');
                         if (previousErr) previousErr.remove();
                         // setImageError keeps any existing rendered <img>

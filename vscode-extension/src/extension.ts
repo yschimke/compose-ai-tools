@@ -406,6 +406,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 previewId,
                 captureIndex: 0,
                 message,
+                replaceExisting: false,
             });
         },
         onDataProductsAttached: (_moduleId, previewId, dataProducts) => {
@@ -1058,10 +1059,13 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
         return;
     }
 
-    // Re-filter against `currentScopeFile` so the panel stays scoped to the
-    // file the user is editing — same shape as the gradle path's setPreviews.
-    if (!currentScopeFile) { return; }
-    await reconcilePreviewManifestForFile(moduleId, currentScopeFile);
+    // Always reconcile caches, even when no preview editor is visible. Only
+    // repaint the panel when its current scope still belongs to this module;
+    // daemon save/discovery events can also arrive for background files.
+    const repaintFile = currentScopeFile && gradleService.resolveModule(currentScopeFile) === moduleId
+        ? currentScopeFile
+        : undefined;
+    await reconcilePreviewManifest(moduleId, repaintFile);
 }
 
 /**
@@ -1122,7 +1126,11 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     let filePreviews = manifest.filter(p => p.sourceFile === filterFile);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
         logLine(`daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`);
-        filePreviews = await reconcilePreviewManifestForFile(module, filePath) ?? filePreviews;
+        const repaintFile = currentScopeFile && gradleService.resolveModule(currentScopeFile) === module
+            ? currentScopeFile
+            : undefined;
+        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        filePreviews = fresh?.filter(p => p.sourceFile === filterFile) ?? filePreviews;
     }
     const ids = filePreviews.map(p => p.id);
     if (ids.length === 0) { return 'accepted'; }
@@ -1437,8 +1445,11 @@ function visiblePreviewCount(module: string, filePath: string): number {
     return previews.filter(p => p.sourceFile === filterFile).length;
 }
 
-async function reconcilePreviewManifestForFile(module: string, filePath: string): Promise<PreviewInfo[] | null> {
-    if (!gradleService || !panel) { return null; }
+async function reconcilePreviewManifest(
+    module: string,
+    repaintFilePath?: string,
+): Promise<PreviewInfo[] | null> {
+    if (!gradleService) { return null; }
     gradleService.invalidateCache(module);
     let manifest;
     try {
@@ -1462,7 +1473,9 @@ async function reconcilePreviewManifestForFile(module: string, filePath: string)
     moduleManifestCache.set(module, fresh);
     registry.replaceModule(module, fresh);
 
-    const filterFile = packageQualifiedSourcePath(filePath);
+    if (!panel || !repaintFilePath) { return fresh; }
+
+    const filterFile = packageQualifiedSourcePath(repaintFilePath);
     const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
     const heavyStaleIds = fastTierModules.has(module)
         ? visiblePreviews
@@ -1475,7 +1488,7 @@ async function reconcilePreviewManifestForFile(module: string, filePath: string)
         moduleDir: module,
         heavyStaleIds,
     });
-    return visiblePreviews;
+    return fresh;
 }
 
 async function refreshAfterDaemonReady(filePath: string, reason: string): Promise<void> {
@@ -2337,6 +2350,7 @@ async function refresh(
                                 captureIndex: idx,
                                 message,
                                 renderError,
+                                replaceExisting: true,
                             });
                         }
                         // else: discover-only pass, PNG not produced yet. Leave

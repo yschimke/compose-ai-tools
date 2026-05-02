@@ -332,6 +332,13 @@ export type ExtensionToWebview =
            * the panel falls back to the generic message.
            */
           renderError?: PreviewRenderError | null;
+          /**
+           * True when this error should replace an already-rendered image.
+           * Gradle render failures use this; daemon failures are async and
+           * may race behind a later valid frame, so they preserve last-good
+           * pixels when false.
+           */
+          replaceExisting?: boolean;
       }
     | { command: 'setLoading'; previewId?: string }
     | { command: 'markAllLoading' }
