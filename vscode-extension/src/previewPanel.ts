@@ -610,6 +610,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const turnOn = !wasLive;
             if (turnOn) {
                 interactivePreviewIds.add(previewId);
+                const img = card.querySelector('.image-container img');
+                if (img) ensureInteractiveInputHandlers(card, img);
             } else {
                 interactivePreviewIds.delete(previewId);
             }
