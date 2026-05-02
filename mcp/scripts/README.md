@@ -24,12 +24,10 @@ Asserts `before == revert` (byte-equal) and `before != after`.
 # 1. Bootstrap descriptors and previews.json for the cmp sample.
 ./gradlew \
   :samples:cmp:composePreviewDaemonStart \
-  :samples:cmp:discoverPreviews \
-  -PcomposePreview.experimental.daemon.enabled=true
+  :samples:cmp:discoverPreviews
 
-# 2. Flip the descriptor's `enabled` flag (the gradle property override is
-#    intentionally not propagated into the descriptor JSON; see
-#    DaemonExtension.kt's KDoc + issue #314 follow-up).
+# 2. If your build sets composePreview.daemon.enabled=false, either change the build script
+#    or flip the descriptor's `enabled` flag for this local smoke run.
 sed -i 's/"enabled": false/"enabled": true/' \
   samples/cmp/build/compose-previews/daemon-launch.json
 

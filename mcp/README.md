@@ -91,7 +91,7 @@ sed -i 's/"enabled": false/"enabled": true/' \
 
 The descriptor's `enabled: false` field is load-bearing — flip it to
 `true` either in the build script
-(`composePreview { experimental { daemon { enabled = true } } }`) or by
+(`composePreview { daemon { enabled = true } }`) or by
 editing the JSON directly. (Direct `-P` propagation is intentionally not
 wired; see `DaemonExtension.kt` KDoc for rationale.)
 
@@ -262,10 +262,10 @@ equivalent that integrates with `:mcp:test`.
 ## Operational notes
 
 - **Daemon enabled flag.** `composePreviewDaemonStart` always runs and
-  writes a descriptor; `enabled: false` is the default and the
+  writes a descriptor; `enabled: false` means the daemon was explicitly disabled, and the
   supervisor's `SubprocessDaemonClientFactory` refuses to spawn a
   daemon unless the descriptor reports `enabled: true`. Flip via
-  `composePreview.experimental.daemon { enabled = true }` in the
+  `composePreview.daemon { enabled = true }` in the
   consumer's build script.
 - **Multi-session.** A single MCP server process can serve N agents
   over N stdio connections (HTTP transport later may multiplex).
