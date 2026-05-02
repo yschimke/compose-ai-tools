@@ -121,27 +121,111 @@ thrashing on a permanently-stale descriptor.
 
 ### Tools
 
-Twelve tools today:
+Current tools:
 
-| Tool | Purpose | Maps to daemon's |
-|------|---------|------------------|
-| `register_project(path, rootProjectName?, modules?)` | Add a workspace to the supervisor. Returns the assigned `workspaceId`. | — (supervisor-side) |
-| `unregister_project(workspaceId)` | Tear down a workspace's daemons. | — (supervisor-side) |
-| `list_projects()` | List registered projects. | — (supervisor-side) |
-| `render_preview(uri)` | Force-render a preview, returning the PNG inline. | `renderNow` |
-| `watch(workspaceId, module?, fqnGlob?)` | Register an area of interest. | — (subscription bookkeeping) |
-| `unwatch(workspaceId?, module?, fqnGlob?)` | Drop matching watches. | — |
-| `list_watches()` | List the current session's watches. | — |
-| `set_visible(workspaceId, module, ids)` | Override the daemon's visible-preview set directly (without a long-lived watch). | `setVisible` |
-| `set_focus(workspaceId, module, ids)` | Override the daemon's focused-preview set (higher-priority slice for queue draining). | `setFocus` |
-| `notify_file_changed(workspaceId, path, kind?, changeType?)` | Forward a file-edit notification to every daemon in the workspace. | `fileChanged` |
-| `history_list(workspaceId, module, …)` | List history entries; decorates each with a `compose-preview-history://` URI. | `history/list` |
-| `history_diff(workspaceId, module, from, to)` | Diff two entries (metadata mode). | `history/diff` |
+| Tool | Purpose | CLI fit |
+|------|---------|---------|
+| `register_project(path, rootProjectName?, modules?)` | Add a workspace to the supervisor. Returns the assigned `workspaceId`. | Already covered by `compose-preview mcp install` / `serve --project`. |
+| `unregister_project(workspaceId)` | Tear down a workspace's daemons. | MCP lifecycle only. |
+| `list_projects()` | List registered projects. | MCP lifecycle only. |
+| `list_devices()` | List the known `@Preview(device=...)` catalog with resolved geometry. | **Good CLI fit:** pure query, no daemon spawn needed. |
+| `render_preview(uri, overrides?)` | Force-render a preview, returning the PNG inline. | Partly covered by `render`; daemon-backed overrides are a larger follow-up. |
+| `watch(workspaceId, module?, fqnGlob?)` | Register an area of interest and keep matching previews warm. | MCP/session only. |
+| `unwatch(workspaceId?, module?, fqnGlob?)` | Drop matching watches. | MCP/session only. |
+| `list_watches()` | List watches registered by the current session. | MCP/session only. |
+| `notify_file_changed(workspaceId, path, kind?, changeType?)` | Forward a file-edit notification to daemon(s). | MCP/session only; CLI already uses Gradle tasks for one-shot freshness. |
+| `set_visible(workspaceId, module, ids)` | Override the daemon's visible-preview set directly. | MCP/session only. |
+| `set_focus(workspaceId, module, ids)` | Override the focused-preview set for queue priority. | MCP/session only. |
+| `history_list(workspaceId, module, …)` | List historical render entries and decorate them with `compose-preview-history://` URIs. | **Good CLI fit:** local history is already file-backed. |
+| `history_diff(workspaceId, module, from, to)` | Diff two history entries in metadata mode. | **Good CLI fit:** useful in CI and simple if scoped to metadata/local FS first. |
+| `list_data_products(workspaceId?, module?)` | List advertised data-product kinds per daemon. | **Best CLI fit:** exposes available structured outputs to scripts. |
+| `get_preview_data(uri, kind, params?, inline?)` | Fetch one structured data product for a preview, auto-rendering when needed. | **Best CLI fit:** generalizes `a11y` into kind-addressable data. |
+| `subscribe_preview_data(uri, kind)` | Prime a data product on every render for one preview. | MCP/session only; not useful for one-shot CLI. |
+| `unsubscribe_preview_data(uri, kind)` | Drop a preview data-product subscription. | MCP/session only. |
+| `render_preview_overlay(uri, kind?, inline?, overrides?)` | Render a preview and return an annotated overlay image. | Good later CLI fit, probably as `data get --extra overlay --output`. |
+| `get_preview_extras(uri, kind)` | List non-JSON outputs produced alongside a data product. | Good later CLI fit once `data get` exists. |
+| `record_preview(uri, fps?, scale?, format?, events, overrides?)` | Record a scripted preview interaction to APNG/MP4/WebM. | High value but not simple; keep MCP-first for now. |
 
 Note: the daemon's render queue is still single-priority FIFO today, so
 `setVisible` / `setFocus` traffic flows through the wire but doesn't yet
 reorder the queue. The plumbing is in place for B2.5 / predictive
 prefetch ([PREDICTIVE.md](PREDICTIVE.md)) to start honouring focus.
+
+## CLI candidates from the MCP surface
+
+The CLI is best at one-shot, scriptable commands that write stable JSON to
+stdout or files to `--output`. Long-lived MCP concepts (`watch`,
+subscriptions, `set_visible`, `set_focus`) should stay MCP-only unless
+there is a concrete non-interactive workflow.
+
+Highest-value simple additions:
+
+1. **`compose-preview data-products [--module M] [--json]`**
+   - Maps to MCP `list_data_products`.
+   - Value: lets agents and CI discover which structured outputs are
+     available before asking for them.
+   - Simple first implementation: daemon-backed, using the same launch
+     descriptors that `mcp serve` already consumes. It can spawn the
+     daemon, read `InitializeResult.capabilities.dataProducts`, print an
+     envelope such as `compose-preview-data-products/v1`, then shut down.
+   - Lower-fidelity fallback: a static catalogue from
+     [DATA-PRODUCTS.md](DATA-PRODUCTS.md#catalogue-open-set) is less useful
+     because it cannot distinguish enabled vs unavailable producers.
+
+2. **`compose-preview data get --id PREVIEW --kind KIND [--module M] [--json|--output PATH]`**
+   - Maps to MCP `get_preview_data`.
+   - Value: generalizes the current `a11y` command into a stable,
+     kind-addressable surface for `a11y/atf`, `a11y/hierarchy`,
+     `a11y/touchTargets`, `compose/semantics`, `text/strings`,
+     `resources/used`, traces, and future products.
+   - Simple first implementation: run `renderAllPreviews` for the selected
+     module(s), then read already-produced files under
+     `build/compose-previews/data/<previewId>/<kind-with-slashes-as-dashes>.json`.
+     This covers cheap/ambient products without adding a daemon lifecycle to
+     the command.
+   - Better second implementation: daemon-backed fetch with the MCP
+     supervisor so the command can auto-render one preview and handle
+     re-render-on-demand products.
+
+3. **`compose-preview devices [--json]`**
+   - Maps to MCP `list_devices`.
+   - Value: gives scripts and agents the legal `id:*` device strings and
+     resolved dimensions for override planning.
+   - Simple implementation: read `DeviceDimensions.KNOWN_DEVICE_IDS`
+     directly. The CLI already bundles `:mcp`, which depends on daemon
+     protocol/core, so no new process or Gradle invocation is required.
+
+4. **`compose-preview history list|diff [--module M] [--id PREVIEW] [--json]`**
+   - Maps to MCP `history_list` and `history_diff`.
+   - Value: useful outside MCP for CI summaries and local "what changed?"
+     checks.
+   - Simple first implementation: support only the local
+     `.compose-preview-history` source and metadata diff. Defer git-ref
+     history and pixel diff until there is a CLI workflow that needs them.
+
+Useful but not first:
+
+- **`compose-preview overlay --id PREVIEW --kind a11y/overlay --output out.png`**
+  is valuable once `data get` exists, but it should reuse the same data
+  plumbing rather than become a separate command first.
+- **Daemon-backed `render --override ...`** would expose MCP
+  `render_preview.overrides`, but it changes the CLI from Gradle-task
+  rendering to daemon rendering for this path. That is worthwhile, but
+  larger than data-product reads.
+- **`record_preview` as `compose-preview record`** is compelling for
+  demos/regression artifacts, but it depends on held sessions, scripted
+  event parsing, format validation, and binary output handling. Keep it
+  MCP-first until the daemon recording surface has more CLI demand.
+
+Recommended first PR sequence:
+
+1. Add `devices` because it is self-contained and validates the JSON
+   envelope pattern for new CLI read-only commands.
+2. Add `data-products` backed by daemon initialize capabilities.
+3. Add `data get` in offline mode for products already emitted by
+   `renderAllPreviews`.
+4. Upgrade `data get` to daemon-backed `data/fetch` when callers need
+   auto-render or products that require a different render mode.
 
 ## Architecture
 
