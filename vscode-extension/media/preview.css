@@ -376,9 +376,9 @@ body {
 }
 
 .focus-inspector {
-    display: grid;
-    grid-template-columns: minmax(150px, 0.8fr) minmax(240px, 1.6fr) minmax(150px, 0.8fr);
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding: 0 8px 8px;
 }
 
@@ -403,6 +403,29 @@ body {
     font-size: calc(var(--vscode-font-size) - 2px);
     font-weight: 600;
     text-transform: uppercase;
+}
+
+.focus-panel-header::-webkit-details-marker,
+.focus-product-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-history-summary {
+    cursor: pointer;
+    border-bottom: none;
+}
+
+.focus-history-panel[open] .focus-history-summary {
+    border-bottom: 1px solid var(--card-border);
+}
+
+.focus-summary-chevron {
+    margin-left: auto;
+}
+
+.focus-product-picker[open] .focus-summary-chevron,
+.focus-history-panel[open] .focus-summary-chevron {
+    transform: rotate(180deg);
 }
 
 .focus-actions {
@@ -435,15 +458,43 @@ body {
     outline-offset: -1px;
 }
 
-.focus-product-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 4px;
+.focus-product-picker {
     padding: 8px;
+    position: relative;
 }
 
-.focus-product-chip {
+.focus-product-summary {
     display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--control-height);
+    padding: 2px 8px;
+    border: 1px solid var(--card-border);
+    border-radius: 3px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    cursor: pointer;
+}
+
+.focus-product-summary:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-product-summary:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.focus-product-menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.focus-product-option {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -452,39 +503,41 @@ body {
     border-radius: 3px;
     background: color-mix(in srgb, var(--text-secondary) 6%, transparent);
     color: inherit;
-    font: inherit;
-    text-align: left;
     cursor: pointer;
 }
 
-.focus-product-chip:hover,
-.focus-product-chip[aria-pressed="true"] {
+.focus-product-option:hover,
+.focus-product-option:has(input:checked) {
     background: var(--toolbar-hover);
 }
 
-.focus-product-chip:focus-visible {
+.focus-product-option:focus-within {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
 }
 
-.focus-product-chip[data-state="ok"] {
+.focus-product-option[data-state="ok"] {
     border-color: color-mix(in srgb, var(--vscode-charts-green, #89d185) 45%, var(--card-border));
 }
 
-.focus-product-chip[data-state="warn"] {
+.focus-product-option[data-state="warn"] {
     border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 55%, var(--card-border));
 }
 
-.focus-product-chip > .codicon {
+.focus-product-option > input {
+    margin: 0;
+}
+
+.focus-product-option > .codicon {
     flex: 0 0 auto;
     color: var(--text-secondary);
 }
 
-.focus-product-chip[data-state="ok"] > .codicon {
+.focus-product-option[data-state="ok"] > .codicon {
     color: var(--vscode-charts-green, #89d185);
 }
 
-.focus-product-chip[data-state="warn"] > .codicon {
+.focus-product-option[data-state="warn"] > .codicon {
     color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
@@ -514,15 +567,15 @@ body {
 }
 
 .focus-placeholder-list {
-    grid-column: 1 / -1;
-}
-
-.focus-placeholder-list .focus-panel-header {
-    border-bottom: none;
+    border-top: 1px solid var(--card-border);
 }
 
 .focus-placeholder {
-    border-top: 1px solid var(--card-border);
+    border-top: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-placeholder:first-child {
+    border-top: none;
 }
 
 .focus-placeholder > summary {
@@ -539,12 +592,6 @@ body {
     padding: 0 8px 8px 22px;
     color: var(--text-secondary);
     font-size: calc(var(--vscode-font-size) - 2px);
-}
-
-@media (max-width: 560px) {
-    .focus-inspector {
-        grid-template-columns: 1fr;
-    }
 }
 
 /* -- Preview card ----------------------------------------------------- */
