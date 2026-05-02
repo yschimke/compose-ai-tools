@@ -58,6 +58,8 @@ class FakeGate {
     public enabled = true;
     public client: FakeClient | null = new FakeClient();
     public ready = false;
+    public getOrSpawnCalls: string[] = [];
+    public getOrSpawnErrors: Error[] = [];
     public capturedEvents = new Map<string, {
         onRenderFinished?: (p: { id: string; pngPath: string; tookMs: number }) => void;
         onRenderFailed?: (p: { id: string; error: { message: string } }) => void;
@@ -69,6 +71,9 @@ class FakeGate {
     isEnabled(): boolean { return this.enabled; }
     isDaemonReady(_moduleId: string): boolean { return this.ready; }
     getOrSpawn(moduleId: string, events: unknown): Promise<FakeClient | null> {
+        this.getOrSpawnCalls.push(moduleId);
+        const err = this.getOrSpawnErrors.shift();
+        if (err) { return Promise.reject(err); }
         this.capturedEvents.set(moduleId, events as never);
         return Promise.resolve(this.client);
     }
@@ -93,6 +98,7 @@ interface CapturedImage {
 interface BuildOptions {
     /** D2 — drives `composePreview.a11y.alwaysSubscribe`. Defaults to false to mirror prod. */
     a11yAlwaysSubscribe?: () => boolean;
+    settledBootstrapDelayMs?: number;
 }
 
 function build(opts: BuildOptions = {}) {
@@ -137,6 +143,7 @@ function build(opts: BuildOptions = {}) {
         events,
         { appendLine: (s) => log.push(s) },
         opts.a11yAlwaysSubscribe ?? (() => false),
+        opts.settledBootstrapDelayMs ?? -1,
     );
     return { gate, scheduler, log, images, failures, dirty, discovery, dataProducts, channelClosed };
 }
@@ -424,8 +431,8 @@ describe('DaemonScheduler', () => {
     });
 
     describe('warmModule', () => {
-        it('drives progress through bootstrapping → spawning → ready on the cold path', async () => {
-            const { scheduler } = build();
+        it('uses an existing daemon descriptor before running bootstrap', async () => {
+            const { gate, scheduler } = build();
             const gradle = new FakeGradleService();
             const states: string[] = [];
             const ok = await scheduler.warmModule(
@@ -434,8 +441,41 @@ describe('DaemonScheduler', () => {
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, true);
-            assert.deepStrictEqual(states, ['bootstrapping', 'spawning', 'ready']);
+            assert.deepStrictEqual(states, ['spawning', 'ready']);
+            assert.deepStrictEqual(gate.getOrSpawnCalls, ['mod']);
+            assert.deepStrictEqual(gradle.bootstrapCalls, [], 'cached descriptor should start without blocking on Gradle');
+        });
+
+        it('quietly refreshes the bootstrap descriptor after a cached warm succeeds', async () => {
+            const { scheduler } = build({ settledBootstrapDelayMs: 0 });
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(states, ['spawning', 'ready']);
+            await Promise.resolve();
             assert.deepStrictEqual(gradle.bootstrapCalls, ['mod']);
+        });
+
+        it('drives progress through bootstrap fallback when the cached descriptor is missing', async () => {
+            const { gate, scheduler, log } = build();
+            gate.getOrSpawnErrors.push(new Error('[daemon] no launch descriptor for mod'));
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(states, ['spawning', 'bootstrapping', 'spawning', 'ready']);
+            assert.deepStrictEqual(gate.getOrSpawnCalls, ['mod', 'mod']);
+            assert.deepStrictEqual(gradle.bootstrapCalls, ['mod']);
+            assert.ok(log.some(l => l.includes('cached launch failed')), `expected cached failure log, got: ${log.join(' / ')}`);
         });
 
         it('short-circuits to ready without re-bootstrapping when the daemon is already up', async () => {
@@ -453,8 +493,25 @@ describe('DaemonScheduler', () => {
             assert.deepStrictEqual(gradle.bootstrapCalls, [], 'bootstrap should not run when daemon is ready');
         });
 
+        it('quietly refreshes the bootstrap descriptor after an already-ready warm', async () => {
+            const { gate, scheduler } = build({ settledBootstrapDelayMs: 0 });
+            gate.ready = true;
+            const gradle = new FakeGradleService();
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                'mod',
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(states, ['ready']);
+            await Promise.resolve();
+            assert.deepStrictEqual(gradle.bootstrapCalls, ['mod']);
+        });
+
         it('throws when the bootstrap task fails while the daemon is enabled', async () => {
-            const { scheduler } = build();
+            const { gate, scheduler } = build();
+            gate.getOrSpawnErrors.push(new Error('[daemon] no launch descriptor for mod'));
             const gradle = new FakeGradleService();
             gradle.bootstrapShouldThrow = new Error('Gradle config-cache rejected');
             const states: string[] = [];
@@ -466,13 +523,14 @@ describe('DaemonScheduler', () => {
                 ),
                 /Gradle config-cache rejected/,
             );
-            assert.deepStrictEqual(states, ['bootstrapping']);
+            assert.deepStrictEqual(states, ['spawning', 'bootstrapping']);
         });
 
         it('reports fallback only when the daemon is explicitly unavailable after bootstrap', async () => {
             const { gate, scheduler } = build();
             const gradle = new FakeGradleService();
             const states: string[] = [];
+            gate.getOrSpawnErrors.push(new Error('[daemon] no launch descriptor for mod'));
             gate.client = null;
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
@@ -480,7 +538,7 @@ describe('DaemonScheduler', () => {
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, false);
-            assert.deepStrictEqual(states, ['bootstrapping', 'spawning', 'fallback']);
+            assert.deepStrictEqual(states, ['spawning', 'bootstrapping', 'spawning', 'fallback']);
         });
 
         it('returns false without progress events when the gate is disabled', async () => {

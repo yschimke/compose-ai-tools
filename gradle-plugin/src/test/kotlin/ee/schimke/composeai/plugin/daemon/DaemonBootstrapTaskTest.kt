@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.api.Project
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Rule
 import org.junit.Test
@@ -23,6 +24,71 @@ class DaemonBootstrapTaskTest {
   private val json = Json { ignoreUnknownKeys = true }
 
   private fun newProject(): Project = ProjectBuilder.builder().withProjectDir(tempDir.root).build()
+
+  @Test
+  fun `bootstrap descriptor task is cacheable`() {
+    assertThat(DaemonBootstrapTask::class.java.isAnnotationPresent(CacheableTask::class.java))
+      .isTrue()
+  }
+
+  @Test
+  fun `classpath fingerprint tracks launch paths not class contents`() {
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val cpJar = File(tempDir.root, "fakelib.jar").apply { writeText("first") }
+
+    val task =
+      project.tasks.register("composePreviewDaemonStart", DaemonBootstrapTask::class.java) {
+        modulePath.set(":x")
+        variant.set("debug")
+        daemonEnabled.set(true)
+        maxHeapMb.set(512)
+        maxRendersPerSandbox.set(50)
+        warmSpare.set(true)
+        mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        classpath.from(cpJar)
+        jvmArgs.set(emptyList())
+        systemProperties.set(emptyMap())
+        workingDirectory.set(tempDir.root.absolutePath)
+        manifestPath.set("/abs/previews.json")
+        outputFile.set(outFile)
+      }
+
+    val before = task.get().classpathPaths
+    cpJar.writeText("changed class bytes")
+    val after = task.get().classpathPaths
+
+    assertThat(after).isEqualTo(before)
+    assertThat(after).containsExactly(cpJar.absolutePath)
+  }
+
+  @Test
+  fun `classpath still contributes producer task dependencies`() {
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val cpJar = File(tempDir.root, "fakelib.jar")
+    val producer = project.tasks.register("producer")
+    val producedClasspath = project.files(cpJar).builtBy(producer)
+
+    val task =
+      project.tasks.register("composePreviewDaemonStart", DaemonBootstrapTask::class.java) {
+        modulePath.set(":x")
+        variant.set("debug")
+        daemonEnabled.set(true)
+        maxHeapMb.set(512)
+        maxRendersPerSandbox.set(50)
+        warmSpare.set(true)
+        mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        classpath.from(producedClasspath)
+        jvmArgs.set(emptyList())
+        systemProperties.set(emptyMap())
+        workingDirectory.set(tempDir.root.absolutePath)
+        manifestPath.set("/abs/previews.json")
+        outputFile.set(outFile)
+      }
+
+    assertThat(task.get().taskDependencies.getDependencies(task.get())).contains(producer.get())
+  }
 
   @Test
   fun `descriptor JSON populates every documented field`() {

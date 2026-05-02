@@ -123,6 +123,7 @@ export class DaemonScheduler {
      *  Stops the per-render ENOENT spam when the daemon (B1.5) emits
      *  synthetic `daemon-stub-N.png` paths that don't exist on disk. */
     private warnedStubModules = new Set<string>();
+    private settledBootstrapTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(
         private readonly gate: DaemonGate,
@@ -138,6 +139,7 @@ export class DaemonScheduler {
          * `vscode.workspace.getConfiguration('composePreview').get('a11y.alwaysSubscribe')`.
          */
         private readonly isA11yAlwaysSubscribed: () => boolean = () => false,
+        private readonly settledBootstrapDelayMs: number = 5_000,
     ) {}
 
     /**
@@ -152,16 +154,16 @@ export class DaemonScheduler {
     }
 
     /**
-     * Pre-warms a module: runs the Gradle bootstrap task (writes
-     * `daemon-launch.json`) and spawns the JVM if not already up. Intended
+     * Pre-warms a module: first tries the existing `daemon-launch.json`, then falls back to the
+     * Gradle bootstrap task when the cached descriptor is absent/stale/disabled. Intended
      * to be called when the user navigates to a Kotlin file in a
      * daemon-enabled module, so the daemon is alive by the time they hit
      * save — the first save then collapses to "kotlinc + render" instead
      * of "Gradle bootstrap + JVM spawn + sandbox init + render".
      *
-     * `progress` fires through `'bootstrapping'` while the Gradle task
-     * runs, `'spawning'` while the JVM comes up, and `'ready'` once
-     * `initialize` is acknowledged. `'fallback'` fires only when the daemon is explicitly disabled.
+     * `progress` fires through `'spawning'` while the JVM comes up, `'bootstrapping'` only when the
+     * cached descriptor could not be used, and `'ready'` once `initialize` is acknowledged.
+     * `'fallback'` fires only when the daemon is explicitly disabled.
      * Enabled-but-broken daemon failures throw so the UI can surface the error. No-op when the gate
      * is disabled.
      */
@@ -173,7 +175,22 @@ export class DaemonScheduler {
         if (!this.gate.isEnabled()) { return false; }
         if (this.gate.isDaemonReady(moduleId)) {
             progress?.('ready');
+            this.scheduleSettledBootstrap(gradleService, moduleId);
             return true;
+        }
+        progress?.('spawning');
+        try {
+            const ok = await this.ensureModule(moduleId);
+            if (ok) {
+                progress?.('ready');
+                this.scheduleSettledBootstrap(gradleService, moduleId);
+                return true;
+            }
+        } catch (err) {
+            this.logger.appendLine(
+                `[daemon] cached launch failed for ${moduleId}: ${(err as Error).message}; ` +
+                'running composePreviewDaemonStart',
+            );
         }
         try {
             progress?.('bootstrapping');
@@ -196,6 +213,29 @@ export class DaemonScheduler {
         }
         progress?.(ok ? 'ready' : 'fallback');
         return ok;
+    }
+
+    private scheduleSettledBootstrap(gradleService: GradleService, moduleId: string): void {
+        if (this.settledBootstrapDelayMs < 0) { return; }
+        const existing = this.settledBootstrapTimers.get(moduleId);
+        if (existing) { clearTimeout(existing); }
+        const refresh = async () => {
+            this.settledBootstrapTimers.delete(moduleId);
+            try {
+                await gradleService.runDaemonBootstrap(moduleId);
+            } catch (err) {
+                this.logger.appendLine(
+                    `[daemon] settled bootstrap refresh failed for ${moduleId}: ${(err as Error).message}`,
+                );
+            }
+        };
+        if (this.settledBootstrapDelayMs === 0) {
+            void refresh();
+            return;
+        }
+        const timer = setTimeout(() => void refresh(), this.settledBootstrapDelayMs);
+        timer.unref?.();
+        this.settledBootstrapTimers.set(moduleId, timer);
     }
 
     /**
