@@ -93,8 +93,7 @@ object AccessibilityDataProducer {
         pngFile = pngFile,
         dataDir = rootDir,
         isRound = isRound,
-        accessibility =
-          ImageProcessorInput.AccessibilityResult(findings = findings, nodes = nodes),
+        context = AccessibilityImageContext(findings = findings, nodes = nodes),
       )
     for (processor in imageProcessors) {
       try {
