@@ -154,6 +154,14 @@ export interface InitializeResult {
          * `ImageComposeScene`).
          */
         supportedOverrides?: string[];
+        /**
+         * Identifier for the renderer backend behind this daemon. Lets clients render
+         * backend-specific UI hints (e.g. "Wear preview not supported on desktop") without
+         * per-call probing. Today: `'desktop'` for the Compose Desktop / Skiko backend,
+         * `'android'` for the Robolectric backend. Absent / `null` on hosts that haven't
+         * classified themselves (e.g. test fakes); clients should treat both as "unknown".
+         */
+        backend?: 'desktop' | 'android' | null;
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };

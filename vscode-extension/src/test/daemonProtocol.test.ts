@@ -78,6 +78,8 @@ describe('daemon protocol — golden fixtures', () => {
         assert.ok(supported.includes('device'), 'desktop should advertise device');
         assert.ok(!supported.includes('localeTag'), 'desktop should NOT advertise localeTag');
         assert.ok(!supported.includes('orientation'), 'desktop should NOT advertise orientation');
+        // PROTOCOL.md § 3 — backend identifies the renderer; fixture mirrors a desktop daemon.
+        assert.strictEqual(result.capabilities.backend, 'desktop');
     });
 
     it('parses client-fileChanged.json with all required fields', () => {

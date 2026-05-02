@@ -144,7 +144,27 @@ data class ServerCapabilities(
    * `orientation` (no rotation concept on `ImageComposeScene`).
    */
   val supportedOverrides: List<String> = emptyList(),
+  /**
+   * Identifier for the renderer backend behind this daemon. Lets clients render backend-specific UI
+   * hints (e.g. "Wear preview not supported on desktop", "round-device qualifier requires the
+   * Android backend") without per-call probing. Today: `"desktop"` for the Compose Desktop / Skiko
+   * backend (`DesktopHost`), `"android"` for the Robolectric backend (`RobolectricHost`). `null`
+   * (the default) on hosts that haven't been classified — e.g. `FakeHost` from the harness, or a
+   * future stub backend; clients should treat absent and `null` as "unknown".
+   */
+  val backend: BackendKind? = null,
 )
+
+/**
+ * Renderer backend identifier surfaced via `ServerCapabilities.backend`. Stable string spellings —
+ * these values appear in panel UI matching and MCP-side dispatch heuristics, so adding a new
+ * variant is a wire change.
+ */
+@Serializable
+enum class BackendKind {
+  @SerialName("desktop") DESKTOP,
+  @SerialName("android") ANDROID,
+}
 
 /**
  * One entry in `ServerCapabilities.knownDevices`. The id is the string a caller passes via

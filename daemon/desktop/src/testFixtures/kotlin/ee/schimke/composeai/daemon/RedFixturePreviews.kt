@@ -106,16 +106,16 @@ fun ClickToggleSquare() {
 }
 
 /**
- * D5 fixture for `RecompositionDataProductRegistryTest`. Exposes a `clicks` mutableStateOf
- * that increments on every press; the inner [androidx.compose.runtime.key]-keyed scope reads
- * `clicks` so it recomposes once per click. The Compose runtime's
- * [androidx.compose.runtime.tooling.CompositionObserver] sees that recomposition as a
- * onScopeExit on the inner block, which the producer counts.
+ * D5 fixture for `RecompositionDataProductRegistryTest`. Exposes a `clicks` mutableStateOf that
+ * increments on every press; the inner [androidx.compose.runtime.key]-keyed scope reads `clicks` so
+ * it recomposes once per click. The Compose runtime's
+ * [androidx.compose.runtime.tooling.CompositionObserver] sees that recomposition as a onScopeExit
+ * on the inner block, which the producer counts.
  *
- * Whole-card pointerInput (matches `ClickToggleSquare`'s pattern) so click coords don't
- * matter — the test cares about "did exactly one click cause exactly one recomposition of a
- * recognisable scope?", not pixel routing. Background colour shifts subtly per click so a
- * future pixel-diff regression would flag if the click stopped reaching the composition.
+ * Whole-card pointerInput (matches `ClickToggleSquare`'s pattern) so click coords don't matter —
+ * the test cares about "did exactly one click cause exactly one recomposition of a recognisable
+ * scope?", not pixel routing. Background colour shifts subtly per click so a future pixel-diff
+ * regression would flag if the click stopped reaching the composition.
  */
 @Composable
 fun ClickRecomposingSquare() {

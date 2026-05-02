@@ -124,6 +124,10 @@ open class RobolectricHost(
       "device",
     )
 
+  /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
+  override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =
+    ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
+
   init {
     require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
     require(userClassloaderHolder == null || userClassloaderHolderFactory == null) {

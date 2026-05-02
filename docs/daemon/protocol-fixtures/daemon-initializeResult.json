@@ -28,7 +28,8 @@
       {"id": "id:pixel_5", "widthDp": 393, "heightDp": 851, "density": 2.75},
       {"id": "id:wearos_small_round", "widthDp": 192, "heightDp": 192, "density": 2.0}
     ],
-    "supportedOverrides": ["density", "device", "fontScale", "heightPx", "uiMode", "widthPx"]
+    "supportedOverrides": ["density", "device", "fontScale", "heightPx", "uiMode", "widthPx"],
+    "backend": "desktop"
   },
   "classpathFingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "manifest": {

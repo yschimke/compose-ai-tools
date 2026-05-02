@@ -120,6 +120,7 @@ Result:
     leakDetection: ("light" | "heavy")[];   // reserved; always [] today (TODO B2.4)
     knownDevices?: KnownDevice[];    // catalog of @Preview(device=...) ids the daemon recognises
     supportedOverrides?: string[];   // PreviewOverrides field names this host actually applies
+    backend?: "desktop" | "android"; // which renderer backend this daemon implements
   };
   // KnownDevice — one entry per id in DeviceDimensions.KNOWN_DEVICE_IDS, projected to wire shape.
   // `id` is the string a caller passes via renderNow.overrides.device; widthDp/heightDp/density
