@@ -176,6 +176,32 @@ fun TristateClickSquare() {
 }
 
 /**
+ * Live-mode failure-propagation fixture for `DesktopRecordingSessionTest`. First composition paints
+ * cyan and arms a click watcher; the click flips `boom = true`, the recomposition reads `boom` and
+ * `error("…")`s. The thrown exception propagates out of `scene.render()` on the live tick thread —
+ * exactly the failure mode Codex flagged: without per-tick try/catch + propagation to `stopLive()`,
+ * that throwable would silently terminate the tick thread and `stop()` would lie about success.
+ *
+ * The pattern matches existing [BoomComposable] (which throws at first composition) but defers the
+ * throw so the held scene's `setUp` succeeds and the tick loop has a chance to render at least one
+ * healthy frame before failing.
+ */
+@Composable
+fun ClickToBoomSquare() {
+  var boom by remember { mutableStateOf(false) }
+  if (boom) error("boom-after-click")
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(Color(0xFF00BCD4)).pointerInput(Unit) {
+        awaitPointerEventScope {
+          awaitFirstDown()
+          boom = true
+        }
+      }
+  )
+}
+
+/**
  * Reads `isSystemInDarkTheme()` and fills the box with white in light mode, black in dark mode.
  * Used by `OverrideIntegrationTest` (desktop) to prove `renderNow.overrides.uiMode` reaches
  * `LocalSystemTheme` — Compose Desktop's `isSystemInDarkTheme()` reads that local rather than the

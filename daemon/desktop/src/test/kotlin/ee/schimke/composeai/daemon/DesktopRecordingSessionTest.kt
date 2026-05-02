@@ -548,6 +548,165 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  @Test
+  fun live_mode_propagates_render_failure_through_stop() {
+    // Codex P1 follow-up on #491. Without per-tick try/catch + liveFailure propagation, an
+    // exception inside scene.render or writeFramePng on the tick thread silently terminates it
+    // and stop() reports a successful (truncated) recording. Mirrors the asymmetry vs scripted
+    // mode where the synchronous playback loop propagates failures naturally.
+    //
+    // Setup: a live recording against ClickToBoomSquare. First composition paints cyan and arms
+    // a click handler; postInput dispatches the click; the next recomposition reads `boom = true`
+    // and throws inside scene.render. The tick loop catches that, stop() rethrows.
+    val outputDir = tempFolder.newFolder("live-fail-engine-renders")
+    val recordingsRoot = tempFolder.newFolder("live-fail-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FAILURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "ClickToBoomSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "click-to-boom-live",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = FAILURE_PREVIEW_ID,
+          recordingId = "test-rec-fail",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+          live = true,
+        )
+      try {
+        // Let a couple of healthy frames land before posting the click that arms the boom.
+        Thread.sleep(LIVE_PRE_CLICK_MS)
+
+        session.postInput(
+          ee.schimke.composeai.daemon.protocol.RecordingInputParams(
+            recordingId = "test-rec-fail",
+            kind = ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK,
+            pixelX = COMPONENT_WIDTH_PX / 2,
+            pixelY = COMPONENT_HEIGHT_PX / 2,
+          )
+        )
+
+        // Give the tick loop time to absorb the click, recompose, and throw.
+        Thread.sleep(LIVE_POST_CLICK_MS)
+
+        val thrown = runCatching { session.stop() }.exceptionOrNull()
+        assertNotNull(
+          "stop() must rethrow the live tick failure; got null (recording silently truncated)",
+          thrown,
+        )
+        assertTrue(
+          "stop() failure must be IllegalStateException; got ${thrown?.javaClass}",
+          thrown is IllegalStateException,
+        )
+        val message = thrown!!.message ?: ""
+        assertTrue(
+          "failure message must mention the recording id; got '$message'",
+          message.contains("test-rec-fail"),
+        )
+        // The original throwable is chained as the cause so callers can inspect render-side
+        // detail without parsing the message.
+        assertNotNull("failure must carry the underlying cause", thrown.cause)
+      } finally {
+        // close() is idempotent and safe even when stop() threw — the held scene was already
+        // torn down via the try/finally inside stop().
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun live_mode_emits_at_least_one_frame_even_on_immediate_stop() {
+    // Codex P2 follow-up on #491. Original tick loop had `while (!liveStopRequested)` as the
+    // gate, so a recording/stop arriving before the OS scheduled the tick thread for its first
+    // iteration produced 0 frames — and APNG explicitly requires ≥1, so the subsequent encode
+    // would fail nondeterministically based on thread scheduling.
+    //
+    // Fix: do-while loop body — at least one frame always lands on disk, regardless of stop()
+    // timing. This test calls stop() synchronously after acquireRecordingSession to maximise the
+    // chance of the original racing failure mode, and asserts the result is well-formed.
+    val outputDir = tempFolder.newFolder("live-immediate-engine-renders")
+    val recordingsRoot = tempFolder.newFolder("live-immediate-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TristateClickSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "tristate-click-square-immediate",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = FIXTURE_PREVIEW_ID,
+          recordingId = "test-rec-immediate",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+          live = true,
+        )
+      try {
+        // No sleep — stop synchronously to race the tick thread's first iteration.
+        val result = session.stop()
+        assertTrue(
+          "live recording must always emit at least one frame; got ${result.frameCount} " +
+            "(this is the load-bearing initial-frame guarantee)",
+          result.frameCount >= 1,
+        )
+        // Frame 0 must exist on disk so a follow-up recording/encode (APNG requires ≥1 frame)
+        // succeeds rather than failing with "at least one frame required".
+        val frame0 = File(result.framesDir, "frame-00000.png")
+        assertTrue("frame 0 must exist on disk: ${frame0.absolutePath}", frame0.isFile)
+        assertTrue("frame 0 must be non-empty", frame0.length() > 0)
+        // Encode confirms the end-to-end path works for very-short recordings.
+        val encoded = session.encode(RecordingFormat.APNG)
+        assertTrue("APNG encode must produce a non-empty file", encoded.sizeBytes > 0)
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)
@@ -586,6 +745,7 @@ class DesktopRecordingSessionTest {
 
   companion object {
     private const val FIXTURE_PREVIEW_ID = "tristate-click-square"
+    private const val FAILURE_PREVIEW_ID = "click-to-boom-square"
     // Component-preview-sized sandbox — a button-ish 120x60 surface, deliberately NOT phone-sized.
     private const val COMPONENT_WIDTH_PX = 120
     private const val COMPONENT_HEIGHT_PX = 60
