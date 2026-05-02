@@ -145,9 +145,11 @@ class RenderEngine(
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     val startNs = System.nanoTime()
+    val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "android")
 
-    val clazz = Class.forName(spec.className, true, classLoader)
-    val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+    val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
+    val composableMethod: ComposableMethod =
+      trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -215,15 +217,17 @@ class RenderEngine(
             val bgArgb = resolveBackgroundColor(spec).toArgb()
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bgArgb) }
 
-            rule.setContent {
-              // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
-              // accessibility semantics (mergeMode, contentDescription, role) for ATF + the
-              // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
-              // through rather than parking under the paused clock — same trade
-              // `RobolectricRenderTest.renderWithA11y` already pays.
-              val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
-              CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
-                Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+            trace.section("compose:setContent") {
+              rule.setContent {
+                // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
+                // accessibility semantics (mergeMode, contentDescription, role) for ATF + the
+                // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
+                // through rather than parking under the paused clock — same trade
+                // `RobolectricRenderTest.renderWithA11y` already pays.
+                val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
+                CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
+                  Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                }
               }
             }
 
@@ -232,7 +236,9 @@ class RenderEngine(
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
             // PROTOCOL.md § 5 (`renderNow.overrides.captureAdvanceMs`) — animation-heavy
             // previews can override.
-            rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+            trace.section("compose:advanceClock") {
+              rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+            }
 
             outputFile.parentFile?.mkdirs()
             // `applyDeviceCrop = true` is what produces the circular alpha mask Roborazzi paints
@@ -243,18 +249,24 @@ class RenderEngine(
               RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
             rule
               .onRoot()
-              .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+              .also {
+                trace.section("render:captureRoboImage") {
+                  it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                }
+              }
 
             // compose/semantics data product. This is default-mode data, independent of the
             // accessibility checker: clients get a compact SemanticsNode projection for inspector
             // overlays without paying ATF costs.
             if (dataDir != null) {
               try {
-                ComposeSemanticsDataProducer.writeArtifacts(
-                  rootDir = dataDir,
-                  previewId = spec.outputBaseName,
-                  root = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode(),
-                )
+                trace.section("compose:semanticsDataProduct") {
+                  ComposeSemanticsDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    root = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode(),
+                  )
+                }
               } catch (t: Throwable) {
                 System.err.println(
                   "RenderEngine: compose semantics data write failed for ${spec.outputBaseName}: " +
@@ -271,18 +283,20 @@ class RenderEngine(
             // file as "no attachment for this kind on this render".
             if (runAccessibility && dataDir != null) {
               try {
-                val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
-                val a11yResult = AccessibilityChecker.analyze(spec.outputBaseName, view)
-                AccessibilityDataProducer.writeArtifacts(
-                  rootDir = dataDir,
-                  previewId = spec.outputBaseName,
-                  findings = a11yResult.findings,
-                  nodes = a11yResult.nodes,
-                  density = spec.density,
-                  pngFile = outputFile,
-                  isRound = isRound,
-                  imageProcessors = imageProcessors,
-                )
+                trace.section("a11y:dataProducts") {
+                  val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
+                  val a11yResult = AccessibilityChecker.analyze(spec.outputBaseName, view)
+                  AccessibilityDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    findings = a11yResult.findings,
+                    nodes = a11yResult.nodes,
+                    density = spec.density,
+                    pngFile = outputFile,
+                    isRound = isRound,
+                    imageProcessors = imageProcessors,
+                  )
+                }
               } catch (t: Throwable) {
                 System.err.println(
                   "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
@@ -323,13 +337,14 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
     try {
-      rule.apply(statement, description).evaluate()
+      trace.section("render:evaluateRule") { rule.apply(statement, description).evaluate() }
     } finally {
       Thread.currentThread().contextClassLoader = previousContext
     }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
+    dataDir?.let(trace::write)
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),

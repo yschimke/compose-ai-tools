@@ -378,6 +378,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `compose/theme`            | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed which tokens. |
 | `resources/used`           | default | low | `R.*` references resolved during render. Jump-to-source. |
 | `text/strings`             | default | low | Text drawn on screen with locale, fontScale, bounds. |
+| `render/composeAiTrace`    | default/live | low | compose-ai-tools render pipeline trace as Perfetto-importable Chrome trace JSON. Path transport with the same file also listed as the `perfetto` extra. Enabled by `composePreview.dataPlugins.composeAiTrace`. Android daemon launches also require `androidx.compose.runtime:runtime-tracing` on the test runtime classpath so Compose compiler trace hooks can participate when platform tracing is active. |
 | `render/trace`             | default | low | Phase breakdown. **Android + desktop daemon implementation:** v1 exposes the latest render as a trace-shaped payload from render metrics; nested `Trace.beginSection` markers are a follow-up. |
 | `fonts/used`               | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. **D6 — shipped inline payload when daemon history is enabled.** |

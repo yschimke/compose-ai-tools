@@ -489,6 +489,31 @@ internal object AndroidPreviewSupport {
     // heuristic above), Gradle fails with a clear "no version for
     // tiles-renderer" error.
     project.afterEvaluate {
+      val composeAiTraceEnabled = resolveComposeAiTraceEnabled(project, extension).get()
+      if (composeAiTraceEnabled) {
+        if (manageDependencies) {
+          project.dependencies.add("testImplementation", "androidx.compose.runtime:runtime-tracing")
+          recordInjectedDependency(
+            project,
+            injectedDependencies,
+            coordinate = "androidx.compose.runtime:runtime-tracing",
+            configuration = "testImplementation",
+            outcome = "APPLIED",
+            reason = "required by compose-ai-tools trace data product",
+          )
+        } else {
+          recordInjectedDependency(
+            project,
+            injectedDependencies,
+            coordinate = "androidx.compose.runtime:runtime-tracing",
+            configuration = "testImplementation",
+            outcome = "SKIPPED_BY_CONFIG",
+            reason =
+              "manageDependencies=false; consumer must declare this when composeAiTrace is enabled",
+          )
+        }
+      }
+
       // Scan every configuration whose name ends in `Implementation` so
       // the detection works for ANY buildType / flavor / variant combo
       // (e.g. `uatImplementation`, `stagingImplementation`,
@@ -582,6 +607,7 @@ internal object AndroidPreviewSupport {
           project = project,
           variantName = variantName,
           tilesRendererRequired = matchedConfigs.isNotEmpty(),
+          composeAiTraceRequired = composeAiTraceEnabled,
         )
       }
     }
@@ -1320,6 +1346,10 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.attachA11y",
         extension.daemon.attachA11y.map { it.toString() },
       )
+      this.systemProperties.put(
+        "composeai.daemon.perfettoTrace",
+        resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
+      )
       this.systemProperties.put("composeai.daemon.modulePath", project.path)
       // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the
       // `daemonUserClassMarkers` List<String> (a configuration-time constant);
@@ -1456,6 +1486,41 @@ internal object AndroidPreviewSupport {
   private val A11Y_CHECK_IDS =
     setOf("atf", "hierarchy", "overlay", "a11y/atf", "a11y/hierarchy", "a11y/overlay")
 
+  internal fun resolveComposeAiTraceEnabled(
+    project: org.gradle.api.Project,
+    extension: PreviewExtension,
+  ): org.gradle.api.provider.Provider<Boolean> {
+    val typed = extension.dataPlugins.composeAiTrace
+    val genericTrace = extension.dataPlugins.plugins.findByName("composeAiTrace")
+    val genericAllChecks =
+      genericTrace?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+    val configuredAllChecks =
+      typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
+        typedEnabled || genericEnabled
+      }
+    val genericChecks =
+      genericTrace?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList())
+    val wholePlugin =
+      project.providers
+        .gradleProperty("composePreview.dataPlugins.composeAiTrace.enableAllChecks")
+        .map { it.toBooleanStrictOrNull() ?: false }
+        .orElse(configuredAllChecks)
+    val selectedChecks =
+      project.providers
+        .gradleProperty("composePreview.dataPlugins.composeAiTrace.checks")
+        .map { raw -> parseCheckList(raw).any { it in COMPOSE_AI_TRACE_CHECK_IDS } }
+        .orElse(
+          typed.checks.zip(genericChecks) { typedChecks, genericChecks ->
+            (typedChecks + genericChecks).any { it in COMPOSE_AI_TRACE_CHECK_IDS }
+          }
+        )
+    return wholePlugin.zip(selectedChecks) { whole, selected -> whole || selected }
+  }
+
+  private val COMPOSE_AI_TRACE_CHECK_IDS =
+    setOf("trace", "perfetto", "perfettoTrace", "composeAiTrace", "render/composeAiTrace")
+
   /**
    * Resolve the active render tier from `-PcomposePreview.tier=<fast|full>`. `fast` tells the
    * renderer to skip captures classified as [ee.schimke.composeai.plugin.CaptureCost.HEAVY]
@@ -1586,6 +1651,7 @@ internal object AndroidPreviewSupport {
     project: Project,
     variantName: String,
     tilesRendererRequired: Boolean,
+    composeAiTraceRequired: Boolean,
   ) {
     // Declared-dependency scan, not resolved-classpath: we want to
     // fail before Gradle resolves anything, and to accept the coord
@@ -1614,12 +1680,22 @@ internal object AndroidPreviewSupport {
     ) {
       missing += "${variantName}Implementation(\"androidx.wear.tiles:tiles-renderer\")"
     }
+    if (
+      composeAiTraceRequired &&
+        !hasCoord("testImplementation", "androidx.compose.runtime", "runtime-tracing")
+    ) {
+      missing += "testImplementation(\"androidx.compose.runtime:runtime-tracing\")"
+    }
 
     if (missing.isNotEmpty()) {
-      val suffix =
+      val suffix = buildString {
         if (tilesRendererRequired) {
-          "\n  tiles-renderer required: wear.tiles signal was matched on this module."
-        } else ""
+          append("\n  tiles-renderer required: wear.tiles signal was matched on this module.")
+        }
+        if (composeAiTraceRequired) {
+          append("\n  runtime-tracing required: composeAiTrace data plugin is enabled.")
+        }
+      }
       throw org.gradle.api.GradleException(
         "composePreview.manageDependencies = false, but the following required " +
           "dependencies are not declared in module '${project.path}':\n" +

@@ -1305,6 +1305,7 @@ open class RobolectricHost(
         )
       outputDir.mkdirs()
       val outputFile = java.io.File(outputDir, "${start.outputBaseName}.png")
+      val dataDir = outputDir.parentFile?.resolve("data")
       val roborazziOptions =
         com.github.takahirom.roborazzi.RoborazziOptions(
           recordOptions =
@@ -1337,7 +1338,10 @@ open class RobolectricHost(
           override fun evaluate() {
             rule.mainClock.autoAdvance = false
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(backgroundArgb) }
-            rule.setContent {
+            val setupTrace =
+              PerfettoTraceDataProducer.recorder(start.outputBaseName, backend = "android-live")
+            setupTrace.section("compose:setContent") {
+              rule.setContent {
               androidx.compose.runtime.CompositionLocalProvider(
                 androidx.compose.ui.platform.LocalInspectionMode provides false
               ) {
@@ -1348,10 +1352,14 @@ open class RobolectricHost(
                 }
               }
             }
+            }
             // Two Choreographer ticks under the paused clock — same settle window
             // RenderEngine.render uses before its single capture. Enough for the initial
             // composition + first LaunchedEffect-equivalent pass to land.
-            rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+            setupTrace.section("compose:advanceClock") {
+              rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+            }
+            dataDir?.let(setupTrace::write)
             // Start succeeded — count the latch down before draining further commands so the host
             // doesn't wait out the start timeout.
             start.replyLatch.countDown()
@@ -1365,8 +1373,16 @@ open class RobolectricHost(
               when (cmd) {
                 is InteractiveCommand.Dispatch -> {
                   try {
-                    dispatchHeldMotion(rule, cmd)
-                    rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                    val inputTrace =
+                      PerfettoTraceDataProducer.recorder(
+                        start.outputBaseName,
+                        backend = "android-live",
+                      )
+                    inputTrace.section("interactive:dispatch") { dispatchHeldMotion(rule, cmd) }
+                    inputTrace.section("compose:advanceClock") {
+                      rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                    }
+                    dataDir?.let(inputTrace::write)
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {
@@ -1376,10 +1392,20 @@ open class RobolectricHost(
                 is InteractiveCommand.Render -> {
                   val resultOrError: Any =
                     try {
-                      rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
-                      rule
-                        .onRoot()
-                        .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                      val renderTrace =
+                        PerfettoTraceDataProducer.recorder(
+                          start.outputBaseName,
+                          backend = "android-live",
+                        )
+                      renderTrace.section("compose:advanceClock") {
+                        rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                      }
+                      renderTrace.section("render:captureRoboImage") {
+                        rule
+                          .onRoot()
+                          .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                      }
+                      dataDir?.let(renderTrace::write)
                       val cl = Thread.currentThread().contextClassLoader
                       RenderResult(
                         id = cmd.requestId,
