@@ -8,8 +8,8 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
@@ -40,9 +40,10 @@ import org.gradle.api.tasks.TaskAction
  * extension MUST refuse to launch.
  *
  * **Caching.** `@CacheableTask` because the only output is a small JSON derivable from declared
- * inputs — the entire body is deterministic. The classpath is `@Classpath` (not `@InputFiles`) so a
- * re-ordered but equivalent classpath doesn't bust the cache. The path-bearing system properties go
- * through `@Input` because their values are absolute paths the daemon needs verbatim.
+ * inputs — the entire body is deterministic. The descriptor serializes classpath paths, not class
+ * contents, so the classpath FileCollection itself is internal and [classpathPaths] is the declared
+ * input. Preview source edits can then reuse the launch descriptor while the daemon reloads changed
+ * classes through its own classloader path.
  */
 @CacheableTask
 abstract class DaemonBootstrapTask : DefaultTask() {
@@ -94,10 +95,14 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   /**
    * The full daemon test-runtime classpath, in load order, derived from
    * [ee.schimke.composeai.plugin.AndroidPreviewClasspath.buildTestClasspath]
-   * + AGP unit-test additions. `@Classpath` so re-ordering of equivalent entries doesn't bust the
-   *   cache.
+   * + AGP unit-test additions. The descriptor only needs paths, so contents are intentionally not
+   *   part of the task fingerprint.
    */
-  @get:Classpath abstract val classpath: ConfigurableFileCollection
+  @get:Internal abstract val classpath: ConfigurableFileCollection
+
+  @get:Input
+  val classpathPaths: List<String>
+    get() = classpath.files.map { it.absolutePath }
 
   /** Static JVM open flags (`--add-opens=...`) plus the `-Xmx` derived from [maxHeapMb]. */
   @get:Input abstract val jvmArgs: org.gradle.api.provider.ListProperty<String>
@@ -122,6 +127,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
     group = "compose preview"
     description =
       "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the preview daemon JVM"
+    dependsOn(classpath)
   }
 
   @TaskAction
@@ -139,7 +145,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
         // sources). Filter to existing files so dropouts (a `from(...)` that
         // resolves to a non-existent dir on this OS / variant) don't bake
         // missing paths into the descriptor.
-        classpath = classpath.files.map { it.absolutePath },
+        classpath = classpathPaths,
         jvmArgs = jvmArgs.get().toList(),
         // LinkedHashMap preserves the buildSystemProperties iteration order,
         // which matches the renderPreviews task's systemProperty(...) call

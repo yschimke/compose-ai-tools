@@ -164,6 +164,7 @@ let lastLoadedModules: string[] = [];
  * webview has focus (undefined) or resolve to an unrelated editor.
  */
 let currentScopeFile: string | null = null;
+let currentScopeModule: string | null = null;
 /**
  * True when the panel currently shows a compile-error banner the
  * extension posted (either from the LSP gate or from a kotlinc parse
@@ -1227,7 +1228,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     hasPreviewsLoaded = true;
     lastLoadedModules = [module];
     moduleManifestCache.set(module, visiblePreviews);
-    currentScopeFile = filePath;
+    setCurrentScopeFile(filePath);
     return true;
 }
 
@@ -1327,6 +1328,10 @@ async function warmDaemonForFile(
  */
 function publishDaemonStartupProgress(module: string, state: WarmState): void {
     if (!panel) { return; }
+    if (!isDaemonStartupScopeActive(module)) {
+        stopDaemonStartupProgress(module);
+        return;
+    }
     switch (state) {
         case 'bootstrapping':
             if (!hasPreviewsLoaded) {
@@ -1360,6 +1365,7 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
             break;
         case 'ready':
             stopDaemonStartupProgress(module);
+            if (!isDaemonStartupScopeActive(module)) { return; }
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
                     command: 'showMessage',
@@ -1376,6 +1382,7 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
             break;
         case 'fallback':
             stopDaemonStartupProgress(module);
+            if (!isDaemonStartupScopeActive(module)) { return; }
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
                     command: 'showMessage',
@@ -1398,6 +1405,10 @@ function startDaemonStartupProgress(
     const startedAt = Date.now();
     const tick = () => {
         if (!panel) { return; }
+        if (!isDaemonStartupScopeActive(module)) {
+            stopDaemonStartupProgress(module);
+            return;
+        }
         const elapsed = Date.now() - startedAt;
         const ratio = Math.min(0.98, 1 - Math.exp(-elapsed / durationMs));
         panel.postMessage({
@@ -1410,6 +1421,15 @@ function startDaemonStartupProgress(
     };
     tick();
     daemonStartupProgressTimers.set(module, setInterval(tick, 250));
+}
+
+function isDaemonStartupScopeActive(module: string): boolean {
+    return currentScopeModule === module;
+}
+
+function setCurrentScopeFile(filePath: string | null, module?: string | null): void {
+    currentScopeFile = filePath;
+    currentScopeModule = module ?? (filePath && gradleService ? gradleService.resolveModule(filePath) : null);
 }
 
 function stopDaemonStartupProgress(module: string): void {
@@ -2032,7 +2052,7 @@ async function refresh(
         panel.postMessage({ command: 'showMessage', text: emptyStateMessage(activeFile) });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
-        currentScopeFile = null;
+        setCurrentScopeFile(null);
         clearHeavyRefreshOptIns();
         historyScopeRef.current = null;
         historyPanel?.setScope(null);
@@ -2078,7 +2098,7 @@ async function refresh(
         // from a prior in-flight refresh that was just cancelled by the
         // pendingRefresh.abort() at the top of this function.
         panel.postMessage({ command: 'clearProgress' });
-        currentScopeFile = activeFile;
+        setCurrentScopeFile(activeFile, module);
         compileGateActive = true;
         logLine(`gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`);
         return 'gated';
@@ -2089,7 +2109,7 @@ async function refresh(
     panel.postMessage({ command: 'clearCompileErrors' });
     compileGateActive = false;
 
-    currentScopeFile = activeFile;
+    setCurrentScopeFile(activeFile, module);
     // Phase H7 — re-scope the History panel alongside the live panel.
     // `projectDir` is the consumer module's absolute path; we synthesize
     // it from workspaceRoot + module here because GradleService keeps
