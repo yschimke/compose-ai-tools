@@ -251,6 +251,11 @@ internal object AndroidPreviewSupport {
     val capVariant = variantName.cap()
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
     val artifactType = Attribute.of("artifactType", String::class.java)
+    val daemonResDirs =
+      listOf("main", variantName, "debug")
+        .map { project.layout.projectDirectory.dir("src/$it/res").asFile.absolutePath }
+        .distinct()
+        .joinToString(java.io.File.pathSeparator)
 
     // `com.android.compose.screenshot` (Google's alpha Layoutlib-based
     // screenshot testing plugin) adds its own `screenshotTest` source set
@@ -1374,6 +1379,7 @@ internal object AndroidPreviewSupport {
       // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
       // know about the renderer-shared key.
       this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
+      this.systemProperties.put("composeai.daemon.resDirs", daemonResDirs)
       // Same path the daemon's `PreviewManifestRouter` reads to map the protocol-level
       // `previewId` payload into the `RenderSpec(className, functionName)` the engine needs.
       // Without it, `JsonRpcServer.handleRenderNow`'s `previewId=<id>` payload bottoms out in

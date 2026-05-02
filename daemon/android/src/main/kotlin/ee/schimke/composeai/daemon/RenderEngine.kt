@@ -277,21 +277,28 @@ class RenderEngine(
               }
             }
 
-            // compose/semantics data product. This is default-mode data, independent of the
-            // accessibility checker: clients get a compact SemanticsNode projection for inspector
-            // overlays without paying ATF costs.
+            // compose/semantics and i18n/translations data products. Both are default-mode data,
+            // independent of the accessibility checker: clients get inspector text bounds and
+            // locale coverage without paying ATF costs.
             if (dataDir != null) {
               try {
                 trace.section("compose:semanticsDataProduct") {
+                  val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
                   ComposeSemanticsDataProducer.writeArtifacts(
                     rootDir = dataDir,
                     previewId = spec.outputBaseName,
-                    root = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode(),
+                    root = semanticsRoot,
+                  )
+                  I18nTranslationsDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    root = semanticsRoot,
+                    renderedLocale = spec.localeTag,
                   )
                 }
               } catch (t: Throwable) {
                 System.err.println(
-                  "RenderEngine: compose semantics data write failed for ${spec.outputBaseName}: " +
+                  "RenderEngine: default data write failed for ${spec.outputBaseName}: " +
                     "${t.javaClass.simpleName}: ${t.message}"
                 )
               }
