@@ -1,8 +1,8 @@
 # Interactive mode (VS Code panel ↔ daemon)
 
 > **Status:** v1 — live-streaming surface plus `interactive/start` /
-> `interactive/stop` / `interactive/input` RPCs in the daemon, behind the
-> `composePreview.experimental.daemon.enabled` flag. Click coordinates are
+> `interactive/stop` / `interactive/input` RPCs in the daemon. The daemon is
+> enabled by default through `composePreview.daemon.enabled`. Click coordinates are
 > forwarded to the daemon as `interactive/input` notifications; today the
 > daemon treats each input as a render trigger (LocalInspectionMode is still
 > true, so the renderer doesn't yet dispatch the click into the composition —

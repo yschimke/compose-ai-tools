@@ -63,7 +63,7 @@
                     "type": "webview",
                     "id": "composePreview.historyPanel",
                     "name": "History",
-                    "when": "config.composePreview.experimental.daemon.enabled",
+                    "when": "config.composePreview.daemon.enabled",
                     "visibility": "collapsed"
                 }
             ]
@@ -139,15 +139,21 @@
                     "default": false,
                     "description": "Run ATF accessibility checks on every rendered preview. When on, the extension passes `-PcomposePreview.accessibilityChecks.enabled=true` to each Gradle task; findings surface as diagnostics in the Problems panel and on the `@Preview` line. Overrides the `accessibilityChecks { enabled = ... }` block in build.gradle.kts for this session only."
                 },
+                "composePreview.daemon.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Use the persistent preview daemon for refresh on saves to files the user has open, plus scroll-ahead speculative renders. When on, daemon failures are shown as errors instead of silently falling back to the Gradle `renderPreviews` task. Turning this off temporarily uses the Gradle path, but the daemon will become required by the extension in a future release."
+                },
                 "composePreview.experimental.daemon.enabled": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Use the persistent preview daemon for sub-second refresh on saves to files the user has open, plus scroll-ahead speculative renders. Requires `composePreview { experimental { daemon { enabled = true } } }` in the consumer's build.gradle.kts. When the daemon isn't healthy, the extension silently falls back to the Gradle `renderPreviews` task. See docs/daemon/DESIGN.md for caveats."
+                    "deprecationMessage": "Use composePreview.daemon.enabled instead.",
+                    "description": "Deprecated alias for composePreview.daemon.enabled."
                 },
                 "composePreview.a11y.alwaysSubscribe": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When on, the panel auto-subscribes to a11y data products (`a11y/atf` for diagnostic squigglies, `a11y/hierarchy` for the local overlay) for every visible preview in daemon mode — diagnostics fire ambient without entering focus mode. Off (the default) keeps the focus-mode 'Show accessibility overlay' button as the only opt-in. The producer side must also be on (Gradle: `composePreview { experimental { daemon { attachA11y = true } } }`, the default); when the daemon advertises no a11y kinds this setting has no effect."
+                    "description": "When on, the panel auto-subscribes to a11y data products (`a11y/atf` for diagnostic squigglies, `a11y/hierarchy` for the local overlay) for every visible preview in daemon mode — diagnostics fire ambient without entering focus mode. Off (the default) keeps the focus-mode 'Show accessibility overlay' button as the only opt-in. The producer side must also be on (Gradle: `composePreview { daemon { attachA11y = true } }`, the default); when the daemon advertises no a11y kinds this setting has no effect."
                 },
                 "composePreview.logging.level": {
                     "type": "string",

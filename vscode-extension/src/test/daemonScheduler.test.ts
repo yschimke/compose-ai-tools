@@ -453,29 +453,26 @@ describe('DaemonScheduler', () => {
             assert.deepStrictEqual(gradle.bootstrapCalls, [], 'bootstrap should not run when daemon is ready');
         });
 
-        it('reports fallback when the bootstrap task throws', async () => {
+        it('throws when the bootstrap task fails while the daemon is enabled', async () => {
             const { scheduler } = build();
             const gradle = new FakeGradleService();
             gradle.bootstrapShouldThrow = new Error('Gradle config-cache rejected');
             const states: string[] = [];
-            const ok = await scheduler.warmModule(
-                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                'mod',
-                (s) => states.push(s),
+            await assert.rejects(
+                scheduler.warmModule(
+                    gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                    'mod',
+                    (s) => states.push(s),
+                ),
+                /Gradle config-cache rejected/,
             );
-            assert.strictEqual(ok, false);
-            assert.deepStrictEqual(states, ['bootstrapping', 'fallback']);
+            assert.deepStrictEqual(states, ['bootstrapping']);
         });
 
-        it('reports fallback when the JVM spawn fails', async () => {
-            // Disabled gate makes ensureModule return false (caller falls
-            // back to Gradle); warmModule should mirror that as 'fallback'.
+        it('reports fallback only when the daemon is explicitly unavailable after bootstrap', async () => {
             const { gate, scheduler } = build();
             const gradle = new FakeGradleService();
             const states: string[] = [];
-            // After bootstrap the scheduler tries to spawn — flip the gate
-            // so spawn returns null on the second call only by clearing
-            // the client.
             gate.client = null;
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],

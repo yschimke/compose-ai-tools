@@ -85,7 +85,7 @@ describe('readLaunchDescriptor', () => {
     }));
 
     it('preserves an explicit enabled=false flag without mutating it', withTempWorkspace((dir) => {
-        // The build can opt out via composePreview.experimental.daemon.enabled = false
+        // The build can opt out via composePreview.daemon.enabled = false
         // even with the VS Code setting on. Reader must return the descriptor
         // honestly; the gate decides what to do with it.
         const descriptor = { ...validDescriptor(), enabled: false };

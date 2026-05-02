@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.plugin.daemon.DaemonExtension
 import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
 import javax.inject.Inject
 import org.gradle.api.Action
@@ -112,11 +113,16 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     action.execute(resourcePreviews)
   }
 
+  /** Persistent preview daemon configuration. Enabled by default for the VS Code extension. */
+  val daemon: DaemonExtension = objects.newInstance(DaemonExtension::class.java)
+
+  fun daemon(action: Action<DaemonExtension>) {
+    action.execute(daemon)
+  }
+
   /**
-   * Namespace for in-progress / experimental features whose DSL shape may change. Today: just the
-   * preview-daemon block (`experimental.daemon { … }` — see `docs/daemon/CONFIG.md`). Kept as a
-   * nested block so consumers see "this is experimental" both in the build script and in IDE
-   * autocomplete.
+   * Namespace for in-progress / experimental features whose DSL shape may change. Kept for backward
+   * source compatibility; new daemon configuration belongs in [daemon].
    */
   val experimental: ExperimentalExtension = objects.newInstance(ExperimentalExtension::class.java)
 

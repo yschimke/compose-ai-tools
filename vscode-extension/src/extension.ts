@@ -376,16 +376,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         return args;
     }, logFilter);
 
-    // Daemon path is controlled by composePreview.experimental.daemon.enabled
-    // (true by default). When disabled the gate's `isEnabled()` returns false
-    // and the scheduler is never asked to spawn anything — the Gradle path is
-    // the entire user-facing behaviour. When enabled, the scheduler runs
-    // *alongside* the existing refresh logic: saves and viewport changes push
-    // notifications to the daemon, the daemon emits renderFinished, and the
-    // extension forwards PNGs to the panel as they arrive (typically ahead
-    // of Gradle's `renderPreviews` on a hot sandbox). The Gradle path remains
-    // the safety net; if the daemon fails we silently fall back without any
-    // user-visible change.
+    // Daemon path is controlled by composePreview.daemon.enabled (true by default). When disabled
+    // the gate's `isEnabled()` returns false and the scheduler is never asked to spawn anything —
+    // the Gradle path is the temporary escape hatch. When enabled, daemon failures surface as
+    // errors instead of silently falling back to Gradle.
     daemonGate = new DaemonGate(workspaceRoot, '0.1.0', outputChannel, logFilter);
     daemonScheduler = new DaemonScheduler(daemonGate, {
         onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
@@ -546,7 +540,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     );
 
     // Phase H7 — Preview History panel (HISTORY.md § "VS Code integration").
-    // Live when `composePreview.experimental.daemon.enabled` is true; falls
+    // Live when `composePreview.daemon.enabled` is true; falls
     // back to reading `<projectDir>/.compose-preview-history/index.jsonl` +
     // sidecars when the daemon isn't healthy. View shows up unconditionally
     // — the view container is contributed in package.json — but its content
@@ -1109,17 +1103,16 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
 }
 
 /**
- * Side-channel save handler that pushes a `fileChanged` + focus-scoped
- * `renderNow` to the daemon when the daemon path is enabled and a daemon
- * exists for this file's module. Runs alongside the Gradle refresh, never
- * instead of it; the daemon's faster updateImage simply lands sooner. When
- * the daemon is disabled or unhealthy, this is a complete no-op — the
- * existing Gradle path is the entire user-facing behaviour.
+ * Side-channel save handler that pushes a `fileChanged` + focus-scoped `renderNow` to the daemon
+ * when the daemon path is enabled. Explicit daemon opt-out returns `'disabled'` so the caller can
+ * use the Gradle render path; daemon failures return `'failed'` and do not fall back.
  */
-async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return false; }
+type DaemonSaveResult = 'accepted' | 'disabled' | 'failed';
+
+async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return 'disabled'; }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return false; }
+    if (!module) { return 'failed'; }
 
     // Bootstrap (Gradle task + JVM spawn) happens once per module per
     // session. Normally it has already fired from the active-editor warm
@@ -1127,15 +1120,30 @@ async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
     // external file save, another editor split) we cover ourselves here.
     if (!daemonBootstrappedModules.has(module)) {
         daemonBootstrappedModules.add(module);
-        await daemonScheduler.warmModule(
-            gradleService, module,
-            (state) => updateDaemonStatus(module, state),
-        );
+        try {
+            const warmed = await daemonScheduler.warmModule(
+                gradleService, module,
+                (state) => updateDaemonStatus(module, state),
+            );
+            if (!warmed) {
+                daemonBootstrappedModules.delete(module);
+                return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+            }
+        } catch (err) {
+            daemonBootstrappedModules.delete(module);
+            logLine(`daemon: ${String((err as Error).message ?? err)}`);
+            return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+        }
     }
 
-    const ok = await daemonScheduler.ensureModule(module);
-    if (!ok) { return false; }
-    await daemonScheduler.fileChanged(module, filePath);
+    try {
+        const ok = await daemonScheduler.ensureModule(module);
+        if (!ok) { return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed'; }
+        await daemonScheduler.fileChanged(module, filePath);
+    } catch (err) {
+        logLine(`daemon: ${String((err as Error).message ?? err)}`);
+        return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+    }
 
     // Focus scope = the saved file's previews, derived from the most recent
     // manifest snapshot we got from Gradle's discoverPreviews. The daemon
@@ -1150,9 +1158,14 @@ async function notifyDaemonOfSave(filePath: string): Promise<boolean> {
     const filterFile = packageQualifiedSourcePath(filePath);
     const manifest = moduleManifestCache.get(module) ?? [];
     const ids = manifest.filter(p => p.sourceFile === filterFile).map(p => p.id);
-    if (ids.length === 0) { return true; }
-    await daemonScheduler.setFocus(module, ids);
-    return await daemonScheduler.renderNow(module, ids, 'fast', 'save');
+    if (ids.length === 0) { return 'accepted'; }
+    try {
+        await daemonScheduler.setFocus(module, ids);
+        return (await daemonScheduler.renderNow(module, ids, 'fast', 'save')) ? 'accepted' : 'failed';
+    } catch (err) {
+        logLine(`daemon: ${String((err as Error).message ?? err)}`);
+        return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+    }
 }
 
 /**
@@ -1296,10 +1309,21 @@ async function warmDaemonForFile(filePath: string): Promise<void> {
     if (!module) { return; }
     if (daemonBootstrappedModules.has(module)) { return; }
     daemonBootstrappedModules.add(module);
-    await daemonScheduler.warmModule(
-        gradleService, module,
-        (state) => updateDaemonStatus(module, state),
-    );
+    try {
+        const warmed = await daemonScheduler.warmModule(
+            gradleService, module,
+            (state) => updateDaemonStatus(module, state),
+        );
+        if (!warmed) {
+            daemonBootstrappedModules.delete(module);
+        }
+    } catch (err) {
+        daemonBootstrappedModules.delete(module);
+        logLine(`daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`);
+        vscode.window.showErrorMessage(
+            'Compose Preview daemon is enabled but failed to start. Preview saves will not fall back to Gradle until the daemon is fixed or disabled.',
+        );
+    }
 }
 
 /**
@@ -1471,12 +1495,9 @@ function maybeFirePendingRefresh(): void {
  *  during the run, re-applying the debounce-elapsed check.
  *
  *  Picks daemon-vs-Gradle deliberately — never runs both for the same save.
- *  When the daemon is healthy for the file's module, the save uses the
- *  daemon's hot sandbox (sub-second updateImage via `renderFinished`); the
- *  refresh itself is `forceRender=false` so Gradle does a cheap cached
- *  discovery for the panel manifest only. When the daemon is disabled or
- *  unhealthy, the refresh is `forceRender=true` and Gradle does a full
- *  render as today.
+ *  When the daemon is enabled for the file's module, the save uses the daemon path. If the daemon
+ *  is unavailable while enabled, we surface an error instead of rendering via Gradle. Explicitly
+ *  disabling the daemon keeps the Gradle render path available for now.
  *
  *  **Recompile-before-notify invariant.** In the daemon path the compile
  *  step runs *first*, then the daemon is notified. The daemon's
@@ -1500,18 +1521,23 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
         if (mode === 'daemon') {
             const compileOk = await runDaemonCompileOnly(filePath);
             if (!compileOk) {
-                logLine('daemon: skipped notify (compile failed or no module)');
+                vscode.window.showErrorMessage(
+                    'Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.',
+                );
                 return;
             }
-            const accepted = await notifyDaemonOfSave(filePath);
-            if (accepted) {
+            const result = await notifyDaemonOfSave(filePath);
+            if (result === 'accepted') {
                 return;
             }
-            // Daemon was healthy at decision time but the actual call
-            // failed — race with channel close, sandbox died mid-save,
-            // gate unexpectedly returned null. Deliberate switch: run the
-            // Gradle render so the user still sees fresh previews.
-            logLine('daemon: rejected the work — falling back to Gradle render');
+            if (result === 'disabled') {
+                await refresh(true, filePath, 'fast');
+                return;
+            }
+            vscode.window.showErrorMessage(
+                'Compose Preview daemon is enabled but unavailable. Restart the preview daemon after fixing the daemon issue.',
+            );
+            return;
         }
         await refresh(true, filePath, 'fast');
     } finally {
@@ -1572,7 +1598,6 @@ function pickRefreshMode(filePath: string): RefreshMode {
         filePath,
         daemonGate.isEnabled(),
         gradleService.resolveModule(filePath),
-        (m) => daemonGate!.isDaemonReady(m),
     );
 }
 
