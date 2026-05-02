@@ -242,10 +242,11 @@ fun main(args: Array<String>) {
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
   val attachA11y = System.getProperty(RenderEngine.ATTACH_A11Y_PROP) == "true"
   val dataProducts: DataProductRegistry =
-    if (renderOutputDir != null) {
-      val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-      val registries =
-        buildList {
+    buildList {
+        System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
+        add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        if (renderOutputDir != null) {
+          val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
           System.err.println(
             "compose-ai-tools daemon: ComposeSemanticsDataProductRegistry active (dataRoot=$dataRoot)"
           )
@@ -261,10 +262,8 @@ fun main(args: Array<String>) {
             )
           }
         }
-      CompositeDataProductRegistry(registries)
-    } else {
-      DataProductRegistry.Empty
-    }
+      }
+      .let(::CompositeDataProductRegistry)
 
   val server =
     JsonRpcServer(
