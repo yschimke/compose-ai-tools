@@ -86,6 +86,13 @@ class FakeDaemon : DaemonSpawn {
   var advertisedKnownDevices: List<ee.schimke.composeai.daemon.protocol.KnownDevice> = emptyList()
 
   /**
+   * Recording formats the fake advertises in `initialize.capabilities.recordingFormats`. Tests
+   * assign before the spawn calls `initialize`. Empty list keeps pre-feature behaviour — the MCP
+   * `record_preview` format-validation falls open and the request goes through.
+   */
+  @Volatile var advertisedRecordingFormats: List<String> = emptyList()
+
+  /**
    * D1 — fake handler for `data/fetch`. When set, the lambda receives `(previewId, kind, params,
    * inline)` and returns either the [DataFetchOutcome] the daemon should respond with. Default
    * returns [DataFetchOutcome.Unknown] so unconfigured tests see the wire-error path.
@@ -349,6 +356,7 @@ class FakeDaemon : DaemonSpawn {
                 dataProducts = advertisedDataProducts,
                 knownDevices = advertisedKnownDevices,
                 supportedOverrides = advertisedSupportedOverrides,
+                recordingFormats = advertisedRecordingFormats,
               ),
             classpathFingerprint = "fake-fingerprint",
             manifest = Manifest(path = "", previewCount = 0),
@@ -536,15 +544,23 @@ class FakeDaemon : DaemonSpawn {
         val recordingId = params?.get("recordingId")?.jsonPrimitive?.contentOrNull ?: ""
         val format =
           when (params?.get("format")?.jsonPrimitive?.contentOrNull) {
+            "mp4" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4
+            "webm" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.WEBM
             null,
             "apng" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG
             else -> ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG
           }
         recordingEncodes.offer(RecordingEncodeCall(recordingId, format))
+        val (extension, mime) =
+          when (format) {
+            ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG -> "apng" to "image/apng"
+            ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4 -> "mp4" to "video/mp4"
+            ee.schimke.composeai.daemon.protocol.RecordingFormat.WEBM -> "webm" to "video/webm"
+          }
         // Materialise the canned bytes onto disk so DaemonMcpServer's `Files.readAllBytes` works.
         val dir = recordingEncodeDir ?: java.io.File(System.getProperty("java.io.tmpdir"))
         dir.mkdirs()
-        val out = java.io.File(dir, "$recordingId.apng")
+        val out = java.io.File(dir, "$recordingId.$extension")
         out.writeBytes(recordingEncodedBytes)
         sendResponse(
           id,
@@ -552,7 +568,7 @@ class FakeDaemon : DaemonSpawn {
             ee.schimke.composeai.daemon.protocol.RecordingEncodeResult.serializer(),
             ee.schimke.composeai.daemon.protocol.RecordingEncodeResult(
               videoPath = out.absolutePath,
-              mimeType = "image/apng",
+              mimeType = mime,
               sizeBytes = out.length(),
             ),
           ),

@@ -937,6 +937,99 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `record_preview rejects format the daemon does not advertise`() {
+    // Daemon advertises only APNG (no ffmpeg on its PATH); agent asks for mp4. MCP rejects up
+    // front with a clean diagnostic naming the supported formats — no `recording/start` round-
+    // trip, no time wasted spinning up a session that would only fail at encode time.
+    factory.daemonConfigurer = { d -> d.advertisedRecordingFormats = listOf("apng") }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("format", "mp4")
+          putJsonArray("events") {}
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("format 'mp4' not advertised")
+    assertThat(msg).contains("[apng]")
+    assertThat(msg).contains("ffmpeg")
+    // No recording session was allocated — validation runs before any wire dispatch.
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
+  fun `record_preview accepts mp4 when the daemon advertises it`() {
+    // Capability advertises mp4 (i.e. the daemon's host detected ffmpeg at startup). MCP validates
+    // and forwards the request; the fake daemon's `recording/encode` handler echoes the format
+    // back. Asserts the format reaches the daemon as `RecordingFormat.MP4` (not silently coerced
+    // to APNG).
+    val recordingsDir = tmp.newFolder("mp4-recordings-out")
+    factory.daemonConfigurer = { d ->
+      d.advertisedRecordingFormats = listOf("apng", "mp4", "webm")
+      d.recordingEncodeDir = recordingsDir
+      // Tiny canned payload — content doesn't matter for the wire-shape assertion.
+      d.recordingEncodedBytes =
+        byteArrayOf(
+          0x00,
+          0x00,
+          0x00,
+          0x18,
+          'f'.code.toByte(),
+          't'.code.toByte(),
+          'y'.code.toByte(),
+          'p'.code.toByte(),
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("format", "mp4")
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "click")
+                put("pixelX", 10)
+                put("pixelY", 10)
+              }
+            )
+          }
+        },
+        timeoutMs = 10_000,
+      )
+    assertThat(resp.isError()).isFalse()
+    val encodeCall = daemon.recordingEncodes.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(encodeCall).isNotNull()
+    assertThat(encodeCall!!.format)
+      .isEqualTo(ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4)
+  }
+
+  @Test
   fun `concurrent different-overrides render_preview calls are serialized per previewId`() {
     // Regression for the wrong-bytes hazard PR #432's "known limitation" note documented (and
     // mis-described as a hang). Pre-fix: two concurrent override-bearing render_preview calls

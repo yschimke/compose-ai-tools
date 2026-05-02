@@ -874,7 +874,7 @@ class DaemonMcpServer(
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
                 "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
                 "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
-                "format":{"type":"string","enum":["apng"],"description":"Encoded video format. Default 'apng'. mp4/webm reserved for v3."},
+                "format":{"type":"string","enum":["apng","mp4","webm"],"description":"Encoded video format. Default 'apng' (always available, pure-JVM). 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
                 "events":{
                   "type":"array",
                   "description":"Scripted timeline. Empty array records a single bootstrap frame.",
@@ -1830,16 +1830,18 @@ class DaemonMcpServer(
         }
     val fps = args["fps"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
     val scale = args["scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+    val formatStr = args["format"]?.jsonPrimitive?.contentOrNull?.lowercase()
     val format =
-      args["format"]?.jsonPrimitive?.contentOrNull?.let {
-        when (it.lowercase()) {
-          "apng" -> RecordingFormat.APNG
-          else ->
-            return errorCallToolResult(
-              "record_preview: unsupported 'format' '$it' — only 'apng' is supported in v1"
-            )
-        }
-      } ?: RecordingFormat.APNG
+      when (formatStr) {
+        null,
+        "apng" -> RecordingFormat.APNG
+        "mp4" -> RecordingFormat.MP4
+        "webm" -> RecordingFormat.WEBM
+        else ->
+          return errorCallToolResult(
+            "record_preview: unsupported 'format' '$formatStr' — supported: apng, mp4, webm"
+          )
+      }
     val overrides =
       args["overrides"]?.let {
         runCatching { decodePreviewOverrides(it) }
@@ -1862,6 +1864,26 @@ class DaemonMcpServer(
       if (violations.isNotEmpty()) {
         return errorCallToolResult("record_preview: ${violations.joinToString("; ")}")
       }
+    }
+    // RECORDING.md § "encoded formats" — when the daemon advertises a non-empty `recordingFormats`
+    // capability, reject formats outside the advertised set up front so the agent sees a clean
+    // diagnostic instead of waiting on a `recording/encode` round-trip that would only fail.
+    // Pre-feature daemons advertise an empty set; fall open so the request goes through and the
+    // underlying error (whatever it is) surfaces naturally — same pattern `validateOverrides`
+    // uses.
+    val advertisedFormats = daemon.recordingFormats
+    val formatWire =
+      when (format) {
+        RecordingFormat.APNG -> "apng"
+        RecordingFormat.MP4 -> "mp4"
+        RecordingFormat.WEBM -> "webm"
+      }
+    if (advertisedFormats.isNotEmpty() && formatWire !in advertisedFormats) {
+      return errorCallToolResult(
+        "record_preview: format '$formatWire' not advertised by this daemon " +
+          "(supported: ${advertisedFormats.sorted()}). " +
+          "mp4/webm require an ffmpeg binary on the daemon's PATH."
+      )
     }
 
     val started =

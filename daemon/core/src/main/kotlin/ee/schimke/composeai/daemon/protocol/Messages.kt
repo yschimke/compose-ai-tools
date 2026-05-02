@@ -138,6 +138,15 @@ data class ServerCapabilities(
    */
   val recording: Boolean = false,
   /**
+   * Encoded video formats the daemon's host can produce — names match the wire spelling on
+   * [RecordingFormat]. APNG is always present when [recording] is true (pure-JVM encoder, no native
+   * deps). MP4 / WEBM appear only when an `ffmpeg` binary is available on the daemon process's
+   * `PATH`; clients that ask for an unadvertised format should expect a clean rejection from
+   * `record_preview` rather than a daemon-side runtime error. Empty list = pre-feature daemon
+   * (clients treat absent and `[]` identically and fall back to APNG).
+   */
+  val recordingFormats: List<String> = emptyList(),
+  /**
    * The `@Preview(device = ...)` ids the daemon's `DeviceDimensions` catalog recognises, paired
    * with their resolved geometry. Lets clients build a "render this preview at..." picker without
    * re-bundling the catalog. Empty list = pre-feature daemon (clients treat absent and `[]`
@@ -893,9 +902,18 @@ data class RecordingStopResult(
  * webm via `ffmpeg` shell-out land in v2 — the enum is open so new values don't bump
  * `protocolVersion` per PROTOCOL.md § 7.
  */
+/**
+ * v1 ships APNG (pure-JVM, no native deps); v2 adds [MP4] and [WEBM] via optional `ffmpeg`
+ * shell-out. Daemons advertise the formats they actually support via
+ * `ServerCapabilities.recordingFormats` so clients can grey out unavailable options without
+ * round-tripping a request that would only fail. The enum stays open per PROTOCOL.md § 7 — adding a
+ * new variant is additive and does not bump `protocolVersion`.
+ */
 @Serializable
 enum class RecordingFormat {
-  @SerialName("apng") APNG
+  @SerialName("apng") APNG,
+  @SerialName("mp4") MP4,
+  @SerialName("webm") WEBM,
 }
 
 @Serializable

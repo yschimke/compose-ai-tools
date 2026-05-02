@@ -11,6 +11,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -259,6 +260,118 @@ class DesktopRecordingSessionTest {
     } finally {
       host.shutdown()
     }
+  }
+
+  @Test
+  fun mp4_format_round_trips_through_ffmpeg_encoder() {
+    // Same shape as the APNG happy path, but encodes via ffmpeg's mp4 path. Skipped on machines
+    // without ffmpeg on PATH so the test is portable; runs anywhere `FfmpegEncoder.available()` is
+    // true. We're testing the dispatch in `DesktopRecordingSession.encode` here (APNG → ApngEncoder
+    // vs MP4 → FfmpegEncoder), not the ffmpeg encoder itself — `FfmpegEncoderTest` covers the
+    // signature-bytes side of that.
+    assumeTrue("ffmpeg not on PATH; skipping mp4 round-trip", FfmpegEncoder.available())
+    val outputDir = tempFolder.newFolder("mp4-engine-renders")
+    val recordingsRoot = tempFolder.newFolder("mp4-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TristateClickSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "tristate-click-square-mp4",
+            )
+          } else null
+        },
+      )
+    // Capability advertisement should include mp4 (and webm) when ffmpeg is available.
+    assertTrue(
+      "DesktopHost should advertise mp4 when ffmpeg is on PATH; got ${host.supportedRecordingFormats}",
+      "mp4" in host.supportedRecordingFormats,
+    )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = FIXTURE_PREVIEW_ID,
+          recordingId = "test-rec-mp4",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        session.postScript(
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = InteractiveInputKind.CLICK,
+              pixelX = COMPONENT_WIDTH_PX / 2,
+              pixelY = COMPONENT_HEIGHT_PX / 2,
+            ),
+            RecordingScriptEvent(
+              tMs = 200L,
+              kind = InteractiveInputKind.CLICK,
+              pixelX = COMPONENT_WIDTH_PX / 2,
+              pixelY = COMPONENT_HEIGHT_PX / 2,
+            ),
+          )
+        )
+        val stop = session.stop()
+        assertTrue("frame count must be > 1 for a 200ms timeline at 30fps", stop.frameCount > 1)
+        val encoded = session.encode(RecordingFormat.MP4)
+        assertEquals("video/mp4", encoded.mimeType)
+        val out = File(encoded.videoPath)
+        assertTrue("mp4 file must exist on disk: ${out.absolutePath}", out.isFile)
+        assertTrue("mp4 file must be non-empty", encoded.sizeBytes > 0)
+        // Same `ftyp`-at-byte-4 sanity check `FfmpegEncoderTest` uses.
+        val head = out.readBytes().copyOf(12)
+        assertTrue(
+          "mp4 should carry 'ftyp' at bytes 4..7; got ${head.joinToString { "0x%02x".format(it) }}",
+          head[4] == 'f'.code.toByte() &&
+            head[5] == 't'.code.toByte() &&
+            head[6] == 'y'.code.toByte() &&
+            head[7] == 'p'.code.toByte(),
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun supported_recording_formats_includes_apng_when_resolver_wired() {
+    // No ffmpeg dependence — APNG is always advertised when the host has a previewSpecResolver.
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = tempFolder.newFolder("ignored")),
+        previewSpecResolver = { _ -> null },
+      )
+    assertTrue("apng must be advertised", "apng" in host.supportedRecordingFormats)
+  }
+
+  @Test
+  fun supported_recording_formats_empty_when_resolver_unwired() {
+    // Without a previewSpecResolver, recording isn't supported — the formats list is empty so
+    // clients consistently see "no formats" rather than a misleading "apng available + recording
+    // off" combination.
+    val host = DesktopHost(engine = RenderEngine(outputDir = tempFolder.newFolder("ignored")))
+    assertTrue(
+      "supportedRecordingFormats must be empty without resolver; got ${host.supportedRecordingFormats}",
+      host.supportedRecordingFormats.isEmpty(),
+    )
   }
 
   private fun readPng(file: File): java.awt.image.BufferedImage {

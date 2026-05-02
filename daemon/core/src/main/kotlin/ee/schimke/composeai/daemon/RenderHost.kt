@@ -163,6 +163,19 @@ interface RenderHost {
     get() = false
 
   /**
+   * Encoded video formats this host can produce — surfaced verbatim as
+   * `InitializeResult.capabilities.recordingFormats` (wire spellings from
+   * [ee.schimke.composeai.daemon.protocol.RecordingFormat]). Implementations that override
+   * [supportsRecording] to `true` MUST include `"apng"` (pure-JVM, always available); MP4 / WEBM
+   * appear only when the host has detected an `ffmpeg` binary at construction time.
+   *
+   * Default empty list keeps pre-feature hosts (FakeHost, RobolectricHost today) consistent with
+   * `supportsRecording = false` — clients see "no formats" and don't offer the toggle.
+   */
+  val supportedRecordingFormats: List<String>
+    get() = emptyList()
+
+  /**
    * Allocate a [RecordingSession] for [previewId] — the scripted screen-record surface. The session
    * holds a warm `ImageComposeScene` (or per-host equivalent) for the duration of the recording so
    * `remember`'d state and animation timing are continuous across the virtual timeline.

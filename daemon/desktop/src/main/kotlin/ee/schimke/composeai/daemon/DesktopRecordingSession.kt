@@ -170,7 +170,30 @@ class DesktopRecordingSession(
           sizeBytes = target.length(),
         )
       }
+      RecordingFormat.MP4 ->
+        encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.MP4, "mp4", "video/mp4")
+      RecordingFormat.WEBM ->
+        encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.WEBM, "webm", "video/webm")
     }
+  }
+
+  private fun encodeViaFfmpeg(
+    choice: FfmpegEncoder.RecordingFormatChoice,
+    extension: String,
+    mimeType: String,
+  ): EncodedRecording {
+    val target = File(encodedDir, "$recordingId.$extension")
+    FfmpegEncoder.encodeFromPngFrames(
+      framesDir = framesDir,
+      fps = fps,
+      format = choice,
+      out = target,
+    )
+    return EncodedRecording(
+      videoPath = target.absolutePath,
+      mimeType = mimeType,
+      sizeBytes = target.length(),
+    )
   }
 
   override fun close() {
