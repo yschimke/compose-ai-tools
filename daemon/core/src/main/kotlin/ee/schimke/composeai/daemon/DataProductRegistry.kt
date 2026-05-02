@@ -37,7 +37,7 @@ interface DataProductRegistry {
    * catches the four documented failure shapes via [Outcome] and translates each to its wire-error
    * code.
    *
-   * `params` carries per-kind options (e.g. `nodeId` for `layout/tree`); `inline` mirrors the
+   * `params` carries per-kind options (e.g. `nodeId` for `layout/inspector`); `inline` mirrors the
    * `data/fetch.inline` flag — `true` asks the registry to inline the payload (or `bytes` for blob
    * kinds), `false` lets it return a `path` for cheap local-client read-from-disk.
    */

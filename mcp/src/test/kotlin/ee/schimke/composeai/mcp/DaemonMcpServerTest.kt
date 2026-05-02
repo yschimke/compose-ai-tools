@@ -1761,7 +1761,7 @@ class DaemonMcpServerTest {
       daemon.advertisedDataProducts =
         listOf(
           ee.schimke.composeai.daemon.protocol.DataProductCapability(
-            kind = "layout/tree",
+            kind = "layout/inspector",
             schemaVersion = 1,
             transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
             attachable = true,
@@ -1771,7 +1771,7 @@ class DaemonMcpServerTest {
         )
       daemon.dataFetchHandler = { _, kind, perKindParams, _ ->
         // The wire call must receive the params verbatim — that's how kinds with sub-views (e.g.
-        // layout/tree filtered by nodeId) work.
+        // layout/inspector filtered by nodeId) work.
         val nodeId = perKindParams?.get("nodeId")?.jsonPrimitive?.contentOrNull ?: "?"
         FakeDaemon.DataFetchOutcome.Ok(
           kind = kind,
@@ -1794,7 +1794,7 @@ class DaemonMcpServerTest {
       "/tmp/red.png",
       listOf(
         buildJsonObject {
-          put("kind", "layout/tree")
+          put("kind", "layout/inspector")
           put("schemaVersion", 1)
           putJsonObject("payload") { put("nodeId", "root") }
         }
@@ -1807,7 +1807,7 @@ class DaemonMcpServerTest {
         "get_preview_data",
         buildJsonObject {
           put("uri", uri)
-          put("kind", "layout/tree")
+          put("kind", "layout/inspector")
           putJsonObject("params") { put("nodeId", "node-42") }
         },
       )
@@ -1832,7 +1832,7 @@ class DaemonMcpServerTest {
       DaemonSupervisor(
         descriptorProvider = FakeDescriptorProvider(),
         clientFactory = factoryLocal,
-        globalAttachDataProducts = listOf("a11y/atf", "layout/tree"),
+        globalAttachDataProducts = listOf("a11y/atf", "layout/inspector"),
       )
     try {
       val projectDir = tmp.newFolder("workspace-attach")
@@ -1845,7 +1845,7 @@ class DaemonMcpServerTest {
       assertThat(params).isNotNull()
       val attached = params!!["options"]?.jsonObject?.get("attachDataProducts")?.jsonArray
       assertThat(attached?.map { it.jsonPrimitive.content })
-        .containsExactly("a11y/atf", "layout/tree")
+        .containsExactly("a11y/atf", "layout/inspector")
         .inOrder()
     } finally {
       runCatching { supervisorLocal.shutdown() }

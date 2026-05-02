@@ -76,7 +76,7 @@ const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
 /**
  * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
  * so the local finding + hierarchy overlays light up together; a future panel that wants to
- * subscribe to other kinds (`compose/recomposition`, `layout/tree`) will export its own list.
+ * subscribe to other kinds (`compose/recomposition`, `layout/inspector`) will export its own list.
  */
 export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
 /**
