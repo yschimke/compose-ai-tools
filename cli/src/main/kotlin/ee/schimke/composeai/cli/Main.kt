@@ -41,6 +41,7 @@ fun main(args: Array<String>) {
       "render",
       "a11y",
       "doctor",
+      "devices",
       "share-gist",
       "publish-images",
       "mcp",
@@ -85,6 +86,7 @@ fun main(args: Array<String>) {
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
+    "devices" -> DevicesCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
     "publish-images" -> PublishImagesCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
@@ -116,6 +118,7 @@ private fun printUsage() {
       render           Render previews; with --output copies a single match to disk
       a11y             Render previews and print ATF accessibility findings
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
+      devices          List known @Preview(device=...) ids and resolved geometry
       share-gist       Create a gist from a markdown file plus image attachments
       publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
