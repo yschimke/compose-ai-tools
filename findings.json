@@ -12,6 +12,26 @@
     },
     {
       "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "ActivityListGifPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
+      "findings": [],
+      "functionName": "ActivityListLongPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round",
+      "sourceFile": "com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
       "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
