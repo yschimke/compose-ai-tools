@@ -1378,16 +1378,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             imgContainer.addEventListener('click', (evt) => {
                 const previewId = card.dataset.previewId;
                 if (!previewId) return;
+                // If we're already live for this preview, the per-image click
+                // handler routes to recordInteractiveInput. Check before the
+                // stale-card branch so interactive clicks do not also queue a
+                // heavyweight refresh for stale captures.
+                if (interactivePreviewIds.has(previewId)) return;
                 if (card.classList.contains('is-stale')) {
                     evt.preventDefault();
                     evt.stopPropagation();
                     requestHeavyRefresh(card);
                     return;
                 }
-                // If we're already live for this preview, the per-image click
-                // handler routes to recordInteractiveInput — let that fire
-                // instead of toggling off.
-                if (interactivePreviewIds.has(previewId)) return;
                 enterInteractiveOnCard(card, evt.shiftKey);
             });
 

@@ -1452,8 +1452,14 @@ async function reconcilePreviewManifestAfterDaemonReady(
         });
         gradleService.invalidateCache(module);
         const manifest = await gradleService.discoverPreviews(module);
-        if (!manifest) { return false; }
-        if (currentScopeFile && currentScopeFile !== filePath) { return false; }
+        if (!manifest) {
+            panel.postMessage({ command: 'clearProgress' });
+            return false;
+        }
+        if (currentScopeFile && currentScopeFile !== filePath) {
+            panel.postMessage({ command: 'clearProgress' });
+            return false;
+        }
 
         const fresh = manifest.previews;
         const freshIds = new Set(fresh.map(p => p.id));
@@ -1481,8 +1487,8 @@ async function reconcilePreviewManifestAfterDaemonReady(
                         ? `No @Preview functions in this file (${fresh.length} in other files in this module).`
                         : 'No @Preview functions found in this module',
                 });
-                panel.postMessage({ command: 'clearProgress' });
             }
+            panel.postMessage({ command: 'clearProgress' });
             return false;
         }
 
@@ -1497,11 +1503,14 @@ async function reconcilePreviewManifestAfterDaemonReady(
             moduleDir: module,
             heavyStaleIds,
         });
+        panel.postMessage({ command: 'clearCompileErrors' });
+        compileGateActive = false;
         panel.postMessage({ command: 'markAllLoading' });
         hasPreviewsLoaded = true;
         return true;
     } catch (err) {
         logLine(`daemon: post-warm discover failed for ${module}: ${(err as Error).message}`);
+        panel.postMessage({ command: 'clearProgress' });
         return false;
     }
 }

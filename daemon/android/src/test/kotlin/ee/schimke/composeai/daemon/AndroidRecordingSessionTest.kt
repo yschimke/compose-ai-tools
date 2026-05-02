@@ -18,14 +18,12 @@ import org.junit.rules.TemporaryFolder
 /**
  * P5 — end-to-end test for [AndroidRecordingSession] (the Robolectric-backed scripted screen-
  * recording surface). Boots a 2-sandbox `RobolectricHost`, allocates a recording session against
- * the [ClickToggleSquare] fixture (red → green on first click), posts a two-event script — a
- * click at `tMs = 66` and a `keyDown` at `tMs = 99` (a no-op event used purely to anchor the
- * recording's duration so we get 4 frames), runs `stop()`, and asserts:
+ * the [ClickToggleSquare] fixture (red → green on first click), posts a click at `tMs = 67`, runs
+ * `stop()`, and asserts:
  *
- * 1. Frame count = 4 (100 ms × 30 fps + 1, with frame `tMs`'s of 0, 33, 66, 99).
+ * 1. Frame count = 4 (ceil(67 ms × 30 fps / 1000) + 1, with frame `tMs`'s of 0, 33, 66, 100).
  * 2. Frame 0 paints red — pre-click state at tMs=0.
- * 3. Frame 3 paints green — click@66 was drained at frame 2 (tMs=66 ≥ 66), state flipped, frame
- *    3 reflects the post-click composition.
+ * 3. Frame 3 paints green — click@67 was drained at the first frame at or after 67 ms.
  * 4. APNG encode produces a non-empty file with the standard PNG header bytes.
  *
  * **Test cost.** This test pays the same ~2× cold-boot wall-clock as
@@ -73,30 +71,27 @@ class AndroidRecordingSessionTest {
           live = false,
         )
       try {
-        // Click at tMs=66 (drains exactly at frame 2 since tMs=66 ≥ 66) plus a KEY_DOWN at
-        // tMs=100 used purely to anchor the script's max-tMs to 100, so the totalFrames math
-        // (durationMs × fps / 1000 + 1) yields 4. KEY_* events are filtered out of the dispatch
-        // path (no-op on Android) so the anchor doesn't disturb the held composition.
+        // Click at tMs=67 lands just after the 66 ms frame boundary. The frame-count math must
+        // ceil the script duration so frame 3 (100 ms) exists and drains the event.
         session.postScript(
           listOf(
             RecordingScriptEvent(
-              tMs = 66L,
+              tMs = 67L,
               kind = InteractiveInputKind.CLICK,
               pixelX = INTERACTIVE_WIDTH_PX / 2,
               pixelY = INTERACTIVE_HEIGHT_PX / 2,
-            ),
-            RecordingScriptEvent(tMs = 100L, kind = InteractiveInputKind.KEY_DOWN),
+            )
           )
         )
         val result = session.stop()
 
-        // 1. Frame count: 100ms × 30fps + 1 = 4 frames (frame tMs's: 0, 33, 66, 99).
+        // 1. Frame count: ceil(67ms × 30fps / 1000) + 1 = 4 frames.
         assertEquals(
-          "expected 4 frames at 30 fps over 100 ms timeline; got ${result.frameCount}",
+          "expected 4 frames at 30 fps over 67 ms timeline; got ${result.frameCount}",
           4,
           result.frameCount,
         )
-        assertEquals("durationMs", 100L, result.durationMs)
+        assertEquals("durationMs", 67L, result.durationMs)
         for (i in 0 until result.frameCount) {
           val f = File(result.framesDir, "frame-${"%05d".format(i)}.png")
           assertTrue("frame $i missing on disk: ${f.absolutePath}", f.isFile)
@@ -111,7 +106,7 @@ class AndroidRecordingSessionTest {
           redAt0 >= 0.95,
         )
 
-        // 3. Frame 3 — click@66 was drained at frame 2; final frame reflects the post-click
+        // 3. Frame 3 — click@67 was drained at frame 3; final frame reflects the post-click
         //    composition. This is the load-bearing assertion: it proves the script event reached
         //    the held-rule loop, the state mutated, and the next render captured the new state.
         val frame3 = decode(File(result.framesDir, "frame-00003.png"))
