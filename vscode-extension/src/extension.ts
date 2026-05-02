@@ -1058,46 +1058,10 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
         return;
     }
 
-    gradleService.invalidateCache(moduleId);
-    let manifest;
-    try {
-        manifest = await gradleService.discoverPreviews(moduleId);
-    } catch (err) {
-        logLine(`[daemon] silent discover after discoveryUpdated failed for ${moduleId}: ${(err as Error).message}`);
-        return;
-    }
-    if (!manifest) { return; }
-
-    const fresh = manifest.previews;
-    for (const p of fresh) {
-        for (const capture of p.captures) {
-            capture.label = captureLabel(capture);
-        }
-        previewModuleMap.set(p.id, moduleId);
-    }
-    // Drop module-map entries for removed previews so a subsequent webview
-    // action keyed by previewId doesn't resolve to the stale module.
-    for (const id of removedIds) { previewModuleMap.delete(id); }
-    moduleManifestCache.set(moduleId, fresh);
-    registry.replaceModule(moduleId, fresh);
-
     // Re-filter against `currentScopeFile` so the panel stays scoped to the
     // file the user is editing — same shape as the gradle path's setPreviews.
     if (!currentScopeFile) { return; }
-    const filterFile = packageQualifiedSourcePath(currentScopeFile);
-    const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
-    const moduleIsFastTier = fastTierModules.has(moduleId);
-    const heavyStaleIds = moduleIsFastTier
-        ? visiblePreviews
-            .filter(hasHeavyCapture)
-            .map(p => p.id)
-        : [];
-    panel.postMessage({
-        command: 'setPreviews',
-        previews: visiblePreviews,
-        moduleDir: moduleId,
-        heavyStaleIds,
-    });
+    await reconcilePreviewManifestForFile(moduleId, currentScopeFile);
 }
 
 /**
@@ -1155,7 +1119,12 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // discoveryUpdated push).
     const filterFile = packageQualifiedSourcePath(filePath);
     const manifest = moduleManifestCache.get(module) ?? [];
-    const ids = manifest.filter(p => p.sourceFile === filterFile).map(p => p.id);
+    let filePreviews = manifest.filter(p => p.sourceFile === filterFile);
+    if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
+        logLine(`daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`);
+        filePreviews = await reconcilePreviewManifestForFile(module, filePath) ?? filePreviews;
+    }
+    const ids = filePreviews.map(p => p.id);
     if (ids.length === 0) { return 'accepted'; }
     try {
         await daemonScheduler.setFocus(module, ids);
@@ -1466,6 +1435,47 @@ function visiblePreviewCount(module: string, filePath: string): number {
     const previews = moduleManifestCache.get(module) ?? [];
     const filterFile = packageQualifiedSourcePath(filePath);
     return previews.filter(p => p.sourceFile === filterFile).length;
+}
+
+async function reconcilePreviewManifestForFile(module: string, filePath: string): Promise<PreviewInfo[] | null> {
+    if (!gradleService || !panel) { return null; }
+    gradleService.invalidateCache(module);
+    let manifest;
+    try {
+        manifest = await gradleService.discoverPreviews(module);
+    } catch (err) {
+        logLine(`[daemon] silent discover failed for ${module}: ${(err as Error).message}`);
+        return null;
+    }
+    if (!manifest) { return null; }
+
+    const fresh = manifest.previews;
+    for (const [id, owner] of [...previewModuleMap.entries()]) {
+        if (owner === module) { previewModuleMap.delete(id); }
+    }
+    for (const p of fresh) {
+        for (const capture of p.captures) {
+            capture.label = captureLabel(capture);
+        }
+        previewModuleMap.set(p.id, module);
+    }
+    moduleManifestCache.set(module, fresh);
+    registry.replaceModule(module, fresh);
+
+    const filterFile = packageQualifiedSourcePath(filePath);
+    const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
+    const heavyStaleIds = fastTierModules.has(module)
+        ? visiblePreviews
+            .filter(hasHeavyCapture)
+            .map(p => p.id)
+        : [];
+    panel.postMessage({
+        command: 'setPreviews',
+        previews: visiblePreviews,
+        moduleDir: module,
+        heavyStaleIds,
+    });
+    return visiblePreviews;
 }
 
 async function refreshAfterDaemonReady(filePath: string, reason: string): Promise<void> {
@@ -1907,6 +1917,42 @@ function heavyOptInsFor(moduleId: string, previewIds: string[]): string[] {
     const opted = heavyRefreshOptIns.get(moduleId);
     if (!opted || opted.size === 0) { return []; }
     return previewIds.filter(id => opted.has(id));
+}
+
+async function sourceMayHaveDroppedCachedPreviews(
+    filePath: string,
+    previews: PreviewInfo[],
+): Promise<boolean> {
+    if (previews.length === 0) { return false; }
+    let source: string;
+    try {
+        source = await fs.promises.readFile(filePath, 'utf-8');
+    } catch {
+        return false;
+    }
+    return previews.some(preview => !sourceLooksLikePreviewDeclaration(source, preview.functionName));
+}
+
+function sourceLooksLikePreviewDeclaration(source: string, functionName: string): boolean {
+    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`\\bfun\\s+${escaped}\\s*\\(`).exec(source);
+    if (!match) { return false; }
+
+    const lines = source.slice(0, match.index).split(/\r?\n/);
+    const annotationLines: string[] = [];
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.length === 0) {
+            if (annotationLines.length === 0) { continue; }
+            break;
+        }
+        if (line.startsWith('@') || line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) {
+            annotationLines.unshift(line);
+            continue;
+        }
+        break;
+    }
+    return annotationLines.some(line => line.includes('Preview'));
 }
 
 /**
