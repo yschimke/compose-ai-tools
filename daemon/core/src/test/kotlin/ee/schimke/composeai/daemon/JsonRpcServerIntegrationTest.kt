@@ -1121,6 +1121,138 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  /**
+   * Cross-backend client-disconnect test (INTERACTIVE-ANDROID.md § 11.4 follow-up). When the client
+   * transport closes mid-session — panel crashes, websocket drops, the user yanks the Code window —
+   * the daemon must release any held interactive sessions immediately rather than waiting for the
+   * per-session idle lease (60 s default on Android). The pre-fix path slept `idleTimeoutMs` (5 s
+   * default) before [JsonRpcServer.cleanShutdown] eventually closed sessions; we now close on EOF
+   * directly.
+   *
+   * Drives one `interactive/start`, asserts the host allocated a session, closes the client→ server
+   * pipe to simulate transport EOF, and asserts the session's `close()` ran inside the idle-timeout
+   * grace window. Uses a 200 ms idle timeout so the assertion has a comfortable margin without the
+   * test sleeping for the full 5 s default.
+   */
+  @Test(timeout = 30_000)
+  fun interactive_session_closes_immediately_on_transport_eof() {
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val host = DisconnectFakeHost()
+    val exitCode = AtomicInteger(-1)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        idleTimeoutMs = 200L,
+        onExit = { code ->
+          exitCode.set(code)
+          exitLatch.countDown()
+        },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-eof-test").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    val readerThread =
+      Thread(
+          {
+            try {
+              while (true) {
+                val frame = reader.readFrame() ?: break
+                received.put(json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject)
+              }
+            } catch (_: Throwable) {
+              // EOF / pipe close — fine.
+            }
+          },
+          "json-rpc-server-eof-reader",
+        )
+        .apply { isDaemon = true }
+    readerThread.start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                  "protocolVersion":1,
+                  "clientVersion":"test",
+                  "workspaceRoot":"/tmp",
+                  "moduleId":":test",
+                  "moduleProjectDir":"/tmp",
+                  "capabilities":{"visibility":true,"metrics":false}
+                }}
+        """
+          .trimIndent(),
+      )
+      assertNotNull(
+        "initialize response should arrive",
+        pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 },
+      )
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":2,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
+      )
+      val startResponse = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 }
+      assertNotNull("interactive/start response should arrive", startResponse)
+      val frameStreamId =
+        startResponse!!["result"]!!.jsonObject["frameStreamId"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("interactive/start should return a frameStreamId", frameStreamId)
+      assertEquals(
+        "host should have allocated exactly one session at this point",
+        1,
+        host.acquireCount.get(),
+      )
+      val session = host.lastSession()
+      assertNotNull("host's last session should be tracked", session)
+      assertEquals("session should still be open before EOF", 0, session!!.closeCount.get())
+
+      // Simulate panel crash / websocket drop — closing the client-to-server stream gives the
+      // daemon's read loop an EOF.
+      val closedAtMs = System.currentTimeMillis()
+      clientToServerOut.close()
+
+      // Wait up to 5 s for `close()` to fire — should be well under that, but the assertion
+      // checks the elapsed time so we surface a clear failure if the close-on-EOF wiring drops.
+      val closeDeadline = closedAtMs + 5_000L
+      while (session.closeCount.get() == 0 && System.currentTimeMillis() < closeDeadline) {
+        Thread.sleep(10L)
+      }
+      val elapsedMs = System.currentTimeMillis() - closedAtMs
+      assertEquals(
+        "session.close() must fire on transport EOF (elapsed ${elapsedMs}ms)",
+        1,
+        session.closeCount.get(),
+      )
+      // The pre-fix path waited `idleTimeoutMs` (200ms in this test) before cleanShutdown closed
+      // sessions. Asserting we close well before that window proves the fix runs immediately on
+      // EOF, not after the idle-timeout grace.
+      assertTrue(
+        "session.close() should fire well before the ${200L}ms idle timeout " +
+          "(elapsed ${elapsedMs}ms) — otherwise the early-close path didn't fire",
+        elapsedMs < 1_000L,
+      )
+
+      // Server should still progress to onExit(1) (no shutdown was sent).
+      assertTrue("server should have invoked onExit", exitLatch.await(10, TimeUnit.SECONDS))
+      assertEquals(1, exitCode.get())
+    } finally {
+      serverToClientOut.close()
+      serverThread.join(5_000)
+    }
+  }
+
   /** Helper: writes one Content-Length-framed JSON message. */
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)
@@ -1217,5 +1349,63 @@ private class FakeRenderHost(
     stopped = true
     queue.put(RenderRequest.Shutdown)
     worker.join(timeoutMs)
+  }
+}
+
+/**
+ * Minimal interactive-aware [RenderHost] for the close-on-EOF integration test. Records every
+ * `acquireInteractiveSession` call and the most recent session so the test can spy on `close()`
+ * invocations after the client drops the input stream. All other surface (renders, shutdown) is a
+ * thin stub — the test never drives it.
+ */
+private class DisconnectFakeHost : RenderHost {
+  val acquireCount = AtomicInteger(0)
+  @Volatile private var lastSession: RecordingDisconnectSession? = null
+
+  fun lastSession(): RecordingDisconnectSession? = lastSession
+
+  override fun start() {}
+
+  override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
+    require(request is RenderRequest.Render)
+    return RenderResult(
+      id = request.id,
+      classLoaderHashCode = 0,
+      classLoaderName = "disconnect-fake",
+      metrics = mapOf("tookMs" to 0L),
+    )
+  }
+
+  override fun shutdown(timeoutMs: Long) {}
+
+  override val supportsInteractive: Boolean
+    get() = true
+
+  override fun acquireInteractiveSession(
+    previewId: String,
+    classLoader: ClassLoader,
+  ): InteractiveSession {
+    acquireCount.incrementAndGet()
+    val session = RecordingDisconnectSession(previewId)
+    lastSession = session
+    return session
+  }
+}
+
+private class RecordingDisconnectSession(override val previewId: String) : InteractiveSession {
+  val closeCount = AtomicInteger(0)
+
+  override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {}
+
+  override fun render(requestId: Long): RenderResult =
+    RenderResult(
+      id = requestId,
+      classLoaderHashCode = 0,
+      classLoaderName = "recording-disconnect-session",
+      metrics = mapOf("tookMs" to 0L),
+    )
+
+  override fun close() {
+    closeCount.incrementAndGet()
   }
 }
