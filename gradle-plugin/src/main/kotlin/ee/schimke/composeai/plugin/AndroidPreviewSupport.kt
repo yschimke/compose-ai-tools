@@ -1082,12 +1082,12 @@ internal object AndroidPreviewSupport {
         // `generate${Cap}UnitTestConfig` below, so the `processResources`
         // dep is just belt-and-suspenders; skip it when absent so library
         // modules configure cleanly. See issue #136.
-        listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig").forEach {
-          taskName ->
-          if (project.tasks.findByName(taskName) != null) {
-            dependsOn(taskName)
+        dependsOn(
+          project.tasks.matching {
+            it.name in
+              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
           }
-        }
+        )
         if (compileShardsTask != null) {
           dependsOn(compileShardsTask)
         }
@@ -1143,12 +1143,12 @@ internal object AndroidPreviewSupport {
         if (useLocalRenderer) {
           dependsOn(":renderer-android:compile${capVariant}Kotlin")
         }
-        listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig").forEach {
-          taskName ->
-          if (project.tasks.findByName(taskName) != null) {
-            dependsOn(taskName)
+        dependsOn(
+          project.tasks.matching {
+            it.name in
+              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
           }
-        }
+        )
       }
     }
 

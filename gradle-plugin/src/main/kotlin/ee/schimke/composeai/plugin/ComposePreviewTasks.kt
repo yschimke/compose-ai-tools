@@ -72,17 +72,11 @@ internal object ComposePreviewTasks {
         extension,
       ) {
         onlyIf { extension.enabled.get() }
-        // `compileAndroidMain` is the lifecycle task for the KMP-Android
-        // target's `main` compilation (which depends on the underlying
-        // `compileAndroidMainKotlin`-shaped Kotlin compile under the hood).
-        // Listed alongside the JVM/Desktop siblings so we wire up exactly
-        // one — whichever the consumer's applied plugins actually register.
-        for (name in DESKTOP_COMPILE_TASK_CANDIDATES) {
-          if (project.tasks.findByName(name) != null) {
-            dependsOn(name)
-            break
-          }
-        }
+        // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
+        // compilation (which depends on the underlying `compileAndroidMainKotlin`-shaped Kotlin
+        // compile under the hood). Use lazy matching so compile tasks registered after this plugin
+        // block are still wired into discovery.
+        dependsOn(project.tasks.matching { it.name in DESKTOP_COMPILE_TASK_CANDIDATES })
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
@@ -416,25 +410,22 @@ internal object ComposePreviewTasks {
    * `IncrementalDiscovery` cascade and `discoveryUpdated` notification, so the editor save loop no
    * longer needs `:discoverPreviews` on every keystroke.
    *
-   * Caller passes the set of candidate compile task names; we wire the first that exists at
-   * configuration time. When none are found (consumer hasn't applied a Kotlin plugin) the task is
-   * still registered but is a no-op — same `onlyIf(false)` shape as the disabled-by-extension
-   * gating below.
+   * Caller passes the set of candidate compile task names; we wire every matching task lazily so
+   * Android variants registered after this plugin block still participate. When none are found
+   * (consumer hasn't applied a Kotlin plugin) the task is still registered but is a no-op — same
+   * `onlyIf(false)` shape as the disabled-by-extension gating below.
    */
   fun registerCompileOnlyTask(
     project: Project,
     extension: PreviewExtension,
     compileTaskNames: List<String>,
   ): TaskProvider<DefaultTask> {
-    val resolvedCompileTask = compileTaskNames.firstOrNull { project.tasks.findByName(it) != null }
     return project.tasks.register("composePreviewCompile", DefaultTask::class.java) {
       group = "compose preview"
       description =
         "Compile sources without running discoverPreviews — used by the VS Code daemon save path."
       onlyIf { extension.enabled.get() }
-      if (resolvedCompileTask != null) {
-        dependsOn(resolvedCompileTask)
-      }
+      dependsOn(project.tasks.matching { it.name in compileTaskNames })
     }
   }
 
