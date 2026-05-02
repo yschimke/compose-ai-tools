@@ -441,7 +441,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--skeleton-bg);
+    background: transparent;
     /* Click on a preview enters live (interactive) mode in any layout — see
        INTERACTIVE.md § 3. Pointer cursor signals "this is clickable" without
        implying a specific affordance (the magnifier zoom-in/out cursor was
