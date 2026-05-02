@@ -10,6 +10,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -211,6 +213,224 @@ class JsonRpcDesktopIntegrationTest {
     }
   }
 
+  @Test(timeout = 120_000)
+  fun interactive_click_over_json_rpc_reaches_real_desktop_composition() {
+    val outputDir = tempFolder.newFolder("interactive-renders")
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      SpecRoutingHost(
+        engine = engine,
+        specs =
+          mapOf(
+            "click-toggle-square" to
+              RenderSpec(
+                className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+                functionName = "ClickToggleSquare",
+                widthPx = 64,
+                heightPx = 64,
+                density = 1.0f,
+                outputBaseName = "click-toggle-square",
+              )
+          ),
+      )
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val exitCode = AtomicInteger(-1)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test-desktop",
+        interactiveFrameIntervalMs = 0L,
+        onExit = { code ->
+          exitCode.set(code)
+          exitLatch.countDown()
+        },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-desktop-interactive-test").apply { isDaemon = true }
+    serverThread.start()
+
+    val received = LinkedBlockingQueue<JsonObject>()
+    val readerThread =
+      Thread(
+          {
+            try {
+              while (true) {
+                val frame = readContentLengthFrame(serverToClientIn) ?: break
+                val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+                received.put(obj)
+              }
+            } catch (_: Throwable) {
+              // EOF / pipe close — fine, test asserts on what we got.
+            }
+          },
+          "json-rpc-desktop-interactive-test-reader",
+        )
+        .apply { isDaemon = true }
+    readerThread.start()
+
+    try {
+      initialize(clientToServerOut, received)
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      writeFrame(
+        clientToServerOut,
+        """
+        {"jsonrpc":"2.0","id":2,"method":"renderNow","params":{
+                  "previews":["click-toggle-square"],
+                  "tier":"fast"
+                }}
+        """
+          .trimIndent(),
+      )
+      assertNotNull(
+        "renderNow response should arrive",
+        pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 },
+      )
+      val bootstrapFinished =
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+      assertNotNull("bootstrap renderFinished should arrive", bootstrapFinished)
+      val bootstrapPng =
+        bootstrapFinished!!["params"]!!.jsonObject["pngPath"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("bootstrap pngPath must be populated", bootstrapPng)
+      assertMostlyColor(
+        file = File(bootstrapPng!!),
+        expectedRgb = 0xEF5350,
+        label = "bootstrap render",
+      )
+
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":3,"method":"interactive/start","params":{"previewId":"click-toggle-square"}}""",
+      )
+      val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 3 }
+      assertNotNull("interactive/start response should arrive", startResp)
+      val streamId =
+        startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull
+      assertTrue("frameStreamId should be non-blank", !streamId.isNullOrBlank())
+
+      writeFrame(
+        clientToServerOut,
+        """
+        {"jsonrpc":"2.0","method":"interactive/input","params":{
+          "frameStreamId":"$streamId","kind":"click","pixelX":32,"pixelY":32
+        }}
+        """
+          .trimIndent(),
+      )
+      val postClickFinished =
+        pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+      assertNotNull("post-click renderFinished should arrive", postClickFinished)
+      val postClickParams = postClickFinished!!["params"]!!.jsonObject
+      assertEquals("click-toggle-square", postClickParams["id"]?.jsonPrimitive?.contentOrNull)
+      val postClickPng = postClickParams["pngPath"]?.jsonPrimitive?.contentOrNull
+      assertNotNull("post-click pngPath must be populated", postClickPng)
+      assertMostlyColor(
+        file = File(postClickPng!!),
+        expectedRgb = 0x66BB6A,
+        label = "post-click render",
+      )
+
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","method":"interactive/stop","params":{"frameStreamId":"$streamId"}}""",
+      )
+
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":4,"method":"shutdown"}""")
+      assertNotNull(
+        "shutdown response should arrive",
+        pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 4 },
+      )
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"exit"}""")
+      assertTrue(
+        "server should invoke onExit() within 30s of exit notification",
+        exitLatch.await(30, TimeUnit.SECONDS),
+      )
+      assertEquals(0, exitCode.get())
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      serverThread.join(15_000)
+    }
+  }
+
+  private fun initialize(out: PipedOutputStream, received: LinkedBlockingQueue<JsonObject>) {
+    writeFrame(
+      out,
+      """
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                "protocolVersion":1,
+                "clientVersion":"test",
+                "workspaceRoot":"/tmp",
+                "moduleId":":test",
+                "moduleProjectDir":"/tmp",
+                "capabilities":{"visibility":true,"metrics":false}
+              }}
+      """
+        .trimIndent(),
+    )
+    val initResponse = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
+    assertNotNull("initialize response should arrive", initResponse)
+    assertEquals(
+      "test-desktop",
+      initResponse!!["result"]!!.jsonObject["daemonVersion"]?.jsonPrimitive?.contentOrNull,
+    )
+  }
+
+  private fun assertMostlyColor(file: File, expectedRgb: Int, label: String) {
+    val image = readPng(file)
+    val match = pixelMatchPct(image, expectedRgb = expectedRgb, perChannelTolerance = 8)
+    assertTrue(
+      "$label should be mostly ${expectedRgb.toString(16)}; got ${"%.2f".format(match * 100)}%",
+      match >= 0.95,
+    )
+  }
+
+  private fun readPng(file: File): java.awt.image.BufferedImage {
+    assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
+    assertTrue("rendered PNG must be non-empty", file.length() > 0)
+    return ImageIO.read(file) ?: error("PNG must decode via javax.imageio: ${file.absolutePath}")
+  }
+
+  private fun pixelMatchPct(
+    img: java.awt.image.BufferedImage,
+    expectedRgb: Int,
+    perChannelTolerance: Int,
+  ): Double {
+    val expR = (expectedRgb shr 16) and 0xFF
+    val expG = (expectedRgb shr 8) and 0xFF
+    val expB = expectedRgb and 0xFF
+    var matches = 0L
+    for (y in 0 until img.height) {
+      for (x in 0 until img.width) {
+        val rgb = img.getRGB(x, y)
+        val r = (rgb shr 16) and 0xFF
+        val g = (rgb shr 8) and 0xFF
+        val b = rgb and 0xFF
+        if (
+          abs(r - expR) <= perChannelTolerance &&
+            abs(g - expG) <= perChannelTolerance &&
+            abs(b - expB) <= perChannelTolerance
+        ) {
+          matches++
+        }
+      }
+    }
+    val total = img.width.toLong() * img.height.toLong()
+    return matches.toDouble() / total.toDouble()
+  }
+
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)
     out.write("Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII))
@@ -297,24 +517,52 @@ class JsonRpcDesktopIntegrationTest {
  *   `JsonRpcServer.handleRenderNow` directly). Until then, every test that wires `JsonRpcServer` to
  *   a real `DesktopHost` needs a routing shim like this.
  */
-private class SpecRoutingHost(engine: RenderEngine) : DesktopHost(engine = engine) {
+private class SpecRoutingHost(
+  engine: RenderEngine,
+  private val specs: Map<String, RenderSpec> =
+    mapOf(
+      "red-square" to
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "RedSquare",
+          widthPx = 64,
+          heightPx = 64,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "red-square",
+        )
+    ),
+) : DesktopHost(engine = engine, previewSpecResolver = { previewId -> specs[previewId] }) {
 
   override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
     require(request !is RenderRequest.Shutdown) {
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
-    // For this test we only ever submit "red-square"; route every inbound to that fixture.
+    val previewId = previewIdFromPayload(typed.payload) ?: "red-square"
+    val spec =
+      specs[previewId]
+        ?: error("SpecRoutingHost: no spec for previewId='$previewId'; known=${specs.keys}")
     val routed =
       RenderRequest.Render(
         id = typed.id,
         payload =
-          "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
-            "functionName=RedSquare;" +
-            "widthPx=64;heightPx=64;density=1.0;" +
-            "showBackground=true;" +
-            "outputBaseName=red-square-${typed.id}",
+          "className=${spec.className};" +
+            "functionName=${spec.functionName};" +
+            "widthPx=${spec.widthPx};heightPx=${spec.heightPx};density=${spec.density};" +
+            "showBackground=${spec.showBackground};" +
+            "outputBaseName=${spec.outputBaseName}-${typed.id}",
       )
     return super.submit(routed, timeoutMs)
   }
+
+  private fun previewIdFromPayload(payload: String): String? =
+    payload
+      .split(';')
+      .mapNotNull { token ->
+        val eq = token.indexOf('=')
+        if (eq <= 0) null else token.substring(0, eq).trim() to token.substring(eq + 1).trim()
+      }
+      .firstOrNull { (key, value) -> key == "previewId" && value.isNotBlank() }
+      ?.second
 }
