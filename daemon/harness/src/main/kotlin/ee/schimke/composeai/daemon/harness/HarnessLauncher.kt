@@ -276,6 +276,7 @@ class RealAndroidHarnessLauncher(
         add(javaBin.absolutePath)
         // --add-opens for Robolectric on JDK 17+ — see KDoc for the rationale. Mirrors
         // gradle-plugin's `AndroidPreviewClasspath.buildJvmArgs()`.
+        add("--add-opens=java.base/java.io=ALL-UNNAMED")
         add("--add-opens=java.base/java.lang=ALL-UNNAMED")
         add("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
         add("--add-opens=java.base/java.nio=ALL-UNNAMED")
