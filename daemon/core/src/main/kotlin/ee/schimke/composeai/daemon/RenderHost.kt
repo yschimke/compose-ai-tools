@@ -106,9 +106,9 @@ interface RenderHost {
    *
    * The default empty set is the safe pre-feature value — clients treat absent and `[]` identically
    * and assume any field they pass might be ignored. Real backends override: `RobolectricHost`
-   * advertises all eight; `DesktopHost` omits `localeTag` (no `LocalLocale` CompositionLocal +
-   * `Locale.setDefault` is JVM-thread-unsafe — see `daemon/desktop/.../RenderEngine.kt`) and
-   * `orientation` (no rotation concept on `ImageComposeScene`).
+   * advertises all fields; `DesktopHost` omits `orientation` (no rotation concept on
+   * `ImageComposeScene`), Android-only timing knobs, and `localeTag` unless the Compose UI runtime
+   * exposes a providable locale list.
    */
   val supportedOverrides: Set<String>
     get() = emptySet()

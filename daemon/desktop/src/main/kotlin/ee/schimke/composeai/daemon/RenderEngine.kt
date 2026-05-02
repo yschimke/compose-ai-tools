@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
@@ -15,6 +17,7 @@ import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import java.io.File
 import org.jetbrains.skia.EncodedImageFormat
@@ -165,14 +168,7 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
-    // PROTOCOL.md § 5 (`renderNow.overrides.localeTag`) — Compose Desktop has no `LocalLocale`
-    // CompositionLocal to override; the only JVM-wide lever is `Locale.setDefault(...)`, which is
-    // unsafe to mutate transiently because every other JVM thread (JSON-RPC reader, Skiko font /
-    // text-shaping workers, GC finalizers, anything that calls `String.format` or
-    // `SimpleDateFormat` with the default locale) sees the wrong value for the render's duration.
-    // Per-text `TextStyle(localeList = …)` is the only safe lever and can't be applied
-    // sweepingly without rewriting the user's composition. So `localeTag` stays a no-op on
-    // desktop. The Android backend honours it via `setQualifiers("b+lang+region")`.
+    val localeProviders = localeProviders(spec.localeTag)
 
     // PROTOCOL.md § 5 (`renderNow.overrides.fontScale`) — Compose Desktop has no resource-qualifier
     // system, but `LocalDensity` carries `fontScale` as part of `Density`, and `Text` / `TextStyle`
@@ -209,6 +205,7 @@ class RenderEngine(
             LocalInspectionMode provides inspectionMode,
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
+            *localeProviders,
           ) {
             if (themeCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
               CaptureMaterialTheme { payload -> themeCapture.capture(spec.previewId, payload) }
@@ -349,6 +346,26 @@ class RenderEngine(
      * side uses; the gradle plugin's daemon launch descriptor sets it once at JVM start.
      */
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
+
+    fun supportsLocaleTagOverride(): Boolean = localProvidableLocaleListOrNull() != null
+
+    @Suppress("UNCHECKED_CAST")
+    private fun localProvidableLocaleListOrNull(): ProvidableCompositionLocal<LocaleList>? {
+      val holder =
+        runCatching { Class.forName("androidx.compose.ui.platform.CompositionLocalsKt") }
+          .getOrNull() ?: return null
+      return runCatching {
+          holder.getMethod("getLocalProvidableLocaleList").invoke(null)
+            as ProvidableCompositionLocal<LocaleList>
+        }
+        .getOrNull()
+    }
+
+    private fun localeProviders(localeTag: String?): Array<ProvidedValue<*>> {
+      val tag = localeTag?.takeIf { it.isNotBlank() } ?: return emptyArray()
+      val local = localProvidableLocaleListOrNull() ?: return emptyArray()
+      return arrayOf(local provides LocaleList(tag))
+    }
   }
 }
 
@@ -383,11 +400,7 @@ data class RenderSpec(
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
   /**
-   * BCP-47 locale tag override. **No-op on desktop** — Compose Desktop has no `LocalLocale`
-   * CompositionLocal, and `Locale.setDefault(...)` is unsafe to mutate transiently because it
-   * affects every JVM thread (Skiko font/text-shaping workers, default-locale formatters, etc.).
-   * The field is carried for wire parity with `:daemon:android`, which honours it via
-   * `setQualifiers("b+lang+region")`.
+   * BCP-47 locale tag override. Scoped through Compose UI's providable locale list when present.
    */
   val localeTag: String? = null,
   /**

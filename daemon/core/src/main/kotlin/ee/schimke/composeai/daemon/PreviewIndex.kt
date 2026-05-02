@@ -83,9 +83,9 @@ data class PreviewInfoDto(
  * Names mirror the plugin's `PreviewParams` JSON keys verbatim. The daemon side maps subsets of
  * these onto `RenderSpec` (`widthDp`/`heightDp`/`density` → pixel dimensions; `localeTag` from
  * `locale`; `uiMode` bitmask → `SpecUiMode`; `fontScale` straight through). Backends that don't
- * model a particular knob (desktop has no resource-qualifier system; `localeTag` / `orientation`
- * are no-ops there) ignore the field but still carry it for wire parity with `PreviewOverrides` —
- * see [PROTOCOL.md § 5](../../../../../../../docs/daemon/PROTOCOL.md#5-client--daemon-requests).
+ * model a particular knob (for example, desktop has no display rotation concept for `orientation`)
+ * ignore the field but still carry it for wire parity with `PreviewOverrides` — see
+ * [PROTOCOL.md § 5](../../../../../../../docs/daemon/PROTOCOL.md#5-client--daemon-requests).
  *
  * `uiMode` here is the raw Android `Configuration.uiMode` bitmask the plugin reads off the
  * `@Preview` annotation (`0` means unset; bit `0x20` = `UI_MODE_NIGHT_YES`). The daemon decodes it
@@ -99,7 +99,7 @@ data class PreviewParamsDto(
   val heightDp: Int? = null,
   val density: Float? = null,
   val fontScale: Float? = null,
-  /** BCP-47 locale tag — the plugin's `PreviewParams.locale`. Android-only at render time. */
+  /** BCP-47 locale tag — the plugin's `PreviewParams.locale`. */
   val locale: String? = null,
   /**
    * Raw `@Preview(uiMode = …)` bitmask. `null` and `0` are interchangeable on the daemon side (both

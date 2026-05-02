@@ -16,10 +16,8 @@ import org.junit.rules.TemporaryFolder
  * [PreviewManifestRouter] directly with override-bearing payloads to prove the desktop renderer
  * actually applies `widthPx`, `uiMode`, and `fontScale` (PROTOCOL.md § 5, INTERACTIVE.md § 8a).
  *
- * `localeTag` is **not** tested here — it's documented as a no-op on desktop (Compose Desktop has
- * no `LocalLocale` CompositionLocal, and `Locale.setDefault(...)` is unsafe to mutate transiently
- * because every JVM thread sees it). `orientation` is also a no-op on desktop (`ImageComposeScene`
- * has no rotation concept).
+ * `localeTag` is applied only when the Compose UI runtime exposes a providable locale list;
+ * `orientation` is a no-op on desktop (`ImageComposeScene` has no rotation concept).
  */
 class OverrideIntegrationTest {
 
