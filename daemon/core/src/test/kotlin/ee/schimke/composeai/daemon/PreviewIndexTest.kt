@@ -89,6 +89,100 @@ class PreviewIndexTest {
   }
 
   @Test
+  fun `loadFromFile parses nested params block (issue 420)`() {
+    // Verifies the `params` block widened in #420 round-trips into [PreviewParamsDto]. Mirrors the
+    // shape `DiscoverPreviewsTask` actually emits for a `@Preview(widthDp=200, heightDp=600,
+    // density=3.0f, fontScale=1.3f, uiMode=0x20, locale="ja-JP")`.
+    val tmp = Files.createTempFile("previews-params", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "module": ":samples:android",
+        "variant": "debug",
+        "previews": [
+          {
+            "id": "Foo_dark",
+            "className": "com.example.FooKt",
+            "functionName": "Foo",
+            "params": {
+              "name": "dark",
+              "device": "id:pixel_5",
+              "widthDp": 200,
+              "heightDp": 600,
+              "density": 3.0,
+              "fontScale": 1.3,
+              "showSystemUi": false,
+              "showBackground": true,
+              "backgroundColor": 4294967295,
+              "uiMode": 32,
+              "locale": "ja-JP",
+              "kind": "COMPOSE"
+            },
+            "captures": [
+              { "renderOutput": "renders/Foo_dark.png", "cost": 1.0 }
+            ]
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      val foo = index.byId("Foo_dark")!!
+      val params = foo.params!!
+      assertEquals(200, params.widthDp)
+      assertEquals(600, params.heightDp)
+      assertEquals(3.0f, params.density!!, 0.0f)
+      assertEquals(1.3f, params.fontScale!!, 0.0f)
+      assertEquals("ja-JP", params.locale)
+      assertEquals(32, params.uiMode)
+      assertEquals("id:pixel_5", params.device)
+      assertEquals(true, params.showBackground)
+      assertEquals(0xFFFFFFFFL, params.backgroundColor)
+      // Night bit set ⇒ uiModeIsNight is true.
+      assertTrue(uiModeIsNight(params.uiMode))
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
+
+  @Test
+  fun `loadFromFile leaves params null when the block is absent`() {
+    val tmp = Files.createTempFile("previews-no-params", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          { "id": "Bar", "className": "com.example.BarKt", "functionName": "Bar" }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      assertNull(index.byId("Bar")?.params)
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
+
+  @Test
+  fun `uiModeIsNight handles null and 0 as not-night`() {
+    org.junit.Assert.assertFalse(uiModeIsNight(null))
+    org.junit.Assert.assertFalse(uiModeIsNight(0))
+    // UI_MODE_NIGHT_NO = 0x10 — the explicit "not-night" bit; should still be not night.
+    org.junit.Assert.assertFalse(uiModeIsNight(0x10))
+    // UI_MODE_NIGHT_YES = 0x20.
+    assertTrue(uiModeIsNight(0x20))
+    // The night bit can ride alongside other type bits (e.g. UI_MODE_TYPE_NORMAL = 0x01).
+    assertTrue(uiModeIsNight(0x21))
+  }
+
+  @Test
   fun `loadFromFile ignores unknown plugin-side fields`() {
     // Mirrors the plugin's actual shape: nested `params` block, `captures` array,
     // `accessibilityReport` pointer — all fields the daemon does NOT model.

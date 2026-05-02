@@ -103,10 +103,12 @@ fun main(args: Array<String>) {
     } else {
       DesktopHost(
         userClassloaderHolder = userClassloaderHolder,
-        // v2 — resolve `previewId` via PreviewIndex for the interactive session path. Display
-        // dimensions aren't carried in PreviewInfoDto today, so we fall back to the same
-        // 320x320 / density 2.0 defaults the v1 one-shot RenderSpec uses. When the gradle
-        // plugin grows display-property fields on PreviewInfoDto, this lambda picks them up.
+        // v2 — resolve `previewId` via PreviewIndex for the interactive session path. Issue #420
+        // wired the `params` block on `PreviewInfoDto`, so when the discovery JSON carries
+        // explicit `widthDp` / `heightDp` / `density` / `fontScale` / `locale` / `uiMode` /
+        // `device` / `showBackground` / `backgroundColor`, the resolver builds a `RenderSpec` that
+        // matches the user's `@Preview(...)` exactly. Per-field fallback to the `RenderSpec`
+        // defaults (320x320, density 2.0, white background, ...) when an individual field is null.
         // See INTERACTIVE.md § 9 ("RenderHost surface").
         previewSpecResolver =
           previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
@@ -263,21 +265,67 @@ private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
 
 /**
  * Adapts a [PreviewIndex] into the `(previewId) -> RenderSpec?` lambda [DesktopHost] consumes for
- * v2 interactive sessions. PreviewIndex carries className + methodName; everything else
- * (dimensions, density, background) comes from the [RenderSpec] defaults — a future iteration
- * widens [PreviewInfoDto] to carry display dimensions from the gradle plugin so interactive scenes
- * match the user's `@Preview(widthDp = …)` exactly.
+ * v2 interactive sessions. PreviewIndex carries className + methodName plus the optional `params`
+ * block widened in issue #420; this resolver threads each present field into the corresponding
+ * [RenderSpec] knob and falls back to the [RenderSpec] defaults (320x320 sandbox, density 2.0,
+ * white background, no locale/font-scale/uiMode/orientation override) for absent ones.
+ *
+ * **Per-field fallback, not all-or-nothing.** A `@Preview(widthDp = 200)` with no `heightDp` set
+ * lands on the resolver as `widthDp = 200, heightDp = null` and produces `widthPx = 200 * density`
+ * + `heightPx = 320` (the default). This mirrors how `PreviewOverrides` merges over the
+ *   discovery-time spec on the `renderNow` path — see PROTOCOL.md § 5.
+ *
+ * **Density precedence.** When `params.density` is set, it drives both the `widthDp → widthPx`
+ * conversion and the `RenderSpec.density` field. When `density` is null but `widthDp` is set, the
+ * conversion uses the default density (2.0) — same arithmetic the production discovery emitter uses
+ * for "no device, no system UI" previews (see `DeviceDimensions.DEFAULT_DENSITY`).
+ *
+ * **`uiMode` decode.** The plugin's `PreviewParams.uiMode` is a raw Android `Configuration.uiMode`
+ * bitmask (0 = unset). [uiModeIsNight] checks the night bit (0x20); when set, the resolver maps it
+ * onto `RenderSpec.SpecUiMode.DARK`, otherwise leaves the spec's `uiMode` null so Compose Desktop's
+ * `LocalSystemTheme.Unknown` fallback fires.
+ *
+ * **Orientation is plugin-not-emitted-today.** The plugin's `PreviewParams` doesn't carry an
+ * orientation field — `@Preview` annotations don't have an `orientation =` parameter. Left unwired
+ * here; if a future plugin pass derives portrait/landscape from `widthDp > heightDp`, the params
+ * DTO already has the slot and the resolver picks it up.
  *
  * Returns `null` when [previewId] isn't in the index — the host translates that into
  * `UnsupportedOperationException`, JsonRpcServer falls back to v1 dispatch, the panel keeps working
  * without held-state semantics.
  */
 private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String) -> RenderSpec?)? {
-  return { previewId ->
-    previewIndex.byId(previewId)?.let { info ->
-      RenderSpec(className = info.className, functionName = info.methodName)
-    }
-  }
+  return { previewId -> previewIndex.byId(previewId)?.let { renderSpecFromInfo(it) } }
+}
+
+/**
+ * Builds a [RenderSpec] from a [PreviewInfoDto], honouring the optional `params` block widened in
+ * issue #420 and falling back to the [RenderSpec] defaults for every absent field. Pulled into a
+ * top-level helper (rather than inlined into [previewIndexBackedSpecResolver]) so unit tests can
+ * exercise the conversion without standing up a [PreviewIndex] + lambda.
+ */
+internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
+  val defaults = RenderSpec(className = info.className, functionName = info.methodName)
+  val params = info.params ?: return defaults
+  val density = params.density ?: defaults.density
+  val widthPx = params.widthDp?.let { (it * density).toInt() } ?: defaults.widthPx
+  val heightPx = params.heightDp?.let { (it * density).toInt() } ?: defaults.heightPx
+  val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
+  return RenderSpec(
+    className = info.className,
+    functionName = info.methodName,
+    widthPx = widthPx,
+    heightPx = heightPx,
+    density = density,
+    showBackground = params.showBackground ?: defaults.showBackground,
+    backgroundColor = params.backgroundColor ?: defaults.backgroundColor,
+    device = params.device ?: defaults.device,
+    outputBaseName = defaults.outputBaseName,
+    localeTag = params.locale ?: defaults.localeTag,
+    fontScale = params.fontScale ?: defaults.fontScale,
+    uiMode = uiMode,
+    orientation = defaults.orientation,
+  )
 }
 
 private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.InputStream) {
