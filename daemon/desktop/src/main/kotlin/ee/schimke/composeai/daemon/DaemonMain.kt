@@ -207,6 +207,16 @@ fun main(args: Array<String>) {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
         add(RenderTraceDataProductRegistry())
         add(recompositionRegistry)
+        if (PerfettoTraceDataProducer.enabled()) {
+          System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
+            val dataRoot =
+              File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
+            System.err.println(
+              "compose-ai-tools desktop daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
+            )
+            add(PerfettoTraceDataProductRegistry(rootDir = dataRoot))
+          }
+        }
         if (historyManager != null) {
           System.err.println(
             "compose-ai-tools desktop daemon: HistoryDiffRegionsDataProductRegistry active"

@@ -61,7 +61,8 @@ class RenderEngine(
     File(
       System.getProperty(OUTPUT_DIR_PROP)
         ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
-    )
+    ),
+  private val dataDir: File? = outputDir.parentFile?.resolve("data"),
 ) {
 
   /**
@@ -91,11 +92,18 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
-    val state = setUp(spec, classLoader, inspectionMode = spec.inspectionMode ?: true)
+    val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop")
+    val state =
+      trace.section("compose:setUp") {
+        setUp(spec, classLoader, inspectionMode = spec.inspectionMode ?: true, trace = trace)
+      }
     try {
-      return renderOnce(state, requestId, sandboxStats = sandboxStats)
+      return trace.section("render:once") {
+        renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+      }
     } finally {
-      tearDown(state)
+      trace.section("compose:tearDown") { tearDown(state) }
+      dataDir?.let(trace::write)
     }
   }
 
@@ -123,6 +131,8 @@ class RenderEngine(
     classLoader: ClassLoader =
       RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
     inspectionMode: Boolean = true,
+    trace: PerfettoTraceDataProducer.Recorder =
+      PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop"),
   ): SceneState {
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
@@ -178,33 +188,35 @@ class RenderEngine(
         throw t
       }
     try {
-      scene.setContent {
-        // PROTOCOL.md § 5 (`renderNow.overrides.uiMode`) — Compose Desktop's
-        // `isSystemInDarkTheme()` reads `LocalSystemTheme.current` (foundation-desktop's
-        // `DarkTheme.skiko.kt`). Override it here so `uiMode = "dark"` actually flips dark-aware
-        // composables instead of falling through to the JVM's `org.jetbrains.skiko.SystemTheme`
-        // probe.
-        val systemTheme =
-          when (spec.uiMode) {
-            RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
-            RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
-            null -> SystemTheme.Unknown
-          }
-        CompositionLocalProvider(
-          LocalInspectionMode provides inspectionMode,
-          androidx.compose.ui.LocalSystemTheme provides systemTheme,
-          LocalDensity provides density,
-        ) {
-          val bgColor =
-            when {
-              spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
-              spec.showBackground -> Color.White
-              else -> Color.Transparent
+      trace.section("compose:setContent") {
+        scene.setContent {
+          // PROTOCOL.md § 5 (`renderNow.overrides.uiMode`) — Compose Desktop's
+          // `isSystemInDarkTheme()` reads `LocalSystemTheme.current` (foundation-desktop's
+          // `DarkTheme.skiko.kt`). Override it here so `uiMode = "dark"` actually flips dark-aware
+          // composables instead of falling through to the JVM's `org.jetbrains.skiko.SystemTheme`
+          // probe.
+          val systemTheme =
+            when (spec.uiMode) {
+              RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
+              RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
+              null -> SystemTheme.Unknown
             }
-          Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-            // Trampoline through a @Composable so the reflective invocation lands inside the
-            // running composition. Mirrors `:renderer-desktop`'s InvokeComposable.
-            InvokeComposable(composableMethod)
+          CompositionLocalProvider(
+            LocalInspectionMode provides inspectionMode,
+            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            LocalDensity provides density,
+          ) {
+            val bgColor =
+              when {
+                spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
+                spec.showBackground -> Color.White
+                else -> Color.Transparent
+              }
+            Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+              // Trampoline through a @Composable so the reflective invocation lands inside the
+              // running composition. Mirrors `:renderer-desktop`'s InvokeComposable.
+              InvokeComposable(composableMethod)
+            }
           }
         }
       }
@@ -237,25 +249,30 @@ class RenderEngine(
     state: SceneState,
     requestId: Long,
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
+    trace: PerfettoTraceDataProducer.Recorder =
+      PerfettoTraceDataProducer.recorder(state.spec.outputBaseName, backend = "desktop"),
   ): RenderResult {
     val startNs = System.nanoTime()
 
     // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
     // as `:renderer-desktop`'s renderPreview.
-    state.scene.render()
-    val image = state.scene.render()
+    trace.section("compose:frame") { state.scene.render() }
+    val image = trace.section("compose:captureFrame") { state.scene.render() }
 
     val pngData =
-      image.encodeToData(EncodedImageFormat.PNG)
-        ?: error(
-          "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
-        )
+      trace.section("render:encodePng") {
+        image.encodeToData(EncodedImageFormat.PNG)
+          ?: error(
+            "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
+          )
+      }
 
     state.outputFile.parentFile?.mkdirs()
-    state.outputFile.writeBytes(pngData.bytes)
+    trace.section("render:writePng") { state.outputFile.writeBytes(pngData.bytes) }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
+    dataDir?.let(trace::write)
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(state.classLoader),

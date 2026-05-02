@@ -199,6 +199,7 @@ internal object ComposePreviewTasks {
     // captures only serialisable references — `org.gradle.configuration-cache.problems=fail`
     // refuses anything that captures `project` / `this` task / `extension`.
     val previewsJsonProvider = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
+    val rendersDirProvider = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
     val outputFileProvider = previewOutputDir.map { it.file("daemon-launch.json") }
     val daemonFontsCacheDir =
       project.layout.projectDirectory
@@ -276,8 +277,13 @@ internal object ComposePreviewTasks {
         extension.daemon.warmSpare.map { it.toString() },
       )
       systemProperties.put("composeai.daemon.modulePath", project.path)
+      systemProperties.put("composeai.render.outputDir", rendersDirProvider)
       systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
       systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+      systemProperties.put(
+        "composeai.daemon.perfettoTrace",
+        AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
+      )
       systemProperties.put(
         "composeai.daemon.userClassDirs",
         this.classpath.elements.map { elements ->

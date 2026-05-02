@@ -129,9 +129,17 @@ abstract class DataPluginsExtension @Inject constructor(objects: ObjectFactory) 
   val a11y: A11yDataPluginExtension =
     objects.newInstance(A11yDataPluginExtension::class.java, "a11y")
 
+  val composeAiTrace: ComposeAiTraceDataPluginExtension =
+    objects.newInstance(ComposeAiTraceDataPluginExtension::class.java, "composeAiTrace")
+
   /** Configure the built-in accessibility data plugin. */
   fun a11y(action: Action<A11yDataPluginExtension>) {
     action.execute(a11y)
+  }
+
+  /** Configure the compose-ai-tools render trace data plugin. */
+  fun composeAiTrace(action: Action<ComposeAiTraceDataPluginExtension>) {
+    action.execute(composeAiTrace)
   }
 
   /**
@@ -190,6 +198,10 @@ constructor(private val pluginName: String, objects: ObjectFactory) : Named {
 }
 
 abstract class A11yDataPluginExtension
+@Inject
+constructor(pluginName: String, objects: ObjectFactory) : DataPluginExtension(pluginName, objects)
+
+abstract class ComposeAiTraceDataPluginExtension
 @Inject
 constructor(pluginName: String, objects: ObjectFactory) : DataPluginExtension(pluginName, objects)
 

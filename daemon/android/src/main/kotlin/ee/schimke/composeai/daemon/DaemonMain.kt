@@ -257,6 +257,12 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: ComposeSemanticsDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(ComposeSemanticsDataProductRegistry(rootDir = dataRoot))
+          if (PerfettoTraceDataProducer.enabled()) {
+            System.err.println(
+              "compose-ai-tools daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
+            )
+            add(PerfettoTraceDataProductRegistry(rootDir = dataRoot))
+          }
           if (attachA11y) {
             System.err.println(
               "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
