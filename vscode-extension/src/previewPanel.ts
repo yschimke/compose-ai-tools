@@ -636,13 +636,33 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             setInteractiveForCard(card, shift);
         }
 
-        // Idempotent attach. Adds pointer + wheel listeners to the live card's image
-        // exactly once; flagged via dataset so a second updateImage on the
-        // same element doesn't stack listeners. Detached the moment live
-        // mode exits, so non-live cards never carry the handler.
+        // Idempotent attach. Adds pointer listeners to the live card's image and a capture-phase
+        // wheel listener to the whole card exactly once; flagged via dataset so a second
+        // updateImage on the same element doesn't stack listeners. The handlers go inert the
+        // moment live mode exits, so non-live cards never consume input.
         function ensureInteractiveInputHandlers(card, img) {
             const previewId = card.dataset.previewId;
             const shouldHandle = !!previewId && interactivePreviewIds.has(previewId);
+            if (shouldHandle && card.dataset.interactiveWheelBound !== '1') {
+                card.dataset.interactiveWheelBound = '1';
+                card.addEventListener('wheel', (evt) => {
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id)) return;
+                    // Live previews own wheel input while the cursor is inside the card. If the
+                    // wheel lands on preview pixels, forward it as rotary scroll; if it lands on
+                    // the card chrome, still consume it so enthusiastic scrolling cannot bubble to
+                    // the list and push the live preview out of view.
+                    const currentImg = card.querySelector('img.preview-image, img.preview-gif, img');
+                    const point = currentImg && eventInsideElement(currentImg, evt)
+                        ? imagePoint(currentImg, evt)
+                        : null;
+                    if (currentImg && point) {
+                        postInteractiveInput(id, currentImg, 'rotaryScroll', point, evt.deltaY);
+                    }
+                    evt.preventDefault();
+                    evt.stopImmediatePropagation();
+                }, { passive: false, capture: true });
+            }
             if (shouldHandle && img.dataset.interactiveBound !== '1') {
                 img.dataset.interactiveBound = '1';
                 const state = {
@@ -718,15 +738,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     state.dragging = false;
                     state.sentDown = false;
                 });
-                img.addEventListener('wheel', (evt) => {
-                    const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
-                    const point = imagePoint(img, evt);
-                    if (!point) return;
-                    postInteractiveInput(id, img, 'rotaryScroll', point, evt.deltaY);
-                    evt.preventDefault();
-                    evt.stopPropagation();
-                }, { passive: false });
                 img.addEventListener('contextmenu', (evt) => {
                     const id = card.dataset.previewId;
                     if (!id || !interactivePreviewIds.has(id)) return;
@@ -755,6 +766,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 pixelX: Math.max(0, Math.min(natW - 1, pixelX)),
                 pixelY: Math.max(0, Math.min(natH - 1, pixelY)),
             };
+        }
+
+        function eventInsideElement(el, evt) {
+            const rect = el.getBoundingClientRect();
+            return evt.clientX >= rect.left && evt.clientX <= rect.right &&
+                evt.clientY >= rect.top && evt.clientY <= rect.bottom;
         }
 
         function postInteractiveInput(previewId, img, kind, point, scrollDeltaY) {
