@@ -228,6 +228,43 @@ def _read_manifest(manifest_path: Path) -> list[dict[str, Any]]:
     return data.get("previews", [])
 
 
+def _resolve_source_file(sf: str, module_dir: Path, workspace_root: Path) -> Path | None:
+    """Resolves a `previews.json` `sourceFile` value to an on-disk path.
+
+    The plugin emits a package-qualified relative path (e.g.
+    `com/example/foo/Bar.kt`, see DiscoverPreviewsTask.packageQualifiedSourcePath)
+    rather than an absolute path or a path relative to the module dir, because
+    the bytecode `SourceFile` attribute carries only the basename and the package
+    is the only disambiguator the discovery task has. Probing the standard Android
+    / JVM source roots covers the consumers we exercise in CI; recursive scan is
+    a last-ditch fallback for layouts we haven't seen.
+    """
+    candidate = Path(sf)
+    if candidate.is_absolute():
+        return candidate if candidate.is_file() else None
+    # 1. Module dir + standard source roots — the common Android case
+    #    (`<module>/src/main/java/<package>/<file>.kt`) and the KMP / desktop
+    #    JVM case (`<module>/src/main/kotlin/<package>/<file>.kt`).
+    for source_root in ("src/main/java", "src/main/kotlin", "src/jvmMain/kotlin",
+                        "src/commonMain/kotlin", "src/main/jvm"):
+        probe = module_dir / source_root / sf
+        if probe.is_file():
+            return probe
+    # 2. Module dir directly (some custom layouts).
+    probe = module_dir / sf
+    if probe.is_file():
+        return probe
+    # 3. Last-ditch: walk the workspace looking for a file whose path tail
+    #    matches the relative `sourceFile`. Bounded depth to avoid pathological
+    #    monorepos.
+    needle = Path(sf)
+    suffix_parts = needle.parts
+    for path in workspace_root.rglob(needle.name):
+        if path.is_file() and path.parts[-len(suffix_parts):] == suffix_parts:
+            return path
+    return None
+
+
 def _png_signature(paths: list[Path]) -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
     for p in paths:
@@ -336,10 +373,15 @@ def main() -> int:
 
     edit_target = args.edit_file
     if not edit_target:
+        module_dir = Path(descriptor["workingDirectory"]).resolve()
+        workspace_root = Path(args.workspace_root).resolve()
         for p in previews:
             sf = p.get("sourceFile")
-            if sf and Path(sf).exists():
-                edit_target = sf
+            if not sf:
+                continue
+            resolved = _resolve_source_file(sf, module_dir, workspace_root)
+            if resolved is not None:
+                edit_target = str(resolved)
                 break
     if not edit_target:
         print("[daemon-roundtrip] no editable source file found", file=sys.stderr)

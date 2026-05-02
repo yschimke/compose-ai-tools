@@ -756,16 +756,13 @@ internal object AndroidPreviewSupport {
         project.logger.debug("compose-ai-tools: :daemon:android project not found, skipping", e)
       }
     } else {
-      // External mode is intentionally a no-op while the daemon is
-      // experimental and unpublished. The daemon stays disabled by
-      // default (DaemonExtension.enabled = false), so a consumer outside
-      // this repo who flips it on will see VS Code surface a clear
-      // ClassNotFoundException rather than silently picking a stale path.
-      // When publishing of :daemon:android lands, replace this
-      // log with the same coords shape used for rendererConfig above.
-      project.logger.debug(
-        "compose-ai-tools: :daemon:android is not yet published; " +
-          "experimental.daemon only works with the in-repo source layout."
+      // External-consumer mode: pull `daemon-android` from Maven Central — published as part of
+      // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
+      // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
+      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
+      project.dependencies.add(
+        daemonRendererConfig.name,
+        "ee.schimke.composeai:daemon-android:${PluginVersion.value}",
       )
     }
 
