@@ -15,7 +15,8 @@ import tapmoc.configureKotlinCompatibility
 // model classes (`AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry`
 // / `AccessibilityReport`). Anything that depends only on AndroidX, Compose,
 // AndroidX-test or ATF lives here; daemon coupling lives in
-// `:data-a11y-connector` (which is unpublished).
+// `:data-a11y-connector`, which is published only to satisfy daemon-android's
+// external transitive dependency.
 //
 // Pairs with `:data-a11y-connector` — see docs/daemon/DATA-PRODUCTS.md §
 // "Module split (D2.2)".
