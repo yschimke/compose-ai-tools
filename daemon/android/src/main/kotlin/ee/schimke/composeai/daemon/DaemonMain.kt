@@ -70,13 +70,20 @@ fun main(args: Array<String>) {
     )
   }
 
-  // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. The
-  // DaemonSupervisor passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` via the
-  // launch descriptor's systemProperties; sandbox pooling collapses what used to be N separate
-  // daemon JVMs into one JVM with N sandbox slots. Default 1 preserves the pre-pool single-
-  // sandbox behaviour bit-for-bit.
+  // The plugin has exposed `composeai.daemon.warmSpare=true` by default since the daemon launch
+  // descriptor was introduced, but the Android daemon previously ignored it and came up with a
+  // single sandbox unless the experimental sandbox-count property was set manually. Held
+  // interactive sessions need slot 1 pinned while slot 0 continues normal renders, so default the
+  // pool to two sandboxes when warmSpare is on. Explicit `composeai.daemon.sandboxCount` still wins.
+  val warmSpareEnabled = System.getProperty(WARM_SPARE_PROP)?.toBooleanStrictOrNull() ?: true
+  val defaultSandboxCount = if (warmSpareEnabled) 2 else 1
+
+  // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. When unset, use
+  // the warm-spare-derived default above so production Android daemons have the second sandbox
+  // required for held interactive sessions.
   val sandboxCount =
-    (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: 1).coerceAtLeast(1)
+    (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: defaultSandboxCount)
+      .coerceAtLeast(1)
 
   // SANDBOX-POOL-FOLLOWUPS.md (#1) — per-slot child loaders. The factory closes over the URL
   // list and constructs one holder per slot, parented to the slot's own sandbox classloader. The
@@ -88,6 +95,26 @@ fun main(args: Array<String>) {
         UserClassLoaderHolder(urls = userClassUrls, parentSupplier = { sandboxClassLoader })
       }
     } else null
+
+  // B2.2 phase 1 — load the in-memory preview index from `previews.json`. The gradle plugin's
+  // `composePreviewDaemonStart` task emits the absolute path as a sysprop on the daemon JVM (see
+  // `composeai.daemon.previewsJsonPath` in AndroidPreviewSupport.kt). Load this before host
+  // construction so Android's held interactive session can resolve `interactive/start.previewId`
+  // into the concrete class/function/display spec. Without this resolver the daemon still accepts
+  // `interactive/start`, but clicks fall back to stateless re-renders and `remember` state such as
+  // "Taps: 0" never mutates.
+  val previewsJsonPath = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+  val previewIndex: PreviewIndex =
+    if (!previewsJsonPath.isNullOrBlank()) {
+      val loaded = PreviewIndex.loadFromFile(Path.of(previewsJsonPath))
+      System.err.println(
+        "compose-ai-tools daemon: PreviewIndex loaded " +
+          "(path=${loaded.path}, previewCount=${loaded.size})"
+      )
+      loaded
+    } else {
+      PreviewIndex.empty()
+    }
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
@@ -125,6 +152,8 @@ fun main(args: Array<String>) {
       RobolectricHost(
         userClassloaderHolderFactory = userClassloaderHolderFactory,
         sandboxCount = sandboxCount,
+        previewSpecResolver =
+          previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
       )
     }
 
@@ -143,23 +172,6 @@ fun main(args: Array<String>) {
           "(cheap=${cheap.size}, classpath=${classpath.size})"
       )
       ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
-    }
-
-  // B2.2 phase 1 — load the in-memory preview index from `previews.json`. The gradle plugin's
-  // `composePreviewDaemonStart` task emits the absolute path as a sysprop on the daemon JVM (see
-  // `composeai.daemon.previewsJsonPath` in AndroidPreviewSupport.kt). When unset (in-process tests,
-  // ad-hoc launches) we come up with the empty index — same shape as the pre-B2.2 stub.
-  val previewsJsonPath = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
-  val previewIndex: PreviewIndex =
-    if (!previewsJsonPath.isNullOrBlank()) {
-      val loaded = PreviewIndex.loadFromFile(Path.of(previewsJsonPath))
-      System.err.println(
-        "compose-ai-tools daemon: PreviewIndex loaded " +
-          "(path=${loaded.path}, previewCount=${loaded.size})"
-      )
-      loaded
-    } else {
-      PreviewIndex.empty()
     }
 
   // B2.2 phase 2 — wire the incremental rescan path. Mirrors `:daemon:desktop`'s wireup; the
@@ -258,8 +270,48 @@ private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
 private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
 
 /**
+ * Adapts [PreviewIndex] into the resolver [RobolectricHost] needs for held interactive sessions.
+ * Production Android live mode receives only a protocol-level preview id from `interactive/start`;
+ * this resolver maps it back to the class/function and display properties from `previews.json`.
+ */
+private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String) -> RenderSpec?)? {
+  return { previewId -> previewIndex.byId(previewId)?.let { renderSpecFromInfo(it) } }
+}
+
+/**
+ * Builds the Android [RenderSpec] for a held interactive composition from discovery metadata.
+ * Mirrors the desktop daemon's resolver, with Android-specific fields such as device, locale and
+ * resource uiMode threaded through so a live Wear preview matches the one-shot render.
+ */
+internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
+  val defaults = RenderSpec(className = info.className, functionName = info.methodName)
+  val params = info.params ?: return defaults
+  val density = params.density ?: defaults.density
+  val widthPx = params.widthDp?.let { (it * density).toInt() } ?: defaults.widthPx
+  val heightPx = params.heightDp?.let { (it * density).toInt() } ?: defaults.heightPx
+  val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
+  return RenderSpec(
+    className = info.className,
+    functionName = info.methodName,
+    widthPx = widthPx,
+    heightPx = heightPx,
+    density = density,
+    showBackground = params.showBackground ?: defaults.showBackground,
+    backgroundColor = params.backgroundColor ?: defaults.backgroundColor,
+    device = params.device ?: defaults.device,
+    outputBaseName = defaults.outputBaseName,
+    localeTag = params.locale ?: defaults.localeTag,
+    fontScale = params.fontScale ?: defaults.fontScale,
+    uiMode = uiMode,
+    orientation = defaults.orientation,
+  )
+}
+
+/**
  * SANDBOX-POOL.md (Layer 3) — sandbox-pool size knob. Set by [DaemonSupervisor] from
  * `1 + replicasPerDaemon`. Default 1 preserves the pre-pool single-sandbox behaviour. Values < 1
  * are coerced to 1.
  */
 private const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"
+
+private const val WARM_SPARE_PROP = "composeai.daemon.warmSpare"
