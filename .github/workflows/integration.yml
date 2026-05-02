@@ -46,7 +46,7 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Publish plugin + renderer-android + data-a11y-core + daemon-* to mavenLocal
+      - name: Publish plugin + renderer-android + data-a11y-* + daemon-* to mavenLocal
         # Both `gradle-plugin` and `renderer-android` are needed end-to-end:
         # the plugin resolves through pluginManagement when the consumer's
         # `plugins { }` block is patched, and it wires
@@ -65,6 +65,7 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishToMavenLocal \
             :data-a11y-core:publishToMavenLocal \
+            :data-a11y-connector:publishToMavenLocal \
             :renderer-android:publishToMavenLocal \
             :daemon:core:publishToMavenLocal \
             :daemon:desktop:publishToMavenLocal \
