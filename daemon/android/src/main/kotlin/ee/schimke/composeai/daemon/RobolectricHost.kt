@@ -105,6 +105,25 @@ open class RobolectricHost(
     null,
 ) : RenderHost {
 
+  /**
+   * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the Robolectric
+   * renderer applies all eight `PreviewOverrides` fields. Size / density / locale / uiMode /
+   * orientation / device flow into `RuntimeEnvironment.setQualifiers`; `fontScale` flows into
+   * `RuntimeEnvironment.setFontScale` (a Configuration knob, not a qualifier — see
+   * `daemon/android/.../RenderEngine.kt` for the call site).
+   */
+  override val supportedOverrides: Set<String> =
+    setOf(
+      "widthPx",
+      "heightPx",
+      "density",
+      "localeTag",
+      "fontScale",
+      "uiMode",
+      "orientation",
+      "device",
+    )
+
   init {
     require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
     require(userClassloaderHolder == null || userClassloaderHolderFactory == null) {

@@ -69,6 +69,15 @@ describe('daemon protocol — golden fixtures', () => {
         assert.ok(pixel5, 'fixture should include id:pixel_5');
         assert.strictEqual(pixel5!.widthDp, 393);
         assert.strictEqual(pixel5!.density, 2.75);
+        // PROTOCOL.md § 3 — supportedOverrides advertises which `PreviewOverrides` fields
+        // this host actually applies. Desktop omits `localeTag` and `orientation`; the
+        // fixture mirrors a desktop daemon so those should be absent.
+        const supported = result.capabilities.supportedOverrides ?? [];
+        assert.ok(supported.includes('widthPx'), 'desktop should advertise widthPx');
+        assert.ok(supported.includes('uiMode'), 'desktop should advertise uiMode');
+        assert.ok(supported.includes('device'), 'desktop should advertise device');
+        assert.ok(!supported.includes('localeTag'), 'desktop should NOT advertise localeTag');
+        assert.ok(!supported.includes('orientation'), 'desktop should NOT advertise orientation');
     });
 
     it('parses client-fileChanged.json with all required fields', () => {

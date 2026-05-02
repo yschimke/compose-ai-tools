@@ -97,6 +97,22 @@ interface RenderHost {
     get() = false
 
   /**
+   * Field names from `PreviewOverrides` (see PROTOCOL.md § 5 `renderNow.overrides`) that this host
+   * actually applies during a render. Names match the JSON spelling on the wire: `widthPx`,
+   * `heightPx`, `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`. Surfaced
+   * verbatim as `InitializeResult.capabilities.supportedOverrides` so clients can grey out
+   * unsupported sliders and MCP can warn agents who set fields the backend would silently ignore.
+   *
+   * The default empty set is the safe pre-feature value — clients treat absent and `[]` identically
+   * and assume any field they pass might be ignored. Real backends override: `RobolectricHost`
+   * advertises all eight; `DesktopHost` omits `localeTag` (no `LocalLocale` CompositionLocal +
+   * `Locale.setDefault` is JVM-thread-unsafe — see `daemon/desktop/.../RenderEngine.kt`) and
+   * `orientation` (no rotation concept on `ImageComposeScene`).
+   */
+  val supportedOverrides: Set<String>
+    get() = emptySet()
+
+  /**
    * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
    * documented in
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).

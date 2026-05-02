@@ -131,6 +131,19 @@ data class ServerCapabilities(
    * `daemon/core/.../daemon/devices/DeviceDimensions.kt` for the source of truth.
    */
   val knownDevices: List<KnownDevice> = emptyList(),
+  /**
+   * The `PreviewOverrides` field names this daemon's host actually applies (see PROTOCOL.md § 5
+   * `renderNow.overrides`). Names match the JSON spelling on the wire: `widthPx`, `heightPx`,
+   * `density`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `device`. Lets clients grey out
+   * unsupported sliders and lets MCP warn agents who set fields the backend would silently ignore.
+   * Empty list = pre-feature daemon (clients treat absent and `[]` identically and assume any field
+   * they pass might be ignored).
+   *
+   * Today: `RobolectricHost` advertises all eight; `DesktopHost` omits `localeTag` (Compose Desktop
+   * has no `LocalLocale` CompositionLocal + `Locale.setDefault(...)` is JVM-thread- unsafe) and
+   * `orientation` (no rotation concept on `ImageComposeScene`).
+   */
+  val supportedOverrides: List<String> = emptyList(),
 )
 
 /**
@@ -301,12 +314,13 @@ data class DataFetchResult(
   val bytes: String? = null,
 )
 
-/** Shared params shape for `data/subscribe` and `data/unsubscribe`.
+/**
+ * Shared params shape for `data/subscribe` and `data/unsubscribe`.
  *
- * `params` is the per-kind subscription option bag — e.g. `compose/recomposition` consumes
- * `{ frameStreamId, mode: "delta" }` from it. Stateless kinds (`a11y/atf`, `a11y/hierarchy`)
- * leave it null. See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)
- * § "Recomposition + interactive mode".
+ * `params` is the per-kind subscription option bag — e.g. `compose/recomposition` consumes `{
+ * frameStreamId, mode: "delta" }` from it. Stateless kinds (`a11y/atf`, `a11y/hierarchy`) leave it
+ * null. See [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) §
+ * "Recomposition + interactive mode".
  */
 @Serializable
 data class DataSubscribeParams(

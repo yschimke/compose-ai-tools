@@ -102,6 +102,19 @@ open class DesktopHost(
   override val supportsInteractive: Boolean
     get() = previewSpecResolver != null
 
+  /**
+   * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the desktop renderer
+   * applies size / density / fontScale (via `Density(density, fontScale)` on the
+   * `ImageComposeScene` constructor + `LocalDensity`), `uiMode` (via `LocalSystemTheme`), and
+   * `device` (resolved by `DeviceDimensions`). `localeTag` is no-op on desktop because Compose
+   * Desktop has no `LocalLocale` CompositionLocal and `Locale.setDefault(...)` is JVM-thread-
+   * unsafe (every other thread would see the override during the render). `orientation` is no-op
+   * because `ImageComposeScene` has no rotation concept — see `daemon/desktop/.../RenderEngine.kt`
+   * for the docstring.
+   */
+  override val supportedOverrides: Set<String> =
+    setOf("widthPx", "heightPx", "density", "fontScale", "uiMode", "device")
+
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
