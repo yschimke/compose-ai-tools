@@ -151,6 +151,51 @@ interface RenderHost {
       "interactive mode unsupported by ${this::class.simpleName ?: this::class.java.name}"
     )
 
+  /**
+   * `true` when this host's [acquireRecordingSession] returns a real held-scene session that drives
+   * a virtual frame clock and writes per-frame PNGs. `false` (the default) when the host inherits
+   * the throwing default and `recording/start` is rejected with `MethodNotFound (-32601)`. Surfaced
+   * verbatim as `InitializeResult.capabilities.recording`.
+   *
+   * Implementations MUST keep this in sync with their [acquireRecordingSession] override.
+   */
+  val supportsRecording: Boolean
+    get() = false
+
+  /**
+   * Allocate a [RecordingSession] for [previewId] — the scripted screen-record surface. The session
+   * holds a warm `ImageComposeScene` (or per-host equivalent) for the duration of the recording so
+   * `remember`'d state and animation timing are continuous across the virtual timeline.
+   *
+   * Hosts that support recording (today: `:daemon:desktop`'s `DesktopHost`) override and return a
+   * concrete session. The default body throws [UnsupportedOperationException] which
+   * [JsonRpcServer.handleRecordingStart] translates to `MethodNotFound (-32601)` on the wire.
+   *
+   * @param recordingId opaque session id assigned by [JsonRpcServer]; passed back on every
+   *   `recording/script` / `recording/stop` / `recording/encode` so the daemon can route to the
+   *   right held session.
+   * @param classLoader the disposable child loader from [UserClassLoaderHolder.currentChildLoader]
+   *   (B2.0 — see [CLASSLOADER.md](../../../../../../docs/daemon/CLASSLOADER.md)).
+   * @param fps frames per second at the virtual clock. Caller-validated to be in `[1, 120]`.
+   * @param scale output-frame size multiplier. Caller-validated to be in `(0, 8]`. Coordinates stay
+   *   in image-natural pixel space — the host scales the captured surface at encode time, not at
+   *   composition time.
+   * @param overrides per-render display overrides applied to the held scene; same shape and
+   *   semantics as `renderNow.overrides`. Lets a `Button`-sized component preview be recorded at
+   *   its natural size with a custom background.
+   */
+  fun acquireRecordingSession(
+    previewId: String,
+    recordingId: String,
+    classLoader: ClassLoader,
+    fps: Int,
+    scale: Float,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): RecordingSession =
+    throw UnsupportedOperationException(
+      "recording unsupported by ${this::class.simpleName ?: this::class.java.name}"
+    )
+
   companion object {
     /**
      * Monotonic id source shared across [JsonRpcServer] (which assigns ids to incoming render

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -122,6 +123,13 @@ open class DesktopHost(
    * tests that exercise the v1 fallback path).
    */
   override val supportsInteractive: Boolean
+    get() = previewSpecResolver != null
+
+  /**
+   * RECORDING.md — same gating as [supportsInteractive]. Recording rides the held-scene machinery,
+   * so a host without a resolver can't allocate a session either way.
+   */
+  override val supportsRecording: Boolean
     get() = previewSpecResolver != null
 
   /**
@@ -282,6 +290,125 @@ open class DesktopHost(
   }
 
   /**
+   * RECORDING.md — allocate a [DesktopRecordingSession] holding a long-lived
+   * [androidx.compose.ui.ImageComposeScene] for [previewId]. Resolves the preview spec via
+   * [previewSpecResolver] (same path as [acquireInteractiveSession]) and merges the inbound
+   * [overrides] over it before [RenderEngine.setUp]. Session frame PNGs land at
+   * `<recordingsRoot>/<recordingId>/frame-NNNNN.png`; encoded videos land at
+   * `<recordingsRoot>/encoded/<recordingId>.<ext>`.
+   *
+   * The held scene composes with `LocalInspectionMode = false` — same as the interactive path — so
+   * `Modifier.clickable {}` and pointer-input modifiers fire on dispatched events.
+   */
+  override fun acquireRecordingSession(
+    previewId: String,
+    recordingId: String,
+    classLoader: ClassLoader,
+    fps: Int,
+    scale: Float,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): RecordingSession {
+    val resolver =
+      previewSpecResolver
+        ?: throw UnsupportedOperationException(
+          "DesktopHost has no previewSpecResolver; pass one at construction time to enable " +
+            "recording sessions"
+        )
+    val baseSpec =
+      resolver(previewId)
+        ?: throw UnsupportedOperationException(
+          "DesktopHost.previewSpecResolver returned null for previewId='$previewId'; " +
+            "recording session not allocated"
+        )
+    val effectiveSpec = applyOverrides(baseSpec, overrides, recordingId)
+    val state = engine.setUp(effectiveSpec, classLoader, inspectionMode = false)
+    val recordingsRoot = recordingsRootDir()
+    val framesDir = File(File(recordingsRoot, "frames"), recordingId)
+    val encodedDir = File(recordingsRoot, "encoded")
+    return DesktopRecordingSession(
+      previewId = previewId,
+      recordingId = recordingId,
+      fps = fps,
+      scale = scale,
+      engine = engine,
+      state = state,
+      sandboxStats = sandboxStats,
+      framesDir = framesDir,
+      encodedDir = encodedDir,
+    )
+  }
+
+  /**
+   * Resolve the directory recordings live under. Defers to `composeai.daemon.recordingsDir` when
+   * set (the gradle plugin's daemon launch descriptor will eventually populate this); falls back to
+   * a sibling of the engine's output dir so unit tests don't need to set the property.
+   */
+  private fun recordingsRootDir(): File {
+    val sysprop = System.getProperty(RECORDINGS_DIR_PROP)
+    if (sysprop != null && sysprop.isNotBlank()) return File(sysprop)
+    val engineOut = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
+    val parent =
+      if (engineOut != null && engineOut.isNotBlank()) File(engineOut).parentFile
+      else File("${System.getProperty("user.dir")}/.compose-preview-history")
+    return File(parent ?: File(System.getProperty("user.dir")), "daemon-recordings")
+  }
+
+  /**
+   * Merge [overrides] over [base], resolving `device` against [DeviceDimensions] when present.
+   * Mirrors the stringly-typed merge that `JsonRpcServer.encodeRenderPayload` +
+   * `RenderSpec.parseFromPayload` perform on the renderNow path — typed because recording doesn't
+   * go through the host's render-queue payload string.
+   *
+   * Explicit `widthPx` / `heightPx` / `density` overrides win over `device`-resolved values.
+   * `outputBaseName` is rewritten to `recording-<recordingId>` so a stray engine fast-path encode
+   * (only used by the one-shot `engine.render` wrapper, not by the recording flow) wouldn't collide
+   * with another preview's PNG. The recording flow itself never reads it.
+   */
+  private fun applyOverrides(
+    base: RenderSpec,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    recordingId: String,
+  ): RenderSpec {
+    if (overrides == null) {
+      return base.copy(outputBaseName = "recording-$recordingId")
+    }
+    val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
+    val deviceSpec = deviceOverride?.let {
+      ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
+    }
+    val baseDensity = overrides.density ?: deviceSpec?.density ?: base.density
+    val baseWidthPx =
+      overrides.widthPx ?: deviceSpec?.let { (it.widthDp * baseDensity).toInt() } ?: base.widthPx
+    val baseHeightPx =
+      overrides.heightPx ?: deviceSpec?.let { (it.heightDp * baseDensity).toInt() } ?: base.heightPx
+    val uiMode =
+      when (overrides.uiMode) {
+        ee.schimke.composeai.daemon.protocol.UiMode.LIGHT -> RenderSpec.SpecUiMode.LIGHT
+        ee.schimke.composeai.daemon.protocol.UiMode.DARK -> RenderSpec.SpecUiMode.DARK
+        null -> base.uiMode
+      }
+    val orientation =
+      when (overrides.orientation) {
+        ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT ->
+          RenderSpec.SpecOrientation.PORTRAIT
+        ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE ->
+          RenderSpec.SpecOrientation.LANDSCAPE
+        null -> base.orientation
+      }
+    return base.copy(
+      widthPx = baseWidthPx,
+      heightPx = baseHeightPx,
+      density = baseDensity,
+      device = deviceOverride ?: base.device,
+      localeTag = overrides.localeTag?.takeIf { it.isNotBlank() } ?: base.localeTag,
+      fontScale = overrides.fontScale ?: base.fontScale,
+      uiMode = uiMode,
+      orientation = orientation,
+      outputBaseName = "recording-$recordingId",
+    )
+  }
+
+  /**
    * Sends the poison pill, drains the in-flight render (DESIGN § 9 invariant: never aborts a render
    * mid-flight), waits up to [timeoutMs] for the worker thread to exit. Idempotent.
    */
@@ -405,5 +532,14 @@ open class DesktopHost(
       current = current.targetException ?: return current
     }
     return current
+  }
+
+  companion object {
+    /**
+     * System property carrying the absolute path of the recordings directory. Set by the gradle
+     * plugin's daemon launch descriptor in production; left unset in tests, in which case
+     * [recordingsRootDir] falls back to a sibling of [RenderEngine.OUTPUT_DIR_PROP].
+     */
+    const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
   }
 }

@@ -376,6 +376,22 @@ class JsonRpcServer(
 
   private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
 
+  // ----------------------------------------------------------------------
+  // Recording (scripted screen-record) state — see docs/daemon/RECORDING.md.
+  //
+  // [recordings] is the set of allocated [RecordingSession]s keyed by `recordingId`. Each entry
+  // is a held-scene driver for one scripted timeline. Lifecycle: insert at `recording/start`,
+  // mutate via `recording/script`, drive via `recording/stop`, encode via `recording/encode`,
+  // remove on session close (which happens at daemon shutdown via [closeAllRecordingSessions] or
+  // explicit close — there's no per-session idle watchdog in v1; the daemon's overall idle-
+  // timeout exit closes everything when the agent disconnects). The map lookup is concurrent so
+  // a `recording/encode` can safely race a daemon-shutdown drain.
+  // ----------------------------------------------------------------------
+
+  private val recordings = ConcurrentHashMap<String, RecordingSession>()
+
+  private val nextRecordingIdCounter = java.util.concurrent.atomic.AtomicLong(1)
+
   /**
    * Preview ids currently in-flight for an override-bearing render. PROTOCOL.md § 5
    * (`renderNow.overrides`) — when a second override-bearing `renderNow` arrives for a previewId
@@ -544,6 +560,9 @@ class JsonRpcServer(
       "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
       "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
       "interactive/start" -> handleInteractiveStart(req)
+      "recording/start" -> handleRecordingStart(req)
+      "recording/stop" -> handleRecordingStop(req)
+      "recording/encode" -> handleRecordingEncode(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -609,6 +628,10 @@ class JsonRpcServer(
             // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
             // default (FakeHost, RobolectricHost today) — clients fall back to v1 dispatch.
             interactive = host.supportsInteractive,
+            // RECORDING.md — `true` when the host's `acquireRecordingSession` returns a real
+            // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
+            // `MethodNotFound` reply so clients can grey out the toggle.
+            recording = host.supportsRecording,
             // PROTOCOL.md § 3 — surface the daemon's `DeviceDimensions` catalog so clients can
             // build a `renderNow.overrides.device` picker without re-bundling the list. The
             // catalog itself lives in `:daemon:core/.../daemon/devices/DeviceDimensions.kt`;
@@ -1920,6 +1943,237 @@ class JsonRpcServer(
       .start()
   }
 
+  // --------------------------------------------------------------------------
+  // Recording (scripted screen-record) — docs/daemon/RECORDING.md.
+  //
+  // `recording/start`  → request: allocate a held-scene RecordingSession; respond with recordingId.
+  // `recording/script` → notification: append timeline events; no response.
+  // `recording/stop`   → request: play the timeline back at virtual fps, write per-frame PNGs;
+  //                      respond with frame metadata. Runs on a worker thread because the playback
+  //                      can take seconds for longer scripts and we don't want to block the
+  //                      JSON-RPC read loop.
+  // `recording/encode` → request: wrap the on-disk frames into an APNG (v1; mp4/webm v2). Also
+  //                      runs on a worker thread.
+  //
+  // No per-session idle watchdog in v1: when the agent disconnects, the daemon's overall idle-
+  // timeout exit path closes every recording via [closeAllRecordingSessions]. The user who
+  // requested this surface confirmed that's the right reuse of the existing
+  // `composeai.daemon.idleTimeoutMs` knob.
+  // --------------------------------------------------------------------------
+
+  private fun handleRecordingStart(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.RecordingStartParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid recording/start params: ${e.message}",
+        )
+        return
+      }
+    if (params.previewId.isBlank()) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "recording/start: previewId is blank",
+      )
+      return
+    }
+    val fps = params.fps ?: DEFAULT_RECORDING_FPS
+    if (fps !in MIN_RECORDING_FPS..MAX_RECORDING_FPS) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "recording/start: fps=$fps out of range [$MIN_RECORDING_FPS, $MAX_RECORDING_FPS]",
+      )
+      return
+    }
+    val scale = params.scale ?: DEFAULT_RECORDING_SCALE
+    if (scale <= 0f || scale > MAX_RECORDING_SCALE) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "recording/start: scale=$scale out of range (0, $MAX_RECORDING_SCALE]",
+      )
+      return
+    }
+    val recordingId = "rec-${nextRecordingIdCounter.getAndIncrement()}"
+    val classLoader =
+      host.userClassloaderHolder?.currentChildLoader()
+        ?: this::class.java.classLoader
+        ?: ClassLoader.getSystemClassLoader()
+    val session: RecordingSession =
+      try {
+        host.acquireRecordingSession(
+          previewId = params.previewId,
+          recordingId = recordingId,
+          classLoader = classLoader,
+          fps = fps,
+          scale = scale,
+          overrides = params.overrides,
+        )
+      } catch (e: UnsupportedOperationException) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_METHOD_NOT_FOUND,
+          message = "recording/start: ${e.message ?: "recording unsupported by this host"}",
+        )
+        return
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: recording/start: acquireRecordingSession failed for " +
+            "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}"
+        )
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "recording/start: ${t.javaClass.simpleName}: ${t.message}",
+        )
+        return
+      }
+    recordings[recordingId] = session
+    sendResponse(
+      req.id,
+      encode(
+        ee.schimke.composeai.daemon.protocol.RecordingStartResult.serializer(),
+        ee.schimke.composeai.daemon.protocol.RecordingStartResult(recordingId = recordingId),
+      ),
+    )
+  }
+
+  private fun handleRecordingScript(
+    params: ee.schimke.composeai.daemon.protocol.RecordingScriptParams
+  ) {
+    val session = recordings[params.recordingId] ?: return // Stale id; drop silently.
+    try {
+      session.postScript(params.events)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: recording/script: postScript failed for " +
+          "recordingId='${params.recordingId}': ${t.javaClass.simpleName}: ${t.message}"
+      )
+    }
+  }
+
+  private fun handleRecordingStop(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.RecordingStopParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid recording/stop params: ${e.message}",
+        )
+        return
+      }
+    val session = recordings[params.recordingId]
+    if (session == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "recording/stop: unknown recordingId='${params.recordingId}'",
+      )
+      return
+    }
+    Thread(
+        {
+          try {
+            val r = session.stop()
+            sendResponse(
+              req.id,
+              encode(
+                ee.schimke.composeai.daemon.protocol.RecordingStopResult.serializer(),
+                ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+                  frameCount = r.frameCount,
+                  durationMs = r.durationMs,
+                  framesDir = r.framesDir,
+                  frameWidthPx = r.frameWidthPx,
+                  frameHeightPx = r.frameHeightPx,
+                ),
+              ),
+            )
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: recording/stop($${params.recordingId}) failed: ${t.message}"
+            )
+            sendErrorResponse(
+              id = req.id,
+              code = ERR_INTERNAL,
+              message = "recording/stop: ${t.javaClass.simpleName}: ${t.message}",
+            )
+          }
+        },
+        "compose-ai-daemon-recording-stop-${params.recordingId}",
+      )
+      .apply { isDaemon = true }
+      .start()
+  }
+
+  private fun handleRecordingEncode(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.RecordingEncodeParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid recording/encode params: ${e.message}",
+        )
+        return
+      }
+    val session = recordings[params.recordingId]
+    if (session == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "recording/encode: unknown recordingId='${params.recordingId}'",
+      )
+      return
+    }
+    Thread(
+        {
+          try {
+            val encoded = session.encode(params.format)
+            sendResponse(
+              req.id,
+              encode(
+                ee.schimke.composeai.daemon.protocol.RecordingEncodeResult.serializer(),
+                ee.schimke.composeai.daemon.protocol.RecordingEncodeResult(
+                  videoPath = encoded.videoPath,
+                  mimeType = encoded.mimeType,
+                  sizeBytes = encoded.sizeBytes,
+                ),
+              ),
+            )
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: recording/encode($${params.recordingId}) failed: ${t.message}"
+            )
+            sendErrorResponse(
+              id = req.id,
+              code = ERR_INTERNAL,
+              message = "recording/encode: ${t.javaClass.simpleName}: ${t.message}",
+            )
+          }
+        },
+        "compose-ai-daemon-recording-encode-${params.recordingId}",
+      )
+      .apply { isDaemon = true }
+      .start()
+  }
+
   private fun handleShutdown(req: JsonRpcRequest) {
     shutdownRequested.set(true)
     // Drain in-flight renders before responding, per PROTOCOL.md § 3 and
@@ -1951,6 +2205,10 @@ class JsonRpcServer(
       "interactive/input" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveInputParams.serializer(), n) {
           handleInteractiveInput(it)
+        }
+      "recording/script" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.RecordingScriptParams.serializer(), n) {
+          handleRecordingScript(it)
         }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
     }
@@ -2225,6 +2483,7 @@ class JsonRpcServer(
     // is idempotent (clears the map), so the duplicate call inside cleanShutdown's body is a
     // safe no-op on this path.
     closeAllInteractiveSessions()
+    closeAllRecordingSessions()
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
@@ -2253,6 +2512,26 @@ class JsonRpcServer(
       } catch (e: Throwable) {
         System.err.println(
           "compose-ai-daemon: closeAllInteractiveSessions: session.close() " +
+            "(${session.previewId}) threw ${e.javaClass.simpleName}: ${e.message}; continuing"
+        )
+      }
+    }
+  }
+
+  /**
+   * RECORDING.md — drains every held [RecordingSession] from [recordings], close()'s each one, and
+   * clears the map. Idempotent. Called from both [handleExit] and [cleanShutdown]; mirrors the
+   * [closeAllInteractiveSessions] pattern.
+   */
+  private fun closeAllRecordingSessions() {
+    val sessions = recordings.values.toList()
+    recordings.clear()
+    for (session in sessions) {
+      try {
+        session.close()
+      } catch (e: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: closeAllRecordingSessions: session.close() " +
             "(${session.previewId}) threw ${e.javaClass.simpleName}: ${e.message}; continuing"
         )
       }
@@ -2359,6 +2638,7 @@ class JsonRpcServer(
       System.err.println("compose-ai-daemon: historyManager.stopAutoPrune failed: ${e.message}")
     }
     closeAllInteractiveSessions()
+    closeAllRecordingSessions()
     try {
       host.shutdown()
     } catch (e: Throwable) {
@@ -2466,6 +2746,21 @@ class JsonRpcServer(
      * single-render render body. Overridable per-session via `initialize.options.maxRenderMs`.
      */
     const val DEFAULT_RENDER_TIMEOUT_MS: Long = 5 * 60_000L
+
+    /** RECORDING.md — default `recording/start.fps` when the caller doesn't specify one. */
+    const val DEFAULT_RECORDING_FPS: Int = 30
+
+    /** RECORDING.md — minimum legal `recording/start.fps`. */
+    const val MIN_RECORDING_FPS: Int = 1
+
+    /** RECORDING.md — maximum legal `recording/start.fps`. Capped to keep frame budgets sane. */
+    const val MAX_RECORDING_FPS: Int = 120
+
+    /** RECORDING.md — default `recording/start.scale` when the caller doesn't specify one. */
+    const val DEFAULT_RECORDING_SCALE: Float = 1.0f
+
+    /** RECORDING.md — maximum legal `recording/start.scale` (output dimension multiplier). */
+    const val MAX_RECORDING_SCALE: Float = 8.0f
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
     private const val DEFAULT_HISTORY_DIR: String = ".compose-preview-history"
