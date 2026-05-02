@@ -623,6 +623,8 @@ class DaemonMcpServerTest {
             put("heightPx", 800)
             put("uiMode", "dark")
             put("device", "id:pixel_5")
+            put("captureAdvanceMs", 250)
+            put("inspectionMode", false)
           },
         )
       },
@@ -639,6 +641,8 @@ class DaemonMcpServerTest {
     assertThat(firstOverrides.heightPx).isEqualTo(800)
     assertThat(firstOverrides.uiMode).isEqualTo(ee.schimke.composeai.daemon.protocol.UiMode.DARK)
     assertThat(firstOverrides.device).isEqualTo("id:pixel_5")
+    assertThat(firstOverrides.captureAdvanceMs).isEqualTo(250L)
+    assertThat(firstOverrides.inspectionMode).isFalse()
 
     // A second render_preview call WITHOUT overrides now uses a different RenderKey and triggers
     // a fresh renderNow rather than dedup'ing onto the first. Pre-fix, the now-stale shared key

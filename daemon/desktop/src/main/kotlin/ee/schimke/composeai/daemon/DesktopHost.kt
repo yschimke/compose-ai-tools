@@ -158,10 +158,11 @@ open class DesktopHost(
    * Desktop has no `LocalLocale` CompositionLocal and `Locale.setDefault(...)` is JVM-thread-
    * unsafe (every other thread would see the override during the render). `orientation` is no-op
    * because `ImageComposeScene` has no rotation concept — see `daemon/desktop/.../RenderEngine.kt`
-   * for the docstring.
+   * for the docstring. `inspectionMode` flows into `LocalInspectionMode` on the one-shot render
+   * path; interactive and recording sessions keep their runtime-like `false` default.
    */
   override val supportedOverrides: Set<String> =
-    setOf("widthPx", "heightPx", "density", "fontScale", "uiMode", "device")
+    setOf("widthPx", "heightPx", "density", "fontScale", "uiMode", "device", "inspectionMode")
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
   override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =
@@ -340,7 +341,12 @@ open class DesktopHost(
             "recording session not allocated"
         )
     val effectiveSpec = applyOverrides(baseSpec, overrides, recordingId)
-    val state = engine.setUp(effectiveSpec, classLoader, inspectionMode = false)
+    val state =
+      engine.setUp(
+        effectiveSpec,
+        classLoader,
+        inspectionMode = effectiveSpec.inspectionMode ?: false,
+      )
     val recordingsRoot = recordingsRootDir()
     val framesDir = File(File(recordingsRoot, "frames"), recordingId)
     val encodedDir = File(recordingsRoot, "encoded")
@@ -424,6 +430,7 @@ open class DesktopHost(
       fontScale = overrides.fontScale ?: base.fontScale,
       uiMode = uiMode,
       orientation = orientation,
+      inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
       outputBaseName = "recording-$recordingId",
     )
   }

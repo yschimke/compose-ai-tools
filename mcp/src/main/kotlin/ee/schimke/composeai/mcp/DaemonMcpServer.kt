@@ -512,7 +512,8 @@ class DaemonMcpServer(
         description =
           "Force-render a preview by URI, bypassing any cache. Returns the rendered PNG inline. " +
             "Optional `overrides` apply per-call display-property overrides (size, density, " +
-            "locale, fontScale, uiMode, orientation) — see PROTOCOL.md § 5 (`renderNow.overrides`).",
+            "locale, fontScale, uiMode, orientation, device, inspectionMode) — see PROTOCOL.md " +
+            "§ 5 (`renderNow.overrides`).",
         inputSchema =
           parseSchema(
             """
@@ -531,7 +532,9 @@ class DaemonMcpServer(
                     "fontScale":{"type":"number","description":"Font scale multiplier (1.0 = system default)."},
                     "uiMode":{"type":"string","enum":["light","dark"],"description":"Light/dark mode override. Android-only today."},
                     "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."},
-                    "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or full 'spec:width=400dp,height=800dp,dpi=320'. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."}
+                    "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or full 'spec:width=400dp,height=800dp,dpi=320'. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."},
+                    "captureAdvanceMs":{"type":"integer","description":"Paused-clock advance before capture. Android-only today."},
+                    "inspectionMode":{"type":"boolean","description":"Override LocalInspectionMode for this one-shot render. Null/default keeps preview semantics."}
                   }
                 }
               },
@@ -809,7 +812,9 @@ class DaemonMcpServer(
                     "fontScale":{"type":"number"},
                     "uiMode":{"type":"string","enum":["light","dark"]},
                     "orientation":{"type":"string","enum":["portrait","landscape"]},
-                    "device":{"type":"string"}
+                    "device":{"type":"string"},
+                    "captureAdvanceMs":{"type":"integer"},
+                    "inspectionMode":{"type":"boolean"}
                   }
                 }
               },
@@ -901,7 +906,9 @@ class DaemonMcpServer(
                     "fontScale":{"type":"number"},
                     "uiMode":{"type":"string","enum":["light","dark"]},
                     "orientation":{"type":"string","enum":["portrait","landscape"]},
-                    "device":{"type":"string"}
+                    "device":{"type":"string"},
+                    "captureAdvanceMs":{"type":"integer"},
+                    "inspectionMode":{"type":"boolean"}
                   }
                 }
               },
@@ -1094,6 +1101,8 @@ class DaemonMcpServer(
       check("uiMode", overrides.uiMode != null)
       check("orientation", overrides.orientation != null)
       check("device", overrides.device != null)
+      check("captureAdvanceMs", overrides.captureAdvanceMs != null)
+      check("inspectionMode", overrides.inspectionMode != null)
     }
     val deviceOverride = overrides.device
     val knownIds = daemon.knownDeviceIds
@@ -1136,6 +1145,12 @@ class DaemonMcpServer(
         ?.jsonPrimitive
         ?.contentOrNull
         ?.takeIf { it.isNotBlank() }
+    fun bool(name: String): Boolean? =
+      obj[name]
+        ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.let { it.toBooleanStrictOrNull() ?: error("$name must be true or false, got '$it'") }
     val uiMode =
       str("uiMode")?.let {
         when (it.lowercase()) {
@@ -1161,6 +1176,8 @@ class DaemonMcpServer(
       uiMode = uiMode,
       orientation = orientation,
       device = str("device"),
+      captureAdvanceMs = int("captureAdvanceMs")?.toLong(),
+      inspectionMode = bool("inspectionMode"),
     )
   }
 
