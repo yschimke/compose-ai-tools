@@ -34,7 +34,12 @@ object DeviceDimensions {
    * density to populate `RenderSpec.widthPx`/`heightPx`; the Android backend then re-derives the
    * Robolectric `<n>dpi` qualifier from it.
    */
-  data class DeviceSpec(val widthDp: Int, val heightDp: Int, val density: Float = DEFAULT_DENSITY)
+  data class DeviceSpec(
+    val widthDp: Int,
+    val heightDp: Int,
+    val density: Float = DEFAULT_DENSITY,
+    val isRound: Boolean = false,
+  )
 
   /**
    * The density Android Studio uses when no device is specified — xxhdpi-ish (420dpi → 2.625x),
@@ -123,7 +128,7 @@ object DeviceDimensions {
     )
 
   val DEFAULT = DeviceSpec(400, 800, DEFAULT_DENSITY)
-  val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f)
+  val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f, isRound = true)
 
   /**
    * The set of device-id strings the catalog recognises (every key in [KNOWN_DEVICES]). Useful for
@@ -151,7 +156,7 @@ object DeviceDimensions {
 
     if (device != null) {
       KNOWN_DEVICES[device]?.let {
-        return it
+        return it.copy(isRound = isRoundDeviceString(device))
       }
 
       if (device.startsWith("spec:")) {
@@ -169,13 +174,21 @@ object DeviceDimensions {
         val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
         val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
         val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
+        val isRound = params["isRound"]?.toBooleanStrictOrNull() == true
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
-        return DeviceSpec(w, h, density)
+        return DeviceSpec(w, h, density, isRound = isRound)
       }
 
       if (device.contains("wear", ignoreCase = true)) return DEFAULT_WEAR
     }
 
     return DEFAULT
+  }
+
+  private fun isRoundDeviceString(device: String): Boolean {
+    val lower = device.lowercase()
+    return lower.contains("_round") ||
+      lower.contains("isround=true") ||
+      lower.contains("shape=round")
   }
 }

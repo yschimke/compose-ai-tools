@@ -184,12 +184,14 @@ export interface InitializeResult {
  * One entry in `ServerCapabilities.knownDevices`. The `id` is the string a caller passes via
  * `renderNow.overrides.device` (or `@Preview(device = ...)` at discovery time); the geometry
  * fields let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving.
+ * `isRound` marks circular Wear-style displays.
  */
 export interface KnownDevice {
     id: string;
     widthDp: number;
     heightDp: number;
     density: number;
+    isRound?: boolean;
 }
 
 // Client → daemon notifications (PROTOCOL.md § 4)

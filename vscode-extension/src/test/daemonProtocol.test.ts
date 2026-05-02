@@ -69,6 +69,9 @@ describe('daemon protocol — golden fixtures', () => {
         assert.ok(pixel5, 'fixture should include id:pixel_5');
         assert.strictEqual(pixel5!.widthDp, 393);
         assert.strictEqual(pixel5!.density, 2.75);
+        const wear = known.find(d => d.id === 'id:wearos_small_round');
+        assert.ok(wear, 'fixture should include id:wearos_small_round');
+        assert.strictEqual(wear!.isRound, true);
         // PROTOCOL.md § 3 — supportedOverrides advertises which `PreviewOverrides` fields
         // this host actually applies. Desktop omits `localeTag` and `orientation`; the
         // fixture mirrors a desktop daemon so those should be absent.

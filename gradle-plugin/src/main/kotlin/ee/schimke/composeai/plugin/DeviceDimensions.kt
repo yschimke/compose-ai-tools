@@ -9,7 +9,12 @@ object DeviceDimensions {
    * Compose's `Density(...)` constructor) so output PNGs match what Android Studio's preview
    * renders for the same `@Preview`.
    */
-  data class DeviceSpec(val widthDp: Int, val heightDp: Int, val density: Float = DEFAULT_DENSITY)
+  data class DeviceSpec(
+    val widthDp: Int,
+    val heightDp: Int,
+    val density: Float = DEFAULT_DENSITY,
+    val isRound: Boolean = false,
+  )
 
   /**
    * The density Android Studio uses when no device is specified — xxhdpi-ish (420dpi → 2.625x),
@@ -144,7 +149,7 @@ object DeviceDimensions {
     )
 
   val DEFAULT = DeviceSpec(400, 800, DEFAULT_DENSITY)
-  val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f)
+  val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f, isRound = true)
 
   fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
     // Explicit widthDp/heightDp on the @Preview annotation — no device info,
@@ -156,7 +161,7 @@ object DeviceDimensions {
 
     if (device != null) {
       KNOWN_DEVICES[device]?.let {
-        return it
+        return it.copy(isRound = isRoundDeviceString(device))
       }
 
       if (device.startsWith("spec:")) {
@@ -174,16 +179,24 @@ object DeviceDimensions {
         val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
         val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
         val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
+        val isRound = params["isRound"]?.toBooleanStrictOrNull() == true
         // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
         // — honour it if present, otherwise fall back to the AS default.
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
-        return DeviceSpec(w, h, density)
+        return DeviceSpec(w, h, density, isRound = isRound)
       }
 
       if (device.contains("wear", ignoreCase = true)) return DEFAULT_WEAR
     }
 
     return DEFAULT
+  }
+
+  private fun isRoundDeviceString(device: String): Boolean {
+    val lower = device.lowercase()
+    return lower.contains("_round") ||
+      lower.contains("isround=true") ||
+      lower.contains("shape=round")
   }
 
   /**

@@ -73,10 +73,17 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun `spec string preserves isRound parameter`() {
+    val spec = DeviceDimensions.resolve("spec:width=227dp,height=227dp,dpi=320,isRound=true")
+    assertThat(spec.isRound).isTrue()
+  }
+
+  @Test
   fun `wear device returns wear defaults`() {
     val spec = DeviceDimensions.resolve("id:wearos_large_round")
     assertThat(spec.widthDp).isEqualTo(227)
     assertThat(spec.heightDp).isEqualTo(227)
+    assertThat(spec.isRound).isTrue()
   }
 
   @Test

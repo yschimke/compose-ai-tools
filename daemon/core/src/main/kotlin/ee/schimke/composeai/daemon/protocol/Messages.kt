@@ -198,10 +198,17 @@ enum class BackendKind {
 /**
  * One entry in `ServerCapabilities.knownDevices`. The id is the string a caller passes via
  * `renderNow.overrides.device` (or `@Preview(device = ...)` at discovery time); the geometry fields
- * let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving.
+ * let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving. [isRound]
+ * identifies circular Wear-style displays.
  */
 @Serializable
-data class KnownDevice(val id: String, val widthDp: Int, val heightDp: Int, val density: Float)
+data class KnownDevice(
+  val id: String,
+  val widthDp: Int,
+  val heightDp: Int,
+  val density: Float,
+  val isRound: Boolean = false,
+)
 
 /**
  * One advertised data-product kind. Mirrors `DataProductCapability` in

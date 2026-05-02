@@ -26,7 +26,7 @@
     ],
     "knownDevices": [
       {"id": "id:pixel_5", "widthDp": 393, "heightDp": 851, "density": 2.75},
-      {"id": "id:wearos_small_round", "widthDp": 192, "heightDp": 192, "density": 2.0}
+      {"id": "id:wearos_small_round", "widthDp": 192, "heightDp": 192, "density": 2.0, "isRound": true}
     ],
     "supportedOverrides": ["density", "device", "fontScale", "heightPx", "uiMode", "widthPx"],
     "backend": "desktop"
