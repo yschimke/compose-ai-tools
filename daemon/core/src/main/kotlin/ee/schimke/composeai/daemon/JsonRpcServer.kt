@@ -2021,6 +2021,7 @@ class JsonRpcServer(
           fps = fps,
           scale = scale,
           overrides = params.overrides,
+          live = params.live,
         )
       } catch (e: UnsupportedOperationException) {
         sendErrorResponse(
@@ -2060,6 +2061,26 @@ class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: recording/script: postScript failed for " +
+          "recordingId='${params.recordingId}': ${t.javaClass.simpleName}: ${t.message}"
+      )
+    }
+  }
+
+  /**
+   * RECORDING.md § "live mode" — `recording/input` notification handler. Drops silently when the
+   * recording id is unknown (stale, never started, already stopped, or typo'd by the client) or
+   * when the session is scripted (mode mismatch surfaces as a `postInput` IllegalStateException
+   * which we log but don't propagate — notifications are fire-and-forget).
+   */
+  private fun handleRecordingInput(
+    params: ee.schimke.composeai.daemon.protocol.RecordingInputParams
+  ) {
+    val session = recordings[params.recordingId] ?: return
+    try {
+      session.postInput(params)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: recording/input: postInput failed for " +
           "recordingId='${params.recordingId}': ${t.javaClass.simpleName}: ${t.message}"
       )
     }
@@ -2214,6 +2235,10 @@ class JsonRpcServer(
       "recording/script" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.RecordingScriptParams.serializer(), n) {
           handleRecordingScript(it)
+        }
+      "recording/input" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.RecordingInputParams.serializer(), n) {
+          handleRecordingInput(it)
         }
       else -> System.err.println("compose-ai-daemon: unknown notification method: ${n.method}")
     }

@@ -196,6 +196,12 @@ interface RenderHost {
    * @param overrides per-render display overrides applied to the held scene; same shape and
    *   semantics as `renderNow.overrides`. Lets a `Button`-sized component preview be recorded at
    *   its natural size with a custom background.
+   * @param live when `true`, the session runs in live (real-time) mode — a background tick thread
+   *   captures frames at [fps] cadence using a wall-clock-driven virtual nanoTime, and
+   *   `recording/input` notifications drive the held scene as they arrive. When `false` (the
+   *   default), the session is scripted: callers post a full timeline via
+   *   [RecordingSession.postScript] and [RecordingSession.stop] plays it back. See RECORDING.md §
+   *   "live mode".
    */
   fun acquireRecordingSession(
     previewId: String,
@@ -204,6 +210,7 @@ interface RenderHost {
     fps: Int,
     scale: Float,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    live: Boolean = false,
   ): RecordingSession =
     throw UnsupportedOperationException(
       "recording unsupported by ${this::class.simpleName ?: this::class.java.name}"

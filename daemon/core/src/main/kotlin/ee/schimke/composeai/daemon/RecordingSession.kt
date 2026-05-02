@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
+import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 
 /**
@@ -52,16 +53,44 @@ interface RecordingSession : AutoCloseable {
   val scale: Float
 
   /**
-   * Append a batch of events to the virtual timeline. May be called multiple times before [stop];
-   * each call merges and re-sorts by `tMs` so out-of-order client batches still play in order.
+   * `true` when this session captures real-time interactions instead of replaying a scripted
+   * timeline — see RECORDING.md § "live mode". Frozen at allocation. Implementations spin a
+   * background tick thread at [fps] cadence on construction; [postInput] feeds the queue that tick
+   * thread drains. [postScript] is rejected; [postInput] is the only legal append.
+   *
+   * `false` (the default) is the scripted path that's been live since v1: post a full timeline via
+   * [postScript], then [stop] plays it back at virtual frame time.
+   */
+  val live: Boolean
+
+  /**
+   * **Scripted mode only.** Append a batch of events to the virtual timeline. May be called
+   * multiple times before [stop]; each call merges and re-sorts by `tMs` so out-of-order client
+   * batches still play in order. Throws [IllegalStateException] when [live] is `true`.
    */
   fun postScript(events: List<RecordingScriptEvent>)
 
   /**
-   * Play the script back on the virtual clock, writing one PNG per virtual frame to disk. After
-   * [stop] returns, the held scene is closed and further [postScript] calls are illegal — but the
-   * PNGs remain on disk so [encode] can be invoked. Idempotent in the limited sense that a second
-   * call returns the same [RecordingResult] without re-rendering.
+   * **Live mode only.** Append one input event to the live tick loop's pending queue. The
+   * implementation stamps it with the current virtual `tMs` (= wall-clock elapsed since
+   * construction) and dispatches it on the next frame boundary. Throws [IllegalStateException] when
+   * [live] is `false` — scripted callers should use [postScript] instead.
+   *
+   * Fire-and-forget by design: the daemon's `recording/input` notification handler doesn't wait for
+   * the tick to consume the event. Inputs that arrive after [stop] are dropped silently.
+   */
+  fun postInput(input: RecordingInputParams)
+
+  /**
+   * Stop the recording and return its frame metadata. Behaviour differs by mode:
+   * - **Scripted** ([live] = `false`): plays the posted script back on the virtual clock, writing
+   *   one PNG per virtual frame to disk.
+   * - **Live** ([live] = `true`): joins the background tick thread, waits for any in-flight frame
+   *   write to finish, then returns metadata for the frames already on disk.
+   *
+   * After [stop] returns, the held scene is closed and further [postScript] / [postInput] calls are
+   * illegal — but the PNGs remain on disk so [encode] can be invoked. Idempotent in the limited
+   * sense that a second call returns the same [RecordingResult] without re-rendering.
    */
   fun stop(): RecordingResult
 

@@ -5,8 +5,10 @@ import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
+import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
@@ -47,6 +49,7 @@ class DesktopRecordingSession(
   override val recordingId: String,
   override val fps: Int,
   override val scale: Float,
+  override val live: Boolean = false,
   private val engine: RenderEngine,
   private val state: RenderEngine.SceneState,
   private val sandboxStats: SandboxLifecycleStats,
@@ -56,9 +59,18 @@ class DesktopRecordingSession(
 
   private val timeline = mutableListOf<RecordingScriptEvent>()
 
+  // Live mode pending-input queue. Drained by the tick thread at every frame boundary.
+  // ConcurrentLinkedQueue so postInput callers (notification handler thread) and the tick
+  // thread don't contend on a lock — adds and polls are wait-free.
+  private val liveInputs = ConcurrentLinkedQueue<RecordingInputParams>()
+
   @Volatile private var stopped: Boolean = false
 
   @Volatile private var closed: Boolean = false
+
+  // Live mode signal: set true by stop() to make the tick thread exit cleanly. The thread polls
+  // this on every iteration; the join in stop() then guarantees no further tick after return.
+  @Volatile private var liveStopRequested: Boolean = false
 
   private var result: RecordingResult? = null
 
@@ -66,7 +78,26 @@ class DesktopRecordingSession(
 
   private val frameHeightPx: Int = (state.spec.heightPx * scale).toInt().coerceAtLeast(1)
 
+  // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
+  // thread (with frameCount also read by stop() after the join).
+  @Volatile private var liveStartNs: Long = 0L
+
+  @Volatile private var liveFrameCount: Int = 0
+
+  private val liveTickThread: Thread? =
+    if (live) {
+      framesDir.mkdirs()
+      Thread({ runLiveTickLoop() }, "compose-ai-daemon-recording-live-$recordingId").apply {
+        isDaemon = true
+        start()
+      }
+    } else null
+
   override fun postScript(events: List<RecordingScriptEvent>) {
+    check(!live) {
+      "DesktopRecordingSession.postScript called on a live recording (recordingId='$recordingId'); " +
+        "use postInput for live mode"
+    }
     check(!stopped) {
       "DesktopRecordingSession.postScript called after stop() for recordingId='$recordingId'"
     }
@@ -80,13 +111,35 @@ class DesktopRecordingSession(
     }
   }
 
+  override fun postInput(input: RecordingInputParams) {
+    check(live) {
+      "DesktopRecordingSession.postInput called on a scripted recording " +
+        "(recordingId='$recordingId'); use postScript for scripted mode"
+    }
+    if (stopped) return // Late inputs after stop() are dropped silently.
+    liveInputs.add(input)
+  }
+
   override fun stop(): RecordingResult {
     val cached = result
     if (cached != null) return cached
     if (stopped) error("DesktopRecordingSession.stop() called twice without a cached result")
     stopped = true
-    framesDir.mkdirs()
 
+    val r = if (live) stopLive() else stopScripted()
+    result = r
+    // The held scene is no longer needed; tear it down so subsequent close() is a no-op. The
+    // per-frame PNGs and any encoded video stay on disk for `recording/encode`.
+    engine.tearDown(state)
+    return r
+  }
+
+  /**
+   * Scripted-mode stop: play the timeline back at virtual frame time. Identical to the v1 scripted
+   * path; lifted into its own method now that [stop] dispatches by mode.
+   */
+  private fun stopScripted(): RecordingResult {
+    framesDir.mkdirs()
     val sortedEvents = synchronized(timeline) { timeline.toList() }
     val durationMs: Long = sortedEvents.maxOfOrNull { it.tMs } ?: 0L
     // Frames are paced as `frameIndex * 1000 / fps` (integer division on the ms side keeps the
@@ -102,12 +155,9 @@ class DesktopRecordingSession(
       val tNanos: Long = frameIndex.toLong() * 1_000_000_000L / fps.toLong()
       val tMs: Long = tNanos / 1_000_000L
 
-      // Drain every scripted event whose virtual tMs has elapsed by this frame's tMs and dispatch
-      // it through the held scene at the same nanoTime. CLICK splits into Press → tick → Release
-      // (see class KDoc); the intermediate `scene.render(nanoTime)` makes the gesture detector
-      // see the down event before the up event without writing a separate output frame.
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
-        dispatchAtVirtual(sortedEvents[nextEventIdx], tNanos, tMs)
+        val e = sortedEvents[nextEventIdx]
+        dispatchInput(e.kind, e.pixelX, e.pixelY, tNanos, tMs)
         nextEventIdx++
       }
 
@@ -116,24 +166,101 @@ class DesktopRecordingSession(
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
-      "compose-ai-daemon: DesktopRecordingSession.stop($recordingId): " +
+      "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, scripted): " +
         "rendered $totalFrames frame(s) covering ${durationMs}ms virtual time in ${tookMs}ms wall " +
         "(scale=$scale, fps=$fps, ${frameWidthPx}x${frameHeightPx}px)"
     )
+    return RecordingResult(
+      frameCount = totalFrames,
+      durationMs = durationMs,
+      framesDir = framesDir.absolutePath,
+      frameWidthPx = frameWidthPx,
+      frameHeightPx = frameHeightPx,
+    )
+  }
 
-    val r =
-      RecordingResult(
-        frameCount = totalFrames,
-        durationMs = durationMs,
-        framesDir = framesDir.absolutePath,
-        frameWidthPx = frameWidthPx,
-        frameHeightPx = frameHeightPx,
-      )
-    result = r
-    // The held scene is no longer needed; tear it down so subsequent close() is a no-op. The
-    // per-frame PNGs and any encoded video stay on disk for `recording/encode`.
-    engine.tearDown(state)
-    return r
+  /**
+   * Live-mode stop: signal the tick thread, join it, return metadata for what was written. Duration
+   * matches the wall-clock window between construction and stop, rounded to a frame boundary. Frame
+   * count is the number of ticks the loop completed before observing the signal.
+   */
+  private fun stopLive(): RecordingResult {
+    liveStopRequested = true
+    val thread = liveTickThread
+    if (thread != null) {
+      // Bound the join — the tick body itself is bounded by one render (typ. 5–30ms on desktop)
+      // plus one frame interval. 5s is generous; if it ever times out something is wrong with the
+      // tick body and we'd rather surface that than wait forever.
+      thread.join(5_000)
+      if (thread.isAlive) {
+        System.err.println(
+          "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): " +
+            "tick thread did not exit within 5s after liveStopRequested; continuing anyway"
+        )
+      }
+    }
+    val frameCount = liveFrameCount
+    val durationMs: Long = if (frameCount == 0) 0L else (frameCount - 1).toLong() * 1000L / fps
+    System.err.println(
+      "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): " +
+        "captured $frameCount frame(s) over ~${durationMs}ms wall time " +
+        "(scale=$scale, fps=$fps, ${frameWidthPx}x${frameHeightPx}px)"
+    )
+    return RecordingResult(
+      frameCount = frameCount,
+      durationMs = durationMs,
+      framesDir = framesDir.absolutePath,
+      frameWidthPx = frameWidthPx,
+      frameHeightPx = frameHeightPx,
+    )
+  }
+
+  /**
+   * Live tick loop body. Runs on the dedicated `compose-ai-daemon-recording-live-<id>` thread.
+   * Anchors the virtual clock at construction time (`liveStartNs`); each iteration:
+   *
+   * 1. Computes virtual `tNanos` from `System.nanoTime() - liveStartNs`.
+   * 2. Drains every pending input from [liveInputs] and dispatches it at `tNanos`.
+   * 3. Renders one frame at the same `tNanos` and writes it as `frame-NNNNN.png`.
+   * 4. Sleeps until the next frame boundary (`nextTickNs - now`), preserving fps cadence even when
+   *    the render body undershoots the budget.
+   *
+   * Exits cleanly when [liveStopRequested] is observed at the top of the loop. The dispatch pattern
+   * matches scripted mode (CLICK splits into Press → render-tick → Release at the same nanoTime) so
+   * `Modifier.clickable {}` and other tap-gesture-detecting modifiers see a clean down→up sequence.
+   */
+  private fun runLiveTickLoop() {
+    liveStartNs = System.nanoTime()
+    val frameIntervalNs: Long = 1_000_000_000L / fps.toLong()
+    while (!liveStopRequested) {
+      val tNanos = System.nanoTime() - liveStartNs
+      val tMs = tNanos / 1_000_000L
+
+      // Drain inputs accumulated since the last tick; dispatch each at the current virtual
+      // nanoTime. Inputs that arrive *during* the dispatch+render below are picked up next tick.
+      while (true) {
+        val next = liveInputs.poll() ?: break
+        dispatchInput(next.kind, next.pixelX, next.pixelY, tNanos, tMs)
+      }
+
+      val image = state.scene.render(nanoTime = tNanos)
+      writeFramePng(image, liveFrameCount)
+      liveFrameCount++
+
+      // Sleep until the next frame boundary. If the render body overran (unlikely on desktop;
+      // common on Android one day), `sleepFor` clamps to 0 — we just take the next frame
+      // immediately rather than chasing missed frames retrospectively.
+      val nextTickNs = liveStartNs + liveFrameCount.toLong() * frameIntervalNs
+      val sleepNs = (nextTickNs - System.nanoTime()).coerceAtLeast(0L)
+      if (sleepNs > 0) {
+        try {
+          Thread.sleep(sleepNs / 1_000_000L, (sleepNs % 1_000_000L).toInt())
+        } catch (_: InterruptedException) {
+          Thread.currentThread().interrupt()
+          return
+        }
+      }
+    }
   }
 
   override fun encode(format: RecordingFormat): EncodedRecording {
@@ -200,20 +327,45 @@ class DesktopRecordingSession(
     if (closed) return
     closed = true
     if (!stopped) {
-      // Auto-stop path: idle-timeout fired or daemon shutdown caught us mid-recording. Tear the
-      // held scene down without writing a final frame batch — partial frames already on disk stay
-      // there in case `recording/encode` arrives later. Result map left null so a subsequent
-      // encode call surfaces the "stop() must be called first" check.
+      // Auto-stop path: idle-timeout fired or daemon shutdown caught us mid-recording. For live
+      // recordings we still need to signal + join the tick thread so it doesn't keep rendering
+      // into a torn-down scene; the bounded join in [stopLive] handles that. For scripted, the
+      // playback loop never started, so tearing the scene down directly is enough.
+      if (live) {
+        liveStopRequested = true
+        liveTickThread?.let { thread ->
+          thread.join(5_000)
+          if (thread.isAlive) {
+            System.err.println(
+              "compose-ai-daemon: DesktopRecordingSession.close($recordingId, live): " +
+                "tick thread did not exit within 5s; tearing down anyway"
+            )
+          }
+        }
+      }
       engine.tearDown(state)
     }
     // When stopped is true, stop() already called engine.tearDown(state); a second call is safe
     // (RenderEngine.tearDown is idempotent) but unnecessary.
   }
 
-  private fun dispatchAtVirtual(event: RecordingScriptEvent, tNanos: Long, tMs: Long) {
-    val px = event.pixelX
-    val py = event.pixelY
-    when (event.kind) {
+  /**
+   * Common pointer-input dispatch shared by scripted ([stopScripted]) and live ([runLiveTickLoop])
+   * paths. Translates protocol [InteractiveInputKind] into Skiko `sendPointerEvent` calls at the
+   * supplied virtual `tNanos` / `tMs`. Same Press → render-tick → Release pattern for CLICK as
+   * [DesktopInteractiveSession] uses, so `Modifier.clickable {}` and other tap-gesture detectors
+   * see a clean down→up sequence regardless of mode.
+   */
+  private fun dispatchInput(
+    kind: InteractiveInputKind,
+    pixelX: Int?,
+    pixelY: Int?,
+    tNanos: Long,
+    tMs: Long,
+  ) {
+    val px = pixelX
+    val py = pixelY
+    when (kind) {
       InteractiveInputKind.CLICK -> {
         if (px == null || py == null) return
         val offset = sceneOffset(px, py)

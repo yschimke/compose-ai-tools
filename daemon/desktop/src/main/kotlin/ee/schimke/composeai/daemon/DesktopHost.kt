@@ -325,6 +325,7 @@ open class DesktopHost(
     fps: Int,
     scale: Float,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    live: Boolean,
   ): RecordingSession {
     val resolver =
       previewSpecResolver
@@ -348,6 +349,7 @@ open class DesktopHost(
       recordingId = recordingId,
       fps = fps,
       scale = scale,
+      live = live,
       engine = engine,
       state = state,
       sandboxStats = sandboxStats,
