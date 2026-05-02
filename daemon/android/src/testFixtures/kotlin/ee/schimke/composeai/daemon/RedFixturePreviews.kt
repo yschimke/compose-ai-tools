@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /**
@@ -105,6 +108,20 @@ fun DarkAwareSquare() {
   val bg =
     if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
   Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+@Composable
+fun ResourceReadingPreview() {
+  val label = stringResource(R.string.compose_ai_resource_used_label)
+  val color = colorResource(R.color.compose_ai_resource_used_color)
+  val size = dimensionResource(R.dimen.compose_ai_resource_used_size)
+  Box(
+    modifier =
+      Modifier
+        .width(size)
+        .height(size)
+        .background(if (label.isNotBlank()) color else Color.Transparent)
+  )
 }
 
 /**

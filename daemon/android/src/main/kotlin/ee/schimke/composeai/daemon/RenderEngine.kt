@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
@@ -216,6 +217,7 @@ class RenderEngine(
 
             val bgArgb = resolveBackgroundColor(spec).toArgb()
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bgArgb) }
+            val resourceRecorder = ResourcesUsedDataProducer.recorder(rule.activity)
 
             trace.section("compose:setContent") {
               rule.setContent {
@@ -225,7 +227,10 @@ class RenderEngine(
                 // through rather than parking under the paused clock — same trade
                 // `RobolectricRenderTest.renderWithA11y` already pays.
                 val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
-                CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
+                CompositionLocalProvider(
+                  LocalInspectionMode provides inspectionMode,
+                  LocalContext provides ResourcesUsedDataProducer.context(rule.activity, resourceRecorder),
+                ) {
                   Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
                 }
               }
@@ -254,6 +259,23 @@ class RenderEngine(
                   it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
                 }
               }
+
+            if (dataDir != null) {
+              try {
+                trace.section("android:resourcesUsedDataProduct") {
+                  ResourcesUsedDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    recorder = resourceRecorder,
+                  )
+                }
+              } catch (t: Throwable) {
+                System.err.println(
+                  "RenderEngine: resources/used data write failed for ${spec.outputBaseName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}"
+                )
+              }
+            }
 
             // compose/semantics data product. This is default-mode data, independent of the
             // accessibility checker: clients get a compact SemanticsNode projection for inspector
