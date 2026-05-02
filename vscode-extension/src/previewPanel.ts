@@ -100,10 +100,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             </select>
             <i class="codicon codicon-chevron-down select-chevron" aria-hidden="true"></i>
         </div>
-        <button class="icon-button" id="btn-stop-interactive-global" title="Stop live preview"
-                aria-label="Stop live preview" hidden>
-            <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
-        </button>
     </div>
 
     <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -160,7 +156,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnLaunchDevice = document.getElementById('btn-launch-device');
         const btnA11yOverlay = document.getElementById('btn-a11y-overlay');
         const btnInteractive = document.getElementById('btn-interactive');
-        const btnStopInteractiveGlobal = document.getElementById('btn-stop-interactive-global');
         const btnStopInteractive = document.getElementById('btn-stop-interactive');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
@@ -384,7 +379,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // remove just this one. Plain click keeps the single-target single-card UX casual users
         // expect.
         btnInteractive.addEventListener('click', (e) => toggleInteractive(e.shiftKey));
-        btnStopInteractiveGlobal.addEventListener('click', () => stopAllInteractive());
         btnStopInteractive.addEventListener('click', () => stopAllInteractive());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
@@ -422,8 +416,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // that snapshot the button in either layout.
             btnInteractive.hidden = !inFocus;
             const hasLive = interactivePreviewIds.size > 0;
-            btnStopInteractiveGlobal.hidden = !hasLive;
-            btnStopInteractiveGlobal.disabled = !hasLive;
             btnStopInteractive.hidden = !inFocus || !hasLive;
             btnStopInteractive.disabled = !hasLive;
             if (!inFocus) {
@@ -522,13 +514,36 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // off the now-not-live card. Then re-stamp every still-live preview.
             document.querySelectorAll('.preview-card.live').forEach(c => {
                 c.classList.remove('live');
+                c.querySelector('.card-live-stop-btn')?.remove();
             });
             if (interactivePreviewIds.size === 0) return;
             interactivePreviewIds.forEach(previewId => {
                 const card = document.getElementById('preview-' + sanitizeId(previewId));
                 if (!card) return;
                 card.classList.add('live');
+                ensureLiveCardControls(card);
             });
+        }
+
+        function ensureLiveCardControls(card) {
+            const container = card.querySelector('.image-container');
+            if (!container) return;
+            if (!container.querySelector('.card-live-stop-btn')) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'icon-button card-live-stop-btn';
+                btn.title = 'Stop live preview';
+                btn.setAttribute('aria-label', 'Stop live preview');
+                btn.innerHTML = '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>';
+                btn.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    stopInteractiveForCard(card);
+                });
+                container.appendChild(btn);
+            }
+            const img = container.querySelector('img');
+            if (img) ensureInteractiveInputHandlers(card, img);
         }
 
         function stopAllInteractive() {
@@ -541,6 +556,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     previewId,
                     enabled: false,
                 });
+            });
+            applyLiveBadge();
+            applyInteractiveButtonState();
+        }
+
+        function stopInteractiveForCard(card) {
+            const previewId = card.dataset.previewId;
+            if (!previewId || !interactivePreviewIds.has(previewId)) return;
+            interactivePreviewIds.delete(previewId);
+            vscode.postMessage({
+                command: 'setInteractive',
+                previewId,
+                enabled: false,
             });
             applyLiveBadge();
             applyInteractiveButtonState();
@@ -625,7 +653,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 img.addEventListener('pointerdown', (evt) => {
                     const id = card.dataset.previewId;
                     if (!id || !interactivePreviewIds.has(id)) return;
-                    if (evt.button !== 0) return;
+                    if (evt.button !== 0 && evt.button !== 2) return;
                     state.pointerId = evt.pointerId;
                     state.start = imagePoint(img, evt);
                     state.last = state.start;
@@ -690,13 +718,19 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 });
                 img.addEventListener('wheel', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id) || card.dataset.wearPreview !== '1') return;
+                    if (!id || !interactivePreviewIds.has(id)) return;
                     const point = imagePoint(img, evt);
                     if (!point) return;
                     postInteractiveInput(id, img, 'rotaryScroll', point, evt.deltaY);
                     evt.preventDefault();
                     evt.stopPropagation();
                 }, { passive: false });
+                img.addEventListener('contextmenu', (evt) => {
+                    const id = card.dataset.previewId;
+                    if (!id || !interactivePreviewIds.has(id)) return;
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                });
             }
         }
 
@@ -1574,7 +1608,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 const errorMsg = container.querySelector('.error-message');
                 if (skeleton) skeleton.remove();
                 if (errorMsg) errorMsg.remove();
-                card.classList.remove('has-error');
                 let img = container.querySelector('img');
                 if (!img) {
                     img = document.createElement('img');
@@ -1584,6 +1617,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 img.src = 'data:' + mimeFor(capture.renderOutput) + ';base64,' + capture.imageData;
                 img.className = 'fade-in';
                 ensureInteractiveInputHandlers(card, img);
+                if (capture.errorMessage || capture.renderError) {
+                    container.appendChild(
+                        buildErrorPanel(capture.errorMessage, capture.renderError, card.dataset.className),
+                    );
+                    card.classList.add('has-error');
+                } else {
+                    card.classList.remove('has-error');
+                }
             } else if (capture.errorMessage || capture.renderError) {
                 const existingErr = container.querySelector('.error-message');
                 if (existingErr) existingErr.remove();
@@ -2514,13 +2555,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                             : null;
                         const container = errCard.querySelector('.image-container');
                         const existingImg = container.querySelector('img');
-                        if (!replaceExisting && (existingImageData || existingImg)) {
-                            break;
-                        }
+                        const keepExistingImage = !replaceExisting && (existingImageData || existingImg);
                         if (caps && caps[captureIndex]) {
                             caps[captureIndex].errorMessage = msg.message;
                             caps[captureIndex].renderError = renderError;
-                            caps[captureIndex].imageData = null;
+                            if (!keepExistingImage) {
+                                caps[captureIndex].imageData = null;
+                            }
                         }
                         const cur = parseInt(errCard.dataset.currentIndex || '0', 10);
                         if (caps && cur !== captureIndex) break;
@@ -2528,6 +2569,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         errCard.classList.add('has-error');
                         const previousErr = container.querySelector('.error-message');
                         if (previousErr) previousErr.remove();
+                        const overlay = container.querySelector('.loading-overlay');
+                        if (overlay) overlay.remove();
+                        const skeleton = container.querySelector('.skeleton');
+                        if (skeleton && (keepExistingImage || msg.command === 'setImageError')) {
+                            skeleton.remove();
+                        }
                         // setImageError keeps any existing rendered <img>
                         // visible underneath the error overlay so the user
                         // still has the previous render as a reference.
@@ -2536,8 +2583,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         if (msg.command === 'setError') {
                             const existingImg = container.querySelector('img');
                             if (existingImg) existingImg.remove();
-                            const skeleton = container.querySelector('.skeleton');
-                            if (skeleton) skeleton.remove();
                         }
                         container.appendChild(
                             buildErrorPanel(msg.message, renderError, errCard.dataset.className),

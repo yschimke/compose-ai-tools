@@ -496,9 +496,7 @@ body {
     touch-action: none;
 }
 
-/* Subtle red border telegraphs that the card is an interactive target.
-   Keep the indicator outside the preview pixels: the toolbar stop button
-   carries the explicit control, while the image stays unobscured. */
+/* Subtle red border telegraphs that the card is an interactive target. */
 .preview-card.live {
     border-color: var(--vscode-errorForeground, #f55);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-errorForeground, #f55) 30%, transparent),
@@ -506,6 +504,21 @@ body {
 }
 .preview-card.live .image-container {
     cursor: crosshair; /* signals "click here to dispatch into the live preview" */
+}
+
+.card-live-stop-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 4;
+    color: var(--vscode-errorForeground, #f55);
+    background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-errorForeground, #f55) 55%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.card-live-stop-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f55) 18%, var(--vscode-editor-background));
 }
 
 /* Toggle button "live-on" state: red glyph matching the live card outline. */
