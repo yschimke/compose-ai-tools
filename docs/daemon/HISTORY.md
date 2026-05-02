@@ -688,9 +688,25 @@ result: {
 ```
 
 Manual prune trigger. Auto-prune runs on a configurable interval
-(default 1h) using the same logic with the daemon's defaults. The
-dry-run mode lets a consumer ask "what would auto-prune do?" without
-mutating the archive.
+(default 1h) using the daemon's prune defaults. The dry-run mode lets a
+consumer ask "what would auto-prune do?" without mutating the archive.
+Clients can override the daemon defaults for the session during
+`initialize`:
+
+```ts
+options: {
+  historyPrune?: {
+    maxEntriesPerPreview?: number;
+    maxAgeDays?: number;
+    maxTotalSizeBytes?: number;
+    autoIntervalMs?: number;
+  }
+}
+```
+
+Each present value overrides the matching sysprop/default. Null or absent
+fields preserve current daemon behaviour; values `0` or negative disable
+that knob.
 
 `sourceResults` is keyed by `HistorySource.id`. Only WRITABLE sources
 participate — read-only `GitRefHistorySource` / HTTP backends are

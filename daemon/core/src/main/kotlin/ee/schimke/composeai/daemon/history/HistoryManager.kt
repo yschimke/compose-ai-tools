@@ -46,8 +46,20 @@ class HistoryManager(
    * tests pass an explicit instance. The auto-prune scheduler reads this at construction time;
    * manual `history/prune` RPC calls override individual fields per-call.
    */
-  val pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
+  pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
 ) {
+  private val pruneConfigRef: AtomicReference<HistoryPruneConfig> = AtomicReference(pruneConfig)
+
+  val pruneConfig: HistoryPruneConfig
+    get() = pruneConfigRef.get()
+
+  /**
+   * Initialize-time override path for clients that cannot set daemon JVM sysprops directly. Must be
+   * called before [startAutoPrune] to affect the scheduler interval for this daemon session.
+   */
+  fun configurePruneConfig(config: HistoryPruneConfig) {
+    pruneConfigRef.set(config)
+  }
 
   /**
    * True when at least one writable source is configured — i.e. when `recordRender` is meaningful.
@@ -342,8 +354,9 @@ class HistoryManager(
    * scheduler thread is daemonised so the JVM can exit even if [stopAutoPrune] isn't called.
    */
   fun startAutoPrune(initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS) {
-    if (pruneConfig.isAllOff) return
-    if (pruneConfig.autoPruneIntervalMs <= 0L) return
+    val config = pruneConfig
+    if (config.isAllOff) return
+    if (config.autoPruneIntervalMs <= 0L) return
     if (!isEnabled) return
     if (autoPruneStopped.get()) return
     val existing = scheduler.get()
@@ -360,7 +373,7 @@ class HistoryManager(
       exec.scheduleWithFixedDelay(
         {
           try {
-            pruneNow(config = pruneConfig, dryRun = false, reason = PruneReason.AUTO)
+            pruneNow(config = config, dryRun = false, reason = PruneReason.AUTO)
           } catch (t: Throwable) {
             System.err.println(
               "compose-ai-daemon: HistoryManager auto-prune pass failed " +
@@ -369,7 +382,7 @@ class HistoryManager(
           }
         },
         initialDelayMs.coerceAtLeast(0L),
-        pruneConfig.autoPruneIntervalMs,
+        config.autoPruneIntervalMs,
         TimeUnit.MILLISECONDS,
       )
     autoPruneFuture.set(future)

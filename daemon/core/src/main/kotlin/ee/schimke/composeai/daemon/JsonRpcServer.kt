@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
 import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
 import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
+import ee.schimke.composeai.daemon.protocol.HistoryPruneOptions
 import ee.schimke.composeai.daemon.protocol.HistoryPruneParams
 import ee.schimke.composeai.daemon.protocol.HistoryPruneResult
 import ee.schimke.composeai.daemon.protocol.HistoryPruneSourceResult
@@ -427,10 +428,8 @@ class JsonRpcServer(
     StartupTimings.mark("JsonRpcServer.run() entered")
     host.start()
     StartupTimings.mark("host.start() returned (sandbox ready)")
-    // H4 — kick off the auto-prune scheduler now that the sandbox is up. The first pass fires
-    // after `autoPruneInitialDelayMs` (5s default; small in tests). All-off configs short-circuit
-    // inside `startAutoPrune` so we don't spin a thread for nothing.
-    historyManager?.startAutoPrune(initialDelayMs = autoPruneInitialDelayMs)
+    // H4 — auto-prune starts after initialize so `initialize.options.historyPrune` can override
+    // sysprop/default config before the scheduler captures its interval.
     writerThread.start()
     renderWatcherThread.start()
     StartupTimings.mark("read loop entering")
@@ -615,6 +614,13 @@ class JsonRpcServer(
     // PROTOCOL.md § 3 — per-render timeout override. Positive values win; null / ≤ 0 keeps the
     // 5-minute default. Survives across renders for this client's session lifetime.
     params.options?.maxRenderMs?.takeIf { it > 0 }?.let { renderTimeoutMs = it }
+    params.options?.historyPrune?.let { options ->
+      historyManager?.configurePruneConfig(historyManager.pruneConfig.withOptions(options))
+    }
+    // H4 — kick off the auto-prune scheduler after initialize-time options have landed. The first
+    // pass fires after `autoPruneInitialDelayMs` (5s default; small in tests). All-off configs
+    // short-circuit inside `startAutoPrune` so we don't spin a thread for nothing.
+    historyManager?.startAutoPrune(initialDelayMs = autoPruneInitialDelayMs)
     val result =
       InitializeResult(
         protocolVersion = PROTOCOL_VERSION,
@@ -685,6 +691,14 @@ class JsonRpcServer(
     sendResponse(req.id, encode(InitializeResult.serializer(), result))
     StartupTimings.mark("initialize responded")
   }
+
+  private fun HistoryPruneConfig.withOptions(options: HistoryPruneOptions): HistoryPruneConfig =
+    HistoryPruneConfig(
+      maxEntriesPerPreview = options.maxEntriesPerPreview ?: maxEntriesPerPreview,
+      maxAgeDays = options.maxAgeDays ?: maxAgeDays,
+      maxTotalSizeBytes = options.maxTotalSizeBytes ?: maxTotalSizeBytes,
+      autoPruneIntervalMs = options.autoIntervalMs ?: autoPruneIntervalMs,
+    )
 
   private fun handleRenderNow(req: JsonRpcRequest) {
     if (firstRenderNowSeen.compareAndSet(false, true)) {

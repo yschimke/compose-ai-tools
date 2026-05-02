@@ -328,6 +328,98 @@ class JsonRpcServerHistoryIntegrationTest {
     }
   }
 
+  @Test(timeout = 30_000)
+  fun initialize_history_prune_options_override_manager_defaults() {
+    val host = RealPngHost(rendersDir)
+    val historyManager =
+      HistoryManager.forLocalFs(
+        historyDir = historyDir,
+        module = ":t",
+        gitProvenance = null,
+        pruneConfig =
+          HistoryPruneConfig(
+            maxEntriesPerPreview = 10,
+            maxAgeDays = 11,
+            maxTotalSizeBytes = 12L,
+            autoPruneIntervalMs = 13L,
+          ),
+      )
+
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+    val exitLatch = CountDownLatch(1)
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        idleTimeoutMs = 100L,
+        historyManager = historyManager,
+        onExit = { _ -> exitLatch.countDown() },
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-history-prune-options-test").apply {
+        isDaemon = true
+      }
+    serverThread.start()
+
+    val received = LinkedBlockingQueue<JsonObject>()
+    val reader = ContentLengthFramer(serverToClientIn)
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-history-prune-options-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false},
+              "options":{"historyPrune":{
+                "maxEntriesPerPreview":0,
+                "maxAgeDays":1,
+                "maxTotalSizeBytes":2,
+                "autoIntervalMs":3
+              }}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+
+      assertEquals(
+        HistoryPruneConfig(
+          maxEntriesPerPreview = 0,
+          maxAgeDays = 1,
+          maxTotalSizeBytes = 2L,
+          autoPruneIntervalMs = 3L,
+        ),
+        historyManager.pruneConfig,
+      )
+    } finally {
+      try {
+        clientToServerOut.close()
+      } catch (_: Throwable) {}
+      try {
+        serverToClientIn.close()
+      } catch (_: Throwable) {}
+      assertTrue("server should exit after input closes", exitLatch.await(5, TimeUnit.SECONDS))
+      serverThread.join(5_000)
+    }
+  }
+
   /**
    * Test [RenderHost] that writes a deterministic PNG-shaped byte sequence to disk and returns its
    * path. We don't need a real PNG decoder — H1's history pipeline only sha256s the bytes, so any

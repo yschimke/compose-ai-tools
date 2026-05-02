@@ -88,6 +88,17 @@ export interface InitializeParams {
          * a fast failure over a long hang. Values ≤ 0 fall back to the default.
          */
         maxRenderMs?: number;
+        /**
+         * Optional history pruning defaults for this daemon session. Present values override the
+         * matching daemon JVM sysprop/default at initialize time; absent/null values preserve the
+         * daemon-configured value. Values ≤ 0 disable that pruning knob.
+         */
+        historyPrune?: {
+            maxEntriesPerPreview?: number;
+            maxAgeDays?: number;
+            maxTotalSizeBytes?: number;
+            autoIntervalMs?: number;
+        };
     };
 }
 
