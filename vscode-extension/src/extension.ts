@@ -182,6 +182,10 @@ const firstSaveSeen = new Set<string>();
 let pendingSavePath: string | null = null;
 let debounceElapsed = true;
 let refreshInFlight = false;
+/** Module/file scopes that already received a daemon view-open pre-render in
+ *  this extension session. Keeps "show this file's previews" warm-up from
+ *  re-rendering the same cards on every focus bounce. */
+const daemonShownPreviewWarmScopes = new Set<string>();
 /** Workspace-state key that suppresses the "plugin not applied" notification. */
 const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
 /** Workspace-state key for per-module phase-duration calibration. Shape:
@@ -427,6 +431,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             outputChannel.appendLine(
                 `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
             );
+            clearDaemonShownPreviewWarmScopes(moduleId);
             // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
             // closed handler in DaemonGate evicts the entry. Next save runs
             // Gradle, which re-bootstraps a fresh daemon when the user
@@ -456,6 +461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             historyPanel?.onHistoryAdded(params);
         },
         onChannelClosed: (moduleId) => {
+            clearDaemonShownPreviewWarmScopes(moduleId);
             // Daemon's stdio channel closed (process exit, classpath dirty,
             // spawn died). frameStreamIds don't survive a JVM restart, so
             // drop every entry in `activeInteractiveStreams` whose previewId
@@ -754,12 +760,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 void flushInteractiveStreams();
                 panel?.postMessage({ command: 'clearInteractive' });
                 clearHeavyRefreshOptIns();
-                refresh(false, filePath);
-                // Pre-warm the daemon for this file's module so the first
-                // save in the session collapses to "kotlinc + render"
-                // instead of "Gradle bootstrap + JVM spawn + sandbox init
-                // + render". No-op when the daemon flag is off.
-                void warmDaemonForFile(filePath);
+                // Reconcile the panel first, then pre-warm the daemon for
+                // this file's module. Once daemon startup finishes we run a
+                // second discover pass and pre-render the shown previews so
+                // the first edit doesn't have to pay JVM/sandbox startup.
+                void (async () => {
+                    await refresh(false, filePath);
+                    await warmDaemonForFile(filePath, { refreshAfterReady: true });
+                })();
                 return;
             }
             // New active isn't a Kotlin editor (webview focus, Agent plan,
@@ -1256,15 +1264,11 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  *      overlays, no full-screen takeover).
  *   2. `warmDaemonForFile(filePath)` — runs `composePreviewDaemonStart` and
  *      spawns the daemon JVM. No-op if the daemon flag is off.
- *   3. If the daemon is healthy by the time it's done warming, fire a
- *      `notifyDaemonOfSave`-equivalent so the panel gets a fresh render even
- *      without the user touching the file. Catches the "edited a file in
- *      another module / `git pull`'d / agent rewrote a Composable" case
- *      where the on-disk PNGs are stale relative to source even though the
- *      source file the user is currently looking at is itself unchanged.
- *      The overlay from phases 0/1 stays up only long enough for phase 3's
- *      first updateImage to clear it; on a hot daemon that's a couple of
- *      seconds, on a cold spawn 5-10s.
+ *   3. Once daemon warm-up completes, run a post-warm discover pass so the
+ *      panel reconciles immediately instead of waiting for an editor-focus
+ *      bounce. Then pre-render the shown previews through the daemon and fire
+ *      the save-equivalent path so the current file gets a fresh daemon render
+ *      even without the user touching it.
  *
  * Failures in phases 2 or 3 silently fall back: phases 0/1 already gave the
  * user something to look at, and the next save will re-trigger the whole
@@ -1273,7 +1277,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
 async function runActivationRefresh(filePath: string): Promise<void> {
     await preloadCachedPreviews(filePath);
     await refresh(false, filePath);
-    await warmDaemonForFile(filePath);
+    await warmDaemonForFile(filePath, { refreshAfterReady: true });
     if (!gradleService || !daemonGate) { return; }
     const module = gradleService.resolveModule(filePath);
     if (!module || !daemonGate.isDaemonReady(module)) { return; }
@@ -1292,26 +1296,167 @@ async function runActivationRefresh(filePath: string): Promise<void> {
  * user's interactive path. No-op when the daemon flag is off, when the
  * file isn't in a preview module, or when the daemon is already up.
  */
-async function warmDaemonForFile(filePath: string): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+async function warmDaemonForFile(
+    filePath: string,
+    opts: { refreshAfterReady?: boolean } = {},
+): Promise<boolean> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return false; }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return; }
-    if (daemonBootstrappedModules.has(module)) { return; }
+    if (!module) { return false; }
+    if (daemonBootstrappedModules.has(module)) {
+        if (daemonGate.isDaemonReady(module) && opts.refreshAfterReady) {
+            await refreshAfterDaemonReady(filePath, 'view-open');
+        }
+        return daemonGate.isDaemonReady(module);
+    }
     daemonBootstrappedModules.add(module);
     try {
         const warmed = await daemonScheduler.warmModule(
             gradleService, module,
-            (state) => updateDaemonStatus(module, state),
+            (state) => {
+                updateDaemonStatus(module, state);
+                publishDaemonStartupProgress(module, state);
+            },
         );
         if (!warmed) {
             daemonBootstrappedModules.delete(module);
         }
+        finishDaemonStartupProgress(module, filePath, warmed);
+        if (warmed && opts.refreshAfterReady) {
+            await refreshAfterDaemonReady(filePath, 'view-open');
+        }
+        return warmed;
     } catch (err) {
         daemonBootstrappedModules.delete(module);
+        panel?.postMessage({ command: 'clearProgress' });
         logLine(`daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`);
         vscode.window.showErrorMessage(
             'Compose Preview daemon is enabled but failed to start. Preview saves will not fall back to Gradle until the daemon is fixed or disabled.',
         );
+        return false;
+    }
+}
+
+/**
+ * The first activation path runs preview discovery before daemon warm-up.
+ * On a cold daemon start that means an empty discovery result can otherwise
+ * sit in the panel as "No @Preview functions…" while Gradle is still
+ * bootstrapping the daemon. Surface the daemon phase in the panel itself so
+ * the user can tell the extension is still doing useful work.
+ */
+function publishDaemonStartupProgress(module: string, state: WarmState): void {
+    if (!panel || hasPreviewsLoaded) { return; }
+    switch (state) {
+        case 'bootstrapping':
+            panel.postMessage({
+                command: 'showMessage',
+                text: `Preparing Compose Preview daemon for ${module}…`,
+            });
+            panel.postMessage({
+                command: 'setProgress',
+                phase: 'daemon',
+                label: 'Preparing preview daemon',
+                percent: 0.12,
+                slow: false,
+            });
+            break;
+        case 'spawning':
+            panel.postMessage({
+                command: 'showMessage',
+                text: `Starting Compose Preview daemon for ${module}…`,
+            });
+            panel.postMessage({
+                command: 'setProgress',
+                phase: 'daemon',
+                label: 'Starting preview daemon',
+                percent: 0.68,
+                slow: false,
+            });
+            break;
+        case 'ready':
+            panel.postMessage({
+                command: 'showMessage',
+                text: 'Compose Preview daemon is ready. Rendering previews…',
+            });
+            panel.postMessage({
+                command: 'setProgress',
+                phase: 'daemon',
+                label: 'Preview daemon ready',
+                percent: 1,
+                slow: false,
+            });
+            break;
+        case 'fallback':
+            panel.postMessage({
+                command: 'showMessage',
+                text: `Compose Preview daemon is disabled for ${module}; using Gradle previews.`,
+            });
+            panel.postMessage({ command: 'clearProgress' });
+            break;
+    }
+}
+
+function finishDaemonStartupProgress(module: string, filePath: string, warmed: boolean): void {
+    if (!panel || hasPreviewsLoaded || !warmed) { return; }
+    const visibleCount = visiblePreviewCount(module, filePath);
+    if (visibleCount > 0) { return; }
+    panel.postMessage({ command: 'clearProgress' });
+    const allPreviews = moduleManifestCache.get(module)?.length ?? 0;
+    panel.postMessage({
+        command: 'showMessage',
+        text: allPreviews > 0
+            ? `No @Preview functions in this file (${allPreviews} in other files in this module).`
+            : 'No @Preview functions found in this module',
+    });
+}
+
+function visiblePreviewCount(module: string, filePath: string): number {
+    const previews = moduleManifestCache.get(module) ?? [];
+    const filterFile = packageQualifiedSourcePath(filePath);
+    return previews.filter(p => p.sourceFile === filterFile).length;
+}
+
+async function refreshAfterDaemonReady(filePath: string, reason: string): Promise<void> {
+    if (!daemonGate || !gradleService) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module || !daemonGate.isDaemonReady(module)) { return; }
+    if (currentScopeFile && currentScopeFile !== filePath) { return; }
+    const outcome = await refresh(false, filePath);
+    if (outcome !== 'completed') { return; }
+    await warmShownPreviewsForFile(filePath, reason);
+}
+
+async function warmShownPreviewsForFile(filePath: string, reason: string): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module || !daemonGate.isDaemonReady(module)) { return; }
+
+    const filterFile = packageQualifiedSourcePath(filePath);
+    const scopeKey = `${module}::${filterFile}`;
+    if (daemonShownPreviewWarmScopes.has(scopeKey)) { return; }
+
+    const ids = (moduleManifestCache.get(module) ?? [])
+        .filter(p => p.sourceFile === filterFile)
+        .map(p => p.id);
+    if (ids.length === 0) { return; }
+
+    daemonShownPreviewWarmScopes.add(scopeKey);
+    try {
+        await daemonScheduler.setFocus(module, ids);
+        await daemonScheduler.setVisible(module, ids, []);
+        await daemonScheduler.renderNow(module, ids, 'fast', reason);
+    } catch (err) {
+        daemonShownPreviewWarmScopes.delete(scopeKey);
+        logLine(`daemon: view-open warmup failed for ${module}: ${String((err as Error).message ?? err)}`);
+    }
+}
+
+function clearDaemonShownPreviewWarmScopes(moduleId: string): void {
+    const prefix = `${moduleId}::`;
+    for (const key of [...daemonShownPreviewWarmScopes]) {
+        if (key.startsWith(prefix)) {
+            daemonShownPreviewWarmScopes.delete(key);
+        }
     }
 }
 
