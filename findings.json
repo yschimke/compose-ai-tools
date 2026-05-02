@@ -49,7 +49,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "CircularProgressIndicatorPreview",

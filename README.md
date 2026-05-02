@@ -34,6 +34,6 @@ _No findings._
 
 ### `CircularProgressIndicatorPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.a11y.png" width="400" />
 
 _No findings._
