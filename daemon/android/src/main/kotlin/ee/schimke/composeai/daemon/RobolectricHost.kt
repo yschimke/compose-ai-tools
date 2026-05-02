@@ -632,6 +632,13 @@ open class RobolectricHost(
           "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
+    return acquireInteractiveSession(previewId = previewId, spec = spec)
+  }
+
+  private fun acquireInteractiveSession(
+    previewId: String,
+    spec: RenderSpec,
+  ): AndroidInteractiveSession {
     val streamId = "android-stream-${nextStreamCounter.getAndIncrement()}"
     if (!activeInteractiveStreamId.compareAndSet(null, streamId)) {
       val held = activeInteractiveStreamId.get() ?: "<concurrent close>"
@@ -748,19 +755,27 @@ open class RobolectricHost(
           "scripted mode (recording/start with live=false). See RECORDING.md § \"Android backend\"."
       )
     }
-    if (overrides != null) {
-      // v1 accepts overrides on acquire only when they wouldn't conflict with the held-rule loop's
-      // start-up. The session is constructed off the resolver-provided RenderSpec; merging
-      // overrides through that path is its own follow-up because the held loop's Start command
-      // already takes the spec's qualifiers verbatim. Fail fast rather than silently dropping
-      // overrides — a future v2 wires them through Start.
+    if (sandboxCount < 2) {
       throw UnsupportedOperationException(
-        "RobolectricHost: per-call PreviewOverrides on recording/start are not supported on " +
-          "the Android backend in v1; use the discovery-time RenderSpec or override at the " +
-          "@Preview annotation. See RECORDING.md § \"Android backend\"."
+        "RobolectricHost: recording sessions require sandboxCount >= 2 " +
+          "(have $sandboxCount); Android recording pins one sandbox slot per held session and " +
+          "slot 0 must stay available for normal renders."
       )
     }
-    val interactive = acquireInteractiveSession(previewId, classLoader)
+    val resolver =
+      previewSpecResolver
+        ?: throw UnsupportedOperationException(
+          "RobolectricHost has no previewSpecResolver; pass one at construction time to enable " +
+            "recording sessions"
+        )
+    val baseSpec =
+      resolver(previewId)
+        ?: throw UnsupportedOperationException(
+          "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
+            "recording session not allocated"
+        )
+    val effectiveSpec = applyRecordingOverrides(baseSpec, overrides, recordingId)
+    val interactive = acquireInteractiveSession(previewId = previewId, spec = effectiveSpec)
     val recordingsRoot = recordingsRootDir()
     val framesDir = File(File(recordingsRoot, "frames"), recordingId)
     val encodedDir = File(recordingsRoot, "encoded")
@@ -772,6 +787,67 @@ open class RobolectricHost(
       interactive = interactive,
       framesDir = framesDir,
       encodedDir = encodedDir,
+    )
+  }
+
+  private fun applyRecordingOverrides(
+    base: RenderSpec,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+    recordingId: String,
+  ): RenderSpec {
+    val merged =
+      mergePreviewOverrides(
+        base =
+          PreviewOverrideBaseSpec(
+            widthPx = base.widthPx,
+            heightPx = base.heightPx,
+            density = base.density,
+            device = base.device,
+            localeTag = base.localeTag,
+            fontScale = base.fontScale,
+            uiMode =
+              when (base.uiMode) {
+                RenderSpec.SpecUiMode.LIGHT ->
+                  ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
+                RenderSpec.SpecUiMode.DARK ->
+                  ee.schimke.composeai.daemon.protocol.UiMode.DARK
+                null -> null
+              },
+            orientation =
+              when (base.orientation) {
+                RenderSpec.SpecOrientation.PORTRAIT ->
+                  ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
+                RenderSpec.SpecOrientation.LANDSCAPE ->
+                  ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
+                null -> null
+              },
+            inspectionMode = base.inspectionMode,
+          ),
+        overrides = overrides,
+      )
+    return base.copy(
+      widthPx = merged.widthPx,
+      heightPx = merged.heightPx,
+      density = merged.density,
+      device = merged.device,
+      localeTag = merged.localeTag,
+      fontScale = merged.fontScale,
+      uiMode =
+        when (merged.uiMode) {
+          ee.schimke.composeai.daemon.protocol.UiMode.LIGHT -> RenderSpec.SpecUiMode.LIGHT
+          ee.schimke.composeai.daemon.protocol.UiMode.DARK -> RenderSpec.SpecUiMode.DARK
+          null -> null
+        },
+      orientation =
+        when (merged.orientation) {
+          ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT ->
+            RenderSpec.SpecOrientation.PORTRAIT
+          ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE ->
+            RenderSpec.SpecOrientation.LANDSCAPE
+          null -> null
+        },
+      inspectionMode = merged.inspectionMode,
+      outputBaseName = "recording-$recordingId",
     )
   }
 

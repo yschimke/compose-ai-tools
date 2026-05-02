@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import java.io.ByteArrayInputStream
@@ -162,6 +163,43 @@ class AndroidRecordingSessionTest {
           "error message should mention live recording is unsupported on Android",
           expected.message!!.contains("live recording", ignoreCase = true),
         )
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun acquireWithOverridesAppliesFrameSize() {
+    val outputDir = tempFolder.newFolder("recording-override-renders")
+    val recordingsRoot = tempFolder.newFolder("recording-override-root")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty(RobolectricHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-android-overrides",
+          classLoader = AndroidRecordingSessionTest::class.java.classLoader!!,
+          fps = FPS,
+          scale = 1.0f,
+          overrides = PreviewOverrides(widthPx = 48, heightPx = 64, density = 1.0f),
+          live = false,
+        )
+      try {
+        val result = session.stop()
+        assertEquals(1, result.frameCount)
+        assertEquals(48, result.frameWidthPx)
+        assertEquals(64, result.frameHeightPx)
+        val frame0 = decode(File(result.framesDir, "frame-00000.png"))
+        assertEquals(48, frame0.width)
+        assertEquals(64, frame0.height)
+      } finally {
+        session.close()
       }
     } finally {
       host.shutdown()

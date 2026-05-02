@@ -398,42 +398,58 @@ open class DesktopHost(
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
     recordingId: String,
   ): RenderSpec {
-    if (overrides == null) {
-      return base.copy(outputBaseName = "recording-$recordingId")
-    }
-    val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
-    val deviceSpec = deviceOverride?.let {
-      ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
-    }
-    val baseDensity = overrides.density ?: deviceSpec?.density ?: base.density
-    val baseWidthPx =
-      overrides.widthPx ?: deviceSpec?.let { (it.widthDp * baseDensity).toInt() } ?: base.widthPx
-    val baseHeightPx =
-      overrides.heightPx ?: deviceSpec?.let { (it.heightDp * baseDensity).toInt() } ?: base.heightPx
+    val merged =
+      mergePreviewOverrides(
+        base =
+          PreviewOverrideBaseSpec(
+            widthPx = base.widthPx,
+            heightPx = base.heightPx,
+            density = base.density,
+            device = base.device,
+            localeTag = base.localeTag,
+            fontScale = base.fontScale,
+            uiMode =
+              when (base.uiMode) {
+                RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
+                RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
+                null -> null
+              },
+            orientation =
+              when (base.orientation) {
+                RenderSpec.SpecOrientation.PORTRAIT ->
+                  ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
+                RenderSpec.SpecOrientation.LANDSCAPE ->
+                  ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
+                null -> null
+              },
+            inspectionMode = base.inspectionMode,
+          ),
+        overrides = overrides,
+      )
     val uiMode =
-      when (overrides.uiMode) {
+      when (merged.uiMode) {
         ee.schimke.composeai.daemon.protocol.UiMode.LIGHT -> RenderSpec.SpecUiMode.LIGHT
         ee.schimke.composeai.daemon.protocol.UiMode.DARK -> RenderSpec.SpecUiMode.DARK
-        null -> base.uiMode
+        null -> null
       }
     val orientation =
-      when (overrides.orientation) {
+      when (merged.orientation) {
         ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT ->
           RenderSpec.SpecOrientation.PORTRAIT
         ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE ->
           RenderSpec.SpecOrientation.LANDSCAPE
-        null -> base.orientation
+        null -> null
       }
     return base.copy(
-      widthPx = baseWidthPx,
-      heightPx = baseHeightPx,
-      density = baseDensity,
-      device = deviceOverride ?: base.device,
-      localeTag = overrides.localeTag?.takeIf { it.isNotBlank() } ?: base.localeTag,
-      fontScale = overrides.fontScale ?: base.fontScale,
+      widthPx = merged.widthPx,
+      heightPx = merged.heightPx,
+      density = merged.density,
+      device = merged.device,
+      localeTag = merged.localeTag,
+      fontScale = merged.fontScale,
       uiMode = uiMode,
       orientation = orientation,
-      inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
+      inspectionMode = merged.inspectionMode,
       outputBaseName = "recording-$recordingId",
     )
   }
