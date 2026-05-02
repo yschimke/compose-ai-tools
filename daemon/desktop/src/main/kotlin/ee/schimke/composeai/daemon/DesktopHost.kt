@@ -154,15 +154,23 @@ open class DesktopHost(
    * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the desktop renderer
    * applies size / density / fontScale (via `Density(density, fontScale)` on the
    * `ImageComposeScene` constructor + `LocalDensity`), `uiMode` (via `LocalSystemTheme`), and
-   * `device` (resolved by `DeviceDimensions`). `localeTag` is no-op on desktop because Compose
-   * Desktop has no `LocalLocale` CompositionLocal and `Locale.setDefault(...)` is JVM-thread-
-   * unsafe (every other thread would see the override during the render). `orientation` is no-op
-   * because `ImageComposeScene` has no rotation concept — see `daemon/desktop/.../RenderEngine.kt`
-   * for the docstring. `inspectionMode` flows into `LocalInspectionMode` on the one-shot render
-   * path; interactive and recording sessions keep their runtime-like `false` default.
+   * `device` (resolved by `DeviceDimensions`). `localeTag` is advertised only when the Compose UI
+   * runtime on the classpath exposes its providable locale list; older Compose Desktop runtimes
+   * keep treating it as unsupported rather than falling back to JVM-wide `Locale.setDefault(...)`.
+   * `orientation` is no-op because `ImageComposeScene` has no rotation concept. `inspectionMode`
+   * flows into `LocalInspectionMode` on the one-shot render path; interactive and recording
+   * sessions keep their runtime-like `false` default.
    */
-  override val supportedOverrides: Set<String> =
-    setOf("widthPx", "heightPx", "density", "fontScale", "uiMode", "device", "inspectionMode")
+  override val supportedOverrides: Set<String> = buildSet {
+    add("widthPx")
+    add("heightPx")
+    add("density")
+    if (RenderEngine.supportsLocaleTagOverride()) add("localeTag")
+    add("fontScale")
+    add("uiMode")
+    add("device")
+    add("inspectionMode")
+  }
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
   override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =

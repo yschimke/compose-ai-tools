@@ -53,6 +53,7 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishToMavenCentral \
             :data-a11y-core:publishToMavenCentral \
+            :data-a11y-connector:publishToMavenCentral \
             :renderer-android:publishToMavenCentral \
             :preview-annotations:publishToMavenCentral \
             :daemon:core:publishToMavenCentral \

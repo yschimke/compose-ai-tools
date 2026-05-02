@@ -87,4 +87,11 @@ class DesktopHostTest {
       withResolver.supportsInteractive,
     )
   }
+
+  @Test
+  fun supportedOverridesReflectRuntimeLocaleCapability() {
+    val supported = DesktopHost().supportedOverrides
+
+    assertEquals(RenderEngine.supportsLocaleTagOverride(), "localeTag" in supported)
+  }
 }

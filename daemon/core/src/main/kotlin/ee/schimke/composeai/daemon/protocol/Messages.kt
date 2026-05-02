@@ -177,10 +177,9 @@ data class ServerCapabilities(
    * fields the backend would silently ignore. Empty list = pre-feature daemon (clients treat absent
    * and `[]` identically and assume any field they pass might be ignored).
    *
-   * Today: `RobolectricHost` advertises every field; `DesktopHost` omits `localeTag` (Compose
-   * Desktop has no `LocalLocale` CompositionLocal + `Locale.setDefault(...)` is JVM-thread-
-   * unsafe), `orientation` (no rotation concept on `ImageComposeScene`), and Android-only timing
-   * knobs.
+   * Today: `RobolectricHost` advertises every field; `DesktopHost` omits `orientation` (no rotation
+   * concept on `ImageComposeScene`), Android-only timing knobs, and `localeTag` unless the Compose
+   * UI runtime exposes a providable locale list.
    */
   val supportedOverrides: List<String> = emptyList(),
   /**
@@ -315,7 +314,7 @@ data class PreviewOverrides(
   val heightPx: Int? = null,
   /** Display density (1.0 = mdpi/160dpi, 2.0 = xhdpi/320dpi, etc.). */
   val density: Float? = null,
-  /** BCP-47 locale tag (e.g. `"en-US"`, `"fr"`, `"ja-JP"`). Android-only today. */
+  /** BCP-47 locale tag (e.g. `"en-US"`, `"fr"`, `"ja-JP"`). */
   val localeTag: String? = null,
   /** Font scale multiplier (1.0 = system default, 1.3 = "large", 2.0 = max accessibility). */
   val fontScale: Float? = null,

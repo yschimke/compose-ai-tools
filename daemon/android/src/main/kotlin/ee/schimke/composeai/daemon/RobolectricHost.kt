@@ -632,7 +632,11 @@ open class RobolectricHost(
           "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
-    return acquireInteractiveSession(previewId = previewId, spec = spec, inspectionMode = inspectionMode)
+    return acquireInteractiveSession(
+      previewId = previewId,
+      spec = spec,
+      inspectionMode = inspectionMode,
+    )
   }
 
   private fun acquireInteractiveSession(
@@ -776,7 +780,12 @@ open class RobolectricHost(
             "recording session not allocated"
         )
     val effectiveSpec = applyRecordingOverrides(baseSpec, overrides, recordingId)
-    val interactive = acquireInteractiveSession(previewId = previewId, spec = effectiveSpec)
+    val interactive =
+      acquireInteractiveSession(
+        previewId = previewId,
+        spec = effectiveSpec,
+        inspectionMode = effectiveSpec.inspectionMode,
+      )
     val recordingsRoot = recordingsRootDir()
     val framesDir = File(File(recordingsRoot, "frames"), recordingId)
     val encodedDir = File(recordingsRoot, "encoded")

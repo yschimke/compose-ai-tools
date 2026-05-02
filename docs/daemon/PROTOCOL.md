@@ -145,9 +145,9 @@ Result:
   // "device","captureAdvanceMs","inspectionMode"}). Lets clients grey out unsupported sliders.
   // Empty list = pre-feature daemon;
   // treat absent and `[]` identically and assume any field might be ignored.
-  // Today: Robolectric advertises every field; Desktop omits "localeTag" (no `LocalLocale`
-  // CompositionLocal + `Locale.setDefault(...)` is JVM-thread-unsafe), "orientation"
-  // (no rotation concept on `ImageComposeScene`), and Android-only timing knobs.
+  // Today: Robolectric advertises every field; Desktop omits "orientation" (no rotation concept
+  // on `ImageComposeScene`), Android-only timing knobs, and "localeTag" unless the Compose UI
+  // runtime exposes a providable locale list.
   //
   // androidSdk — fixed Android SDK level the backend renders against. Populated by the
   // Robolectric backend from its pinned @Config(sdk = ...) value; absent/null on Desktop and
@@ -230,7 +230,7 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
   widthPx?: number;
   heightPx?: number;
   density?: number;                  // 1.0 = mdpi/160dpi, 2.0 = xhdpi/320dpi
-  localeTag?: string;                // BCP-47 (e.g. "en-US", "fr", "ja-JP"). Android-only today.
+  localeTag?: string;                // BCP-47 (e.g. "en-US", "fr", "ja-JP").
   fontScale?: number;                // 1.0 = system default
   uiMode?: "light" | "dark";         // Android-only today.
   orientation?: "portrait" | "landscape";  // Android-only today.
@@ -252,7 +252,7 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
 
 The result resolves as soon as the request is queued, **not** when rendering completes. Per-render progress arrives as `renderStarted` / `renderFinished` / `renderFailed` notifications keyed by ID.
 
-`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop has no Android resource qualifier system, so `localeTag` / `orientation` are no-ops on the desktop render path today). `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`).
+`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop has no display rotation concept, so `orientation` is a no-op on the desktop render path today; desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`).
 
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
