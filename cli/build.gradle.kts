@@ -41,6 +41,9 @@ dependencies {
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
   implementation(project(":mcp"))
+  // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
+  // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
+  implementation(project(":daemon:core"))
 
   testImplementation(kotlin("test"))
 }
