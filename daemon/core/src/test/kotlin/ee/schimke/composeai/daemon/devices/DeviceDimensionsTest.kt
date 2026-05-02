@@ -70,6 +70,14 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun specStringPreservesShapeRoundParameter() {
+    assertEquals(
+      DeviceDimensions.DeviceSpec(227, 227, 2.0f, isRound = true),
+      DeviceDimensions.resolve("spec:width=227dp,height=227dp,dpi=320,Shape=ROUND"),
+    )
+  }
+
+  @Test
   fun specStringWithoutDpiUsesDefaultDensity() {
     assertEquals(
       DeviceDimensions.DeviceSpec(400, 800, DeviceDimensions.DEFAULT_DENSITY),

@@ -171,7 +171,8 @@ object DeviceDimensions {
             .split(",")
             .mapNotNull {
               val parts = it.split("=", limit = 2)
-              if (parts.size == 2) parts[0].trim() to parts[1].trim().removeSuffix("dp") else null
+              if (parts.size == 2) parts[0].trim().lowercase() to parts[1].trim().removeSuffix("dp")
+              else null
             }
             .toMap()
         val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
@@ -179,7 +180,9 @@ object DeviceDimensions {
         val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
         val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
         val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
-        val isRound = params["isRound"]?.toBooleanStrictOrNull() == true
+        val isRound =
+          params["isround"]?.equals("true", ignoreCase = true) == true ||
+            params["shape"]?.equals("round", ignoreCase = true) == true
         // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
         // — honour it if present, otherwise fall back to the AS default. `cutout=` is accepted by
         // Studio's grammar but intentionally ignored here until a renderer consumes it.
