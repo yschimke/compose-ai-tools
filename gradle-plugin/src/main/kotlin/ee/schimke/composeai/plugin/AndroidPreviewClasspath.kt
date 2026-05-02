@@ -110,6 +110,7 @@ internal object AndroidPreviewClasspath {
    */
   fun buildJvmArgs(): List<String> =
     listOf(
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
       // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
