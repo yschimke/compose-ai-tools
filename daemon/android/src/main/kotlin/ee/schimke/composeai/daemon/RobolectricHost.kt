@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
+import ee.schimke.composeai.daemon.bridge.SandboxSlot
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -495,12 +496,40 @@ open class RobolectricHost(
     // first read after a swap, so this also amortises the allocation onto the host thread rather
     // than the render thread.
     publishChildLoaderForSlot(slotIdx)
-    slot.requests.put(typed)
-    val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
-    val raw =
-      resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
-        ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
-    DaemonHostBridge.results.remove(typed.id)
+    var raw = submitToSlotAndAwait(slot, typed, timeoutMs)
+    if (raw.isTransientComposableLookupFailure()) {
+      val holder = ensureHolderForSlot(slotIdx)
+      val beforeLoader = holder?.currentChildLoader()
+      val className = RenderSpec.parseFromPayloadOrNull(typed.payload)?.className
+      val beforeFingerprint =
+        if (beforeLoader != null && className != null) {
+          UserClassLoaderHolder.classFileFingerprint(beforeLoader, className)
+            ?: "fingerprint unavailable"
+        } else {
+          "fingerprint unavailable"
+        }
+      System.err.println(
+        "compose-ai-daemon: retrying ${typed.id} after composable method lookup failed; " +
+          "slot=$slotIdx payload='${typed.payload}' " +
+          "loaderId=${beforeLoader?.let { System.identityHashCode(it).toString(16) } ?: "<none>"} " +
+          "classFile=$beforeFingerprint urls=${holder?.urls()?.let(::urlsSummaryForLog) ?: "[]"}"
+      )
+      val afterLoader = refreshChildLoaderForSlot(slotIdx, holder)
+      val afterFingerprint =
+        if (afterLoader != null && className != null) {
+          UserClassLoaderHolder.classFileFingerprint(afterLoader, className)
+            ?: "fingerprint unavailable"
+        } else {
+          "fingerprint unavailable"
+        }
+      System.err.println(
+        "compose-ai-daemon: retrying ${typed.id} with refreshed child loader; " +
+          "slot=$slotIdx " +
+          "loaderId=${afterLoader?.let { System.identityHashCode(it).toString(16) } ?: "<none>"} " +
+          "classFile=$afterFingerprint"
+      )
+      raw = submitToSlotAndAwait(slot, typed, timeoutMs)
+    }
     // The sandbox-side loop posts either a [RenderResult] (success / stub) or a [Throwable]
     // (engine body threw). Re-throw the Throwable so `JsonRpcServer.submitRenderAsync`'s catch
     // surfaces it as a `renderFailed` notification — the path `S5RenderFailedAndroidRealModeTest`
@@ -513,6 +542,64 @@ open class RobolectricHost(
     // instance of the host-side RenderResult class.
     return raw as? RenderResult ?: copyResultAcrossClassloaders(raw)
   }
+
+  private fun submitToSlotAndAwait(
+    slot: SandboxSlot,
+    typed: RenderRequest.Render,
+    timeoutMs: Long,
+  ): Any {
+    slot.requests.put(typed)
+    val resultQueue = DaemonHostBridge.results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
+    val raw =
+      resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
+        ?: error("RobolectricHost.submit($typed) timed out after ${timeoutMs}ms")
+    DaemonHostBridge.results.remove(typed.id)
+    return raw
+  }
+
+  private fun refreshChildLoaderForSlot(
+    slotIdx: Int,
+    holder: UserClassLoaderHolder? = ensureHolderForSlot(slotIdx),
+  ): ClassLoader? {
+    if (holder == null) return null
+    try {
+      Thread.sleep(50)
+    } catch (_: InterruptedException) {
+      Thread.currentThread().interrupt()
+    }
+    holder.swap()
+    val loader = holder.currentChildLoader()
+    DaemonHostBridge.slot(slotIdx).childLoaderRef.set(loader)
+    return loader
+  }
+
+  private fun Any.isTransientComposableLookupFailure(): Boolean {
+    if (this !is Throwable) return false
+    return causeChain().any { throwable ->
+      throwable is NoSuchMethodException &&
+        throwable.stackTrace.any { frame ->
+          frame.className.contains("ComposableMethod") ||
+            frame.className == RenderEngine::class.java.name ||
+            frame.className == SandboxRunner::class.java.name
+        }
+    }
+  }
+
+  private fun Throwable.causeChain(): Sequence<Throwable> =
+    generateSequence(this) { throwable -> throwable.cause }
+
+  private fun urlsSummaryForLog(urls: List<java.net.URL>): String =
+    urls.joinToString(prefix = "[", postfix = "]") { url ->
+      if (url.protocol == "file") {
+        val file = java.io.File(url.toURI())
+        val mtime =
+          if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+          else "missing"
+        "${file.absolutePath}(mtime=$mtime)"
+      } else {
+        url.toString()
+      }
+    }
 
   /**
    * SANDBOX-POOL.md (affinity-aware dispatch) — picks a slot for [render]. Uses the previewId
