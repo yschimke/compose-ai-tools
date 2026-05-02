@@ -57,10 +57,21 @@ EXISTING_PLUGIN_RE = re.compile(
         id\("{re.escape(PLUGIN_ID)}"\)
         |
         id\s+["']{re.escape(PLUGIN_ID)}["']
+        |
+        alias\(
+            [^)\n]*libs\.plugins\.
+            (?i:
+                compose(?:[._-])?preview
+                |
+                compose(?:[._-])?ai(?:[._-])?preview
+                |
+                compose(?:[._-])?ai
+            )
+            (?:\b|[)\s])
+            [^)\n]*
+        \)
     )
-    (?:[ \t]+version(?:\s*\([ \t]*["'][^"']+["'][ \t]*\)|[ \t]+["'][^"']+["']))?
-    (?:[ \t]+apply[ \t]+false)?
-    [ \t]*$
+    [^\n]*$
     """
 )
 
