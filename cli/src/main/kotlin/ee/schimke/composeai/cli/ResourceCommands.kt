@@ -175,6 +175,12 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       if (modules.isEmpty()) {
         if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
         else println("No Android modules with the resource preview pipeline found.")
+        // Mirror ShowCommand: flush before exitProcess because System.exit
+        // doesn't drain PrintStream buffers, and the redirected stdout in
+        // `compose-preview show-resources --json > _resources.json` would
+        // otherwise see an empty file and trip the downstream JSON parser
+        // (issue #292).
+        System.out.flush()
         exitProcess(0)
       }
 
@@ -182,6 +188,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       if (!runGradle(gradle, *tasks)) {
         reportRenderFailures(gradle)
         System.err.println("Resource render failed")
+        System.out.flush()
         exitProcess(2)
       }
 
@@ -192,6 +199,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
         // Resources are an opt-out feature — exit 0 (not 3) so consumers
         // running `show-resources` against a workspace that legitimately
         // has no XML drawables don't get a non-zero exit on every CI run.
+        System.out.flush()
         exitProcess(0)
       }
 
@@ -202,6 +210,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       if (filtered.isEmpty()) {
         if (jsonOutput) println(encodeResourceResponse(emptyList(), allReferences, all))
         else println("No resource previews matched.")
+        System.out.flush()
         exitProcess(3)
       }
 
@@ -217,8 +226,10 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
           "Resource render completed but produced no PNG for ${missing.size} of " +
             "${filtered.size} resource preview(s)."
         )
+        System.out.flush()
         exitProcess(2)
       }
+      System.out.flush()
     }
   }
 
