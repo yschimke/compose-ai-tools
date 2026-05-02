@@ -54,6 +54,8 @@ const INIT_DELAY_MS = 1000;
 // trusts that what it reads is the post-save state. Only paid when the
 // initial read showed errors — happy path is unaffected.
 const GATE_REREAD_DELAY_MS = 150;
+const DAEMON_BOOTSTRAP_PROGRESS_MS = 18_000;
+const DAEMON_SPAWN_PROGRESS_MS = 7_000;
 
 let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
@@ -186,6 +188,7 @@ let refreshInFlight = false;
  *  this extension session. Keeps "show this file's previews" warm-up from
  *  re-rendering the same cards on every focus bounce. */
 const daemonShownPreviewWarmScopes = new Set<string>();
+const daemonStartupProgressTimers = new Map<string, NodeJS.Timeout>();
 /** Workspace-state key that suppresses the "plugin not applied" notification. */
 const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
 /** Workspace-state key for per-module phase-duration calibration. Shape:
@@ -898,6 +901,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 
 export function deactivate() {
     if (debounceTimer) { clearTimeout(debounceTimer); }
+    stopAllDaemonStartupProgress();
     pendingRefresh?.abort();
     // Tell the daemon to release every interactive stream this session opened
     // before the JVMs go away. Without this, a soft-leak window exists for
@@ -1182,13 +1186,10 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
  * placeholder while `discoverPreviews` configures Gradle — even when a perfect
  * set of cached cards is sitting in `build/compose-previews/`.
  *
- * The cached cards are decorated through the existing `markAllLoading`
- * overlay path so it's visually clear they may be stale; the
- * BuildProgressTracker that `refresh()` boots immediately afterwards owns
- * the progress bar, so the user gets the standard phase-by-phase progress
- * feedback (Compiling → Discovering → …) on top of the painted cards. The
- * follow-up `refresh(false, filePath)` will stream replacement images on
- * top of these cards as they arrive.
+ * On activation the cached cards intentionally look fresh. Until the user
+ * edits or explicitly refreshes, a stale/loading overlay reads like a broken
+ * startup rather than useful state; the top progress line carries the
+ * background work instead.
  *
  * Returns `true` when something was painted (caller can short-circuit any
  * "first launch" empty-state logic), `false` when no usable manifest existed.
@@ -1243,16 +1244,8 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     }
     await Promise.all(imageJobs);
 
-    // Drop the spinner overlay over every painted card. The escalation timer
-    // in the webview promotes the corner spinner to the dim-and-blur
-    // `.subtle` variant after 500 ms so the user reads "stale render,
-    // updating in the background" rather than "fresh render, why is it
-    // spinning". On a hot daemon, the first updateImage from the refresh
-    // path lands inside that 500 ms window and the overlay never escalates.
-    panel.postMessage({ command: 'markAllLoading' });
-
     // Sync the extension-side state the upcoming refresh() reads so it
-    // takes the stealth-refresh path (markAllLoading, no clearAll) rather
+    // takes the stealth-refresh path (no clearAll) rather
     // than tearing down what we just painted.
     hasPreviewsLoaded = true;
     lastLoadedModules = [module];
@@ -1265,13 +1258,13 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  * Activation-time refresh sequence. Phases run in order:
  *
  *   0. `preloadCachedPreviews(filePath)` — paints the previously-rendered
- *      cards from `build/compose-previews/` with a stale-render overlay so
- *      the panel never opens onto an empty screen while Gradle warms up.
- *      Skipped silently when no usable manifest exists.
+ *      cards from `build/compose-previews/` as normal cards so the panel
+ *      never opens onto an empty screen while Gradle warms up. Skipped
+ *      silently when no usable manifest exists.
  *   1. `refresh(false, filePath)` — runs `discoverPreviews` and reconciles
  *      the panel with whatever's currently on disk. With phase 0 having
- *      painted, this stage swaps to the stealth-refresh path (per-card
- *      overlays, no full-screen takeover).
+ *      painted, this stage updates metadata in place without adding stale
+ *      overlays or a full-screen takeover.
  *   2. `warmDaemonForFile(filePath)` — runs `composePreviewDaemonStart` and
  *      spawns the daemon JVM. No-op if the daemon flag is off.
  *   3. Once daemon warm-up completes, run a post-warm discover pass so the
@@ -1286,7 +1279,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  */
 async function runActivationRefresh(filePath: string): Promise<void> {
     await preloadCachedPreviews(filePath);
-    await refresh(false, filePath);
+    await refresh(false, filePath, 'full', { showLoadingOverlay: false });
     await warmDaemonForFile(filePath, { refreshAfterReady: true });
     if (!gradleService || !daemonGate) { return; }
     const module = gradleService.resolveModule(filePath);
@@ -1338,6 +1331,7 @@ async function warmDaemonForFile(
         return warmed;
     } catch (err) {
         daemonBootstrappedModules.delete(module);
+        stopDaemonStartupProgress(module);
         panel?.postMessage({ command: 'clearProgress' });
         logLine(`daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`);
         vscode.window.showErrorMessage(
@@ -1355,39 +1349,46 @@ async function warmDaemonForFile(
  * the user can tell the extension is still doing useful work.
  */
 function publishDaemonStartupProgress(module: string, state: WarmState): void {
-    if (!panel || hasPreviewsLoaded) { return; }
+    if (!panel) { return; }
     switch (state) {
         case 'bootstrapping':
-            panel.postMessage({
-                command: 'showMessage',
-                text: `Preparing Compose Preview daemon for ${module}…`,
-            });
-            panel.postMessage({
-                command: 'setProgress',
-                phase: 'daemon',
-                label: 'Preparing preview daemon',
-                percent: 0.12,
-                slow: false,
-            });
+            if (!hasPreviewsLoaded) {
+                panel.postMessage({
+                    command: 'showMessage',
+                    text: `Preparing Compose Preview daemon for ${module}…`,
+                });
+            }
+            startDaemonStartupProgress(
+                module,
+                'Preparing preview daemon',
+                0.08,
+                0.62,
+                DAEMON_BOOTSTRAP_PROGRESS_MS,
+            );
             break;
         case 'spawning':
-            panel.postMessage({
-                command: 'showMessage',
-                text: `Starting Compose Preview daemon for ${module}…`,
-            });
-            panel.postMessage({
-                command: 'setProgress',
-                phase: 'daemon',
-                label: 'Starting preview daemon',
-                percent: 0.68,
-                slow: false,
-            });
+            if (!hasPreviewsLoaded) {
+                panel.postMessage({
+                    command: 'showMessage',
+                    text: `Starting Compose Preview daemon for ${module}…`,
+                });
+            }
+            startDaemonStartupProgress(
+                module,
+                'Starting preview daemon',
+                0.62,
+                0.94,
+                DAEMON_SPAWN_PROGRESS_MS,
+            );
             break;
         case 'ready':
-            panel.postMessage({
-                command: 'showMessage',
-                text: 'Compose Preview daemon is ready. Rendering previews…',
-            });
+            stopDaemonStartupProgress(module);
+            if (!hasPreviewsLoaded) {
+                panel.postMessage({
+                    command: 'showMessage',
+                    text: 'Compose Preview daemon is ready. Rendering previews…',
+                });
+            }
             panel.postMessage({
                 command: 'setProgress',
                 phase: 'daemon',
@@ -1397,12 +1398,53 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
             });
             break;
         case 'fallback':
-            panel.postMessage({
-                command: 'showMessage',
-                text: `Compose Preview daemon is disabled for ${module}; using Gradle previews.`,
-            });
+            stopDaemonStartupProgress(module);
+            if (!hasPreviewsLoaded) {
+                panel.postMessage({
+                    command: 'showMessage',
+                    text: `Compose Preview daemon is disabled for ${module}; using Gradle previews.`,
+                });
+            }
             panel.postMessage({ command: 'clearProgress' });
             break;
+    }
+}
+
+function startDaemonStartupProgress(
+    module: string,
+    label: string,
+    start: number,
+    end: number,
+    durationMs: number,
+): void {
+    stopDaemonStartupProgress(module);
+    const startedAt = Date.now();
+    const tick = () => {
+        if (!panel) { return; }
+        const elapsed = Date.now() - startedAt;
+        const ratio = Math.min(0.98, 1 - Math.exp(-elapsed / durationMs));
+        panel.postMessage({
+            command: 'setProgress',
+            phase: 'daemon',
+            label,
+            percent: start + ((end - start) * ratio),
+            slow: false,
+        });
+    };
+    tick();
+    daemonStartupProgressTimers.set(module, setInterval(tick, 250));
+}
+
+function stopDaemonStartupProgress(module: string): void {
+    const timer = daemonStartupProgressTimers.get(module);
+    if (!timer) { return; }
+    clearInterval(timer);
+    daemonStartupProgressTimers.delete(module);
+}
+
+function stopAllDaemonStartupProgress(): void {
+    for (const module of daemonStartupProgressTimers.keys()) {
+        stopDaemonStartupProgress(module);
     }
 }
 
@@ -1515,7 +1557,6 @@ async function reconcilePreviewManifestAfterDaemonReady(
         });
         panel.postMessage({ command: 'clearCompileErrors' });
         compileGateActive = false;
-        panel.postMessage({ command: 'markAllLoading' });
         hasPreviewsLoaded = true;
         return true;
     } catch (err) {
@@ -1907,6 +1948,7 @@ async function refresh(
     forceRender: boolean,
     forFilePath?: string,
     tier: 'fast' | 'full' = 'full',
+    opts: { showLoadingOverlay?: boolean } = {},
 ): Promise<RefreshOutcome> {
     if (!gradleService || !panel) { return 'no-module'; }
 
@@ -2026,10 +2068,13 @@ async function refresh(
     // If we already have previews on screen, use a stealth refresh:
     // keep the current cards visible and show per-card spinners rather than
     // clearing the view. Only show a full "Building..." message on first load.
-    if (hasPreviewsLoaded) {
+    const showLoadingOverlay = opts.showLoadingOverlay !== false;
+    if (hasPreviewsLoaded && showLoadingOverlay) {
         panel.postMessage({ command: 'markAllLoading' });
     } else {
-        panel.postMessage({ command: 'setLoading' });
+        if (!hasPreviewsLoaded) {
+            panel.postMessage({ command: 'setLoading' });
+        }
     }
     lastLoadedModules = modules;
     gradleService.cancel();
