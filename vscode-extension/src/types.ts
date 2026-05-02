@@ -41,8 +41,8 @@ export interface ScrollCapture {
 }
 
 /**
- * Threshold above which a capture's `cost` is considered "heavy" — dropped
- * from `composePreview.tier=fast` renders, surfaces in VS Code with a
+ * Threshold above which an output's `cost` is considered "heavy" — dropped
+ * from `composePreview.tier=fast` renders, surfaced in VS Code with a
  * stale-state badge, refreshed only on explicit user action. Mirrors the
  * plugin's `HEAVY_COST_THRESHOLD` in `PreviewData.kt`.
  */
@@ -74,6 +74,16 @@ export interface Capture {
     cost?: number;
 }
 
+export interface PreviewDataProduct {
+    /** Data-product kind, for example `render/scroll/long`. */
+    kind: string;
+    advanceTimeMillis: number | null;
+    scroll: ScrollCapture | null;
+    /** Module-relative product file path under `build/compose-previews`. */
+    output: string;
+    cost?: number;
+}
+
 export interface PreviewInfo {
     id: string;
     functionName: string;
@@ -82,6 +92,8 @@ export interface PreviewInfo {
     params: PreviewParams;
     /** Rendered snapshots — always at least one. Length > 1 ⇔ carousel. */
     captures: Capture[];
+    /** Annotation-sourced data products, such as long and scrolling screenshots. */
+    dataProducts?: PreviewDataProduct[];
     /**
      * Populated by the extension from the sidecar accessibility.json referenced
      * in [PreviewManifest.accessibilityReport]. `null`/`undefined` means
@@ -296,7 +308,7 @@ export type ExtensionToWebview =
           previews: PreviewInfo[];
           moduleDir: string;
           /**
-           * IDs of previews whose heavy captures (LONG / GIF / animated)
+           * IDs of previews whose heavy outputs (animated captures, LONG / GIF data products)
            * were skipped this render — the on-disk PNG/GIF is from a
            * previous full run. Drives the "stale, click to refresh" badge.
            * Empty when the module was last rendered with `tier=full`.

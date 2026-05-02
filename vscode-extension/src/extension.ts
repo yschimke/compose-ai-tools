@@ -1859,15 +1859,17 @@ function sendModuleList() {
 }
 
 /**
- * Modules where the most recent render was `tier='fast'` — heavy captures
- * (LONG / GIF / animated) are stale on disk relative to the user's source.
+ * Modules where the most recent render was `tier='fast'` — heavy outputs
+ * (animated captures and heavy data products such as LONG / GIF scroll products)
+ * are stale on disk relative to the user's source.
  * The webview reads this to decorate heavy cards with a "stale, click to
  * refresh" badge. Cleared per module on a successful `tier='full'` render.
  */
 const fastTierModules = new Set<string>();
 
 function hasHeavyCapture(preview: PreviewInfo): boolean {
-    return preview.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD);
+    return preview.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD)
+        || (preview.dataProducts ?? []).some(p => (p.cost ?? 1) > HEAVY_COST_THRESHOLD);
 }
 
 function optInHeavyRefresh(moduleId: string, previewId: string): void {

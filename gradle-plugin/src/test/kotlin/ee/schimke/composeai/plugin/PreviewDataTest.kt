@@ -35,6 +35,16 @@ class PreviewDataTest {
                 listOf(
                   Capture(renderOutput = "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png")
                 ),
+              dataProducts =
+                listOf(
+                  PreviewDataProduct(
+                    kind = "render/scroll/long",
+                    scroll = ScrollCapture(mode = ScrollMode.LONG),
+                    output =
+                      "data/render-scroll-long/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
+                    cost = SCROLL_LONG_COST,
+                  )
+                ),
             )
           ),
       )
@@ -45,6 +55,7 @@ class PreviewDataTest {
     assertThat(deserialized).isEqualTo(manifest)
     assertThat(deserialized.previews).hasSize(1)
     assertThat(deserialized.previews[0].params.backgroundColor).isEqualTo(0xFFFF0000)
+    assertThat(deserialized.previews[0].dataProducts.single().kind).isEqualTo("render/scroll/long")
   }
 
   @Test

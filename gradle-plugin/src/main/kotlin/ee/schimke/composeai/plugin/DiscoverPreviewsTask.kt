@@ -354,7 +354,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         preview.captures.map { c ->
           c.copy(renderOutput = rewriteRenderStem(c.renderOutput, preview.id, newStem))
         }
-      preview.copy(captures = rewritten)
+      val rewrittenProducts =
+        preview.dataProducts.map { p ->
+          p.copy(output = rewriteRenderStem(p.output, preview.id, newStem))
+        }
+      preview.copy(captures = rewritten, dataProducts = rewrittenProducts)
     }
   }
 
@@ -437,11 +441,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   ) {
     // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
     // to every @Preview on the function (including expansions from
-    // multi-preview meta-annotations). `@ScrollingPreview.modes` fans out
-    // one capture per entry — see [buildCaptures]. `@AnimatedPreview` is
-    // single-shot (one GIF per function) so it doesn't fan out, but follows
-    // the same "one annotation per function, applies to every preview
-    // expansion" policy.
+    // multi-preview meta-annotations). `@ScrollingPreview.modes` maps TOP/END
+    // to normal captures and LONG/GIF to data products — see [buildOutputPlan].
+    // `@AnimatedPreview` is single-shot (one GIF per function) so it doesn't
+    // fan out, but follows the same "one annotation per function, applies to
+    // every preview expansion" policy.
     val wrapperFqn = extractWrapperFqn(annotations)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
@@ -526,13 +530,18 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   // renderer inflates a View via `TileRenderer` and has no Compose
   // animation clock / scrollable), so both dimensional annotations are
   // no-ops for tiles.
-  private fun buildCaptures(
+  private data class PreviewOutputPlan(
+    val captures: List<Capture>,
+    val dataProducts: List<PreviewDataProduct>,
+  )
+
+  private fun buildOutputPlan(
     ann: AnnotationInfo,
     previewId: String,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     timings: List<Long>,
-  ): List<Capture> {
+  ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
     val effectiveTimings = if (isTile) emptyList() else timings
     val effectiveScrolls = if (isTile) emptyList() else scrolls
@@ -562,11 +571,18 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // old single-valued `mode = …` annotation land on identical paths.
     // Multi-mode adds `_SCROLL_<mode>` to disambiguate siblings, same
     // pattern as `_TIME_<ms>ms` for the time dimension.
+    val captureScrolls = effectiveScrolls.filterNot {
+      it.mode == ScrollMode.LONG || it.mode == ScrollMode.GIF
+    }
+    val productScrolls = effectiveScrolls.filter {
+      it.mode == ScrollMode.LONG || it.mode == ScrollMode.GIF
+    }
+
     val scrollRows: List<Pair<ScrollCapture?, String>> =
       when {
-        effectiveScrolls.isEmpty() -> listOf(null to "")
-        effectiveScrolls.size == 1 -> listOf(effectiveScrolls[0] to "")
-        else -> effectiveScrolls.map { it to "_SCROLL_${it.mode.name.lowercase()}" }
+        captureScrolls.isEmpty() -> listOf(null to "")
+        captureScrolls.size == 1 -> listOf(captureScrolls[0] to "")
+        else -> captureScrolls.map { it to "_SCROLL_${it.mode.name.lowercase()}" }
       }
     val timeRows: List<Pair<Long?, String>> =
       if (effectiveTimings.isEmpty()) listOf(null to "")
@@ -577,20 +593,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // PNG capture. Suppress that to keep `@AnimatedPreview` a clean
     // single-output annotation.
     val emitStaticCross =
-      effectiveScrolls.isNotEmpty() || effectiveTimings.isNotEmpty() || effectiveAnimation == null
+      captureScrolls.isNotEmpty() || effectiveTimings.isNotEmpty() || effectiveAnimation == null
 
     val scrollTimeCaptures: List<Capture> =
       if (!emitStaticCross) emptyList()
       else {
         scrollRows.flatMap { (scroll, scrollSuffix) ->
           timeRows.map { (ms, timeSuffix) ->
-            // GIF captures land on `.gif`; everything else is `.png`.
-            // Branching the extension per-capture (rather than per-preview)
-            // keeps multi-mode annotations like `modes = [TOP, GIF]`
-            // producing one PNG + one GIF from the same function.
-            val ext = if (scroll?.mode == ScrollMode.GIF) "gif" else "png"
+            val ext = "png"
             // Cost is normalised to a static @Preview = 1.0. The mode
-            // ladder (TOP < END ≪ LONG < GIF) reflects how much extra
+            // ladder (TOP < END) reflects how much extra
             // work each scroll variant adds on top of the baseline
             // compose pass. `advanceTimeMillis` alone is still one
             // pass at a specific virtual time, so it doesn't bump the
@@ -615,7 +627,34 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         }
       }
 
-    return scrollTimeCaptures + animationCaptures
+    val dataProducts = productScrolls.flatMap { scroll ->
+      val productSuffix =
+        if (productScrolls.size == 1 && captureScrolls.isEmpty()) ""
+        else "_SCROLL_${scroll.mode.name.lowercase()}"
+      val ext = if (scroll.mode == ScrollMode.GIF) "gif" else "png"
+      val cost = if (scroll.mode == ScrollMode.GIF) SCROLL_GIF_COST else SCROLL_LONG_COST
+      val kind =
+        when (scroll.mode) {
+          ScrollMode.LONG -> "render/scroll/long"
+          ScrollMode.GIF -> "render/scroll/gif"
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
+      timeRows.map { (ms, timeSuffix) ->
+        PreviewDataProduct(
+          kind = kind,
+          advanceTimeMillis = ms,
+          scroll = scroll,
+          output =
+            "data/${kind.replace('/', '-')}/${previewId}${productSuffix}${timeSuffix}.${ext}",
+          cost = cost,
+        )
+      }
+    }
+
+    return PreviewOutputPlan(
+      captures = scrollTimeCaptures + animationCaptures,
+      dataProducts = dataProducts,
+    )
   }
 
   // Reads `@RoboComposePreviewOptions(manualClockOptions = [...])` on the
@@ -798,13 +837,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val fqn = "${classInfo.name}.${method.name}"
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
+    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, timings)
     return PreviewInfo(
       id = id,
       functionName = method.name,
       className = classInfo.name,
       sourceFile = packageQualifiedSourcePath(classInfo),
       params = params,
-      captures = buildCaptures(ann, id, scrolls, animation, timings),
+      captures = outputPlan.captures,
+      dataProducts = outputPlan.dataProducts,
     )
   }
 

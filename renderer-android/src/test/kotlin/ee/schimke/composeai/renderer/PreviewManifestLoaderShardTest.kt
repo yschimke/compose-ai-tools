@@ -30,8 +30,29 @@ class PreviewManifestLoaderShardTest {
         return PreviewRow(entry, emptyList())
     }
 
+    private fun productRow(id: String, cost: Float): PreviewRow {
+        val entry = RenderPreviewEntry(
+            id = id,
+            functionName = id,
+            className = "com.example.PreviewsKt",
+            captures = listOf(RenderPreviewCapture(renderOutput = "renders/$id.png", cost = 1f)),
+            dataProducts =
+                listOf(
+                    RenderPreviewDataProduct(
+                        kind = "render/scroll/long",
+                        output = "data/render-scroll-long/$id.png",
+                        cost = cost,
+                    )
+                ),
+        )
+        return PreviewRow(entry, emptyList())
+    }
+
     private fun loadOf(rows: List<PreviewRow>): Double =
-        rows.sumOf { it.entry.captures.sumOf { c -> c.cost.toDouble() } }
+        rows.sumOf { row ->
+            row.entry.captures.sumOf { c -> c.cost.toDouble() } +
+                row.entry.dataProducts.sumOf { p -> p.cost.toDouble() }
+        }
 
     @Test
     fun `shardCount of 1 returns every row regardless of cost ordering`() {
@@ -122,6 +143,16 @@ class PreviewManifestLoaderShardTest {
         assertTrue(
             "expected the 50-cost row on shard 0; got ${shard0.map { it.entry.id }}",
             shard0.any { it.entry.id == "anim" },
+        )
+    }
+
+    @Test
+    fun `data product cost participates in shard assignment`() {
+        val rows = listOf(productRow("long", 40f), row("static", 1f))
+        val shard0 = assignToShard(rows, shardCount = 2, shardIndex = 0)
+        assertTrue(
+            "expected the heavy data-product row on shard 0; got ${shard0.map { it.entry.id }}",
+            shard0.any { it.entry.id == "long" },
         )
     }
 }
