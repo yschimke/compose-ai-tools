@@ -84,11 +84,33 @@ class DesktopRecordingSession(
 
   @Volatile private var liveFrameCount: Int = 0
 
+  // Live mode failure latch. Set by the tick loop's catch when scene.render or writeFramePng
+  // throws; read by stopLive() (after the join) to propagate the underlying error to the caller.
+  // Without this, a runtime exception on the background tick thread would silently truncate the
+  // recording and stopLive() would still report a successful (but partial) result — the
+  // asymmetry vs scripted mode that Codex flagged.
+  @Volatile private var liveFailure: Throwable? = null
+
   private val liveTickThread: Thread? =
     if (live) {
       framesDir.mkdirs()
       Thread({ runLiveTickLoop() }, "compose-ai-daemon-recording-live-$recordingId").apply {
         isDaemon = true
+        // Belt + suspenders for failure capture. The tick body's own try/catch handles failures
+        // that escape `dispatchInput` / `scene.render` / `writeFramePng` synchronously. But
+        // Compose's recomposer dispatches recompositions onto a coroutine that uses *this thread*
+        // as its dispatcher; if the recomposition body throws, the coroutine's exception surfaces
+        // via the thread's UncaughtExceptionHandler, NOT out of the next `scene.render()` call.
+        // Hooking the handler latches those into [liveFailure] too so [stopLive] propagates them
+        // exactly the same way.
+        uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, t ->
+          if (liveFailure == null) liveFailure = t
+          System.err.println(
+            "compose-ai-daemon: DesktopRecordingSession($recordingId) tick-thread uncaught " +
+              "exception (likely Compose recomposition error): ${t.javaClass.simpleName}: " +
+              "${t.message}"
+          )
+        }
         start()
       }
     } else null
@@ -126,12 +148,17 @@ class DesktopRecordingSession(
     if (stopped) error("DesktopRecordingSession.stop() called twice without a cached result")
     stopped = true
 
-    val r = if (live) stopLive() else stopScripted()
-    result = r
-    // The held scene is no longer needed; tear it down so subsequent close() is a no-op. The
-    // per-frame PNGs and any encoded video stay on disk for `recording/encode`.
-    engine.tearDown(state)
-    return r
+    // try/finally so the held scene is always torn down — including when stopLive() rethrows a
+    // captured live-tick failure, or when the scripted playback loop throws mid-render. Without
+    // this wrapping a render-time exception would leak the Skia Surface for the JVM's lifetime.
+    // engine.tearDown is idempotent, so the eventual close() call is still a no-op.
+    return try {
+      val r = if (live) stopLive() else stopScripted()
+      result = r
+      r
+    } finally {
+      engine.tearDown(state)
+    }
   }
 
   /**
@@ -199,6 +226,18 @@ class DesktopRecordingSession(
         )
       }
     }
+    // Failure propagation: if the tick loop caught an exception before exiting, surface it now
+    // so JsonRpcServer.handleRecordingStop returns a wire-level error instead of a successful
+    // (truncated) result. Mirrors scripted mode's contract — there, stopScripted's synchronous
+    // loop throws directly out of stop().
+    val failure = liveFailure
+    if (failure != null) {
+      throw IllegalStateException(
+        "live recording '$recordingId' failed mid-flight: " +
+          "${failure.javaClass.simpleName}: ${failure.message}",
+        failure,
+      )
+    }
     val frameCount = liveFrameCount
     val durationMs: Long = if (frameCount == 0) 0L else (frameCount - 1).toLong() * 1000L / fps
     System.err.println(
@@ -225,41 +264,64 @@ class DesktopRecordingSession(
    * 4. Sleeps until the next frame boundary (`nextTickNs - now`), preserving fps cadence even when
    *    the render body undershoots the budget.
    *
-   * Exits cleanly when [liveStopRequested] is observed at the top of the loop. The dispatch pattern
-   * matches scripted mode (CLICK splits into Press → render-tick → Release at the same nanoTime) so
-   * `Modifier.clickable {}` and other tap-gesture-detecting modifiers see a clean down→up sequence.
+   * **Initial-frame guarantee.** Structured as a `do { ... } while (!liveStopRequested)` so at
+   * least one frame always lands on disk, even when `recording/stop` arrives so quickly that
+   * `liveStopRequested` is set before the OS schedules this thread for its first iteration. Without
+   * this the very-short-recording path produced 0 frames and `recording/encode` (APNG specifically)
+   * would later fail with "at least one frame required" — a non-deterministic failure depending on
+   * thread-scheduling timing.
+   *
+   * **Failure capture.** Any throwable from `dispatchInput`, `scene.render`, or `writeFramePng` is
+   * caught into [liveFailure] and the loop exits. [stopLive] reads the latch after joining and
+   * rethrows so the wire-side `recording/stop` returns a clean error rather than a
+   * silently-truncated successful result. Without this, a render-time exception (e.g. a state
+   * mutation that triggers an `error("…")` inside the composition) would terminate the tick thread
+   * asynchronously and `stop()` would lie about success.
+   *
+   * The dispatch pattern matches scripted mode (CLICK splits into Press → render-tick → Release at
+   * the same nanoTime) so `Modifier.clickable {}` and other tap-gesture-detecting modifiers see a
+   * clean down→up sequence.
    */
   private fun runLiveTickLoop() {
     liveStartNs = System.nanoTime()
     val frameIntervalNs: Long = 1_000_000_000L / fps.toLong()
-    while (!liveStopRequested) {
-      val tNanos = System.nanoTime() - liveStartNs
-      val tMs = tNanos / 1_000_000L
+    try {
+      do {
+        val tNanos = System.nanoTime() - liveStartNs
+        val tMs = tNanos / 1_000_000L
 
-      // Drain inputs accumulated since the last tick; dispatch each at the current virtual
-      // nanoTime. Inputs that arrive *during* the dispatch+render below are picked up next tick.
-      while (true) {
-        val next = liveInputs.poll() ?: break
-        dispatchInput(next.kind, next.pixelX, next.pixelY, tNanos, tMs)
-      }
-
-      val image = state.scene.render(nanoTime = tNanos)
-      writeFramePng(image, liveFrameCount)
-      liveFrameCount++
-
-      // Sleep until the next frame boundary. If the render body overran (unlikely on desktop;
-      // common on Android one day), `sleepFor` clamps to 0 — we just take the next frame
-      // immediately rather than chasing missed frames retrospectively.
-      val nextTickNs = liveStartNs + liveFrameCount.toLong() * frameIntervalNs
-      val sleepNs = (nextTickNs - System.nanoTime()).coerceAtLeast(0L)
-      if (sleepNs > 0) {
-        try {
-          Thread.sleep(sleepNs / 1_000_000L, (sleepNs % 1_000_000L).toInt())
-        } catch (_: InterruptedException) {
-          Thread.currentThread().interrupt()
-          return
+        // Drain inputs accumulated since the last tick; dispatch each at the current virtual
+        // nanoTime. Inputs that arrive *during* the dispatch+render below are picked up next
+        // tick.
+        while (true) {
+          val next = liveInputs.poll() ?: break
+          dispatchInput(next.kind, next.pixelX, next.pixelY, tNanos, tMs)
         }
-      }
+
+        val image = state.scene.render(nanoTime = tNanos)
+        writeFramePng(image, liveFrameCount)
+        liveFrameCount++
+
+        // Sleep until the next frame boundary. If the render body overran (unlikely on desktop;
+        // common on Android one day), `sleepFor` clamps to 0 — we just take the next frame
+        // immediately rather than chasing missed frames retrospectively.
+        val nextTickNs = liveStartNs + liveFrameCount.toLong() * frameIntervalNs
+        val sleepNs = (nextTickNs - System.nanoTime()).coerceAtLeast(0L)
+        if (sleepNs > 0) {
+          try {
+            Thread.sleep(sleepNs / 1_000_000L, (sleepNs % 1_000_000L).toInt())
+          } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return
+          }
+        }
+      } while (!liveStopRequested)
+    } catch (t: Throwable) {
+      liveFailure = t
+      System.err.println(
+        "compose-ai-daemon: DesktopRecordingSession.runLiveTickLoop($recordingId) failed at " +
+          "frame $liveFrameCount: ${t.javaClass.simpleName}: ${t.message}"
+      )
     }
   }
 
