@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -130,6 +131,41 @@ class DataCommandsTest {
     assertEquals("render/scroll/long", summary.kind)
     assertEquals(listOf("P"), summary.previews)
     assertEquals(file.absolutePath, product!!.file.path)
+  }
+
+  @Test
+  fun `data-products scans kind-scoped image products`() {
+    val projectDir = tempModule()
+    val file =
+      projectDir.resolve("build/compose-previews/data/render-scroll-long/com.example.Foo.png")
+    file.parentFile.mkdirs()
+    file.writeBytes(byteArrayOf(1, 2, 3))
+
+    val product = scanDataProducts("app", projectDir).products.single()
+
+    assertEquals("render/scroll/long", product.kind)
+    assertEquals(listOf("com.example.Foo"), product.previews)
+  }
+
+  @Test
+  fun `data get resolves kind-scoped image products`() {
+    val projectDir = tempModule()
+    val file =
+      projectDir.resolve("build/compose-previews/data/render-scroll-long/com.example.Foo.png")
+    file.parentFile.mkdirs()
+    file.writeBytes(byteArrayOf(1, 2, 3))
+
+    val product =
+      assertNotNull(
+        findDataProduct(
+          PreviewModule("app", projectDir),
+          previewId = "com.example.Foo",
+          kind = "render/scroll/long",
+        )
+      )
+
+    assertEquals(file.absolutePath, product.file.path)
+    assertEquals(DataProductTransport.PATH, product.descriptor.transport)
   }
 
   private fun tempModule(): File = Files.createTempDirectory("data-command-test").toFile()

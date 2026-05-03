@@ -146,19 +146,19 @@ internal fun listLocalHistory(
   previewId: String? = null,
   limit: Int? = null,
 ): CliHistoryListResponse {
-  val all =
-    modules
-      .flatMap { module ->
-        localHistorySource(module.projectDir)
-          .list(HistoryFilter(previewId = previewId, limit = LocalFsHistorySource.MAX_LIMIT))
-          .entries
-      }
+  val all = modules.map { module ->
+    localHistorySource(module.projectDir)
+      .list(HistoryFilter(previewId = previewId, limit = LocalFsHistorySource.MAX_LIMIT))
+  }
+  val entries =
+    all
+      .flatMap { it.entries }
       .sortedWith(compareByDescending<HistoryEntry> { it.timestamp }.thenByDescending { it.id })
   val capped =
-    all.take(
+    entries.take(
       (limit ?: LocalFsHistorySource.DEFAULT_LIMIT).coerceIn(1, LocalFsHistorySource.MAX_LIMIT)
     )
-  return CliHistoryListResponse(entries = capped, totalCount = all.size)
+  return CliHistoryListResponse(entries = capped, totalCount = all.sumOf { it.totalCount })
 }
 
 internal fun diffLocalHistory(

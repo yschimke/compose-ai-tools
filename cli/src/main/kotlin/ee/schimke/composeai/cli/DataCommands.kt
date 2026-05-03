@@ -229,13 +229,20 @@ internal fun scanDataProducts(module: String, projectDir: File): DataProductsMod
       ?.filter { it.isDirectory }
       ?.filter { it.name !in manifestProductBuckets }
       ?.sortedBy { it.name }
-      ?.forEach { previewDir ->
-        previewDir
+      ?.forEach { productDir ->
+        val directoryDescriptor = descriptorForDirectory(productDir.name)
+        productDir
           .listFiles()
           ?.filter { it.isFile }
-          ?.mapNotNull(::descriptorForFile)
-          ?.forEach { descriptor ->
-            byKind.getOrPut(descriptor.kind) { linkedSetOf() } += previewDir.name
+          ?.forEach { file ->
+            if (directoryDescriptor != null) {
+              byKind.getOrPut(directoryDescriptor.kind) { linkedSetOf() } +=
+                file.nameWithoutExtension
+            } else {
+              descriptorForFile(file)?.let { descriptor ->
+                byKind.getOrPut(descriptor.kind) { linkedSetOf() } += productDir.name
+              }
+            }
           }
       }
   }
@@ -275,7 +282,8 @@ internal fun findDataProduct(
   kind: String,
 ): LocalDataProduct? {
   val descriptor = descriptorForKind(kind)
-  val file = dataRoot(module.projectDir).resolve(previewId).resolve(descriptor.fileName)
+  val root = dataRoot(module.projectDir)
+  val file = root.resolve(previewId).resolve(descriptor.fileName)
   if (file.exists() && file.isFile) {
     return LocalDataProduct(module.gradlePath, previewId, descriptor, file.absoluteFile)
   }
@@ -284,15 +292,22 @@ internal fun findDataProduct(
       ?.previews
       ?.firstOrNull { it.id == previewId }
       ?.dataProducts
-      ?.firstOrNull { it.kind == kind && it.output.isNotBlank() } ?: return null
-  val manifestFile = module.projectDir.resolve("build/compose-previews/${manifestProduct.output}")
-  if (!manifestFile.isFile) return null
-  return LocalDataProduct(
-    module.gradlePath,
-    previewId,
-    descriptorForManifestProduct(manifestProduct, manifestFile),
-    manifestFile.absoluteFile,
-  )
+      ?.firstOrNull { it.kind == kind && it.output.isNotBlank() }
+  if (manifestProduct != null) {
+    val manifestFile = module.projectDir.resolve("build/compose-previews/${manifestProduct.output}")
+    if (manifestFile.isFile) {
+      return LocalDataProduct(
+        module.gradlePath,
+        previewId,
+        descriptorForManifestProduct(manifestProduct, manifestFile),
+        manifestFile.absoluteFile,
+      )
+    }
+  }
+  val kindScopedFile =
+    root.resolve(kind.replace('/', '-')).resolve("$previewId.${descriptor.extension}")
+  if (!kindScopedFile.isFile) return null
+  return LocalDataProduct(module.gradlePath, previewId, descriptor, kindScopedFile.absoluteFile)
 }
 
 internal fun buildDataGetResponse(product: LocalDataProduct): DataGetResponse {
@@ -323,7 +338,9 @@ internal data class LocalDataProductDescriptor(
   val schemaVersion: Int,
   val transport: DataProductTransport,
   val fileName: String,
-)
+) {
+  val extension: String = fileName.substringAfterLast('.', missingDelimiterValue = "json")
+}
 
 private fun dataRoot(projectDir: File): File = projectDir.resolve("build/compose-previews/data")
 
@@ -368,10 +385,23 @@ private val knownLocalDataProducts =
       DataProductTransport.PATH,
       "render-perfetto-trace.json",
     ),
+    LocalDataProductDescriptor(
+      "render/scroll/long",
+      1,
+      DataProductTransport.PATH,
+      "render-scroll-long.png",
+    ),
+    LocalDataProductDescriptor(
+      "render/scroll/gif",
+      1,
+      DataProductTransport.PATH,
+      "render-scroll-gif.gif",
+    ),
   )
 
 private val knownByKind = knownLocalDataProducts.associateBy { it.kind }
 private val knownByFileName = knownLocalDataProducts.associateBy { it.fileName }
+private val knownByDirectoryName = knownLocalDataProducts.associateBy { it.kind.replace('/', '-') }
 
 private fun descriptorForKind(kind: String): LocalDataProductDescriptor =
   knownByKind[kind]
@@ -427,3 +457,6 @@ private fun descriptorForFile(file: File): LocalDataProductDescriptor? =
         )
       else -> null
     }
+
+private fun descriptorForDirectory(name: String): LocalDataProductDescriptor? =
+  knownByDirectoryName[name]
