@@ -827,10 +827,10 @@ open class RobolectricHost(
    * [acquireInteractiveSession]: needs `sandboxCount >= 2` and a [previewSpecResolver]; only one
    * held session at a time per host.
    *
-   * Live mode (`live = true`) is rejected with [UnsupportedOperationException] —
-   * [JsonRpcServer.handleRecordingStart] translates that to `MethodNotFound (-32601)` on the
-   * wire, mirroring the desktop fallback. Android live recording would need per-frame bridge
-   * machinery that v1 doesn't ship.
+   * Live mode (`live = true`) uses the same wrapper with a host-side tick thread that drives the
+   * held-rule loop at [fps]. It still pays one bridge render round-trip per frame, but keeps the
+   * focus-view recording surface functional while a future sandbox-owned runner can collapse the
+   * loop into one evaluate call.
    */
   override fun acquireRecordingSession(
     previewId: String,
@@ -841,12 +841,6 @@ open class RobolectricHost(
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
     live: Boolean,
   ): RecordingSession {
-    if (live) {
-      throw UnsupportedOperationException(
-        "RobolectricHost: live recording is not supported on the Android backend in v1; use " +
-          "scripted mode (recording/start with live=false). See RECORDING.md § \"Android backend\"."
-      )
-    }
     if (sandboxCount < 2) {
       throw UnsupportedOperationException(
         "RobolectricHost: recording sessions require sandboxCount >= 2 " +
@@ -881,6 +875,7 @@ open class RobolectricHost(
       recordingId = recordingId,
       fps = fps,
       scale = scale,
+      live = live,
       interactive = interactive,
       framesDir = framesDir,
       encodedDir = encodedDir,
@@ -1574,7 +1569,7 @@ open class RobolectricHost(
                           backend = "android-live",
                         )
                       renderTrace.section("compose:advanceClock") {
-                        rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                        rule.mainClock.advanceTimeBy(cmd.advanceTimeMs ?: HELD_CAPTURE_ADVANCE_MS)
                       }
                       renderTrace.section("render:captureRoboImage") {
                         rule

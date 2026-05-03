@@ -276,7 +276,7 @@ private class SlowSession(
     dispatchCount.incrementAndGet()
   }
 
-  override fun render(requestId: Long): RenderResult {
+  override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     Thread.sleep(renderDelayMs) // simulate a slow render so subsequent inputs queue up
     renderCount.incrementAndGet()
     return RenderResult(

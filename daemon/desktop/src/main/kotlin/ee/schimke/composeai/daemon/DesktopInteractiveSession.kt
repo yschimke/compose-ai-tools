@@ -113,7 +113,7 @@ class DesktopInteractiveSession(
     }
   }
 
-  override fun render(requestId: Long): RenderResult {
+  override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "DesktopInteractiveSession.render() called after close()" }
     return engine.renderOnce(
       state,
