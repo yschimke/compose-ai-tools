@@ -264,6 +264,7 @@ fun main(args: Array<String>) {
           RenderPreviewExtension.deviceClipDescriptor,
           RenderPreviewExtension.renderTraceDescriptor,
           RenderPreviewExtension.composeTraceDescriptor,
+          RenderPreviewExtension.overlayLegendDescriptor,
         ),
     )
 

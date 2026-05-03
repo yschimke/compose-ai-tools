@@ -14,6 +14,7 @@ data class PreviewPipelineStep(
   val id: String,
   val displayName: String = id,
   val productKinds: List<String> = emptyList(),
+  val annotationFqns: List<String> = emptyList(),
   val usageModes: Set<PreviewExtensionUsageMode> = setOf(PreviewExtensionUsageMode.ExplicitEffect),
   val traits: Set<PipelineStepTrait> = emptySet(),
   val requires: Set<PipelineCapability> = emptySet(),
@@ -33,6 +34,8 @@ enum class PreviewExtensionUsageMode {
 data class PreviewExtensionDescriptor(
   val id: String,
   val displayName: String = id,
+  val usageModes: Set<PreviewExtensionUsageMode> = setOf(PreviewExtensionUsageMode.ExplicitEffect),
+  val componentExtensionIds: List<String> = emptyList(),
   val steps: List<PreviewPipelineStep> = emptyList(),
 )
 
@@ -40,6 +43,8 @@ data class PreviewExtensionDescriptor(
 enum class PipelineStepTrait {
   ScenarioDriver,
   InteractiveDriver,
+  AnnotationInspector,
+  ExtraPreviewSuggester,
   FrameProcessor,
   FinalArtifactProcessor,
   DataExtractor,
@@ -53,12 +58,17 @@ enum class PipelineCapability {
   Frames,
   SingleFrame,
   MultipleFrames,
+  PreviewFunctionAnnotations,
+  SuggestedPreviews,
   DeviceGeometry,
   DeviceClip,
   ScrollState,
   SemanticsSnapshot,
+  AccessibilityNodes,
   AccessibilityFindings,
+  OverlayAnnotations,
   ImageArtifact,
+  AnnotatedImageArtifact,
   AnimatedArtifact,
   InteractiveSession,
   TraceEvents,

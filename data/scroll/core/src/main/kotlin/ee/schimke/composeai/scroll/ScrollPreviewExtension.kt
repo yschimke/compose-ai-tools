@@ -9,8 +9,21 @@ import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
 /** Pipeline metadata for the scroll preview extension. */
 object ScrollPreviewExtension {
   const val ID: String = "scroll"
+  const val ANNOTATION_ID: String = "scrolling-preview-annotation"
+  const val ANNOTATION_FQN: String = "ee.schimke.composeai.preview.ScrollingPreview"
   const val KIND_LONG: String = "render/scroll/long"
   const val KIND_GIF: String = "render/scroll/gif"
+
+  val annotationSuggester: PreviewPipelineStep =
+    PreviewPipelineStep(
+      id = "scroll.annotation.suggest",
+      displayName = "ScrollingPreview suggestions",
+      annotationFqns = listOf(ANNOTATION_FQN),
+      usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+      traits = setOf(PipelineStepTrait.AnnotationInspector, PipelineStepTrait.ExtraPreviewSuggester),
+      requires = setOf(PipelineCapability.PreviewFunctionAnnotations),
+      provides = setOf(PipelineCapability.SuggestedPreviews),
+    )
 
   /** Long scroll owns scroll position over a sequence of viewport captures. */
   val longScrollScenario: PreviewPipelineStep =
@@ -76,10 +89,29 @@ object ScrollPreviewExtension {
       provides = setOf(PipelineCapability.AnimatedArtifact),
     )
 
-  val descriptor: PreviewExtensionDescriptor =
+  val longScrollDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
-      id = ID,
-      displayName = "Scroll",
-      steps = listOf(longScrollScenario, gifScrollScenario, longScrollEncoder, gifScrollEncoder),
+      id = "scroll-long",
+      displayName = "Long scroll",
+      usageModes =
+        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+      steps = listOf(longScrollScenario, longScrollEncoder),
+    )
+
+  val annotationDescriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = ANNOTATION_ID,
+      displayName = "ScrollingPreview annotation",
+      usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+      steps = listOf(annotationSuggester),
+    )
+
+  val gifScrollDescriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = "scroll-gif",
+      displayName = "Scroll GIF",
+      usageModes =
+        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+      steps = listOf(gifScrollScenario, gifScrollEncoder),
     )
 }

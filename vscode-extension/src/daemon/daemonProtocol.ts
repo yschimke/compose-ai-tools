@@ -151,6 +151,8 @@ export type SamplingPolicy =
 export interface PreviewExtensionDescriptor {
     id: string;
     displayName?: string;
+    usageModes?: PreviewExtensionUsageMode[];
+    componentExtensionIds?: string[];
     steps?: PreviewPipelineStep[];
 }
 
@@ -158,6 +160,7 @@ export interface PreviewPipelineStep {
     id: string;
     displayName?: string;
     productKinds?: string[];
+    annotationFqns?: string[];
     usageModes?: PreviewExtensionUsageMode[];
     traits?: PipelineStepTrait[];
     requires?: PipelineCapability[];
@@ -174,6 +177,8 @@ export type PreviewExtensionUsageMode =
 export type PipelineStepTrait =
     | 'ScenarioDriver'
     | 'InteractiveDriver'
+    | 'AnnotationInspector'
+    | 'ExtraPreviewSuggester'
     | 'FrameProcessor'
     | 'FinalArtifactProcessor'
     | 'DataExtractor'
@@ -185,12 +190,17 @@ export type PipelineCapability =
     | 'Frames'
     | 'SingleFrame'
     | 'MultipleFrames'
+    | 'PreviewFunctionAnnotations'
+    | 'SuggestedPreviews'
     | 'DeviceGeometry'
     | 'DeviceClip'
     | 'ScrollState'
     | 'SemanticsSnapshot'
+    | 'AccessibilityNodes'
     | 'AccessibilityFindings'
+    | 'OverlayAnnotations'
     | 'ImageArtifact'
+    | 'AnnotatedImageArtifact'
     | 'AnimatedArtifact'
     | 'InteractiveSession'
     | 'TraceEvents';

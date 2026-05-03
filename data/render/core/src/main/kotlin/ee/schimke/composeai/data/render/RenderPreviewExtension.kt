@@ -44,6 +44,15 @@ object RenderPreviewExtension {
       sampling = SamplingPolicy.Aggregate,
     )
 
+  val overlayLegendProcessor: PreviewPipelineStep =
+    PreviewPipelineStep(
+      id = "render.overlayLegend",
+      displayName = "Overlay with legend",
+      traits = setOf(PipelineStepTrait.FrameProcessor),
+      requires = setOf(PipelineCapability.ImageArtifact, PipelineCapability.OverlayAnnotations),
+      provides = setOf(PipelineCapability.ImageArtifact, PipelineCapability.AnnotatedImageArtifact),
+    )
+
   val deviceClipDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "render-device-clip",
@@ -63,5 +72,12 @@ object RenderPreviewExtension {
       id = "compose-trace",
       displayName = "Compose composition trace",
       steps = listOf(composeTraceProfiler),
+    )
+
+  val overlayLegendDescriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = "overlay-legend",
+      displayName = "Overlay with legend",
+      steps = listOf(overlayLegendProcessor),
     )
 }
