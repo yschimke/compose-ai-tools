@@ -1,13 +1,17 @@
-import { ChildProcess, spawn } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import { DaemonClient, DaemonClientEvents, DaemonClientLogger } from './daemonClient';
+import { ChildProcess, spawn } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import {
+    DaemonClient,
+    DaemonClientEvents,
+    DaemonClientLogger,
+} from "./daemonClient";
 import {
     DAEMON_DESCRIPTOR_SCHEMA_VERSION,
     DaemonLaunchDescriptor,
     InitializeResult,
-} from './daemonProtocol';
-import { LogFilter } from '../logFilter';
+} from "./daemonProtocol";
+import { LogFilter } from "../logFilter";
 
 /**
  * Reads `<module>/build/compose-previews/daemon-launch.json` and returns the
@@ -21,22 +25,30 @@ export function readLaunchDescriptor(
     logger?: DaemonClientLogger,
 ): DaemonLaunchDescriptor | null {
     const file = path.join(
-        workspaceRoot, moduleId, 'build', 'compose-previews', 'daemon-launch.json',
+        workspaceRoot,
+        moduleId,
+        "build",
+        "compose-previews",
+        "daemon-launch.json",
     );
-    if (!fs.existsSync(file)) { return null; }
+    if (!fs.existsSync(file)) {
+        return null;
+    }
     try {
-        const raw = fs.readFileSync(file, 'utf-8');
+        const raw = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(raw) as DaemonLaunchDescriptor;
         if (parsed.schemaVersion !== DAEMON_DESCRIPTOR_SCHEMA_VERSION) {
             logger?.appendLine(
                 `[daemon] descriptor schema mismatch at ${file}: ` +
-                `got ${parsed.schemaVersion}, expected ${DAEMON_DESCRIPTOR_SCHEMA_VERSION}`,
+                    `got ${parsed.schemaVersion}, expected ${DAEMON_DESCRIPTOR_SCHEMA_VERSION}`,
             );
             return null;
         }
         return parsed;
     } catch (err) {
-        logger?.appendLine(`[daemon] failed to read ${file}: ${(err as Error).message}`);
+        logger?.appendLine(
+            `[daemon] failed to read ${file}: ${(err as Error).message}`,
+        );
         return null;
     }
 }
@@ -78,23 +90,28 @@ export interface SpawnOptions {
 export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const { descriptor, clientVersion, events, workspaceRoot } = opts;
     const logger = opts.logger;
-    const logFilter = opts.logFilter ?? new LogFilter(() => 'verbose');
+    const logFilter = opts.logFilter ?? new LogFilter(() => "verbose");
 
     if (!descriptor.enabled) {
-        throw new Error('Daemon disabled in build config: set composePreview.daemon.enabled = true');
+        throw new Error(
+            "Daemon disabled in build config: set composePreview.daemon.enabled = true",
+        );
     }
 
     const javaPath = descriptor.javaLauncher ?? findJavaOnPath();
     if (!javaPath) {
-        throw new Error('No java executable: set javaLauncher via the toolchain or put java on PATH');
+        throw new Error(
+            "No java executable: set javaLauncher via the toolchain or put java on PATH",
+        );
     }
 
-    const sysProps = Object.entries(descriptor.systemProperties)
-        .map(([k, v]) => `-D${k}=${v}`);
+    const sysProps = Object.entries(descriptor.systemProperties).map(
+        ([k, v]) => `-D${k}=${v}`,
+    );
     const args = [
         ...descriptor.jvmArgs,
         ...sysProps,
-        '-cp',
+        "-cp",
         descriptor.classpath.join(path.delimiter),
         descriptor.mainClass,
     ];
@@ -102,34 +119,40 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const spawnLine =
         `[daemon] spawning ${descriptor.mainClass} for ${descriptor.modulePath} ` +
         `(${descriptor.classpath.length} classpath entries, java=${javaPath})`;
-    if (logFilter.shouldEmitInformational(spawnLine)) { logger?.appendLine(spawnLine); }
+    if (logFilter.shouldEmitInformational(spawnLine)) {
+        logger?.appendLine(spawnLine);
+    }
 
     const child = spawn(javaPath, args, {
         cwd: descriptor.workingDirectory,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
     });
 
     if (!child.stdin || !child.stdout || !child.stderr) {
-        throw new Error('Daemon spawn produced no stdio streams');
+        throw new Error("Daemon spawn produced no stdio streams");
     }
 
     // Stderr is a free-form log channel per PROTOCOL.md § 1 — surface to the
     // logger so daemon `System.err.println` lands in the user's output panel.
     // The filter dedupes the Roborazzi ActionBar banner and drops the boot
     // diagnostics at normal level; verbose passes everything through.
-    child.stderr.setEncoding('utf-8');
-    child.stderr.on('data', (chunk: string) => {
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
-            if (line.length === 0) { continue; }
+            if (line.length === 0) {
+                continue;
+            }
             const filtered = logFilter.filterDaemonStderrLine(line);
-            if (filtered === null) { continue; }
+            if (filtered === null) {
+                continue;
+            }
             logger?.appendLine(`[daemon stderr] ${filtered}`);
         }
     });
 
     const exited = new Promise<number | null>((resolve) => {
-        child.on('exit', (code) => {
+        child.on("exit", (code) => {
             // Exit messages always print — the JVM exiting unexpectedly is
             // never noise. The successful exit case (code=0 on user-driven
             // shutdown) is rare enough that it's still useful at quiet.
@@ -147,10 +170,17 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
             workspaceRoot,
             moduleId: descriptor.modulePath,
             moduleProjectDir: descriptor.workingDirectory,
-            capabilities: opts.capabilities ?? { visibility: true, metrics: true },
+            capabilities: opts.capabilities ?? {
+                visibility: true,
+                metrics: true,
+            },
         });
     } catch (err) {
-        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        try {
+            child.kill("SIGTERM");
+        } catch {
+            /* ignore */
+        }
         throw err;
     }
 
@@ -164,14 +194,20 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
  * launcher and we never reach this path.
  */
 function findJavaOnPath(): string | null {
-    const exe = process.platform === 'win32' ? 'java.exe' : 'java';
-    const dirs = (process.env.PATH ?? '').split(path.delimiter);
+    const exe = process.platform === "win32" ? "java.exe" : "java";
+    const dirs = (process.env.PATH ?? "").split(path.delimiter);
     for (const dir of dirs) {
-        if (!dir) { continue; }
+        if (!dir) {
+            continue;
+        }
         const candidate = path.join(dir, exe);
         try {
-            if (fs.statSync(candidate).isFile()) { return candidate; }
-        } catch { /* skip */ }
+            if (fs.statSync(candidate).isFile()) {
+                return candidate;
+            }
+        } catch {
+            /* skip */
+        }
     }
     return null;
 }

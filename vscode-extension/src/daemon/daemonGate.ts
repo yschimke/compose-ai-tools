@@ -1,12 +1,20 @@
-import * as vscode from 'vscode';
-import { GradleService } from '../gradleService';
-import { LogFilter } from '../logFilter';
-import { DaemonClient, DaemonClientEvents, DaemonClientLogger } from './daemonClient';
-import { readLaunchDescriptor, spawnDaemon, SpawnedDaemon } from './daemonProcess';
-import { DaemonLaunchDescriptor } from './daemonProtocol';
+import * as vscode from "vscode";
+import { GradleService } from "../gradleService";
+import { LogFilter } from "../logFilter";
+import {
+    DaemonClient,
+    DaemonClientEvents,
+    DaemonClientLogger,
+} from "./daemonClient";
+import {
+    readLaunchDescriptor,
+    spawnDaemon,
+    SpawnedDaemon,
+} from "./daemonProcess";
+import { DaemonLaunchDescriptor } from "./daemonProtocol";
 
-const SETTING_ENABLED = 'daemon.enabled';
-const LEGACY_SETTING_ENABLED = 'experimental.daemon.enabled';
+const SETTING_ENABLED = "daemon.enabled";
+const LEGACY_SETTING_ENABLED = "experimental.daemon.enabled";
 
 /**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
@@ -35,7 +43,7 @@ export class DaemonGate {
 
     /** Reads the user setting freshly each time so toggles don't need a reload. */
     isEnabled(): boolean {
-        const config = vscode.workspace.getConfiguration('composePreview');
+        const config = vscode.workspace.getConfiguration("composePreview");
         const current = config.inspect<boolean>(SETTING_ENABLED);
         const legacy = config.inspect<boolean>(LEGACY_SETTING_ENABLED);
         const value =
@@ -49,8 +57,8 @@ export class DaemonGate {
         if (!value && !this.warnedUserDisabled) {
             this.warnedUserDisabled = true;
             this.logger.appendLine(
-                '[daemon] WARNING: composePreview.daemon.enabled is false; using the Gradle render path. ' +
-                'The daemon will become required by the VS Code extension in a future release.',
+                "[daemon] WARNING: composePreview.daemon.enabled is false; using the Gradle render path. " +
+                    "The daemon will become required by the VS Code extension in a future release.",
             );
         }
         return value;
@@ -68,21 +76,31 @@ export class DaemonGate {
         moduleId: string,
         events: DaemonClientEvents,
     ): Promise<DaemonClient | null> {
-        if (this.disposed || !this.isEnabled()) { return null; }
+        if (this.disposed || !this.isEnabled()) {
+            return null;
+        }
 
         const existing = this.daemons.get(moduleId);
-        if (existing && !existing.client.isClosed()) { return existing.client; }
+        if (existing && !existing.client.isClosed()) {
+            return existing.client;
+        }
         if (existing && existing.client.isClosed()) {
             this.daemons.delete(moduleId);
         }
         const inFlight = this.spawns.get(moduleId);
-        if (inFlight) { return inFlight; }
+        if (inFlight) {
+            return inFlight;
+        }
 
-        const descriptor = readLaunchDescriptor(this.workspaceRoot, moduleId, this.logger);
+        const descriptor = readLaunchDescriptor(
+            this.workspaceRoot,
+            moduleId,
+            this.logger,
+        );
         if (!descriptor) {
             const message =
                 `[daemon] no launch descriptor for ${moduleId}; ` +
-                `run :${moduleId.replace(/\//g, ':')}:composePreviewDaemonStart first`;
+                `run :${moduleId.replace(/\//g, ":")}:composePreviewDaemonStart first`;
             this.logger.appendLine(message);
             throw new Error(message);
         }
@@ -91,16 +109,17 @@ export class DaemonGate {
                 this.warnedBuildDisabled.add(moduleId);
                 this.logger.appendLine(
                     `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
-                    'using the Gradle render path for now. The daemon will become required by ' +
-                    'the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.',
+                        "using the Gradle render path for now. The daemon will become required by " +
+                        "the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.",
                 );
             }
             return null;
         }
 
         try {
-            const spawn = this.spawn(moduleId, descriptor, events)
-                .finally(() => this.spawns.delete(moduleId));
+            const spawn = this.spawn(moduleId, descriptor, events).finally(() =>
+                this.spawns.delete(moduleId),
+            );
             this.spawns.set(moduleId, spawn);
             return await spawn;
         } catch (err) {
@@ -111,14 +130,18 @@ export class DaemonGate {
     }
 
     isBuildDisabled(moduleId: string): boolean {
-        const descriptor = readLaunchDescriptor(this.workspaceRoot, moduleId, this.logger);
+        const descriptor = readLaunchDescriptor(
+            this.workspaceRoot,
+            moduleId,
+            this.logger,
+        );
         if (descriptor?.enabled === false) {
             if (!this.warnedBuildDisabled.has(moduleId)) {
                 this.warnedBuildDisabled.add(moduleId);
                 this.logger.appendLine(
                     `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
-                    'using the Gradle render path for now. The daemon will become required by ' +
-                    'the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.',
+                        "using the Gradle render path for now. The daemon will become required by " +
+                        "the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.",
                 );
             }
             return true;
@@ -162,8 +185,13 @@ export class DaemonGate {
      * Gradle bootstrap task once per module. Cheap and cacheable. Propagates failures so callers
      * can surface daemon-enabled bootstrap errors instead of falling back to Gradle.
      */
-    async bootstrap(gradleService: GradleService, moduleId: string): Promise<void> {
-        if (!this.isEnabled()) { return; }
+    async bootstrap(
+        gradleService: GradleService,
+        moduleId: string,
+    ): Promise<void> {
+        if (!this.isEnabled()) {
+            return;
+        }
         await gradleService.runDaemonBootstrap(moduleId);
     }
 
@@ -191,28 +219,38 @@ export class DaemonGate {
      */
     isInteractiveSupported(moduleId: string): boolean {
         const existing = this.daemons.get(moduleId);
-        if (existing == null || existing.client.isClosed()) { return false; }
-        return existing.spawned.initializeResult.capabilities.interactive === true;
+        if (existing == null || existing.client.isClosed()) {
+            return false;
+        }
+        return (
+            existing.spawned.initializeResult.capabilities.interactive === true
+        );
     }
 
     async dispose(): Promise<void> {
         this.disposed = true;
         const entries = [...this.daemons.values()];
         this.daemons.clear();
-        await Promise.all(entries.map(async (entry) => {
-            try {
-                if (!entry.client.isClosed()) {
-                    await Promise.race([
-                        entry.client.shutdown(),
-                        new Promise((resolve) => setTimeout(resolve, 2000)),
-                    ]);
-                    entry.client.exit();
+        await Promise.all(
+            entries.map(async (entry) => {
+                try {
+                    if (!entry.client.isClosed()) {
+                        await Promise.race([
+                            entry.client.shutdown(),
+                            new Promise((resolve) => setTimeout(resolve, 2000)),
+                        ]);
+                        entry.client.exit();
+                    }
+                } catch {
+                    /* best-effort shutdown */
                 }
-            } catch {
-                /* best-effort shutdown */
-            }
-            try { entry.spawned.process.kill('SIGTERM'); } catch { /* ignore */ }
-        }));
+                try {
+                    entry.spawned.process.kill("SIGTERM");
+                } catch {
+                    /* ignore */
+                }
+            }),
+        );
     }
 
     /**
@@ -228,23 +266,31 @@ export class DaemonGate {
      * was spawned with even after the on-disk JAR has been replaced.
      */
     async restartAll(): Promise<string[]> {
-        if (this.disposed) { return []; }
+        if (this.disposed) {
+            return [];
+        }
         const entries = [...this.daemons.entries()];
         this.daemons.clear();
-        await Promise.all(entries.map(async ([_moduleId, entry]) => {
-            try {
-                if (!entry.client.isClosed()) {
-                    await Promise.race([
-                        entry.client.shutdown(),
-                        new Promise((resolve) => setTimeout(resolve, 2000)),
-                    ]);
-                    entry.client.exit();
+        await Promise.all(
+            entries.map(async ([_moduleId, entry]) => {
+                try {
+                    if (!entry.client.isClosed()) {
+                        await Promise.race([
+                            entry.client.shutdown(),
+                            new Promise((resolve) => setTimeout(resolve, 2000)),
+                        ]);
+                        entry.client.exit();
+                    }
+                } catch {
+                    /* best-effort shutdown */
                 }
-            } catch {
-                /* best-effort shutdown */
-            }
-            try { entry.spawned.process.kill('SIGTERM'); } catch { /* ignore */ }
-        }));
+                try {
+                    entry.spawned.process.kill("SIGTERM");
+                } catch {
+                    /* ignore */
+                }
+            }),
+        );
         return entries.map(([moduleId]) => moduleId);
     }
 }
@@ -265,7 +311,11 @@ function composeEvents(
     return {
         ...base,
         onChannelClosed: (err) => {
-            try { base.onChannelClosed?.(err); } finally { onClose(err); }
+            try {
+                base.onChannelClosed?.(err);
+            } finally {
+                onClose(err);
+            }
         },
     };
 }

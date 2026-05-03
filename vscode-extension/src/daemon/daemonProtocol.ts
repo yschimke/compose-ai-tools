@@ -12,21 +12,21 @@ export const PROTOCOL_VERSION = 1;
 // JSON-RPC envelopes (PROTOCOL.md § 2)
 
 export interface JsonRpcRequest<P = unknown> {
-    jsonrpc: '2.0';
+    jsonrpc: "2.0";
     id: number;
     method: string;
     params?: P;
 }
 
 export interface JsonRpcResponse<R = unknown> {
-    jsonrpc: '2.0';
+    jsonrpc: "2.0";
     id: number;
     result?: R;
     error?: JsonRpcError;
 }
 
 export interface JsonRpcNotification<P = unknown> {
-    jsonrpc: '2.0';
+    jsonrpc: "2.0";
     method: string;
     params?: P;
 }
@@ -70,7 +70,7 @@ export interface InitializeParams {
     options?: {
         maxHeapMb?: number;
         warmSpare?: boolean;
-        detectLeaks?: 'off' | 'light' | 'heavy';
+        detectLeaks?: "off" | "light" | "heavy";
         foreground?: boolean;
         /**
          * Data-product kinds the client wants attached to *every* render of
@@ -119,7 +119,7 @@ export interface InitializeParams {
 export interface DataProductCapability {
     kind: string;
     schemaVersion: number;
-    transport: 'inline' | 'path' | 'both';
+    transport: "inline" | "path" | "both";
     attachable: boolean;
     fetchable: boolean;
     requiresRerender: boolean;
@@ -130,23 +130,23 @@ export interface DataProductCapability {
 }
 
 export type DataProductFacet =
-    | 'structured'
-    | 'artifact'
-    | 'image'
-    | 'animation'
-    | 'overlay'
-    | 'check'
-    | 'diagnostic'
-    | 'profile'
-    | 'interactive';
+    | "structured"
+    | "artifact"
+    | "image"
+    | "animation"
+    | "overlay"
+    | "check"
+    | "diagnostic"
+    | "profile"
+    | "interactive";
 
 export type SamplingPolicy =
-    | 'Start'
-    | 'End'
-    | 'EachFrame'
-    | 'OnDemand'
-    | 'Aggregate'
-    | 'Failure';
+    | "Start"
+    | "End"
+    | "EachFrame"
+    | "OnDemand"
+    | "Aggregate"
+    | "Failure";
 
 export interface PreviewExtensionDescriptor {
     id: string;
@@ -183,39 +183,39 @@ export interface PreviewPipelineStep {
 }
 
 export type PreviewExtensionUsageMode =
-    | 'ExplicitEffect'
-    | 'SuggestedExtraPreview';
+    | "ExplicitEffect"
+    | "SuggestedExtraPreview";
 
 export type PipelineStepTrait =
-    | 'ScenarioDriver'
-    | 'InteractiveDriver'
-    | 'AnnotationInspector'
-    | 'ExtraPreviewSuggester'
-    | 'FrameProcessor'
-    | 'FinalArtifactProcessor'
-    | 'DataExtractor'
-    | 'Check'
-    | 'Encoder'
-    | 'Profiler';
+    | "ScenarioDriver"
+    | "InteractiveDriver"
+    | "AnnotationInspector"
+    | "ExtraPreviewSuggester"
+    | "FrameProcessor"
+    | "FinalArtifactProcessor"
+    | "DataExtractor"
+    | "Check"
+    | "Encoder"
+    | "Profiler";
 
 export type PipelineCapability =
-    | 'Frames'
-    | 'SingleFrame'
-    | 'MultipleFrames'
-    | 'PreviewFunctionAnnotations'
-    | 'SuggestedPreviews'
-    | 'DeviceGeometry'
-    | 'DeviceClip'
-    | 'ScrollState'
-    | 'SemanticsSnapshot'
-    | 'AccessibilityNodes'
-    | 'AccessibilityFindings'
-    | 'OverlayAnnotations'
-    | 'ImageArtifact'
-    | 'AnnotatedImageArtifact'
-    | 'AnimatedArtifact'
-    | 'InteractiveSession'
-    | 'TraceEvents';
+    | "Frames"
+    | "SingleFrame"
+    | "MultipleFrames"
+    | "PreviewFunctionAnnotations"
+    | "SuggestedPreviews"
+    | "DeviceGeometry"
+    | "DeviceClip"
+    | "ScrollState"
+    | "SemanticsSnapshot"
+    | "AccessibilityNodes"
+    | "AccessibilityFindings"
+    | "OverlayAnnotations"
+    | "ImageArtifact"
+    | "AnnotatedImageArtifact"
+    | "AnimatedArtifact"
+    | "InteractiveSession"
+    | "TraceEvents";
 
 export interface ExtractionSpec {
     kind: string;
@@ -232,7 +232,7 @@ export interface InitializeResult {
     capabilities: {
         incrementalDiscovery: boolean;
         sandboxRecycle: boolean;
-        leakDetection: ('light' | 'heavy')[];
+        leakDetection: ("light" | "heavy")[];
         /**
          * Phase D1 — kinds the daemon can produce. Empty list means the
          * daemon doesn't speak the data-product surface (pre-D1 daemons).
@@ -281,7 +281,7 @@ export interface InitializeResult {
          * `'android'` for the Robolectric backend. Absent / `null` on hosts that haven't
          * classified themselves (e.g. test fakes); clients should treat both as "unknown".
          */
-        backend?: 'desktop' | 'android' | null;
+        backend?: "desktop" | "android" | null;
         /**
          * Fixed Android SDK level this daemon renders against. Present on Robolectric /
          * Android backends, absent or null on Desktop and other non-Android backends.
@@ -308,11 +308,15 @@ export interface KnownDevice {
 
 // Client → daemon notifications (PROTOCOL.md § 4)
 
-export interface SetVisibleParams { ids: string[] }
-export interface SetFocusParams { ids: string[] }
+export interface SetVisibleParams {
+    ids: string[];
+}
+export interface SetFocusParams {
+    ids: string[];
+}
 
-export type FileKind = 'source' | 'resource' | 'classpath';
-export type FileChangeType = 'modified' | 'created' | 'deleted';
+export type FileKind = "source" | "resource" | "classpath";
+export type FileChangeType = "modified" | "created" | "deleted";
 
 export interface FileChangedParams {
     path: string;
@@ -322,7 +326,7 @@ export interface FileChangedParams {
 
 // Client → daemon requests (PROTOCOL.md § 5)
 
-export type RenderTier = 'fast' | 'full';
+export type RenderTier = "fast" | "full";
 
 /**
  * Per-render display-property overrides — see PROTOCOL.md § 5 (`renderNow.overrides`).
@@ -335,8 +339,8 @@ export interface PreviewOverrides {
     density?: number;
     localeTag?: string;
     fontScale?: number;
-    uiMode?: 'light' | 'dark';
-    orientation?: 'portrait' | 'landscape';
+    uiMode?: "light" | "dark";
+    orientation?: "portrait" | "landscape";
     /**
      * `@Preview(device = ...)` string — `id:pixel_5`, `id:wearos_small_round`, `id:tv_1080p`,
      * or a full `spec:width=400dp,height=800dp,dpi=320` grammar. Resolved by the daemon's
@@ -392,7 +396,10 @@ export interface DiscoveryUpdatedParams {
     totalPreviews: number;
 }
 
-export interface RenderStartedParams { id: string; queuedMs: number }
+export interface RenderStartedParams {
+    id: string;
+    queuedMs: number;
+}
 
 export interface RenderMetrics {
     heapAfterGcMb: number;
@@ -454,31 +461,42 @@ export interface RenderFinishedParams {
 }
 
 export interface RenderError {
-    kind: 'compile' | 'runtime' | 'capture' | 'timeout' | 'internal';
+    kind: "compile" | "runtime" | "capture" | "timeout" | "internal";
     message: string;
     stackTrace?: string;
 }
 
-export interface RenderFailedParams { id: string; error: RenderError }
+export interface RenderFailedParams {
+    id: string;
+    error: RenderError;
+}
 
 export interface ClasspathDirtyParams {
-    reason: 'fingerprintMismatch' | 'fileChanged' | 'manifestMissing';
+    reason: "fingerprintMismatch" | "fileChanged" | "manifestMissing";
     detail: string;
     changedPaths?: string[];
 }
 
 export interface SandboxRecycleParams {
-    reason: 'heapCeiling' | 'heapDrift' | 'renderTimeDrift' | 'histogramDrift'
-          | 'renderCount' | 'leakSuspected' | 'manual';
+    reason:
+        | "heapCeiling"
+        | "heapDrift"
+        | "renderTimeDrift"
+        | "histogramDrift"
+        | "renderCount"
+        | "leakSuspected"
+        | "manual";
     ageMs: number;
     renderCount: number;
     warmSpareReady: boolean;
 }
 
-export interface DaemonWarmingParams { etaMs: number }
+export interface DaemonWarmingParams {
+    etaMs: number;
+}
 
 export interface LogParams {
-    level: 'debug' | 'info' | 'warn' | 'error';
+    level: "debug" | "info" | "warn" | "error";
     message: string;
     category?: string;
     context?: Record<string, unknown>;
@@ -491,17 +509,17 @@ export interface LogParams {
 // onto the dispatch surface; we mirror that with `unknown` here so the
 // types stay schema-agnostic against future additive fields.
 
-export type HistorySourceKind = 'fs' | 'git' | 'http';
+export type HistorySourceKind = "fs" | "git" | "http";
 
 export interface HistoryListParams {
     previewId?: string;
-    since?: string;                   // ISO 8601 lower bound
-    until?: string;                   // ISO 8601 upper bound
-    limit?: number;                   // daemon defaults to 50, max 500
-    cursor?: string;                  // opaque token from a previous response
+    since?: string; // ISO 8601 lower bound
+    until?: string; // ISO 8601 upper bound
+    limit?: number; // daemon defaults to 50, max 500
+    cursor?: string; // opaque token from a previous response
     branch?: string;
-    branchPattern?: string;           // regex
-    commit?: string;                  // long or short SHA
+    branchPattern?: string; // regex
+    commit?: string; // long or short SHA
     worktreePath?: string;
     agentId?: string;
     sourceKind?: HistorySourceKind;
@@ -536,12 +554,12 @@ export interface HistoryReadResult {
     pngBytes?: string;
 }
 
-export type HistoryDiffMode = 'metadata' | 'pixel';
+export type HistoryDiffMode = "metadata" | "pixel";
 
 export interface HistoryDiffParams {
     from: string;
     to: string;
-    mode?: HistoryDiffMode;           // default 'metadata'
+    mode?: HistoryDiffMode; // default 'metadata'
 }
 
 /**
@@ -622,7 +640,10 @@ export interface DataSubscribeResult {
 // lockstep with the daemon work. Adding these methods is additive per
 // PROTOCOL.md § 7 — no `protocolVersion` bump required.
 
-export interface InteractiveStartParams { previewId: string; inspectionMode?: boolean }
+export interface InteractiveStartParams {
+    previewId: string;
+    inspectionMode?: boolean;
+}
 export interface InteractiveStartResult {
     /** Opaque correlation id; the client passes it back on every input
      *  notification so the daemon can route inputs to the right warm
@@ -634,16 +655,18 @@ export interface InteractiveStartResult {
     fallbackReason?: string;
 }
 
-export interface InteractiveStopParams { frameStreamId: string }
+export interface InteractiveStopParams {
+    frameStreamId: string;
+}
 
 export type InteractiveInputKind =
-    | 'click'
-    | 'pointerDown'
-    | 'pointerMove'
-    | 'pointerUp'
-    | 'rotaryScroll'
-    | 'keyDown'
-    | 'keyUp';
+    | "click"
+    | "pointerDown"
+    | "pointerMove"
+    | "pointerUp"
+    | "rotaryScroll"
+    | "keyDown"
+    | "keyUp";
 
 export interface InteractiveInputParams {
     frameStreamId: string;
@@ -658,7 +681,7 @@ export interface InteractiveInputParams {
     keyCode?: string;
 }
 
-export type RecordingFormat = 'apng' | 'mp4' | 'webm';
+export type RecordingFormat = "apng" | "mp4" | "webm";
 
 export interface RecordingStartParams {
     previewId: string;
@@ -668,7 +691,9 @@ export interface RecordingStartParams {
     live?: boolean;
 }
 
-export interface RecordingStartResult { recordingId: string }
+export interface RecordingStartResult {
+    recordingId: string;
+}
 
 export interface RecordingInputParams {
     recordingId: string;
@@ -679,7 +704,9 @@ export interface RecordingInputParams {
     keyCode?: string;
 }
 
-export interface RecordingStopParams { recordingId: string }
+export interface RecordingStopParams {
+    recordingId: string;
+}
 
 export interface RecordingStopResult {
     frameCount: number;

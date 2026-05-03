@@ -51,7 +51,11 @@
                 {
                     "advanceTimeMillis": null,
                     "scroll": null,
-                    "animation": { "durationMs": 1500, "frameIntervalMs": 33, "showCurves": true },
+                    "animation": {
+                        "durationMs": 1500,
+                        "frameIntervalMs": 33,
+                        "showCurves": true
+                    },
                     "renderOutput": "renders/com.example.sample.PreviewsKt.AnimatedPreview.gif",
                     "cost": 50.0
                 }

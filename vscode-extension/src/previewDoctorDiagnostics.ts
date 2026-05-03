@@ -1,8 +1,8 @@
-import * as vscode from 'vscode';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
-import { GradleService } from './gradleService';
-import { DoctorFinding } from './types';
+import * as vscode from "vscode";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import { GradleService } from "./gradleService";
+import { DoctorFinding } from "./types";
 
 /**
  * Runs `:<module>:composePreviewDoctor` on each applied-plugin module and
@@ -23,7 +23,9 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
         private readonly workspaceRoot: string,
         private readonly log?: (msg: string) => void,
     ) {
-        this.collection = vscode.languages.createDiagnosticCollection('compose-preview-doctor');
+        this.collection = vscode.languages.createDiagnosticCollection(
+            "compose-preview-doctor",
+        );
     }
 
     dispose(): void {
@@ -39,9 +41,13 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
         const next = new Map<string, vscode.Diagnostic[]>();
         for (const module of modules) {
             const report = await this.gradleService.runDoctor(module);
-            if (!report) { continue; }
+            if (!report) {
+                continue;
+            }
             const targetFile = this.resolveBuildFile(module);
-            if (!targetFile) { continue; }
+            if (!targetFile) {
+                continue;
+            }
             const diags: vscode.Diagnostic[] = [];
             for (const finding of report.findings) {
                 diags.push(this.toDiagnostic(module, finding));
@@ -56,16 +62,25 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
         for (const [file, diags] of next) {
             this.collection.set(vscode.Uri.file(file), diags);
         }
-        this.log?.(`doctor diagnostics refreshed across ${modules.length} module(s)`);
+        this.log?.(
+            `doctor diagnostics refreshed across ${modules.length} module(s)`,
+        );
     }
 
-    private toDiagnostic(module: string, finding: DoctorFinding): vscode.Diagnostic {
+    private toDiagnostic(
+        module: string,
+        finding: DoctorFinding,
+    ): vscode.Diagnostic {
         const severity =
-            finding.severity === 'error' ? vscode.DiagnosticSeverity.Error :
-            finding.severity === 'warning' ? vscode.DiagnosticSeverity.Warning :
-            vscode.DiagnosticSeverity.Information;
+            finding.severity === "error"
+                ? vscode.DiagnosticSeverity.Error
+                : finding.severity === "warning"
+                  ? vscode.DiagnosticSeverity.Warning
+                  : vscode.DiagnosticSeverity.Information;
         const parts = [finding.message];
-        if (finding.detail) { parts.push(finding.detail); }
+        if (finding.detail) {
+            parts.push(finding.detail);
+        }
         if (finding.remediationSummary) {
             parts.push(`→ ${finding.remediationSummary}`);
             for (const cmd of finding.remediationCommands ?? []) {
@@ -79,17 +94,19 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
         // at the top of the build file. VS Code still threads the finding
         // into the Problems panel with the file name as location.
         const range = new vscode.Range(0, 0, 0, 0);
-        const diag = new vscode.Diagnostic(range, parts.join('\n'), severity);
-        diag.source = 'compose-preview-doctor';
+        const diag = new vscode.Diagnostic(range, parts.join("\n"), severity);
+        diag.source = "compose-preview-doctor";
         diag.code = `${module}:${finding.id}`;
         return diag;
     }
 
     /** Locate the module's build.gradle[.kts] relative to the workspace root. */
     private resolveBuildFile(module: string): string | undefined {
-        for (const name of ['build.gradle.kts', 'build.gradle']) {
+        for (const name of ["build.gradle.kts", "build.gradle"]) {
             const candidate = path.join(this.workspaceRoot, module, name);
-            if (fs.existsSync(candidate)) { return candidate; }
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
         }
         return undefined;
     }

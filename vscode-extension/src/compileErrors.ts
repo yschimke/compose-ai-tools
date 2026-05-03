@@ -68,11 +68,11 @@ export interface CompileError {
  * spelling diagnostic can't accidentally gate a build.
  */
 const TRUSTED_SOURCES = new Set([
-    'kotlin',
-    'kotlin-language-server',
-    'fwcd.kotlin',
-    'gradle',
-    'JetBrains',
+    "kotlin",
+    "kotlin-language-server",
+    "fwcd.kotlin",
+    "gradle",
+    "JetBrains",
 ]);
 
 /**
@@ -89,8 +89,12 @@ export function extractCompileErrors(
     const fileLabel = basename(filePath);
     const errors: CompileError[] = [];
     for (const d of diagnostics) {
-        if (d.severity !== DIAGNOSTIC_SEVERITY.Error) { continue; }
-        if (d.source && !TRUSTED_SOURCES.has(d.source)) { continue; }
+        if (d.severity !== DIAGNOSTIC_SEVERITY.Error) {
+            continue;
+        }
+        if (d.source && !TRUSTED_SOURCES.has(d.source)) {
+            continue;
+        }
         errors.push({
             file: fileLabel,
             path: filePath,
@@ -101,16 +105,19 @@ export function extractCompileErrors(
             message: firstLine(d.message),
         });
     }
-    errors.sort((a, b) => (a.line - b.line) || (a.column - b.column));
+    errors.sort((a, b) => a.line - b.line || a.column - b.column);
     return errors;
 }
 
 function firstLine(message: string): string {
-    const nl = message.indexOf('\n');
+    const nl = message.indexOf("\n");
     return nl >= 0 ? message.slice(0, nl) : message;
 }
 
 function basename(filePath: string): string {
-    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const slash = Math.max(
+        filePath.lastIndexOf("/"),
+        filePath.lastIndexOf("\\"),
+    );
     return slash >= 0 ? filePath.slice(slash + 1) : filePath;
 }

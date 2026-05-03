@@ -1,6 +1,6 @@
-import * as vscode from 'vscode';
-import { packageQualifiedSourcePath } from './sourcePath';
-import { AccessibilityFinding, AccessibilityNode, PreviewInfo } from './types';
+import * as vscode from "vscode";
+import { packageQualifiedSourcePath } from "./sourcePath";
+import { AccessibilityFinding, AccessibilityNode, PreviewInfo } from "./types";
 
 export interface RegistryEntry {
     preview: PreviewInfo;
@@ -25,15 +25,24 @@ export class PreviewRegistry {
 
     replaceModule(module: string, previews: PreviewInfo[]): void {
         for (const [k, v] of this.bySourceAndName) {
-            if (v.module === module) { this.bySourceAndName.delete(k); }
+            if (v.module === module) {
+                this.bySourceAndName.delete(k);
+            }
         }
         for (const [k, v] of this.byId) {
-            if (v.module === module) { this.byId.delete(k); }
+            if (v.module === module) {
+                this.byId.delete(k);
+            }
         }
         for (const p of previews) {
-            if (!p.sourceFile) { continue; }
+            if (!p.sourceFile) {
+                continue;
+            }
             const entry: RegistryEntry = { preview: p, module };
-            this.bySourceAndName.set(keyOf(p.sourceFile, p.functionName), entry);
+            this.bySourceAndName.set(
+                keyOf(p.sourceFile, p.functionName),
+                entry,
+            );
             this.byId.set(p.id, entry);
         }
         this._onDidChange.fire();
@@ -41,7 +50,9 @@ export class PreviewRegistry {
 
     setImage(previewId: string, imageBase64: string): void {
         const entry = this.byId.get(previewId);
-        if (!entry) { return; }
+        if (!entry) {
+            return;
+        }
         entry.imageBase64 = imageBase64;
         this._onDidChange.fire();
     }
@@ -53,17 +64,28 @@ export class PreviewRegistry {
      */
     setA11y(
         previewId: string,
-        opts: { findings?: AccessibilityFinding[]; nodes?: AccessibilityNode[] },
+        opts: {
+            findings?: AccessibilityFinding[];
+            nodes?: AccessibilityNode[];
+        },
     ): void {
         const entry = this.byId.get(previewId);
-        if (!entry) { return; }
-        if (opts.findings !== undefined) { entry.preview.a11yFindings = opts.findings; }
-        if (opts.nodes !== undefined) { entry.preview.a11yNodes = opts.nodes; }
+        if (!entry) {
+            return;
+        }
+        if (opts.findings !== undefined) {
+            entry.preview.a11yFindings = opts.findings;
+        }
+        if (opts.nodes !== undefined) {
+            entry.preview.a11yNodes = opts.nodes;
+        }
         this._onDidChange.fire();
     }
 
     find(filePath: string, functionName: string): RegistryEntry | undefined {
-        return this.bySourceAndName.get(keyOf(packageQualifiedSourcePath(filePath), functionName));
+        return this.bySourceAndName.get(
+            keyOf(packageQualifiedSourcePath(filePath), functionName),
+        );
     }
 
     dispose(): void {

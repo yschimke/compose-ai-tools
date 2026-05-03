@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
 
 /**
  * Watch the git refs that back the "Diff vs main" anchor and fire a single
@@ -27,17 +27,23 @@ export function watchPreviewMainRef(
     workspaceRoot: string,
     onChange: () => void,
 ): { dispose(): void } {
-    const gitDir = path.join(workspaceRoot, '.git');
+    const gitDir = path.join(workspaceRoot, ".git");
     if (!fs.existsSync(gitDir) || !fs.statSync(gitDir).isDirectory()) {
         // Worktree (`.git` is a file pointing elsewhere) or non-git
         // workspace. Fall through to a no-op; callers don't gain
         // automatic refresh, but explicit Diff vs main still works.
-        return { dispose: () => { /* nothing to clean up */ } };
+        return {
+            dispose: () => {
+                /* nothing to clean up */
+            },
+        };
     }
 
     let debounce: NodeJS.Timeout | null = null;
     const fire = () => {
-        if (debounce) { return; }
+        if (debounce) {
+            return;
+        }
         debounce = setTimeout(() => {
             debounce = null;
             onChange();
@@ -53,12 +59,30 @@ export function watchPreviewMainRef(
         // dir for `main` filename — the parent itself may not exist yet on
         // first checkout, in which case the existsSync check below skips
         // until the first fetch creates it.
-        { dir: path.join(gitDir, 'refs', 'remotes', 'origin', 'compose-preview'), filenames: new Set(['main']) },
-        { dir: path.join(gitDir, 'refs', 'heads', 'compose-preview'), filenames: new Set(['main']) },
+        {
+            dir: path.join(
+                gitDir,
+                "refs",
+                "remotes",
+                "origin",
+                "compose-preview",
+            ),
+            filenames: new Set(["main"]),
+        },
+        {
+            dir: path.join(gitDir, "refs", "heads", "compose-preview"),
+            filenames: new Set(["main"]),
+        },
         // Legacy flat refs — kept so repos that haven't migrated keep working.
-        { dir: path.join(gitDir, 'refs', 'remotes', 'origin'), filenames: new Set(['preview_main']) },
-        { dir: path.join(gitDir, 'refs', 'heads'), filenames: new Set(['preview_main']) },
-        { dir: gitDir, filenames: new Set(['packed-refs']) },
+        {
+            dir: path.join(gitDir, "refs", "remotes", "origin"),
+            filenames: new Set(["preview_main"]),
+        },
+        {
+            dir: path.join(gitDir, "refs", "heads"),
+            filenames: new Set(["preview_main"]),
+        },
+        { dir: gitDir, filenames: new Set(["packed-refs"]) },
     ];
 
     const watchers: fs.FSWatcher[] = [];
@@ -67,13 +91,17 @@ export function watchPreviewMainRef(
             // The dir might not exist yet (e.g. no remotes configured).
             // We tolerate ENOENT silently — the user just doesn't get
             // automatic refresh for that path until it appears.
-            if (!fs.existsSync(dir)) { continue; }
+            if (!fs.existsSync(dir)) {
+                continue;
+            }
             const watcher = fs.watch(dir, (_eventType, filename) => {
                 if (filename && filenames.has(filename.toString())) {
                     fire();
                 }
             });
-            watcher.on('error', () => { /* ignore — best-effort watcher */ });
+            watcher.on("error", () => {
+                /* ignore — best-effort watcher */
+            });
             watchers.push(watcher);
         } catch {
             // Platform-specific watcher failures (EMFILE on busy
@@ -83,9 +111,16 @@ export function watchPreviewMainRef(
 
     return {
         dispose() {
-            if (debounce) { clearTimeout(debounce); debounce = null; }
+            if (debounce) {
+                clearTimeout(debounce);
+                debounce = null;
+            }
             for (const w of watchers) {
-                try { w.close(); } catch { /* already closed */ }
+                try {
+                    w.close();
+                } catch {
+                    /* already closed */
+                }
             }
             watchers.length = 0;
         },

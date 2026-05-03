@@ -1,6 +1,6 @@
-import * as vscode from 'vscode';
-import { detectPreviews } from './previewDetection';
-import { PreviewRegistry } from './previewRegistry';
+import * as vscode from "vscode";
+import { detectPreviews } from "./previewDetection";
+import { PreviewRegistry } from "./previewRegistry";
 
 // Hover image is a peek of the rendered preview. VS Code's hover markdown
 // doesn't reliably honor inline `max-width`/`max-height` on images (the
@@ -15,11 +15,18 @@ export class PreviewHoverProvider implements vscode.HoverProvider {
         private log?: (msg: string) => void,
     ) {}
 
-    async provideHover(doc: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover | undefined> {
-        if (doc.languageId !== 'kotlin') { return; }
+    async provideHover(
+        doc: vscode.TextDocument,
+        position: vscode.Position,
+    ): Promise<vscode.Hover | undefined> {
+        if (doc.languageId !== "kotlin") {
+            return;
+        }
         const detected = await detectPreviews(doc, this.registry, this.log);
         for (const det of detected) {
-            if (!det.nameRange.contains(position)) { continue; }
+            if (!det.nameRange.contains(position)) {
+                continue;
+            }
             const entry = this.registry.find(doc.uri.fsPath, det.functionName);
 
             const md = new vscode.MarkdownString();
@@ -31,18 +38,24 @@ export class PreviewHoverProvider implements vscode.HoverProvider {
                 // Derive MIME from the primary capture's renderOutput so
                 // GIF-mode previews hover as animated GIFs instead of a
                 // static first frame interpreted as PNG.
-                const primary = entry.preview.captures?.[0]?.renderOutput ?? '';
-                const mime = typeof primary === 'string' && primary.toLowerCase().endsWith('.gif')
-                    ? 'image/gif'
-                    : 'image/png';
+                const primary = entry.preview.captures?.[0]?.renderOutput ?? "";
+                const mime =
+                    typeof primary === "string" &&
+                    primary.toLowerCase().endsWith(".gif")
+                        ? "image/gif"
+                        : "image/png";
                 md.appendMarkdown(
-                    `<img src="data:${mime};base64,${entry.imageBase64}" `
-                    + `width="${HOVER_IMG_MAX}" height="${HOVER_IMG_MAX}" />`,
+                    `<img src="data:${mime};base64,${entry.imageBase64}" ` +
+                        `width="${HOVER_IMG_MAX}" height="${HOVER_IMG_MAX}" />`,
                 );
             } else {
-                md.appendMarkdown('_No render yet._ ');
-                const args = encodeURIComponent(JSON.stringify([doc.uri.fsPath]));
-                md.appendMarkdown(`[Run Preview](command:composePreview.runForFile?${args})`);
+                md.appendMarkdown("_No render yet._ ");
+                const args = encodeURIComponent(
+                    JSON.stringify([doc.uri.fsPath]),
+                );
+                md.appendMarkdown(
+                    `[Run Preview](command:composePreview.runForFile?${args})`,
+                );
             }
             return new vscode.Hover(md, det.nameRange);
         }

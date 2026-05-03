@@ -27,7 +27,8 @@ export interface JdkImageFinding {
     reason: string;
 }
 
-const JLINK_RE = /jlink executable (\S+(?:\/bin\/jlink|\\bin\\jlink(?:\.exe)?))\s+does not exist/;
+const JLINK_RE =
+    /jlink executable (\S+(?:\/bin\/jlink|\\bin\\jlink(?:\.exe)?))\s+does not exist/;
 
 /**
  * Best-effort diagnosis of *why* the path is a JRE and not a JDK. Keyed off
@@ -35,24 +36,24 @@ const JLINK_RE = /jlink executable (\S+(?:\/bin\/jlink|\\bin\\jlink(?:\.exe)?))\
  * vendors match before the generic `/jre/` fallback.
  */
 function diagnose(jlinkPath: string): string {
-    const p = jlinkPath.replace(/\\/g, '/');
+    const p = jlinkPath.replace(/\\/g, "/");
     if (/\/\.antigravity\/extensions\/redhat\.java-/.test(p)) {
-        return 'Red Hat Java extension bundled runtime (Antigravity)';
+        return "Red Hat Java extension bundled runtime (Antigravity)";
     }
     if (/\/\.vscode(?:-server|-insiders)?\/extensions\/redhat\.java-/.test(p)) {
-        return 'Red Hat Java extension bundled runtime (VS Code)';
+        return "Red Hat Java extension bundled runtime (VS Code)";
     }
     if (/\/redhat\.java-[^/]+\/jre\//.test(p)) {
-        return 'Red Hat Java extension bundled runtime';
+        return "Red Hat Java extension bundled runtime";
     }
     if (/\/jre\/|\/jre$/.test(p)) {
-        return 'bundled JRE (no JDK)';
+        return "bundled JRE (no JDK)";
     }
-    return '';
+    return "";
 }
 
 export class JdkImageErrorDetector {
-    private buffer = '';
+    private buffer = "";
     private finding: JdkImageFinding | null = null;
 
     /**
@@ -62,32 +63,36 @@ export class JdkImageErrorDetector {
      * build output).
      */
     consume(chunk: string): void {
-        if (this.finding) { return; }
+        if (this.finding) {
+            return;
+        }
         this.buffer += chunk;
-        let nl = this.buffer.indexOf('\n');
+        let nl = this.buffer.indexOf("\n");
         while (nl !== -1) {
             const line = this.buffer.slice(0, nl);
             this.buffer = this.buffer.slice(nl + 1);
-            if (this.scanLine(line)) { return; }
-            nl = this.buffer.indexOf('\n');
+            if (this.scanLine(line)) {
+                return;
+            }
+            nl = this.buffer.indexOf("\n");
         }
         // Bound the buffer so a pathological producer emitting megabytes
         // without newlines can't grow it without limit. 16 KiB is far
         // larger than any single Gradle log line we care about.
         if (this.buffer.length > 16 * 1024) {
             this.scanLine(this.buffer);
-            this.buffer = '';
+            this.buffer = "";
         }
     }
 
     /** Flush the residual buffer. Call once after the stream ends. */
     end(): void {
         if (this.finding || this.buffer.length === 0) {
-            this.buffer = '';
+            this.buffer = "";
             return;
         }
         this.scanLine(this.buffer);
-        this.buffer = '';
+        this.buffer = "";
     }
 
     getFinding(): JdkImageFinding | null {
@@ -96,7 +101,9 @@ export class JdkImageErrorDetector {
 
     private scanLine(line: string): boolean {
         const m = JLINK_RE.exec(line);
-        if (!m) { return false; }
+        if (!m) {
+            return false;
+        }
         this.finding = { jlinkPath: m[1], reason: diagnose(m[1]) };
         return true;
     }
@@ -109,11 +116,14 @@ export class JdkImageErrorDetector {
  * "Gradle task failed" message.
  */
 export class JdkImageError extends Error {
-    constructor(readonly finding: JdkImageFinding, readonly task: string) {
+    constructor(
+        readonly finding: JdkImageFinding,
+        readonly task: string,
+    ) {
         super(
             `Gradle task ${task} failed: jlink not found at ${finding.jlinkPath}. ` +
-            `Gradle needs a full JDK (with jlink), not a JRE.`,
+                `Gradle needs a full JDK (with jlink), not a JRE.`,
         );
-        this.name = 'JdkImageError';
+        this.name = "JdkImageError";
     }
 }

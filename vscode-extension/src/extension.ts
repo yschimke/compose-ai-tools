@@ -1,47 +1,69 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as crypto from 'crypto';
-import { GradleService, GradleApi, TaskCancelledError } from './gradleService';
-import { JdkImageError } from './jdkImageErrorDetector';
-import { KotlinCompileError } from './kotlinCompileErrorDetector';
-import { findPluginAppliedAncestor } from './pluginDetection';
-import { PreviewPanel } from './previewPanel';
-import { PreviewRegistry } from './previewRegistry';
-import { PreviewGutterDecorations } from './previewGutterDecorations';
-import { PreviewHoverProvider } from './previewHoverProvider';
-import { PreviewCodeLensProvider } from './previewCodeLensProvider';
-import { AndroidManifestCodeLensProvider } from './androidManifestCodeLensProvider';
-import { PreviewA11yDiagnostics } from './previewA11yDiagnostics';
-import { PreviewDoctorDiagnostics } from './previewDoctorDiagnostics';
-import { packageQualifiedSourcePath } from './sourcePath';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
+import * as crypto from "crypto";
+import { GradleService, GradleApi, TaskCancelledError } from "./gradleService";
+import { JdkImageError } from "./jdkImageErrorDetector";
+import { KotlinCompileError } from "./kotlinCompileErrorDetector";
+import { findPluginAppliedAncestor } from "./pluginDetection";
+import { PreviewPanel } from "./previewPanel";
+import { PreviewRegistry } from "./previewRegistry";
+import { PreviewGutterDecorations } from "./previewGutterDecorations";
+import { PreviewHoverProvider } from "./previewHoverProvider";
+import { PreviewCodeLensProvider } from "./previewCodeLensProvider";
+import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvider";
+import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
+import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
+import { packageQualifiedSourcePath } from "./sourcePath";
 import {
     AccessibilityFinding,
     AccessibilityNode,
     HEAVY_COST_THRESHOLD,
     PreviewInfo,
     WebviewToExtension,
-} from './types';
-import { formatRenderErrorMessage } from './renderError';
-import { captureLabel } from './captureLabels';
-import { DaemonGate } from './daemon/daemonGate';
-import { DataProductAttachment } from './daemon/daemonProtocol';
-import { A11Y_OVERLAY_KINDS, DaemonScheduler, WarmState } from './daemon/daemonScheduler';
-import { buildHistorySource, HistoryScope, HistorySource } from './historyPanel';
-import { disposePreviewMainBatches, readPreviewMainPng } from './previewMainSource';
-import { watchPreviewMainRef } from './previewMainWatcher';
-import { LogFilter, parseLogLevel } from './logFilter';
-import { pickRefreshModeFor, RefreshMode } from './refreshMode';
-import { BuildProgressTracker, mergeCalibration, PhaseDurations } from './buildProgress';
-import { CompileError, extractCompileErrors, DiagnosticLike } from './compileErrors';
+} from "./types";
+import { formatRenderErrorMessage } from "./renderError";
+import { captureLabel } from "./captureLabels";
+import { DaemonGate } from "./daemon/daemonGate";
+import { DataProductAttachment } from "./daemon/daemonProtocol";
+import {
+    A11Y_OVERLAY_KINDS,
+    DaemonScheduler,
+    WarmState,
+} from "./daemon/daemonScheduler";
+import {
+    buildHistorySource,
+    HistoryScope,
+    HistorySource,
+} from "./historyPanel";
+import {
+    disposePreviewMainBatches,
+    readPreviewMainPng,
+} from "./previewMainSource";
+import { watchPreviewMainRef } from "./previewMainWatcher";
+import { LogFilter, parseLogLevel } from "./logFilter";
+import { pickRefreshModeFor, RefreshMode } from "./refreshMode";
+import {
+    BuildProgressTracker,
+    mergeCalibration,
+    PhaseDurations,
+} from "./buildProgress";
+import {
+    CompileError,
+    extractCompileErrors,
+    DiagnosticLike,
+} from "./compileErrors";
 import {
     buildPreviewActivityAmStartArgs,
     collectAndroidApplicationModules,
     findAndroidSdkRoot,
     resolveAdbPath,
     runAdb,
-} from './launchOnDevice';
-import { hasFreshRenderStamp, writeRenderFreshnessStamp } from './renderFreshness';
+} from "./launchOnDevice";
+import {
+    hasFreshRenderStamp,
+    writeRenderFreshnessStamp,
+} from "./renderFreshness";
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -90,10 +112,19 @@ async function isSourceNewerThanRenders(
     previews: PreviewInfo[],
     modules: string[],
 ): Promise<boolean> {
-    if (!gradleService) { return false; }
+    if (!gradleService) {
+        return false;
+    }
     const module = modules[0];
-    if (!module) { return false; }
-    return !(await hasFreshRenderStamp(gradleService.workspaceRoot, module, activeFile, previews));
+    if (!module) {
+        return false;
+    }
+    return !(await hasFreshRenderStamp(
+        gradleService.workspaceRoot,
+        module,
+        activeFile,
+        previews,
+    ));
 }
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
@@ -142,19 +173,21 @@ let refreshInFlight = false;
 const daemonShownPreviewWarmScopes = new Set<string>();
 const daemonStartupProgressTimers = new Map<string, NodeJS.Timeout>();
 /** Workspace-state key that suppresses the "plugin not applied" notification. */
-const DISMISS_KEY = 'composePreview.dismissedMissingPluginWarning';
+const DISMISS_KEY = "composePreview.dismissedMissingPluginWarning";
 /** Workspace-state key for per-module phase-duration calibration. Shape:
  *  `Record<moduleId, PhaseDurations>`. Updated after every successful refresh
  *  so the progress bar's animation rate matches what each module actually
  *  takes (a Wear OS sample with Robolectric is much slower than a CMP one). */
-const PROGRESS_CALIBRATION_KEY = 'composePreview.progressCalibration';
+const PROGRESS_CALIBRATION_KEY = "composePreview.progressCalibration";
 /** Captured in activate() so notification helpers can reach workspaceState. */
 let extensionContext: vscode.ExtensionContext | null = null;
 /** Module-scoped logger wired up in activate() so refresh() can trace state
  *  transitions into the "Compose Preview" output channel. Populate-then-blank
  *  bugs are hard to diagnose from logs unless we explicitly announce each
  *  message we send to the webview. */
-let logLine: (msg: string) => void = () => { /* noop pre-activate */ };
+let logLine: (msg: string) => void = () => {
+    /* noop pre-activate */
+};
 /** Guard against firing the "plugin not applied" notification more than once
  *  per session — users shouldn't see it on every refresh tick. */
 let warnedMissingPluginThisSession = false;
@@ -167,13 +200,15 @@ let warnedJdkImageThisSession = false;
 // custom-multipreview definition sites) and be a Composable file at all.
 // False positives are cheap — an extra informational message. False
 // negatives (silence when the user wanted a nudge) are the worse outcome.
-const SETUP_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme';
-const JDK_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints';
+const SETUP_DOCS_URL =
+    "https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme";
+const JDK_DOCS_URL =
+    "https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints";
 
 function earlyFeaturesEnabled(): boolean {
     return vscode.workspace
-        .getConfiguration('composePreview')
-        .get<boolean>('earlyFeatures.enabled', false);
+        .getConfiguration("composePreview")
+        .get<boolean>("earlyFeatures.enabled", false);
 }
 
 /**
@@ -183,24 +218,29 @@ function earlyFeaturesEnabled(): boolean {
  * De-duped per session so save-driven rebuilds don't re-open it.
  */
 function showJdkImageRemediation(err: JdkImageError): void {
-    if (warnedJdkImageThisSession) { return; }
+    if (warnedJdkImageThisSession) {
+        return;
+    }
     warnedJdkImageThisSession = true;
-    const reason = err.finding.reason ? ` (${err.finding.reason})` : '';
-    const message = `Compose Preview: Gradle is using a JRE without jlink${reason}. `
-        + 'Point it at a full JDK to build Android modules. '
-        + `Path: ${err.finding.jlinkPath}`;
-    const OPEN_SETTING = 'Open JDK setting';
-    const DOCS = 'Learn more';
-    void vscode.window.showErrorMessage(message, OPEN_SETTING, DOCS).then(action => {
-        if (action === OPEN_SETTING) {
-            void vscode.commands.executeCommand(
-                'workbench.action.openSettings',
-                'java.import.gradle.java.home',
-            );
-        } else if (action === DOCS) {
-            void vscode.env.openExternal(vscode.Uri.parse(JDK_DOCS_URL));
-        }
-    });
+    const reason = err.finding.reason ? ` (${err.finding.reason})` : "";
+    const message =
+        `Compose Preview: Gradle is using a JRE without jlink${reason}. ` +
+        "Point it at a full JDK to build Android modules. " +
+        `Path: ${err.finding.jlinkPath}`;
+    const OPEN_SETTING = "Open JDK setting";
+    const DOCS = "Learn more";
+    void vscode.window
+        .showErrorMessage(message, OPEN_SETTING, DOCS)
+        .then((action) => {
+            if (action === OPEN_SETTING) {
+                void vscode.commands.executeCommand(
+                    "workbench.action.openSettings",
+                    "java.import.gradle.java.home",
+                );
+            } else if (action === DOCS) {
+                void vscode.env.openExternal(vscode.Uri.parse(JDK_DOCS_URL));
+            }
+        });
 }
 
 /**
@@ -218,7 +258,11 @@ export interface ComposePreviewTestApi {
     /** Replace the GradleService with one wired to the supplied stub API. */
     injectGradleApi(api: GradleApi): void;
     /** Drive {@link refresh} synchronously from a test. */
-    triggerRefresh(filePath: string, force?: boolean, tier?: 'fast' | 'full'): Promise<void>;
+    triggerRefresh(
+        filePath: string,
+        force?: boolean,
+        tier?: "fast" | "full",
+    ): Promise<void>;
     /** Snapshot of every panel message posted since [resetMessages]. */
     getPostedMessages(): unknown[];
     /** Drop the captured-messages buffer. */
@@ -251,16 +295,20 @@ export function applyDataProductsToRegistry(
     let nodes: AccessibilityNode[] | undefined;
     for (const dp of dataProducts) {
         try {
-            if (dp.kind === 'a11y/atf') {
+            if (dp.kind === "a11y/atf") {
                 const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
                     | { findings?: AccessibilityFinding[] }
                     | undefined;
-                if (payload?.findings) { findings = payload.findings; }
-            } else if (dp.kind === 'a11y/hierarchy') {
+                if (payload?.findings) {
+                    findings = payload.findings;
+                }
+            } else if (dp.kind === "a11y/hierarchy") {
                 const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
                     | { nodes?: AccessibilityNode[] }
                     | undefined;
-                if (payload?.nodes) { nodes = payload.nodes; }
+                if (payload?.nodes) {
+                    nodes = payload.nodes;
+                }
             }
         } catch (err) {
             log.appendLine(
@@ -275,34 +323,49 @@ export function applyDataProductsToRegistry(
     return null;
 }
 
-function readJsonPath(p: string | undefined, log: { appendLine(value: string): void }): unknown {
-    if (!p) { return undefined; }
+function readJsonPath(
+    p: string | undefined,
+    log: { appendLine(value: string): void },
+): unknown {
+    if (!p) {
+        return undefined;
+    }
     try {
-        return JSON.parse(fs.readFileSync(p, 'utf-8'));
+        return JSON.parse(fs.readFileSync(p, "utf-8"));
     } catch (err) {
-        log.appendLine(`[daemon] could not read data-product JSON at ${p}: ${(err as Error).message}`);
+        log.appendLine(
+            `[daemon] could not read data-product JSON at ${p}: ${(err as Error).message}`,
+        );
         return undefined;
     }
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<ComposePreviewTestApi | void> {
+export async function activate(
+    context: vscode.ExtensionContext,
+): Promise<ComposePreviewTestApi | void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) { return; }
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return;
+    }
 
     extensionContext = context;
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
-    const outputChannel = vscode.window.createOutputChannel('Compose Preview');
+    const outputChannel = vscode.window.createOutputChannel("Compose Preview");
     context.subscriptions.push(outputChannel);
     // `composePreview.logging.level` is read on every emit so a settings.json
     // edit takes effect immediately without a window reload.
     const logFilter = new LogFilter(() =>
         parseLogLevel(
-            vscode.workspace.getConfiguration('composePreview').get<string>('logging.level'),
+            vscode.workspace
+                .getConfiguration("composePreview")
+                .get<string>("logging.level"),
         ),
     );
     logLine = (msg: string) => {
         const line = `[refresh] ${msg}`;
-        if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+        if (logFilter.shouldEmitInformational(line)) {
+            outputChannel.appendLine(line);
+        }
     };
 
     // Startup fingerprint — answers "is the build I think I installed
@@ -310,21 +373,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // comes from package.json (bumped by release-please); the path locates
     // the loaded module on disk so an old install lingering from a prior
     // session is obvious.
-    const extId = 'yuri-schimke.compose-preview';
+    const extId = "yuri-schimke.compose-preview";
     const ext = vscode.extensions.getExtension(extId);
-    const extVersion = ext?.packageJSON?.version ?? 'unknown';
-    const extPath = ext?.extensionPath ?? '<unresolved>';
+    const extVersion = ext?.packageJSON?.version ?? "unknown";
+    const extPath = ext?.extensionPath ?? "<unresolved>";
     outputChannel.appendLine(
         `[startup] compose-preview v${extVersion} loaded from ${extPath}`,
     );
 
-    const isTestMode = process.env.COMPOSE_PREVIEW_TEST_MODE === '1';
+    const isTestMode = process.env.COMPOSE_PREVIEW_TEST_MODE === "1";
 
     // vscjava.vscode-gradle is declared as an extensionDependency, so it's
     // guaranteed to be installed in production. Under
     // `COMPOSE_PREVIEW_TEST_MODE=1` we tolerate the dep being a stub (the
     // tests inject their own GradleApi via [ComposePreviewTestApi]).
-    const gradleExt = vscode.extensions.getExtension('vscjava.vscode-gradle');
+    const gradleExt = vscode.extensions.getExtension("vscjava.vscode-gradle");
     if (!gradleExt && !isTestMode) {
         vscode.window.showErrorMessage(
             'Compose Preview requires the "Gradle for Java" extension (vscjava.vscode-gradle).',
@@ -333,146 +396,180 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     }
     const gradleApi: GradleApi = gradleExt
         ? ((await gradleExt.activate()) as GradleApi)
-        : { runTask: async () => { /* test-mode placeholder */ },
-            cancelRunTask: async () => { /* test-mode placeholder */ } };
+        : {
+              runTask: async () => {
+                  /* test-mode placeholder */
+              },
+              cancelRunTask: async () => {
+                  /* test-mode placeholder */
+              },
+          };
 
-    gradleService = new GradleService(workspaceRoot, gradleApi, outputChannel, () => [], logFilter);
+    gradleService = new GradleService(
+        workspaceRoot,
+        gradleApi,
+        outputChannel,
+        () => [],
+        logFilter,
+    );
 
     // Daemon path is controlled by composePreview.daemon.enabled (true by default). When disabled
     // the gate's `isEnabled()` returns false and the scheduler is never asked to spawn anything —
     // the Gradle path is the temporary escape hatch. When enabled, daemon failures surface as
     // errors instead of silently falling back to Gradle.
-    daemonGate = new DaemonGate(workspaceRoot, '0.1.0', outputChannel, logFilter);
-    daemonScheduler = new DaemonScheduler(daemonGate, {
-        onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
-            if (!panel) { return; }
-            if (activeInteractiveStreams.has(previewId) && logFilter.shouldEmitVerbose()) {
-                logLine(`[interactive] frame ${previewId} bytes=${imageBase64.length}`);
-            }
-            // Capture index 0 — the daemon's v1 renderFinished targets the
-            // representative capture only. Multi-capture (animated) renders
-            // still come through the Gradle path; the daemon's predictive
-            // pre-warm focuses on the cheap interactive loop.
-            panel.postMessage({
-                command: 'updateImage',
-                previewId,
-                captureIndex: 0,
-                imageData: imageBase64,
-            });
-        },
-        onRenderFailed: (_moduleId, previewId, message) => {
-            if (!panel) { return; }
-            panel.postMessage({
-                command: 'setImageError',
-                previewId,
-                captureIndex: 0,
-                message,
-                replaceExisting: false,
-            });
-        },
-        onDataProductsAttached: (_moduleId, previewId, dataProducts) => {
-            // D2 — route the data products attached to this render. For path-transport kinds
-            // (`a11y/hierarchy`) we read the JSON off disk; inline kinds (`a11y/atf`) carry
-            // their payload in `dp.payload`. The registry update fires `onDidChange`, which
-            // the diagnostics provider already listens to. The panel receives a targeted
-            // `updateA11y` post so its cached overlays repaint without re-emitting the entire
-            // preview list.
-            const decoded = applyDataProductsToRegistry(
-                registry,
-                previewId,
-                dataProducts,
-                outputChannel,
-            );
-            if (decoded && panel) {
+    daemonGate = new DaemonGate(
+        workspaceRoot,
+        "0.1.0",
+        outputChannel,
+        logFilter,
+    );
+    daemonScheduler = new DaemonScheduler(
+        daemonGate,
+        {
+            onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
+                if (!panel) {
+                    return;
+                }
+                if (
+                    activeInteractiveStreams.has(previewId) &&
+                    logFilter.shouldEmitVerbose()
+                ) {
+                    logLine(
+                        `[interactive] frame ${previewId} bytes=${imageBase64.length}`,
+                    );
+                }
+                // Capture index 0 — the daemon's v1 renderFinished targets the
+                // representative capture only. Multi-capture (animated) renders
+                // still come through the Gradle path; the daemon's predictive
+                // pre-warm focuses on the cheap interactive loop.
                 panel.postMessage({
-                    command: 'updateA11y',
+                    command: "updateImage",
                     previewId,
-                    findings: decoded.findings ?? undefined,
-                    nodes: decoded.nodes ?? undefined,
+                    captureIndex: 0,
+                    imageData: imageBase64,
                 });
-            }
-        },
-        onClasspathDirty: (moduleId, detail) => {
-            outputChannel.appendLine(
-                `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
-            );
-            clearDaemonShownPreviewWarmScopes(moduleId);
-            // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
-            // closed handler in DaemonGate evicts the entry. Next save runs
-            // Gradle, which re-bootstraps a fresh daemon when the user
-            // re-enables it via composePreviewDaemonStart.
-            // Drop the interactive-mode availability so any open LIVE chip
-            // disables itself instead of streaming stale frames from a
-            // soon-to-die daemon.
-            publishInteractiveAvailability(moduleId);
-        },
-        onDiscoveryUpdated: (moduleId, params) => {
-            // Daemon emits this only when the in-memory preview index drifted
-            // (added / removed / changed against the snapshot it held before
-            // the save). Identity-only saves are silent. Apply the diff to
-            // the extension-side mirror used for daemon focus computation —
-            // we deliberately don't post a "loading" or progress message;
-            // the user already saw the new PNG arrive via `renderFinished`,
-            // and a webview reshape is only needed when the preview set
-            // actually changed.
-            applyDiscoveryDiff(moduleId, params);
-        },
-        onHistoryAdded: (_moduleId, params) => {
-            // Phase H7 — daemon push: a fresh render landed and was archived. History is
-            // now focus-view-only; the live panel resolves it on demand when the user
-            // asks for a diff from the focused preview.
-            void params;
-        },
-        onChannelClosed: (moduleId) => {
-            clearDaemonShownPreviewWarmScopes(moduleId);
-            // Daemon's stdio channel closed (process exit, classpath dirty,
-            // spawn died). frameStreamIds don't survive a JVM restart, so
-            // drop every entry in `activeInteractiveStreams` whose previewId
-            // belongs to this module. Without this, a click landing after
-            // the daemon respawned would carry a stale streamId the new
-            // JVM never minted, and v2 dispatch would silently drop. The
-            // extension's `previewModuleMap` still resolves correctly post-
-            // respawn so the lookup uses today's mapping.
-            const stale: string[] = [];
-            for (const previewId of activeInteractiveStreams.keys()) {
-                if (previewModuleMap.get(previewId) === moduleId) {
-                    stale.push(previewId);
+            },
+            onRenderFailed: (_moduleId, previewId, message) => {
+                if (!panel) {
+                    return;
                 }
-            }
-            for (const previewId of stale) {
-                activeInteractiveStreams.delete(previewId);
-            }
-            for (const previewId of [...activeRecordingSessions.keys()]) {
-                if (previewModuleMap.get(previewId) === moduleId) {
-                    activeRecordingSessions.delete(previewId);
-                    activeRecordingFormats.delete(previewId);
-                    panel?.postMessage({ command: 'clearRecording', previewId });
-                }
-            }
-            updateInteractiveStatus();
-            if (stale.length > 0) {
-                logLine(
-                    `[interactive] daemon channel closed for ${moduleId}; ` +
-                    `dropped ${stale.length} stale stream(s): ${stale.join(', ')}`,
+                panel.postMessage({
+                    command: "setImageError",
+                    previewId,
+                    captureIndex: 0,
+                    message,
+                    replaceExisting: false,
+                });
+            },
+            onDataProductsAttached: (_moduleId, previewId, dataProducts) => {
+                // D2 — route the data products attached to this render. For path-transport kinds
+                // (`a11y/hierarchy`) we read the JSON off disk; inline kinds (`a11y/atf`) carry
+                // their payload in `dp.payload`. The registry update fires `onDidChange`, which
+                // the diagnostics provider already listens to. The panel receives a targeted
+                // `updateA11y` post so its cached overlays repaint without re-emitting the entire
+                // preview list.
+                const decoded = applyDataProductsToRegistry(
+                    registry,
+                    previewId,
+                    dataProducts,
+                    outputChannel,
                 );
-            }
+                if (decoded && panel) {
+                    panel.postMessage({
+                        command: "updateA11y",
+                        previewId,
+                        findings: decoded.findings ?? undefined,
+                        nodes: decoded.nodes ?? undefined,
+                    });
+                }
+            },
+            onClasspathDirty: (moduleId, detail) => {
+                outputChannel.appendLine(
+                    `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
+                );
+                clearDaemonShownPreviewWarmScopes(moduleId);
+                // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
+                // closed handler in DaemonGate evicts the entry. Next save runs
+                // Gradle, which re-bootstraps a fresh daemon when the user
+                // re-enables it via composePreviewDaemonStart.
+                // Drop the interactive-mode availability so any open LIVE chip
+                // disables itself instead of streaming stale frames from a
+                // soon-to-die daemon.
+                publishInteractiveAvailability(moduleId);
+            },
+            onDiscoveryUpdated: (moduleId, params) => {
+                // Daemon emits this only when the in-memory preview index drifted
+                // (added / removed / changed against the snapshot it held before
+                // the save). Identity-only saves are silent. Apply the diff to
+                // the extension-side mirror used for daemon focus computation —
+                // we deliberately don't post a "loading" or progress message;
+                // the user already saw the new PNG arrive via `renderFinished`,
+                // and a webview reshape is only needed when the preview set
+                // actually changed.
+                applyDiscoveryDiff(moduleId, params);
+            },
+            onHistoryAdded: (_moduleId, params) => {
+                // Phase H7 — daemon push: a fresh render landed and was archived. History is
+                // now focus-view-only; the live panel resolves it on demand when the user
+                // asks for a diff from the focused preview.
+                void params;
+            },
+            onChannelClosed: (moduleId) => {
+                clearDaemonShownPreviewWarmScopes(moduleId);
+                // Daemon's stdio channel closed (process exit, classpath dirty,
+                // spawn died). frameStreamIds don't survive a JVM restart, so
+                // drop every entry in `activeInteractiveStreams` whose previewId
+                // belongs to this module. Without this, a click landing after
+                // the daemon respawned would carry a stale streamId the new
+                // JVM never minted, and v2 dispatch would silently drop. The
+                // extension's `previewModuleMap` still resolves correctly post-
+                // respawn so the lookup uses today's mapping.
+                const stale: string[] = [];
+                for (const previewId of activeInteractiveStreams.keys()) {
+                    if (previewModuleMap.get(previewId) === moduleId) {
+                        stale.push(previewId);
+                    }
+                }
+                for (const previewId of stale) {
+                    activeInteractiveStreams.delete(previewId);
+                }
+                for (const previewId of [...activeRecordingSessions.keys()]) {
+                    if (previewModuleMap.get(previewId) === moduleId) {
+                        activeRecordingSessions.delete(previewId);
+                        activeRecordingFormats.delete(previewId);
+                        panel?.postMessage({
+                            command: "clearRecording",
+                            previewId,
+                        });
+                    }
+                }
+                updateInteractiveStatus();
+                if (stale.length > 0) {
+                    logLine(
+                        `[interactive] daemon channel closed for ${moduleId}; ` +
+                            `dropped ${stale.length} stale stream(s): ${stale.join(", ")}`,
+                    );
+                }
+            },
         },
-    }, outputChannel,
+        outputChannel,
         // D2 — read the user setting freshly on each `setVisible` so toggling
         // `composePreview.a11y.alwaysSubscribe` doesn't need a window reload.
         () =>
             vscode.workspace
-                .getConfiguration('composePreview')
-                .get<boolean>('a11y.alwaysSubscribe', false));
+                .getConfiguration("composePreview")
+                .get<boolean>("a11y.alwaysSubscribe", false),
+    );
 
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
     // off or no module is currently warming. Surfacing the cold-bootstrap
     // pause (typically 2-4 s on first scope-in) avoids the "panel is stuck"
     // perception on the daemon flag's first-time UX.
     daemonStatusItem = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Left, 90,
+        vscode.StatusBarAlignment.Left,
+        90,
     );
-    daemonStatusItem.command = 'workbench.action.output.toggleOutput';
+    daemonStatusItem.command = "workbench.action.output.toggleOutput";
     context.subscriptions.push(daemonStatusItem);
 
     // INTERACTIVE.md § 9 / #425 — status-bar hint surfaced only when the user has LIVE active
@@ -482,15 +579,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // would otherwise have no signal as to why. Hidden when v2 IS supported (the LIVE chip
     // alone is sufficient feedback) and when no streams are active.
     interactiveStatusItem = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Left, 89,
+        vscode.StatusBarAlignment.Left,
+        89,
     );
-    interactiveStatusItem.command = 'workbench.action.output.toggleOutput';
+    interactiveStatusItem.command = "workbench.action.output.toggleOutput";
     context.subscriptions.push(interactiveStatusItem);
 
-    panel = new PreviewPanel(
-        context.extensionUri,
-        handleWebviewMessage,
-        () => earlyFeaturesEnabled(),
+    panel = new PreviewPanel(context.extensionUri, handleWebviewMessage, () =>
+        earlyFeaturesEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -512,7 +608,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // internally; we just message the live panel and let it reissue.
     context.subscriptions.push(
         watchPreviewMainRef(workspaceRoot, () => {
-            panel?.postMessage({ command: 'previewMainRefChanged' });
+            panel?.postMessage({ command: "previewMainRefChanged" });
         }),
     );
 
@@ -520,58 +616,93 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // contributed; history is surfaced from the focus view alongside data products.
     historyScopeRef.current = null;
     historySource = buildHistorySource({
-        isDaemonReady: (moduleId) => daemonGate?.isDaemonReady(moduleId) ?? false,
+        isDaemonReady: (moduleId) =>
+            daemonGate?.isDaemonReady(moduleId) ?? false,
         daemonList: async (scope) => {
             const client = await daemonGate?.getOrSpawn(
-                scope.moduleId, daemonScheduler!.daemonEvents(scope.moduleId),
+                scope.moduleId,
+                daemonScheduler!.daemonEvents(scope.moduleId),
             );
-            if (!client) { throw new Error('daemon unavailable'); }
+            if (!client) {
+                throw new Error("daemon unavailable");
+            }
             return client.historyList({ previewId: scope.previewId });
         },
         daemonRead: async (id) => {
             const moduleId = historyScopeRef.current?.moduleId;
-            if (!moduleId) { throw new Error('no scope'); }
+            if (!moduleId) {
+                throw new Error("no scope");
+            }
             const client = await daemonGate?.getOrSpawn(
-                moduleId, daemonScheduler!.daemonEvents(moduleId),
+                moduleId,
+                daemonScheduler!.daemonEvents(moduleId),
             );
-            if (!client) { throw new Error('daemon unavailable'); }
+            if (!client) {
+                throw new Error("daemon unavailable");
+            }
             return client.historyRead({ id, inline: false });
         },
         daemonDiff: async (fromId, toId) => {
             const moduleId = historyScopeRef.current?.moduleId;
-            if (!moduleId) { throw new Error('no scope'); }
+            if (!moduleId) {
+                throw new Error("no scope");
+            }
             const client = await daemonGate?.getOrSpawn(
-                moduleId, daemonScheduler!.daemonEvents(moduleId),
+                moduleId,
+                daemonScheduler!.daemonEvents(moduleId),
             );
-            if (!client) { throw new Error('daemon unavailable'); }
-            return client.historyDiff({ from: fromId, to: toId, mode: 'metadata' });
+            if (!client) {
+                throw new Error("daemon unavailable");
+            }
+            return client.historyDiff({
+                from: fromId,
+                to: toId,
+                mode: "metadata",
+            });
         },
         getCurrentScope: () => historyScopeRef.current,
         logger: outputChannel,
     });
     context.subscriptions.push(
-        vscode.commands.registerCommand('composePreview.refresh', () =>
-            refresh(true, currentScopeFile ?? undefined)),
-        vscode.commands.registerCommand('composePreview.renderAll', () =>
-            refresh(true, currentScopeFile ?? undefined)),
-        vscode.commands.registerCommand('composePreview.runForFile', (filePath?: string) => {
-            const target = filePath ?? currentScopeFile ?? undefined;
-            if (target) { refresh(true, target); }
-        }),
-        vscode.commands.registerCommand('composePreview.openModuleBuildFile',
-            (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath)),
-        vscode.commands.registerCommand('composePreview.focusPreview',
+        vscode.commands.registerCommand("composePreview.refresh", () =>
+            refresh(true, currentScopeFile ?? undefined),
+        ),
+        vscode.commands.registerCommand("composePreview.renderAll", () =>
+            refresh(true, currentScopeFile ?? undefined),
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.runForFile",
+            (filePath?: string) => {
+                const target = filePath ?? currentScopeFile ?? undefined;
+                if (target) {
+                    refresh(true, target);
+                }
+            },
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.openModuleBuildFile",
+            (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath),
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.focusPreview",
             async (functionName: string, filePath?: string) => {
-                if (!panel) { return; }
+                if (!panel) {
+                    return;
+                }
                 // Reveal the sidebar view. This is the stable command contributed
                 // by VS Code for any registered view (`<viewId>.focus`).
-                await vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
+                await vscode.commands.executeCommand(
+                    `${PreviewPanel.viewId}.focus`,
+                );
                 // If the caller passed a file, scope the panel to it before
                 // filtering — otherwise the currently-scoped module is reused.
                 if (filePath && filePath !== currentScopeFile) {
                     await refresh(false, filePath);
                 }
-                panel.postMessage({ command: 'setFunctionFilter', functionName });
+                panel.postMessage({
+                    command: "setFunctionFilter",
+                    functionName,
+                });
             },
         ),
         // The daemon JVM caches the renderer JAR + sandbox state across every
@@ -582,43 +713,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         // never trips it. This command is the explicit escape hatch: shut
         // down every running daemon, clear the bootstrapped-modules memo, and
         // re-run the bootstrap task so the next save picks up the new JAR.
-        vscode.commands.registerCommand('composePreview.restartDaemon', async () => {
-            if (!daemonGate || !daemonScheduler) {
-                vscode.window.showInformationMessage(
-                    'Compose Preview: daemon gate not initialised yet.',
+        vscode.commands.registerCommand(
+            "composePreview.restartDaemon",
+            async () => {
+                if (!daemonGate || !daemonScheduler) {
+                    vscode.window.showInformationMessage(
+                        "Compose Preview: daemon gate not initialised yet.",
+                    );
+                    return;
+                }
+                const restarted = await daemonGate.restartAll();
+                // Clear the per-session bootstrap memo so the next save re-runs
+                // `composePreviewDaemonStart`, which writes a fresh
+                // `daemon-launch.json` pointing at the rebuilt JAR. Without
+                // clearing this the spawn would skip the bootstrap and the
+                // descriptor on disk could still reference the previous build.
+                daemonBootstrappedModules.clear();
+                // Hide the status-bar item — its text references a specific module
+                // that's no longer relevant; the next warmModule call will repopulate
+                // it through its progress callback.
+                daemonStatusItem?.hide();
+                outputChannel.appendLine(
+                    `[daemon] restartDaemon: shut down ${restarted.length} running daemon(s)` +
+                        (restarted.length > 0
+                            ? ` [${restarted.join(", ")}]`
+                            : "") +
+                        ` — next save will respawn from the on-disk JAR`,
                 );
-                return;
-            }
-            const restarted = await daemonGate.restartAll();
-            // Clear the per-session bootstrap memo so the next save re-runs
-            // `composePreviewDaemonStart`, which writes a fresh
-            // `daemon-launch.json` pointing at the rebuilt JAR. Without
-            // clearing this the spawn would skip the bootstrap and the
-            // descriptor on disk could still reference the previous build.
-            daemonBootstrappedModules.clear();
-            // Hide the status-bar item — its text references a specific module
-            // that's no longer relevant; the next warmModule call will repopulate
-            // it through its progress callback.
-            daemonStatusItem?.hide();
-            outputChannel.appendLine(
-                `[daemon] restartDaemon: shut down ${restarted.length} running daemon(s)` +
-                (restarted.length > 0 ? ` [${restarted.join(', ')}]` : '') +
-                ` — next save will respawn from the on-disk JAR`,
-            );
-            vscode.window.showInformationMessage(
-                restarted.length === 0
-                    ? 'Compose Preview: no daemon was running.'
-                    : `Compose Preview: restarted ${restarted.length} daemon(s). ` +
-                      'Next save will respawn from the on-disk JAR.',
-            );
-        }),
+                vscode.window.showInformationMessage(
+                    restarted.length === 0
+                        ? "Compose Preview: no daemon was running."
+                        : `Compose Preview: restarted ${restarted.length} daemon(s). ` +
+                              "Next save will respawn from the on-disk JAR.",
+                );
+            },
+        ),
     );
 
     const detectLog = (msg: string) => {
         const line = `[detect] ${msg}`;
-        if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+        if (logFilter.shouldEmitInformational(line)) {
+            outputChannel.appendLine(line);
+        }
     };
-    const gutterDecorations = new PreviewGutterDecorations(context.extensionUri, registry, detectLog);
+    const gutterDecorations = new PreviewGutterDecorations(
+        context.extensionUri,
+        registry,
+        detectLog,
+    );
     const hoverProvider = new PreviewHoverProvider(registry, detectLog);
     const codeLensProvider = new PreviewCodeLensProvider(registry, detectLog);
     const a11yDiagnostics = new PreviewA11yDiagnostics(registry, detectLog);
@@ -627,22 +769,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         workspaceRoot,
         (msg) => {
             const line = `[doctor] ${msg}`;
-            if (logFilter.shouldEmitInformational(line)) { outputChannel.appendLine(line); }
+            if (logFilter.shouldEmitInformational(line)) {
+                outputChannel.appendLine(line);
+            }
         },
     );
-    const kotlinFiles: vscode.DocumentSelector = { language: 'kotlin', scheme: 'file' };
+    const kotlinFiles: vscode.DocumentSelector = {
+        language: "kotlin",
+        scheme: "file",
+    };
     // AndroidManifest.xml lives at module-root, not under res/, so the existing
     // `**/res/**/*.xml` watcher misses it. Match files by name rather than
     // language id — the language id depends on the user's xml extension setup
     // and isn't a load-bearing signal.
     const androidManifestFiles: vscode.DocumentSelector = {
-        scheme: 'file',
-        pattern: '**/AndroidManifest.xml',
+        scheme: "file",
+        pattern: "**/AndroidManifest.xml",
     };
-    const androidManifestCodeLensProvider = new AndroidManifestCodeLensProvider(gradleService);
+    const androidManifestCodeLensProvider = new AndroidManifestCodeLensProvider(
+        gradleService,
+    );
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
-        vscode.languages.registerCodeLensProvider(kotlinFiles, codeLensProvider),
+        vscode.languages.registerCodeLensProvider(
+            kotlinFiles,
+            codeLensProvider,
+        ),
         vscode.languages.registerCodeLensProvider(
             androidManifestFiles,
             androidManifestCodeLensProvider,
@@ -662,9 +814,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // run `:<module>:renderAndroidResources` yet.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            'composePreview.previewResource',
+            "composePreview.previewResource",
             (pngPath: string, _resourceId: string) => {
-                void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pngPath));
+                void vscode.commands.executeCommand(
+                    "vscode.open",
+                    vscode.Uri.file(pngPath),
+                );
             },
         ),
     );
@@ -677,19 +832,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         // gradleService is non-null inside this activation scope (initialised
         // a few lines up), but the module-scope nullable declaration forces
         // a local alias for the type-checker.
-        if (!gradleService) { return; }
+        if (!gradleService) {
+            return;
+        }
         await doctorDiagnostics.refresh(gradleService.findPreviewModules());
     };
     context.subscriptions.push(
-        vscode.commands.registerCommand('composePreview.runDoctor', () => {
+        vscode.commands.registerCommand("composePreview.runDoctor", () => {
             void vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Window, title: 'Running compose-preview doctor…' },
+                {
+                    location: vscode.ProgressLocation.Window,
+                    title: "Running compose-preview doctor…",
+                },
                 refreshDoctor,
             );
         }),
-        vscode.commands.registerCommand('composePreview.diffAllVsMain', () => diffAllVsMain()),
-        vscode.commands.registerCommand('composePreview.launchOnDevice',
-            (previewId?: string) => launchOnDevice(previewId)),
+        vscode.commands.registerCommand("composePreview.diffAllVsMain", () =>
+            diffAllVsMain(),
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.launchOnDevice",
+            (previewId?: string) => launchOnDevice(previewId),
+        ),
     );
     // Refresh applied-markers in the background so future module resolution can
     // use the authoritative `applied.json` path. Doctor stays explicit via
@@ -698,22 +862,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {
-            if (event.affectsConfiguration('composePreview.earlyFeatures.enabled')) {
+            if (
+                event.affectsConfiguration(
+                    "composePreview.earlyFeatures.enabled",
+                )
+            ) {
                 panel?.postMessage({
-                    command: 'setEarlyFeatures',
+                    command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),
                 });
             }
         }),
-        vscode.window.onDidChangeActiveTextEditor(editor => {
-            if (editor?.document.languageId === 'kotlin') {
+        vscode.window.onDidChangeActiveTextEditor((editor) => {
+            if (editor?.document.languageId === "kotlin") {
                 const filePath = editor.document.uri.fsPath;
-                if (!isPreviewSourceFile(filePath)) { return; }
+                if (!isPreviewSourceFile(filePath)) {
+                    return;
+                }
                 // Focus toggling (editor ↔ webview/terminal ↔ back) fires this
                 // event with the same Kotlin file. Re-running refresh there
                 // just cancels any in-flight render, flashes spinners, and
                 // burns a Gradle invocation — all for a no-op.
-                if (filePath === currentScopeFile) { return; }
+                if (filePath === currentScopeFile) {
+                    return;
+                }
                 // INTERACTIVE.md § 3 — drop active interactive streams when
                 // the user moves focus to a different file. Daemon-side
                 // streams flushed here, panel cleared via clearInteractive
@@ -721,8 +893,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // race this on the new file's manifest arrival.
                 void flushInteractiveStreams();
                 void flushRecordingSessions({ encode: true });
-                panel?.postMessage({ command: 'clearInteractive' });
-                panel?.postMessage({ command: 'clearRecording' });
+                panel?.postMessage({ command: "clearInteractive" });
+                panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
                 // Reconcile the panel first, then pre-warm the daemon for
                 // this file's module. Once daemon startup finishes we run a
@@ -730,7 +902,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // the first edit doesn't have to pay JVM/sandbox startup.
                 void (async () => {
                     await refresh(false, filePath);
-                    await warmDaemonForFile(filePath, { refreshAfterReady: true });
+                    await warmDaemonForFile(filePath, {
+                        refreshAfterReady: true,
+                    });
                 })();
                 return;
             }
@@ -746,8 +920,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // rendering into an invisible panel.
                 void flushInteractiveStreams();
                 void flushRecordingSessions({ encode: true });
-                panel?.postMessage({ command: 'clearInteractive' });
-                panel?.postMessage({ command: 'clearRecording' });
+                panel?.postMessage({ command: "clearInteractive" });
+                panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
                 refresh(false);
             }
@@ -772,13 +946,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // away; subsequent saves coalesce through a debounced + in-flight-aware
     // queue so we never stack builds on top of each other.
     context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(doc => {
-            if (!isSourceFile(doc.uri.fsPath)) { return; }
+        vscode.workspace.onDidSaveTextDocument((doc) => {
+            if (!isSourceFile(doc.uri.fsPath)) {
+                return;
+            }
             // The daemon-vs-Gradle decision is made inside runRefreshExclusive
             // — either path runs, never both. See `pickRefreshMode` for the
             // health gate. When the daemon flag is off (default) the gate
             // always returns 'gradle' so behaviour is byte-identical to today.
-            if (!firstSaveSeen.has(doc.uri.fsPath) && !refreshInFlight && pendingSavePath === null) {
+            if (
+                !firstSaveSeen.has(doc.uri.fsPath) &&
+                !refreshInFlight &&
+                pendingSavePath === null
+            ) {
                 firstSaveSeen.add(doc.uri.fsPath);
                 invalidateModuleCache(doc.uri.fsPath);
                 void runRefreshExclusive(doc.uri.fsPath);
@@ -795,9 +975,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     // the panel look "jumpy" with spinners reappearing over cards after each
     // build completed.
     const onWatcherEvent = (uri: vscode.Uri) => {
-        if (isSourceFile(uri.fsPath)) { enqueueSaveRefresh(uri.fsPath); }
+        if (isSourceFile(uri.fsPath)) {
+            enqueueSaveRefresh(uri.fsPath);
+        }
     };
-    for (const glob of ['**/*.kt', '**/res/**/*.xml']) {
+    for (const glob of ["**/*.kt", "**/res/**/*.xml"]) {
         const watcher = vscode.workspace.createFileSystemWatcher(glob);
         watcher.onDidChange(onWatcherEvent);
         watcher.onDidCreate(onWatcherEvent);
@@ -821,7 +1003,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     //   4. errors actually clear — the event also fires on diagnostic
     //      content changes, e.g. severity bump from Warning to Error.
     context.subscriptions.push(
-        vscode.languages.onDidChangeDiagnostics(e => onDiagnosticsChanged(e)),
+        vscode.languages.onDidChangeDiagnostics((e) => onDiagnosticsChanged(e)),
     );
 
     context.subscriptions.push({ dispose: () => gradleService?.dispose() });
@@ -832,7 +1014,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
         // API. Tests call triggerRefresh themselves at known points.
         setTimeout(() => {
             const active = vscode.window.activeTextEditor;
-            if (active?.document.languageId === 'kotlin') {
+            if (active?.document.languageId === "kotlin") {
                 void runActivationRefresh(active.document.uri.fsPath);
             } else {
                 // No Kotlin file in focus — let refresh() emit the empty-state
@@ -845,9 +1027,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     if (isTestMode) {
         const testApi: ComposePreviewTestApi = {
             injectGradleApi(api: GradleApi): void {
-                gradleService = new GradleService(workspaceRoot, api, outputChannel, () => [], logFilter);
+                gradleService = new GradleService(
+                    workspaceRoot,
+                    api,
+                    outputChannel,
+                    () => [],
+                    logFilter,
+                );
             },
-            triggerRefresh(filePath: string, force = false, tier: 'fast' | 'full' = 'full'): Promise<void> {
+            triggerRefresh(
+                filePath: string,
+                force = false,
+                tier: "fast" | "full" = "full",
+            ): Promise<void> {
                 return refresh(force, filePath, tier).then(() => {});
             },
             getPostedMessages(): unknown[] {
@@ -862,7 +1054,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
 }
 
 export function deactivate() {
-    if (debounceTimer) { clearTimeout(debounceTimer); }
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
     stopAllDaemonStartupProgress();
     pendingRefresh?.abort();
     // Tell the daemon to release every interactive stream this session opened
@@ -891,77 +1085,107 @@ export function deactivate() {
  * silently swallowed because we're on the way out anyway.
  */
 async function flushInteractiveStreams(): Promise<void> {
-    if (activeInteractiveStreams.size === 0) { return; }
+    if (activeInteractiveStreams.size === 0) {
+        return;
+    }
     const entries = [...activeInteractiveStreams.entries()];
     activeInteractiveStreams.clear();
     updateInteractiveStatus();
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
-    await Promise.all(entries.map(async ([previewId, streamId]) => {
-        try {
-            const moduleId = previewModuleMap.get(previewId);
-            if (!moduleId) { return; }
-            const client = await daemonGate?.getOrSpawn(
-                moduleId, daemonScheduler!.daemonEvents(moduleId),
-            );
-            client?.interactiveStop({ frameStreamId: streamId });
-        } catch {
-            /* deactivate path — best-effort */
-        }
-    }));
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
+    await Promise.all(
+        entries.map(async ([previewId, streamId]) => {
+            try {
+                const moduleId = previewModuleMap.get(previewId);
+                if (!moduleId) {
+                    return;
+                }
+                const client = await daemonGate?.getOrSpawn(
+                    moduleId,
+                    daemonScheduler!.daemonEvents(moduleId),
+                );
+                client?.interactiveStop({ frameStreamId: streamId });
+            } catch {
+                /* deactivate path — best-effort */
+            }
+        }),
+    );
 }
 
-async function flushRecordingSessions(options: { encode: boolean }): Promise<void> {
-    if (activeRecordingSessions.size === 0) { return; }
+async function flushRecordingSessions(options: {
+    encode: boolean;
+}): Promise<void> {
+    if (activeRecordingSessions.size === 0) {
+        return;
+    }
     const entries = [...activeRecordingSessions.entries()];
     const formats = new Map(activeRecordingFormats);
     activeRecordingSessions.clear();
     activeRecordingFormats.clear();
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
-    await Promise.all(entries.map(async ([previewId, recordingId]) => {
-        try {
-            const moduleId = previewModuleMap.get(previewId);
-            if (!moduleId) { return; }
-            const client = await daemonGate?.getOrSpawn(
-                moduleId, daemonScheduler!.daemonEvents(moduleId),
-            );
-            if (!client) { return; }
-            await client.recordingStop({ recordingId });
-            if (options.encode) {
-                const encoded = await client.recordingEncode({
-                    recordingId,
-                    format: formats.get(previewId) ?? 'apng',
-                });
-                void vscode.window.showInformationMessage(
-                    `Compose preview recording saved: ${encoded.videoPath}`,
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
+    await Promise.all(
+        entries.map(async ([previewId, recordingId]) => {
+            try {
+                const moduleId = previewModuleMap.get(previewId);
+                if (!moduleId) {
+                    return;
+                }
+                const client = await daemonGate?.getOrSpawn(
+                    moduleId,
+                    daemonScheduler!.daemonEvents(moduleId),
+                );
+                if (!client) {
+                    return;
+                }
+                await client.recordingStop({ recordingId });
+                if (options.encode) {
+                    const encoded = await client.recordingEncode({
+                        recordingId,
+                        format: formats.get(previewId) ?? "apng",
+                    });
+                    void vscode.window.showInformationMessage(
+                        `Compose preview recording saved: ${encoded.videoPath}`,
+                    );
+                }
+            } catch (err) {
+                logLine(
+                    `[recording] flush failed for ${previewId}: ${(err as Error).message}`,
                 );
             }
-        } catch (err) {
-            logLine(`[recording] flush failed for ${previewId}: ${(err as Error).message}`);
-        }
-    }));
+        }),
+    );
 }
 
 function sameScope(a: string[], b: string[]): boolean {
-    if (a.length !== b.length) { return false; }
+    if (a.length !== b.length) {
+        return false;
+    }
     const set = new Set(b);
-    return a.every(m => set.has(m));
+    return a.every((m) => set.has(m));
 }
 
 function isSourceFile(filePath: string): boolean {
-    if (isGeneratedOutputPath(filePath)) { return false; }
+    if (isGeneratedOutputPath(filePath)) {
+        return false;
+    }
     return /\.(kt|xml|json|properties)$/i.test(filePath);
 }
 
 function isGeneratedOutputPath(filePath: string): boolean {
     const segments = filePath.split(/[\\/]+/);
-    return segments.includes('build') || segments.includes('bin');
+    return segments.includes("build") || segments.includes("bin");
 }
 
 /** True iff this is a Kotlin source file (.kt), not generated output or a Gradle build script. */
 function isPreviewSourceFile(filePath: string): boolean {
-    return filePath.endsWith('.kt')
-        && !filePath.endsWith('.gradle.kts')
-        && !isGeneratedOutputPath(filePath);
+    return (
+        filePath.endsWith(".kt") &&
+        !filePath.endsWith(".gradle.kts") &&
+        !isGeneratedOutputPath(filePath)
+    );
 }
 
 /**
@@ -979,29 +1203,42 @@ function isPreviewSourceFile(filePath: string): boolean {
  * Returns the resolved path and a short tag describing which fallback was used,
  * for logging.
  */
-function resolveScopeFile(forFilePath?: string): { file?: string; source: string } {
+function resolveScopeFile(forFilePath?: string): {
+    file?: string;
+    source: string;
+} {
     if (forFilePath && isPreviewSourceFile(forFilePath)) {
-        return { file: forFilePath, source: 'caller' };
+        return { file: forFilePath, source: "caller" };
     }
 
     const active = vscode.window.activeTextEditor?.document;
-    if (active && active.languageId === 'kotlin' && isPreviewSourceFile(active.uri.fsPath)) {
-        return { file: active.uri.fsPath, source: 'active' };
+    if (
+        active &&
+        active.languageId === "kotlin" &&
+        isPreviewSourceFile(active.uri.fsPath)
+    ) {
+        return { file: active.uri.fsPath, source: "active" };
     }
 
-    if (currentScopeFile && isPreviewSourceFile(currentScopeFile)
-        && isFileVisibleInEditor(currentScopeFile)) {
-        return { file: currentScopeFile, source: 'sticky' };
+    if (
+        currentScopeFile &&
+        isPreviewSourceFile(currentScopeFile) &&
+        isFileVisibleInEditor(currentScopeFile)
+    ) {
+        return { file: currentScopeFile, source: "sticky" };
     }
 
     for (const editor of vscode.window.visibleTextEditors) {
         const doc = editor.document;
-        if (doc.languageId === 'kotlin' && isPreviewSourceFile(doc.uri.fsPath)) {
-            return { file: doc.uri.fsPath, source: 'visible' };
+        if (
+            doc.languageId === "kotlin" &&
+            isPreviewSourceFile(doc.uri.fsPath)
+        ) {
+            return { file: doc.uri.fsPath, source: "visible" };
         }
     }
 
-    return { source: 'none' };
+    return { source: "none" };
 }
 
 /**
@@ -1012,14 +1249,18 @@ function resolveScopeFile(forFilePath?: string): { file?: string; source: string
  */
 function isFileVisibleInEditor(filePath: string): boolean {
     return vscode.window.visibleTextEditors.some(
-        editor => editor.document.uri.fsPath === filePath,
+        (editor) => editor.document.uri.fsPath === filePath,
     );
 }
 
 function invalidateModuleCache(filePath: string): void {
-    if (!gradleService) { return; }
+    if (!gradleService) {
+        return;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (module) { gradleService.invalidateCache(module); }
+    if (module) {
+        gradleService.invalidateCache(module);
+    }
 }
 
 /**
@@ -1042,8 +1283,18 @@ function invalidateModuleCache(filePath: string): void {
  *
  * Errors are logged and dropped — the next user-driven refresh will reconcile.
  */
-async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; removed: string[]; changed: unknown[]; totalPreviews: number }): Promise<void> {
-    if (!gradleService || !panel) { return; }
+async function applyDiscoveryDiff(
+    moduleId: string,
+    params: {
+        added: unknown[];
+        removed: string[];
+        changed: unknown[];
+        totalPreviews: number;
+    },
+): Promise<void> {
+    if (!gradleService || !panel) {
+        return;
+    }
 
     const removedIds = params.removed ?? [];
     const addedCount = params.added?.length ?? 0;
@@ -1055,9 +1306,11 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
     // Always reconcile caches, even when no preview editor is visible. Only
     // repaint the panel when its current scope still belongs to this module;
     // daemon save/discovery events can also arrive for background files.
-    const repaintFile = currentScopeFile && gradleService.resolveModule(currentScopeFile) === moduleId
-        ? currentScopeFile
-        : undefined;
+    const repaintFile =
+        currentScopeFile &&
+        gradleService.resolveModule(currentScopeFile) === moduleId
+            ? currentScopeFile
+            : undefined;
     await reconcilePreviewManifest(moduleId, repaintFile);
 }
 
@@ -1066,12 +1319,16 @@ async function applyDiscoveryDiff(moduleId: string, params: { added: unknown[]; 
  * when the daemon path is enabled. Explicit daemon opt-out returns `'disabled'` so the caller can
  * use the Gradle render path; daemon failures return `'failed'` and do not fall back.
  */
-type DaemonSaveResult = 'accepted' | 'disabled' | 'failed';
+type DaemonSaveResult = "accepted" | "disabled" | "failed";
 
 async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return 'disabled'; }
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+        return "disabled";
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return 'failed'; }
+    if (!module) {
+        return "failed";
+    }
 
     // Bootstrap (Gradle task + JVM spawn) happens once per module per
     // session. Normally it has already fired from the active-editor warm
@@ -1081,27 +1338,32 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         daemonBootstrappedModules.add(module);
         try {
             const warmed = await daemonScheduler.warmModule(
-                gradleService, module,
+                gradleService,
+                module,
                 (state) => updateDaemonStatus(module, state),
             );
             if (!warmed) {
                 daemonBootstrappedModules.delete(module);
-                return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+                return daemonGate.isBuildDisabled(module)
+                    ? "disabled"
+                    : "failed";
             }
         } catch (err) {
             daemonBootstrappedModules.delete(module);
             logLine(`daemon: ${String((err as Error).message ?? err)}`);
-            return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+            return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
         }
     }
 
     try {
         const ok = await daemonScheduler.ensureModule(module);
-        if (!ok) { return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed'; }
+        if (!ok) {
+            return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
+        }
         await daemonScheduler.fileChanged(module, filePath);
     } catch (err) {
         logLine(`daemon: ${String((err as Error).message ?? err)}`);
-        return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+        return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
     }
 
     // Focus scope = the saved file's previews, derived from the most recent
@@ -1116,36 +1378,58 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // discoveryUpdated push).
     const filterFile = packageQualifiedSourcePath(filePath);
     const manifest = moduleManifestCache.get(module) ?? [];
-    let filePreviews = manifest.filter(p => p.sourceFile === filterFile);
+    let filePreviews = manifest.filter((p) => p.sourceFile === filterFile);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
-        logLine(`daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`);
-        const repaintFile = currentScopeFile && gradleService.resolveModule(currentScopeFile) === module
-            ? currentScopeFile
-            : undefined;
+        logLine(
+            `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
+        );
+        const repaintFile =
+            currentScopeFile &&
+            gradleService.resolveModule(currentScopeFile) === module
+                ? currentScopeFile
+                : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
-        filePreviews = fresh?.filter(p => p.sourceFile === filterFile) ?? filePreviews;
+        filePreviews =
+            fresh?.filter((p) => p.sourceFile === filterFile) ?? filePreviews;
     }
-    const ids = filePreviews.map(p => p.id);
-    if (ids.length === 0) { return 'accepted'; }
+    const ids = filePreviews.map((p) => p.id);
+    if (ids.length === 0) {
+        return "accepted";
+    }
     try {
         await daemonScheduler.setFocus(module, ids);
         const fullIds = heavyOptInsFor(module, ids);
-        const fastIds = fullIds.length === 0
-            ? ids
-            : ids.filter(id => !fullIds.includes(id));
+        const fastIds =
+            fullIds.length === 0
+                ? ids
+                : ids.filter((id) => !fullIds.includes(id));
 
         if (fastIds.length > 0) {
-            const ok = await daemonScheduler.renderNow(module, fastIds, 'fast', 'save');
-            if (!ok) { return 'failed'; }
+            const ok = await daemonScheduler.renderNow(
+                module,
+                fastIds,
+                "fast",
+                "save",
+            );
+            if (!ok) {
+                return "failed";
+            }
         }
         if (fullIds.length > 0) {
-            const ok = await daemonScheduler.renderNow(module, fullIds, 'full', 'save-heavy-opt-in');
-            if (!ok) { return 'failed'; }
+            const ok = await daemonScheduler.renderNow(
+                module,
+                fullIds,
+                "full",
+                "save-heavy-opt-in",
+            );
+            if (!ok) {
+                return "failed";
+            }
         }
-        return 'accepted';
+        return "accepted";
     } catch (err) {
         logLine(`daemon: ${String((err as Error).message ?? err)}`);
-        return daemonGate.isBuildDisabled(module) ? 'disabled' : 'failed';
+        return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
     }
 }
 
@@ -1165,16 +1449,28 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
  * "first launch" empty-state logic), `false` when no usable manifest existed.
  */
 async function preloadCachedPreviews(filePath: string): Promise<boolean> {
-    if (!gradleService || !panel) { return false; }
-    if (!isPreviewSourceFile(filePath)) { return false; }
+    if (!gradleService || !panel) {
+        return false;
+    }
+    if (!isPreviewSourceFile(filePath)) {
+        return false;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return false; }
+    if (!module) {
+        return false;
+    }
     const manifest = gradleService.readManifest(module);
-    if (!manifest || manifest.previews.length === 0) { return false; }
+    if (!manifest || manifest.previews.length === 0) {
+        return false;
+    }
 
     const filterFile = packageQualifiedSourcePath(filePath);
-    const visiblePreviews = manifest.previews.filter(p => p.sourceFile === filterFile);
-    if (visiblePreviews.length === 0) { return false; }
+    const visiblePreviews = manifest.previews.filter(
+        (p) => p.sourceFile === filterFile,
+    );
+    if (visiblePreviews.length === 0) {
+        return false;
+    }
 
     for (const p of visiblePreviews) {
         for (const capture of p.captures) {
@@ -1184,7 +1480,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     }
 
     panel.postMessage({
-        command: 'setPreviews',
+        command: "setPreviews",
         previews: visiblePreviews,
         moduleDir: module,
         heavyStaleIds: [],
@@ -1194,22 +1490,30 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     for (const preview of visiblePreviews) {
         for (let idx = 0; idx < preview.captures.length; idx++) {
             const capture = preview.captures[idx];
-            if (!capture.renderOutput) { continue; }
+            if (!capture.renderOutput) {
+                continue;
+            }
             const captureIndex = idx;
-            imageJobs.push((async () => {
-                const imageData = await gradleService!
-                    .readPreviewImage(module, capture.renderOutput);
-                if (!imageData || !panel) { return; }
-                if (captureIndex === 0) {
-                    registry.setImage(preview.id, imageData);
-                }
-                panel.postMessage({
-                    command: 'updateImage',
-                    previewId: preview.id,
-                    captureIndex,
-                    imageData,
-                });
-            })());
+            imageJobs.push(
+                (async () => {
+                    const imageData = await gradleService!.readPreviewImage(
+                        module,
+                        capture.renderOutput,
+                    );
+                    if (!imageData || !panel) {
+                        return;
+                    }
+                    if (captureIndex === 0) {
+                        registry.setImage(preview.id, imageData);
+                    }
+                    panel.postMessage({
+                        command: "updateImage",
+                        previewId: preview.id,
+                        captureIndex,
+                        imageData,
+                    });
+                })(),
+            );
         }
     }
     await Promise.all(imageJobs);
@@ -1249,11 +1553,15 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  */
 async function runActivationRefresh(filePath: string): Promise<void> {
     await preloadCachedPreviews(filePath);
-    await refresh(false, filePath, 'full', { showLoadingOverlay: false });
+    await refresh(false, filePath, "full", { showLoadingOverlay: false });
     await warmDaemonForFile(filePath, { refreshAfterReady: true });
-    if (!gradleService || !daemonGate) { return; }
+    if (!gradleService || !daemonGate) {
+        return;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) { return; }
+    if (!module || !daemonGate.isDaemonReady(module)) {
+        return;
+    }
     // Phase 3 — kick off a fresh render through the daemon. Reuses the same
     // notify path the save-driven flow uses; the daemon does the swap +
     // renderNow + the panel updates via the existing onPreviewImageReady
@@ -1273,19 +1581,24 @@ async function warmDaemonForFile(
     filePath: string,
     opts: { refreshAfterReady?: boolean } = {},
 ): Promise<boolean> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return false; }
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+        return false;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return false; }
+    if (!module) {
+        return false;
+    }
     if (daemonBootstrappedModules.has(module)) {
         if (daemonGate.isDaemonReady(module) && opts.refreshAfterReady) {
-            await refreshAfterDaemonReady(filePath, 'view-open');
+            await refreshAfterDaemonReady(filePath, "view-open");
         }
         return daemonGate.isDaemonReady(module);
     }
     daemonBootstrappedModules.add(module);
     try {
         const warmed = await daemonScheduler.warmModule(
-            gradleService, module,
+            gradleService,
+            module,
             (state) => {
                 updateDaemonStatus(module, state);
                 publishDaemonStartupProgress(module, state);
@@ -1296,16 +1609,18 @@ async function warmDaemonForFile(
         }
         finishDaemonStartupProgress(module, filePath, warmed);
         if (warmed && opts.refreshAfterReady) {
-            await refreshAfterDaemonReady(filePath, 'view-open');
+            await refreshAfterDaemonReady(filePath, "view-open");
         }
         return warmed;
     } catch (err) {
         daemonBootstrappedModules.delete(module);
         stopDaemonStartupProgress(module);
-        panel?.postMessage({ command: 'clearProgress' });
-        logLine(`daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`);
+        panel?.postMessage({ command: "clearProgress" });
+        logLine(
+            `daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`,
+        );
         vscode.window.showErrorMessage(
-            'Compose Preview daemon is enabled but failed to start. Preview saves will not fall back to Gradle until the daemon is fixed or disabled.',
+            "Compose Preview daemon is enabled but failed to start. Preview saves will not fall back to Gradle until the daemon is fixed or disabled.",
         );
         return false;
     }
@@ -1319,69 +1634,75 @@ async function warmDaemonForFile(
  * the user can tell the extension is still doing useful work.
  */
 function publishDaemonStartupProgress(module: string, state: WarmState): void {
-    if (!panel) { return; }
+    if (!panel) {
+        return;
+    }
     if (!isDaemonStartupScopeActive(module)) {
         stopDaemonStartupProgress(module);
         return;
     }
     switch (state) {
-        case 'bootstrapping':
+        case "bootstrapping":
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
-                    command: 'showMessage',
+                    command: "showMessage",
                     text: `Preparing Compose Preview daemon for ${module}…`,
                 });
             }
             startDaemonStartupProgress(
                 module,
-                'Preparing preview daemon',
+                "Preparing preview daemon",
                 0.08,
                 0.62,
                 DAEMON_BOOTSTRAP_PROGRESS_MS,
             );
             break;
-        case 'spawning':
+        case "spawning":
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
-                    command: 'showMessage',
+                    command: "showMessage",
                     text: `Starting Compose Preview daemon for ${module}…`,
                 });
             }
             startDaemonStartupProgress(
                 module,
-                'Starting preview daemon',
+                "Starting preview daemon",
                 0.62,
                 0.94,
                 DAEMON_SPAWN_PROGRESS_MS,
             );
             break;
-        case 'ready':
+        case "ready":
             stopDaemonStartupProgress(module);
-            if (!isDaemonStartupScopeActive(module)) { return; }
+            if (!isDaemonStartupScopeActive(module)) {
+                return;
+            }
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
-                    command: 'showMessage',
-                    text: 'Compose Preview daemon is ready. Rendering previews…',
+                    command: "showMessage",
+                    text: "Compose Preview daemon is ready. Rendering previews…",
                 });
             }
             panel.postMessage({
-                command: 'setProgress',
-                phase: 'daemon',
-                label: 'Preview daemon ready',
+                command: "setProgress",
+                phase: "daemon",
+                label: "Preview daemon ready",
                 percent: 1,
                 slow: false,
             });
             break;
-        case 'fallback':
+        case "fallback":
             stopDaemonStartupProgress(module);
-            if (!isDaemonStartupScopeActive(module)) { return; }
+            if (!isDaemonStartupScopeActive(module)) {
+                return;
+            }
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
-                    command: 'showMessage',
+                    command: "showMessage",
                     text: `Compose Preview daemon is disabled for ${module}; using Gradle previews.`,
                 });
             }
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             break;
     }
 }
@@ -1396,7 +1717,9 @@ function startDaemonStartupProgress(
     stopDaemonStartupProgress(module);
     const startedAt = Date.now();
     const tick = () => {
-        if (!panel) { return; }
+        if (!panel) {
+            return;
+        }
         if (!isDaemonStartupScopeActive(module)) {
             stopDaemonStartupProgress(module);
             return;
@@ -1404,10 +1727,10 @@ function startDaemonStartupProgress(
         const elapsed = Date.now() - startedAt;
         const ratio = Math.min(0.98, 1 - Math.exp(-elapsed / durationMs));
         panel.postMessage({
-            command: 'setProgress',
-            phase: 'daemon',
+            command: "setProgress",
+            phase: "daemon",
             label,
-            percent: start + ((end - start) * ratio),
+            percent: start + (end - start) * ratio,
             slow: false,
         });
     };
@@ -1419,14 +1742,23 @@ function isDaemonStartupScopeActive(module: string): boolean {
     return currentScopeModule === module;
 }
 
-function setCurrentScopeFile(filePath: string | null, module?: string | null): void {
+function setCurrentScopeFile(
+    filePath: string | null,
+    module?: string | null,
+): void {
     currentScopeFile = filePath;
-    currentScopeModule = module ?? (filePath && gradleService ? gradleService.resolveModule(filePath) : null);
+    currentScopeModule =
+        module ??
+        (filePath && gradleService
+            ? gradleService.resolveModule(filePath)
+            : null);
 }
 
 function stopDaemonStartupProgress(module: string): void {
     const timer = daemonStartupProgressTimers.get(module);
-    if (!timer) { return; }
+    if (!timer) {
+        return;
+    }
     clearInterval(timer);
     daemonStartupProgressTimers.delete(module);
 }
@@ -1437,44 +1769,61 @@ function stopAllDaemonStartupProgress(): void {
     }
 }
 
-function finishDaemonStartupProgress(module: string, filePath: string, warmed: boolean): void {
-    if (!panel || hasPreviewsLoaded || !warmed) { return; }
+function finishDaemonStartupProgress(
+    module: string,
+    filePath: string,
+    warmed: boolean,
+): void {
+    if (!panel || hasPreviewsLoaded || !warmed) {
+        return;
+    }
     const visibleCount = visiblePreviewCount(module, filePath);
-    if (visibleCount > 0) { return; }
-    panel.postMessage({ command: 'clearProgress' });
+    if (visibleCount > 0) {
+        return;
+    }
+    panel.postMessage({ command: "clearProgress" });
     const allPreviews = moduleManifestCache.get(module)?.length ?? 0;
     panel.postMessage({
-        command: 'showMessage',
-        text: allPreviews > 0
-            ? `No @Preview functions in this file (${allPreviews} in other files in this module).`
-            : 'No @Preview functions found in this module',
+        command: "showMessage",
+        text:
+            allPreviews > 0
+                ? `No @Preview functions in this file (${allPreviews} in other files in this module).`
+                : "No @Preview functions found in this module",
     });
 }
 
 function visiblePreviewCount(module: string, filePath: string): number {
     const previews = moduleManifestCache.get(module) ?? [];
     const filterFile = packageQualifiedSourcePath(filePath);
-    return previews.filter(p => p.sourceFile === filterFile).length;
+    return previews.filter((p) => p.sourceFile === filterFile).length;
 }
 
 async function reconcilePreviewManifest(
     module: string,
     repaintFilePath?: string,
 ): Promise<PreviewInfo[] | null> {
-    if (!gradleService) { return null; }
+    if (!gradleService) {
+        return null;
+    }
     gradleService.invalidateCache(module);
     let manifest;
     try {
         manifest = await gradleService.discoverPreviews(module);
     } catch (err) {
-        logLine(`[daemon] silent discover failed for ${module}: ${(err as Error).message}`);
+        logLine(
+            `[daemon] silent discover failed for ${module}: ${(err as Error).message}`,
+        );
         return null;
     }
-    if (!manifest) { return null; }
+    if (!manifest) {
+        return null;
+    }
 
     const fresh = manifest.previews;
     for (const [id, owner] of [...previewModuleMap.entries()]) {
-        if (owner === module) { previewModuleMap.delete(id); }
+        if (owner === module) {
+            previewModuleMap.delete(id);
+        }
     }
     for (const p of fresh) {
         for (const capture of p.captures) {
@@ -1485,17 +1834,17 @@ async function reconcilePreviewManifest(
     moduleManifestCache.set(module, fresh);
     registry.replaceModule(module, fresh);
 
-    if (!panel || !repaintFilePath) { return fresh; }
+    if (!panel || !repaintFilePath) {
+        return fresh;
+    }
 
     const filterFile = packageQualifiedSourcePath(repaintFilePath);
-    const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
+    const visiblePreviews = fresh.filter((p) => p.sourceFile === filterFile);
     const heavyStaleIds = fastTierModules.has(module)
-        ? visiblePreviews
-            .filter(hasHeavyCapture)
-            .map(p => p.id)
+        ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
         : [];
     panel.postMessage({
-        command: 'setPreviews',
+        command: "setPreviews",
         previews: visiblePreviews,
         moduleDir: module,
         heavyStaleIds,
@@ -1503,22 +1852,38 @@ async function reconcilePreviewManifest(
     return fresh;
 }
 
-async function refreshAfterDaemonReady(filePath: string, reason: string): Promise<void> {
-    if (!daemonGate || !gradleService || !panel) { return; }
-    const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) { return; }
-    if (currentScopeFile && currentScopeFile !== filePath) { return; }
-    if (pendingRefresh || refreshInFlight) {
-        logLine(`daemon: skip post-warm refresh for ${module}; refresh already active`);
+async function refreshAfterDaemonReady(
+    filePath: string,
+    reason: string,
+): Promise<void> {
+    if (!daemonGate || !gradleService || !panel) {
         return;
     }
-    const reconciled = await reconcilePreviewManifestAfterDaemonReady(module, filePath);
-    if (!reconciled) { return; }
+    const module = gradleService.resolveModule(filePath);
+    if (!module || !daemonGate.isDaemonReady(module)) {
+        return;
+    }
+    if (currentScopeFile && currentScopeFile !== filePath) {
+        return;
+    }
+    if (pendingRefresh || refreshInFlight) {
+        logLine(
+            `daemon: skip post-warm refresh for ${module}; refresh already active`,
+        );
+        return;
+    }
+    const reconciled = await reconcilePreviewManifestAfterDaemonReady(
+        module,
+        filePath,
+    );
+    if (!reconciled) {
+        return;
+    }
     await warmShownPreviewsForFile(filePath, reason);
     panel.postMessage({
-        command: 'setProgress',
-        phase: 'daemon',
-        label: 'Preview daemon ready',
+        command: "setProgress",
+        phase: "daemon",
+        label: "Preview daemon ready",
         percent: 1,
         slow: false,
     });
@@ -1528,28 +1893,30 @@ async function reconcilePreviewManifestAfterDaemonReady(
     module: string,
     filePath: string,
 ): Promise<boolean> {
-    if (!gradleService || !panel) { return false; }
+    if (!gradleService || !panel) {
+        return false;
+    }
     try {
         panel.postMessage({
-            command: 'setProgress',
-            phase: 'daemon',
-            label: 'Checking preview list',
+            command: "setProgress",
+            phase: "daemon",
+            label: "Checking preview list",
             percent: 0.86,
             slow: false,
         });
         gradleService.invalidateCache(module);
         const manifest = await gradleService.discoverPreviews(module);
         if (!manifest) {
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             return false;
         }
         if (currentScopeFile && currentScopeFile !== filePath) {
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             return false;
         }
 
         const fresh = manifest.previews;
-        const freshIds = new Set(fresh.map(p => p.id));
+        const freshIds = new Set(fresh.map((p) => p.id));
         for (const [id, owner] of [...previewModuleMap.entries()]) {
             if (owner === module && !freshIds.has(id)) {
                 previewModuleMap.delete(id);
@@ -1565,64 +1932,80 @@ async function reconcilePreviewManifestAfterDaemonReady(
         registry.replaceModule(module, fresh);
 
         const filterFile = packageQualifiedSourcePath(filePath);
-        const visiblePreviews = fresh.filter(p => p.sourceFile === filterFile);
+        const visiblePreviews = fresh.filter(
+            (p) => p.sourceFile === filterFile,
+        );
         if (visiblePreviews.length === 0) {
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
-                    command: 'showMessage',
-                    text: fresh.length > 0
-                        ? `No @Preview functions in this file (${fresh.length} in other files in this module).`
-                        : 'No @Preview functions found in this module',
+                    command: "showMessage",
+                    text:
+                        fresh.length > 0
+                            ? `No @Preview functions in this file (${fresh.length} in other files in this module).`
+                            : "No @Preview functions found in this module",
                 });
             }
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             return false;
         }
 
         const heavyStaleIds = fastTierModules.has(module)
-            ? visiblePreviews
-                .filter(hasHeavyCapture)
-                .map(p => p.id)
+            ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
             : [];
         panel.postMessage({
-            command: 'setPreviews',
+            command: "setPreviews",
             previews: visiblePreviews,
             moduleDir: module,
             heavyStaleIds,
         });
-        panel.postMessage({ command: 'clearCompileErrors' });
+        panel.postMessage({ command: "clearCompileErrors" });
         compileGateActive = false;
         hasPreviewsLoaded = true;
         return true;
     } catch (err) {
-        logLine(`daemon: post-warm discover failed for ${module}: ${(err as Error).message}`);
-        panel.postMessage({ command: 'clearProgress' });
+        logLine(
+            `daemon: post-warm discover failed for ${module}: ${(err as Error).message}`,
+        );
+        panel.postMessage({ command: "clearProgress" });
         return false;
     }
 }
 
-async function warmShownPreviewsForFile(filePath: string, reason: string): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) { return; }
+async function warmShownPreviewsForFile(
+    filePath: string,
+    reason: string,
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+        return;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) { return; }
+    if (!module || !daemonGate.isDaemonReady(module)) {
+        return;
+    }
 
     const filterFile = packageQualifiedSourcePath(filePath);
     const scopeKey = `${module}::${filterFile}`;
-    if (daemonShownPreviewWarmScopes.has(scopeKey)) { return; }
+    if (daemonShownPreviewWarmScopes.has(scopeKey)) {
+        return;
+    }
 
     const ids = (moduleManifestCache.get(module) ?? [])
-        .filter(p => p.sourceFile === filterFile)
-        .map(p => p.id);
-    if (ids.length === 0) { return; }
+        .filter((p) => p.sourceFile === filterFile)
+        .map((p) => p.id);
+    if (ids.length === 0) {
+        return;
+    }
 
     daemonShownPreviewWarmScopes.add(scopeKey);
     try {
         await daemonScheduler.setFocus(module, ids);
         await daemonScheduler.setVisible(module, ids, []);
-        await daemonScheduler.renderNow(module, ids, 'fast', reason);
+        await daemonScheduler.renderNow(module, ids, "fast", reason);
     } catch (err) {
         daemonShownPreviewWarmScopes.delete(scopeKey);
-        logLine(`daemon: view-open warmup failed for ${module}: ${String((err as Error).message ?? err)}`);
+        logLine(
+            `daemon: view-open warmup failed for ${module}: ${String((err as Error).message ?? err)}`,
+        );
     }
 }
 
@@ -1647,16 +2030,18 @@ function updateDaemonStatus(module: string, state: WarmState): void {
     // state transition. Done outside the !daemonStatusItem early-return so
     // tests that drive activate() without a status bar still see the
     // panel-side state propagate. Cheap: a no-op when panel isn't open.
-    if (state === 'ready' || state === 'fallback') {
+    if (state === "ready" || state === "fallback") {
         publishInteractiveAvailability(module);
     }
-    if (!daemonStatusItem) { return; }
+    if (!daemonStatusItem) {
+        return;
+    }
     if (daemonStatusClearTimer) {
         clearTimeout(daemonStatusClearTimer);
         daemonStatusClearTimer = null;
     }
     switch (state) {
-        case 'bootstrapping':
+        case "bootstrapping":
             daemonStatusItem.text = `$(loading~spin) Daemon: bootstrapping ${module}…`;
             // Cold-build context: composePreviewDaemonStart itself is a
             // small JSON-emit task, but it depends on the consumer's
@@ -1665,29 +2050,39 @@ function updateDaemonStatus(module: string, state: WarmState): void {
             // bump) this can take minutes while Gradle builds the
             // renderer's classpath. Subsequent runs are cacheable and
             // collapse to ~1 s on a warm Gradle daemon.
-            daemonStatusItem.tooltip = 'Running composePreviewDaemonStart. '
-                + 'On a cold build (fresh checkout, after clean, or after a '
-                + 'Compose version bump) this may take a few minutes while '
-                + 'Gradle compiles the renderer classpath. Cacheable on '
-                + 'subsequent runs.';
+            daemonStatusItem.tooltip =
+                "Running composePreviewDaemonStart. " +
+                "On a cold build (fresh checkout, after clean, or after a " +
+                "Compose version bump) this may take a few minutes while " +
+                "Gradle compiles the renderer classpath. Cacheable on " +
+                "subsequent runs.";
             daemonStatusItem.show();
             break;
-        case 'spawning':
+        case "spawning":
             daemonStatusItem.text = `$(loading~spin) Daemon: spawning ${module}…`;
-            daemonStatusItem.tooltip = 'Launching the preview daemon JVM and running initialize';
+            daemonStatusItem.tooltip =
+                "Launching the preview daemon JVM and running initialize";
             daemonStatusItem.show();
             break;
-        case 'ready':
+        case "ready":
             daemonStatusItem.text = `$(check) Daemon: ${module}`;
-            daemonStatusItem.tooltip = 'Preview daemon is up and serving renders';
+            daemonStatusItem.tooltip =
+                "Preview daemon is up and serving renders";
             daemonStatusItem.show();
-            daemonStatusClearTimer = setTimeout(() => daemonStatusItem?.hide(), 4000);
+            daemonStatusClearTimer = setTimeout(
+                () => daemonStatusItem?.hide(),
+                4000,
+            );
             break;
-        case 'fallback':
+        case "fallback":
             daemonStatusItem.text = `$(warning) Daemon: ${module} (using Gradle)`;
-            daemonStatusItem.tooltip = 'Daemon spawn failed — using the Gradle render path. See Output → Compose Preview.';
+            daemonStatusItem.tooltip =
+                "Daemon spawn failed — using the Gradle render path. See Output → Compose Preview.";
             daemonStatusItem.show();
-            daemonStatusClearTimer = setTimeout(() => daemonStatusItem?.hide(), 8000);
+            daemonStatusClearTimer = setTimeout(
+                () => daemonStatusItem?.hide(),
+                8000,
+            );
             break;
     }
 }
@@ -1714,9 +2109,11 @@ function readCompileErrors(filePath: string): CompileError[] {
     // vscode.Diagnostic structurally matches DiagnosticLike — the field
     // names and severity numeric values are the same. Cast through unknown
     // to avoid pulling vscode types into the pure module.
-    return extractCompileErrors(filePath, diagnostics as unknown as readonly DiagnosticLike[]);
+    return extractCompileErrors(
+        filePath,
+        diagnostics as unknown as readonly DiagnosticLike[],
+    );
 }
-
 
 /**
  * Auto-retry the refresh when the LSP republishes diagnostics that
@@ -1730,33 +2127,51 @@ function readCompileErrors(filePath: string): CompileError[] {
  * we don't care.
  */
 function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
-    if (!compileGateActive || !currentScopeFile) { return; }
+    if (!compileGateActive || !currentScopeFile) {
+        return;
+    }
     const scopeFile = currentScopeFile;
-    if (!e.uris.some(u => u.fsPath === scopeFile)) { return; }
-    const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === scopeFile);
-    if (doc?.isDirty) { return; }
+    if (!e.uris.some((u) => u.fsPath === scopeFile)) {
+        return;
+    }
+    const doc = vscode.workspace.textDocuments.find(
+        (d) => d.uri.fsPath === scopeFile,
+    );
+    if (doc?.isDirty) {
+        return;
+    }
     const errors = readCompileErrors(scopeFile);
-    if (errors.length > 0) { return; }
-    logLine(`auto-retry: LSP diagnostics cleared on ${path.basename(scopeFile)}`);
+    if (errors.length > 0) {
+        return;
+    }
+    logLine(
+        `auto-retry: LSP diagnostics cleared on ${path.basename(scopeFile)}`,
+    );
     compileGateActive = false;
-    void refresh(true, scopeFile, 'fast');
+    void refresh(true, scopeFile, "fast");
 }
 
 /** Read calibrated phase durations for `module` from workspace state. Empty
  *  on first run; the tracker falls back to its built-in phase defaults. */
 function readCalibration(module: string): PhaseDurations {
-    if (!extensionContext) { return {}; }
-    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
-        PROGRESS_CALIBRATION_KEY, {});
+    if (!extensionContext) {
+        return {};
+    }
+    const all = extensionContext.workspaceState.get<
+        Record<string, PhaseDurations>
+    >(PROGRESS_CALIBRATION_KEY, {});
     return all[module] ?? {};
 }
 
 /** Persist updated calibration for `module`, blending into prior samples via
  *  EMA so a single anomalous run doesn't dominate. */
 function writeCalibration(module: string, latest: PhaseDurations): void {
-    if (!extensionContext) { return; }
-    const all = extensionContext.workspaceState.get<Record<string, PhaseDurations>>(
-        PROGRESS_CALIBRATION_KEY, {});
+    if (!extensionContext) {
+        return;
+    }
+    const all = extensionContext.workspaceState.get<
+        Record<string, PhaseDurations>
+    >(PROGRESS_CALIBRATION_KEY, {});
     all[module] = mergeCalibration(all[module] ?? {}, latest);
     void extensionContext.workspaceState.update(PROGRESS_CALIBRATION_KEY, all);
 }
@@ -1771,16 +2186,18 @@ function writeCalibration(module: string, latest: PhaseDurations): void {
 function enqueueSaveRefresh(filePath: string): void {
     // Prefer the saved file path, but fall back to the active editor when the
     // saved file isn't a Kotlin source (e.g. a resource XML changed).
-    const target = filePath.endsWith('.kt')
+    const target = filePath.endsWith(".kt")
         ? filePath
-        : (vscode.window.activeTextEditor?.document.languageId === 'kotlin'
-            ? vscode.window.activeTextEditor.document.uri.fsPath
-            : filePath);
+        : vscode.window.activeTextEditor?.document.languageId === "kotlin"
+          ? vscode.window.activeTextEditor.document.uri.fsPath
+          : filePath;
     pendingSavePath = target;
     invalidateModuleCache(target);
 
     const delay = target === currentScopeFile ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
-    if (debounceTimer) { clearTimeout(debounceTimer); }
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
     debounceElapsed = false;
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
@@ -1793,7 +2210,9 @@ function enqueueSaveRefresh(filePath: string): void {
  *  no other refresh is running. Called from the debounce timer and from the
  *  tail of {@link runRefreshExclusive}. */
 function maybeFirePendingRefresh(): void {
-    if (refreshInFlight || !debounceElapsed || pendingSavePath === null) { return; }
+    if (refreshInFlight || !debounceElapsed || pendingSavePath === null) {
+        return;
+    }
     const target = pendingSavePath;
     pendingSavePath = null;
     void runRefreshExclusive(target);
@@ -1827,28 +2246,28 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
     refreshInFlight = true;
     try {
         const mode = pickRefreshMode(filePath);
-        if (mode === 'daemon') {
+        if (mode === "daemon") {
             const compileOk = await runDaemonCompileOnly(filePath);
             if (!compileOk) {
                 vscode.window.showErrorMessage(
-                    'Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.',
+                    "Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.",
                 );
                 return;
             }
             const result = await notifyDaemonOfSave(filePath);
-            if (result === 'accepted') {
+            if (result === "accepted") {
                 return;
             }
-            if (result === 'disabled') {
-                await refresh(true, filePath, 'fast');
+            if (result === "disabled") {
+                await refresh(true, filePath, "fast");
                 return;
             }
             vscode.window.showErrorMessage(
-                'Compose Preview daemon is enabled but unavailable. Restart the preview daemon after fixing the daemon issue.',
+                "Compose Preview daemon is enabled but unavailable. Restart the preview daemon after fixing the daemon issue.",
             );
             return;
         }
-        await refresh(true, filePath, 'fast');
+        await refresh(true, filePath, "fast");
     } finally {
         refreshInFlight = false;
         maybeFirePendingRefresh();
@@ -1867,9 +2286,13 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
  * failures, this just keeps the panel quiet during the happy path.
  */
 async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
-    if (!gradleService) { return false; }
+    if (!gradleService) {
+        return false;
+    }
     const module = gradleService.resolveModule(filePath);
-    if (!module) { return false; }
+    if (!module) {
+        return false;
+    }
 
     // Honour the existing LSP-error gate — same predicate `refresh()` uses to
     // skip Gradle when the active buffer has Error-severity diagnostics. We
@@ -1878,7 +2301,9 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
     // recompiling a file the LSP already says is broken.
     const compileErrors = readCompileErrors(filePath);
     if (compileErrors.length > 0) {
-        logLine(`daemon: gated — ${compileErrors.length} compile error(s) in ${path.basename(filePath)}`);
+        logLine(
+            `daemon: gated — ${compileErrors.length} compile error(s) in ${path.basename(filePath)}`,
+        );
         return false;
     }
 
@@ -1889,7 +2314,9 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
         if (err instanceof TaskCancelledError) {
             logLine(`daemon: compileOnly cancelled for ${module}`);
         } else {
-            logLine(`daemon: compileOnly failed for ${module}: ${(err as Error).message}`);
+            logLine(
+                `daemon: compileOnly failed for ${module}: ${(err as Error).message}`,
+            );
         }
         return false;
     }
@@ -1902,7 +2329,9 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
  * module-level state from the gate / gradle service.
  */
 function pickRefreshMode(filePath: string): RefreshMode {
-    if (!daemonGate || !gradleService) { return 'gradle'; }
+    if (!daemonGate || !gradleService) {
+        return "gradle";
+    }
     return pickRefreshModeFor(
         filePath,
         daemonGate.isEnabled(),
@@ -1911,9 +2340,15 @@ function pickRefreshMode(filePath: string): RefreshMode {
 }
 
 function sendModuleList() {
-    if (!gradleService || !panel) { return; }
+    if (!gradleService || !panel) {
+        return;
+    }
     const modules = gradleService.findPreviewModules();
-    panel.postMessage({ command: 'setModules', modules, selected: selectedModule || '' });
+    panel.postMessage({
+        command: "setModules",
+        modules,
+        selected: selectedModule || "",
+    });
 }
 
 /**
@@ -1926,8 +2361,12 @@ function sendModuleList() {
 const fastTierModules = new Set<string>();
 
 function hasHeavyCapture(preview: PreviewInfo): boolean {
-    return preview.captures.some(c => (c.cost ?? 1) > HEAVY_COST_THRESHOLD)
-        || (preview.dataProducts ?? []).some(p => (p.cost ?? 1) > HEAVY_COST_THRESHOLD);
+    return (
+        preview.captures.some((c) => (c.cost ?? 1) > HEAVY_COST_THRESHOLD) ||
+        (preview.dataProducts ?? []).some(
+            (p) => (p.cost ?? 1) > HEAVY_COST_THRESHOLD,
+        )
+    );
 }
 
 function optInHeavyRefresh(moduleId: string, previewId: string): void {
@@ -1942,44 +2381,63 @@ function clearHeavyRefreshOptIns(): void {
 
 function heavyOptInsFor(moduleId: string, previewIds: string[]): string[] {
     const opted = heavyRefreshOptIns.get(moduleId);
-    if (!opted || opted.size === 0) { return []; }
-    return previewIds.filter(id => opted.has(id));
+    if (!opted || opted.size === 0) {
+        return [];
+    }
+    return previewIds.filter((id) => opted.has(id));
 }
 
 async function sourceMayHaveDroppedCachedPreviews(
     filePath: string,
     previews: PreviewInfo[],
 ): Promise<boolean> {
-    if (previews.length === 0) { return false; }
+    if (previews.length === 0) {
+        return false;
+    }
     let source: string;
     try {
-        source = await fs.promises.readFile(filePath, 'utf-8');
+        source = await fs.promises.readFile(filePath, "utf-8");
     } catch {
         return false;
     }
-    return previews.some(preview => !sourceLooksLikePreviewDeclaration(source, preview.functionName));
+    return previews.some(
+        (preview) =>
+            !sourceLooksLikePreviewDeclaration(source, preview.functionName),
+    );
 }
 
-function sourceLooksLikePreviewDeclaration(source: string, functionName: string): boolean {
-    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function sourceLooksLikePreviewDeclaration(
+    source: string,
+    functionName: string,
+): boolean {
+    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const match = new RegExp(`\\bfun\\s+${escaped}\\s*\\(`).exec(source);
-    if (!match) { return false; }
+    if (!match) {
+        return false;
+    }
 
     const lines = source.slice(0, match.index).split(/\r?\n/);
     const annotationLines: string[] = [];
     for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i].trim();
         if (line.length === 0) {
-            if (annotationLines.length === 0) { continue; }
+            if (annotationLines.length === 0) {
+                continue;
+            }
             break;
         }
-        if (line.startsWith('@') || line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) {
+        if (
+            line.startsWith("@") ||
+            line.startsWith("//") ||
+            line.startsWith("/*") ||
+            line.startsWith("*")
+        ) {
             annotationLines.unshift(line);
             continue;
         }
         break;
     }
-    return annotationLines.some(line => line.includes('Preview'));
+    return annotationLines.some((line) => line.includes("Preview"));
 }
 
 /**
@@ -2015,15 +2473,22 @@ function sourceLooksLikePreviewDeclaration(source: string, functionName: string)
  *   over the previous (now stale) cards; the next save with a clean buffer
  *   will run a real refresh.
  */
-type RefreshOutcome = 'completed' | 'cancelled' | 'no-module' | 'failed' | 'gated';
+type RefreshOutcome =
+    | "completed"
+    | "cancelled"
+    | "no-module"
+    | "failed"
+    | "gated";
 
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
-    tier: 'fast' | 'full' = 'full',
+    tier: "fast" | "full" = "full",
     opts: { showLoadingOverlay?: boolean } = {},
 ): Promise<RefreshOutcome> {
-    if (!gradleService || !panel) { return 'no-module'; }
+    if (!gradleService || !panel) {
+        return "no-module";
+    }
 
     // Cancel any in-flight refresh
     pendingRefresh?.abort();
@@ -2036,14 +2501,21 @@ async function refresh(
     // empty state rather than falling through to an ambiguous multi-file view.
     // Picks, in priority: caller > active editor > any visible Kotlin editor >
     // last-scoped file. See resolveScopeFile for the full chain.
-    const { file: activeFile, source: scopeSource } = resolveScopeFile(forFilePath);
-    const module = activeFile && isPreviewSourceFile(activeFile)
-        ? gradleService.resolveModule(activeFile)
-        : null;
+    const { file: activeFile, source: scopeSource } =
+        resolveScopeFile(forFilePath);
+    const module =
+        activeFile && isPreviewSourceFile(activeFile)
+            ? gradleService.resolveModule(activeFile)
+            : null;
     if (!activeFile || !module) {
-        logLine(`no module — activeFile=${activeFile ?? '<none>'} (${scopeSource})`);
-        panel.postMessage({ command: 'clearAll' });
-        panel.postMessage({ command: 'showMessage', text: emptyStateMessage(activeFile) });
+        logLine(
+            `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource})`,
+        );
+        panel.postMessage({ command: "clearAll" });
+        panel.postMessage({
+            command: "showMessage",
+            text: emptyStateMessage(activeFile),
+        });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
         setCurrentScopeFile(null);
@@ -2052,12 +2524,14 @@ async function refresh(
         if (activeFile && isPreviewSourceFile(activeFile)) {
             maybeShowSetupPrompt(activeFile);
         }
-        return 'no-module';
+        return "no-module";
     }
     if (currentScopeFile && currentScopeFile !== activeFile) {
         clearHeavyRefreshOptIns();
     }
-    logLine(`start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`);
+    logLine(
+        `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`,
+    );
 
     // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
     // user is mid-typo-fix — the active file's diagnostics already tell us
@@ -2076,30 +2550,37 @@ async function refresh(
     // straight to a normal refresh.
     const initialErrors = readCompileErrors(activeFile);
     if (initialErrors.length > 0) {
-        await new Promise(resolve => setTimeout(resolve, GATE_REREAD_DELAY_MS));
-        if (abort.signal.aborted) { return 'cancelled'; }
+        await new Promise((resolve) =>
+            setTimeout(resolve, GATE_REREAD_DELAY_MS),
+        );
+        if (abort.signal.aborted) {
+            return "cancelled";
+        }
     }
-    const compileErrors = initialErrors.length > 0
-        ? readCompileErrors(activeFile)
-        : initialErrors;
+    const compileErrors =
+        initialErrors.length > 0
+            ? readCompileErrors(activeFile)
+            : initialErrors;
     if (compileErrors.length > 0) {
         panel.postMessage({
-            command: 'setCompileErrors',
+            command: "setCompileErrors",
             errors: compileErrors,
         });
         // No build is starting — make sure no stale progress bar lingers
         // from a prior in-flight refresh that was just cancelled by the
         // pendingRefresh.abort() at the top of this function.
-        panel.postMessage({ command: 'clearProgress' });
+        panel.postMessage({ command: "clearProgress" });
         setCurrentScopeFile(activeFile, module);
         compileGateActive = true;
-        logLine(`gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`);
-        return 'gated';
+        logLine(
+            `gated — ${compileErrors.length} compile error(s) in ${path.basename(activeFile)}`,
+        );
+        return "gated";
     }
     // Errors cleared since the previous gate fire — drop the banner before
     // we begin the actual build so the user sees the panel return to its
     // normal "working" state.
-    panel.postMessage({ command: 'clearCompileErrors' });
+    panel.postMessage({ command: "clearCompileErrors" });
     compileGateActive = false;
 
     setCurrentScopeFile(activeFile, module);
@@ -2114,9 +2595,15 @@ async function refresh(
     // On a module switch the narrow no longer applies — the previewId is
     // owned by the previous module's preview set.
     const prior = historyScopeRef.current;
-    const sameModule = prior?.moduleId === module && prior.projectDir === projectDir;
+    const sameModule =
+        prior?.moduleId === module && prior.projectDir === projectDir;
     const newScope: HistoryScope = sameModule
-        ? { moduleId: module, projectDir, previewId: prior!.previewId, previewLabel: prior!.previewLabel }
+        ? {
+              moduleId: module,
+              projectDir,
+              previewId: prior!.previewId,
+              previewLabel: prior!.previewLabel,
+          }
         : { moduleId: module, projectDir };
     historyScopeRef.current = newScope;
     const modules = [module];
@@ -2132,7 +2619,7 @@ async function refresh(
     // happen if the new refresh cancels before setPreviews.
     const scopeChanged = !sameScope(modules, lastLoadedModules);
     if (scopeChanged) {
-        panel.postMessage({ command: 'clearAll' });
+        panel.postMessage({ command: "clearAll" });
         hasPreviewsLoaded = false;
     }
 
@@ -2141,10 +2628,10 @@ async function refresh(
     // clearing the view. Only show a full "Building..." message on first load.
     const showLoadingOverlay = opts.showLoadingOverlay !== false;
     if (hasPreviewsLoaded && showLoadingOverlay) {
-        panel.postMessage({ command: 'markAllLoading' });
+        panel.postMessage({ command: "markAllLoading" });
     } else {
         if (!hasPreviewsLoaded) {
-            panel.postMessage({ command: 'setLoading' });
+            panel.postMessage({ command: "setLoading" });
         }
     }
     lastLoadedModules = modules;
@@ -2162,9 +2649,11 @@ async function refresh(
     // it last computed (typically "(slow) · 99%").
     const tracker = new BuildProgressTracker({
         onProgress: (state) => {
-            if (abort.signal.aborted) { return; }
+            if (abort.signal.aborted) {
+                return;
+            }
             panel?.postMessage({
-                command: 'setProgress',
+                command: "setProgress",
                 phase: state.phase,
                 label: state.label,
                 percent: state.percent,
@@ -2183,33 +2672,44 @@ async function refresh(
         previewModuleMap.clear();
 
         for (const mod of modules) {
-            if (abort.signal.aborted) { return 'cancelled'; }
+            if (abort.signal.aborted) {
+                return "cancelled";
+            }
 
-            let manifest = !forceRender ? gradleService.readManifest(mod) : null;
+            let manifest = !forceRender
+                ? gradleService.readManifest(mod)
+                : null;
             if (manifest) {
-                const manifestVisiblePreviews = manifest.previews.filter(p => p.sourceFile === filterFile);
-                const fresh = manifestVisiblePreviews.length > 0
-                    && await hasFreshRenderStamp(
+                const manifestVisiblePreviews = manifest.previews.filter(
+                    (p) => p.sourceFile === filterFile,
+                );
+                const fresh =
+                    manifestVisiblePreviews.length > 0 &&
+                    (await hasFreshRenderStamp(
                         gradleService.workspaceRoot,
                         mod,
                         activeFile,
                         manifestVisiblePreviews,
-                    );
+                    ));
                 if (fresh) {
-                    logLine(`cache hit: ${path.basename(activeFile)} render stamp fresh — skipping Gradle`);
+                    logLine(
+                        `cache hit: ${path.basename(activeFile)} render stamp fresh — skipping Gradle`,
+                    );
                 } else {
                     manifest = null;
                 }
             }
-            manifest = manifest ?? (forceRender
-                ? await gradleService.renderPreviews(mod, tier, taskOpts)
-                : await gradleService.discoverPreviews(mod, taskOpts));
+            manifest =
+                manifest ??
+                (forceRender
+                    ? await gradleService.renderPreviews(mod, tier, taskOpts)
+                    : await gradleService.discoverPreviews(mod, taskOpts));
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
             // module (heavy captures are now fresh on disk).
             if (forceRender && manifest) {
-                if (tier === 'fast') {
+                if (tier === "fast") {
                     fastTierModules.add(mod);
                 } else {
                     fastTierModules.delete(mod);
@@ -2242,61 +2742,77 @@ async function refresh(
             }
         }
 
-        if (abort.signal.aborted) { return 'cancelled'; }
+        if (abort.signal.aborted) {
+            return "cancelled";
+        }
 
         if (allPreviews.length === 0) {
             // Module has no previews at all. Wipe any stale cards so the
             // message isn't overlaid on old content from a prior scope.
-            panel.postMessage({ command: 'clearAll' });
-            panel.postMessage({ command: 'showMessage', text: 'No @Preview functions found in this module' });
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearAll" });
+            panel.postMessage({
+                command: "showMessage",
+                text: "No @Preview functions found in this module",
+            });
+            panel.postMessage({ command: "clearProgress" });
             hasPreviewsLoaded = false;
-            logLine('done — module has no previews');
-            return 'completed';
+            logLine("done — module has no previews");
+            return "completed";
         }
 
         // Scope strictly to the active file. If the file has no @Preview
         // functions, the panel shows an empty state — never the whole module.
-        const visiblePreviews = allPreviews.filter(p => p.sourceFile === filterFile);
+        const visiblePreviews = allPreviews.filter(
+            (p) => p.sourceFile === filterFile,
+        );
 
         if (visiblePreviews.length === 0) {
             // The module has previews but this file doesn't. An empty
             // setPreviews would get silently wiped by applyFilters in the
             // webview — send an explicit, persistent message instead and
             // clear the grid so the user sees *why* it's blank.
-            panel.postMessage({ command: 'clearAll' });
+            panel.postMessage({ command: "clearAll" });
             const otherFiles = allPreviews.length;
             panel.postMessage({
-                command: 'showMessage',
+                command: "showMessage",
                 text: `No @Preview functions in this file (${otherFiles} in other files in this module).`,
             });
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             hasPreviewsLoaded = false;
-            logLine(`done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`);
-            return 'completed';
+            logLine(
+                `done — 0 visible previews in ${path.basename(activeFile)}, module has ${otherFiles}`,
+            );
+            return "completed";
         }
 
         // A preview is "heavyStale" when this module's most recent render was
         // tier=fast AND the preview has at least one heavy capture. The
         // webview decorates these cards with a stale badge so the user knows
         // the GIF/long-scroll image is from a previous full render.
-        const moduleIsFastTier = modules.some(mod => fastTierModules.has(mod));
+        const moduleIsFastTier = modules.some((mod) =>
+            fastTierModules.has(mod),
+        );
         const heavyStaleIds = moduleIsFastTier
-            ? visiblePreviews
-                .filter(hasHeavyCapture)
-                .map(p => p.id)
+            ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
             : [];
 
         panel.postMessage({
-            command: 'setPreviews',
+            command: "setPreviews",
             previews: visiblePreviews,
-            moduleDir: modules.join(','),
+            moduleDir: modules.join(","),
             heavyStaleIds,
         });
         hasPreviewsLoaded = true;
-        logLine(`rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`);
+        logLine(
+            `rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`,
+        );
         if (forceRender && gradleService) {
-            await writeRenderFreshnessStamp(gradleService.workspaceRoot, module, activeFile, visiblePreviews);
+            await writeRenderFreshnessStamp(
+                gradleService.workspaceRoot,
+                module,
+                activeFile,
+                visiblePreviews,
+            );
         }
 
         // Gradle is done; the rest of the work (reading PNGs, base64-encoding,
@@ -2307,7 +2823,7 @@ async function refresh(
         // explicit signal needed from this side. tracker.finish() at the
         // end of the happy path drives the bar to 100% and stops the tick.
         if (!abort.signal.aborted) {
-            tracker.enterPhase('loading');
+            tracker.enterPhase("loading");
         }
 
         // Load images in parallel. Animated previews have multiple captures
@@ -2328,66 +2844,95 @@ async function refresh(
         // it were the current state. Cards keep their cached imageData
         // (last known good) under the loading overlay until the auto-render
         // we kick off below replaces them with fresh bytes.
-        const sourceIsStale = !forceRender
-            && await isSourceNewerThanRenders(activeFile, visiblePreviews, modules);
+        const sourceIsStale =
+            !forceRender &&
+            (await isSourceNewerThanRenders(
+                activeFile,
+                visiblePreviews,
+                modules,
+            ));
         if (!sourceIsStale) {
             const imageJobs: Promise<void>[] = [];
             for (const preview of visiblePreviews) {
                 const captures = preview.captures;
-                if (captures.length === 0) { continue; }
+                if (captures.length === 0) {
+                    continue;
+                }
 
                 const mod = previewModuleMap.get(preview.id);
-                if (!mod) { continue; }
+                if (!mod) {
+                    continue;
+                }
 
-                for (let captureIndex = 0; captureIndex < captures.length; captureIndex++) {
+                for (
+                    let captureIndex = 0;
+                    captureIndex < captures.length;
+                    captureIndex++
+                ) {
                     const capture = captures[captureIndex];
-                    if (!capture.renderOutput) { continue; }
+                    if (!capture.renderOutput) {
+                        continue;
+                    }
                     const idx = captureIndex;
-                    imageJobs.push((async () => {
-                        if (abort.signal.aborted) { return; }
-                        const imageData = await gradleService!.readPreviewImage(mod, capture.renderOutput);
-                        if (abort.signal.aborted || !panel) { return; }
-
-                        if (imageData) {
-                            if (idx === 0) {
-                                registry.setImage(preview.id, imageData);
+                    imageJobs.push(
+                        (async () => {
+                            if (abort.signal.aborted) {
+                                return;
                             }
-                            panel.postMessage({
-                                command: 'updateImage',
-                                previewId: preview.id,
-                                captureIndex: idx,
-                                imageData,
-                            });
-                        } else if (forceRender) {
-                            // Render task completed but produced no PNG for this
-                            // capture. Look for the per-preview error sidecar
-                            // the renderer drops next to the would-be PNG; if
-                            // found, surface the structured exception detail
-                            // (class, message, top app frame). Falls back to
-                            // the generic "see Output" message when the
-                            // sidecar is absent — that's the case for the
-                            // Android Robolectric path which doesn't yet
-                            // write sidecars (planned follow-up).
-                            const renderError = await gradleService!.readPreviewRenderError(
-                                mod, capture.renderOutput,
-                            );
-                            if (abort.signal.aborted || !panel) { return; }
-                            const message = renderError
-                                ? formatRenderErrorMessage(renderError)
-                                : 'Render failed — see Output ▸ Compose Preview';
-                            panel.postMessage({
-                                command: 'setImageError',
-                                previewId: preview.id,
-                                captureIndex: idx,
-                                message,
-                                renderError,
-                                replaceExisting: true,
-                            });
-                        }
-                        // else: discover-only pass, PNG not produced yet. Leave
-                        // the skeleton in place; the next save-triggered render
-                        // will populate it.
-                    })());
+                            const imageData =
+                                await gradleService!.readPreviewImage(
+                                    mod,
+                                    capture.renderOutput,
+                                );
+                            if (abort.signal.aborted || !panel) {
+                                return;
+                            }
+
+                            if (imageData) {
+                                if (idx === 0) {
+                                    registry.setImage(preview.id, imageData);
+                                }
+                                panel.postMessage({
+                                    command: "updateImage",
+                                    previewId: preview.id,
+                                    captureIndex: idx,
+                                    imageData,
+                                });
+                            } else if (forceRender) {
+                                // Render task completed but produced no PNG for this
+                                // capture. Look for the per-preview error sidecar
+                                // the renderer drops next to the would-be PNG; if
+                                // found, surface the structured exception detail
+                                // (class, message, top app frame). Falls back to
+                                // the generic "see Output" message when the
+                                // sidecar is absent — that's the case for the
+                                // Android Robolectric path which doesn't yet
+                                // write sidecars (planned follow-up).
+                                const renderError =
+                                    await gradleService!.readPreviewRenderError(
+                                        mod,
+                                        capture.renderOutput,
+                                    );
+                                if (abort.signal.aborted || !panel) {
+                                    return;
+                                }
+                                const message = renderError
+                                    ? formatRenderErrorMessage(renderError)
+                                    : "Render failed — see Output ▸ Compose Preview";
+                                panel.postMessage({
+                                    command: "setImageError",
+                                    previewId: preview.id,
+                                    captureIndex: idx,
+                                    message,
+                                    renderError,
+                                    replaceExisting: true,
+                                });
+                            }
+                            // else: discover-only pass, PNG not produced yet. Leave
+                            // the skeleton in place; the next save-triggered render
+                            // will populate it.
+                        })(),
+                    );
                 }
             }
             await Promise.all(imageJobs);
@@ -2411,53 +2956,62 @@ async function refresh(
         // just rendered, so PNGs are fresh by definition. Without that
         // gate we'd loop on every save-driven refresh.
         if (sourceIsStale) {
-            logLine(`auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`);
-            setTimeout(() => { void refresh(true, activeFile, 'fast'); }, 0);
+            logLine(
+                `auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`,
+            );
+            setTimeout(() => {
+                void refresh(true, activeFile, "fast");
+            }, 0);
         }
-        return abort.signal.aborted ? 'cancelled' : 'completed';
+        return abort.signal.aborted ? "cancelled" : "completed";
     } catch (err: unknown) {
-        if (abort.signal.aborted) { return 'cancelled'; }
+        if (abort.signal.aborted) {
+            return "cancelled";
+        }
         // Cancellation = a follow-up refresh superseded this one. The new
         // refresh owns the panel state from here; surfacing a "FAILED" toast
         // would be misleading and noisy.
         if (err instanceof TaskCancelledError) {
             logLine(`cancelled — superseded by a newer refresh`);
-            panel.postMessage({ command: 'clearProgress' });
-            return 'cancelled';
+            panel.postMessage({ command: "clearProgress" });
+            return "cancelled";
         }
         if (err instanceof JdkImageError) {
             logLine(`FAILED (jlink missing): ${err.finding.jlinkPath}`);
             panel.postMessage({
-                command: 'showMessage',
-                text: 'Gradle is running on a JRE without jlink. Configure a full JDK to render previews.',
+                command: "showMessage",
+                text: "Gradle is running on a JRE without jlink. Configure a full JDK to render previews.",
             });
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             showJdkImageRemediation(err);
-            return 'failed';
+            return "failed";
         }
         if (err instanceof KotlinCompileError) {
-            logLine(`FAILED — ${err.errors.length} Kotlin compile error(s) in ${err.task}`);
+            logLine(
+                `FAILED — ${err.errors.length} Kotlin compile error(s) in ${err.task}`,
+            );
             // Reuse the same banner the LSP gate populates — the user
             // sees identical UX whether the gate fired or Gradle's
             // compile actually failed. Cards stay visible and dimmed so
             // the previous successful render is still on screen as a
             // reference while the error gets fixed.
             panel.postMessage({
-                command: 'setCompileErrors',
+                command: "setCompileErrors",
                 errors: err.errors,
             });
-            panel.postMessage({ command: 'clearProgress' });
+            panel.postMessage({ command: "clearProgress" });
             compileGateActive = true;
-            return 'failed';
+            return "failed";
         }
-        const message = err instanceof Error ? err.message.slice(0, 300) : 'Build failed';
+        const message =
+            err instanceof Error ? err.message.slice(0, 300) : "Build failed";
         logLine(`FAILED: ${message}`);
         panel.postMessage({
-            command: 'showMessage',
+            command: "showMessage",
             text: message,
         });
-        panel.postMessage({ command: 'clearProgress' });
-        return 'failed';
+        panel.postMessage({ command: "clearProgress" });
+        return "failed";
     } finally {
         // Idempotent — happy-path tracker.finish() already flipped the
         // tracker's `finished` flag, so this is a no-op there. Failure /
@@ -2465,7 +3019,9 @@ async function refresh(
         // tick interval shut down so the bar doesn't keep emitting after
         // we've moved on.
         tracker.abort();
-        if (pendingRefresh === abort) { pendingRefresh = null; }
+        if (pendingRefresh === abort) {
+            pendingRefresh = null;
+        }
     }
 }
 
@@ -2476,15 +3032,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
     // webview's untyped postMessage could deliver a structurally-broken
     // payload (e.g. arrays that aren't actually arrays).
     switch (msg.command) {
-        case 'openFile':
+        case "openFile":
             openPreviewSource(msg.className, msg.functionName);
             break;
-        case 'selectModule':
+        case "selectModule":
             selectedModule = msg.value || null;
             sendModuleList();
-            if (selectedModule) { refresh(false); }
+            if (selectedModule) {
+                refresh(false);
+            }
             break;
-        case 'refreshHeavy': {
+        case "refreshHeavy": {
             // Click on a faded heavy card opts it into full-tier renders for
             // this editor focus scope. Future saves keep that preview fresh;
             // changing focus clears the opt-in set.
@@ -2495,16 +3053,16 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                     void daemonScheduler.renderNow(
                         mod,
                         [msg.previewId],
-                        'full',
-                        'heavy-opt-in',
+                        "full",
+                        "heavy-opt-in",
                     );
                 } else {
-                    void refresh(true, currentScopeFile ?? undefined, 'full');
+                    void refresh(true, currentScopeFile ?? undefined, "full");
                 }
             }
             break;
         }
-        case 'viewportUpdated':
+        case "viewportUpdated":
             // Daemon-only: route geometric visibility + scroll-ahead
             // predictions to the scheduler so it can `setVisible` and
             // queue speculative renders. When the daemon is disabled
@@ -2516,17 +3074,23 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void notifyDaemonViewport(msg.visible, msg.predicted);
             }
             break;
-        case 'previewScopeChanged': {
+        case "previewScopeChanged": {
             // Live panel has narrowed to a single preview (focus mode, or
             // filters reduced visible cards to one). Re-scope the History
             // panel's previewId filter so it only lists entries for that
             // preview. `previewId` null means widen the scope back to the
             // module — the panel shows every preview's history.
-            if (!historyScopeRef.current) { break; }
+            if (!historyScopeRef.current) {
+                break;
+            }
             const requested = msg.previewId ?? undefined;
-            const requestedLabel = requested ? lookupPreviewLabel(requested) : undefined;
-            if (historyScopeRef.current.previewId === requested
-                && historyScopeRef.current.previewLabel === requestedLabel) {
+            const requestedLabel = requested
+                ? lookupPreviewLabel(requested)
+                : undefined;
+            if (
+                historyScopeRef.current.previewId === requested &&
+                historyScopeRef.current.previewLabel === requestedLabel
+            ) {
                 break;
             }
             const newScope: HistoryScope = {
@@ -2537,40 +3101,46 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             historyScopeRef.current = newScope;
             break;
         }
-        case 'openCompileError':
+        case "openCompileError":
             void openSourcePosition(msg.sourceFile, msg.line, msg.column);
             break;
-        case 'openSourceFile':
+        case "openSourceFile":
             void openSourceByFileName(msg.fileName, msg.line, msg.className);
             break;
-        case 'requestPreviewDiff':
+        case "requestPreviewDiff":
             if (earlyFeaturesEnabled()) {
                 void runLivePreviewDiff(msg.previewId, msg.against);
             }
             break;
-        case 'requestLaunchOnDevice':
+        case "requestLaunchOnDevice":
             if (msg.previewId) {
                 void launchOnDevice(msg.previewId);
             }
             break;
-        case 'setInteractive':
+        case "setInteractive":
             queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
-        case 'setRecording':
+        case "setRecording":
             if (earlyFeaturesEnabled()) {
-                queueRecordingMutation(msg.previewId, msg.enabled, msg.format ?? 'apng');
+                queueRecordingMutation(
+                    msg.previewId,
+                    msg.enabled,
+                    msg.format ?? "apng",
+                );
             }
             break;
-        case 'recordInteractiveInput':
+        case "recordInteractiveInput":
             logLine(
-                `[interactive] ${msg.kind} ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
-                + `image=${msg.imageWidth}x${msg.imageHeight}`
-                + (msg.scrollDeltaY != null ? ` deltaY=${msg.scrollDeltaY}` : ''),
+                `[interactive] ${msg.kind} ${msg.previewId} px=${msg.pixelX},${msg.pixelY} ` +
+                    `image=${msg.imageWidth}x${msg.imageHeight}` +
+                    (msg.scrollDeltaY != null
+                        ? ` deltaY=${msg.scrollDeltaY}`
+                        : ""),
             );
             void forwardInteractiveInput(msg);
             void forwardRecordingInput(msg);
             break;
-        case 'setA11yOverlay':
+        case "setA11yOverlay":
             if (earlyFeaturesEnabled()) {
                 void handleSetA11yOverlay(msg.previewId, msg.enabled);
             }
@@ -2585,10 +3155,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
  * even if the next render takes a beat. No-op when the preview's module isn't known yet
  * (panel rebuild race) or when the daemon scheduler isn't wired (Gradle-only mode).
  */
-async function handleSetA11yOverlay(previewId: string, enabled: boolean): Promise<void> {
-    if (!daemonScheduler) { return; }
+async function handleSetA11yOverlay(
+    previewId: string,
+    enabled: boolean,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) { return; }
+    if (!moduleId) {
+        return;
+    }
     await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
@@ -2602,7 +3179,7 @@ async function handleSetA11yOverlay(previewId: string, enabled: boolean): Promis
         // daemon overlay subscription and shouldn't disappear when the user hides the
         // visual overlay.
         panel?.postMessage({
-            command: 'updateA11y',
+            command: "updateA11y",
             previewId,
             findings: [],
             nodes: [],
@@ -2616,16 +3193,28 @@ async function handleSetA11yOverlay(previewId: string, enabled: boolean): Promis
  * 1-based input here matches what we render in the banner; vscode's API
  * is 0-based, so we subtract before constructing the Position.
  */
-async function openSourcePosition(filePath: string, line: number, column: number): Promise<void> {
+async function openSourcePosition(
+    filePath: string,
+    line: number,
+    column: number,
+): Promise<void> {
     try {
         const doc = await vscode.workspace.openTextDocument(filePath);
         const editor = await vscode.window.showTextDocument(doc);
-        const pos = new vscode.Position(Math.max(0, line - 1), Math.max(0, column - 1));
+        const pos = new vscode.Position(
+            Math.max(0, line - 1),
+            Math.max(0, column - 1),
+        );
         editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+        editor.revealRange(
+            new vscode.Range(pos, pos),
+            vscode.TextEditorRevealType.InCenter,
+        );
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
-        logLine(`openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`);
+        logLine(
+            `openSourcePosition failed for ${filePath}:${line}:${column} — ${message}`,
+        );
     }
 }
 
@@ -2659,7 +3248,9 @@ async function openSourceByFileName(
     line: number,
     className?: string,
 ): Promise<void> {
-    if (!fileName) { return; }
+    if (!fileName) {
+        return;
+    }
     try {
         // Class-derived path. The Kotlin compiler emits one .class per
         // top-level Kotlin file, named `<File>Kt`; strip the trailing
@@ -2669,9 +3260,14 @@ async function openSourceByFileName(
         // this preview's own file, so the class-derived path would point
         // at the wrong source.
         if (className) {
-            const classFile = className.replace(/Kt$/, '').replace(/\./g, '/') + '.kt';
+            const classFile =
+                className.replace(/Kt$/, "").replace(/\./g, "/") + ".kt";
             if (path.posix.basename(classFile) === fileName) {
-                const exact = await vscode.workspace.findFiles(`**/${classFile}`, '**/build/**', 1);
+                const exact = await vscode.workspace.findFiles(
+                    `**/${classFile}`,
+                    "**/build/**",
+                    1,
+                );
                 if (exact.length > 0) {
                     await openAt(exact[0], line);
                     return;
@@ -2679,7 +3275,11 @@ async function openSourceByFileName(
             }
         }
         // Basename fallback for cross-file throws.
-        const matches = await vscode.workspace.findFiles(`**/${fileName}`, '**/build/**', 1);
+        const matches = await vscode.workspace.findFiles(
+            `**/${fileName}`,
+            "**/build/**",
+            1,
+        );
         if (matches.length === 0) {
             logLine(`openSourceByFileName: no match for ${fileName}`);
             return;
@@ -2687,7 +3287,9 @@ async function openSourceByFileName(
         await openAt(matches[0], line);
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
-        logLine(`openSourceByFileName failed for ${fileName}:${line} — ${message}`);
+        logLine(
+            `openSourceByFileName failed for ${fileName}:${line} — ${message}`,
+        );
     }
 }
 
@@ -2698,30 +3300,41 @@ async function openAt(uri: vscode.Uri, line: number): Promise<void> {
     const editor = await vscode.window.showTextDocument(doc);
     const pos = new vscode.Position(Math.max(0, line - 1), 0);
     editor.selection = new vscode.Selection(pos, pos);
-    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    editor.revealRange(
+        new vscode.Range(pos, pos),
+        vscode.TextEditorRevealType.InCenter,
+    );
 }
 
 async function runLivePreviewDiff(
     previewId: string,
-    against: 'head' | 'main',
+    against: "head" | "main",
 ): Promise<void> {
-    if (!earlyFeaturesEnabled()) { return; }
-    if (!panel || !historySource) { return; }
+    if (!earlyFeaturesEnabled()) {
+        return;
+    }
+    if (!panel || !historySource) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
     const manifest = moduleId ? moduleManifestCache.get(moduleId) : undefined;
-    const info = manifest?.find(p => p.id === previewId);
+    const info = manifest?.find((p) => p.id === previewId);
     if (!moduleId || !info || !gradleService) {
         panel.postMessage({
-            command: 'previewDiffError', previewId, against,
-            message: 'Preview not found in the current scope.',
+            command: "previewDiffError",
+            previewId,
+            against,
+            message: "Preview not found in the current scope.",
         });
         return;
     }
     const capture = info.captures?.[0];
     if (!capture?.renderOutput) {
         panel.postMessage({
-            command: 'previewDiffError', previewId, against,
-            message: 'No live render available for this preview.',
+            command: "previewDiffError",
+            previewId,
+            against,
+            message: "No live render available for this preview.",
         });
         return;
     }
@@ -2730,8 +3343,10 @@ async function runLivePreviewDiff(
     const liveBytes = await fs.promises.readFile(livePath).catch(() => null);
     if (!liveBytes) {
         panel.postMessage({
-            command: 'previewDiffError', previewId, against,
-            message: 'Live render not on disk yet — save the file once first.',
+            command: "previewDiffError",
+            previewId,
+            against,
+            message: "Live render not on disk yet — save the file once first.",
         });
         return;
     }
@@ -2744,20 +3359,24 @@ async function runLivePreviewDiff(
         entries = result.entries ?? [];
     } catch (err) {
         panel.postMessage({
-            command: 'previewDiffError', previewId, against,
+            command: "previewDiffError",
+            previewId,
+            against,
             message: `History unavailable: ${(err as Error).message}`,
         });
         return;
     }
-    const filtered = (against === 'main')
-        ? entries.filter(e => {
-            const branch = (e as { git?: { branch?: string } }).git?.branch;
-            return branch === 'main';
-        })
-        : entries;
+    const filtered =
+        against === "main"
+            ? entries.filter((e) => {
+                  const branch = (e as { git?: { branch?: string } }).git
+                      ?.branch;
+                  return branch === "main";
+              })
+            : entries;
     const sorted = [...filtered].sort((a, b) => {
-        const at = (a as { timestamp?: string }).timestamp ?? '';
-        const bt = (b as { timestamp?: string }).timestamp ?? '';
+        const at = (a as { timestamp?: string }).timestamp ?? "";
+        const bt = (b as { timestamp?: string }).timestamp ?? "";
         return bt.localeCompare(at);
     });
     const target = sorted[0] as { id?: string; timestamp?: string } | undefined;
@@ -2765,20 +3384,23 @@ async function runLivePreviewDiff(
         const right = await historySource.read(target.id);
         if (!right) {
             panel.postMessage({
-                command: 'previewDiffError', previewId, against,
-                message: 'Comparison entry not readable.',
+                command: "previewDiffError",
+                previewId,
+                against,
+                message: "Comparison entry not readable.",
             });
             return;
         }
-        const rightBytes = right.pngBytes
-            ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
+        const rightBytes =
+            right.pngBytes ??
+            (await fs.promises.readFile(right.pngPath)).toString("base64");
         panel.postMessage({
-            command: 'previewDiffReady',
+            command: "previewDiffReady",
             previewId,
             against,
-            leftLabel: 'Live · now',
-            leftImage: liveBytes.toString('base64'),
-            rightLabel: `${against === 'main' ? 'main' : 'HEAD'} · ${formatRelativeShort(target.timestamp)}`,
+            leftLabel: "Live · now",
+            leftImage: liveBytes.toString("base64"),
+            rightLabel: `${against === "main" ? "main" : "HEAD"} · ${formatRelativeShort(target.timestamp)}`,
             rightImage: rightBytes,
         });
         return;
@@ -2788,28 +3410,33 @@ async function runLivePreviewDiff(
     // fallback) — repos using the CI baseline workflow publish every main
     // build's PNGs there. Avoids requiring a daemon or a one-off local
     // archive for the user's first diff against main.
-    if (against === 'main') {
+    if (against === "main") {
         const baseline = await readPreviewMainPng(
-            gradleService.workspaceRoot, moduleId, previewId,
+            gradleService.workspaceRoot,
+            moduleId,
+            previewId,
         );
         if (baseline) {
             panel.postMessage({
-                command: 'previewDiffReady',
+                command: "previewDiffReady",
                 previewId,
                 against,
-                leftLabel: 'Live · now',
-                leftImage: liveBytes.toString('base64'),
+                leftLabel: "Live · now",
+                leftImage: liveBytes.toString("base64"),
                 rightLabel: `main · ${baseline.ref}`,
-                rightImage: baseline.png.toString('base64'),
+                rightImage: baseline.png.toString("base64"),
             });
             return;
         }
     }
     panel.postMessage({
-        command: 'previewDiffError', previewId, against,
-        message: against === 'main'
-            ? 'No archived render on main yet for this preview, and no compose-preview/main baseline.'
-            : 'No archived history yet for this preview.',
+        command: "previewDiffError",
+        previewId,
+        against,
+        message:
+            against === "main"
+                ? "No archived render on main yet for this preview, and no compose-preview/main baseline."
+                : "No archived history yet for this preview.",
     });
 }
 
@@ -2848,23 +3475,28 @@ async function runLivePreviewDiff(
  */
 async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
     if (!gradleService) {
-        vscode.window.showInformationMessage('Compose Preview is not ready yet.');
+        vscode.window.showInformationMessage(
+            "Compose Preview is not ready yet.",
+        );
         return;
     }
     const previewModules = gradleService.findPreviewModules();
     const candidates = collectAndroidApplicationModules(
-        gradleService.workspaceRoot, previewModules,
+        gradleService.workspaceRoot,
+        previewModules,
     );
     if (candidates.length === 0) {
         vscode.window.showInformationMessage(
-            'Compose Preview: no Android application module to launch. '
-            + 'Apply id("com.android.application") with an applicationId to a preview module.',
+            "Compose Preview: no Android application module to launch. " +
+                'Apply id("com.android.application") with an applicationId to a preview module.',
         );
         return;
     }
 
     const preview = await resolveLaunchPreview(focusedPreviewId, candidates);
-    if (!preview) { return; }
+    if (!preview) {
+        return;
+    }
     const { module, applicationId, info } = preview;
     const composableFqn = `${info.className}.${info.functionName}`;
     logLine(`launchOnDevice: ${module} (${applicationId}) → ${composableFqn}`);
@@ -2876,11 +3508,15 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
             cancellable: false,
         },
         async (progress) => {
-            progress.report({ message: 'Building & installing (installDebug)…' });
+            progress.report({
+                message: "Building & installing (installDebug)…",
+            });
             try {
                 await gradleService!.installDebug(module);
             } catch (e: unknown) {
-                if (e instanceof TaskCancelledError) { return; }
+                if (e instanceof TaskCancelledError) {
+                    return;
+                }
                 const m = e instanceof Error ? e.message : String(e);
                 vscode.window.showErrorMessage(
                     `Compose Preview: installDebug failed — ${m}`,
@@ -2888,24 +3524,33 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
                 return;
             }
 
-            progress.report({ message: 'Starting PreviewActivity (adb)…' });
+            progress.report({ message: "Starting PreviewActivity (adb)…" });
             const sdkRoot = findAndroidSdkRoot(gradleService!.workspaceRoot);
             const adbPath = resolveAdbPath(sdkRoot);
             const args = buildPreviewActivityAmStartArgs({
                 applicationId,
                 composableFqn,
-                parameterProviderClassName: info.params.previewParameterProviderClassName ?? null,
+                parameterProviderClassName:
+                    info.params.previewParameterProviderClassName ?? null,
             });
             try {
                 const result = await runAdb(adbPath, args);
                 if (result.code !== 0) {
-                    const detail = (result.stderr || result.stdout || '').trim();
-                    const hint = /Activity class .* does not exist|ClassNotFoundException/i.test(detail)
-                        ? ' — add `debugImplementation("androidx.compose.ui:ui-tooling")` so PreviewActivity is on the device.'
-                        : '';
+                    const detail = (
+                        result.stderr ||
+                        result.stdout ||
+                        ""
+                    ).trim();
+                    const hint =
+                        /Activity class .* does not exist|ClassNotFoundException/i.test(
+                            detail,
+                        )
+                            ? ' — add `debugImplementation("androidx.compose.ui:ui-tooling")` so PreviewActivity is on the device.'
+                            : "";
                     vscode.window.showErrorMessage(
                         `Compose Preview: adb failed to start ${applicationId}` +
-                        (detail ? ` — ${detail}` : '') + hint,
+                            (detail ? ` — ${detail}` : "") +
+                            hint,
                     );
                     return;
                 }
@@ -2913,7 +3558,7 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
                 const m = e instanceof Error ? e.message : String(e);
                 vscode.window.showErrorMessage(
                     `Compose Preview: could not run adb (${adbPath}) — ${m}. ` +
-                    'Set ANDROID_HOME or sdk.dir in local.properties.',
+                        "Set ANDROID_HOME or sdk.dir in local.properties.",
                 );
                 return;
             }
@@ -2946,20 +3591,24 @@ async function resolveLaunchPreview(
     focusedPreviewId: string | undefined,
     candidates: Array<{ module: string; applicationId: string }>,
 ): Promise<ResolvedLaunchPreview | null> {
-    const candidateByModule = new Map(candidates.map(c => [c.module, c]));
+    const candidateByModule = new Map(candidates.map((c) => [c.module, c]));
 
     if (focusedPreviewId) {
         const owner = previewModuleMap.get(focusedPreviewId);
         const candidate = owner ? candidateByModule.get(owner) : undefined;
         const previews = owner ? moduleManifestCache.get(owner) : undefined;
-        const info = previews?.find(p => p.id === focusedPreviewId);
+        const info = previews?.find((p) => p.id === focusedPreviewId);
         if (candidate && info) {
-            return { module: candidate.module, applicationId: candidate.applicationId, info };
+            return {
+                module: candidate.module,
+                applicationId: candidate.applicationId,
+                info,
+            };
         }
         if (owner && !candidate) {
             vscode.window.showInformationMessage(
-                `Compose Preview: ${owner} is not an Android application module — `
-                + 'add id("com.android.application") to deploy a preview from it.',
+                `Compose Preview: ${owner} is not an Android application module — ` +
+                    'add id("com.android.application") to deploy a preview from it.',
             );
             return null;
         }
@@ -2984,200 +3633,261 @@ async function resolveLaunchPreview(
     }
     if (items.length === 0) {
         vscode.window.showInformationMessage(
-            'Compose Preview: no rendered previews yet — render once first '
-            + 'so the @Preview functions show up here.',
+            "Compose Preview: no rendered previews yet — render once first " +
+                "so the @Preview functions show up here.",
         );
         return null;
     }
     if (items.length === 1) {
         const only = items[0];
-        return { module: only.candidate.module, applicationId: only.candidate.applicationId, info: only.info };
+        return {
+            module: only.candidate.module,
+            applicationId: only.candidate.applicationId,
+            info: only.info,
+        };
     }
     const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Pick a @Preview to launch on device',
+        placeHolder: "Pick a @Preview to launch on device",
         matchOnDescription: true,
         matchOnDetail: true,
     });
-    if (!picked) { return null; }
-    return { module: picked.candidate.module, applicationId: picked.candidate.applicationId, info: picked.info };
+    if (!picked) {
+        return null;
+    }
+    return {
+        module: picked.candidate.module,
+        applicationId: picked.candidate.applicationId,
+        info: picked.info,
+    };
 }
 
 async function diffAllVsMain(): Promise<void> {
     if (!earlyFeaturesEnabled()) {
         vscode.window.showInformationMessage(
-            'Compose Preview: enable composePreview.earlyFeatures.enabled to use Diff All vs Main.',
+            "Compose Preview: enable composePreview.earlyFeatures.enabled to use Diff All vs Main.",
         );
         return;
     }
     if (!gradleService || !panel || !historySource) {
-        vscode.window.showInformationMessage('Compose Preview is not ready yet.');
+        vscode.window.showInformationMessage(
+            "Compose Preview is not ready yet.",
+        );
         return;
     }
     if (!currentScopeFile) {
         vscode.window.showInformationMessage(
-            'Open a Kotlin file with @Preview functions before running Diff All vs Main.',
+            "Open a Kotlin file with @Preview functions before running Diff All vs Main.",
         );
         return;
     }
     const moduleId = gradleService.resolveModule(currentScopeFile);
     if (!moduleId) {
-        vscode.window.showInformationMessage('Active file is not part of a Compose Preview module.');
+        vscode.window.showInformationMessage(
+            "Active file is not part of a Compose Preview module.",
+        );
         return;
     }
     const manifest = moduleManifestCache.get(moduleId);
     if (!manifest || manifest.length === 0) {
-        vscode.window.showInformationMessage('No previews discovered yet — render once first.');
+        vscode.window.showInformationMessage(
+            "No previews discovered yet — render once first.",
+        );
         return;
     }
     const projectDir = path.join(gradleService.workspaceRoot, moduleId);
 
     interface DriftItem extends vscode.QuickPickItem {
         previewId: string;
-        driftKind: 'differs' | 'no-baseline' | 'no-live';
+        driftKind: "differs" | "no-baseline" | "no-live";
     }
     const drifted: DriftItem[] = [];
     let identical = 0;
 
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Compose Preview — diffing all vs main',
-        cancellable: false,
-    }, async (progress) => {
-        const total = manifest.length;
-        let done = 0;
-        for (const preview of manifest) {
-            done++;
-            progress.report({
-                message: `${done} / ${total} · ${preview.functionName}`,
-                increment: 100 / total,
-            });
-            const cap = preview.captures?.[0];
-            if (!cap?.renderOutput) { continue; }
-            const livePath = path.join(projectDir, cap.renderOutput);
-            const liveBytes = await fs.promises.readFile(livePath).catch(() => null);
-            const label = preview.functionName
-                + (preview.params.name ? ` — ${preview.params.name}` : '');
-            if (!liveBytes) {
-                drifted.push({
-                    label,
-                    description: 'no live render',
-                    detail: preview.id,
-                    previewId: preview.id,
-                    driftKind: 'no-live',
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: "Compose Preview — diffing all vs main",
+            cancellable: false,
+        },
+        async (progress) => {
+            const total = manifest.length;
+            let done = 0;
+            for (const preview of manifest) {
+                done++;
+                progress.report({
+                    message: `${done} / ${total} · ${preview.functionName}`,
+                    increment: 100 / total,
                 });
-                continue;
-            }
-            const liveHash = crypto.createHash('sha256').update(liveBytes).digest('hex');
-            let mainHash: string | null = null;
-            let mainTs = '';
-            try {
-                const list = await historySource!.list({
-                    moduleId, projectDir, previewId: preview.id,
-                });
-                for (const e of list.entries) {
-                    const entry = e as { git?: { branch?: string }; pngHash?: string; timestamp?: string };
-                    if (entry?.git?.branch !== 'main' || !entry.pngHash) { continue; }
-                    const ts = entry.timestamp ?? '';
-                    if (ts > mainTs) { mainTs = ts; mainHash = entry.pngHash; }
+                const cap = preview.captures?.[0];
+                if (!cap?.renderOutput) {
+                    continue;
                 }
-            } catch {
-                // History unavailable for this preview — treat as no baseline.
-            }
-            if (!mainHash) {
-                // Fall back to the compose-preview/main baselines branch
-                // (with legacy preview_main fallback) — repos using the CI
-                // baseline workflow publish PNGs there even when nothing
-                // has been archived locally yet. The lookup also exposes a
-                // sha256 in the manifest, which we compare against the
-                // live hash to skip identical previews.
-                const baseline = await readPreviewMainPng(
-                    gradleService!.workspaceRoot, moduleId, preview.id,
-                );
-                if (!baseline) {
+                const livePath = path.join(projectDir, cap.renderOutput);
+                const liveBytes = await fs.promises
+                    .readFile(livePath)
+                    .catch(() => null);
+                const label =
+                    preview.functionName +
+                    (preview.params.name ? ` — ${preview.params.name}` : "");
+                if (!liveBytes) {
                     drifted.push({
                         label,
-                        description: 'no baseline on main',
+                        description: "no live render",
                         detail: preview.id,
                         previewId: preview.id,
-                        driftKind: 'no-baseline',
+                        driftKind: "no-live",
                     });
                     continue;
                 }
-                const baselineHash = baseline.sha256
-                    ?? crypto.createHash('sha256').update(baseline.png).digest('hex');
-                if (liveHash === baselineHash) {
+                const liveHash = crypto
+                    .createHash("sha256")
+                    .update(liveBytes)
+                    .digest("hex");
+                let mainHash: string | null = null;
+                let mainTs = "";
+                try {
+                    const list = await historySource!.list({
+                        moduleId,
+                        projectDir,
+                        previewId: preview.id,
+                    });
+                    for (const e of list.entries) {
+                        const entry = e as {
+                            git?: { branch?: string };
+                            pngHash?: string;
+                            timestamp?: string;
+                        };
+                        if (entry?.git?.branch !== "main" || !entry.pngHash) {
+                            continue;
+                        }
+                        const ts = entry.timestamp ?? "";
+                        if (ts > mainTs) {
+                            mainTs = ts;
+                            mainHash = entry.pngHash;
+                        }
+                    }
+                } catch {
+                    // History unavailable for this preview — treat as no baseline.
+                }
+                if (!mainHash) {
+                    // Fall back to the compose-preview/main baselines branch
+                    // (with legacy preview_main fallback) — repos using the CI
+                    // baseline workflow publish PNGs there even when nothing
+                    // has been archived locally yet. The lookup also exposes a
+                    // sha256 in the manifest, which we compare against the
+                    // live hash to skip identical previews.
+                    const baseline = await readPreviewMainPng(
+                        gradleService!.workspaceRoot,
+                        moduleId,
+                        preview.id,
+                    );
+                    if (!baseline) {
+                        drifted.push({
+                            label,
+                            description: "no baseline on main",
+                            detail: preview.id,
+                            previewId: preview.id,
+                            driftKind: "no-baseline",
+                        });
+                        continue;
+                    }
+                    const baselineHash =
+                        baseline.sha256 ??
+                        crypto
+                            .createHash("sha256")
+                            .update(baseline.png)
+                            .digest("hex");
+                    if (liveHash === baselineHash) {
+                        identical++;
+                        continue;
+                    }
+                    drifted.push({
+                        label,
+                        description: "differs from main",
+                        detail: preview.id,
+                        previewId: preview.id,
+                        driftKind: "differs",
+                    });
+                    continue;
+                }
+                if (liveHash === mainHash) {
                     identical++;
                     continue;
                 }
                 drifted.push({
                     label,
-                    description: 'differs from main',
+                    description: "differs from main",
                     detail: preview.id,
                     previewId: preview.id,
-                    driftKind: 'differs',
+                    driftKind: "differs",
                 });
-                continue;
             }
-            if (liveHash === mainHash) {
-                identical++;
-                continue;
-            }
-            drifted.push({
-                label,
-                description: 'differs from main',
-                detail: preview.id,
-                previewId: preview.id,
-                driftKind: 'differs',
-            });
-        }
-    });
+        },
+    );
 
     if (drifted.length === 0) {
         vscode.window.showInformationMessage(
-            `All ${identical} preview${identical === 1 ? '' : 's'} match main.`,
+            `All ${identical} preview${identical === 1 ? "" : "s"} match main.`,
         );
         return;
     }
 
-    const driftCount = drifted.filter(i => i.driftKind === 'differs').length;
-    const placeholder = driftCount > 0
-        ? `${driftCount} preview${driftCount === 1 ? '' : 's'} differ from main · ${identical} identical`
-        : `${drifted.length} preview${drifted.length === 1 ? '' : 's'} need attention · ${identical} identical`;
+    const driftCount = drifted.filter((i) => i.driftKind === "differs").length;
+    const placeholder =
+        driftCount > 0
+            ? `${driftCount} preview${driftCount === 1 ? "" : "s"} differ from main · ${identical} identical`
+            : `${drifted.length} preview${drifted.length === 1 ? "" : "s"} need attention · ${identical} identical`;
     const picked = await vscode.window.showQuickPick(drifted, {
         title: `Compose Preview — drift vs main (${moduleId})`,
         placeHolder: placeholder,
         matchOnDescription: true,
     });
-    if (!picked) { return; }
+    if (!picked) {
+        return;
+    }
 
     await vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
     panel.postMessage({
-        command: 'focusAndDiff',
+        command: "focusAndDiff",
         previewId: picked.previewId,
-        against: 'main',
+        against: "main",
     });
 }
 
 function formatRelativeShort(iso: string | undefined): string {
-    if (!iso) { return '(unknown)'; }
+    if (!iso) {
+        return "(unknown)";
+    }
     const t = Date.parse(iso);
-    if (isNaN(t)) { return iso; }
+    if (isNaN(t)) {
+        return iso;
+    }
     const s = Math.round((Date.now() - t) / 1000);
-    if (s < 60) { return s + 's ago'; }
+    if (s < 60) {
+        return s + "s ago";
+    }
     const m = Math.round(s / 60);
-    if (m < 60) { return m + 'm ago'; }
+    if (m < 60) {
+        return m + "m ago";
+    }
     const h = Math.round(m / 60);
-    if (h < 24) { return h + 'h ago'; }
+    if (h < 24) {
+        return h + "h ago";
+    }
     const d = Math.round(h / 24);
-    return d + 'd ago';
+    return d + "d ago";
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {
     const mod = previewModuleMap.get(previewId);
-    if (!mod) { return undefined; }
+    if (!mod) {
+        return undefined;
+    }
     const manifest = moduleManifestCache.get(mod);
-    const info = manifest?.find(p => p.id === previewId);
-    if (!info) { return undefined; }
+    const info = manifest?.find((p) => p.id === previewId);
+    if (!info) {
+        return undefined;
+    }
     return info.params.name
         ? `${info.functionName} — ${info.params.name}`
         : info.functionName;
@@ -3195,11 +3905,18 @@ function lookupPreviewLabel(previewId: string): string | undefined {
  * Stateless fallback streams are stopped immediately; otherwise the UI would show a LIVE badge
  * while every frame comes from a fresh composition.
  */
-async function handleSetInteractive(previewId: string, enabled: boolean): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+async function handleSetInteractive(
+    previewId: string,
+    enabled: boolean,
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
     if (!moduleId) {
-        logLine(`[interactive] no module for ${previewId}; ignoring setInteractive`);
+        logLine(
+            `[interactive] no module for ${previewId}; ignoring setInteractive`,
+        );
         return;
     }
     if (!enabled) {
@@ -3208,7 +3925,8 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
             activeInteractiveStreams.delete(previewId);
             updateInteractiveStatus();
             const client = await daemonGate?.getOrSpawn(
-                moduleId, daemonScheduler.daemonEvents(moduleId),
+                moduleId,
+                daemonScheduler.daemonEvents(moduleId),
             );
             client?.interactiveStop({ frameStreamId: stream });
         }
@@ -3216,14 +3934,15 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId, daemonScheduler.daemonEvents(moduleId),
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
     );
     if (!client) {
         // The webview already saw the toggle disabled — but the user could
         // have flipped settings between toggle render and click. Push a
         // fresh availability ping so the chip reverts cleanly.
         panel?.postMessage({
-            command: 'setInteractiveAvailability',
+            command: "setInteractiveAvailability",
             moduleId,
             ready: false,
             interactiveSupported: false,
@@ -3236,10 +3955,12 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
             client.interactiveStop({ frameStreamId: result.frameStreamId });
             logLine(
                 `[interactive] live mode unavailable for ${previewId}: daemon returned ` +
-                `stateless stream ${result.frameStreamId}` +
-                (result.fallbackReason ? ` (${result.fallbackReason})` : ''),
+                    `stateless stream ${result.frameStreamId}` +
+                    (result.fallbackReason
+                        ? ` (${result.fallbackReason})`
+                        : ""),
             );
-            panel?.postMessage({ command: 'clearInteractive', previewId });
+            panel?.postMessage({ command: "clearInteractive", previewId });
             updateInteractiveStatus();
             return;
         }
@@ -3247,8 +3968,8 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         updateInteractiveStatus();
         logLine(
             `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
-            `streamId=${result.frameStreamId}, ` +
-            `heldSession=${result.heldSession})`,
+                `streamId=${result.frameStreamId}, ` +
+                `heldSession=${result.heldSession})`,
         );
         await daemonScheduler.setFocus(moduleId, [previewId]);
         return;
@@ -3256,7 +3977,7 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
         logLine(
             `[interactive] live mode failed for ${previewId}: ${(err as Error).message}`,
         );
-        panel?.postMessage({ command: 'clearInteractive', previewId });
+        panel?.postMessage({ command: "clearInteractive", previewId });
         updateInteractiveStatus();
         return;
     }
@@ -3273,7 +3994,7 @@ const activeInteractiveStreams = new Map<string, string>();
 
 const activeRecordingSessions = new Map<string, string>();
 
-const activeRecordingFormats = new Map<string, 'apng' | 'mp4'>();
+const activeRecordingFormats = new Map<string, "apng" | "mp4">();
 
 let interactiveMutationQueue: Promise<void> = Promise.resolve();
 
@@ -3282,8 +4003,10 @@ function queueInteractiveMutation(previewId: string, enabled: boolean): void {
         .catch(() => {})
         .then(() => handleSetInteractive(previewId, enabled))
         .catch((err) => {
-            logLine(`[interactive] setInteractive failed for ${previewId}: ${(err as Error).message}`);
-            panel?.postMessage({ command: 'clearInteractive', previewId });
+            logLine(
+                `[interactive] setInteractive failed for ${previewId}: ${(err as Error).message}`,
+            );
+            panel?.postMessage({ command: "clearInteractive", previewId });
         });
 }
 
@@ -3292,15 +4015,18 @@ const recordingMutationQueues = new Map<string, Promise<void>>();
 function queueRecordingMutation(
     previewId: string,
     enabled: boolean,
-    format: 'apng' | 'mp4',
+    format: "apng" | "mp4",
 ): void {
-    const previous = recordingMutationQueues.get(previewId) ?? Promise.resolve();
+    const previous =
+        recordingMutationQueues.get(previewId) ?? Promise.resolve();
     const next = previous
         .catch(() => {})
         .then(() => handleSetRecording(previewId, enabled, format))
         .catch((err) => {
-            logLine(`[recording] setRecording failed for ${previewId}: ${(err as Error).message}`);
-            panel?.postMessage({ command: 'clearRecording', previewId });
+            logLine(
+                `[recording] setRecording failed for ${previewId}: ${(err as Error).message}`,
+            );
+            panel?.postMessage({ command: "clearRecording", previewId });
         })
         .finally(() => {
             if (recordingMutationQueues.get(previewId) === next) {
@@ -3321,7 +4047,9 @@ function queueRecordingMutation(
  * cleanup, so the indicator reflects the current state without polling.
  */
 function updateInteractiveStatus(): void {
-    if (!interactiveStatusItem) { return; }
+    if (!interactiveStatusItem) {
+        return;
+    }
     if (!daemonGate || activeInteractiveStreams.size === 0) {
         interactiveStatusItem.hide();
         return;
@@ -3329,7 +4057,9 @@ function updateInteractiveStatus(): void {
     const unsupportedModules = new Set<string>();
     for (const previewId of activeInteractiveStreams.keys()) {
         const moduleId = previewModuleMap.get(previewId);
-        if (!moduleId) { continue; }
+        if (!moduleId) {
+            continue;
+        }
         if (!daemonGate.isInteractiveSupported(moduleId)) {
             unsupportedModules.add(moduleId);
         }
@@ -3338,42 +4068,47 @@ function updateInteractiveStatus(): void {
         interactiveStatusItem.hide();
         return;
     }
-    const moduleLabel = unsupportedModules.size === 1
-        ? [...unsupportedModules][0]
-        : `${unsupportedModules.size} modules`;
+    const moduleLabel =
+        unsupportedModules.size === 1
+            ? [...unsupportedModules][0]
+            : `${unsupportedModules.size} modules`;
     interactiveStatusItem.text = `$(warning) Live · v1 fallback`;
-    interactiveStatusItem.tooltip = (
+    interactiveStatusItem.tooltip =
         `Live mode is active on ${moduleLabel}, but this daemon backend doesn't ` +
         `support clicks-into-composition (v2). Inputs trigger a fresh render but ` +
         `state from \`remember { mutableStateOf(...) }\` resets between clicks. ` +
         `Switch to a desktop module for full interactive mode. ` +
-        `See docs/daemon/INTERACTIVE.md § 9.10.`
-    );
+        `See docs/daemon/INTERACTIVE.md § 9.10.`;
     interactiveStatusItem.show();
 }
 
 async function handleSetRecording(
     previewId: string,
     enabled: boolean,
-    format: 'apng' | 'mp4',
+    format: "apng" | "mp4",
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
     if (!moduleId) {
-        logLine(`[recording] no module for ${previewId}; ignoring setRecording`);
+        logLine(
+            `[recording] no module for ${previewId}; ignoring setRecording`,
+        );
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId, daemonScheduler.daemonEvents(moduleId),
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
     );
     if (!client) {
-        panel?.postMessage({ command: 'clearRecording', previewId });
+        panel?.postMessage({ command: "clearRecording", previewId });
         return;
     }
     if (!enabled) {
         const recordingId = activeRecordingSessions.get(previewId);
         if (!recordingId) {
-            panel?.postMessage({ command: 'clearRecording', previewId });
+            panel?.postMessage({ command: "clearRecording", previewId });
             return;
         }
         activeRecordingSessions.delete(previewId);
@@ -3381,26 +4116,33 @@ async function handleSetRecording(
         activeRecordingFormats.delete(previewId);
         try {
             const stopped = await client.recordingStop({ recordingId });
-            const encoded = await client.recordingEncode({ recordingId, format: encodeFormat });
+            const encoded = await client.recordingEncode({
+                recordingId,
+                format: encodeFormat,
+            });
             logLine(
                 `[recording] saved ${previewId}: ${encoded.videoPath} ` +
-                `(${stopped.frameCount} frames, ${stopped.durationMs}ms)`,
+                    `(${stopped.frameCount} frames, ${stopped.durationMs}ms)`,
             );
             void vscode.window.showInformationMessage(
                 `Compose preview recording saved: ${encoded.videoPath}`,
             );
         } catch (err) {
-            logLine(`[recording] stop failed for ${previewId}: ${(err as Error).message}`);
+            logLine(
+                `[recording] stop failed for ${previewId}: ${(err as Error).message}`,
+            );
             void vscode.window.showErrorMessage(
                 `Compose preview recording failed: ${(err as Error).message}`,
             );
         } finally {
-            panel?.postMessage({ command: 'clearRecording', previewId });
+            panel?.postMessage({ command: "clearRecording", previewId });
         }
         return;
     }
 
-    if (activeRecordingSessions.has(previewId)) { return; }
+    if (activeRecordingSessions.has(previewId)) {
+        return;
+    }
     try {
         const result = await client.recordingStart({
             previewId,
@@ -3413,11 +4155,13 @@ async function handleSetRecording(
         await daemonScheduler.setFocus(moduleId, [previewId]);
         logLine(
             `[recording] live recording on for ${previewId} ` +
-            `(module=${moduleId}, recordingId=${result.recordingId})`,
+                `(module=${moduleId}, recordingId=${result.recordingId})`,
         );
     } catch (err) {
-        logLine(`[recording] start failed for ${previewId}: ${(err as Error).message}`);
-        panel?.postMessage({ command: 'clearRecording', previewId });
+        logLine(
+            `[recording] start failed for ${previewId}: ${(err as Error).message}`,
+        );
+        panel?.postMessage({ command: "clearRecording", previewId });
         void vscode.window.showErrorMessage(
             `Compose preview recording failed: ${(err as Error).message}`,
         );
@@ -3430,18 +4174,27 @@ async function handleSetRecording(
  * — callers don't need to coordinate with the start/stop dance.
  */
 async function forwardInteractiveInput(
-    input: Extract<WebviewToExtension, { command: 'recordInteractiveInput' }>,
+    input: Extract<WebviewToExtension, { command: "recordInteractiveInput" }>,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
     const previewId = input.previewId;
     const streamId = activeInteractiveStreams.get(previewId);
-    if (!streamId) { return; }
+    if (!streamId) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) { return; }
+    if (!moduleId) {
+        return;
+    }
     const client = await daemonGate?.getOrSpawn(
-        moduleId, daemonScheduler.daemonEvents(moduleId),
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
     );
-    if (!client) { return; }
+    if (!client) {
+        return;
+    }
     client.interactiveInput({
         frameStreamId: streamId,
         kind: input.kind,
@@ -3452,18 +4205,27 @@ async function forwardInteractiveInput(
 }
 
 async function forwardRecordingInput(
-    input: Extract<WebviewToExtension, { command: 'recordInteractiveInput' }>,
+    input: Extract<WebviewToExtension, { command: "recordInteractiveInput" }>,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
     const previewId = input.previewId;
     const recordingId = activeRecordingSessions.get(previewId);
-    if (!recordingId) { return; }
+    if (!recordingId) {
+        return;
+    }
     const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) { return; }
+    if (!moduleId) {
+        return;
+    }
     const client = await daemonGate?.getOrSpawn(
-        moduleId, daemonScheduler.daemonEvents(moduleId),
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
     );
-    if (!client) { return; }
+    if (!client) {
+        return;
+    }
     client.recordingInput({
         recordingId,
         kind: input.kind,
@@ -3480,18 +4242,26 @@ async function forwardRecordingInput(
  * for a module — warm-up completion, channel-close, classpath-dirty.
  */
 function publishInteractiveAvailability(moduleId: string): void {
-    if (!panel) { return; }
+    if (!panel) {
+        return;
+    }
     const ready = daemonGate?.isDaemonReady(moduleId) ?? false;
     panel.postMessage({
-        command: 'setInteractiveAvailability',
+        command: "setInteractiveAvailability",
         moduleId,
         ready,
-        interactiveSupported: ready && (daemonGate?.isInteractiveSupported(moduleId) ?? false),
+        interactiveSupported:
+            ready && (daemonGate?.isInteractiveSupported(moduleId) ?? false),
     });
 }
 
-async function notifyDaemonViewport(visible: string[], predicted: string[]): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+async function notifyDaemonViewport(
+    visible: string[],
+    predicted: string[],
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
     // Group by owning module — viewports cross module boundaries only when
     // the user is paging across the all-modules view (rare today; the
     // panel is module-scoped). Each module's daemon gets its own slice.
@@ -3499,17 +4269,28 @@ async function notifyDaemonViewport(visible: string[], predicted: string[]): Pro
     const predictedByModule = new Map<string, string[]>();
     for (const id of visible) {
         const mod = previewModuleMap.get(id);
-        if (!mod) { continue; }
-        if (!visibleByModule.has(mod)) { visibleByModule.set(mod, []); }
+        if (!mod) {
+            continue;
+        }
+        if (!visibleByModule.has(mod)) {
+            visibleByModule.set(mod, []);
+        }
         visibleByModule.get(mod)!.push(id);
     }
     for (const id of predicted) {
         const mod = previewModuleMap.get(id);
-        if (!mod) { continue; }
-        if (!predictedByModule.has(mod)) { predictedByModule.set(mod, []); }
+        if (!mod) {
+            continue;
+        }
+        if (!predictedByModule.has(mod)) {
+            predictedByModule.set(mod, []);
+        }
         predictedByModule.get(mod)!.push(id);
     }
-    const modules = new Set([...visibleByModule.keys(), ...predictedByModule.keys()]);
+    const modules = new Set([
+        ...visibleByModule.keys(),
+        ...predictedByModule.keys(),
+    ]);
     for (const mod of modules) {
         await daemonScheduler.setVisible(
             mod,
@@ -3535,14 +4316,18 @@ async function notifyDaemonViewport(visible: string[], predicted: string[]): Pro
  *     for case C).
  */
 function emptyStateMessage(activeFile: string | undefined): string {
-    if (!gradleService) { return ''; }
+    if (!gradleService) {
+        return "";
+    }
     if (!activeFile || !isPreviewSourceFile(activeFile)) {
-        return 'Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.';
+        return "Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.";
     }
     const previewModules = gradleService.findPreviewModules();
     if (previewModules.length === 0) {
-        return 'The Compose Preview Gradle plugin isn\'t applied in this workspace. '
-            + 'Add id("ee.schimke.composeai.preview") to a module\'s build.gradle.kts to enable previews.';
+        return (
+            "The Compose Preview Gradle plugin isn't applied in this workspace. " +
+            'Add id("ee.schimke.composeai.preview") to a module\'s build.gradle.kts to enable previews.'
+        );
     }
     if (fileHasPreviewAnnotation(activeFile)) {
         // File is inside a preview-enabled module, but outside this Gradle
@@ -3550,16 +4335,20 @@ function emptyStateMessage(activeFile: string | undefined): string {
         // checkout's workspace. Nothing the user needs to "fix" in the build
         // script; steer them toward opening the right root instead.
         if (findPluginAppliedAncestor(activeFile)) {
-            return 'This file is in a preview-enabled module, but outside this VS Code '
-                + 'workspace root (e.g. a git worktree). Open that project root in VS Code '
-                + 'to see its previews.';
+            return (
+                "This file is in a preview-enabled module, but outside this VS Code " +
+                "workspace root (e.g. a git worktree). Open that project root in VS Code " +
+                "to see its previews."
+            );
         }
-        const topDir = topLevelDirOf(activeFile) ?? '(this module)';
-        return `'${topDir}' doesn't apply ee.schimke.composeai.preview. `
-            + `Modules with previews in this workspace: ${previewModules.join(', ')}.`;
+        const topDir = topLevelDirOf(activeFile) ?? "(this module)";
+        return (
+            `'${topDir}' doesn't apply ee.schimke.composeai.preview. ` +
+            `Modules with previews in this workspace: ${previewModules.join(", ")}.`
+        );
     }
     // No @Preview references in the active file — stay out of the way.
-    return 'No @Preview functions in this file.';
+    return "No @Preview functions in this file.";
 }
 
 /**
@@ -3570,35 +4359,49 @@ function emptyStateMessage(activeFile: string | undefined): string {
  * because that's almost certainly a false alarm.
  */
 function maybeShowSetupPrompt(activeFile: string): void {
-    if (warnedMissingPluginThisSession || !gradleService || !extensionContext) { return; }
-    if (extensionContext.workspaceState.get<boolean>(DISMISS_KEY)) { return; }
+    if (warnedMissingPluginThisSession || !gradleService || !extensionContext) {
+        return;
+    }
+    if (extensionContext.workspaceState.get<boolean>(DISMISS_KEY)) {
+        return;
+    }
 
     const previewModules = gradleService.findPreviewModules();
     const missingAnywhere = previewModules.length === 0;
-    const missingForThisModule = !missingAnywhere && fileHasPreviewAnnotation(activeFile);
-    if (!missingAnywhere && !missingForThisModule) { return; }
+    const missingForThisModule =
+        !missingAnywhere && fileHasPreviewAnnotation(activeFile);
+    if (!missingAnywhere && !missingForThisModule) {
+        return;
+    }
     // The file is already inside a plugin-applied module somewhere up its own
     // path — it just isn't part of *this* Gradle project (e.g. a git worktree
     // nested under the workspace root). No build-script fix is needed; skip
     // the nudge rather than point at a module they'd have to invent.
-    if (findPluginAppliedAncestor(activeFile)) { return; }
+    if (findPluginAppliedAncestor(activeFile)) {
+        return;
+    }
 
     warnedMissingPluginThisSession = true;
     const message = missingAnywhere
-        ? 'Compose Preview: the Gradle plugin isn\'t applied in this workspace yet.'
-        : 'Compose Preview: this module doesn\'t apply the Gradle plugin, but the file uses @Preview.';
-    const OPEN = 'Open build.gradle.kts';
-    const DOCS = 'View setup docs';
-    const NEVER = 'Don\'t show again';
-    void vscode.window.showInformationMessage(message, OPEN, DOCS, NEVER).then(action => {
-        if (action === OPEN) {
-            void vscode.commands.executeCommand('composePreview.openModuleBuildFile', activeFile);
-        } else if (action === DOCS) {
-            void vscode.env.openExternal(vscode.Uri.parse(SETUP_DOCS_URL));
-        } else if (action === NEVER) {
-            void extensionContext?.workspaceState.update(DISMISS_KEY, true);
-        }
-    });
+        ? "Compose Preview: the Gradle plugin isn't applied in this workspace yet."
+        : "Compose Preview: this module doesn't apply the Gradle plugin, but the file uses @Preview.";
+    const OPEN = "Open build.gradle.kts";
+    const DOCS = "View setup docs";
+    const NEVER = "Don't show again";
+    void vscode.window
+        .showInformationMessage(message, OPEN, DOCS, NEVER)
+        .then((action) => {
+            if (action === OPEN) {
+                void vscode.commands.executeCommand(
+                    "composePreview.openModuleBuildFile",
+                    activeFile,
+                );
+            } else if (action === DOCS) {
+                void vscode.env.openExternal(vscode.Uri.parse(SETUP_DOCS_URL));
+            } else if (action === NEVER) {
+                void extensionContext?.workspaceState.update(DISMISS_KEY, true);
+            }
+        });
 }
 
 /**
@@ -3608,51 +4411,75 @@ function maybeShowSetupPrompt(activeFile: string): void {
  * falls back to the root's own build script. This handles both top-level
  * modules (the only kind findPreviewModules scans for) and nested layouts.
  */
-async function openModuleBuildFile(workspaceRoot: string, filePath?: string): Promise<void> {
-    const target = filePath
-        ?? currentScopeFile
-        ?? vscode.window.activeTextEditor?.document.uri.fsPath
-        ?? workspaceRoot;
+async function openModuleBuildFile(
+    workspaceRoot: string,
+    filePath?: string,
+): Promise<void> {
+    const target =
+        filePath ??
+        currentScopeFile ??
+        vscode.window.activeTextEditor?.document.uri.fsPath ??
+        workspaceRoot;
 
     let dir = target === workspaceRoot ? workspaceRoot : path.dirname(target);
     const root = path.resolve(workspaceRoot);
     while (path.resolve(dir).startsWith(root)) {
-        const candidate = path.join(dir, 'build.gradle.kts');
+        const candidate = path.join(dir, "build.gradle.kts");
         if (fs.existsSync(candidate)) {
             const doc = await vscode.workspace.openTextDocument(candidate);
             await vscode.window.showTextDocument(doc);
             return;
         }
         const parent = path.dirname(dir);
-        if (parent === dir) { break; }
+        if (parent === dir) {
+            break;
+        }
         dir = parent;
     }
-    vscode.window.showWarningMessage('No build.gradle.kts found for this file.');
+    vscode.window.showWarningMessage(
+        "No build.gradle.kts found for this file.",
+    );
 }
 
 function fileHasPreviewAnnotation(filePath: string): boolean {
     // Prefer the already-loaded editor buffer over a disk read so unsaved
     // edits (the user just typed `@Preview`) are picked up.
-    const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === filePath);
+    const doc = vscode.workspace.textDocuments.find(
+        (d) => d.uri.fsPath === filePath,
+    );
     const text = doc
         ? doc.getText()
-        : (() => { try { return fs.readFileSync(filePath, 'utf-8'); } catch { return ''; } })();
-    return text.includes('Preview') && text.includes('@Composable');
+        : (() => {
+              try {
+                  return fs.readFileSync(filePath, "utf-8");
+              } catch {
+                  return "";
+              }
+          })();
+    return text.includes("Preview") && text.includes("@Composable");
 }
 
 function topLevelDirOf(filePath: string): string | null {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) { return null; }
+    if (!folders || folders.length === 0) {
+        return null;
+    }
     const rel = path.relative(folders[0].uri.fsPath, filePath);
     const first = rel.split(path.sep)[0];
-    return first && first !== '..' ? first : null;
+    return first && first !== ".." ? first : null;
 }
 
 async function openPreviewSource(className: string, functionName: string) {
-    const classFile = className.replace(/Kt$/, '').replace(/\./g, '/') + '.kt';
-    const files = await vscode.workspace.findFiles(`**/${classFile}`, '**/build/**', 1);
+    const classFile = className.replace(/Kt$/, "").replace(/\./g, "/") + ".kt";
+    const files = await vscode.workspace.findFiles(
+        `**/${classFile}`,
+        "**/build/**",
+        1,
+    );
     if (files.length === 0) {
-        vscode.window.showWarningMessage(`Could not find source for ${className}.${functionName}`);
+        vscode.window.showWarningMessage(
+            `Could not find source for ${className}.${functionName}`,
+        );
         return;
     }
 
@@ -3660,11 +4487,14 @@ async function openPreviewSource(className: string, functionName: string) {
     const editor = await vscode.window.showTextDocument(doc);
 
     const text = doc.getText();
-    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const match = new RegExp(`fun\\s+${escaped}\\s*\\(`).exec(text);
     if (match) {
         const pos = doc.positionAt(match.index);
         editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+        editor.revealRange(
+            new vscode.Range(pos, pos),
+            vscode.TextEditorRevealType.InCenter,
+        );
     }
 }

@@ -1,6 +1,6 @@
-import * as vscode from 'vscode';
-import { PreviewRegistry } from './previewRegistry';
-import { detectPreviews } from './previewDetection';
+import * as vscode from "vscode";
+import { PreviewRegistry } from "./previewRegistry";
+import { detectPreviews } from "./previewDetection";
 
 /**
  * Publishes ATF findings collected in the [PreviewRegistry] as VS Code
@@ -27,17 +27,25 @@ export class PreviewA11yDiagnostics implements vscode.Disposable {
         private readonly registry: PreviewRegistry,
         private readonly log?: (msg: string) => void,
     ) {
-        this.collection = vscode.languages.createDiagnosticCollection('compose-preview-a11y');
+        this.collection = vscode.languages.createDiagnosticCollection(
+            "compose-preview-a11y",
+        );
         this.disposables.push(this.collection);
         this.disposables.push(registry.onDidChange(() => this.refreshAll()));
         this.disposables.push(
-            vscode.workspace.onDidOpenTextDocument((doc) => this.scheduleRefresh(doc)),
+            vscode.workspace.onDidOpenTextDocument((doc) =>
+                this.scheduleRefresh(doc),
+            ),
         );
         this.disposables.push(
-            vscode.workspace.onDidChangeTextDocument((e) => this.scheduleRefresh(e.document)),
+            vscode.workspace.onDidChangeTextDocument((e) =>
+                this.scheduleRefresh(e.document),
+            ),
         );
         this.disposables.push(
-            vscode.workspace.onDidCloseTextDocument((doc) => this.collection.delete(doc.uri)),
+            vscode.workspace.onDidCloseTextDocument((doc) =>
+                this.collection.delete(doc.uri),
+            ),
         );
         // Seed currently-open documents so findings render on first load
         // without the user having to re-open anything.
@@ -47,9 +55,13 @@ export class PreviewA11yDiagnostics implements vscode.Disposable {
     }
 
     dispose(): void {
-        for (const t of this.pending.values()) { clearTimeout(t); }
+        for (const t of this.pending.values()) {
+            clearTimeout(t);
+        }
         this.pending.clear();
-        for (const d of this.disposables) { d.dispose(); }
+        for (const d of this.disposables) {
+            d.dispose();
+        }
     }
 
     private refreshAll(): void {
@@ -59,18 +71,25 @@ export class PreviewA11yDiagnostics implements vscode.Disposable {
     }
 
     private scheduleRefresh(doc: vscode.TextDocument): void {
-        if (doc.languageId !== 'kotlin') { return; }
+        if (doc.languageId !== "kotlin") {
+            return;
+        }
         const key = doc.uri.toString();
         const existing = this.pending.get(key);
-        if (existing) { clearTimeout(existing); }
-        this.pending.set(key, setTimeout(() => {
-            this.pending.delete(key);
-            void this.refreshDocument(doc);
-        }, 200));
+        if (existing) {
+            clearTimeout(existing);
+        }
+        this.pending.set(
+            key,
+            setTimeout(() => {
+                this.pending.delete(key);
+                void this.refreshDocument(doc);
+            }, 200),
+        );
     }
 
     private async refreshDocument(doc: vscode.TextDocument): Promise<void> {
-        if (doc.languageId !== 'kotlin') {
+        if (doc.languageId !== "kotlin") {
             this.collection.delete(doc.uri);
             return;
         }
@@ -79,17 +98,28 @@ export class PreviewA11yDiagnostics implements vscode.Disposable {
         for (const det of detected) {
             const entry = this.registry.find(doc.uri.fsPath, det.functionName);
             const findings = entry?.preview.a11yFindings;
-            if (!findings || findings.length === 0) { continue; }
+            if (!findings || findings.length === 0) {
+                continue;
+            }
             const line = det.funLineNumber;
-            const range = new vscode.Range(line, 0, line, doc.lineAt(line).text.length);
+            const range = new vscode.Range(
+                line,
+                0,
+                line,
+                doc.lineAt(line).text.length,
+            );
             for (const f of findings) {
-                if (f.level === 'INFO') { continue; }
+                if (f.level === "INFO") {
+                    continue;
+                }
                 const diag = new vscode.Diagnostic(
                     range,
                     `${f.type}: ${f.message}`,
-                    f.level === 'ERROR' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning,
+                    f.level === "ERROR"
+                        ? vscode.DiagnosticSeverity.Error
+                        : vscode.DiagnosticSeverity.Warning,
                 );
-                diag.source = 'compose-preview-a11y';
+                diag.source = "compose-preview-a11y";
                 diag.code = f.type;
                 diagnostics.push(diag);
             }

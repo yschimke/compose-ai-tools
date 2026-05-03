@@ -1,5 +1,5 @@
-import * as vscode from 'vscode';
-import { PreviewRegistry } from './previewRegistry';
+import * as vscode from "vscode";
+import { PreviewRegistry } from "./previewRegistry";
 
 export interface DetectedPreview {
     functionName: string;
@@ -34,13 +34,17 @@ export async function detectPreviews(
     log?: (msg: string) => void,
 ): Promise<DetectedPreview[]> {
     const symbols = await fetchSymbols(doc, log);
-    if (!symbols) { return []; }
+    if (!symbols) {
+        return [];
+    }
 
     const out: DetectedPreview[] = [];
     const visit = (s: FnLike) => {
-        const isFn = s.kind === vscode.SymbolKind.Function || s.kind === vscode.SymbolKind.Method;
+        const isFn =
+            s.kind === vscode.SymbolKind.Function ||
+            s.kind === vscode.SymbolKind.Method;
         if (isFn) {
-            const name = s.name.replace(/\(.*$/, '').trim();
+            const name = s.name.replace(/\(.*$/, "").trim();
             if (registry.find(doc.uri.fsPath, name)) {
                 out.push({
                     functionName: name,
@@ -61,14 +65,22 @@ async function fetchSymbols(
 ): Promise<FnLike[] | undefined> {
     try {
         const result = await vscode.commands.executeCommand<unknown>(
-            'vscode.executeDocumentSymbolProvider',
+            "vscode.executeDocumentSymbolProvider",
             doc.uri,
         );
-        if (!Array.isArray(result) || result.length === 0) { return undefined; }
+        if (!Array.isArray(result) || result.length === 0) {
+            return undefined;
+        }
         const first = result[0] as { children?: unknown; location?: unknown };
-        if ('children' in first) { return (result as vscode.DocumentSymbol[]).map(toFnLike); }
-        if ('location' in first) { return (result as vscode.SymbolInformation[]).map(siToFnLike); }
-        log?.(`executeDocumentSymbolProvider returned unknown shape: ${JSON.stringify(first).slice(0, 200)}`);
+        if ("children" in first) {
+            return (result as vscode.DocumentSymbol[]).map(toFnLike);
+        }
+        if ("location" in first) {
+            return (result as vscode.SymbolInformation[]).map(siToFnLike);
+        }
+        log?.(
+            `executeDocumentSymbolProvider returned unknown shape: ${JSON.stringify(first).slice(0, 200)}`,
+        );
         return undefined;
     } catch (e) {
         log?.(`executeDocumentSymbolProvider threw: ${(e as Error).message}`);

@@ -1,6 +1,6 @@
-import * as vscode from 'vscode';
-import { detectPreviews } from './previewDetection';
-import { PreviewRegistry } from './previewRegistry';
+import * as vscode from "vscode";
+import { detectPreviews } from "./previewDetection";
+import { PreviewRegistry } from "./previewRegistry";
 
 /**
  * Paints a gutter marker next to every function the plugin recognised as a
@@ -20,57 +20,87 @@ export class PreviewGutterDecorations implements vscode.Disposable {
         private log?: (msg: string) => void,
     ) {
         this.decoration = vscode.window.createTextEditorDecorationType({
-            gutterIconPath: vscode.Uri.joinPath(extensionUri, 'media', 'preview-gutter.svg'),
-            gutterIconSize: 'contain',
+            gutterIconPath: vscode.Uri.joinPath(
+                extensionUri,
+                "media",
+                "preview-gutter.svg",
+            ),
+            gutterIconSize: "contain",
             isWholeLine: false,
         });
 
         this.disposables.push(
             this.decoration,
-            vscode.window.onDidChangeVisibleTextEditors(editors =>
-                editors.forEach(ed => this.scheduleUpdate(ed))),
-            vscode.workspace.onDidChangeTextDocument(e => {
+            vscode.window.onDidChangeVisibleTextEditors((editors) =>
+                editors.forEach((ed) => this.scheduleUpdate(ed)),
+            ),
+            vscode.workspace.onDidChangeTextDocument((e) => {
                 for (const ed of vscode.window.visibleTextEditors) {
-                    if (ed.document === e.document) { this.scheduleUpdate(ed); }
+                    if (ed.document === e.document) {
+                        this.scheduleUpdate(ed);
+                    }
                 }
             }),
             registry.onDidChange(() =>
-                vscode.window.visibleTextEditors.forEach(ed => this.scheduleUpdate(ed))),
+                vscode.window.visibleTextEditors.forEach((ed) =>
+                    this.scheduleUpdate(ed),
+                ),
+            ),
         );
 
-        vscode.window.visibleTextEditors.forEach(ed => this.scheduleUpdate(ed));
+        vscode.window.visibleTextEditors.forEach((ed) =>
+            this.scheduleUpdate(ed),
+        );
     }
 
     private scheduleUpdate(editor: vscode.TextEditor): void {
-        if (editor.document.languageId !== 'kotlin') { return; }
+        if (editor.document.languageId !== "kotlin") {
+            return;
+        }
         const key = editor.document.uri.toString();
         const existing = this.pending.get(key);
-        if (existing) { clearTimeout(existing); }
-        this.pending.set(key, setTimeout(() => {
-            this.pending.delete(key);
-            void this.update(editor);
-        }, 150));
+        if (existing) {
+            clearTimeout(existing);
+        }
+        this.pending.set(
+            key,
+            setTimeout(() => {
+                this.pending.delete(key);
+                void this.update(editor);
+            }, 150),
+        );
     }
 
     private async update(editor: vscode.TextEditor): Promise<void> {
-        if (editor.document.languageId !== 'kotlin') {
+        if (editor.document.languageId !== "kotlin") {
             editor.setDecorations(this.decoration, []);
             return;
         }
-        const detected = await detectPreviews(editor.document, this.registry, this.log);
+        const detected = await detectPreviews(
+            editor.document,
+            this.registry,
+            this.log,
+        );
         const filePath = editor.document.uri.fsPath;
-        const options: vscode.DecorationOptions[] = detected.map(det => {
+        const options: vscode.DecorationOptions[] = detected.map((det) => {
             // Decoration gutter icons can't receive click events, so the
             // CodeLens above the function is the actual click target. The
             // hover here is a fallback affordance — hovering the gutter icon
             // also exposes the same focus command.
-            const args = encodeURIComponent(JSON.stringify([det.functionName, filePath]));
+            const args = encodeURIComponent(
+                JSON.stringify([det.functionName, filePath]),
+            );
             const hover = new vscode.MarkdownString(
                 `[Focus \`${det.functionName}\` in Preview panel](command:composePreview.focusPreview?${args})`,
             );
             hover.isTrusted = true;
             return {
-                range: new vscode.Range(det.funLineNumber, 0, det.funLineNumber, 0),
+                range: new vscode.Range(
+                    det.funLineNumber,
+                    0,
+                    det.funLineNumber,
+                    0,
+                ),
                 hoverMessage: hover,
             };
         });
@@ -78,8 +108,8 @@ export class PreviewGutterDecorations implements vscode.Disposable {
     }
 
     dispose(): void {
-        this.pending.forEach(t => clearTimeout(t));
+        this.pending.forEach((t) => clearTimeout(t));
         this.pending.clear();
-        this.disposables.forEach(d => d.dispose());
+        this.disposables.forEach((d) => d.dispose());
     }
 }

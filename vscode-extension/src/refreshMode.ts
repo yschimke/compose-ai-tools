@@ -7,7 +7,7 @@
  * `daemonGate` / `gradleService` state and forwards into here.
  */
 
-export type RefreshMode = 'daemon' | 'gradle';
+export type RefreshMode = "daemon" | "gradle";
 
 /**
  * - `'daemon'` — the daemon flag is on and the file resolves to a module. The save path skips
@@ -22,7 +22,11 @@ export function pickRefreshModeFor(
     daemonEnabled: boolean,
     moduleId: string | null,
 ): RefreshMode {
-    if (!daemonEnabled) { return 'gradle'; }
-    if (!moduleId) { return 'gradle'; }
-    return 'daemon';
+    if (!daemonEnabled) {
+        return "gradle";
+    }
+    if (!moduleId) {
+        return "gradle";
+    }
+    return "daemon";
 }

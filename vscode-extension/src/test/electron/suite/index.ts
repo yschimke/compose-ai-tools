@@ -1,6 +1,6 @@
-import * as path from 'path';
-import Mocha from 'mocha';
-import { glob } from 'glob';
+import * as path from "path";
+import Mocha from "mocha";
+import { glob } from "glob";
 
 /**
  * Mocha entry point loaded by `@vscode/test-electron` inside the spawned
@@ -12,7 +12,7 @@ import { glob } from 'glob';
  */
 export async function run(): Promise<void> {
     const mocha = new Mocha({
-        ui: 'bdd',
+        ui: "bdd",
         color: true,
         // Generous default — VS Code activation + view focus + a stub
         // Gradle round-trip lands well under this on a warm host, but a
@@ -22,12 +22,14 @@ export async function run(): Promise<void> {
         // bookkeeping (extension-host event-loop spinup) before the
         // assertions run.
         timeout: 60_000,
-        reporter: 'spec',
+        reporter: "spec",
     });
 
     const testsRoot = __dirname;
-    const files = await glob('**/*.test.js', { cwd: testsRoot });
-    console.log(`[suite] discovered ${files.length} test file(s) in ${testsRoot}`);
+    const files = await glob("**/*.test.js", { cwd: testsRoot });
+    console.log(
+        `[suite] discovered ${files.length} test file(s) in ${testsRoot}`,
+    );
     for (const f of files) {
         const abs = path.resolve(testsRoot, f);
         console.log(`[suite] add ${abs}`);
@@ -36,7 +38,7 @@ export async function run(): Promise<void> {
 
     return new Promise((resolve, reject) => {
         try {
-            mocha.run(failures => {
+            mocha.run((failures) => {
                 if (failures > 0) {
                     reject(new Error(`${failures} test(s) failed`));
                 } else {

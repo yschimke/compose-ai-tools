@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
 import {
     HistoryDiffMode,
     HistoryDiffResult,
@@ -7,7 +7,7 @@ import {
     HistoryListResult,
     HistoryReadResult,
     HistorySourceKind,
-} from './daemonProtocol';
+} from "./daemonProtocol";
 
 /**
  * Filesystem-backed history reader. Used by the Preview History panel when:
@@ -39,7 +39,7 @@ export class HistoryReader {
     /** True iff `<historyDir>/index.jsonl` exists. The panel uses this to
      *  skip rendering when the consumer hasn't enabled history yet. */
     exists(): boolean {
-        return fs.existsSync(path.join(this.historyDir, 'index.jsonl'));
+        return fs.existsSync(path.join(this.historyDir, "index.jsonl"));
     }
 
     /**
@@ -52,13 +52,15 @@ export class HistoryReader {
      * returns an empty list against the FS reader.
      */
     list(params: HistoryListParams = {}): HistoryListResult {
-        const indexPath = path.join(this.historyDir, 'index.jsonl');
+        const indexPath = path.join(this.historyDir, "index.jsonl");
         const entries: HistoryEntryShape[] = [];
         if (fs.existsSync(indexPath)) {
             try {
-                const raw = fs.readFileSync(indexPath, 'utf-8');
-                for (const line of raw.split('\n')) {
-                    if (line.length === 0) { continue; }
+                const raw = fs.readFileSync(indexPath, "utf-8");
+                for (const line of raw.split("\n")) {
+                    if (line.length === 0) {
+                        continue;
+                    }
                     try {
                         entries.push(JSON.parse(line) as HistoryEntryShape);
                     } catch {
@@ -74,15 +76,18 @@ export class HistoryReader {
         }
 
         // Newest first per PROTOCOL.md § "history/list".
-        entries.sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''));
+        entries.sort((a, b) =>
+            (b.timestamp ?? "").localeCompare(a.timestamp ?? ""),
+        );
 
-        const filtered = entries.filter(e => matchesFilter(e, params));
+        const filtered = entries.filter((e) => matchesFilter(e, params));
         const start = parseCursor(params.cursor);
         const limit = clampLimit(params.limit);
         const page = filtered.slice(start, start + limit);
-        const nextCursor = (start + limit < filtered.length)
-            ? encodeCursor(start + limit)
-            : undefined;
+        const nextCursor =
+            start + limit < filtered.length
+                ? encodeCursor(start + limit)
+                : undefined;
         return {
             entries: page,
             nextCursor,
@@ -98,15 +103,24 @@ export class HistoryReader {
      */
     read(id: string, inline = false): HistoryReadResult | null {
         const sidecar = this.findSidecar(id);
-        if (!sidecar) { return null; }
+        if (!sidecar) {
+            return null;
+        }
         let entry: HistoryEntryShape;
         try {
-            entry = JSON.parse(fs.readFileSync(sidecar.path, 'utf-8')) as HistoryEntryShape;
+            entry = JSON.parse(
+                fs.readFileSync(sidecar.path, "utf-8"),
+            ) as HistoryEntryShape;
         } catch {
             return null;
         }
-        const pngPath = path.join(path.dirname(sidecar.path), entry.pngPath ?? `${id}.png`);
-        if (!fs.existsSync(pngPath)) { return null; }
+        const pngPath = path.join(
+            path.dirname(sidecar.path),
+            entry.pngPath ?? `${id}.png`,
+        );
+        if (!fs.existsSync(pngPath)) {
+            return null;
+        }
         const result: HistoryReadResult = {
             entry,
             previewMetadata: entry.previewMetadata,
@@ -114,7 +128,7 @@ export class HistoryReader {
         };
         if (inline) {
             try {
-                result.pngBytes = fs.readFileSync(pngPath).toString('base64');
+                result.pngBytes = fs.readFileSync(pngPath).toString("base64");
             } catch {
                 /* leave pngBytes undefined — caller falls back to pngPath */
             }
@@ -128,11 +142,19 @@ export class HistoryReader {
      * only — the FS reader returns the metadata fields and leaves the
      * pixel slots undefined.
      */
-    diff(from: string, to: string, mode: HistoryDiffMode = 'metadata'): HistoryDiffResult | null {
-        if (mode === 'pixel') { return null; }
+    diff(
+        from: string,
+        to: string,
+        mode: HistoryDiffMode = "metadata",
+    ): HistoryDiffResult | null {
+        if (mode === "pixel") {
+            return null;
+        }
         const a = this.read(from);
         const b = this.read(to);
-        if (!a || !b) { return null; }
+        if (!a || !b) {
+            return null;
+        }
         const aEntry = a.entry as HistoryEntryShape;
         const bEntry = b.entry as HistoryEntryShape;
         if (aEntry.previewId !== bEntry.previewId) {
@@ -158,7 +180,9 @@ export class HistoryReader {
      * id→folder map keyed off list().
      */
     private findSidecar(id: string): { path: string } | null {
-        if (!fs.existsSync(this.historyDir)) { return null; }
+        if (!fs.existsSync(this.historyDir)) {
+            return null;
+        }
         let entries: fs.Dirent[];
         try {
             entries = fs.readdirSync(this.historyDir, { withFileTypes: true });
@@ -166,9 +190,17 @@ export class HistoryReader {
             return null;
         }
         for (const entry of entries) {
-            if (!entry.isDirectory()) { continue; }
-            const candidate = path.join(this.historyDir, entry.name, `${id}.json`);
-            if (fs.existsSync(candidate)) { return { path: candidate }; }
+            if (!entry.isDirectory()) {
+                continue;
+            }
+            const candidate = path.join(
+                this.historyDir,
+                entry.name,
+                `${id}.json`,
+            );
+            if (fs.existsSync(candidate)) {
+                return { path: candidate };
+            }
         }
         return null;
     }
@@ -199,9 +231,15 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
 function clampLimit(limit: number | undefined): number {
-    if (limit == null) { return DEFAULT_LIMIT; }
-    if (limit < 1) { return 1; }
-    if (limit > MAX_LIMIT) { return MAX_LIMIT; }
+    if (limit == null) {
+        return DEFAULT_LIMIT;
+    }
+    if (limit < 1) {
+        return 1;
+    }
+    if (limit > MAX_LIMIT) {
+        return MAX_LIMIT;
+    }
     return limit;
 }
 
@@ -211,35 +249,62 @@ function clampLimit(limit: number | undefined): number {
  * just feed the value back in — no requirement for cross-source stability.
  */
 function parseCursor(cursor: string | undefined): number {
-    if (!cursor) { return 0; }
+    if (!cursor) {
+        return 0;
+    }
     const n = parseInt(cursor, 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-function encodeCursor(offset: number): string { return String(offset); }
+function encodeCursor(offset: number): string {
+    return String(offset);
+}
 
-function matchesFilter(entry: HistoryEntryShape, params: HistoryListParams): boolean {
-    if (params.previewId && entry.previewId !== params.previewId) { return false; }
-    if (params.since && (entry.timestamp ?? '') < params.since) { return false; }
-    if (params.until && (entry.timestamp ?? '') > params.until) { return false; }
-    if (params.commit) {
-        const c = entry.git?.commit ?? '';
-        if (!c.startsWith(params.commit)) { return false; }
+function matchesFilter(
+    entry: HistoryEntryShape,
+    params: HistoryListParams,
+): boolean {
+    if (params.previewId && entry.previewId !== params.previewId) {
+        return false;
     }
-    if (params.branch && entry.git?.branch !== params.branch) { return false; }
+    if (params.since && (entry.timestamp ?? "") < params.since) {
+        return false;
+    }
+    if (params.until && (entry.timestamp ?? "") > params.until) {
+        return false;
+    }
+    if (params.commit) {
+        const c = entry.git?.commit ?? "";
+        if (!c.startsWith(params.commit)) {
+            return false;
+        }
+    }
+    if (params.branch && entry.git?.branch !== params.branch) {
+        return false;
+    }
     if (params.branchPattern) {
         try {
             const re = new RegExp(params.branchPattern);
-            if (!re.test(entry.git?.branch ?? '')) { return false; }
+            if (!re.test(entry.git?.branch ?? "")) {
+                return false;
+            }
         } catch {
             // Bad regex from caller — treat as no-match rather than throwing
             // out of the list call. The panel can show "filter invalid".
             return false;
         }
     }
-    if (params.worktreePath && entry.worktree?.path !== params.worktreePath) { return false; }
-    if (params.agentId && entry.worktree?.agentId !== params.agentId) { return false; }
-    if (params.sourceKind && entry.source?.kind !== params.sourceKind) { return false; }
-    if (params.sourceId && entry.source?.id !== params.sourceId) { return false; }
+    if (params.worktreePath && entry.worktree?.path !== params.worktreePath) {
+        return false;
+    }
+    if (params.agentId && entry.worktree?.agentId !== params.agentId) {
+        return false;
+    }
+    if (params.sourceKind && entry.source?.kind !== params.sourceKind) {
+        return false;
+    }
+    if (params.sourceId && entry.source?.id !== params.sourceId) {
+        return false;
+    }
     return true;
 }

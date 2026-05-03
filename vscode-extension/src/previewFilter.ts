@@ -1,4 +1,4 @@
-import { PreviewInfo } from './types';
+import { PreviewInfo } from "./types";
 
 export interface FilterState {
     sourceFile: string | null;
@@ -7,12 +7,23 @@ export interface FilterState {
     group: string | null;
 }
 
-export function filterPreviews(previews: PreviewInfo[], filter: FilterState): PreviewInfo[] {
-    return previews.filter(p => {
-        if (filter.sourceFile && p.sourceFile !== filter.sourceFile) { return false; }
-        if (filter.functionName && p.functionName !== filter.functionName) { return false; }
-        if (filter.label && (p.params.name ?? '') !== filter.label) { return false; }
-        if (filter.group && (p.params.group ?? '') !== filter.group) { return false; }
+export function filterPreviews(
+    previews: PreviewInfo[],
+    filter: FilterState,
+): PreviewInfo[] {
+    return previews.filter((p) => {
+        if (filter.sourceFile && p.sourceFile !== filter.sourceFile) {
+            return false;
+        }
+        if (filter.functionName && p.functionName !== filter.functionName) {
+            return false;
+        }
+        if (filter.label && (p.params.name ?? "") !== filter.label) {
+            return false;
+        }
+        if (filter.group && (p.params.group ?? "") !== filter.group) {
+            return false;
+        }
         return true;
     });
 }
@@ -31,10 +42,16 @@ export function extractFilterOptions(previews: PreviewInfo[]): FilterOptions {
     const groups = new Set<string>();
 
     for (const p of previews) {
-        if (p.sourceFile) { sourceFiles.add(p.sourceFile); }
+        if (p.sourceFile) {
+            sourceFiles.add(p.sourceFile);
+        }
         functionNames.add(p.functionName);
-        if (p.params.name) { labels.add(p.params.name); }
-        if (p.params.group) { groups.add(p.params.group); }
+        if (p.params.name) {
+            labels.add(p.params.name);
+        }
+        if (p.params.group) {
+            groups.add(p.params.group);
+        }
     }
 
     return {

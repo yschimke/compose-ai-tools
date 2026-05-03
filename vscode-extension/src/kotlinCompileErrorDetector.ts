@@ -28,7 +28,7 @@
  * the user-visible log via the normal logger path.
  */
 
-import { CompileError } from './compileErrors';
+import { CompileError } from "./compileErrors";
 
 /**
  * Match `e:` lines emitted by `kotlinc`. The path can be either a
@@ -43,10 +43,11 @@ import { CompileError } from './compileErrors';
  * after we've matched the line/column digits, leaving the drive-letter
  * `:` inside the path capture.
  */
-const KOTLIN_ERROR_RE = /^e:\s+(?:file:\/\/)?(.+?):(\d+):(\d+)(?::?\s*(?:error:\s*)?)(.+)$/;
+const KOTLIN_ERROR_RE =
+    /^e:\s+(?:file:\/\/)?(.+?):(\d+):(\d+)(?::?\s*(?:error:\s*)?)(.+)$/;
 
 export class KotlinCompileErrorDetector {
-    private buffer = '';
+    private buffer = "";
     private errors: CompileError[] = [];
     /** Bound the count we hold so a runaway compile (~100s of errors on
      *  a broken refactor) doesn't grow the array without limit. The
@@ -62,16 +63,16 @@ export class KotlinCompileErrorDetector {
      */
     consume(chunk: string): void {
         this.buffer += chunk;
-        let nl = this.buffer.indexOf('\n');
+        let nl = this.buffer.indexOf("\n");
         while (nl !== -1) {
             const line = this.buffer.slice(0, nl);
             this.buffer = this.buffer.slice(nl + 1);
             this.scanLine(line);
-            nl = this.buffer.indexOf('\n');
+            nl = this.buffer.indexOf("\n");
         }
         if (this.buffer.length > 16 * 1024) {
             this.scanLine(this.buffer);
-            this.buffer = '';
+            this.buffer = "";
         }
     }
 
@@ -79,7 +80,7 @@ export class KotlinCompileErrorDetector {
     end(): void {
         if (this.buffer.length > 0) {
             this.scanLine(this.buffer);
-            this.buffer = '';
+            this.buffer = "";
         }
     }
 
@@ -90,15 +91,21 @@ export class KotlinCompileErrorDetector {
     }
 
     private scanLine(line: string): void {
-        if (this.errors.length >= KotlinCompileErrorDetector.MAX_ERRORS) { return; }
-        const trimmed = line.replace(/\r$/, ''); // strip CR from CRLF lines
+        if (this.errors.length >= KotlinCompileErrorDetector.MAX_ERRORS) {
+            return;
+        }
+        const trimmed = line.replace(/\r$/, ""); // strip CR from CRLF lines
         const m = KOTLIN_ERROR_RE.exec(trimmed);
-        if (!m) { return; }
+        if (!m) {
+            return;
+        }
         const path = m[1];
         const lineNum = parseInt(m[2], 10);
         const column = parseInt(m[3], 10);
         const message = m[4].trim();
-        if (!Number.isFinite(lineNum) || !Number.isFinite(column)) { return; }
+        if (!Number.isFinite(lineNum) || !Number.isFinite(column)) {
+            return;
+        }
         this.errors.push({
             file: basename(path),
             path,
@@ -117,15 +124,21 @@ export class KotlinCompileErrorDetector {
  * compile-error banner without re-parsing the log.
  */
 export class KotlinCompileError extends Error {
-    constructor(readonly errors: CompileError[], readonly task: string) {
+    constructor(
+        readonly errors: CompileError[],
+        readonly task: string,
+    ) {
         super(
             `Gradle task ${task} failed: ${errors.length} Kotlin compile error(s).`,
         );
-        this.name = 'KotlinCompileError';
+        this.name = "KotlinCompileError";
     }
 }
 
 function basename(filePath: string): string {
-    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const slash = Math.max(
+        filePath.lastIndexOf("/"),
+        filePath.lastIndexOf("\\"),
+    );
     return slash >= 0 ? filePath.slice(slash + 1) : filePath;
 }

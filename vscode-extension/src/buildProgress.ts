@@ -16,14 +16,14 @@
  * lap itself or finish early.
  */
 export type PhaseId =
-    | 'starting'
-    | 'configuring'
-    | 'compiling'
-    | 'resolving'
-    | 'discovering'
-    | 'rendering'
-    | 'loading'
-    | 'done';
+    | "starting"
+    | "configuring"
+    | "compiling"
+    | "resolving"
+    | "discovering"
+    | "rendering"
+    | "loading"
+    | "done";
 
 export interface PhaseDescriptor {
     id: PhaseId;
@@ -43,19 +43,46 @@ export interface PhaseDescriptor {
  * line arrives without committing to a percent.
  */
 export const PHASES: readonly PhaseDescriptor[] = [
-    { id: 'starting',    label: 'Starting',          weight: 0,    defaultMs: 200 },
-    { id: 'configuring', label: 'Configuring Gradle', weight: 0.08, defaultMs: 1500 },
-    { id: 'compiling',   label: 'Compiling Kotlin',  weight: 0.30, defaultMs: 4000 },
-    { id: 'resolving',   label: 'Resolving classpath', weight: 0.07, defaultMs: 1000 },
-    { id: 'discovering', label: 'Discovering @Preview', weight: 0.10, defaultMs: 1500 },
-    { id: 'rendering',   label: 'Rendering previews', weight: 0.35, defaultMs: 8000 },
-    { id: 'loading',     label: 'Loading images',    weight: 0.10, defaultMs: 600 },
-    { id: 'done',        label: 'Done',              weight: 0,    defaultMs: 0 },
+    { id: "starting", label: "Starting", weight: 0, defaultMs: 200 },
+    {
+        id: "configuring",
+        label: "Configuring Gradle",
+        weight: 0.08,
+        defaultMs: 1500,
+    },
+    {
+        id: "compiling",
+        label: "Compiling Kotlin",
+        weight: 0.3,
+        defaultMs: 4000,
+    },
+    {
+        id: "resolving",
+        label: "Resolving classpath",
+        weight: 0.07,
+        defaultMs: 1000,
+    },
+    {
+        id: "discovering",
+        label: "Discovering @Preview",
+        weight: 0.1,
+        defaultMs: 1500,
+    },
+    {
+        id: "rendering",
+        label: "Rendering previews",
+        weight: 0.35,
+        defaultMs: 8000,
+    },
+    { id: "loading", label: "Loading images", weight: 0.1, defaultMs: 600 },
+    { id: "done", label: "Done", weight: 0, defaultMs: 0 },
 ];
 
 const PHASE_INDEX: Record<PhaseId, number> = (() => {
     const out: Partial<Record<PhaseId, number>> = {};
-    PHASES.forEach((p, i) => { out[p.id] = i; });
+    PHASES.forEach((p, i) => {
+        out[p.id] = i;
+    });
     return out as Record<PhaseId, number>;
 })();
 
@@ -91,29 +118,43 @@ export type PhaseDurations = Partial<Record<PhaseId, number>>;
  */
 export function classifyTask(taskName: string): PhaseId | null {
     // Strip the leading ':' and any project path, focus on the task segment.
-    const segments = taskName.split(':').filter(s => s.length > 0);
+    const segments = taskName.split(":").filter((s) => s.length > 0);
     const tail = segments[segments.length - 1] ?? taskName;
     const lower = tail.toLowerCase();
 
-    if (lower.includes('renderpreviews') || lower.includes('renderallpreviews')
-        || lower.includes('renderandroidresources')) {
-        return 'rendering';
+    if (
+        lower.includes("renderpreviews") ||
+        lower.includes("renderallpreviews") ||
+        lower.includes("renderandroidresources")
+    ) {
+        return "rendering";
     }
-    if (lower.includes('discoverpreviews') || lower.includes('discoverandroidresources')
-        || lower.includes('collectpreviewinfo')) {
-        return 'discovering';
+    if (
+        lower.includes("discoverpreviews") ||
+        lower.includes("discoverandroidresources") ||
+        lower.includes("collectpreviewinfo")
+    ) {
+        return "discovering";
     }
-    if (lower.startsWith('compile')
-        && (lower.endsWith('kotlin') || lower.endsWith('java') || lower.endsWith('javac')
-            || lower.includes('javawith') || lower.includes('rendershards'))) {
-        return 'compiling';
+    if (
+        lower.startsWith("compile") &&
+        (lower.endsWith("kotlin") ||
+            lower.endsWith("java") ||
+            lower.endsWith("javac") ||
+            lower.includes("javawith") ||
+            lower.includes("rendershards"))
+    ) {
+        return "compiling";
     }
     // AGP task names embed the variant in the middle: `processDebugResources`,
     // `mergeReleaseResources`. Match the verb prefix + the trailing
     // `resources` suffix rather than a literal substring.
-    if (lower.includes('extractpreviewclasses') || lower.includes('generaterendershards')
-        || /^(merge|process)\w*resources$/.test(lower)) {
-        return 'resolving';
+    if (
+        lower.includes("extractpreviewclasses") ||
+        lower.includes("generaterendershards") ||
+        /^(merge|process)\w*resources$/.test(lower)
+    ) {
+        return "resolving";
     }
     return null;
 }
@@ -145,8 +186,8 @@ export interface ProgressTrackerOptions {
  * persist as calibration.
  */
 export class BuildProgressTracker {
-    private buffer = '';
-    private currentPhase: PhaseId = 'starting';
+    private buffer = "";
+    private currentPhase: PhaseId = "starting";
     private phaseEnteredAt = 0;
     private startedAt = 0;
     private lastEmittedPercent = 0;
@@ -170,8 +211,11 @@ export class BuildProgressTracker {
         this.onProgress = opts.onProgress;
         this.calibration = opts.calibration ?? {};
         this.nowFn = opts.now ?? Date.now;
-        this.setIntervalFn = opts.setInterval ?? ((cb, ms) => setInterval(cb, ms));
-        this.clearIntervalFn = opts.clearInterval ?? ((h) => clearInterval(h as ReturnType<typeof setInterval>));
+        this.setIntervalFn =
+            opts.setInterval ?? ((cb, ms) => setInterval(cb, ms));
+        this.clearIntervalFn =
+            opts.clearInterval ??
+            ((h) => clearInterval(h as ReturnType<typeof setInterval>));
         this.tickMs = opts.tickMs ?? 200;
     }
 
@@ -179,7 +223,7 @@ export class BuildProgressTracker {
         const now = this.nowFn();
         this.startedAt = now;
         this.phaseEnteredAt = now;
-        this.currentPhase = 'starting';
+        this.currentPhase = "starting";
         this.lastEmittedPercent = 0;
         this.finished = false;
         this.emit();
@@ -193,7 +237,9 @@ export class BuildProgressTracker {
      * the task returns).
      */
     enterPhase(phase: PhaseId): void {
-        if (this.finished) { return; }
+        if (this.finished) {
+            return;
+        }
         this.transitionTo(phase);
     }
 
@@ -202,29 +248,33 @@ export class BuildProgressTracker {
      * repeatedly with arbitrary chunk boundaries.
      */
     consume(chunk: string): void {
-        if (this.finished) { return; }
+        if (this.finished) {
+            return;
+        }
         this.buffer += chunk;
-        let nl = this.buffer.indexOf('\n');
+        let nl = this.buffer.indexOf("\n");
         while (nl !== -1) {
             const line = this.buffer.slice(0, nl);
             this.buffer = this.buffer.slice(nl + 1);
             this.scanLine(line);
-            nl = this.buffer.indexOf('\n');
+            nl = this.buffer.indexOf("\n");
         }
         // Bound runaway buffering when output arrives without newlines.
         if (this.buffer.length > 16 * 1024) {
             this.scanLine(this.buffer);
-            this.buffer = '';
+            this.buffer = "";
         }
     }
 
     /** Marks the build finished (success or failure). Drives the bar to 100%. */
     finish(): void {
-        if (this.finished) { return; }
+        if (this.finished) {
+            return;
+        }
         // Close out the running phase so its duration lands in phaseDurations.
         this.recordPhaseDuration();
         this.finished = true;
-        this.currentPhase = 'done';
+        this.currentPhase = "done";
         this.lastEmittedPercent = 1;
         this.emit();
         this.stopTicking();
@@ -232,20 +282,24 @@ export class BuildProgressTracker {
 
     /** Cancel without driving to 100% — used when a refresh is superseded. */
     abort(): void {
-        if (this.finished) { return; }
+        if (this.finished) {
+            return;
+        }
         this.finished = true;
         this.stopTicking();
     }
 
     private scanLine(line: string): void {
-        if (CONFIGURE_LINE_RE.test(line) && this.currentPhase === 'starting') {
-            this.transitionTo('configuring');
+        if (CONFIGURE_LINE_RE.test(line) && this.currentPhase === "starting") {
+            this.transitionTo("configuring");
             return;
         }
         const taskMatch = TASK_LINE_RE.exec(line);
         if (taskMatch) {
             const phase = classifyTask(taskMatch[1]);
-            if (phase) { this.transitionTo(phase); }
+            if (phase) {
+                this.transitionTo(phase);
+            }
             return;
         }
         if (BUILD_DONE_RE.test(line)) {
@@ -253,7 +307,7 @@ export class BuildProgressTracker {
             // extension still has post-task work to do (image loading), so we
             // jump to `loading` rather than `done` here. The caller calls
             // finish() once that work is complete.
-            this.transitionTo('loading');
+            this.transitionTo("loading");
         }
     }
 
@@ -263,7 +317,9 @@ export class BuildProgressTracker {
         // Phases are monotonic — a stray `discoverPreviews` line landing in the
         // middle of a render doesn't drag the bar backward. Same-phase
         // signals are no-ops.
-        if (targetIdx <= currentIdx) { return; }
+        if (targetIdx <= currentIdx) {
+            return;
+        }
         this.recordPhaseDuration();
         this.currentPhase = phase;
         this.phaseEnteredAt = this.nowFn();
@@ -273,13 +329,19 @@ export class BuildProgressTracker {
     private recordPhaseDuration(): void {
         const now = this.nowFn();
         const elapsed = now - this.phaseEnteredAt;
-        if (elapsed > 0 && this.currentPhase !== 'starting' && this.currentPhase !== 'done') {
+        if (
+            elapsed > 0 &&
+            this.currentPhase !== "starting" &&
+            this.currentPhase !== "done"
+        ) {
             this.phaseDurations[this.currentPhase] = elapsed;
         }
     }
 
     private tick(): void {
-        if (this.finished) { return; }
+        if (this.finished) {
+            return;
+        }
         this.emit();
     }
 
@@ -287,7 +349,7 @@ export class BuildProgressTracker {
         const state = this.computeState();
         // Don't emit a percent that's lower than what we just sent — the bar
         // is monotonic and going backward looks like a bug.
-        if (state.percent < this.lastEmittedPercent && state.phase !== 'done') {
+        if (state.percent < this.lastEmittedPercent && state.phase !== "done") {
             state.percent = this.lastEmittedPercent;
         }
         this.lastEmittedPercent = state.percent;
@@ -296,22 +358,27 @@ export class BuildProgressTracker {
 
     private computeState(): ProgressState {
         const phase = PHASES[PHASE_INDEX[this.currentPhase]];
-        if (this.currentPhase === 'done') {
-            return { phase: 'done', label: 'Done', percent: 1, slow: false };
+        if (this.currentPhase === "done") {
+            return { phase: "done", label: "Done", percent: 1, slow: false };
         }
-        if (this.currentPhase === 'starting') {
-            return { phase: 'starting', label: phase.label, percent: 0, slow: false };
+        if (this.currentPhase === "starting") {
+            return {
+                phase: "starting",
+                label: phase.label,
+                percent: 0,
+                slow: false,
+            };
         }
-        const { phaseStart, phaseEnd } = this.phaseBoundaries(this.currentPhase);
+        const { phaseStart, phaseEnd } = this.phaseBoundaries(
+            this.currentPhase,
+        );
         const expectedMs = this.expectedPhaseMs(this.currentPhase);
         const elapsed = this.nowFn() - this.phaseEnteredAt;
         // Asymptotic curve: hits ~63% of the phase span at expectedMs, ~95%
         // at 3*expectedMs. Never crosses the next phase boundary unless a
         // task signal explicitly transitions us there. Keeps the bar honest
         // when a phase outruns its estimate (cold Robolectric sandbox).
-        const ratio = expectedMs > 0
-            ? 1 - Math.exp(-elapsed / expectedMs)
-            : 0;
+        const ratio = expectedMs > 0 ? 1 - Math.exp(-elapsed / expectedMs) : 0;
         // Soft cap at 95% of the phase span — leaves visible headroom for the
         // transition into the next phase, so the bar always has somewhere to
         // jump forward to.
@@ -340,7 +407,10 @@ export class BuildProgressTracker {
      * up more of the bar than a fast one. Falls back to the static default
      * weights when no calibration is supplied.
      */
-    private phaseBoundaries(phase: PhaseId): { phaseStart: number; phaseEnd: number } {
+    private phaseBoundaries(phase: PhaseId): {
+        phaseStart: number;
+        phaseEnd: number;
+    } {
         const weights = this.normalisedWeights();
         let acc = 0;
         for (const p of PHASES) {
@@ -361,20 +431,25 @@ export class BuildProgressTracker {
         let total = 0;
         for (const p of PHASES) {
             const fromCalib = this.calibration[p.id];
-            const w = fromCalib != null
-                ? Math.max(50, fromCalib) // ms — clamp so a 0ms phase doesn't vanish
-                : Math.max(50, p.defaultMs * (p.weight > 0 ? 1 : 0));
+            const w =
+                fromCalib != null
+                    ? Math.max(50, fromCalib) // ms — clamp so a 0ms phase doesn't vanish
+                    : Math.max(50, p.defaultMs * (p.weight > 0 ? 1 : 0));
             raw[p.id] = w;
             total += w;
         }
         if (total <= 0) {
             // No data anywhere — fall back to descriptor weights as-is.
             const out: Record<PhaseId, number> = {} as Record<PhaseId, number>;
-            for (const p of PHASES) { out[p.id] = p.weight; }
+            for (const p of PHASES) {
+                out[p.id] = p.weight;
+            }
             return out;
         }
         const out: Record<PhaseId, number> = {} as Record<PhaseId, number>;
-        for (const p of PHASES) { out[p.id] = raw[p.id] / total; }
+        for (const p of PHASES) {
+            out[p.id] = raw[p.id] / total;
+        }
         return out;
     }
 
@@ -392,11 +467,16 @@ export class BuildProgressTracker {
  * on the latest sample (alpha=0.5) so a single fast or slow run is visible
  * on the next refresh, without making estimates pure noise.
  */
-export function mergeCalibration(prior: PhaseDurations, latest: PhaseDurations): PhaseDurations {
+export function mergeCalibration(
+    prior: PhaseDurations,
+    latest: PhaseDurations,
+): PhaseDurations {
     const out: PhaseDurations = { ...prior };
     for (const key of Object.keys(latest) as PhaseId[]) {
         const lv = latest[key];
-        if (lv == null) { continue; }
+        if (lv == null) {
+            continue;
+        }
         const pv = out[key];
         out[key] = pv == null ? lv : Math.round(pv * 0.5 + lv * 0.5);
     }
