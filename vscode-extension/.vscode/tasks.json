@@ -21,13 +21,13 @@
             "problemMatcher": "$tsc-watch"
         },
         {
-            "label": "gradle: assemble plugin",
+            "label": "gradle: publish plugin to mavenLocal",
             "type": "shell",
             "command": "../gradlew",
             "args": [
                 "-p",
                 "../gradle-plugin",
-                "assemble"
+                "publishToMavenLocal"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -89,7 +89,7 @@
             "dependsOrder": "sequence",
             "dependsOn": [
                 "npm: compile",
-                "gradle: assemble plugin",
+                "gradle: publish plugin to mavenLocal",
                 "extension: prepare artifact folder",
                 "gradle: install CLI dist",
                 "meshcore: install CLI"
