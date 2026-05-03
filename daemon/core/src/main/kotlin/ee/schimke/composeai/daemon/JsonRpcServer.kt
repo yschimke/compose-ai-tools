@@ -1386,6 +1386,14 @@ class JsonRpcServer(
     hostIdToOverrides.remove(failure.hostId)
     inFlightRenders.remove(failure.hostId)
     previewIdsWithOverridesInFlight.remove(previewId)
+    try {
+      dataProducts.onRenderFailed(previewId, failure.cause)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: data product onRenderFailed failed for $previewId " +
+          "(${t.javaClass.simpleName}: ${t.message})"
+      )
+    }
     // D3 — wake any data/fetch waiter that queued this render so it can return
     // DataProductFetchFailed rather than ride out its budget.
     dataFetchWaiters

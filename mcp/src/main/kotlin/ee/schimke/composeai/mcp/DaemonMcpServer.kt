@@ -730,7 +730,7 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
-                "kind":{"type":"string","description":"Data-product kind, e.g. a11y/hierarchy, a11y/atf, layout/inspector, compose/semantics."},
+                "kind":{"type":"string","description":"Data-product kind, e.g. a11y/hierarchy, a11y/atf, layout/inspector, compose/semantics, test/failure."},
                 "params":{"type":"object","description":"Optional per-kind parameters (e.g. {nodeId} for layout/inspector). Forwarded verbatim to the daemon's data/fetch."},
                 "inline":{"type":"boolean","description":"Default true. When false, the daemon returns a `path` to a sibling JSON file instead of inlining the payload."}
               },

@@ -209,6 +209,84 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  @Test(timeout = 30_000)
+  fun render_failure_notifies_data_product_registry_before_render_failed() {
+    val clientToServerOut = PipedOutputStream()
+    val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
+    val serverToClientOut = PipedOutputStream()
+    val serverToClientIn = PipedInputStream(serverToClientOut, 64 * 1024)
+
+    val registry = FailureRecordingDataProductRegistry()
+    val host = FakeRenderHost(failureToThrow = IllegalStateException("deliberate test failure"))
+    val server =
+      JsonRpcServer(
+        input = clientToServerIn,
+        output = serverToClientOut,
+        host = host,
+        daemonVersion = "test",
+        dataProducts = registry,
+      )
+    val serverThread =
+      Thread({ server.run() }, "json-rpc-server-test-failure-data").apply { isDaemon = true }
+    serverThread.start()
+
+    val reader = ContentLengthFramer(serverToClientIn)
+    val received = LinkedBlockingQueue<JsonObject>()
+    Thread(
+        {
+          try {
+            while (true) {
+              val frame = reader.readFrame() ?: break
+              val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+              received.put(obj)
+            }
+          } catch (_: Throwable) {}
+        },
+        "json-rpc-server-test-failure-data-reader",
+      )
+      .apply { isDaemon = true }
+      .start()
+
+    try {
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "moduleId":":test","moduleProjectDir":"/tmp",
+              "capabilities":{"visibility":true,"metrics":false}}}""",
+      )
+      assertNotNull(pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 })
+      writeFrame(clientToServerOut, """{"jsonrpc":"2.0","method":"initialized","params":{}}""")
+
+      writeFrame(
+        clientToServerOut,
+        """{"jsonrpc":"2.0","id":2,"method":"renderNow","params":{
+              "previews":["preview-fails"],"tier":"fast"}}""",
+      )
+
+      val renderResponse = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 2 }
+      assertNotNull("renderNow response should arrive", renderResponse)
+
+      assertNotNull(
+        "renderFailed notification should be emitted",
+        pollUntil(received) {
+          it["method"]?.jsonPrimitive?.contentOrNull == "renderFailed" &&
+            it["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == "preview-fails"
+        },
+      )
+      assertTrue(
+        "data product registry should receive the render failure",
+        registry.failureLatch.await(5, TimeUnit.SECONDS),
+      )
+      assertEquals("preview-fails", registry.previewId)
+      assertEquals("deliberate test failure", registry.cause?.message)
+    } finally {
+      clientToServerOut.close()
+      serverToClientOut.close()
+      serverThread.join(5_000)
+    }
+  }
+
   /**
    * B2.2 phase 1 — when the daemon is constructed with a non-empty [PreviewIndex], the `initialize`
    * response's `manifest` block reports the absolute path of the loaded `previews.json` and the
@@ -1299,6 +1377,7 @@ private class FakeRenderHost(
    */
   private val metricsToReturn: Map<String, Long>? = null,
   private val androidSdkToAdvertise: Int? = null,
+  private val failureToThrow: Throwable? = null,
 ) : RenderHost {
 
   override val androidSdk: Int?
@@ -1347,6 +1426,7 @@ private class FakeRenderHost(
 
   override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
     require(request is RenderRequest.Render)
+    failureToThrow?.let { throw it }
     queue.put(request)
     val q = results.computeIfAbsent(request.id) { LinkedBlockingQueue() }
     return q.poll(timeoutMs, TimeUnit.MILLISECONDS)
@@ -1357,6 +1437,33 @@ private class FakeRenderHost(
     stopped = true
     queue.put(RenderRequest.Shutdown)
     worker.join(timeoutMs)
+  }
+}
+
+private class FailureRecordingDataProductRegistry : DataProductRegistry {
+  val failureLatch = CountDownLatch(1)
+  @Volatile var previewId: String? = null
+  @Volatile var cause: Throwable? = null
+
+  override val capabilities =
+    emptyList<ee.schimke.composeai.daemon.protocol.DataProductCapability>()
+
+  override fun fetch(
+    previewId: String,
+    kind: String,
+    params: kotlinx.serialization.json.JsonElement?,
+    inline: Boolean,
+  ): DataProductRegistry.Outcome = DataProductRegistry.Outcome.Unknown
+
+  override fun attachmentsFor(
+    previewId: String,
+    kinds: Set<String>,
+  ): List<ee.schimke.composeai.daemon.protocol.DataProductAttachment> = emptyList()
+
+  override fun onRenderFailed(previewId: String, cause: Throwable) {
+    this.previewId = previewId
+    this.cause = cause
+    failureLatch.countDown()
   }
 }
 
