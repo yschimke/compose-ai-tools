@@ -168,6 +168,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // the toggle to the new target.
         let a11yOverlayPreviewId = null;
         const enabledFocusProducts = new Set();
+        let focusProductPickerOpen = false;
+        let focusHistoryOpen = false;
         const focusPosition = document.getElementById('focus-position');
         const progressBar = document.getElementById('progress-bar');
         const progressFill = progressBar.querySelector('.progress-fill');
@@ -1035,71 +1037,50 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             const p = allPreviews.find(pp => pp.id === previewId);
             if (!previewId || !p) return;
 
-            const history = document.createElement('section');
-            history.className = 'focus-panel focus-history-panel';
-            history.appendChild(sectionHeader('history', 'History'));
-            const historyActions = document.createElement('div');
-            historyActions.className = 'focus-actions';
-            historyActions.appendChild(actionButton('git-compare', 'HEAD', 'Diff vs last archived render', () => {
-                requestFocusedDiff('head');
-            }));
-            historyActions.appendChild(actionButton('source-control', 'main', 'Diff vs latest archived main render', () => {
-                requestFocusedDiff('main');
-            }));
-            history.appendChild(historyActions);
-
-            const data = document.createElement('section');
-            data.className = 'focus-panel focus-products-panel';
-            data.appendChild(sectionHeader('layers', 'Data Products'));
-            const products = document.createElement('div');
-            products.className = 'focus-product-grid';
+            const inspect = document.createElement('section');
+            inspect.className = 'focus-panel focus-inspect-panel';
+            inspect.appendChild(sectionHeader('search', 'Inspect'));
             const findings = cardA11yFindings.get(previewId) || p.a11yFindings || [];
             const nodes = cardA11yNodes.get(previewId) || p.a11yNodes || [];
-            products.appendChild(productToggle('eye', 'Accessibility', findings.length > 0
-                ? findings.length + ' finding' + (findings.length === 1 ? '' : 's')
-                : 'Overlay', previewId === a11yOverlayPreviewId, findings.length > 0 ? 'warn' : 'idle',
-                () => toggleA11yOverlay()));
-            products.appendChild(productToggle('list-tree', 'Layout', nodes.length > 0
-                ? nodes.length + ' node' + (nodes.length === 1 ? '' : 's')
-                : 'Overlay', previewId === a11yOverlayPreviewId, nodes.length > 0 ? 'ok' : 'idle',
-                () => toggleA11yOverlay()));
-            products.appendChild(productToggle('symbol-string', 'Strings', 'Section',
-                enabledFocusProducts.has('strings'), 'idle', () => toggleFocusProduct('strings')));
-            products.appendChild(productToggle('file-code', 'Resources', 'Section',
-                enabledFocusProducts.has('resources'), 'idle', () => toggleFocusProduct('resources')));
-            products.appendChild(productToggle('text-size', 'Fonts', 'Section',
-                enabledFocusProducts.has('fonts'), 'idle', () => toggleFocusProduct('fonts')));
-            products.appendChild(productToggle('pulse', 'Render', 'Section',
-                enabledFocusProducts.has('render'), 'idle', () => toggleFocusProduct('render')));
-            products.appendChild(productToggle('symbol-color', 'Theme', 'Section',
-                enabledFocusProducts.has('theme'), 'idle', () => toggleFocusProduct('theme')));
-            products.appendChild(productToggle('sync', 'Recomposition', interactivePreviewIds.has(previewId) ? 'Live' : 'Section',
-                enabledFocusProducts.has('recomposition') || interactivePreviewIds.has(previewId),
-                interactivePreviewIds.has(previewId) ? 'ok' : 'idle',
-                () => toggleFocusProduct('recomposition')));
-            data.appendChild(products);
-
-            const controls = document.createElement('section');
-            controls.className = 'focus-panel focus-controls-panel';
-            controls.appendChild(sectionHeader('settings-gear', 'Tools'));
-            const toolActions = document.createElement('div');
-            toolActions.className = 'focus-actions';
-            toolActions.appendChild(actionButton('eye', 'A11y', 'Toggle accessibility overlay', () => {
-                toggleA11yOverlay();
-            }));
-            toolActions.appendChild(actionButton('device-mobile', 'Device', 'Launch on connected Android device', () => {
-                requestLaunchOnDevice();
-            }));
-            toolActions.appendChild(actionButton('circle-large-outline', 'Live', 'Toggle live preview', () => {
-                toggleInteractive(false);
-            }));
-            controls.appendChild(toolActions);
-
-            focusInspector.appendChild(history);
-            focusInspector.appendChild(data);
-            focusInspector.appendChild(controls);
-            const placeholders = buildFocusPlaceholders(p);
-            if (placeholders) focusInspector.appendChild(placeholders);
+            inspect.appendChild(productPicker([
+                {
+                    icon: 'eye',
+                    label: 'Accessibility',
+                    value: findings.length > 0
+                        ? findings.length + ' finding' + (findings.length === 1 ? '' : 's')
+                        : 'Overlay',
+                    enabled: previewId === a11yOverlayPreviewId,
+                    state: findings.length > 0 ? 'warn' : 'idle',
+                    onToggle: () => toggleA11yOverlay(),
+                },
+                {
+                    icon: 'list-tree',
+                    label: 'Layout',
+                    value: nodes.length > 0
+                        ? nodes.length + ' node' + (nodes.length === 1 ? '' : 's')
+                        : 'Placeholder',
+                    enabled: enabledFocusProducts.has('layout'),
+                    state: nodes.length > 0 ? 'ok' : 'idle',
+                    onToggle: () => toggleFocusProduct('layout'),
+                },
+                productSpec('symbol-string', 'Strings', 'strings'),
+                productSpec('file-code', 'Resources', 'resources'),
+                productSpec('text-size', 'Fonts', 'fonts'),
+                productSpec('pulse', 'Render', 'render'),
+                productSpec('symbol-color', 'Theme', 'theme'),
+                {
+                    icon: 'sync',
+                    label: 'Recomposition',
+                    value: interactivePreviewIds.has(previewId) ? 'Live' : 'Placeholder',
+                    enabled: enabledFocusProducts.has('recomposition') || interactivePreviewIds.has(previewId),
+                    state: interactivePreviewIds.has(previewId) ? 'ok' : 'idle',
+                    onToggle: () => toggleFocusProduct('recomposition'),
+                },
+            ]));
+            const placeholders = buildFocusPlaceholders();
+            if (placeholders) inspect.appendChild(placeholders);
+            focusInspector.appendChild(inspect);
+            focusInspector.appendChild(historyPanel());
         }
 
         function sectionHeader(icon, label) {
@@ -1125,27 +1106,104 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             return btn;
         }
 
-        function productToggle(icon, label, value, enabled, state, onClick) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'focus-product-chip';
-            chip.dataset.state = state || 'idle';
-            chip.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-            chip.title = enabled ? 'Disable ' + label : 'Enable ' + label;
-            chip.innerHTML = '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
+        function historyPanel() {
+            const history = document.createElement('details');
+            history.className = 'focus-panel focus-history-panel';
+            history.open = focusHistoryOpen;
+            history.addEventListener('toggle', () => {
+                focusHistoryOpen = history.open;
+            });
+            const summary = document.createElement('summary');
+            summary.className = 'focus-panel-header focus-history-summary';
+            summary.innerHTML = '<i class="codicon codicon-history" aria-hidden="true"></i>';
+            const label = document.createElement('span');
+            label.textContent = 'History';
+            summary.appendChild(label);
+            const chevron = document.createElement('i');
+            chevron.className = 'codicon codicon-chevron-down focus-summary-chevron';
+            chevron.setAttribute('aria-hidden', 'true');
+            summary.appendChild(chevron);
+            history.appendChild(summary);
+            const historyActions = document.createElement('div');
+            historyActions.className = 'focus-actions';
+            historyActions.appendChild(actionButton('git-compare', 'HEAD', 'Diff vs last archived render', () => {
+                requestFocusedDiff('head');
+            }));
+            historyActions.appendChild(actionButton('source-control', 'main', 'Diff vs latest archived main render', () => {
+                requestFocusedDiff('main');
+            }));
+            history.appendChild(historyActions);
+            return history;
+        }
+
+        function productSpec(icon, label, id) {
+            return {
+                icon,
+                label,
+                value: 'Placeholder',
+                enabled: enabledFocusProducts.has(id),
+                state: 'idle',
+                onToggle: () => toggleFocusProduct(id),
+            };
+        }
+
+        function productPicker(products) {
+            const picker = document.createElement('details');
+            picker.className = 'focus-product-picker';
+            picker.open = focusProductPickerOpen;
+            picker.addEventListener('toggle', () => {
+                focusProductPickerOpen = picker.open;
+            });
+            const summary = document.createElement('summary');
+            summary.className = 'focus-product-summary';
+            const selected = products.filter(product => product.enabled);
+            const summaryText = document.createElement('span');
+            summaryText.textContent = selected.length === 0
+                ? 'Choose inspection layers'
+                : selected.length === 1
+                    ? selected[0].label
+                    : selected.length + ' layers selected';
+            summary.appendChild(summaryText);
+            const chevron = document.createElement('i');
+            chevron.className = 'codicon codicon-chevron-down focus-summary-chevron';
+            chevron.setAttribute('aria-hidden', 'true');
+            summary.appendChild(chevron);
+            picker.appendChild(summary);
+
+            const menu = document.createElement('div');
+            menu.className = 'focus-product-menu';
+            products.forEach(product => {
+                menu.appendChild(productOption(product));
+            });
+            picker.appendChild(menu);
+            return picker;
+        }
+
+        function productOption(product) {
+            const option = document.createElement('label');
+            option.className = 'focus-product-option';
+            option.dataset.state = product.state || 'idle';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = product.enabled;
+            input.addEventListener('change', product.onToggle);
+            option.appendChild(input);
+            const icon = document.createElement('i');
+            icon.className = 'codicon codicon-' + product.icon;
+            icon.setAttribute('aria-hidden', 'true');
+            option.appendChild(icon);
             const text = document.createElement('div');
             text.className = 'focus-product-text';
             const name = document.createElement('span');
             name.className = 'focus-product-name';
-            name.textContent = label;
+            name.textContent = product.label;
             const val = document.createElement('span');
             val.className = 'focus-product-value';
-            val.textContent = value;
+            val.textContent = product.value;
             text.appendChild(name);
             text.appendChild(val);
-            chip.appendChild(text);
-            chip.addEventListener('click', onClick);
-            return chip;
+            option.appendChild(text);
+            return option;
         }
 
         function toggleFocusProduct(id) {
@@ -1158,8 +1216,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             if (layoutMode.value === 'focus' && card) renderFocusInspector(card);
         }
 
-        function buildFocusPlaceholders(p) {
+        function buildFocusPlaceholders() {
             const defs = [
+                ['layout', 'Layout', 'layout tree and bounds'],
                 ['strings', 'Strings', 'text/strings and i18n/translations'],
                 ['resources', 'Resources', 'resources/used'],
                 ['fonts', 'Fonts', 'fonts/used'],
@@ -1168,9 +1227,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 ['recomposition', 'Recomposition', 'compose/recomposition'],
             ].filter(([id]) => enabledFocusProducts.has(id));
             if (defs.length === 0) return null;
-            const wrapper = document.createElement('section');
-            wrapper.className = 'focus-panel focus-placeholder-list';
-            wrapper.appendChild(sectionHeader('panel', 'Enabled'));
+            const wrapper = document.createElement('div');
+            wrapper.className = 'focus-placeholder-list';
             defs.forEach(([id, label, kind]) => {
                 const details = document.createElement('details');
                 details.className = 'focus-placeholder';
