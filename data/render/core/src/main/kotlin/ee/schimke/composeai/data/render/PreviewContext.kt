@@ -30,6 +30,7 @@ data class PreviewContext(
     private val slotTables = mutableListOf<Any>()
     private val inspectionValues = linkedMapOf<String, Any>()
     private var parameterInformationCollected: Boolean = false
+    private var rootForTest: Any? = null
 
     fun device(device: PreviewDeviceContext): Builder = apply { this.device = device }
 
@@ -52,6 +53,8 @@ data class PreviewContext(
 
     fun addSlotTables(tables: Iterable<Any>): Builder = apply { slotTables.addAll(tables) }
 
+    fun rootForTest(root: Any?): Builder = apply { rootForTest = root }
+
     fun putInspectionValue(key: String, value: Any): Builder = apply {
       inspectionValues[key] = value
     }
@@ -69,6 +72,7 @@ data class PreviewContext(
         inspection =
           PreviewInspectionContext(
             slotTables = slotTables.toList(),
+            rootForTest = rootForTest,
             values = inspectionValues.toMap(),
             parameterInformationCollected = parameterInformationCollected,
           ),
@@ -156,9 +160,14 @@ data class PreviewFrameTime(
  * this module must not expose a Compose dependency. The capture wrapper must call Compose's
  * parameter-info collection before composing content when consumers need call-site values from the
  * slot table.
+ *
+ * [rootForTest] is likewise opaque: on Android Compose it is a `RootForTest`, which lets
+ * Compose-aware data products inspect the same LayoutNode/semantics tree used by tooling without
+ * adding a Compose UI dependency to the core render model.
  */
 data class PreviewInspectionContext(
   val slotTables: List<Any> = emptyList(),
+  val rootForTest: Any? = null,
   val values: Map<String, Any> = emptyMap(),
   val parameterInformationCollected: Boolean = false,
 )

@@ -113,6 +113,14 @@ For accessibility specifically the older
 `build/compose-previews/accessibility-per-preview/<id>.json` location
 stays for one release as a back-compat alias, then retires.
 
+`layout/inspector` is Android-daemon backed by Compose `RootForTest`
+carried on `PreviewContext.inspection`. Use it for layout-structure
+questions: parent/child shape, bounds, measured size, constraints,
+z-order, and inspectable modifier values. It is intentionally separate
+from `compose/semantics` and
+`a11y/hierarchy`; fetch those when the question is semantic intent or
+assistive-technology output.
+
 `test/failure` is daemon fetch-only. After a `renderFailed`
 notification, call `get_preview_data(..., kind = "test/failure")` to
 retrieve the latest failed-render postmortem for that preview: error

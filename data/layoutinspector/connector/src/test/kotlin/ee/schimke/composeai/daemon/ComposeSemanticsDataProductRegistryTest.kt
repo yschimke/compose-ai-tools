@@ -85,4 +85,68 @@ class ComposeSemanticsDataProductRegistryTest {
     assertEquals(file.absolutePath, attachment.path)
     assertNull(attachment.payload)
   }
+
+  @Test
+  fun `layout inspector capability advertises path transport`() {
+    val registry = LayoutInspectorDataProductRegistry(rootDir)
+    val cap = registry.capabilities.single()
+    assertEquals("layout/inspector", cap.kind)
+    assertEquals(1, cap.schemaVersion)
+    assertTrue(cap.attachable)
+    assertTrue(cap.fetchable)
+    assertTrue(!cap.requiresRerender)
+  }
+
+  @Test
+  fun `layout inspector fetch returns path by default and payload when inline requested`() {
+    val previewId = "com.example.LayoutPreview"
+    val file =
+      rootDir
+        .resolve(previewId)
+        .also { it.mkdirs() }
+        .resolve(LayoutInspectorDataProducer.FILE)
+    file.writeText(
+      """{"root":{"nodeId":"1","component":"SettingsRow","bounds":{"left":0,"top":80,"right":360,"bottom":136},"size":{"width":360,"height":56},"modifiers":[{"name":"padding","properties":{"top":"2.dp"}}]}}"""
+    )
+    val registry = LayoutInspectorDataProductRegistry(rootDir)
+
+    val pathOutcome =
+      registry.fetch(previewId = previewId, kind = "layout/inspector", params = null, inline = false)
+    assertTrue(pathOutcome is DataProductRegistry.Outcome.Ok)
+    val pathResult = (pathOutcome as DataProductRegistry.Outcome.Ok).result
+    assertEquals(file.absolutePath, pathResult.path)
+    assertNull(pathResult.payload)
+
+    val inlineOutcome =
+      registry.fetch(previewId = previewId, kind = "layout/inspector", params = null, inline = true)
+    assertTrue(inlineOutcome is DataProductRegistry.Outcome.Ok)
+    val inlineResult = (inlineOutcome as DataProductRegistry.Outcome.Ok).result
+    assertNull(inlineResult.path)
+    assertNotNull(inlineResult.payload)
+    assertEquals(
+      "SettingsRow",
+      inlineResult.payload!!.jsonObject["root"]!!.jsonObject["component"].toString().trim('"'),
+    )
+  }
+
+  @Test
+  fun `layout inspector attachments emit path only after render wrote file`() {
+    val previewId = "com.example.LayoutPreview"
+    val registry = LayoutInspectorDataProductRegistry(rootDir)
+    assertEquals(emptyList<Any>(), registry.attachmentsFor(previewId, setOf("layout/inspector")))
+
+    val file =
+      rootDir
+        .resolve(previewId)
+        .also { it.mkdirs() }
+        .resolve(LayoutInspectorDataProducer.FILE)
+    file.writeText(
+      """{"root":{"nodeId":"1","component":"Box","bounds":{"left":0,"top":0,"right":1,"bottom":1},"size":{"width":1,"height":1}}}"""
+    )
+
+    val attachment = registry.attachmentsFor(previewId, setOf("layout/inspector")).single()
+    assertEquals("layout/inspector", attachment.kind)
+    assertEquals(file.absolutePath, attachment.path)
+    assertNull(attachment.payload)
+  }
 }

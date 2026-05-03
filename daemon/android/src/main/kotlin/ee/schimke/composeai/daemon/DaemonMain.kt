@@ -268,6 +268,10 @@ fun main(args: Array<String>) {
           )
           add(ComposeSemanticsDataProductRegistry(rootDir = dataRoot))
           System.err.println(
+            "compose-ai-tools daemon: LayoutInspectorDataProductRegistry active (dataRoot=$dataRoot)"
+          )
+          add(LayoutInspectorDataProductRegistry(rootDir = dataRoot))
+          System.err.println(
             "compose-ai-tools daemon: ResourcesUsedDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(ResourcesUsedDataProductRegistry(rootDir = dataRoot))

@@ -324,12 +324,35 @@ class RenderEngine(
             // locale coverage without paying ATF costs.
             if (dataDir != null) {
               try {
-                trace.section("compose:semanticsDataProduct") {
+                trace.section("compose:defaultDataProducts") {
                   val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
                   ComposeSemanticsDataProducer.writeArtifacts(
                     rootDir = dataDir,
                     previewId = spec.outputBaseName,
                     root = semanticsRoot,
+                  )
+                  val layoutInspectionContext =
+                    PreviewContext.Builder(
+                        previewId = spec.previewId,
+                        backend = PreviewBackends.ANDROID,
+                        renderMode = spec.renderMode,
+                        outputBaseName = spec.outputBaseName,
+                      )
+                      .deviceFromRenderPixels(
+                        spec.device,
+                        spec.widthPx,
+                        spec.heightPx,
+                        spec.density,
+                        resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+                      )
+                      .parameterInformationCollected()
+                      .addSlotTables(slotTableCapture.snapshot())
+                      .rootForTest(semanticsRoot.root)
+                      .build()
+                  LayoutInspectorDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    previewContext = layoutInspectionContext,
                   )
                   I18nTranslationsDataProducer.writeArtifacts(
                     rootDir = dataDir,
