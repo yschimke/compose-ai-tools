@@ -179,6 +179,12 @@ Or via raw URL:
 https://raw.githubusercontent.com/<owner>/<repo>/compose-preview/main/renders/<module>/<id>.png
 ```
 
+The composable baseline gallery includes suggested extra preview artifacts
+that the plugin emits as image data products, such as `@ScrollingPreview`
+LONG PNGs and GIFs. In CLI JSON these appear as extra `captures[]` rows
+with labels like `scroll long` or `scroll gif`, so baseline generation must
+consume every capture row rather than only the top-level `pngPath`.
+
 ## Branch durability
 
 Both `compose-preview/main` and `compose-preview/pr` are append-only:
