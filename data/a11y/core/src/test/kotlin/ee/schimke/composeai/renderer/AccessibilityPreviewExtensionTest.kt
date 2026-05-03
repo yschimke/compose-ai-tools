@@ -4,6 +4,7 @@ import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelinePlan
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineValidator
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -101,5 +102,22 @@ class AccessibilityPreviewExtensionTest {
       )
 
     assertTrue(PreviewPipelineValidator.validate(plan).isEmpty())
+  }
+
+  @Test
+  fun accessibilityOverlayProductBelongsToImageProducingComposedStep() {
+    assertTrue(AccessibilityOverlayPreviewExtension.annotationProcessor.productKinds.isEmpty())
+    assertTrue(AccessibilityOverlayPreviewExtension.descriptor.cliCommands.isEmpty())
+
+    val overlayStep =
+      AccessibilityAnnotatedPreviewExtension.descriptor.steps.single {
+        it.id == RenderPreviewExtension.overlayLegendProcessor.id
+      }
+    assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), overlayStep.productKinds)
+    assertTrue(overlayStep.provides.contains(PipelineCapability.AnnotatedImageArtifact))
+
+    val command =
+      AccessibilityAnnotatedPreviewExtension.descriptor.cliCommands.single { it.id == "a11y-overlay.get" }
+    assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), command.productKinds)
   }
 }

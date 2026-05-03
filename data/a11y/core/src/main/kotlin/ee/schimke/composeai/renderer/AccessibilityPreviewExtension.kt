@@ -149,7 +149,6 @@ object AccessibilityOverlayPreviewExtension {
     PreviewPipelineStep(
       id = "a11y.overlayAnnotations",
       displayName = "Accessibility overlay annotations",
-      productKinds = listOf(KIND_OVERLAY),
       traits = setOf(PipelineStepTrait.FrameProcessor),
       requires =
         setOf(
@@ -164,26 +163,6 @@ object AccessibilityOverlayPreviewExtension {
       id = ID,
       displayName = "Accessibility overlay annotations",
       componentExtensionIds = listOf(AccessibilitySemanticsPreviewExtension.ID, AtfChecksPreviewExtension.ID),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "a11y-overlay.get",
-            displayName = "Fetch accessibility overlay",
-            summary = "Reads the rendered accessibility overlay artifact for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "extensions",
-                "run",
-                "a11y-overlay.get",
-                "--id",
-                "<preview-id>",
-                "--output",
-                "<path>",
-              ),
-            productKinds = listOf(KIND_OVERLAY),
-          )
-        ),
       steps = listOf(annotationProcessor),
     )
 }
@@ -213,6 +192,23 @@ object AccessibilityAnnotatedPreviewExtension {
             command =
               listOf("compose-preview", "extensions", "run", "a11y-annotated-preview.render", "--json"),
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+          ),
+          PreviewExtensionCliCommand(
+            id = "a11y-overlay.get",
+            displayName = "Fetch accessibility overlay",
+            summary = "Reads the rendered accessibility overlay artifact for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "extensions",
+                "run",
+                "a11y-overlay.get",
+                "--id",
+                "<preview-id>",
+                "--output",
+                "<path>",
+              ),
+            productKinds = listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY),
           )
         ),
       steps =
@@ -220,7 +216,9 @@ object AccessibilityAnnotatedPreviewExtension {
           AccessibilitySemanticsPreviewExtension.finalSampleExtractor,
           AtfChecksPreviewExtension.finalSampleChecker,
           AccessibilityOverlayPreviewExtension.annotationProcessor,
-          RenderPreviewExtension.overlayLegendProcessor,
+          RenderPreviewExtension.overlayLegendProcessor.copy(
+            productKinds = listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY)
+          ),
         ),
     )
 }
