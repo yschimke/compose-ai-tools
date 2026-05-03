@@ -1,6 +1,7 @@
 package ee.schimke.composeai.scroll
 
 import ee.schimke.composeai.data.render.RenderPreviewExtension
+import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelinePlan
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineValidator
 import org.junit.Assert.assertTrue
@@ -22,6 +23,17 @@ class ScrollPreviewExtensionTest {
   }
 
   @Test
+  fun annotationDescriptorSuggestsExtraPreviewsFromAnnotations() {
+    val plan =
+      PreviewPipelinePlan(
+        steps = ScrollPreviewExtension.annotationDescriptor.steps,
+        initialCapabilities = setOf(PipelineCapability.PreviewFunctionAnnotations),
+      )
+
+    assertTrue(PreviewPipelineValidator.validate(plan).isEmpty())
+  }
+
+  @Test
   fun gifScenarioCanCollectAggregateComposeTraceWhileScrolling() {
     val plan =
       PreviewPipelinePlan(
@@ -36,6 +48,13 @@ class ScrollPreviewExtensionTest {
   }
 
   @Test
+  fun gifDescriptorIsIndependentlyValid() {
+    val plan = PreviewPipelinePlan(ScrollPreviewExtension.gifScrollDescriptor.steps)
+
+    assertTrue(PreviewPipelineValidator.validate(plan).isEmpty())
+  }
+
+  @Test
   fun longScenarioCanBeClippedBeforeStitching() {
     val plan =
       PreviewPipelinePlan(
@@ -45,6 +64,13 @@ class ScrollPreviewExtensionTest {
           ScrollPreviewExtension.longScrollEncoder,
         )
       )
+
+    assertTrue(PreviewPipelineValidator.validate(plan).isEmpty())
+  }
+
+  @Test
+  fun longDescriptorIsIndependentlyValid() {
+    val plan = PreviewPipelinePlan(ScrollPreviewExtension.longScrollDescriptor.steps)
 
     assertTrue(PreviewPipelineValidator.validate(plan).isEmpty())
   }

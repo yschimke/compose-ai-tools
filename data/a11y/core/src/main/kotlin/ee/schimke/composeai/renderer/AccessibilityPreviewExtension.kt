@@ -1,50 +1,41 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.pipeline.ExtractionSpec
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 
-/** Pipeline metadata for accessibility checks. */
-object AccessibilityChecksPreviewExtension {
-  const val ID: String = "a11y-checks"
-  const val KIND_ATF: String = "a11y/atf"
+/** Pipeline metadata for accessibility hierarchy extraction. */
+object AccessibilitySemanticsPreviewExtension {
+  const val ID: String = "a11y"
   const val KIND_HIERARCHY: String = "a11y/hierarchy"
-  const val KIND_TOUCH_TARGETS: String = "a11y/touchTargets"
 
-  /**
-   * Static/single-output a11y extraction: collect semantics and ATF findings at the final render
-   * sample.
-   */
   val finalSampleExtractor: PreviewPipelineStep =
     PreviewPipelineStep(
-      id = "a11y.extract.end",
-      displayName = "Accessibility extraction",
-      productKinds = listOf(KIND_ATF, KIND_HIERARCHY, KIND_TOUCH_TARGETS),
-      traits = setOf(PipelineStepTrait.DataExtractor, PipelineStepTrait.Check),
+      id = "a11y.semantics.end",
+      displayName = "Accessibility hierarchy",
+      productKinds = listOf(KIND_HIERARCHY),
+      traits = setOf(PipelineStepTrait.DataExtractor),
       requires = setOf(PipelineCapability.SemanticsSnapshot),
-      provides = setOf(PipelineCapability.AccessibilityFindings),
+      provides = setOf(PipelineCapability.AccessibilityNodes),
       extraction =
         ExtractionSpec(
-          kind = KIND_ATF,
+          kind = KIND_HIERARCHY,
           sampling = SamplingPolicy.End,
           requiresSemantics = true,
         ),
     )
 
-  /**
-   * Animated/scrolling a11y extraction: collect findings for each captured frame so overlays can be
-   * painted before GIF encoding.
-   */
   val eachFrameExtractor: PreviewPipelineStep =
     finalSampleExtractor.copy(
-      id = "a11y.extract.eachFrame",
-      productKinds = listOf(KIND_ATF, KIND_HIERARCHY, KIND_TOUCH_TARGETS),
+      id = "a11y.semantics.eachFrame",
       extraction =
         ExtractionSpec(
-          kind = KIND_ATF,
+          kind = KIND_HIERARCHY,
           sampling = SamplingPolicy.EachFrame,
           requiresImage = true,
           requiresSemantics = true,
@@ -55,35 +46,102 @@ object AccessibilityChecksPreviewExtension {
   val descriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = ID,
-      displayName = "Accessibility checks",
+      displayName = "Accessibility hierarchy",
       steps = listOf(finalSampleExtractor, eachFrameExtractor),
     )
 }
 
-/** Pipeline metadata for painting accessibility findings onto rendered images. */
-object AccessibilityOverlayPreviewExtension {
-  const val ID: String = "a11y-overlay"
-  const val KIND_OVERLAY: String = "a11y/overlay"
+/** Pipeline metadata for ATF checks over accessibility hierarchy data. */
+object AtfChecksPreviewExtension {
+  const val ID: String = "atf-checks"
+  const val KIND_ATF: String = "a11y/atf"
+  const val KIND_TOUCH_TARGETS: String = "a11y/touchTargets"
 
-  val overlayProcessor: PreviewPipelineStep =
+  val finalSampleChecker: PreviewPipelineStep =
     PreviewPipelineStep(
-      id = "a11y.overlay",
-      displayName = "Accessibility overlay",
-      productKinds = listOf(KIND_OVERLAY),
-      traits = setOf(PipelineStepTrait.FrameProcessor),
-      requires =
-        setOf(
-          PipelineCapability.ImageArtifact,
-          PipelineCapability.AccessibilityFindings,
-          PipelineCapability.DeviceGeometry,
+      id = "atf.check.end",
+      displayName = "ATF checks",
+      productKinds = listOf(KIND_ATF, KIND_TOUCH_TARGETS),
+      traits = setOf(PipelineStepTrait.Check),
+      requires = setOf(PipelineCapability.AccessibilityNodes),
+      provides = setOf(PipelineCapability.AccessibilityFindings),
+      extraction =
+        ExtractionSpec(
+          kind = KIND_ATF,
+          sampling = SamplingPolicy.End,
         ),
-      provides = setOf(PipelineCapability.ImageArtifact),
+    )
+
+  val eachFrameChecker: PreviewPipelineStep =
+    finalSampleChecker.copy(
+      id = "atf.check.eachFrame",
+      extraction =
+        ExtractionSpec(
+          kind = KIND_ATF,
+          sampling = SamplingPolicy.EachFrame,
+          requiresImage = true,
+          aggregate = true,
+        ),
     )
 
   val descriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = ID,
-      displayName = "Accessibility overlay",
-      steps = listOf(overlayProcessor),
+      displayName = "ATF checks",
+      steps = listOf(finalSampleChecker, eachFrameChecker),
+    )
+}
+
+/** Pipeline metadata for adapting accessibility findings into generic overlay annotations. */
+object AccessibilityOverlayPreviewExtension {
+  const val ID: String = "a11y-overlay"
+  const val KIND_OVERLAY: String = "a11y/overlay"
+
+  val annotationProcessor: PreviewPipelineStep =
+    PreviewPipelineStep(
+      id = "a11y.overlayAnnotations",
+      displayName = "Accessibility overlay annotations",
+      productKinds = listOf(KIND_OVERLAY),
+      traits = setOf(PipelineStepTrait.FrameProcessor),
+      requires =
+        setOf(
+          PipelineCapability.AccessibilityNodes,
+          PipelineCapability.AccessibilityFindings,
+        ),
+      provides = setOf(PipelineCapability.OverlayAnnotations),
+    )
+
+  val descriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = ID,
+      displayName = "Accessibility overlay annotations",
+      componentExtensionIds = listOf(AccessibilitySemanticsPreviewExtension.ID, AtfChecksPreviewExtension.ID),
+      steps = listOf(annotationProcessor),
+    )
+}
+
+/** Suggested a11y annotated image composed from a11y data, ATF checks, and generic overlay legend. */
+object AccessibilityAnnotatedPreviewExtension {
+  const val ID: String = "a11y-annotated-preview"
+
+  val descriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = ID,
+      displayName = "Accessibility annotated preview",
+      usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+      componentExtensionIds =
+        listOf(
+          AccessibilitySemanticsPreviewExtension.ID,
+          AtfChecksPreviewExtension.ID,
+          AccessibilityOverlayPreviewExtension.ID,
+          "overlay-legend",
+        ),
+      steps =
+        listOf(
+          AccessibilitySemanticsPreviewExtension.finalSampleExtractor,
+          AtfChecksPreviewExtension.finalSampleChecker,
+          AccessibilityOverlayPreviewExtension.annotationProcessor,
+          RenderPreviewExtension.overlayLegendProcessor,
+        ),
     )
 }
