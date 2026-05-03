@@ -34,17 +34,6 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.daemon"
-  compileSdk = 36
-
-  defaultConfig { minSdk = 24 }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-
   // D-harness.v2 — promote the fixture composables (RedSquare/BlueSquare/GreenSquare/SlowSquare/
   // BoomComposable) from this module's `src/test/...` into a real testFixtures source set so
   // `:daemon:harness`'s test runtime classpath can pull them via

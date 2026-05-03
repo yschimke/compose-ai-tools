@@ -37,10 +37,6 @@ dependencies {
   testImplementation(libs.junit)
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
-tasks.withType<Test>().configureEach { useJUnit() }
-
 // GitHub Packages mirror — same shape as `:renderer-android` and `:preview-annotations`.
 
 composeAiMavenPublishing {

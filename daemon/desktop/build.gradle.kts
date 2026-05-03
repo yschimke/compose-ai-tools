@@ -103,10 +103,6 @@ dependencies {
   "testFixturesImplementation"(compose.material3)
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
-tasks.withType<Test>().configureEach { useJUnit() }
-
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
 // .DaemonMain`. Lets local verification of the daemon happen without applying the
 // `application` plugin (which would add `distZip`/`distTar`/etc. tasks we don't need yet). Wire-up

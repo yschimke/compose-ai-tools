@@ -1,6 +1,3 @@
-import tapmoc.TapmocExtension
-import tapmoc.configureKotlinCompatibility
-
 plugins {
   id("composeai.maven-publishing")
   `java-gradle-plugin`
@@ -11,14 +8,6 @@ plugins {
 }
 
 ktfmt { googleStyle() }
-
-// `kotlin-dsl` already pins the language/api version to Gradle's embedded
-// Kotlin (currently 2.x); tapmoc is wired here primarily for
-// `checkDependencies()`, which surfaces if any KGP/AGP transitive raises the
-// Kotlin floor we'd push onto plugin consumers' buildscript classpaths.
-configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
-
-extensions.configure<TapmocExtension> { checkDependencies() }
 
 gradlePlugin {
   website.set("https://github.com/yschimke/compose-ai-tools")
@@ -48,8 +37,6 @@ dependencies {
   testImplementation(libs.truth)
   testImplementation(gradleTestKit())
 }
-
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 
 // Functional tests use Gradle TestKit
 val functionalTest by sourceSets.creating {

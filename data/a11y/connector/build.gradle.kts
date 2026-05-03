@@ -1,7 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-import tapmoc.TapmocExtension
-import tapmoc.configureKotlinCompatibility
-
 // D2.2 — `:data-a11y-connector` glues `:data-a11y-core` (the generic Android piece) to the
 // daemon's data-product API: `AccessibilityDataProducer` writes the per-render JSON
 // artefacts, `AccessibilityDataProductRegistry` advertises kinds + serves
@@ -18,27 +14,7 @@ plugins {
   alias(libs.plugins.tapmoc)
 }
 
-configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
-
-tasks.withType<KotlinCompilationTask<*>>().configureEach {
-  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
-}
-
-extensions.configure<TapmocExtension> { checkDependencies() }
-
-android {
-  namespace = "ee.schimke.composeai.data.a11y.connector"
-  compileSdk = 36
-
-  defaultConfig { minSdk = 24 }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-}
+android { namespace = "ee.schimke.composeai.data.a11y.connector" }
 
 dependencies {
   // Core a11y types + ATF wrapper + overlay generator. Re-exported via `api` so consumers

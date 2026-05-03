@@ -11,6 +11,7 @@
 @file:Suppress("UnstableApiUsage")
 
 plugins {
+  id("composeai.android-conventions")
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.android.compose.screenshot)
@@ -19,19 +20,12 @@ plugins {
 
 android {
   namespace = "com.example.sampleandroidscreenshot"
-  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.example.sampleandroidscreenshot"
-    minSdk = 24
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
-  }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
   }
 
   buildFeatures { compose = true }

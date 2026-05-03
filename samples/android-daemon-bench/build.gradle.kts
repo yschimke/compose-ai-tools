@@ -18,6 +18,7 @@ import java.time.Instant
 import org.w3c.dom.Element
 
 plugins {
+  id("composeai.android-conventions")
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   id("ee.schimke.composeai.preview")
@@ -25,19 +26,12 @@ plugins {
 
 android {
   namespace = "com.example.daemonbench"
-  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.example.daemonbench"
-    minSdk = 24
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
-  }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
   }
 
   buildFeatures { compose = true }

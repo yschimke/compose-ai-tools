@@ -1,4 +1,5 @@
 plugins {
+  id("composeai.android-conventions")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   id("ee.schimke.composeai.preview")
@@ -12,14 +13,6 @@ plugins {
 
 android {
   namespace = "com.example.samplelibrary"
-  compileSdk = 36
-
-  defaultConfig { minSdk = 24 }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
 
   buildFeatures { compose = true }
 

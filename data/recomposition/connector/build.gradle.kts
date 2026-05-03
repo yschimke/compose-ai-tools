@@ -13,10 +13,6 @@ dependencies {
   testImplementation(libs.junit)
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
-tasks.withType<Test>().configureEach { useJUnit() }
-
 composeAiMavenPublishing {
   coordinates(
     artifactId = "data-recomposition-connector",

@@ -1,4 +1,5 @@
 plugins {
+  id("composeai.jvm-conventions")
   // KGP, the KMP-Android plugin and `kotlin.plugin.compose` all ship inside
   // the same buildscript-classpath bundle that AGP 9 brings in for any
   // module already applying an AGP plugin elsewhere in the build. Applying
@@ -75,5 +76,3 @@ kotlin {
     }
   }
 }
-
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }

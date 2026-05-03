@@ -5,9 +5,6 @@
 // types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
 
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-import tapmoc.TapmocExtension
-import tapmoc.configureKotlinCompatibility
 
 plugins {
   id("composeai.maven-publishing")
@@ -17,30 +14,8 @@ plugins {
   alias(libs.plugins.tapmoc)
 }
 
-// See preview-annotations/build.gradle.kts for the rationale.
-configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
-
-// Mirror preview-annotations: silence the 2.3.x compiler's
-// `Language version 2.0 is deprecated …` warning while we hold the floor
-// at 2.0 (see `kotlinCoreLibraries` in libs.versions.toml).
-tasks.withType<KotlinCompilationTask<*>>().configureEach {
-  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
-}
-
-extensions.configure<TapmocExtension> { checkDependencies() }
-
 android {
   namespace = "ee.schimke.composeai.renderer"
-  compileSdk = 36
-
-  defaultConfig { minSdk = 24 }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-
-  testOptions { unitTests { isIncludeAndroidResources = true } }
   // `AndroidSingleVariantLibrary` in `mavenPublishing {}` below wires the
   // `singleVariant("release")` publication for us — don't declare it twice.
 }

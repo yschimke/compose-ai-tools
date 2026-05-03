@@ -19,10 +19,6 @@ dependencies {
   testImplementation(compose.material3)
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
-tasks.withType<Test>().configureEach { useJUnit() }
-
 composeAiMavenPublishing {
   coordinates(
     artifactId = "data-theme-connector",

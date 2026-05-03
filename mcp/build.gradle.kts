@@ -10,6 +10,7 @@
 // projects or worktrees — see `DaemonSupervisor` for the workspace-id derivation.
 
 plugins {
+  id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
   application
@@ -59,10 +60,7 @@ dependencies {
 //   `:daemon:core` `JsonRpcServer` framing, and removes a 0.x-version-pin risk.
 // - The SDK can be reintroduced as a non-breaking internal refactor once the surface stabilises.
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
 tasks.withType<Test>().configureEach {
-  useJUnit()
   // Opt-in real-mode: `-Pmcp.real=true` flips the JUnit `Assume` gate in
   // `RealMcpEndToEndTest`. Mirrors `:daemon:harness`'s `-Pharness.host=real` pattern.
   // The optional `-Pmcp.workdir=<path>` lets out-of-tree runs point the test at a different

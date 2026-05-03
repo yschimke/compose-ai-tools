@@ -6,16 +6,7 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
-android {
-  namespace = "ee.schimke.composeai.data.strings.connector"
-  compileSdk = 36
-  defaultConfig { minSdk = 24 }
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-}
+android { namespace = "ee.schimke.composeai.data.strings.connector" }
 
 dependencies {
   api(project(":data-strings-core"))
