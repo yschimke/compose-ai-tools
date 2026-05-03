@@ -99,8 +99,19 @@ jobs:
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
             :data-a11y-core:publishAllPublicationsToGitHubPackagesRepository \
             :data-a11y-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-fonts-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-fonts-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-history-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-layoutinspector-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-layoutinspector-connector:publishAllPublicationsToGitHubPackagesRepository \
             :data-render-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-render-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-resources-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-resources-connector:publishAllPublicationsToGitHubPackagesRepository \
             :data-scroll-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-strings-core:publishAllPublicationsToGitHubPackagesRepository \
+            :data-strings-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-theme-connector:publishAllPublicationsToGitHubPackagesRepository \
             :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
             :preview-annotations:publishAllPublicationsToGitHubPackagesRepository \
             :daemon:core:publishAllPublicationsToGitHubPackagesRepository \
@@ -115,8 +126,19 @@ jobs:
             :gradle-plugin:publishAndReleaseToMavenCentral \
             :data-a11y-core:publishAndReleaseToMavenCentral \
             :data-a11y-connector:publishAndReleaseToMavenCentral \
+            :data-fonts-core:publishAndReleaseToMavenCentral \
+            :data-fonts-connector:publishAndReleaseToMavenCentral \
+            :data-history-connector:publishAndReleaseToMavenCentral \
+            :data-layoutinspector-core:publishAndReleaseToMavenCentral \
+            :data-layoutinspector-connector:publishAndReleaseToMavenCentral \
             :data-render-core:publishAndReleaseToMavenCentral \
+            :data-render-connector:publishAndReleaseToMavenCentral \
+            :data-resources-core:publishAndReleaseToMavenCentral \
+            :data-resources-connector:publishAndReleaseToMavenCentral \
             :data-scroll-core:publishAndReleaseToMavenCentral \
+            :data-strings-core:publishAndReleaseToMavenCentral \
+            :data-strings-connector:publishAndReleaseToMavenCentral \
+            :data-theme-connector:publishAndReleaseToMavenCentral \
             :renderer-android:publishAndReleaseToMavenCentral \
             :preview-annotations:publishAndReleaseToMavenCentral \
             :daemon:core:publishAndReleaseToMavenCentral \
