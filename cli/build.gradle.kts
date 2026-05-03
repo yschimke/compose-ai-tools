@@ -1,3 +1,10 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.TaskAction
+
 plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
@@ -49,6 +56,44 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }
+
+abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
+  @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection
+
+  @get:Input abstract val forbiddenProjectDirs: ListProperty<String>
+
+  @TaskAction
+  fun checkBoundary() {
+    val forbiddenDirs = forbiddenProjectDirs.get()
+    val forbidden =
+      runtimeClasspath.files
+        .filter { file ->
+          val path = file.invariantSeparatorsPath
+          forbiddenDirs.any { forbiddenDir -> path.startsWith("$forbiddenDir/") }
+        }
+        .map { it.path }
+        .sorted()
+
+    check(forbidden.isEmpty()) {
+      "CLI may depend on renderer-agnostic :daemon:core only; forbidden renderer artifacts on " +
+        "runtimeClasspath: ${forbidden.joinToString(", ")}"
+    }
+  }
+}
+
+tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
+  description = "Fails if renderer implementations leak onto the CLI runtime classpath."
+  group = "verification"
+
+  runtimeClasspath.from(configurations.named("runtimeClasspath"))
+  forbiddenProjectDirs.set(
+    listOf(":daemon:android", ":daemon:desktop", ":renderer-android", ":renderer-desktop").map {
+      project(it).projectDir.invariantSeparatorsPath
+    }
+  )
+}
+
+tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 
 // Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
 // (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which

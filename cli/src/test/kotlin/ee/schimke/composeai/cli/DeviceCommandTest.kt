@@ -25,6 +25,9 @@ class DeviceCommandTest {
     assertEquals(393, pixel5.widthDp)
     assertEquals(851, pixel5.heightDp)
     assertEquals(2.75f, pixel5.density)
+
+    val wear = parsed.devices.single { it.id == "id:wearos_large_round" }
+    assertEquals(true, wear.isRound)
   }
 
   @Test

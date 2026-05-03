@@ -65,11 +65,16 @@ the contract for "the simple way". Constraints:
   existing behaviour and does not require a running daemon. Editor
   integrations use the top-level `daemon { … }` DSL, which defaults to
   enabled and can be disabled temporarily.
-- **No daemon code on the Layer 1 classpath.** `:gradle-plugin` does
-  not depend on `:daemon:core`. The daemon-bootstrap task
-  the plugin registers (`composePreviewDaemonStart`) emits a
-  descriptor file; it does not import or instantiate anything from
-  the daemon modules.
+- **No daemon code on the Gradle plugin classpath.** `:gradle-plugin`
+  does not depend on `:daemon:core`. The daemon-bootstrap task the
+  plugin registers (`composePreviewDaemonStart`) emits a descriptor
+  file; it does not import or instantiate anything from the daemon
+  modules.
+- **CLI daemon-library access is narrow and renderer-agnostic.**
+  `:cli` may depend on `:daemon:core` for pure catalog/protocol helpers
+  such as `DeviceDimensions`, `KnownDevice`, protocol DTOs, and local
+  history models. The CLI must not depend on `:daemon:android`,
+  `:daemon:desktop`, `:renderer-android`, or `:renderer-desktop`.
 - **No conditional branches in `renderPreviews`** for "is the daemon
   running?". The Gradle task path is unaware of the daemon's
   existence. (The daemon can read state Gradle wrote; Gradle does not
@@ -99,10 +104,11 @@ The daemon is a separate JVM started by an explicit task. It speaks
 JSON-RPC ([PROTOCOL.md](PROTOCOL.md)) to one client at a time over
 stdio. Constraints:
 
-- **Daemon code lives only in `:daemon:core` and the two
-  per-target modules** (`:daemon:android`,
-  `:daemon:desktop`). The Gradle plugin does not import
-  these modules; nor does the existing CLI.
+- **Daemon runtime code lives only in `:daemon:core` and the two
+  per-target modules** (`:daemon:android`, `:daemon:desktop`). The
+  Gradle plugin does not import these modules. The CLI may import
+  renderer-agnostic `:daemon:core` catalog/protocol helpers, but it
+  must not instantiate daemon runtime services or renderer hosts.
 - **Daemon ↔ Gradle plumbing is a one-way file handoff.** The
   `composePreviewDaemonStart` task writes a launch descriptor JSON
   file (classpath, JVM args, target). The daemon reads that file at
@@ -120,13 +126,77 @@ What Layer 2 *may* be consumed by:
 - The VS Code extension's `daemonClient.ts` (Stream C work).
 - The harness in `:daemon:harness`.
 - Layer 3's MCP server, as a JSON-RPC client.
+- The CLI as a **local library** for pure, renderer-agnostic helpers
+  from `:daemon:core` only. Examples: protocol DTOs, known-device
+  catalog entries, override-field names, and local file-backed history
+  value types.
 
 What Layer 2 must **not** be consumed by:
 
 - `renderPreviews`. (See Layer 1 constraint above.)
-- The CLI binary's default code path. A `--daemon` CLI subcommand may
-  exist in v2+; it would be its own entry point that *clients* the
-  daemon, not embeds it.
+- The CLI as an embedded daemon runtime. Commands that need module or
+  runtime state must either use the existing Gradle task path or client
+  a daemon process through the protocol; they must not call renderer
+  implementations in-process.
+
+## CLI local-library boundary
+
+The CLI has two valid daemon-adjacent modes:
+
+1. **Local-library mode** for pure data. The command imports
+   `:daemon:core` classes directly and does not run Gradle or spawn a
+   daemon. `compose-preview devices` is the reference example: it reads
+   `DeviceDimensions` and emits protocol-shaped `KnownDevice` rows.
+2. **Daemon-client mode** for runtime state. The command obtains a
+   launch descriptor from Gradle and connects to a daemon process through
+   JSON-RPC using [PROTOCOL.md](PROTOCOL.md). It may start the daemon
+   when explicitly asked, but the efficient path for repeated CLI calls is
+   to attach to an already-running daemon or supervisor. This is required
+   for render queues, live preview state, data products that require a
+   render, interactive sessions, and backend-specific capabilities.
+
+Prefer local-library mode for repeated one-shot CLI workflows. Starting a
+daemon per CLI invocation can easily cost more than the work being asked
+for, especially in scripts that call the CLI several times. Before adding a
+daemon-backed CLI command, first ask whether the needed data product can be
+split into a reusable `core` model/producer and consumed from the CLI after
+the existing Gradle render path has written its files.
+
+When a command does need daemon state, prefer amortized daemon-client
+access over per-command startup:
+
+- connect to a daemon already started by VS Code, MCP, or an explicit CLI
+  warmup command;
+- or connect to a long-lived supervisor that owns daemon lifecycles across
+  modules/workspaces.
+
+Hosting that supervisor in the MCP process is allowed as an optimization:
+the CLI still talks over a protocol boundary and does not import renderer
+implementations. The hosting choice must be treated as lifecycle/packaging,
+not as permission for CLI code to reach into daemon internals. A Unix
+domain socket is a plausible local transport for that future mode, but it
+is not part of the foundation contract; stdio JSON-RPC and local-library
+access remain the supported baseline until a concrete repeated-call
+workflow proves the extra lifecycle surface is worth it.
+
+Allowed CLI compile-time dependencies:
+
+- `:daemon:core` for protocol/catalog/history DTOs and other
+  renderer-agnostic helpers.
+- `:mcp` for the bundled `compose-preview mcp serve` entry point.
+- Data-product `core` modules when they are renderer-agnostic or expose
+  reusable file/model helpers for outputs the Gradle path already writes.
+
+Forbidden CLI compile-time/runtime dependencies:
+
+- `:daemon:android` and `:daemon:desktop`.
+- `:renderer-android` and `:renderer-desktop`.
+- Any connector module that exists only to adapt renderer output into
+  daemon runtime hooks, unless it has first been split into a reusable
+  `core` module.
+
+The `:cli:checkCliDaemonLibraryBoundary` verification task enforces the
+renderer-module part of this rule on the CLI runtime classpath.
 
 ## Layer 3 — what the MCP server owns
 
@@ -186,6 +256,7 @@ not on this list is a layering violation.
 | Daemon JSON-RPC over stdio | L2 ↔ extension/supervisor | `PROTOCOL.md` | L2 |
 | MCP wire format ↔ daemon JSON-RPC translation | L3 ↔ L2 | `:mcp` shim | L3 |
 | `:daemon:core` `Messages.kt` types | shared by L2 + L3 | Kotlin data classes | L2 |
+| `:daemon:core` catalog/protocol helpers → CLI | L2 → L1 CLI | local-library dependency, no daemon process | L1 CLI |
 | `composePreviewDaemonStart` → spawn-daemon helper used by L3's `DaemonSupervisor` | L3 → L1 | shells out to Gradle | L3 |
 
 If a future change wants to add a new seam, it goes here first. If
@@ -206,6 +277,8 @@ Each layer can be removed without breaking the layers below it.
 - Delete `:daemon:core`, `:daemon:android`,
   `:daemon:desktop`, `:daemon:harness`,
   `:mcp`.
+- Move or replace CLI commands that intentionally use local-library
+  helpers from `:daemon:core` (for example the known-device catalog).
 - Remove the `daemon` DSL block and the
   `composePreviewDaemonStart` task registration from `:gradle-plugin`.
 - The base `composePreview { … }` DSL and `renderPreviews` task work

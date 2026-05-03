@@ -183,6 +183,16 @@ Highest-value simple additions:
      `build/compose-previews/data/<previewId>/<kind-with-slashes-as-dashes>.json`.
      This covers cheap/ambient products without adding a daemon lifecycle to
      the command.
+   - Prefer refactoring reusable data-product models/producers into `core`
+     modules over starting a daemon for every one-shot CLI call. A daemon
+     startup can dominate total cost when scripts invoke the CLI repeatedly.
+     When daemon-backed fetch is needed, prefer attaching to an existing
+     daemon/supervisor, including one hosted by MCP, so startup is amortized.
+     Reserve daemon-backed fetch for products that need live renderer state
+     or re-render-on-demand behavior. A Unix domain socket could be a good
+     local transport for CLI to MCP-hosted supervisor later, but keep it out
+     of the first CLI foundation unless repeated-call latency justifies the
+     added lifecycle and cleanup rules.
    - Better second implementation: daemon-backed fetch with the MCP
      supervisor so the command can auto-render one preview and handle
      re-render-on-demand products.
@@ -192,8 +202,9 @@ Highest-value simple additions:
    - Value: gives scripts and agents the legal `id:*` device strings and
      resolved dimensions for override planning.
    - Simple implementation: read `DeviceDimensions.KNOWN_DEVICE_IDS`
-     directly. The CLI already bundles `:mcp`, which depends on daemon
-     protocol/core, so no new process or Gradle invocation is required.
+     directly from `:daemon:core` and emit protocol-shaped `KnownDevice`
+     rows. This is the reference CLI local-library use case: no new
+     process or Gradle invocation is required.
 
 4. **`compose-preview history list|diff [--module M] [--id PREVIEW] [--json]`**
    - Maps to MCP `history_list` and `history_diff`.

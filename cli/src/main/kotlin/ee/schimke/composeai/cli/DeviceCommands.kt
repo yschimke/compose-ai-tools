@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.KnownDevice
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -14,15 +15,7 @@ private val devicesJson = Json {
 @Serializable
 data class DeviceCatalogResponse(
   val schema: String = DEVICES_SCHEMA,
-  val devices: List<DeviceCatalogEntry>,
-)
-
-@Serializable
-data class DeviceCatalogEntry(
-  val id: String,
-  val widthDp: Int,
-  val heightDp: Int,
-  val density: Float,
+  val devices: List<KnownDevice>,
 )
 
 class DevicesCommand(private val args: List<String>) {
@@ -69,11 +62,12 @@ internal fun buildDeviceCatalogResponse(): DeviceCatalogResponse =
     devices =
       DeviceDimensions.KNOWN_DEVICE_IDS.sorted().map { id ->
         val spec = DeviceDimensions.resolve(id)
-        DeviceCatalogEntry(
+        KnownDevice(
           id = id,
           widthDp = spec.widthDp,
           heightDp = spec.heightDp,
           density = spec.density,
+          isRound = spec.isRound,
         )
       }
   )
