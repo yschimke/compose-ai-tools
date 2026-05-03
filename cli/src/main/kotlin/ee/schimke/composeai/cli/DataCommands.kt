@@ -236,8 +236,10 @@ internal fun scanDataProducts(module: String, projectDir: File): DataProductsMod
           ?.filter { it.isFile }
           ?.forEach { file ->
             if (directoryDescriptor != null) {
-              byKind.getOrPut(directoryDescriptor.kind) { linkedSetOf() } +=
-                file.nameWithoutExtension
+              if (file.extension == directoryDescriptor.extension) {
+                byKind.getOrPut(directoryDescriptor.kind) { linkedSetOf() } +=
+                  file.nameWithoutExtension
+              }
             } else {
               descriptorForFile(file)?.let { descriptor ->
                 byKind.getOrPut(descriptor.kind) { linkedSetOf() } += productDir.name
