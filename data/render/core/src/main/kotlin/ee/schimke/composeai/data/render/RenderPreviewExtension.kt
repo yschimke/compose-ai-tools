@@ -67,15 +67,14 @@ object RenderPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "render-device-clip.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_DEVICE_CLIP,
-                "--output",
-                "<path>",
+                "--json",
               ),
+            requiresDaemon = true,
             productKinds = listOf(KIND_DEVICE_CLIP),
           )
         ),
@@ -95,15 +94,15 @@ object RenderPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "render-trace.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_TRACE,
                 "--json",
               ),
             agentRecommended = true,
+            requiresDaemon = true,
             productKinds = listOf(KIND_TRACE),
           )
         ),
@@ -123,12 +122,11 @@ object RenderPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "compose-trace.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_COMPOSE_AI_TRACE,
                 "--json",
               ),
             agentRecommended = true,

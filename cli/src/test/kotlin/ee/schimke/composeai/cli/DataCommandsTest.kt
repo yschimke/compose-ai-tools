@@ -95,6 +95,43 @@ class DataCommandsTest {
     assertEquals("custom/kind", module.products.single().kind)
   }
 
+  @Test
+  fun `manifest data products are discoverable by kind and preview id`() {
+    val projectDir = tempModule()
+    val file = projectDir.resolve("build/compose-previews/data/render-scroll-long/P.png")
+    file.parentFile.mkdirs()
+    file.writeBytes(byteArrayOf(1, 2, 3))
+    projectDir
+      .resolve("build/compose-previews/previews.json")
+      .writeText(
+        """
+        {
+          "module": "app",
+          "variant": "debug",
+          "previews": [
+            {
+              "id": "P",
+              "functionName": "P",
+              "className": "Previews",
+              "captures": [{"renderOutput": "renders/P.png"}],
+              "dataProducts": [
+                {"kind": "render/scroll/long", "output": "data/render-scroll-long/P.png"}
+              ]
+            }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+
+    val summary = scanDataProducts("app", projectDir).products.single()
+    val product = findDataProduct(PreviewModule("app", projectDir), "P", "render/scroll/long")
+
+    assertEquals("render/scroll/long", summary.kind)
+    assertEquals(listOf("P"), summary.previews)
+    assertEquals(file.absolutePath, product!!.file.path)
+  }
+
   private fun tempModule(): File = Files.createTempDirectory("data-command-test").toFile()
 
   private fun writeProduct(

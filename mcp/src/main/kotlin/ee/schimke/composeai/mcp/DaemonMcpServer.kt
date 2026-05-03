@@ -9,6 +9,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
 import ee.schimke.composeai.mcp.protocol.Implementation
@@ -31,6 +33,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -720,6 +723,50 @@ class DaemonMcpServer(
           ),
       ),
       ToolDef(
+        name = "list_extension_commands",
+        description =
+          "List preview-extension command ids exposed by the built-in command catalog. These are " +
+            "shrinkwrapped shortcuts over generic tools such as get_preview_data, " +
+            "render_preview_overlay, and render_preview. Use run_extension_command to invoke one by id.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "agentRecommended":{"type":"boolean","description":"When true, only return commands marked as useful defaults for agents."}
+              }
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "run_extension_command",
+        description =
+          "Run a preview-extension command by id. This keeps high-level shortcuts discoverable " +
+            "through list_extension_commands while routing execution through stable generic MCP " +
+            "tools. Most commands require `uri`; render/data commands accept `inline`, `overrides`, " +
+            "and `params` where the underlying tool supports them.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "commandId":{"type":"string","description":"Extension command id from list_extension_commands."},
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "inline":{"type":"boolean","description":"For data/media commands, return inline content when supported."},
+                "params":{"type":"object","description":"Optional data/fetch params, forwarded for data commands."},
+                "overrides":{"type":"object","description":"Optional render overrides for render/media commands. Same shape as render_preview.overrides."}
+              },
+              "required":["commandId"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
         name = "get_preview_data",
         description =
           "Fetch one data product (a11y findings, a11y hierarchy, layout tree, …) for a preview. The kind names a structured payload the daemon can produce alongside the PNG; call list_data_products first to see what each daemon advertises. Returns the JSON payload as a single text content block. Auto-renders the preview if it hasn't rendered yet (so the agent doesn't need to call render_preview first). Cache short-circuit: if the kind has been subscribed (subscribe_preview_data) or globally attached (--attach-data-product server flag), the latest renderFinished payload is served from an in-memory cache with zero daemon round-trip — the response carries `cached: true`. When the daemon's latest render didn't compute the kind and it's not cached, the daemon may queue a re-render in the right mode; this is bounded by the daemon's per-request budget (DataProductBudgetExceeded if exceeded). `inline` defaults to true so the agent gets JSON back rather than a path it may not be able to read; flip to false on local-FS callers that prefer to read sibling files directly.",
@@ -941,6 +988,8 @@ class DaemonMcpServer(
       "history_list" -> toolHistoryList(args)
       "history_diff" -> toolHistoryDiff(args)
       "list_data_products" -> toolListDataProducts(args)
+      "list_extension_commands" -> toolListExtensionCommands(args)
+      "run_extension_command" -> toolRunExtensionCommand(args)
       "get_preview_data" -> toolGetPreviewData(args)
       "render_preview_overlay" -> toolRenderPreviewOverlay(args)
       "get_preview_extras" -> toolGetPreviewExtras(args)
@@ -1487,6 +1536,89 @@ class DaemonMcpServer(
       }
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  private fun toolListExtensionCommands(args: JsonObject): CallToolResult {
+    val agentRecommended =
+      args["agentRecommended"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+    val extensions =
+      if (agentRecommended) {
+        PreviewExtensionCommandCatalog.extensions
+          .map { extension ->
+            extension.copy(cliCommands = extension.cliCommands.filter { it.agentRecommended })
+          }
+          .filter { it.cliCommands.isNotEmpty() }
+      } else {
+        PreviewExtensionCommandCatalog.extensions
+      }
+    val payload = buildJsonObject {
+      put("schema", "compose-preview-extension-commands/v1")
+      putJsonArray("extensions") {
+        extensions.forEach { extension ->
+          add(json.encodeToJsonElement(PreviewExtensionDescriptor.serializer(), extension))
+        }
+      }
+      put("commandCount", extensions.sumOf { it.cliCommands.size })
+    }
+    return textCallToolResult(payload.toString())
+  }
+
+  private fun toolRunExtensionCommand(args: JsonObject): CallToolResult {
+    val commandId =
+      args["commandId"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("run_extension_command: missing 'commandId'")
+    if (PreviewExtensionCommandCatalog.commandById(commandId) == null) {
+      return errorCallToolResult("run_extension_command: unknown command '$commandId'")
+    }
+    fun data(kind: String, defaultInline: Boolean = true): CallToolResult {
+      val routed = buildJsonObject {
+        copyArg(args, "uri")
+        put("kind", kind)
+        args["params"]?.let { put("params", it) }
+        put(
+          "inline",
+          JsonPrimitive(
+            args["inline"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: defaultInline
+          ),
+        )
+      }
+      return toolGetPreviewData(routed)
+    }
+    fun overlay(kind: String): CallToolResult {
+      val routed = buildJsonObject {
+        copyArg(args, "uri")
+        put("kind", kind)
+        args["inline"]?.let { put("inline", it) }
+        args["overrides"]?.let { put("overrides", it) }
+      }
+      return toolRenderPreviewOverlay(routed)
+    }
+    fun render(): CallToolResult {
+      val routed = buildJsonObject {
+        copyArg(args, "uri")
+        args["overrides"]?.let { put("overrides", it) }
+      }
+      return toolRenderPreview(routed)
+    }
+    return when (commandId) {
+      "render-device-clip.get" -> data("render/deviceClip")
+      "render-trace.get" -> data("render/trace")
+      "compose-trace.get" -> data("render/composeAiTrace")
+      "a11y.hierarchy.get" -> data("a11y/hierarchy")
+      "atf-checks.run",
+      "atf-checks.get" -> data("a11y/atf")
+      "a11y-overlay.get" -> overlay("a11y/overlay")
+      "a11y-annotated-preview.render",
+      "scrolling-preview-annotation.render" -> render()
+      "scroll-long.get" -> data("render/scroll/long", defaultInline = false)
+      "scroll-gif.get" -> data("render/scroll/gif", defaultInline = false)
+      else ->
+        errorCallToolResult("run_extension_command: command '$commandId' has no MCP runner yet")
+    }
+  }
+
+  private fun JsonObjectBuilder.copyArg(source: JsonObject, name: String) {
+    source[name]?.let { put(name, it) }
   }
 
   private fun toolGetPreviewData(args: JsonObject): CallToolResult {

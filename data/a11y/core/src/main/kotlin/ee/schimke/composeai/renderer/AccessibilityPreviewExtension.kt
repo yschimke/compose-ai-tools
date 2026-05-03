@@ -57,12 +57,11 @@ object AccessibilitySemanticsPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "a11y.hierarchy.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_HIERARCHY,
                 "--json",
               ),
             agentRecommended = true,
@@ -116,7 +115,7 @@ object AtfChecksPreviewExtension {
             id = "atf-checks.run",
             displayName = "Run ATF accessibility checks",
             summary = "Renders previews and returns ATF accessibility findings.",
-            command = listOf("compose-preview", "a11y", "--json"),
+            command = listOf("compose-preview", "extensions", "run", "atf-checks.run", "--json"),
             agentRecommended = true,
             productKinds = listOf(KIND_ATF, KIND_TOUCH_TARGETS),
           ),
@@ -127,12 +126,11 @@ object AtfChecksPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "atf-checks.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_ATF,
                 "--json",
               ),
             productKinds = listOf(KIND_ATF),
@@ -175,12 +173,11 @@ object AccessibilityOverlayPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "a11y-overlay.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_OVERLAY,
                 "--output",
                 "<path>",
               ),
@@ -213,7 +210,8 @@ object AccessibilityAnnotatedPreviewExtension {
             id = "a11y-annotated-preview.render",
             displayName = "Render accessibility annotated previews",
             summary = "Discovers and renders suggested accessibility annotated preview extras.",
-            command = listOf("compose-preview", "show", "--json"),
+            command =
+              listOf("compose-preview", "extensions", "run", "a11y-annotated-preview.render", "--json"),
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
           )
         ),

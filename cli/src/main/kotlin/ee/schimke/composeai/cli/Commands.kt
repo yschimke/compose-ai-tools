@@ -74,7 +74,10 @@ data class PreviewInfo(
   val sourceFile: String? = null,
   val params: PreviewParams = PreviewParams(),
   val captures: List<Capture> = listOf(Capture()),
+  val dataProducts: List<PreviewDataProduct> = emptyList(),
 )
+
+@Serializable data class PreviewDataProduct(val kind: String, val output: String = "")
 
 @Serializable
 data class PreviewManifest(
