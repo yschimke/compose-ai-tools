@@ -137,6 +137,61 @@ A producer picks one transport per kind, advertised in capabilities. A
 producer MAY support both `inline` and `path`; the caller picks via
 the `inline` flag on `data/fetch`.
 
+## Documenting a kind
+
+Every data product added to the catalogue should have a human-facing contract
+that follows the same shape. Keep this section stable enough that individual
+product issues can point at it instead of restating the whole contract.
+
+Template:
+
+```markdown
+### `<namespace/name>`
+
+Status: proposed | shipped | deprecated
+Producer: renderer-android | renderer-desktop | daemon | Gradle task
+Mode: default | a11y | instrumented | live | failed render
+Cost: low | medium | high
+Transport: inline | path | inline-or-path | extra-only
+Schema version: 1
+Platforms: Android | Desktop | Wear | shared
+Availability: fetch | subscribe | global attach | on-disk CLI | failed-render only
+Companion products: `kind/a`, `kind/b`
+
+Purpose:
+
+- What question this product answers for a human or agent.
+- What it deliberately does not answer.
+
+Payload:
+
+- Field names, types, units, coordinate space, and stable identifiers.
+- Correlation keys back to preview ids, source refs, nodes, resources, or
+  screenshot regions.
+- Redaction, privacy, and truncation behavior.
+
+Extras:
+
+- Any derived files, media types, and lifecycle.
+
+Failure and unavailable behavior:
+
+- When callers get `DataProductUnknown`, `DataProductNotAvailable`,
+  `DataProductFetchFailed`, or a partial payload.
+- Whether a missing payload is a product bug, a disabled producer, or a normal
+  platform limitation.
+
+Examples:
+
+- One small JSON payload.
+- One review sentence an agent could write from the payload.
+```
+
+Human-facing docs should explain the stable contract above. Agent-facing skill
+docs should not duplicate the full schema; they should explain when to request
+the product, which companion products improve the evidence, and how to word a
+PR comment without overstating what the product proves.
+
 ### Image processors and extras
 
 A kind's primary payload is JSON or a JSON-shaped path. Some producers

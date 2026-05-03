@@ -23,6 +23,25 @@ Two surfaces:
 The full kind catalogue, per-kind schemas, transports, and re-render
 cost notes live in
 [`docs/daemon/DATA-PRODUCTS.md`](../../../docs/daemon/DATA-PRODUCTS.md).
+That daemon doc is the human-facing contract. This skill keeps only the
+agent-facing review guidance: which evidence is useful, how to combine it, and
+how much confidence it supports.
+
+## Agent evidence conventions
+
+- Prefer combinations over single-product conclusions. For example, pair
+  `a11y/atf` with `a11y/overlay`, `compose/semantics`, and `text/strings`;
+  pair `i18n/translations` with `resources/used` and a locale screenshot.
+- Distinguish visible output from semantic output. Screenshots and
+  `text/strings` describe what the user sees; `compose/semantics` and
+  `a11y/hierarchy` describe assistive-technology intent.
+- Cite evidence precisely: product kind, preview id, locale/device when
+  relevant, and screenshot or extra path when available.
+- Treat unavailable products as review context, not proof that the UI is
+  correct.
+- Use
+  [`compose-preview-review/design/AGENT_AUDITS.md`](../../compose-preview-review/design/AGENT_AUDITS.md)
+  for focused app-review checklists.
 
 ## Enabling a kind
 
