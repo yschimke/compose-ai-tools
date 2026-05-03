@@ -4,7 +4,9 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
+import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -76,6 +78,10 @@ class PerfettoTraceDataProductRegistry(private val rootDir: File) : DataProductR
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Perfetto trace",
+        facets = listOf(DataProductFacet.ARTIFACT, DataProductFacet.PROFILE),
+        mediaTypes = listOf("application/json"),
+        sampling = SamplingPolicy.Aggregate,
       )
     )
 

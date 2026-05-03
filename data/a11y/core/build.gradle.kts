@@ -69,6 +69,7 @@ android {
 }
 
 dependencies {
+  api(project(":data-render-core"))
   api(libs.kotlinx.serialization.json)
 
   // ATF (`accessibility-test-framework`) — directly referenced by `AccessibilityChecker.kt`.

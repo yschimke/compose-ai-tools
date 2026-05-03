@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon.protocol
 
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -138,6 +140,11 @@ data class ServerCapabilities(
   // client side treats absent and `[]` identically). See
   // docs/daemon/DATA-PRODUCTS.md § "Wire surface".
   val dataProducts: List<DataProductCapability> = emptyList(),
+  /**
+   * Metadata for extension steps the daemon can plan into a render pipeline. Clients should use
+   * this for generic UI affordances and validation instead of keying behavior off product strings.
+   */
+  val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
   // INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
   // `interactive/input` events into a held composition (v2). `false` means
   // `interactive/start` still works but inputs trigger a re-render rather than
@@ -240,6 +247,10 @@ data class DataProductCapability(
   val attachable: Boolean,
   val fetchable: Boolean,
   val requiresRerender: Boolean,
+  val displayName: String? = null,
+  val facets: List<DataProductFacet> = emptyList(),
+  val mediaTypes: List<String> = emptyList(),
+  val sampling: SamplingPolicy? = null,
 )
 
 @Serializable
@@ -247,6 +258,19 @@ enum class DataProductTransport {
   @SerialName("inline") INLINE,
   @SerialName("path") PATH,
   @SerialName("both") BOTH,
+}
+
+@Serializable
+enum class DataProductFacet {
+  @SerialName("structured") STRUCTURED,
+  @SerialName("artifact") ARTIFACT,
+  @SerialName("image") IMAGE,
+  @SerialName("animation") ANIMATION,
+  @SerialName("overlay") OVERLAY,
+  @SerialName("check") CHECK,
+  @SerialName("diagnostic") DIAGNOSTIC,
+  @SerialName("profile") PROFILE,
+  @SerialName("interactive") INTERACTIVE,
 }
 
 @Serializable

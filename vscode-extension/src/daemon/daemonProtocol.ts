@@ -123,6 +123,84 @@ export interface DataProductCapability {
     attachable: boolean;
     fetchable: boolean;
     requiresRerender: boolean;
+    displayName?: string;
+    facets?: DataProductFacet[];
+    mediaTypes?: string[];
+    sampling?: SamplingPolicy;
+}
+
+export type DataProductFacet =
+    | 'structured'
+    | 'artifact'
+    | 'image'
+    | 'animation'
+    | 'overlay'
+    | 'check'
+    | 'diagnostic'
+    | 'profile'
+    | 'interactive';
+
+export type SamplingPolicy =
+    | 'Start'
+    | 'End'
+    | 'EachFrame'
+    | 'OnDemand'
+    | 'Aggregate'
+    | 'Failure';
+
+export interface PreviewExtensionDescriptor {
+    id: string;
+    displayName?: string;
+    steps?: PreviewPipelineStep[];
+}
+
+export interface PreviewPipelineStep {
+    id: string;
+    displayName?: string;
+    productKinds?: string[];
+    usageModes?: PreviewExtensionUsageMode[];
+    traits?: PipelineStepTrait[];
+    requires?: PipelineCapability[];
+    provides?: PipelineCapability[];
+    conflictsWith?: PipelineStepTrait[];
+    sampling?: SamplingPolicy | null;
+    extraction?: ExtractionSpec | null;
+}
+
+export type PreviewExtensionUsageMode =
+    | 'ExplicitEffect'
+    | 'SuggestedExtraPreview';
+
+export type PipelineStepTrait =
+    | 'ScenarioDriver'
+    | 'InteractiveDriver'
+    | 'FrameProcessor'
+    | 'FinalArtifactProcessor'
+    | 'DataExtractor'
+    | 'Check'
+    | 'Encoder'
+    | 'Profiler';
+
+export type PipelineCapability =
+    | 'Frames'
+    | 'SingleFrame'
+    | 'MultipleFrames'
+    | 'DeviceGeometry'
+    | 'DeviceClip'
+    | 'ScrollState'
+    | 'SemanticsSnapshot'
+    | 'AccessibilityFindings'
+    | 'ImageArtifact'
+    | 'AnimatedArtifact'
+    | 'InteractiveSession'
+    | 'TraceEvents';
+
+export interface ExtractionSpec {
+    kind: string;
+    sampling: SamplingPolicy;
+    requiresImage?: boolean;
+    requiresSemantics?: boolean;
+    aggregate?: boolean;
 }
 
 export interface InitializeResult {
@@ -140,6 +218,7 @@ export interface InitializeResult {
          * kinds in subscribe/fetch with `DataProductUnknown` (-32020).
          */
         dataProducts: DataProductCapability[];
+        previewExtensions?: PreviewExtensionDescriptor[];
         /**
          * INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
          * `interactive/input` events into a held composition (v2 — clicks

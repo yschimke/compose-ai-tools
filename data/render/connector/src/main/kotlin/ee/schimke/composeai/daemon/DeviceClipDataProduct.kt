@@ -4,10 +4,12 @@ import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -45,6 +47,9 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Device clip",
+        facets = listOf(DataProductFacet.STRUCTURED),
+        sampling = SamplingPolicy.End,
       )
     )
 

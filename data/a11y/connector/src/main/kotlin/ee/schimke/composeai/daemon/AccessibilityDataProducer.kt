@@ -4,7 +4,9 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
+import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
 import java.io.File
@@ -237,6 +239,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Accessibility findings",
+        facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+        sampling = SamplingPolicy.End,
       ),
       DataProductCapability(
         kind = AccessibilityDataProducer.KIND_HIERARCHY,
@@ -245,6 +250,10 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Accessibility hierarchy",
+        facets = listOf(DataProductFacet.STRUCTURED),
+        mediaTypes = listOf("application/json"),
+        sampling = SamplingPolicy.End,
       ),
       DataProductCapability(
         kind = AccessibilityDataProducer.KIND_TOUCH_TARGETS,
@@ -253,6 +262,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Touch target findings",
+        facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+        sampling = SamplingPolicy.End,
       ),
       DataProductCapability(
         kind = AccessibilityDataProducer.KIND_OVERLAY,
@@ -261,6 +273,10 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Accessibility overlay",
+        facets = listOf(DataProductFacet.ARTIFACT, DataProductFacet.IMAGE, DataProductFacet.OVERLAY),
+        mediaTypes = listOf("image/png"),
+        sampling = SamplingPolicy.End,
       ),
     )
 

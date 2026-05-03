@@ -639,9 +639,44 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
           ScrollMode.GIF -> "render/scroll/gif"
           else -> error("non-product scroll mode ${scroll.mode}")
         }
+      val displayName =
+        when (scroll.mode) {
+          ScrollMode.LONG -> "Long scroll"
+          ScrollMode.GIF -> "Scroll GIF"
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
+      val effectId =
+        when (scroll.mode) {
+          ScrollMode.LONG -> "long"
+          ScrollMode.GIF -> "gif"
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
+      val facets =
+        when (scroll.mode) {
+          ScrollMode.LONG -> listOf(PreviewDataProductFacet.ARTIFACT, PreviewDataProductFacet.IMAGE)
+          ScrollMode.GIF ->
+            listOf(PreviewDataProductFacet.ARTIFACT, PreviewDataProductFacet.ANIMATION)
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
+      val mediaTypes =
+        when (scroll.mode) {
+          ScrollMode.LONG -> listOf("image/png")
+          ScrollMode.GIF -> listOf("image/gif")
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
       timeRows.map { (ms, timeSuffix) ->
         PreviewDataProduct(
           kind = kind,
+          extensionId = "scroll",
+          effectId = effectId,
+          usageMode = PreviewExtensionUsageMode.SUGGESTED_EXTRA_PREVIEW,
+          suggestedBy = SCROLLING_PREVIEW_FQN,
+          displayName = displayName,
+          facets = facets,
+          mediaTypes = mediaTypes,
+          sampling =
+            if (scroll.mode == ScrollMode.GIF) PreviewDataProductSampling.EACH_FRAME
+            else PreviewDataProductSampling.AGGREGATE,
           advanceTimeMillis = ms,
           scroll = scroll,
           output =

@@ -7,6 +7,9 @@ import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
+import ee.schimke.composeai.data.render.RenderPreviewExtension
+import ee.schimke.composeai.renderer.AccessibilityChecksPreviewExtension
+import ee.schimke.composeai.renderer.AccessibilityOverlayPreviewExtension
 import java.io.File
 import java.nio.file.Path
 
@@ -297,6 +300,16 @@ fun main(args: Array<String>) {
         }
       }
       .let(::CompositeDataProductRegistry)
+  val previewExtensions =
+    buildList {
+      add(RenderPreviewExtension.deviceClipDescriptor)
+      add(RenderPreviewExtension.renderTraceDescriptor)
+      add(RenderPreviewExtension.composeTraceDescriptor)
+      if (a11yPreviewExtensionEnabled) {
+        add(AccessibilityChecksPreviewExtension.descriptor)
+        add(AccessibilityOverlayPreviewExtension.descriptor)
+      }
+    }
 
   val server =
     JsonRpcServer(
@@ -308,6 +321,7 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       dataProducts = dataProducts,
+      previewExtensions = previewExtensions,
     )
   server.run()
 }
