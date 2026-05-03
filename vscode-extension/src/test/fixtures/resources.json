@@ -11,12 +11,20 @@
             },
             "captures": [
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": null, "style": null },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": null,
+                        "style": null
+                    },
                     "renderOutput": "renders/resources/drawable/ic_compose_logo_xhdpi.png",
                     "cost": 1.0
                 },
                 {
-                    "variant": { "qualifiers": "night-xhdpi", "shape": null, "style": null },
+                    "variant": {
+                        "qualifiers": "night-xhdpi",
+                        "shape": null,
+                        "style": null
+                    },
                     "renderOutput": "renders/resources/drawable/ic_compose_logo_night-xhdpi.png",
                     "cost": 1.0
                 }
@@ -30,22 +38,38 @@
             },
             "captures": [
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": "CIRCLE", "style": "FULL_COLOR" },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": "CIRCLE",
+                        "style": "FULL_COLOR"
+                    },
                     "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
                     "cost": 4.0
                 },
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": "SQUIRCLE", "style": "THEMED_LIGHT" },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": "SQUIRCLE",
+                        "style": "THEMED_LIGHT"
+                    },
                     "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png",
                     "cost": 4.0
                 },
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": "SQUIRCLE", "style": "THEMED_DARK" },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": "SQUIRCLE",
+                        "style": "THEMED_DARK"
+                    },
                     "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png",
                     "cost": 4.0
                 },
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": null, "style": "LEGACY" },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": null,
+                        "style": "LEGACY"
+                    },
                     "renderOutput": "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
                     "cost": 4.0
                 }
@@ -59,7 +83,11 @@
             },
             "captures": [
                 {
-                    "variant": { "qualifiers": "xhdpi", "shape": null, "style": null },
+                    "variant": {
+                        "qualifiers": "xhdpi",
+                        "shape": null,
+                        "style": null
+                    },
                     "renderOutput": "renders/resources/drawable/avd_pulse_xhdpi.gif",
                     "cost": 35.0
                 }

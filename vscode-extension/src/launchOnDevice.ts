@@ -1,7 +1,7 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { spawn } from 'child_process';
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { spawn } from "child_process";
 
 /**
  * Helpers for the "Launch on Device" panel button. This module is
@@ -45,16 +45,24 @@ export function parseAndroidApplicationInfo(
     const lines = buildGradleContent.split(/\r?\n/);
     let isAndroidApp = false;
     for (const line of lines) {
-        if (APPLY_FALSE_RE.test(line)) { continue; }
-        if (ANDROID_APPLICATION_PLUGIN_ID_RE.test(line)
-            || ANDROID_APPLICATION_ALIAS_RE.test(line)) {
+        if (APPLY_FALSE_RE.test(line)) {
+            continue;
+        }
+        if (
+            ANDROID_APPLICATION_PLUGIN_ID_RE.test(line) ||
+            ANDROID_APPLICATION_ALIAS_RE.test(line)
+        ) {
             isAndroidApp = true;
             break;
         }
     }
-    if (!isAndroidApp) { return null; }
+    if (!isAndroidApp) {
+        return null;
+    }
     const m = APPLICATION_ID_RE.exec(buildGradleContent);
-    if (!m) { return null; }
+    if (!m) {
+        return null;
+    }
     return { applicationId: m[1] };
 }
 
@@ -71,25 +79,33 @@ export function parseAndroidApplicationInfo(
  */
 export function findAndroidSdkRoot(workspaceRoot: string): string | null {
     const fromEnv = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
-    if (fromEnv && fs.existsSync(fromEnv)) { return fromEnv; }
-    const localProps = path.join(workspaceRoot, 'local.properties');
+    if (fromEnv && fs.existsSync(fromEnv)) {
+        return fromEnv;
+    }
+    const localProps = path.join(workspaceRoot, "local.properties");
     try {
-        const content = fs.readFileSync(localProps, 'utf-8');
+        const content = fs.readFileSync(localProps, "utf-8");
         for (const line of content.split(/\r?\n/)) {
             const m = /^\s*sdk\.dir\s*=\s*(.+?)\s*$/.exec(line);
             if (m) {
                 const dir = m[1].trim();
-                if (fs.existsSync(dir)) { return dir; }
+                if (fs.existsSync(dir)) {
+                    return dir;
+                }
             }
         }
-    } catch { /* no local.properties — fall through */ }
+    } catch {
+        /* no local.properties — fall through */
+    }
     const home = os.homedir();
     const candidates = [
-        path.join(home, 'Library', 'Android', 'sdk'),
-        path.join(home, 'Android', 'Sdk'),
+        path.join(home, "Library", "Android", "sdk"),
+        path.join(home, "Android", "Sdk"),
     ];
     for (const c of candidates) {
-        if (fs.existsSync(c)) { return c; }
+        if (fs.existsSync(c)) {
+            return c;
+        }
     }
     return null;
 }
@@ -100,9 +116,11 @@ export function findAndroidSdkRoot(workspaceRoot: string): string | null {
  * return the bare name and trust the caller's `PATH`.
  */
 export function resolveAdbPath(sdkRoot: string | null): string {
-    if (!sdkRoot) { return 'adb'; }
-    const exe = process.platform === 'win32' ? 'adb.exe' : 'adb';
-    return path.join(sdkRoot, 'platform-tools', exe);
+    if (!sdkRoot) {
+        return "adb";
+    }
+    const exe = process.platform === "win32" ? "adb.exe" : "adb";
+    return path.join(sdkRoot, "platform-tools", exe);
 }
 
 export interface AdbResult {
@@ -122,13 +140,19 @@ export interface AdbResult {
  */
 export function runAdb(adbPath: string, args: string[]): Promise<AdbResult> {
     return new Promise((resolve, reject) => {
-        const proc = spawn(adbPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-        let stdout = '';
-        let stderr = '';
-        proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-        proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-        proc.on('error', reject);
-        proc.on('close', (code) => {
+        const proc = spawn(adbPath, args, {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        proc.stdout.on("data", (chunk) => {
+            stdout += chunk.toString();
+        });
+        proc.stderr.on("data", (chunk) => {
+            stderr += chunk.toString();
+        });
+        proc.on("error", reject);
+        proc.on("close", (code) => {
             resolve({ code: code ?? -1, stdout, stderr });
         });
     });
@@ -159,9 +183,22 @@ export function buildPreviewActivityAmStartArgs(opts: {
     parameterProviderClassName: string | null;
 }): string[] {
     const component = `${opts.applicationId}/androidx.compose.ui.tooling.PreviewActivity`;
-    const args = ['shell', 'am', 'start', '-n', component, '--es', 'composable', opts.composableFqn];
+    const args = [
+        "shell",
+        "am",
+        "start",
+        "-n",
+        component,
+        "--es",
+        "composable",
+        opts.composableFqn,
+    ];
     if (opts.parameterProviderClassName) {
-        args.push('--es', 'parameterProviderClassName', opts.parameterProviderClassName);
+        args.push(
+            "--es",
+            "parameterProviderClassName",
+            opts.parameterProviderClassName,
+        );
     }
     return args;
 }
@@ -178,15 +215,17 @@ export function collectAndroidApplicationModules(
 ): Array<{ module: string; applicationId: string }> {
     const out: Array<{ module: string; applicationId: string }> = [];
     for (const module of modules) {
-        const buildFile = path.join(workspaceRoot, module, 'build.gradle.kts');
+        const buildFile = path.join(workspaceRoot, module, "build.gradle.kts");
         let content: string;
         try {
-            content = fs.readFileSync(buildFile, 'utf-8');
+            content = fs.readFileSync(buildFile, "utf-8");
         } catch {
             continue;
         }
         const info = parseAndroidApplicationInfo(content);
-        if (info) { out.push({ module, applicationId: info.applicationId }); }
+        if (info) {
+            out.push({ module, applicationId: info.applicationId });
+        }
     }
     out.sort((a, b) => a.module.localeCompare(b.module));
     return out;

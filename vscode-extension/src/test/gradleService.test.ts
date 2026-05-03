@@ -1,30 +1,40 @@
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
-import { GradleService, GradleApi, TaskCancelledError } from '../gradleService';
-import { JdkImageError } from '../jdkImageErrorDetector';
+import * as assert from "assert";
+import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
+import { GradleService, GradleApi, TaskCancelledError } from "../gradleService";
+import { JdkImageError } from "../jdkImageErrorDetector";
 
 /** Stub GradleApi that records invocations and allows test control. */
 class StubGradleApi implements GradleApi {
     public runCalls: Array<{ taskName: string; cancellationKey?: string }> = [];
-    public cancelCalls: Array<{ taskName: string; cancellationKey?: string }> = [];
-    public nextRunResult: 'success' | Error = 'success';
+    public cancelCalls: Array<{ taskName: string; cancellationKey?: string }> =
+        [];
+    public nextRunResult: "success" | Error = "success";
     /** Bytes to feed through onOutput before resolving/rejecting. */
-    public nextRunOutput: string = '';
+    public nextRunOutput: string = "";
 
     async runTask(opts: {
         projectFolder: string;
         taskName: string;
         cancellationKey?: string;
-        onOutput?: (output: { getOutputBytes(): Uint8Array; getOutputType(): number }) => void;
+        onOutput?: (output: {
+            getOutputBytes(): Uint8Array;
+            getOutputType(): number;
+        }) => void;
     }): Promise<void> {
-        this.runCalls.push({ taskName: opts.taskName, cancellationKey: opts.cancellationKey });
+        this.runCalls.push({
+            taskName: opts.taskName,
+            cancellationKey: opts.cancellationKey,
+        });
         if (this.nextRunOutput && opts.onOutput) {
             const bytes = new TextEncoder().encode(this.nextRunOutput);
-            opts.onOutput({ getOutputBytes: () => bytes, getOutputType: () => 0 });
+            opts.onOutput({
+                getOutputBytes: () => bytes,
+                getOutputType: () => 0,
+            });
         }
-        if (this.nextRunResult !== 'success') {
+        if (this.nextRunResult !== "success") {
             throw this.nextRunResult;
         }
     }
@@ -34,13 +44,20 @@ class StubGradleApi implements GradleApi {
         taskName: string;
         cancellationKey?: string;
     }): Promise<void> {
-        this.cancelCalls.push({ taskName: opts.taskName, cancellationKey: opts.cancellationKey });
+        this.cancelCalls.push({
+            taskName: opts.taskName,
+            cancellationKey: opts.cancellationKey,
+        });
     }
 }
 
-function withTempDir(fn: (dir: string, api: StubGradleApi) => void | Promise<void>): () => Promise<void> {
+function withTempDir(
+    fn: (dir: string, api: StubGradleApi) => void | Promise<void>,
+): () => Promise<void> {
     return async () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-preview-test-'));
+        const dir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "compose-preview-test-"),
+        );
         try {
             await fn(dir, new StubGradleApi());
         } finally {
@@ -49,154 +66,296 @@ function withTempDir(fn: (dir: string, api: StubGradleApi) => void | Promise<voi
     };
 }
 
-describe('GradleService', () => {
-    describe('readManifest', () => {
-        it('reads and parses a valid manifest', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'testmodule', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.copyFileSync(
-                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                path.join(manifestDir, 'previews.json'),
-            );
+describe("GradleService", () => {
+    describe("readManifest", () => {
+        it(
+            "reads and parses a valid manifest",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "testmodule",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
 
-            const service = new GradleService(dir, api);
-            const manifest = service.readManifest('testmodule');
+                const service = new GradleService(dir, api);
+                const manifest = service.readManifest("testmodule");
 
-            assert.notStrictEqual(manifest, null);
-            assert.strictEqual(manifest!.module, 'sample-android');
-            assert.strictEqual(manifest!.previews.length, 4);
-        }));
+                assert.notStrictEqual(manifest, null);
+                assert.strictEqual(manifest!.module, "sample-android");
+                assert.strictEqual(manifest!.previews.length, 4);
+            }),
+        );
 
-        it('returns null for missing manifest', withTempDir((dir, api) => {
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readManifest('nonexistent'), null);
-        }));
+        it(
+            "returns null for missing manifest",
+            withTempDir((dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.readManifest("nonexistent"), null);
+            }),
+        );
 
-        it('returns null for malformed JSON', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'bad', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(path.join(manifestDir, 'previews.json'), '{ broken');
+        it(
+            "returns null for malformed JSON",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "bad",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(manifestDir, "previews.json"),
+                    "{ broken",
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readManifest('bad'), null);
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.readManifest("bad"), null);
+            }),
+        );
 
-        it('returns null for manifest without previews array', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'empty', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(path.join(manifestDir, 'previews.json'), '{"module":"x"}');
+        it(
+            "returns null for manifest without previews array",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "empty",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(manifestDir, "previews.json"),
+                    '{"module":"x"}',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readManifest('empty'), null);
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.readManifest("empty"), null);
+            }),
+        );
     });
 
-    describe('readResourceManifest', () => {
-        it('reads and parses a valid resource manifest', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'testmodule', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.copyFileSync(
-                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'resources.json'),
-                path.join(manifestDir, 'resources.json'),
-            );
+    describe("readResourceManifest", () => {
+        it(
+            "reads and parses a valid resource manifest",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "testmodule",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "resources.json",
+                    ),
+                    path.join(manifestDir, "resources.json"),
+                );
 
-            const service = new GradleService(dir, api);
-            const manifest = service.readResourceManifest('testmodule');
+                const service = new GradleService(dir, api);
+                const manifest = service.readResourceManifest("testmodule");
 
-            assert.notStrictEqual(manifest, null);
-            assert.strictEqual(manifest!.module, 'sample-android');
-            assert.strictEqual(manifest!.resources.length, 3);
-            assert.strictEqual(manifest!.manifestReferences.length, 2);
+                assert.notStrictEqual(manifest, null);
+                assert.strictEqual(manifest!.module, "sample-android");
+                assert.strictEqual(manifest!.resources.length, 3);
+                assert.strictEqual(manifest!.manifestReferences.length, 2);
 
-            // The empty-string convention for default-qualifier source files should round-trip
-            // through JSON.parse — guards the regression where `Map<String?, String>` emitted
-            // bare `null:` keys.
-            const compose = manifest!.resources.find((r) => r.id === 'drawable/ic_compose_logo')!;
-            assert.deepStrictEqual(Object.keys(compose.sourceFiles).sort(), ['', 'night']);
+                // The empty-string convention for default-qualifier source files should round-trip
+                // through JSON.parse — guards the regression where `Map<String?, String>` emitted
+                // bare `null:` keys.
+                const compose = manifest!.resources.find(
+                    (r) => r.id === "drawable/ic_compose_logo",
+                )!;
+                assert.deepStrictEqual(
+                    Object.keys(compose.sourceFiles).sort(),
+                    ["", "night"],
+                );
 
-            // Adaptive-icon captures should carry their shape and style; vector captures
-            // should carry neither. LEGACY captures carry style but no shape.
-            const launcher = manifest!.resources.find((r) => r.id === 'mipmap/ic_launcher')!;
-            assert.strictEqual(launcher.captures[0].variant?.shape, 'CIRCLE');
-            assert.strictEqual(launcher.captures[0].variant?.style, 'FULL_COLOR');
-            const themedLight = launcher.captures.find((c) => c.variant?.style === 'THEMED_LIGHT')!;
-            assert.strictEqual(themedLight.variant?.shape, 'SQUIRCLE');
-            const legacy = launcher.captures.find((c) => c.variant?.style === 'LEGACY')!;
-            assert.strictEqual(legacy.variant?.shape, null);
-            assert.strictEqual(compose.captures[0].variant?.shape, null);
+                // Adaptive-icon captures should carry their shape and style; vector captures
+                // should carry neither. LEGACY captures carry style but no shape.
+                const launcher = manifest!.resources.find(
+                    (r) => r.id === "mipmap/ic_launcher",
+                )!;
+                assert.strictEqual(
+                    launcher.captures[0].variant?.shape,
+                    "CIRCLE",
+                );
+                assert.strictEqual(
+                    launcher.captures[0].variant?.style,
+                    "FULL_COLOR",
+                );
+                const themedLight = launcher.captures.find(
+                    (c) => c.variant?.style === "THEMED_LIGHT",
+                )!;
+                assert.strictEqual(themedLight.variant?.shape, "SQUIRCLE");
+                const legacy = launcher.captures.find(
+                    (c) => c.variant?.style === "LEGACY",
+                )!;
+                assert.strictEqual(legacy.variant?.shape, null);
+                assert.strictEqual(compose.captures[0].variant?.shape, null);
 
-            // Manifest references resolve activity short-form names against the package.
-            const activityRef = manifest!.manifestReferences.find((r) => r.componentKind === 'activity')!;
-            assert.strictEqual(activityRef.componentName, 'com.example.sampleandroid.MainActivity');
-            assert.strictEqual(activityRef.resourceType, 'drawable');
-            assert.strictEqual(activityRef.resourceName, 'ic_settings');
-        }));
+                // Manifest references resolve activity short-form names against the package.
+                const activityRef = manifest!.manifestReferences.find(
+                    (r) => r.componentKind === "activity",
+                )!;
+                assert.strictEqual(
+                    activityRef.componentName,
+                    "com.example.sampleandroid.MainActivity",
+                );
+                assert.strictEqual(activityRef.resourceType, "drawable");
+                assert.strictEqual(activityRef.resourceName, "ic_settings");
+            }),
+        );
 
-        it('returns null when resources.json is missing', withTempDir((dir, api) => {
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readResourceManifest('nonexistent'), null);
-        }));
+        it(
+            "returns null when resources.json is missing",
+            withTempDir((dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    service.readResourceManifest("nonexistent"),
+                    null,
+                );
+            }),
+        );
 
-        it('returns null for malformed JSON', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'bad', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(path.join(manifestDir, 'resources.json'), '{ broken');
+        it(
+            "returns null for malformed JSON",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "bad",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(manifestDir, "resources.json"),
+                    "{ broken",
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readResourceManifest('bad'), null);
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.readResourceManifest("bad"), null);
+            }),
+        );
 
-        it('returns null when resources / manifestReferences arrays are missing', withTempDir((dir, api) => {
-            const manifestDir = path.join(dir, 'empty', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(path.join(manifestDir, 'resources.json'), '{"module":"x","variant":"debug"}');
+        it(
+            "returns null when resources / manifestReferences arrays are missing",
+            withTempDir((dir, api) => {
+                const manifestDir = path.join(
+                    dir,
+                    "empty",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(manifestDir, "resources.json"),
+                    '{"module":"x","variant":"debug"}',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.readResourceManifest('empty'), null);
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.readResourceManifest("empty"), null);
+            }),
+        );
     });
 
-    describe('readPreviewImage', () => {
-        it('reads a PNG as base64', withTempDir(async (dir, api) => {
-            const renderDir = path.join(dir, 'mod', 'build', 'compose-previews', 'renders');
-            fs.mkdirSync(renderDir, { recursive: true });
-            fs.writeFileSync(path.join(renderDir, 'test.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    describe("readPreviewImage", () => {
+        it(
+            "reads a PNG as base64",
+            withTempDir(async (dir, api) => {
+                const renderDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                    "renders",
+                );
+                fs.mkdirSync(renderDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(renderDir, "test.png"),
+                    Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+                );
 
-            const service = new GradleService(dir, api);
-            const base64 = await service.readPreviewImage('mod', 'renders/test.png');
+                const service = new GradleService(dir, api);
+                const base64 = await service.readPreviewImage(
+                    "mod",
+                    "renders/test.png",
+                );
 
-            assert.notStrictEqual(base64, null);
-            assert.strictEqual(Buffer.from(base64!, 'base64')[0], 0x89);
-        }));
+                assert.notStrictEqual(base64, null);
+                assert.strictEqual(Buffer.from(base64!, "base64")[0], 0x89);
+            }),
+        );
 
-        it('returns null for missing image', withTempDir(async (dir, api) => {
-            const service = new GradleService(dir, api);
-            assert.strictEqual(await service.readPreviewImage('mod', 'missing.png'), null);
-        }));
+        it(
+            "returns null for missing image",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    await service.readPreviewImage("mod", "missing.png"),
+                    null,
+                );
+            }),
+        );
     });
 
-    describe('findPreviewModules', () => {
-        it('finds modules with the plugin applied', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'app'));
-            fs.writeFileSync(path.join(dir, 'app', 'build.gradle.kts'),
-                'id("ee.schimke.composeai.preview")');
+    describe("findPreviewModules", () => {
+        it(
+            "finds modules with the plugin applied",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'id("ee.schimke.composeai.preview")',
+                );
 
-            fs.mkdirSync(path.join(dir, 'lib'));
-            fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
-                'id("org.jetbrains.kotlin.jvm")');
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle.kts"),
+                    'id("org.jetbrains.kotlin.jvm")',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), ['app']);
-        }));
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+            }),
+        );
 
-        it('returns empty for workspace with no modules', withTempDir((dir, api) => {
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), []);
-        }));
+        it(
+            "returns empty for workspace with no modules",
+            withTempDir((dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), []);
+            }),
+        );
 
-        it('ignores the plugin module itself (declares but does not apply)', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'gradle-plugin'));
-            fs.writeFileSync(path.join(dir, 'gradle-plugin', 'build.gradle.kts'), `
+        it(
+            "ignores the plugin module itself (declares but does not apply)",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "gradle-plugin"));
+                fs.writeFileSync(
+                    path.join(dir, "gradle-plugin", "build.gradle.kts"),
+                    `
                 gradlePlugin {
                     plugins {
                         create("composePreview") {
@@ -204,297 +363,503 @@ describe('GradleService', () => {
                         }
                     }
                 }
-            `);
-            fs.mkdirSync(path.join(dir, 'app'));
-            fs.writeFileSync(path.join(dir, 'app', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") }');
+            `,
+                );
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), ['app']);
-        }));
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+            }),
+        );
 
-        it('excludes literal `apply false` declarations', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'lib'));
-            fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") apply false }');
+        it(
+            "excludes literal `apply false` declarations",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") apply false }',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), []);
-        }));
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), []);
+            }),
+        );
 
-        it('finds modules via applied.json markers even when build script does not mention the plugin',
+        it(
+            "finds modules via applied.json markers even when build script does not mention the plugin",
             withTempDir((dir, api) => {
                 // E.g. the module applies the plugin from a convention plugin
                 // in `buildSrc/` — neither the literal-id nor alias regex
                 // catches it, but the Gradle-written marker does.
-                fs.mkdirSync(path.join(dir, 'mod'));
-                fs.writeFileSync(path.join(dir, 'mod', 'build.gradle.kts'),
-                    'plugins { id("my-convention-plugin") }');
-                const markerDir = path.join(dir, 'mod', 'build', 'compose-previews');
+                fs.mkdirSync(path.join(dir, "mod"));
+                fs.writeFileSync(
+                    path.join(dir, "mod", "build.gradle.kts"),
+                    'plugins { id("my-convention-plugin") }',
+                );
+                const markerDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
                 fs.mkdirSync(markerDir, { recursive: true });
-                fs.writeFileSync(path.join(markerDir, 'applied.json'),
-                    '{"schema":"compose-preview-applied/v1","modulePath":":mod","moduleName":"mod","pluginVersion":"0.7.2"}');
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":mod","moduleName":"mod","pluginVersion":"0.7.2"}',
+                );
 
                 const service = new GradleService(dir, api);
-                assert.deepStrictEqual(service.findPreviewModules(), ['mod']);
-            }));
+                assert.deepStrictEqual(service.findPreviewModules(), ["mod"]);
+            }),
+        );
 
-        it('unions marker-detected and scan-detected modules', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'app'));
-            fs.writeFileSync(path.join(dir, 'app', 'build.gradle.kts'),
-                'id("ee.schimke.composeai.preview")');
+        it(
+            "unions marker-detected and scan-detected modules",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'id("ee.schimke.composeai.preview")',
+                );
 
-            // A second module with only the marker (e.g. discovered earlier
-            // and since rewritten to a convention plugin that the regex
-            // doesn't recognise).
-            fs.mkdirSync(path.join(dir, 'lib'));
-            fs.writeFileSync(path.join(dir, 'lib', 'build.gradle.kts'),
-                'plugins { id("some-convention") }');
-            const markerDir = path.join(dir, 'lib', 'build', 'compose-previews');
-            fs.mkdirSync(markerDir, { recursive: true });
-            fs.writeFileSync(path.join(markerDir, 'applied.json'),
-                '{"schema":"compose-preview-applied/v1","modulePath":":lib","moduleName":"lib","pluginVersion":"0.7.2"}');
+                // A second module with only the marker (e.g. discovered earlier
+                // and since rewritten to a convention plugin that the regex
+                // doesn't recognise).
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle.kts"),
+                    'plugins { id("some-convention") }',
+                );
+                const markerDir = path.join(
+                    dir,
+                    "lib",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":lib","moduleName":"lib","pluginVersion":"0.7.2"}',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(service.findPreviewModules(), ['app', 'lib']);
-        }));
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    "app",
+                    "lib",
+                ]);
+            }),
+        );
 
-        it('finds nested modules (e.g. samples/wear)', withTempDir((dir, api) => {
-            // Multi-project layouts where modules live under an organising
-            // parent directory (`samples/wear`, `features/login`) — the
-            // parent itself has no build file.
-            fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
-            fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") }');
-            fs.mkdirSync(path.join(dir, 'samples', 'cmp'));
-            const markerDir = path.join(dir, 'samples', 'cmp', 'build', 'compose-previews');
-            fs.mkdirSync(markerDir, { recursive: true });
-            fs.writeFileSync(path.join(markerDir, 'applied.json'),
-                '{"schema":"compose-preview-applied/v1","modulePath":":samples:cmp","moduleName":"cmp","pluginVersion":"0.8.0"}');
+        it(
+            "finds nested modules (e.g. samples/wear)",
+            withTempDir((dir, api) => {
+                // Multi-project layouts where modules live under an organising
+                // parent directory (`samples/wear`, `features/login`) — the
+                // parent itself has no build file.
+                fs.mkdirSync(path.join(dir, "samples", "wear"), {
+                    recursive: true,
+                });
+                fs.writeFileSync(
+                    path.join(dir, "samples", "wear", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
+                fs.mkdirSync(path.join(dir, "samples", "cmp"));
+                const markerDir = path.join(
+                    dir,
+                    "samples",
+                    "cmp",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":samples:cmp","moduleName":"cmp","pluginVersion":"0.8.0"}',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.deepStrictEqual(
-                service.findPreviewModules(),
-                ['samples/cmp', 'samples/wear'],
-            );
-        }));
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    "samples/cmp",
+                    "samples/wear",
+                ]);
+            }),
+        );
     });
 
-    describe('resolveModule', () => {
-        it('resolves file path to module name', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'sample-android'));
-            fs.writeFileSync(path.join(dir, 'sample-android', 'build.gradle.kts'),
-                'id("ee.schimke.composeai.preview")');
+    describe("resolveModule", () => {
+        it(
+            "resolves file path to module name",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "sample-android"));
+                fs.writeFileSync(
+                    path.join(dir, "sample-android", "build.gradle.kts"),
+                    'id("ee.schimke.composeai.preview")',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(
-                service.resolveModule(path.join(dir, 'sample-android', 'src', 'Foo.kt')),
-                'sample-android',
-            );
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    service.resolveModule(
+                        path.join(dir, "sample-android", "src", "Foo.kt"),
+                    ),
+                    "sample-android",
+                );
+            }),
+        );
 
-        it('returns null for file outside any module', withTempDir((dir, api) => {
-            const service = new GradleService(dir, api);
-            assert.strictEqual(service.resolveModule(path.join(dir, 'unknown', 'Foo.kt')), null);
-        }));
+        it(
+            "returns null for file outside any module",
+            withTempDir((dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    service.resolveModule(path.join(dir, "unknown", "Foo.kt")),
+                    null,
+                );
+            }),
+        );
 
-        it('resolves nested module paths', withTempDir((dir, api) => {
-            fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
-            fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") }');
+        it(
+            "resolves nested module paths",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "samples", "wear"), {
+                    recursive: true,
+                });
+                fs.writeFileSync(
+                    path.join(dir, "samples", "wear", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(
-                service.resolveModule(path.join(
-                    dir, 'samples', 'wear',
-                    'src', 'main', 'kotlin', 'com', 'example', 'Foo.kt',
-                )),
-                'samples/wear',
-            );
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    service.resolveModule(
+                        path.join(
+                            dir,
+                            "samples",
+                            "wear",
+                            "src",
+                            "main",
+                            "kotlin",
+                            "com",
+                            "example",
+                            "Foo.kt",
+                        ),
+                    ),
+                    "samples/wear",
+                );
+            }),
+        );
 
-        it('prefers the deepest matching module (longest-prefix match)', withTempDir((dir, api) => {
-            // Gradle allows `:foo:bar` to nest inside `:foo`. A file under
-            // `foo/bar/...` belongs to `foo/bar`, not `foo`.
-            fs.mkdirSync(path.join(dir, 'foo', 'bar'), { recursive: true });
-            fs.writeFileSync(path.join(dir, 'foo', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") }');
-            fs.writeFileSync(path.join(dir, 'foo', 'bar', 'build.gradle.kts'),
-                'plugins { id("ee.schimke.composeai.preview") }');
+        it(
+            "prefers the deepest matching module (longest-prefix match)",
+            withTempDir((dir, api) => {
+                // Gradle allows `:foo:bar` to nest inside `:foo`. A file under
+                // `foo/bar/...` belongs to `foo/bar`, not `foo`.
+                fs.mkdirSync(path.join(dir, "foo", "bar"), { recursive: true });
+                fs.writeFileSync(
+                    path.join(dir, "foo", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
+                fs.writeFileSync(
+                    path.join(dir, "foo", "bar", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
 
-            const service = new GradleService(dir, api);
-            assert.strictEqual(
-                service.resolveModule(path.join(dir, 'foo', 'bar', 'src', 'Foo.kt')),
-                'foo/bar',
-            );
-            assert.strictEqual(
-                service.resolveModule(path.join(dir, 'foo', 'src', 'Foo.kt')),
-                'foo',
-            );
-        }));
+                const service = new GradleService(dir, api);
+                assert.strictEqual(
+                    service.resolveModule(
+                        path.join(dir, "foo", "bar", "src", "Foo.kt"),
+                    ),
+                    "foo/bar",
+                );
+                assert.strictEqual(
+                    service.resolveModule(
+                        path.join(dir, "foo", "src", "Foo.kt"),
+                    ),
+                    "foo",
+                );
+            }),
+        );
     });
 
-    describe('discoverPreviews', () => {
-        it('invokes gradleApi with correct task name', withTempDir(async (dir, api) => {
-            fs.mkdirSync(path.join(dir, 'mod'));
-            fs.writeFileSync(path.join(dir, 'mod', 'build.gradle.kts'),
-                'id("ee.schimke.composeai.preview")');
-
-            const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.copyFileSync(
-                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                path.join(manifestDir, 'previews.json'),
-            );
-
-            const service = new GradleService(dir, api);
-            await service.discoverPreviews('mod');
-
-            assert.strictEqual(api.runCalls.length, 1);
-            assert.strictEqual(api.runCalls[0].taskName, ':mod:discoverPreviews');
-        }));
-
-        it('translates nested module path to colon-separated Gradle task name',
+    describe("discoverPreviews", () => {
+        it(
+            "invokes gradleApi with correct task name",
             withTempDir(async (dir, api) => {
-                fs.mkdirSync(path.join(dir, 'samples', 'wear'), { recursive: true });
-                fs.writeFileSync(path.join(dir, 'samples', 'wear', 'build.gradle.kts'),
-                    'plugins { id("ee.schimke.composeai.preview") }');
+                fs.mkdirSync(path.join(dir, "mod"));
+                fs.writeFileSync(
+                    path.join(dir, "mod", "build.gradle.kts"),
+                    'id("ee.schimke.composeai.preview")',
+                );
+
                 const manifestDir = path.join(
-                    dir, 'samples', 'wear', 'build', 'compose-previews',
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
                 );
                 fs.mkdirSync(manifestDir, { recursive: true });
                 fs.copyFileSync(
-                    path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                    path.join(manifestDir, 'previews.json'),
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews('samples/wear');
+                await service.discoverPreviews("mod");
 
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
                     api.runCalls[0].taskName,
-                    ':samples:wear:discoverPreviews',
+                    ":mod:discoverPreviews",
                 );
-            }));
+            }),
+        );
 
-        it('uses cache for repeated calls within TTL', withTempDir(async (dir, api) => {
-            fs.mkdirSync(path.join(dir, 'mod'));
-            const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.copyFileSync(
-                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                path.join(manifestDir, 'previews.json'),
-            );
-
-            const service = new GradleService(dir, api);
-            await service.discoverPreviews('mod');
-            await service.discoverPreviews('mod');
-
-            // Second call hit cache — only one Gradle invocation
-            assert.strictEqual(api.runCalls.length, 1);
-        }));
-
-        it('compileOnly invokes :module:composePreviewCompile and drops the manifest cache',
+        it(
+            "translates nested module path to colon-separated Gradle task name",
             withTempDir(async (dir, api) => {
-                fs.mkdirSync(path.join(dir, 'mod'));
-                const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');
+                fs.mkdirSync(path.join(dir, "samples", "wear"), {
+                    recursive: true,
+                });
+                fs.writeFileSync(
+                    path.join(dir, "samples", "wear", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
+                const manifestDir = path.join(
+                    dir,
+                    "samples",
+                    "wear",
+                    "build",
+                    "compose-previews",
+                );
                 fs.mkdirSync(manifestDir, { recursive: true });
                 fs.copyFileSync(
-                    path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                    path.join(manifestDir, 'previews.json'),
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
+
+                const service = new GradleService(dir, api);
+                await service.discoverPreviews("samples/wear");
+
+                assert.strictEqual(api.runCalls.length, 1);
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ":samples:wear:discoverPreviews",
+                );
+            }),
+        );
+
+        it(
+            "uses cache for repeated calls within TTL",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const manifestDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
+
+                const service = new GradleService(dir, api);
+                await service.discoverPreviews("mod");
+                await service.discoverPreviews("mod");
+
+                // Second call hit cache — only one Gradle invocation
+                assert.strictEqual(api.runCalls.length, 1);
+            }),
+        );
+
+        it(
+            "compileOnly invokes :module:composePreviewCompile and drops the manifest cache",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const manifestDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
                 );
 
                 const service = new GradleService(dir, api);
                 // Prime the cache via a discoverPreviews invocation.
-                await service.discoverPreviews('mod');
+                await service.discoverPreviews("mod");
                 assert.strictEqual(api.runCalls.length, 1);
-                assert.strictEqual(api.runCalls[0].taskName, ':mod:discoverPreviews');
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ":mod:discoverPreviews",
+                );
 
                 // compileOnly runs a different task and invalidates the cache.
-                await service.compileOnly('mod');
+                await service.compileOnly("mod");
                 assert.strictEqual(api.runCalls.length, 2);
-                assert.strictEqual(api.runCalls[1].taskName, ':mod:composePreviewCompile');
+                assert.strictEqual(
+                    api.runCalls[1].taskName,
+                    ":mod:composePreviewCompile",
+                );
 
                 // Cache was dropped, so the next discoverPreviews calls Gradle again.
-                await service.discoverPreviews('mod');
+                await service.discoverPreviews("mod");
                 assert.strictEqual(api.runCalls.length, 3);
-                assert.strictEqual(api.runCalls[2].taskName, ':mod:discoverPreviews');
-            }));
+                assert.strictEqual(
+                    api.runCalls[2].taskName,
+                    ":mod:discoverPreviews",
+                );
+            }),
+        );
 
-        it('bypasses cache after invalidateCache', withTempDir(async (dir, api) => {
-            fs.mkdirSync(path.join(dir, 'mod'));
-            const manifestDir = path.join(dir, 'mod', 'build', 'compose-previews');
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.copyFileSync(
-                path.join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'previews.json'),
-                path.join(manifestDir, 'previews.json'),
-            );
+        it(
+            "bypasses cache after invalidateCache",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const manifestDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
 
-            const service = new GradleService(dir, api);
-            await service.discoverPreviews('mod');
-            service.invalidateCache('mod');
-            await service.discoverPreviews('mod');
+                const service = new GradleService(dir, api);
+                await service.discoverPreviews("mod");
+                service.invalidateCache("mod");
+                await service.discoverPreviews("mod");
 
-            assert.strictEqual(api.runCalls.length, 2);
-        }));
+                assert.strictEqual(api.runCalls.length, 2);
+            }),
+        );
 
-        it('wraps Gradle failures in readable error', withTempDir(async (dir, api) => {
-            api.nextRunResult = new Error('compilation failed');
+        it(
+            "wraps Gradle failures in readable error",
+            withTempDir(async (dir, api) => {
+                api.nextRunResult = new Error("compilation failed");
 
-            const service = new GradleService(dir, api);
-            await assert.rejects(
-                service.discoverPreviews('mod'),
-                /Gradle task .* failed/,
-            );
-        }));
+                const service = new GradleService(dir, api);
+                await assert.rejects(
+                    service.discoverPreviews("mod"),
+                    /Gradle task .* failed/,
+                );
+            }),
+        );
 
-        it('throws TaskCancelledError (not generic failure) when vscode-gradle reports a cancelled task',
+        it(
+            "throws TaskCancelledError (not generic failure) when vscode-gradle reports a cancelled task",
             withTempDir(async (dir, api) => {
                 // vscode-gradle's gRPC layer rejects superseded tasks with
                 // a Status.CANCELLED error. That's a normal lifecycle event
                 // (a follow-up refresh replaced this one), not a build
                 // failure — callers need to be able to drop it silently.
-                api.nextRunResult = new Error('1 CANCELLED: Call cancelled');
+                api.nextRunResult = new Error("1 CANCELLED: Call cancelled");
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews('mod'),
+                    service.discoverPreviews("mod"),
                     (err: unknown) => {
-                        assert.ok(err instanceof TaskCancelledError, 'expected TaskCancelledError');
+                        assert.ok(
+                            err instanceof TaskCancelledError,
+                            "expected TaskCancelledError",
+                        );
                         return true;
                     },
                 );
-            }));
+            }),
+        );
 
-        it('throws JdkImageError when the failure output contains the jlink signature',
+        it(
+            "throws JdkImageError when the failure output contains the jlink signature",
             withTempDir(async (dir, api) => {
                 api.nextRunOutput =
-                    '> jlink executable /home/u/.antigravity/extensions/redhat.java-1.54.0-linux-x64'
-                    + '/jre/21.0.10-linux-x86_64/bin/jlink does not exist.\n';
-                api.nextRunResult = new Error('build failed');
+                    "> jlink executable /home/u/.antigravity/extensions/redhat.java-1.54.0-linux-x64" +
+                    "/jre/21.0.10-linux-x86_64/bin/jlink does not exist.\n";
+                api.nextRunResult = new Error("build failed");
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews('mod'),
+                    service.discoverPreviews("mod"),
                     (err: unknown) => {
-                        assert.ok(err instanceof JdkImageError, 'expected JdkImageError');
-                        assert.match((err as JdkImageError).finding.jlinkPath, /\/bin\/jlink$/);
+                        assert.ok(
+                            err instanceof JdkImageError,
+                            "expected JdkImageError",
+                        );
+                        assert.match(
+                            (err as JdkImageError).finding.jlinkPath,
+                            /\/bin\/jlink$/,
+                        );
                         return true;
                     },
                 );
-            }));
+            }),
+        );
     });
 
-    describe('cancel', () => {
-        it('cancels in-flight tasks via API', withTempDir(async (dir, api) => {
-            const service = new GradleService(dir, api);
-            // Start a task but don't await — simulate running
-            service.discoverPreviews('mod').catch(() => {}); // swallow error
-            await new Promise(resolve => setTimeout(resolve, 10));
+    describe("cancel", () => {
+        it(
+            "cancels in-flight tasks via API",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                // Start a task but don't await — simulate running
+                service.discoverPreviews("mod").catch(() => {}); // swallow error
+                await new Promise((resolve) => setTimeout(resolve, 10));
 
-            await service.cancel();
-            assert.strictEqual(api.cancelCalls.length >= 0, true); // at least attempted
-        }));
+                await service.cancel();
+                assert.strictEqual(api.cancelCalls.length >= 0, true); // at least attempted
+            }),
+        );
     });
 });

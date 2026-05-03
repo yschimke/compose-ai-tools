@@ -12,7 +12,7 @@
  * that lands on the failing card via `setImageError.message`.
  */
 
-import { PreviewRenderError } from './types';
+import { PreviewRenderError } from "./types";
 
 /**
  * Render the structured renderer error into a single-line message for
@@ -27,12 +27,12 @@ import { PreviewRenderError } from './types';
  * already available in `renderError.exception` for tooling that wants it.
  */
 export function formatRenderErrorMessage(err: PreviewRenderError): string {
-    const cls = err.exception.split('.').pop() ?? err.exception;
+    const cls = err.exception.split(".").pop() ?? err.exception;
     const head = err.message ? `${cls}: ${err.message}` : cls;
     const frame = err.topAppFrame;
     if (frame && frame.file) {
-        const lineSuffix = frame.line > 0 ? `:${frame.line}` : '';
-        const fnSuffix = frame.function ? ` in ${frame.function}` : '';
+        const lineSuffix = frame.line > 0 ? `:${frame.line}` : "";
+        const fnSuffix = frame.function ? ` in ${frame.function}` : "";
         return `${head} (at ${frame.file}${lineSuffix}${fnSuffix})`;
     }
     return head;

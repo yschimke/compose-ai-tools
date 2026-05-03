@@ -1,13 +1,13 @@
-import * as fs from 'fs';
-import * as vscode from 'vscode';
-import { HistoryReader } from './daemon/historyReader';
-import { CurrentRendersHistory } from './daemon/currentRendersHistory';
+import * as fs from "fs";
+import * as vscode from "vscode";
+import { HistoryReader } from "./daemon/historyReader";
+import { CurrentRendersHistory } from "./daemon/currentRendersHistory";
 import {
     HistoryAddedParams,
     HistoryListResult,
     HistoryReadResult,
     HistorySourceKind,
-} from './daemon/daemonProtocol';
+} from "./daemon/daemonProtocol";
 
 /**
  * Read-only Preview History panel — HISTORY.md § "VS Code integration".
@@ -32,7 +32,7 @@ import {
  * timeline today; that's H14 (cross-worktree merge in MCP).
  */
 export class HistoryPanel implements vscode.WebviewViewProvider {
-    public static readonly viewId = 'composePreview.historyPanel';
+    public static readonly viewId = "composePreview.historyPanel";
 
     private view?: vscode.WebviewView;
     private currentScope: HistoryScope | null = null;
@@ -53,29 +53,44 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             localResourceRoots: [this.extensionUri],
         };
         webviewView.webview.html = this.getHtml(webviewView.webview);
-        webviewView.webview.onDidReceiveMessage((msg) => this.handleMessage(msg));
+        webviewView.webview.onDidReceiveMessage((msg) =>
+            this.handleMessage(msg),
+        );
         // Re-list whenever the view becomes visible (lazy panel UX).
         webviewView.onDidChangeVisibility(() => {
-            if (webviewView.visible) { void this.refresh(); }
+            if (webviewView.visible) {
+                void this.refresh();
+            }
         });
-        if (this.currentScope) { void this.refresh(); }
+        if (this.currentScope) {
+            void this.refresh();
+        }
     }
 
     /** Re-scope the panel to a different module's history. Called from
      *  extension.ts when the active editor's module changes. */
     setScope(scope: HistoryScope | null): void {
         this.currentScope = scope;
-        if (this.view?.visible) { void this.refresh(); }
+        if (this.view?.visible) {
+            void this.refresh();
+        }
     }
 
     /** Daemon push: a new render landed. If it belongs to the currently-
      *  scoped module and previewId, prepend it to the visible list and
      *  highlight it briefly. Drops cleanly when the panel isn't open. */
     onHistoryAdded(params: HistoryAddedParams): void {
-        if (!this.view) { return; }
+        if (!this.view) {
+            return;
+        }
         const entry = params.entry as { previewId?: string; module?: string };
-        if (!matchesScope(entry, this.currentScope)) { return; }
-        this.view.webview.postMessage({ command: 'entryAdded', entry: params.entry });
+        if (!matchesScope(entry, this.currentScope)) {
+            return;
+        }
+        this.view.webview.postMessage({
+            command: "entryAdded",
+            entry: params.entry,
+        });
     }
 
     isVisible(): boolean {
@@ -85,8 +100,14 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
     /** Force a re-list against the current scope. */
     async refresh(): Promise<void> {
         if (!this.view || !this.currentScope) {
-            this.view?.webview.postMessage({ command: 'showMessage', text: 'Open a Kotlin file to see its render history.' });
-            this.view?.webview.postMessage({ command: 'setScopeLabel', label: null });
+            this.view?.webview.postMessage({
+                command: "showMessage",
+                text: "Open a Kotlin file to see its render history.",
+            });
+            this.view?.webview.postMessage({
+                command: "setScopeLabel",
+                label: null,
+            });
             return;
         }
         if (!this.currentScope.previewId) {
@@ -95,21 +116,25 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             // timeline they're looking at. Require a single preview be
             // selected (focus mode, or filters narrowed to one card) and
             // show a hint until then.
-            this.view.webview.postMessage({ command: 'setScopeLabel', label: null });
             this.view.webview.postMessage({
-                command: 'showMessage',
-                text: 'Select a single preview (focus mode, or narrow the filter to one card) to see its render history.',
+                command: "setScopeLabel",
+                label: null,
+            });
+            this.view.webview.postMessage({
+                command: "showMessage",
+                text: "Select a single preview (focus mode, or narrow the filter to one card) to see its render history.",
             });
             return;
         }
-        const label = this.currentScope.previewLabel ?? this.currentScope.previewId;
-        this.view.webview.postMessage({ command: 'setScopeLabel', label });
+        const label =
+            this.currentScope.previewLabel ?? this.currentScope.previewId;
+        this.view.webview.postMessage({ command: "setScopeLabel", label });
         try {
             const result = await this.source.list(this.currentScope);
-            this.view.webview.postMessage({ command: 'setEntries', result });
+            this.view.webview.postMessage({ command: "setEntries", result });
         } catch (err) {
             this.view.webview.postMessage({
-                command: 'showMessage',
+                command: "showMessage",
                 text: `History unavailable: ${(err as Error).message}`,
             });
         }
@@ -117,61 +142,98 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
 
     private async handleMessage(msg: HistoryWebviewMessage): Promise<void> {
         switch (msg.command) {
-            case 'refresh':
+            case "refresh":
                 await this.refresh();
                 break;
-            case 'loadImage':
-                if (msg.id) { await this.sendImage(msg.id, 'expansion'); }
+            case "loadImage":
+                if (msg.id) {
+                    await this.sendImage(msg.id, "expansion");
+                }
                 break;
-            case 'loadThumb':
-                if (msg.id) { await this.sendImage(msg.id, 'thumb'); }
+            case "loadThumb":
+                if (msg.id) {
+                    await this.sendImage(msg.id, "thumb");
+                }
                 break;
-            case 'openSource':
+            case "openSource":
                 if (msg.sourceFile) {
                     const uri = vscode.Uri.file(msg.sourceFile);
                     await vscode.window.showTextDocument(uri);
                 }
                 break;
-            case 'diff':
+            case "diff":
                 if (msg.fromId && msg.toId) {
                     await this.runDiff(msg.fromId, msg.toId);
                 }
                 break;
-            case 'requestDiff':
-                if (msg.id && (msg.against === 'current' || msg.against === 'previous')) {
+            case "requestDiff":
+                if (
+                    msg.id &&
+                    (msg.against === "current" || msg.against === "previous")
+                ) {
                     await this.runPairDiff(msg.id, msg.against);
                 }
                 break;
         }
     }
 
-    private async runPairDiff(id: string, against: 'current' | 'previous'): Promise<void> {
-        if (!this.view) { return; }
+    private async runPairDiff(
+        id: string,
+        against: "current" | "previous",
+    ): Promise<void> {
+        if (!this.view) {
+            return;
+        }
         const scope = this.currentScope;
         if (!scope) {
-            this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No active scope.' });
+            this.view.webview.postMessage({
+                command: "diffPairError",
+                id,
+                against,
+                message: "No active scope.",
+            });
             return;
         }
         try {
             const left = await this.source.read(id);
             if (!left) {
-                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Entry not found.' });
+                this.view.webview.postMessage({
+                    command: "diffPairError",
+                    id,
+                    against,
+                    message: "Entry not found.",
+                });
                 return;
             }
-            const leftEntry = left.entry as { previewId?: string; timestamp?: string };
+            const leftEntry = left.entry as {
+                previewId?: string;
+                timestamp?: string;
+            };
             const previewId = leftEntry.previewId ?? scope.previewId;
             if (!previewId) {
-                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Entry has no previewId.' });
+                this.view.webview.postMessage({
+                    command: "diffPairError",
+                    id,
+                    against,
+                    message: "Entry has no previewId.",
+                });
                 return;
             }
 
             let right: HistoryReadResult | null = null;
-            let rightLabel = '';
-            if (against === 'current') {
+            let rightLabel = "";
+            if (against === "current") {
                 const synthList = currentRendersFor(scope).list(previewId);
-                const synth = synthList.entries[0] as { id?: string; timestamp?: string } | undefined;
+                const synth = synthList.entries[0] as
+                    | { id?: string; timestamp?: string }
+                    | undefined;
                 if (!synth?.id) {
-                    this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No live render available for this preview.' });
+                    this.view.webview.postMessage({
+                        command: "diffPairError",
+                        id,
+                        against,
+                        message: "No live render available for this preview.",
+                    });
                     return;
                 }
                 right = currentRendersFor(scope).read(synth.id);
@@ -181,29 +243,48 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 // Sort newest-first to match the panel; the entry just *after*
                 // the clicked one in this order is the older "previous".
                 const sorted = [...list.entries].sort((a, b) => {
-                    const at = (a as { timestamp?: string }).timestamp ?? '';
-                    const bt = (b as { timestamp?: string }).timestamp ?? '';
+                    const at = (a as { timestamp?: string }).timestamp ?? "";
+                    const bt = (b as { timestamp?: string }).timestamp ?? "";
                     return bt.localeCompare(at);
                 });
-                const idx = sorted.findIndex(e => (e as { id?: string }).id === id);
-                const prev = idx >= 0 ? sorted[idx + 1] as { id?: string; timestamp?: string } | undefined : undefined;
+                const idx = sorted.findIndex(
+                    (e) => (e as { id?: string }).id === id,
+                );
+                const prev =
+                    idx >= 0
+                        ? (sorted[idx + 1] as
+                              | { id?: string; timestamp?: string }
+                              | undefined)
+                        : undefined;
                 if (!prev?.id) {
-                    this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'No earlier entry for this preview.' });
+                    this.view.webview.postMessage({
+                        command: "diffPairError",
+                        id,
+                        against,
+                        message: "No earlier entry for this preview.",
+                    });
                     return;
                 }
                 right = await this.source.read(prev.id);
                 rightLabel = `Previous · ${formatLabelTime(prev.timestamp)}`;
             }
             if (!right) {
-                this.view.webview.postMessage({ command: 'diffPairError', id, against, message: 'Comparison entry not found.' });
+                this.view.webview.postMessage({
+                    command: "diffPairError",
+                    id,
+                    against,
+                    message: "Comparison entry not found.",
+                });
                 return;
             }
-            const leftBytes = left.pngBytes
-                ?? (await fs.promises.readFile(left.pngPath)).toString('base64');
-            const rightBytes = right.pngBytes
-                ?? (await fs.promises.readFile(right.pngPath)).toString('base64');
+            const leftBytes =
+                left.pngBytes ??
+                (await fs.promises.readFile(left.pngPath)).toString("base64");
+            const rightBytes =
+                right.pngBytes ??
+                (await fs.promises.readFile(right.pngPath)).toString("base64");
             this.view.webview.postMessage({
-                command: 'diffReady',
+                command: "diffReady",
                 id,
                 against,
                 leftLabel: `This entry · ${formatLabelTime(leftEntry.timestamp)}`,
@@ -213,41 +294,69 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             });
         } catch (err) {
             this.view.webview.postMessage({
-                command: 'diffPairError', id, against, message: (err as Error).message,
+                command: "diffPairError",
+                id,
+                against,
+                message: (err as Error).message,
             });
         }
     }
 
-    private async sendImage(id: string, kind: 'expansion' | 'thumb'): Promise<void> {
-        if (!this.view) { return; }
-        const readyCmd = kind === 'thumb' ? 'thumbReady' : 'imageReady';
-        const errorCmd = kind === 'thumb' ? 'thumbError' : 'imageError';
+    private async sendImage(
+        id: string,
+        kind: "expansion" | "thumb",
+    ): Promise<void> {
+        if (!this.view) {
+            return;
+        }
+        const readyCmd = kind === "thumb" ? "thumbReady" : "imageReady";
+        const errorCmd = kind === "thumb" ? "thumbError" : "imageError";
         try {
             const result = await this.source.read(id);
             if (!result) {
-                this.view.webview.postMessage({ command: errorCmd, id, message: 'Entry not found.' });
+                this.view.webview.postMessage({
+                    command: errorCmd,
+                    id,
+                    message: "Entry not found.",
+                });
                 return;
             }
-            const bytes = result.pngBytes
-                ?? (await fs.promises.readFile(result.pngPath)).toString('base64');
+            const bytes =
+                result.pngBytes ??
+                (await fs.promises.readFile(result.pngPath)).toString("base64");
             this.view.webview.postMessage({
-                command: readyCmd, id, imageData: bytes, entry: result.entry,
+                command: readyCmd,
+                id,
+                imageData: bytes,
+                entry: result.entry,
             });
         } catch (err) {
             this.view.webview.postMessage({
-                command: errorCmd, id, message: (err as Error).message,
+                command: errorCmd,
+                id,
+                message: (err as Error).message,
             });
         }
     }
 
     private async runDiff(fromId: string, toId: string): Promise<void> {
-        if (!this.view) { return; }
+        if (!this.view) {
+            return;
+        }
         try {
             const result = await this.source.diff(fromId, toId);
-            this.view.webview.postMessage({ command: 'diffResult', fromId, toId, result });
+            this.view.webview.postMessage({
+                command: "diffResult",
+                fromId,
+                toId,
+                result,
+            });
         } catch (err) {
             this.view.webview.postMessage({
-                command: 'diffError', fromId, toId, message: (err as Error).message,
+                command: "diffError",
+                fromId,
+                toId,
+                message: (err as Error).message,
             });
         }
     }
@@ -255,10 +364,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
     private getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
         const codiconUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'media', 'codicon.css'),
+            vscode.Uri.joinPath(this.extensionUri, "media", "codicon.css"),
         );
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'media', 'preview.css'),
+            vscode.Uri.joinPath(this.extensionUri, "media", "preview.css"),
         );
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -1011,13 +1120,17 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
             // first render.
             if (result.entries.length === 0) {
                 const synth = currentRendersFor(scope).list(scope.previewId);
-                if (synth.entries.length > 0) { return synth; }
+                if (synth.entries.length > 0) {
+                    return synth;
+                }
             }
             return result;
         },
         read: async (id) => {
             const scope = opts.getCurrentScope();
-            if (!scope) { return null; }
+            if (!scope) {
+                return null;
+            }
             if (CurrentRendersHistory.isSyntheticId(id)) {
                 return currentRendersFor(scope).read(id);
             }
@@ -1034,12 +1147,16 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
         },
         diff: async (fromId, toId) => {
             const scope = opts.getCurrentScope();
-            if (!scope) { return null; }
+            if (!scope) {
+                return null;
+            }
             // Synthetic "current render" entries don't have a stable prior
             // — diffing them is meaningless. Fall through to null so the
             // panel surfaces "Diff unavailable" instead of crashing.
-            if (CurrentRendersHistory.isSyntheticId(fromId)
-                || CurrentRendersHistory.isSyntheticId(toId)) {
+            if (
+                CurrentRendersHistory.isSyntheticId(fromId) ||
+                CurrentRendersHistory.isSyntheticId(toId)
+            ) {
                 return null;
             }
             if (opts.isDaemonReady(scope.moduleId)) {
@@ -1051,8 +1168,11 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                     );
                 }
             }
-            return new HistoryReader(historyDirFor(scope))
-                .diff(fromId, toId, 'metadata');
+            return new HistoryReader(historyDirFor(scope)).diff(
+                fromId,
+                toId,
+                "metadata",
+            );
         },
     };
 }
@@ -1087,15 +1207,22 @@ interface HistoryWebviewMessage {
     sourceFile?: string;
     fromId?: string;
     toId?: string;
-    against?: 'current' | 'previous';
+    against?: "current" | "previous";
 }
 
 function formatLabelTime(iso: string | undefined): string {
-    if (!iso) { return '(unknown time)'; }
+    if (!iso) {
+        return "(unknown time)";
+    }
     const t = Date.parse(iso);
-    if (isNaN(t)) { return iso; }
+    if (isNaN(t)) {
+        return iso;
+    }
     return new Date(t).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     });
 }
 
@@ -1103,15 +1230,22 @@ function matchesScope(
     entry: { previewId?: string; module?: string },
     scope: HistoryScope | null,
 ): boolean {
-    if (!scope || !scope.previewId) { return false; }
-    if (entry.module !== scope.moduleId) { return false; }
-    if (entry.previewId !== scope.previewId) { return false; }
+    if (!scope || !scope.previewId) {
+        return false;
+    }
+    if (entry.module !== scope.moduleId) {
+        return false;
+    }
+    if (entry.previewId !== scope.previewId) {
+        return false;
+    }
     return true;
 }
 
 function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let text = "";
+    const possible =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     for (let i = 0; i < 32; i++) {
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }

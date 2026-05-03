@@ -1,8 +1,8 @@
-import * as path from 'path';
-import * as vscode from 'vscode';
-import { GradleService } from './gradleService';
-import { findManifestIconReferences } from './manifestIconReferences';
-import { ResourceManifest, ResourcePreview } from './types';
+import * as path from "path";
+import * as vscode from "vscode";
+import { GradleService } from "./gradleService";
+import { findManifestIconReferences } from "./manifestIconReferences";
+import { ResourceManifest, ResourcePreview } from "./types";
 
 /**
  * Surfaces a "$(file-media) Preview <id>" CodeLens above every `android:icon` / `roundIcon` /
@@ -18,7 +18,9 @@ import { ResourceManifest, ResourcePreview } from './types';
  *   - The lookup we want is "is there a rendered preview for this resource id?" — a direct
  *     `resources[]` scan answers that without a join through `manifestReferences`.
  */
-export class AndroidManifestCodeLensProvider implements vscode.CodeLensProvider {
+export class AndroidManifestCodeLensProvider
+    implements vscode.CodeLensProvider
+{
     private readonly emitter = new vscode.EventEmitter<void>();
     readonly onDidChangeCodeLenses = this.emitter.event;
 
@@ -30,11 +32,17 @@ export class AndroidManifestCodeLensProvider implements vscode.CodeLensProvider 
     }
 
     provideCodeLenses(doc: vscode.TextDocument): vscode.CodeLens[] {
-        if (!doc.fileName.endsWith('AndroidManifest.xml')) { return []; }
+        if (!doc.fileName.endsWith("AndroidManifest.xml")) {
+            return [];
+        }
         const module = this.gradleService.resolveModule(doc.uri.fsPath);
-        if (!module) { return []; }
+        if (!module) {
+            return [];
+        }
         const manifest = this.gradleService.readResourceManifest(module);
-        if (!manifest) { return []; }
+        if (!manifest) {
+            return [];
+        }
 
         const byId = indexResources(manifest);
         const matches = findManifestIconReferences(doc.getText());
@@ -42,14 +50,18 @@ export class AndroidManifestCodeLensProvider implements vscode.CodeLensProvider 
         for (const m of matches) {
             const resourceId = `${m.resourceType}/${m.resourceName}`;
             const resource = byId.get(resourceId);
-            if (!resource) { continue; }
+            if (!resource) {
+                continue;
+            }
             const firstCapture = resource.captures.find((c) => c.renderOutput);
-            if (!firstCapture) { continue; }
+            if (!firstCapture) {
+                continue;
+            }
             const pngPath = path.join(
                 this.gradleService.workspaceRoot,
                 module,
-                'build',
-                'compose-previews',
+                "build",
+                "compose-previews",
                 firstCapture.renderOutput,
             );
             const pos = doc.positionAt(m.offset);
@@ -57,7 +69,7 @@ export class AndroidManifestCodeLensProvider implements vscode.CodeLensProvider 
             lenses.push(
                 new vscode.CodeLens(range, {
                     title: `$(file-media) Preview ${resourceId}`,
-                    command: 'composePreview.previewResource',
+                    command: "composePreview.previewResource",
                     arguments: [pngPath, resourceId],
                 }),
             );
@@ -70,7 +82,9 @@ export class AndroidManifestCodeLensProvider implements vscode.CodeLensProvider 
     }
 }
 
-function indexResources(manifest: ResourceManifest): Map<string, ResourcePreview> {
+function indexResources(
+    manifest: ResourceManifest,
+): Map<string, ResourcePreview> {
     const out = new Map<string, ResourcePreview>();
     for (const r of manifest.resources) {
         out.set(r.id, r);

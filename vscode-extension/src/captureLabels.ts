@@ -1,4 +1,4 @@
-import { Capture, PreviewInfo } from './types';
+import { Capture, PreviewInfo } from "./types";
 
 /**
  * Human-readable label for one capture of a preview, used in the carousel
@@ -23,21 +23,21 @@ export function captureLabel(capture: Capture): string {
     if (capture.scroll) {
         parts.push(scrollLabel(capture.scroll));
     }
-    return parts.join(' \u00B7 ');
+    return parts.join(" \u00B7 ");
 }
 
-function scrollLabel(scroll: NonNullable<Capture['scroll']>): string {
+function scrollLabel(scroll: NonNullable<Capture["scroll"]>): string {
     // Prefer the outcome when the renderer has reported it; fall back to
     // the declared intent. `atEnd` wins over `reachedPx` so "scrolled end"
     // stays stable even when the renderer reports e.g. `reachedPx: 1200`
     // with content actually exhausted at that offset. TOP has no outcome
     // — the renderer doesn't drive any scrollable for it.
-    if (scroll.mode === 'TOP') return 'scroll top';
-    if (scroll.atEnd) return 'scrolled end';
+    if (scroll.mode === "TOP") return "scroll top";
+    if (scroll.atEnd) return "scrolled end";
     if (scroll.reachedPx != null) return `scrolled ${scroll.reachedPx}px`;
-    if (scroll.mode === 'END') return 'scroll end';
-    if (scroll.mode === 'LONG') return 'scroll long';
-    if (scroll.mode === 'GIF') return 'scroll gif';
+    if (scroll.mode === "END") return "scroll end";
+    if (scroll.mode === "LONG") return "scroll long";
+    if (scroll.mode === "GIF") return "scroll gif";
     return `scroll ${scroll.mode.toLowerCase()}`;
 }
 

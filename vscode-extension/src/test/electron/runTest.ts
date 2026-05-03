@@ -1,5 +1,5 @@
-import * as path from 'path';
-import { downloadAndUnzipVSCode, runTests } from '@vscode/test-electron';
+import * as path from "path";
+import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 /**
  * Entry point for `npm run test:electron`.
@@ -16,22 +16,30 @@ import { downloadAndUnzipVSCode, runTests } from '@vscode/test-electron';
  * `vscode.extensions.getExtension('yuri-schimke.compose-preview').exports`.
  */
 async function main(): Promise<void> {
-    const extensionDevelopmentPath = path.resolve(__dirname, '../../..');
-    const extensionTestsPath = path.resolve(__dirname, './suite/index');
+    const extensionDevelopmentPath = path.resolve(__dirname, "../../..");
+    const extensionTestsPath = path.resolve(__dirname, "./suite/index");
     // Fixtures live in `src/` (raw assets — JSON manifest + PNG/GIF + a
     // build.gradle.kts), not `out/`, so resolve relative to the source tree.
     // `__dirname` here is `out/test/electron/`, hence the `../../../src/...`
     // walk-back to land in `src/test/electron/fixtures/`.
-    const fixturesRoot = path.resolve(__dirname, '../../../src/test/electron/fixtures');
-    const workspacePath = path.join(fixturesRoot, 'workspace');
-    const fakeGradleExtensionPath = path.join(fixturesRoot, 'fake-vscode-gradle');
+    const fixturesRoot = path.resolve(
+        __dirname,
+        "../../../src/test/electron/fixtures",
+    );
+    const workspacePath = path.join(fixturesRoot, "workspace");
+    const fakeGradleExtensionPath = path.join(
+        fixturesRoot,
+        "fake-vscode-gradle",
+    );
 
-    console.log(`[runTest] extensionDevelopmentPath=${extensionDevelopmentPath}`);
+    console.log(
+        `[runTest] extensionDevelopmentPath=${extensionDevelopmentPath}`,
+    );
     console.log(`[runTest] extensionTestsPath=${extensionTestsPath}`);
     console.log(`[runTest] workspacePath=${workspacePath}`);
     console.log(`[runTest] fakeGradleExtensionPath=${fakeGradleExtensionPath}`);
 
-    const vscodeExecutablePath = await downloadAndUnzipVSCode('stable');
+    const vscodeExecutablePath = await downloadAndUnzipVSCode("stable");
     console.log(`[runTest] vscodeExecutablePath=${vscodeExecutablePath}`);
 
     // Load the fake `vscjava.vscode-gradle` stub alongside our extension by
@@ -44,7 +52,10 @@ async function main(): Promise<void> {
     console.log(`[runTest] launching tests…`);
     await runTests({
         vscodeExecutablePath,
-        extensionDevelopmentPath: [extensionDevelopmentPath, fakeGradleExtensionPath],
+        extensionDevelopmentPath: [
+            extensionDevelopmentPath,
+            fakeGradleExtensionPath,
+        ],
         extensionTestsPath,
         // CI-friendly launch args:
         //  - `--disable-workspace-trust` skips the trust modal that would
@@ -57,19 +68,19 @@ async function main(): Promise<void> {
         //    check during a 30s test window.
         launchArgs: [
             workspacePath,
-            '--disable-workspace-trust',
-            '--no-sandbox',
-            '--disable-gpu',
-            '--disable-updates',
+            "--disable-workspace-trust",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-updates",
         ],
         extensionTestsEnv: {
-            COMPOSE_PREVIEW_TEST_MODE: '1',
+            COMPOSE_PREVIEW_TEST_MODE: "1",
         },
     });
     console.log(`[runTest] tests complete`);
 }
 
-main().catch(err => {
-    console.error('Failed to run tests:', err);
+main().catch((err) => {
+    console.error("Failed to run tests:", err);
     process.exit(1);
 });

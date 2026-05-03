@@ -1,10 +1,21 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import { AccessibilityFinding, AccessibilityReport, Capture, DoctorModuleReport, PreviewManifest, PreviewRenderError, ResourceManifest } from './types';
-import { appliesPlugin } from './pluginDetection';
-import { JdkImageError, JdkImageErrorDetector } from './jdkImageErrorDetector';
-import { KotlinCompileError, KotlinCompileErrorDetector } from './kotlinCompileErrorDetector';
-import { LogFilter } from './logFilter';
+import * as path from "path";
+import * as fs from "fs";
+import {
+    AccessibilityFinding,
+    AccessibilityReport,
+    Capture,
+    DoctorModuleReport,
+    PreviewManifest,
+    PreviewRenderError,
+    ResourceManifest,
+} from "./types";
+import { appliesPlugin } from "./pluginDetection";
+import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
+import {
+    KotlinCompileError,
+    KotlinCompileErrorDetector,
+} from "./kotlinCompileErrorDetector";
+import { LogFilter } from "./logFilter";
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -25,33 +36,62 @@ function expandParamCaptures(
     templates: Capture[],
     siblingRenderOutputs: Set<string>,
 ): Capture[] {
-    if (!fs.existsSync(rendersDir)) { return templates; }
+    if (!fs.existsSync(rendersDir)) {
+        return templates;
+    }
     const expanded: Capture[] = [];
     for (const template of templates) {
-        if (!template.renderOutput) { expanded.push(template); continue; }
+        if (!template.renderOutput) {
+            expanded.push(template);
+            continue;
+        }
         const base = path.basename(template.renderOutput);
-        const dot = base.lastIndexOf('.');
+        const dot = base.lastIndexOf(".");
         const stem = dot > 0 ? base.slice(0, dot) : base;
-        const ext = dot > 0 ? base.slice(dot) : '';
-        const prefix = stem + '_';
+        const ext = dot > 0 ? base.slice(dot) : "";
+        const prefix = stem + "_";
         const templateDir = path.dirname(template.renderOutput);
-        const dirPrefix = templateDir && templateDir !== '.' ? `${templateDir}/` : '';
-        const matches = fs.readdirSync(rendersDir)
-            .filter(name => name.startsWith(prefix) && name.endsWith(ext)
-                && !siblingRenderOutputs.has(dirPrefix + name))
-            .map(name => {
-                const suffix = name.slice(prefix.length, name.length - ext.length);
-                const paramIdxStr = suffix.startsWith('PARAM_') ? suffix.slice('PARAM_'.length) : null;
-                const paramIdx = paramIdxStr !== null ? parseInt(paramIdxStr, 10) : NaN;
-                return { name, suffix, paramIdx: Number.isNaN(paramIdx) ? null : paramIdx };
+        const dirPrefix =
+            templateDir && templateDir !== "." ? `${templateDir}/` : "";
+        const matches = fs
+            .readdirSync(rendersDir)
+            .filter(
+                (name) =>
+                    name.startsWith(prefix) &&
+                    name.endsWith(ext) &&
+                    !siblingRenderOutputs.has(dirPrefix + name),
+            )
+            .map((name) => {
+                const suffix = name.slice(
+                    prefix.length,
+                    name.length - ext.length,
+                );
+                const paramIdxStr = suffix.startsWith("PARAM_")
+                    ? suffix.slice("PARAM_".length)
+                    : null;
+                const paramIdx =
+                    paramIdxStr !== null ? parseInt(paramIdxStr, 10) : NaN;
+                return {
+                    name,
+                    suffix,
+                    paramIdx: Number.isNaN(paramIdx) ? null : paramIdx,
+                };
             })
             .sort((a, b) => {
-                if (a.paramIdx !== null && b.paramIdx !== null) { return a.paramIdx - b.paramIdx; }
-                if (a.paramIdx !== null) { return -1; }
-                if (b.paramIdx !== null) { return 1; }
+                if (a.paramIdx !== null && b.paramIdx !== null) {
+                    return a.paramIdx - b.paramIdx;
+                }
+                if (a.paramIdx !== null) {
+                    return -1;
+                }
+                if (b.paramIdx !== null) {
+                    return 1;
+                }
                 return a.suffix.localeCompare(b.suffix);
             });
-        if (matches.length === 0) { continue; }
+        if (matches.length === 0) {
+            continue;
+        }
         for (const match of matches) {
             expanded.push({
                 advanceTimeMillis: template.advanceTimeMillis,
@@ -78,7 +118,7 @@ const MANIFEST_CACHE_TTL_MS = 30_000;
 export class TaskCancelledError extends Error {
     constructor(public readonly task: string) {
         super(`Gradle task ${task} was cancelled.`);
-        this.name = 'TaskCancelledError';
+        this.name = "TaskCancelledError";
     }
 }
 
@@ -90,12 +130,17 @@ const CANCELLED_RE = /\bCANCELLED\b/i;
 // task names take the colon-separated form (`:samples:wear:foo`) — convert
 // at task-name construction sites only.
 function gradleProjectPath(module: string): string {
-    return ':' + module.split('/').join(':');
+    return ":" + module.split("/").join(":");
 }
 
 const SCAN_SKIP_DIRS = new Set([
-    'node_modules', 'build', 'gradle', 'src', 'out', 'dist',
-    '.compose-preview-history',
+    "node_modules",
+    "build",
+    "gradle",
+    "src",
+    "out",
+    "dist",
+    ".compose-preview-history",
 ]);
 const SCAN_MAX_DEPTH = 4;
 
@@ -136,10 +181,17 @@ export interface GradleApi {
         taskName: string;
         args?: ReadonlyArray<string>;
         showOutputColors: boolean;
-        onOutput?: (output: { getOutputBytes(): Uint8Array; getOutputType(): number }) => void;
+        onOutput?: (output: {
+            getOutputBytes(): Uint8Array;
+            getOutputType(): number;
+        }) => void;
         cancellationKey?: string;
     }): Promise<void>;
-    cancelRunTask(opts: { projectFolder: string; taskName: string; cancellationKey?: string }): Promise<void>;
+    cancelRunTask(opts: {
+        projectFolder: string;
+        taskName: string;
+        cancellationKey?: string;
+    }): Promise<void>;
 }
 
 export class GradleService {
@@ -151,7 +203,10 @@ export class GradleService {
     private gradleApi: GradleApi;
     private argsProvider: () => string[];
     private logFilter: LogFilter;
-    private manifestCache = new Map<string, { manifest: PreviewManifest; timestamp: number }>();
+    private manifestCache = new Map<
+        string,
+        { manifest: PreviewManifest; timestamp: number }
+    >();
     private taskCounter = 0;
     private activeKeys = new Set<string>();
 
@@ -169,12 +224,19 @@ export class GradleService {
         this.logFilter = logFilter ?? new LogFilter();
     }
 
-    async discoverPreviews(module: string, opts?: TaskOptions): Promise<PreviewManifest | null> {
+    async discoverPreviews(
+        module: string,
+        opts?: TaskOptions,
+    ): Promise<PreviewManifest | null> {
         const cached = this.manifestCache.get(module);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
             return cached.manifest;
         }
-        await this.runTask(`${gradleProjectPath(module)}:discoverPreviews`, [], opts);
+        await this.runTask(
+            `${gradleProjectPath(module)}:discoverPreviews`,
+            [],
+            opts,
+        );
         const manifest = this.readManifest(module);
         if (manifest) {
             this.manifestCache.set(module, { manifest, timestamp: Date.now() });
@@ -197,7 +259,11 @@ export class GradleService {
      */
     async compileOnly(module: string, opts?: TaskOptions): Promise<void> {
         this.manifestCache.delete(module);
-        await this.runTask(`${gradleProjectPath(module)}:composePreviewCompile`, [], opts);
+        await this.runTask(
+            `${gradleProjectPath(module)}:composePreviewCompile`,
+            [],
+            opts,
+        );
     }
 
     /**
@@ -219,7 +285,7 @@ export class GradleService {
      */
     async renderPreviews(
         module: string,
-        tier: 'fast' | 'full' = 'full',
+        tier: "fast" | "full" = "full",
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module);
@@ -243,7 +309,11 @@ export class GradleService {
      * caller can surface the message to the user.
      */
     async installDebug(module: string, opts?: TaskOptions): Promise<void> {
-        await this.runTask(`${gradleProjectPath(module)}:installDebug`, [], opts);
+        await this.runTask(
+            `${gradleProjectPath(module)}:installDebug`,
+            [],
+            opts,
+        );
     }
 
     /**
@@ -261,30 +331,47 @@ export class GradleService {
         try {
             await this.runTask(task);
         } catch (e) {
-            this.logger.appendLine(`[doctor] ${task} failed: ${(e as Error).message}`);
+            this.logger.appendLine(
+                `[doctor] ${task} failed: ${(e as Error).message}`,
+            );
             return null;
         }
-        const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'doctor.json');
+        const reportPath = path.join(
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            "doctor.json",
+        );
         if (!fs.existsSync(reportPath)) {
             this.logger.appendLine(`[doctor] ${reportPath} not produced`);
             return null;
         }
         try {
-            const parsed = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as DoctorModuleReport;
-            if (!parsed.schema?.startsWith('compose-preview-doctor/')) {
-                this.logger.appendLine(`[doctor] unexpected schema in ${reportPath}: ${parsed.schema}`);
+            const parsed = JSON.parse(
+                fs.readFileSync(reportPath, "utf-8"),
+            ) as DoctorModuleReport;
+            if (!parsed.schema?.startsWith("compose-preview-doctor/")) {
+                this.logger.appendLine(
+                    `[doctor] unexpected schema in ${reportPath}: ${parsed.schema}`,
+                );
                 return null;
             }
             return parsed;
         } catch (e) {
-            this.logger.appendLine(`[doctor] parse failed for ${reportPath}: ${(e as Error).message}`);
+            this.logger.appendLine(
+                `[doctor] parse failed for ${reportPath}: ${(e as Error).message}`,
+            );
             return null;
         }
     }
 
     invalidateCache(module?: string): void {
-        if (module) { this.manifestCache.delete(module); }
-        else { this.manifestCache.clear(); }
+        if (module) {
+            this.manifestCache.delete(module);
+        } else {
+            this.manifestCache.clear();
+        }
     }
 
     /**
@@ -299,27 +386,54 @@ export class GradleService {
      * use the raw shape directly.
      */
     readResourceManifest(module: string): ResourceManifest | null {
-        const manifestPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'resources.json');
-        if (!fs.existsSync(manifestPath)) { return null; }
+        const manifestPath = path.join(
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            "resources.json",
+        );
+        if (!fs.existsSync(manifestPath)) {
+            return null;
+        }
         try {
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as ResourceManifest;
-            if (!Array.isArray(manifest.resources) || !Array.isArray(manifest.manifestReferences)) {
-                this.logger.appendLine(`Malformed resource manifest at ${manifestPath}`);
+            const manifest = JSON.parse(
+                fs.readFileSync(manifestPath, "utf-8"),
+            ) as ResourceManifest;
+            if (
+                !Array.isArray(manifest.resources) ||
+                !Array.isArray(manifest.manifestReferences)
+            ) {
+                this.logger.appendLine(
+                    `Malformed resource manifest at ${manifestPath}`,
+                );
                 return null;
             }
             return manifest;
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
-            this.logger.appendLine(`Failed to parse ${manifestPath}: ${message}`);
+            this.logger.appendLine(
+                `Failed to parse ${manifestPath}: ${message}`,
+            );
             return null;
         }
     }
 
     readManifest(module: string): PreviewManifest | null {
-        const manifestPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'previews.json');
-        if (!fs.existsSync(manifestPath)) { return null; }
+        const manifestPath = path.join(
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            "previews.json",
+        );
+        if (!fs.existsSync(manifestPath)) {
+            return null;
+        }
         try {
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as PreviewManifest;
+            const manifest = JSON.parse(
+                fs.readFileSync(manifestPath, "utf-8"),
+            ) as PreviewManifest;
             if (!manifest.previews || !Array.isArray(manifest.previews)) {
                 this.logger.appendLine(`Malformed manifest at ${manifestPath}`);
                 return null;
@@ -331,18 +445,30 @@ export class GradleService {
             // before any downstream consumer (carousel, hover, image loader)
             // sees the preview, so the UI walks N files instead of trying to
             // read the template path (which never exists).
-            const rendersDir = path.join(this.workspaceRoot, module, 'build', 'compose-previews', 'renders');
+            const rendersDir = path.join(
+                this.workspaceRoot,
+                module,
+                "build",
+                "compose-previews",
+                "renders",
+            );
             const siblingRenderOutputs = new Set<string>();
             for (const p of manifest.previews) {
                 if (!p.params?.previewParameterProviderClassName) {
                     for (const c of p.captures) {
-                        if (c.renderOutput) { siblingRenderOutputs.add(c.renderOutput); }
+                        if (c.renderOutput) {
+                            siblingRenderOutputs.add(c.renderOutput);
+                        }
                     }
                 }
             }
             for (const p of manifest.previews) {
                 if (p.params?.previewParameterProviderClassName) {
-                    p.captures = expandParamCaptures(rendersDir, p.captures, siblingRenderOutputs);
+                    p.captures = expandParamCaptures(
+                        rendersDir,
+                        p.captures,
+                        siblingRenderOutputs,
+                    );
                 }
             }
             // Enrich each preview with a11y findings when the module has the
@@ -351,7 +477,10 @@ export class GradleService {
             // remove findings from the UI without a stale opt-in run
             // haunting us.
             if (manifest.accessibilityReport) {
-                const byId = this.readA11yById(module, manifest.accessibilityReport);
+                const byId = this.readA11yById(
+                    module,
+                    manifest.accessibilityReport,
+                );
                 for (const p of manifest.previews) {
                     const entry = byId[p.id];
                     p.a11yFindings = entry?.findings ?? [];
@@ -366,7 +495,9 @@ export class GradleService {
             return manifest;
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
-            this.logger.appendLine(`Failed to parse ${manifestPath}: ${message}`);
+            this.logger.appendLine(
+                `Failed to parse ${manifestPath}: ${message}`,
+            );
             return null;
         }
     }
@@ -380,20 +511,40 @@ export class GradleService {
     private readA11yById(
         module: string,
         relativePath: string,
-    ): Record<string, { findings: AccessibilityFinding[]; annotatedPath: string | null }> {
-        const reportPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', relativePath);
-        if (!fs.existsSync(reportPath)) { return {}; }
+    ): Record<
+        string,
+        { findings: AccessibilityFinding[]; annotatedPath: string | null }
+    > {
+        const reportPath = path.join(
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            relativePath,
+        );
+        if (!fs.existsSync(reportPath)) {
+            return {};
+        }
         try {
-            const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as AccessibilityReport;
+            const report = JSON.parse(
+                fs.readFileSync(reportPath, "utf-8"),
+            ) as AccessibilityReport;
             const reportDir = path.dirname(reportPath);
-            const out: Record<string, { findings: AccessibilityFinding[]; annotatedPath: string | null }> = {};
+            const out: Record<
+                string,
+                {
+                    findings: AccessibilityFinding[];
+                    annotatedPath: string | null;
+                }
+            > = {};
             for (const entry of report.entries ?? []) {
                 const resolved = entry.annotatedPath
                     ? path.resolve(reportDir, entry.annotatedPath)
                     : null;
                 out[entry.previewId] = {
                     findings: entry.findings ?? [],
-                    annotatedPath: resolved && fs.existsSync(resolved) ? resolved : null,
+                    annotatedPath:
+                        resolved && fs.existsSync(resolved) ? resolved : null,
                 };
             }
             return out;
@@ -404,11 +555,20 @@ export class GradleService {
         }
     }
 
-    async readPreviewImage(module: string, renderOutput: string): Promise<string | null> {
-        const pngPath = path.join(this.workspaceRoot, module, 'build', 'compose-previews', renderOutput);
+    async readPreviewImage(
+        module: string,
+        renderOutput: string,
+    ): Promise<string | null> {
+        const pngPath = path.join(
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            renderOutput,
+        );
         try {
             const data = await fs.promises.readFile(pngPath);
-            return data.toString('base64');
+            return data.toString("base64");
         } catch {
             return null;
         }
@@ -426,15 +586,24 @@ export class GradleService {
      * extension finds the sidecar by trivial string-concat on the
      * manifest's existing `renderOutput` path.
      */
-    async readPreviewRenderError(module: string, renderOutput: string): Promise<PreviewRenderError | null> {
+    async readPreviewRenderError(
+        module: string,
+        renderOutput: string,
+    ): Promise<PreviewRenderError | null> {
         const sidecarPath = path.join(
-            this.workspaceRoot, module, 'build', 'compose-previews', `${renderOutput}.error.json`,
+            this.workspaceRoot,
+            module,
+            "build",
+            "compose-previews",
+            `${renderOutput}.error.json`,
         );
         try {
-            const text = await fs.promises.readFile(sidecarPath, 'utf-8');
+            const text = await fs.promises.readFile(sidecarPath, "utf-8");
             const parsed = JSON.parse(text) as PreviewRenderError;
-            if (!parsed.schema?.startsWith('compose-preview-error/')) {
-                this.logger.appendLine(`[render-error] unexpected schema in ${sidecarPath}: ${parsed.schema}`);
+            if (!parsed.schema?.startsWith("compose-preview-error/")) {
+                this.logger.appendLine(
+                    `[render-error] unexpected schema in ${sidecarPath}: ${parsed.schema}`,
+                );
                 return null;
             }
             return parsed;
@@ -443,8 +612,10 @@ export class GradleService {
             // Anything else is logged so a malformed file is debuggable
             // without surprising the user with a generic banner.
             const err = e as NodeJS.ErrnoException;
-            if (err && err.code !== 'ENOENT') {
-                this.logger.appendLine(`[render-error] failed to read ${sidecarPath}: ${err.message ?? err}`);
+            if (err && err.code !== "ENOENT") {
+                this.logger.appendLine(
+                    `[render-error] failed to read ${sidecarPath}: ${err.message ?? err}`,
+                );
             }
             return null;
         }
@@ -457,10 +628,12 @@ export class GradleService {
             try {
                 await this.gradleApi.cancelRunTask({
                     projectFolder: this.workspaceRoot,
-                    taskName: key.split('|')[1],
+                    taskName: key.split("|")[1],
                     cancellationKey: key,
                 });
-            } catch { /* ignore */ }
+            } catch {
+                /* ignore */
+            }
         }
     }
 
@@ -493,8 +666,12 @@ export class GradleService {
     findPreviewModules(): string[] {
         const found = new Set<string>();
         const walk = (relDir: string, depth: number): void => {
-            if (depth > SCAN_MAX_DEPTH) { return; }
-            const absDir = relDir ? path.join(this.workspaceRoot, relDir) : this.workspaceRoot;
+            if (depth > SCAN_MAX_DEPTH) {
+                return;
+            }
+            const absDir = relDir
+                ? path.join(this.workspaceRoot, relDir)
+                : this.workspaceRoot;
             let entries: fs.Dirent[];
             try {
                 entries = fs.readdirSync(absDir, { withFileTypes: true });
@@ -502,26 +679,46 @@ export class GradleService {
                 return;
             }
             for (const entry of entries) {
-                if (!entry.isDirectory()) { continue; }
-                if (entry.name.startsWith('.')) { continue; }
-                if (SCAN_SKIP_DIRS.has(entry.name)) { continue; }
-                const childRel = relDir ? `${relDir}/${entry.name}` : entry.name;
+                if (!entry.isDirectory()) {
+                    continue;
+                }
+                if (entry.name.startsWith(".")) {
+                    continue;
+                }
+                if (SCAN_SKIP_DIRS.has(entry.name)) {
+                    continue;
+                }
+                const childRel = relDir
+                    ? `${relDir}/${entry.name}`
+                    : entry.name;
                 const marker = path.join(
-                    this.workspaceRoot, childRel, 'build', 'compose-previews', 'applied.json',
+                    this.workspaceRoot,
+                    childRel,
+                    "build",
+                    "compose-previews",
+                    "applied.json",
                 );
                 if (fs.existsSync(marker)) {
                     found.add(childRel);
                 } else {
-                    const buildFile = path.join(this.workspaceRoot, childRel, 'build.gradle.kts');
+                    const buildFile = path.join(
+                        this.workspaceRoot,
+                        childRel,
+                        "build.gradle.kts",
+                    );
                     try {
-                        const content = fs.readFileSync(buildFile, 'utf-8');
-                        if (appliesPlugin(content)) { found.add(childRel); }
-                    } catch { /* skip */ }
+                        const content = fs.readFileSync(buildFile, "utf-8");
+                        if (appliesPlugin(content)) {
+                            found.add(childRel);
+                        }
+                    } catch {
+                        /* skip */
+                    }
                 }
                 walk(childRel, depth + 1);
             }
         };
-        walk('', 0);
+        walk("", 0);
         return [...found].sort();
     }
 
@@ -540,7 +737,7 @@ export class GradleService {
      */
     async bootstrapAppliedMarkers(): Promise<void> {
         try {
-            await this.runTask('composePreviewApplied');
+            await this.runTask("composePreviewApplied");
         } catch (e) {
             this.logger.appendLine(
                 `[applied] composePreviewApplied bootstrap failed: ${(e as Error).message}`,
@@ -555,24 +752,36 @@ export class GradleService {
      * path is enabled (`composePreview.daemon.enabled`); the caller (DaemonGate) handles errors.
      */
     async runDaemonBootstrap(module: string): Promise<void> {
-        await this.runTask(`${gradleProjectPath(module)}:composePreviewDaemonStart`);
+        await this.runTask(
+            `${gradleProjectPath(module)}:composePreviewDaemonStart`,
+        );
     }
 
     resolveModule(filePath: string): string | null {
         const relative = path.relative(this.workspaceRoot, filePath);
-        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+        if (
+            !relative ||
+            relative.startsWith("..") ||
+            path.isAbsolute(relative)
+        ) {
             return null;
         }
         // Split on either separator so the same path works on Windows and POSIX.
-        const segments = relative.split(/[\\/]+/).filter((s: string) => s.length > 0);
-        if (segments.length < 2) { return null; }
+        const segments = relative
+            .split(/[\\/]+/)
+            .filter((s: string) => s.length > 0);
+        if (segments.length < 2) {
+            return null;
+        }
         const modules = new Set(this.findPreviewModules());
         // Longest-prefix match: walk from deepest possible module path to
         // shallowest. With nested modules (e.g. `:foo:bar` inside `:foo`)
         // we prefer the more specific match.
         for (let n = segments.length - 1; n >= 1; n--) {
-            const candidate = segments.slice(0, n).join('/');
-            if (modules.has(candidate)) { return candidate; }
+            const candidate = segments.slice(0, n).join("/");
+            if (modules.has(candidate)) {
+                return candidate;
+            }
         }
         return null;
     }
@@ -589,7 +798,9 @@ export class GradleService {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
         const startLine = `> ${task}`;
-        if (this.logFilter.shouldEmitInformational(startLine)) { this.logger.appendLine(startLine); }
+        if (this.logFilter.shouldEmitInformational(startLine)) {
+            this.logger.appendLine(startLine);
+        }
 
         const detector = new JdkImageErrorDetector();
         // Parse `e:` lines from the Kotlin compiler so the panel banner
@@ -600,66 +811,88 @@ export class GradleService {
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
-                this.gradleApi.cancelRunTask({
-                    projectFolder: this.workspaceRoot,
-                    taskName: task,
-                    cancellationKey,
-                }).catch(() => { /* ignore */ });
-                reject(new Error(`Gradle task ${task} timed out after ${TASK_TIMEOUT_MS / 1000}s`));
+                this.gradleApi
+                    .cancelRunTask({
+                        projectFolder: this.workspaceRoot,
+                        taskName: task,
+                        cancellationKey,
+                    })
+                    .catch(() => {
+                        /* ignore */
+                    });
+                reject(
+                    new Error(
+                        `Gradle task ${task} timed out after ${TASK_TIMEOUT_MS / 1000}s`,
+                    ),
+                );
             }, TASK_TIMEOUT_MS);
         });
 
-        const taskPromise = this.gradleApi.runTask({
-            projectFolder: this.workspaceRoot,
-            taskName: task,
-            args: [...this.argsProvider(), ...extraArgs],
-            showOutputColors: false,
-            cancellationKey,
-            onOutput: (output) => {
-                try {
-                    const decoded = new TextDecoder().decode(output.getOutputBytes());
-                    // Detector still sees the raw stream — it pattern-matches
-                    // on JDK image errors that the filter would suppress at
-                    // normal level (the noisy lines are exactly the ones that
-                    // contain the diagnostic).
-                    detector.consume(decoded);
-                    kotlinDetector.consume(decoded);
-                    const filtered = this.logFilter.filterGradleChunk(decoded);
-                    if (filtered.length > 0) { this.logger.append(filtered); }
-                    opts.onTaskOutput?.(decoded);
-                } catch { /* ignore */ }
-            },
-        }).then(
-            () => {
-                const line = `> ${task} completed`;
-                if (this.logFilter.shouldEmitInformational(line)) { this.logger.appendLine(line); }
-            },
-            (err) => {
-                const message = err?.message ?? String(err);
-                // vscode-gradle reports a superseded task as a gRPC CANCELLED
-                // error — that's the normal "new refresh replaced this one"
-                // path, not a build failure. Log it differently and throw a
-                // typed error so callers can drop it silently.
-                if (CANCELLED_RE.test(message)) {
-                    this.logger.appendLine(`> ${task} cancelled`);
-                    throw new TaskCancelledError(task);
-                }
-                this.logger.appendLine(`> ${task} FAILED: ${message}`);
-                detector.end();
-                kotlinDetector.end();
-                const finding = detector.getFinding();
-                if (finding) {
-                    throw new JdkImageError(finding, task);
-                }
-                const kotlinErrors = kotlinDetector.getErrors();
-                if (kotlinErrors.length > 0) {
-                    throw new KotlinCompileError(kotlinErrors, task);
-                }
-                throw new Error(`Gradle task ${task} failed. See Output > Compose Preview.`);
-            },
-        ).finally(() => {
-            this.activeKeys.delete(cancellationKey);
-        });
+        const taskPromise = this.gradleApi
+            .runTask({
+                projectFolder: this.workspaceRoot,
+                taskName: task,
+                args: [...this.argsProvider(), ...extraArgs],
+                showOutputColors: false,
+                cancellationKey,
+                onOutput: (output) => {
+                    try {
+                        const decoded = new TextDecoder().decode(
+                            output.getOutputBytes(),
+                        );
+                        // Detector still sees the raw stream — it pattern-matches
+                        // on JDK image errors that the filter would suppress at
+                        // normal level (the noisy lines are exactly the ones that
+                        // contain the diagnostic).
+                        detector.consume(decoded);
+                        kotlinDetector.consume(decoded);
+                        const filtered =
+                            this.logFilter.filterGradleChunk(decoded);
+                        if (filtered.length > 0) {
+                            this.logger.append(filtered);
+                        }
+                        opts.onTaskOutput?.(decoded);
+                    } catch {
+                        /* ignore */
+                    }
+                },
+            })
+            .then(
+                () => {
+                    const line = `> ${task} completed`;
+                    if (this.logFilter.shouldEmitInformational(line)) {
+                        this.logger.appendLine(line);
+                    }
+                },
+                (err) => {
+                    const message = err?.message ?? String(err);
+                    // vscode-gradle reports a superseded task as a gRPC CANCELLED
+                    // error — that's the normal "new refresh replaced this one"
+                    // path, not a build failure. Log it differently and throw a
+                    // typed error so callers can drop it silently.
+                    if (CANCELLED_RE.test(message)) {
+                        this.logger.appendLine(`> ${task} cancelled`);
+                        throw new TaskCancelledError(task);
+                    }
+                    this.logger.appendLine(`> ${task} FAILED: ${message}`);
+                    detector.end();
+                    kotlinDetector.end();
+                    const finding = detector.getFinding();
+                    if (finding) {
+                        throw new JdkImageError(finding, task);
+                    }
+                    const kotlinErrors = kotlinDetector.getErrors();
+                    if (kotlinErrors.length > 0) {
+                        throw new KotlinCompileError(kotlinErrors, task);
+                    }
+                    throw new Error(
+                        `Gradle task ${task} failed. See Output > Compose Preview.`,
+                    );
+                },
+            )
+            .finally(() => {
+                this.activeKeys.delete(cancellationKey);
+            });
 
         return Promise.race([taskPromise, timeoutPromise]);
     }

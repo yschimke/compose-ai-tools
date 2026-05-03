@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
 
 /**
  * Pure filesystem helpers for detecting where the Compose Preview Gradle
@@ -18,7 +18,7 @@ import * as path from 'path';
  *      the current Gradle project or a nested worktree's sibling layout.
  */
 
-export const PLUGIN_ID = 'ee.schimke.composeai.preview';
+export const PLUGIN_ID = "ee.schimke.composeai.preview";
 
 // Matches the plugin being *applied* literally (`id("ee.schimke.composeai.preview")`
 // or `id "ee.schimke.composeai.preview"`), not the plugin's own declaration in
@@ -47,8 +47,12 @@ const APPLY_FALSE_RE = /\bapply\s+false\b/;
 export function appliesPlugin(content: string): boolean {
     const lines = content.split(/\r?\n/);
     for (const line of lines) {
-        if (!APPLIES_PLUGIN_RE.test(line)) { continue; }
-        if (APPLY_FALSE_RE.test(line)) { continue; }
+        if (!APPLIES_PLUGIN_RE.test(line)) {
+            continue;
+        }
+        if (APPLY_FALSE_RE.test(line)) {
+            continue;
+        }
         return true;
     }
     return false;
@@ -76,15 +80,19 @@ export function appliesPlugin(content: string): boolean {
 export function findPluginAppliedAncestor(filePath: string): string | null {
     let dir = path.dirname(filePath);
     while (true) {
-        const candidate = path.join(dir, 'build.gradle.kts');
+        const candidate = path.join(dir, "build.gradle.kts");
         try {
-            const content = fs.readFileSync(candidate, 'utf-8');
+            const content = fs.readFileSync(candidate, "utf-8");
             if (appliesPlugin(content)) {
                 return dir;
             }
-        } catch { /* no build file here, keep walking */ }
+        } catch {
+            /* no build file here, keep walking */
+        }
         const parent = path.dirname(dir);
-        if (parent === dir) { return null; }
+        if (parent === dir) {
+            return null;
+        }
         dir = parent;
     }
 }

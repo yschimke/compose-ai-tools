@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
 
 // Matches a top-level Kotlin package declaration. Tolerates optional trailing
 // semicolon and leading whitespace (annotations/comments above `package` are
@@ -17,11 +17,13 @@ const PACKAGE_RE = /^\s*package\s+([a-zA-Z_][\w.]*)\s*;?\s*$/m;
 export function packageQualifiedSourcePath(filePath: string): string {
     const basename = path.basename(filePath);
     try {
-        const content = fs.readFileSync(filePath, 'utf-8');
+        const content = fs.readFileSync(filePath, "utf-8");
         const m = PACKAGE_RE.exec(content);
         if (m) {
-            return m[1].replace(/\./g, '/') + '/' + basename;
+            return m[1].replace(/\./g, "/") + "/" + basename;
         }
-    } catch { /* fall through to basename */ }
+    } catch {
+        /* fall through to basename */
+    }
     return basename;
 }

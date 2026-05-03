@@ -37,12 +37,14 @@ Add
 to the module whose previews you want to render:
 
 <!-- x-release-please-start-version -->
+
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
     id("ee.schimke.composeai.preview") version "0.9.0"
 }
 ```
+
 <!-- x-release-please-end -->
 
 The plugin is on Maven Central, so no extra repository setup is needed when
@@ -59,16 +61,16 @@ snapshot builds.
 
 ### Commands
 
-| Command | Description |
-|---|---|
-| `Compose Preview: Refresh Previews` | Re-read `previews.json` and rendered PNGs from `build/compose-previews/`. |
+| Command                                | Description                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| `Compose Preview: Refresh Previews`    | Re-read `previews.json` and rendered PNGs from `build/compose-previews/`.  |
 | `Compose Preview: Render All Previews` | Run the `renderAllPreviews` Gradle task to discover and render everything. |
 
 ### Settings
 
-| Setting | Default | Description |
-|---|---|---|
-| `composePreview.variant` | `debug` | Build variant to use for preview rendering (Android). |
+| Setting                        | Default  | Description                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `composePreview.variant`       | `debug`  | Build variant to use for preview rendering (Android).                                                                                                                                                                                                                                                                                        |
 | `composePreview.logging.level` | `normal` | Verbosity for the "Compose Preview" output channel. `quiet` shows only errors and the BUILD outcome; `normal` keeps active task headers and summary lines but drops UP-TO-DATE/SKIPPED noise, configuration-cache bookkeeping, and dedupes the repeated Roborazzi ActionBar warnings; `verbose` shows every line from Gradle and the daemon. |
 
 ## Links

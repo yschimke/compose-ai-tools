@@ -1,8 +1,8 @@
-import * as vscode from 'vscode';
-import { ExtensionToWebview, WebviewToExtension } from './types';
+import * as vscode from "vscode";
+import { ExtensionToWebview, WebviewToExtension } from "./types";
 
 export class PreviewPanel implements vscode.WebviewViewProvider {
-    public static readonly viewId = 'composePreview.panel';
+    public static readonly viewId = "composePreview.panel";
 
     private view?: vscode.WebviewView;
     private extensionUri: vscode.Uri;
@@ -37,7 +37,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             this.onMessage(msg);
         });
         webviewView.onDidChangeVisibility(() => {
-            if (webviewView.visible || !this.shouldRestoreVisibility()) { return; }
+            if (webviewView.visible || !this.shouldRestoreVisibility()) {
+                return;
+            }
             void vscode.commands.executeCommand(`${PreviewPanel.viewId}.focus`);
         });
     }
@@ -50,10 +52,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const nonce = getNonce();
         const earlyFeaturesEnabled = this.earlyFeaturesEnabled();
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'media', 'preview.css'),
+            vscode.Uri.joinPath(this.extensionUri, "media", "preview.css"),
         );
         const codiconUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'media', 'codicon.css'),
+            vscode.Uri.joinPath(this.extensionUri, "media", "codicon.css"),
         );
 
         return /* html */ `<!DOCTYPE html>
@@ -155,7 +157,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     (function() {
         const vscode = acquireVsCodeApi();
         const state = vscode.getState() || { filters: {} };
-        let earlyFeaturesEnabled = ${earlyFeaturesEnabled ? 'true' : 'false'};
+        let earlyFeaturesEnabled = ${earlyFeaturesEnabled ? "true" : "false"};
 
         const grid = document.getElementById('preview-grid');
         const focusInspector = document.getElementById('focus-inspector');
@@ -3110,8 +3112,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 }
 
 function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let text = "";
+    const possible =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     for (let i = 0; i < 32; i++) {
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }

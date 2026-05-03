@@ -29,8 +29,8 @@ export interface PreviewParams {
  * reachedPx) are populated by the renderer post-capture.
  */
 export interface ScrollCapture {
-    mode: 'TOP' | 'END' | 'LONG' | string;
-    axis: 'VERTICAL' | 'HORIZONTAL' | string;
+    mode: "TOP" | "END" | "LONG" | string;
+    axis: "VERTICAL" | "HORIZONTAL" | string;
     maxScrollPx: number;
     reduceMotion: boolean;
     /** Scrollable reached the end of its content before the renderer stopped.
@@ -93,27 +93,27 @@ export interface PreviewDataProduct {
 }
 
 export type PreviewDataProductFacet =
-    | 'STRUCTURED'
-    | 'ARTIFACT'
-    | 'IMAGE'
-    | 'ANIMATION'
-    | 'OVERLAY'
-    | 'CHECK'
-    | 'DIAGNOSTIC'
-    | 'PROFILE'
-    | 'INTERACTIVE';
+    | "STRUCTURED"
+    | "ARTIFACT"
+    | "IMAGE"
+    | "ANIMATION"
+    | "OVERLAY"
+    | "CHECK"
+    | "DIAGNOSTIC"
+    | "PROFILE"
+    | "INTERACTIVE";
 
 export type PreviewDataProductSampling =
-    | 'START'
-    | 'END'
-    | 'EACH_FRAME'
-    | 'ON_DEMAND'
-    | 'AGGREGATE'
-    | 'FAILURE';
+    | "START"
+    | "END"
+    | "EACH_FRAME"
+    | "ON_DEMAND"
+    | "AGGREGATE"
+    | "FAILURE";
 
 export type PreviewExtensionUsageMode =
-    | 'EXPLICIT_EFFECT'
-    | 'SUGGESTED_EXTRA_PREVIEW';
+    | "EXPLICIT_EFFECT"
+    | "SUGGESTED_EXTRA_PREVIEW";
 
 export interface PreviewInfo {
     id: string;
@@ -166,7 +166,7 @@ export interface PreviewManifest {
 }
 
 export interface AccessibilityFinding {
-    level: 'ERROR' | 'WARNING' | 'INFO' | string;
+    level: "ERROR" | "WARNING" | "INFO" | string;
     type: string;
     message: string;
     viewDescription?: string | null;
@@ -225,11 +225,25 @@ export interface PreviewRenderErrorTopFrame {
 // See `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model.
 // -------------------------------------------------------------------------
 
-export type ResourceType = 'VECTOR' | 'ANIMATED_VECTOR' | 'ADAPTIVE_ICON' | string;
+export type ResourceType =
+    | "VECTOR"
+    | "ANIMATED_VECTOR"
+    | "ADAPTIVE_ICON"
+    | string;
 
-export type AdaptiveShape = 'CIRCLE' | 'SQUIRCLE' | 'ROUNDED_SQUARE' | 'SQUARE' | string;
+export type AdaptiveShape =
+    | "CIRCLE"
+    | "SQUIRCLE"
+    | "ROUNDED_SQUARE"
+    | "SQUARE"
+    | string;
 
-export type AdaptiveStyle = 'FULL_COLOR' | 'THEMED_LIGHT' | 'THEMED_DARK' | 'LEGACY' | string;
+export type AdaptiveStyle =
+    | "FULL_COLOR"
+    | "THEMED_LIGHT"
+    | "THEMED_DARK"
+    | "LEGACY"
+    | string;
 
 export interface ResourceVariant {
     /**
@@ -324,7 +338,7 @@ export interface DoctorModuleReport {
 
 export interface DoctorFinding {
     id: string;
-    severity: 'error' | 'warning' | 'info' | string;
+    severity: "error" | "warning" | "info" | string;
     message: string;
     detail?: string | null;
     remediationSummary?: string | null;
@@ -335,7 +349,7 @@ export interface DoctorFinding {
 /** Messages from extension to webview */
 export type ExtensionToWebview =
     | {
-          command: 'setPreviews';
+          command: "setPreviews";
           previews: PreviewInfo[];
           moduleDir: string;
           /**
@@ -348,7 +362,12 @@ export type ExtensionToWebview =
       }
     /** `captureIndex` addresses which capture within an animated preview the
      *  image belongs to. Static previews have a single capture at index 0. */
-    | { command: 'updateImage'; previewId: string; captureIndex: number; imageData: string }
+    | {
+          command: "updateImage";
+          previewId: string;
+          captureIndex: number;
+          imageData: string;
+      }
     /**
      * D2 — daemon-attached `a11y/atf` (findings) and/or `a11y/hierarchy` (nodes) for one
      * preview. The webview updates its in-memory caches and re-applies the existing finding
@@ -356,13 +375,13 @@ export type ExtensionToWebview =
      * node when present. Either field may be undefined to leave the current state untouched.
      */
     | {
-          command: 'updateA11y';
+          command: "updateA11y";
           previewId: string;
           findings?: AccessibilityFinding[] | null;
           nodes?: AccessibilityNode[] | null;
       }
     | {
-          command: 'setImageError';
+          command: "setImageError";
           previewId: string;
           captureIndex: number;
           message: string;
@@ -383,13 +402,13 @@ export type ExtensionToWebview =
            */
           replaceExisting?: boolean;
       }
-    | { command: 'setLoading'; previewId?: string }
-    | { command: 'markAllLoading' }
-    | { command: 'setError'; previewId: string; message: string }
-    | { command: 'showMessage'; text: string }
-    | { command: 'clearAll' }
-    | { command: 'setModules'; modules: string[]; selected: string }
-    | { command: 'setFunctionFilter'; functionName: string }
+    | { command: "setLoading"; previewId?: string }
+    | { command: "markAllLoading" }
+    | { command: "setError"; previewId: string; message: string }
+    | { command: "showMessage"; text: string }
+    | { command: "clearAll" }
+    | { command: "setModules"; modules: string[]; selected: string }
+    | { command: "setFunctionFilter"; functionName: string }
     /**
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
@@ -398,9 +417,15 @@ export type ExtensionToWebview =
      * estimate — the webview tints the bar and appends "(slow)" to the
      * label. The webview hides the bar on its own when `percent` reaches 1.
      */
-    | { command: 'setProgress'; phase: string; label: string; percent: number; slow?: boolean }
+    | {
+          command: "setProgress";
+          phase: string;
+          label: string;
+          percent: number;
+          slow?: boolean;
+      }
     /** Force-clear the progress bar (e.g. on cancellation or fatal error). */
-    | { command: 'clearProgress' }
+    | { command: "clearProgress" }
     /**
      * Replace the compile-error banner. Each entry carries its own
      * absolute `path` so the click handler can deep-link to whatever
@@ -409,27 +434,35 @@ export type ExtensionToWebview =
      * but get a "compile-stale" decoration so the user keeps the last
      * successful render visible alongside the error list.
      */
-    | { command: 'setCompileErrors'; errors: import('./compileErrors').CompileError[] }
+    | {
+          command: "setCompileErrors";
+          errors: import("./compileErrors").CompileError[];
+      }
     /** Remove the compile-error banner and the compile-stale dim on cards. */
-    | { command: 'clearCompileErrors' }
+    | { command: "clearCompileErrors" }
     /** Side-by-side diff result for a focused live preview. The webview
      *  swaps in an overlay over the focused image with two labelled images. */
     | {
-          command: 'previewDiffReady';
+          command: "previewDiffReady";
           previewId: string;
-          against: 'head' | 'main';
+          against: "head" | "main";
           leftLabel: string;
           leftImage: string;
           rightLabel: string;
           rightImage: string;
       }
-    | { command: 'previewDiffError'; previewId: string; against: 'head' | 'main'; message: string }
+    | {
+          command: "previewDiffError";
+          previewId: string;
+          against: "head" | "main";
+          message: string;
+      }
     /**
      * Programmatic open of a preview in focus mode + immediate diff
      * request. Used by the "Diff All vs Main" command so picking an item
      * from its quick-pick lands the user directly on the diff result.
      */
-    | { command: 'focusAndDiff'; previewId: string; against: 'head' | 'main' }
+    | { command: "focusAndDiff"; previewId: string; against: "head" | "main" }
     /**
      * `origin/compose-preview/main` (or the local `compose-preview/main`
      * branch, the legacy `preview_main` flat refs, or `packed-refs`) just
@@ -437,7 +470,7 @@ export type ExtensionToWebview =
      * baseline. The live panel re-issues any open "Diff vs main" overlay
      * so the user sees the new bytes without manually clicking.
      */
-    | { command: 'previewMainRefChanged' }
+    | { command: "previewMainRefChanged" }
     /**
      * Interactive (live-stream) mode availability for a given module.
      * Posted by the extension whenever the daemon for [moduleId] becomes
@@ -449,7 +482,7 @@ export type ExtensionToWebview =
      * fallback; see #422).
      */
     | {
-          command: 'setInteractiveAvailability';
+          command: "setInteractiveAvailability";
           moduleId: string;
           ready: boolean;
           interactiveSupported?: boolean;
@@ -463,20 +496,20 @@ export type ExtensionToWebview =
      * without sending its own `setInteractive` messages back (those would
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
-    | { command: 'clearInteractive'; previewId?: string }
-    | { command: 'clearRecording'; previewId?: string }
-    | { command: 'setEarlyFeatures'; enabled: boolean };
+    | { command: "clearInteractive"; previewId?: string }
+    | { command: "clearRecording"; previewId?: string }
+    | { command: "setEarlyFeatures"; enabled: boolean };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
-    | { command: 'openFile'; className: string; functionName: string }
-    | { command: 'selectModule'; value: string }
+    | { command: "openFile"; className: string; functionName: string }
+    | { command: "selectModule"; value: string }
     /**
      * User clicked a faded heavy card. The extension opts that preview into
      * full-tier refreshes until focus moves to another source scope, and
      * triggers an immediate full-tier render for the selected preview.
      */
-    | { command: 'refreshHeavy'; previewId: string }
+    | { command: "refreshHeavy"; previewId: string }
     /**
      * Webview reports current geometric visibility of preview cards plus
      * cards it predicts will scroll into view next based on scroll velocity
@@ -488,7 +521,7 @@ export type WebviewToExtension =
      * previous send. `predicted` excludes IDs already in `visible` because
      * those are reactively rendered by the visible queue.
      */
-    | { command: 'viewportUpdated'; visible: string[]; predicted: string[] }
+    | { command: "viewportUpdated"; visible: string[]; predicted: string[] }
     /**
      * Webview reports which preview the user has narrowed the live panel to.
      * Drives the History panel's `previewId` filter so it shows only entries
@@ -497,14 +530,19 @@ export type WebviewToExtension =
      * full module view — extension clears the previewId filter on the
      * History panel scope.
      */
-    | { command: 'previewScopeChanged'; previewId: string | null }
+    | { command: "previewScopeChanged"; previewId: string | null }
     /**
      * Click on a compile-error banner row. Extension responds by opening the
      * source file and revealing the position. `sourceFile` is the same
      * absolute path the extension passed in `setCompileErrors`; the line /
      * column come from the LSP diagnostic (1-based).
      */
-    | { command: 'openCompileError'; sourceFile: string; line: number; column: number }
+    | {
+          command: "openCompileError";
+          sourceFile: string;
+          line: number;
+          column: number;
+      }
     /**
      * Click on a runtime-error card's "top app frame" link. Unlike the
      * compile-error path, runtime errors only carry the source-file
@@ -519,14 +557,23 @@ export type WebviewToExtension =
      * for that exact path first; on no hit (or no `className`) we fall
      * back to the basename glob.
      */
-    | { command: 'openSourceFile'; fileName: string; line: number; className?: string }
+    | {
+          command: "openSourceFile";
+          fileName: string;
+          line: number;
+          className?: string;
+      }
     /**
      * Live panel asks the extension to compute a diff for the focused
      * preview against an anchor. `head` = latest archived render in
      * `.compose-preview-history/` for this preview; `main` = same, filtered
      * to entries whose `git.branch` is `main`.
      */
-    | { command: 'requestPreviewDiff'; previewId: string; against: 'head' | 'main' }
+    | {
+          command: "requestPreviewDiff";
+          previewId: string;
+          against: "head" | "main";
+      }
     /**
      * Click on the "Launch on Device" button in the focus-mode toolbar.
      * The extension uses [previewId] to bias module selection (the owner
@@ -535,7 +582,7 @@ export type WebviewToExtension =
      * Falls back to a quick-pick when more than one Android-application
      * module applies the plugin.
      */
-    | { command: 'requestLaunchOnDevice'; previewId: string }
+    | { command: "requestLaunchOnDevice"; previewId: string }
     /**
      * Toggle interactive (live-stream) mode for [previewId]. Daemon-only —
      * the extension routes this into a `setFocus` + `renderNow(tier='fast')`
@@ -544,17 +591,27 @@ export type WebviewToExtension =
      * save/focus-change publishes a fresh focus set on its own. See
      * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
      */
-    | { command: 'setInteractive'; previewId: string; enabled: boolean }
-    | { command: 'setRecording'; previewId: string; enabled: boolean; format?: 'apng' | 'mp4' }
+    | { command: "setInteractive"; previewId: string; enabled: boolean }
+    | {
+          command: "setRecording";
+          previewId: string;
+          enabled: boolean;
+          format?: "apng" | "mp4";
+      }
     /**
      * Pointer/rotary input on the focused image while interactive mode is on.
      * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate
      * system the renderer thinks in. See docs/daemon/INTERACTIVE.md § 6/§ 7.
      */
     | {
-          command: 'recordInteractiveInput';
+          command: "recordInteractiveInput";
           previewId: string;
-          kind: 'click' | 'pointerDown' | 'pointerMove' | 'pointerUp' | 'rotaryScroll';
+          kind:
+              | "click"
+              | "pointerDown"
+              | "pointerMove"
+              | "pointerUp"
+              | "rotaryScroll";
           pixelX: number;
           pixelY: number;
           imageWidth: number;
@@ -569,4 +626,4 @@ export type WebviewToExtension =
      * and tells the webview to drop the cached nodes/findings. Idempotent on
      * both sides.
      */
-    | { command: 'setA11yOverlay'; previewId: string; enabled: boolean };
+    | { command: "setA11yOverlay"; previewId: string; enabled: boolean };

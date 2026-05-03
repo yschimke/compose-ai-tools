@@ -1,7 +1,7 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import { GradleService } from '../gradleService';
-import { DaemonGate } from './daemonGate';
+import * as path from "path";
+import * as fs from "fs";
+import { GradleService } from "../gradleService";
+import { DaemonGate } from "./daemonGate";
 import {
     DataProductAttachment,
     DiscoveryUpdatedParams,
@@ -10,10 +10,10 @@ import {
     HistoryAddedParams,
     RenderFinishedParams,
     RenderTier,
-} from './daemonProtocol';
+} from "./daemonProtocol";
 
 export type WarmProgress = (state: WarmState) => void;
-export type WarmState = 'bootstrapping' | 'spawning' | 'ready' | 'fallback';
+export type WarmState = "bootstrapping" | "spawning" | "ready" | "fallback";
 
 export interface SchedulerEvents {
     /**
@@ -41,7 +41,11 @@ export interface SchedulerEvents {
         previewId: string,
         dataProducts: DataProductAttachment[],
     ) => void;
-    onRenderFailed: (moduleId: string, previewId: string, message: string) => void;
+    onRenderFailed: (
+        moduleId: string,
+        previewId: string,
+        message: string,
+    ) => void;
     /**
      * Daemon told us the classpath drifted (e.g. `libs.versions.toml`
      * bumped). The daemon will exit shortly; the scheduler stops issuing
@@ -55,7 +59,10 @@ export interface SchedulerEvents {
      * diff), so receiving this event always means the panel needs to
      * reshape. Optional because tests may not wire it.
      */
-    onDiscoveryUpdated?: (moduleId: string, params: DiscoveryUpdatedParams) => void;
+    onDiscoveryUpdated?: (
+        moduleId: string,
+        params: DiscoveryUpdatedParams,
+    ) => void;
     /** Phase H2 — daemon archived a render. Forwarded to the History
      *  panel; optional because the panel may not exist in test mode. */
     onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
@@ -71,14 +78,17 @@ export interface SchedulerEvents {
     onChannelClosed?: (moduleId: string) => void;
 }
 
-const HEAVY_TIER_DEFAULT: RenderTier = 'fast';
+const HEAVY_TIER_DEFAULT: RenderTier = "fast";
 
 /**
  * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
  * so the local finding + hierarchy overlays light up together; a future panel that wants to
  * subscribe to other kinds (`compose/recomposition`, `layout/inspector`) will export its own list.
  */
-export const A11Y_OVERLAY_KINDS: readonly string[] = ['a11y/atf', 'a11y/hierarchy'];
+export const A11Y_OVERLAY_KINDS: readonly string[] = [
+    "a11y/atf",
+    "a11y/hierarchy",
+];
 /**
  * Cards we'll pre-render ahead of the visible viewport on each scroll-ahead
  * push from the webview. Bounded so a fast scroll past 50 cards doesn't
@@ -127,7 +137,9 @@ export class DaemonScheduler {
     constructor(
         private readonly gate: DaemonGate,
         private readonly events: SchedulerEvents,
-        private readonly logger: { appendLine(s: string): void } = { appendLine() {} },
+        private readonly logger: { appendLine(s: string): void } = {
+            appendLine() {},
+        },
         /**
          * D2 — read freshly per `setVisible` so toggling the user setting
          * `composePreview.a11y.alwaysSubscribe` doesn't need a reload. When `true`,
@@ -147,7 +159,10 @@ export class DaemonScheduler {
      * Enabled-but-broken daemon failures throw so callers do not silently fall back to Gradle.
      */
     async ensureModule(moduleId: string): Promise<boolean> {
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
         return client !== null;
     }
 
@@ -170,26 +185,28 @@ export class DaemonScheduler {
         moduleId: string,
         progress?: WarmProgress,
     ): Promise<boolean> {
-        if (!this.gate.isEnabled()) { return false; }
+        if (!this.gate.isEnabled()) {
+            return false;
+        }
         if (this.gate.isDaemonReady(moduleId)) {
-            progress?.('ready');
+            progress?.("ready");
             return true;
         }
-        progress?.('spawning');
+        progress?.("spawning");
         try {
             const ok = await this.ensureModule(moduleId);
             if (ok) {
-                progress?.('ready');
+                progress?.("ready");
                 return true;
             }
         } catch (err) {
             this.logger.appendLine(
                 `[daemon] cached launch failed for ${moduleId}: ${(err as Error).message}; ` +
-                'running composePreviewDaemonStart',
+                    "running composePreviewDaemonStart",
             );
         }
         try {
-            progress?.('bootstrapping');
+            progress?.("bootstrapping");
             await gradleService.runDaemonBootstrap(moduleId);
         } catch (err) {
             this.logger.appendLine(
@@ -197,7 +214,7 @@ export class DaemonScheduler {
             );
             throw err;
         }
-        progress?.('spawning');
+        progress?.("spawning");
         let ok = false;
         try {
             ok = await this.ensureModule(moduleId);
@@ -207,7 +224,7 @@ export class DaemonScheduler {
             );
             throw err;
         }
-        progress?.(ok ? 'ready' : 'fallback');
+        progress?.(ok ? "ready" : "fallback");
         return ok;
     }
 
@@ -218,10 +235,15 @@ export class DaemonScheduler {
     async fileChanged(
         moduleId: string,
         absPath: string,
-        changeType: FileChangeType = 'modified',
+        changeType: FileChangeType = "modified",
     ): Promise<void> {
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
-        if (!client) { return; }
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
+        if (!client) {
+            return;
+        }
         client.fileChanged({
             path: absPath,
             kind: classifyKind(absPath),
@@ -234,10 +256,17 @@ export class DaemonScheduler {
      * IDs. These are rendered first when the queue drains.
      */
     async setFocus(moduleId: string, previewIds: string[]): Promise<void> {
-        if (sameSet(this.lastFocus.get(moduleId), previewIds)) { return; }
+        if (sameSet(this.lastFocus.get(moduleId), previewIds)) {
+            return;
+        }
         this.lastFocus.set(moduleId, [...previewIds]);
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
-        if (!client) { return; }
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
+        if (!client) {
+            return;
+        }
         client.setFocus({ ids: previewIds });
     }
 
@@ -253,12 +282,20 @@ export class DaemonScheduler {
         visible: string[],
         predicted: string[] = [],
     ): Promise<void> {
-        if (sameSet(this.lastVisible.get(moduleId), visible) && predicted.length === 0) {
+        if (
+            sameSet(this.lastVisible.get(moduleId), visible) &&
+            predicted.length === 0
+        ) {
             return;
         }
         this.lastVisible.set(moduleId, [...visible]);
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
-        if (!client) { return; }
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
+        if (!client) {
+            return;
+        }
         client.setVisible({ ids: visible });
 
         // D2 — drop bookkeeping for previews that fell out of view. The daemon already
@@ -269,11 +306,15 @@ export class DaemonScheduler {
         const visibleSetForSub = new Set(visible);
         const modulePrefix = `${moduleId}::`;
         for (const key of [...this.subscribedPairs]) {
-            if (!key.startsWith(modulePrefix)) { continue; }
+            if (!key.startsWith(modulePrefix)) {
+                continue;
+            }
             const rest = key.slice(modulePrefix.length);
-            const sep = rest.indexOf('::');
+            const sep = rest.indexOf("::");
             const id = sep < 0 ? rest : rest.slice(0, sep);
-            if (!visibleSetForSub.has(id)) { this.subscribedPairs.delete(key); }
+            if (!visibleSetForSub.has(id)) {
+                this.subscribedPairs.delete(key);
+            }
         }
 
         // D2 — when the user opted into ambient a11y via
@@ -286,35 +327,45 @@ export class DaemonScheduler {
             for (const id of visible) {
                 for (const kind of A11Y_OVERLAY_KINDS) {
                     const subKey = `${moduleId}::${id}::${kind}`;
-                    if (this.subscribedPairs.has(subKey)) { continue; }
+                    if (this.subscribedPairs.has(subKey)) {
+                        continue;
+                    }
                     this.subscribedPairs.add(subKey);
-                    client.dataSubscribe({ previewId: id, kind }).catch((err) => {
-                        const msg = (err as Error)?.message ?? String(err);
-                        this.logger.appendLine(
-                            `[daemon] alwaysSubscribe dataSubscribe(${id}, ${kind}) failed: ${msg}`,
-                        );
-                        this.subscribedPairs.delete(subKey);
-                    });
+                    client
+                        .dataSubscribe({ previewId: id, kind })
+                        .catch((err) => {
+                            const msg = (err as Error)?.message ?? String(err);
+                            this.logger.appendLine(
+                                `[daemon] alwaysSubscribe dataSubscribe(${id}, ${kind}) failed: ${msg}`,
+                            );
+                            this.subscribedPairs.delete(subKey);
+                        });
                 }
             }
         }
 
-        if (predicted.length === 0) { return; }
+        if (predicted.length === 0) {
+            return;
+        }
         // Bound the speculative request so a flick-scroll past 50 cards
         // doesn't queue 50 renders. Visible IDs trump predicted ones —
         // they're already in the daemon's reactive queue.
         const visibleSet = new Set(visible);
         const fresh = predicted
-            .filter(id => !visibleSet.has(id))
-            .filter(id => !this.speculated.has(specKey(moduleId, id)))
+            .filter((id) => !visibleSet.has(id))
+            .filter((id) => !this.speculated.has(specKey(moduleId, id)))
             .slice(0, SPECULATIVE_BUDGET);
-        if (fresh.length === 0) { return; }
-        for (const id of fresh) { this.speculated.add(specKey(moduleId, id)); }
+        if (fresh.length === 0) {
+            return;
+        }
+        for (const id of fresh) {
+            this.speculated.add(specKey(moduleId, id));
+        }
         try {
             await client.renderNow({
                 previews: fresh,
                 tier: HEAVY_TIER_DEFAULT,
-                reason: 'scroll-ahead',
+                reason: "scroll-ahead",
             });
         } catch (err) {
             this.logger.appendLine(
@@ -339,12 +390,19 @@ export class DaemonScheduler {
         kinds: readonly string[],
         enabled: boolean,
     ): Promise<void> {
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
-        if (!client) { return; }
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
+        if (!client) {
+            return;
+        }
         for (const kind of kinds) {
             const subKey = `${moduleId}::${previewId}::${kind}`;
             const already = this.subscribedPairs.has(subKey);
-            if (enabled === already) { continue; }
+            if (enabled === already) {
+                continue;
+            }
             if (enabled) {
                 this.subscribedPairs.add(subKey);
                 client.dataSubscribe({ previewId, kind }).catch((err) => {
@@ -379,11 +437,16 @@ export class DaemonScheduler {
     async renderNow(
         moduleId: string,
         previewIds: string[],
-        tier: RenderTier = 'fast',
+        tier: RenderTier = "fast",
         reason?: string,
     ): Promise<boolean> {
-        const client = await this.gate.getOrSpawn(moduleId, this.daemonEvents(moduleId));
-        if (!client) { return false; }
+        const client = await this.gate.getOrSpawn(
+            moduleId,
+            this.daemonEvents(moduleId),
+        );
+        if (!client) {
+            return false;
+        }
         try {
             const result = await client.renderNow({
                 previews: previewIds,
@@ -391,7 +454,9 @@ export class DaemonScheduler {
                 reason,
             });
             for (const r of result.rejected) {
-                this.logger.appendLine(`[daemon] renderNow rejected ${r.id}: ${r.reason}`);
+                this.logger.appendLine(
+                    `[daemon] renderNow rejected ${r.id}: ${r.reason}`,
+                );
             }
             return true;
         } catch (err) {
@@ -415,14 +480,23 @@ export class DaemonScheduler {
             onRenderFinished: (params: RenderFinishedParams) => {
                 this.handleRenderFinished(moduleId, params);
             },
-            onRenderFailed: (params: { id: string; error: { message: string } }) => {
-                this.events.onRenderFailed(moduleId, params.id, params.error.message);
+            onRenderFailed: (params: {
+                id: string;
+                error: { message: string };
+            }) => {
+                this.events.onRenderFailed(
+                    moduleId,
+                    params.id,
+                    params.error.message,
+                );
             },
             onClasspathDirty: (params: { detail: string }) => {
                 // Drop the speculative cache for this module so a re-spawned
                 // daemon doesn't think we already pre-warmed those IDs.
                 for (const k of [...this.speculated]) {
-                    if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
+                    if (k.startsWith(`${moduleId}::`)) {
+                        this.speculated.delete(k);
+                    }
                 }
                 this.events.onClasspathDirty(moduleId, params.detail);
             },
@@ -438,13 +512,17 @@ export class DaemonScheduler {
                 this.lastVisible.delete(moduleId);
                 this.lastFocus.delete(moduleId);
                 for (const k of [...this.speculated]) {
-                    if (k.startsWith(`${moduleId}::`)) { this.speculated.delete(k); }
+                    if (k.startsWith(`${moduleId}::`)) {
+                        this.speculated.delete(k);
+                    }
                 }
                 // D2 — wipe data-product subscription state so the next daemon spawn re-issues
                 // `data/subscribe` against the fresh JVM. Subscriptions don't survive daemon
                 // restarts (PROTOCOL.md / DATA-PRODUCTS.md § "Wire surface").
                 for (const k of [...this.subscribedPairs]) {
-                    if (k.startsWith(`${moduleId}::`)) { this.subscribedPairs.delete(k); }
+                    if (k.startsWith(`${moduleId}::`)) {
+                        this.subscribedPairs.delete(k);
+                    }
                 }
                 // Forward to the extension so it can drop interactive-mode stream state for
                 // this module — frameStreamIds don't survive a daemon restart, and a stale
@@ -455,7 +533,10 @@ export class DaemonScheduler {
         };
     }
 
-    private handleRenderFinished(moduleId: string, params: RenderFinishedParams): void {
+    private handleRenderFinished(
+        moduleId: string,
+        params: RenderFinishedParams,
+    ): void {
         try {
             // Speculative entries graduate to "real" once they actually render —
             // drop them from the dedup set so a subsequent fileChanged for the
@@ -485,8 +566,8 @@ export class DaemonScheduler {
                     this.warnedStubModules.add(moduleId);
                     this.logger.appendLine(
                         `[daemon] ${moduleId} is at stub-render stage (B1.5); ` +
-                        'real renders arrive once :daemon:android ships B1.4 RenderEngine. ' +
-                        'Suppressing per-render ENOENT logs for stub paths.',
+                            "real renders arrive once :daemon:android ships B1.4 RenderEngine. " +
+                            "Suppressing per-render ENOENT logs for stub paths.",
                     );
                 }
                 return;
@@ -496,7 +577,7 @@ export class DaemonScheduler {
             this.events.onPreviewImageReady(
                 moduleId,
                 params.id,
-                buf.toString('base64'),
+                buf.toString("base64"),
                 params.pngPath,
             );
             // D2 — forward attached data products. The dispatcher already filtered to the
@@ -504,7 +585,11 @@ export class DaemonScheduler {
             // payload the panel asked for. Empty / absent → nothing to do; we DON'T fire the
             // event in that case to keep the consumer-side dispatch trivial.
             if (params.dataProducts && params.dataProducts.length > 0) {
-                this.events.onDataProductsAttached?.(moduleId, params.id, params.dataProducts);
+                this.events.onDataProductsAttached?.(
+                    moduleId,
+                    params.id,
+                    params.dataProducts,
+                );
             }
         } catch (err) {
             this.logger.appendLine(
@@ -513,7 +598,7 @@ export class DaemonScheduler {
             this.events.onRenderFailed(
                 moduleId,
                 params.id,
-                'render finished but PNG was unreadable',
+                "render finished but PNG was unreadable",
             );
         }
     }
@@ -522,24 +607,29 @@ export class DaemonScheduler {
 function classifyKind(absPath: string): FileKind {
     const lower = absPath.toLowerCase();
     if (
-        lower.endsWith('libs.versions.toml')
-        || lower.endsWith('.gradle.kts')
-        || lower.endsWith('gradle.properties')
-        || lower.endsWith('local.properties')
-        || lower.endsWith('settings.gradle.kts')
+        lower.endsWith("libs.versions.toml") ||
+        lower.endsWith(".gradle.kts") ||
+        lower.endsWith("gradle.properties") ||
+        lower.endsWith("local.properties") ||
+        lower.endsWith("settings.gradle.kts")
     ) {
-        return 'classpath';
+        return "classpath";
     }
-    if (lower.includes(`${path.sep}res${path.sep}`) || lower.includes('/res/')) {
-        return 'resource';
+    if (
+        lower.includes(`${path.sep}res${path.sep}`) ||
+        lower.includes("/res/")
+    ) {
+        return "resource";
     }
-    return 'source';
+    return "source";
 }
 
 function sameSet(a: string[] | undefined, b: string[]): boolean {
-    if (!a || a.length !== b.length) { return false; }
+    if (!a || a.length !== b.length) {
+        return false;
+    }
     const set = new Set(a);
-    return b.every(id => set.has(id));
+    return b.every((id) => set.has(id));
 }
 
 function specKey(moduleId: string, previewId: string): string {
@@ -556,7 +646,7 @@ function specKey(moduleId: string, previewId: string): string {
  * filename prefix is what's documented as the contract.
  */
 function isDaemonStubPath(pngPath: string): boolean {
-    const slash = Math.max(pngPath.lastIndexOf('/'), pngPath.lastIndexOf('\\'));
+    const slash = Math.max(pngPath.lastIndexOf("/"), pngPath.lastIndexOf("\\"));
     const base = slash >= 0 ? pngPath.slice(slash + 1) : pngPath;
     return /^daemon-stub-.+\.(png|gif)$/.test(base);
 }

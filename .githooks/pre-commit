@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verify staged Kotlin files are ktfmt-formatted before allowing the commit.
+# Verify staged Kotlin files are ktfmt-formatted and VS Code extension files are
+# Prettier-formatted before allowing the commit.
 # Install with `scripts/install-git-hooks.sh` (sets `core.hooksPath`).
 
 set -euo pipefail
@@ -9,23 +10,47 @@ cd "$repo_root"
 
 # Portable replacement for `mapfile -d ''` — bash 3.2 (macOS system bash)
 # doesn't have mapfile.
-staged=()
+kt_staged=()
 while IFS= read -r -d '' file; do
-  staged+=("$file")
+  kt_staged+=("$file")
 done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.kt' '*.kts')
 
-if [ ${#staged[@]} -eq 0 ]; then
+extension_staged=()
+while IFS= read -r -d '' file; do
+  extension_staged+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- \
+  'vscode-extension/package.json' \
+  'vscode-extension/package-lock.json' \
+  'vscode-extension/tsconfig.json' \
+  'vscode-extension/README.md' \
+  'vscode-extension/src/**/*.ts' \
+  'vscode-extension/src/**/*.json' \
+  'vscode-extension/media/**/*.css')
+
+if [ ${#kt_staged[@]} -eq 0 ] && [ ${#extension_staged[@]} -eq 0 ]; then
   exit 0
 fi
 
 # `ktfmtCheck` is fast on the configuration cache once warm, but does a full
 # repo scan. For now that's the simplest correct option: same code path as CI.
-if ! ./gradlew --quiet ktfmtCheckAll; then
+if [ ${#kt_staged[@]} -gt 0 ] && ! ./gradlew --quiet ktfmtCheckAll; then
   cat <<'MSG' >&2
 
 ktfmt found unformatted Kotlin code. Run:
 
     ./gradlew ktfmtFormatAll
+
+then `git add` the changes and re-commit.
+MSG
+  exit 1
+fi
+
+if [ ${#extension_staged[@]} -gt 0 ] && ! npm --prefix vscode-extension run format:check; then
+  cat <<'MSG' >&2
+
+Prettier found unformatted VS Code extension files. Run:
+
+    npm --prefix vscode-extension run format
 
 then `git add` the changes and re-commit.
 MSG

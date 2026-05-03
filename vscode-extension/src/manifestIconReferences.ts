@@ -8,9 +8,9 @@ export interface ManifestIconMatch {
     /** Byte offset of the matched attribute within the document text. */
     offset: number;
     /** Local attribute name without the `android:` prefix — `icon` / `roundIcon` / `logo` / `banner`. */
-    attribute: 'icon' | 'roundIcon' | 'logo' | 'banner';
+    attribute: "icon" | "roundIcon" | "logo" | "banner";
     /** `drawable` or `mipmap`. */
-    resourceType: 'drawable' | 'mipmap';
+    resourceType: "drawable" | "mipmap";
     /** Resource name without the `@type/` prefix. */
     resourceName: string;
 }
@@ -27,13 +27,14 @@ export interface ManifestIconMatch {
  */
 export function findManifestIconReferences(text: string): ManifestIconMatch[] {
     const out: ManifestIconMatch[] = [];
-    const re = /android:(icon|roundIcon|logo|banner)\s*=\s*["'](@(?:\+)?(drawable|mipmap)\/([A-Za-z0-9_]+))["']/g;
+    const re =
+        /android:(icon|roundIcon|logo|banner)\s*=\s*["'](@(?:\+)?(drawable|mipmap)\/([A-Za-z0-9_]+))["']/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(text)) !== null) {
         out.push({
             offset: match.index,
-            attribute: match[1] as ManifestIconMatch['attribute'],
-            resourceType: match[3] as ManifestIconMatch['resourceType'],
+            attribute: match[1] as ManifestIconMatch["attribute"],
+            resourceType: match[3] as ManifestIconMatch["resourceType"],
             resourceName: match[4],
         });
     }
