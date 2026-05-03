@@ -173,7 +173,7 @@ Loaded on demand. Read only what the current task needs.
 |---|---|
 | [design/PERMISSIONS.md](./design/PERMISSIONS.md) | Setting up agent allowlists; staging PNGs outside `build/`. |
 | [design/STATE_HOISTING.md](./design/STATE_HOISTING.md) | Full state-hoisting pattern with code examples. |
-| [design/CAPTURE_MODES.md](./design/CAPTURE_MODES.md) | Multi-preview annotations, paused-clock animation captures, scrolling captures. |
+| [design/CAPTURE_MODES.md](./design/CAPTURE_MODES.md) | Multi-preview annotations, `@AnimatedPreview` GIFs, MCP scripted recordings, paused-clock snapshots, scrolling captures. |
 | [design/A11Y.md](./design/A11Y.md) | ATF accessibility checks (`compose-preview a11y`). |
 | [design/DATA_PRODUCTS.md](./design/DATA_PRODUCTS.md) | Structured per-render data (a11y findings + hierarchy, layout tree, recomposition heat-map, …) via MCP tools and on-disk Gradle output. |
 | [design/MCP.md](./design/MCP.md) | Driving compose-preview from an MCP-aware agent host (push notifications, multi-workspace, in-process server bundled in the CLI). |
