@@ -94,26 +94,6 @@ object PreviewExtensionCommandCatalog {
       id = "a11y-overlay",
       displayName = "Accessibility overlay annotations",
       componentExtensionIds = listOf("a11y", "atf-checks"),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "a11y-overlay.get",
-            displayName = "Fetch accessibility overlay",
-            summary = "Reads the rendered accessibility overlay artifact for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "extensions",
-                "run",
-                "a11y-overlay.get",
-                "--id",
-                "<preview-id>",
-                "--output",
-                "<path>",
-              ),
-            productKinds = listOf("a11y/overlay"),
-          )
-        ),
     )
 
   private fun accessibilityAnnotatedPreview(): PreviewExtensionDescriptor =
@@ -137,7 +117,24 @@ object PreviewExtensionCommandCatalog {
                 "--json",
               ),
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-          )
+          ),
+          PreviewExtensionCliCommand(
+            id = "a11y-overlay.get",
+            displayName = "Fetch accessibility overlay",
+            summary = "Reads the rendered accessibility overlay artifact for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "extensions",
+                "run",
+                "a11y-overlay.get",
+                "--id",
+                "<preview-id>",
+                "--output",
+                "<path>",
+              ),
+            productKinds = listOf("a11y/overlay"),
+          ),
         ),
     )
 
