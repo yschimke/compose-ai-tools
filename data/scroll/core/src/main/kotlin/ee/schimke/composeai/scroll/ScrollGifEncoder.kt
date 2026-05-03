@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 import java.awt.image.BufferedImage
 import java.io.File
@@ -35,7 +35,7 @@ import javax.imageio.stream.FileImageOutputStream
  * step. Returns the written file, or `null` if [frames] is empty or the
  * GIF writer plugin isn't registered (never, on a standard JRE).
  */
-internal object ScrollGifEncoder {
+object ScrollGifEncoder {
     const val DEFAULT_FRAME_DELAY_MS: Int = 80
     const val MIN_FRAME_DELAY_MS: Int = 20
 

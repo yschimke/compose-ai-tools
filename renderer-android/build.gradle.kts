@@ -68,6 +68,7 @@ dependencies {
   // consumers (`RobolectricRenderTest`) compile unchanged.
   api(project(":data-a11y-core"))
   implementation(project(":data-render-core"))
+  implementation(project(":data-scroll-core"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)

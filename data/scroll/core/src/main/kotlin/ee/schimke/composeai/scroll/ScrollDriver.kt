@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsActions
@@ -24,7 +24,7 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
  * the composition has drawn.
  */
 @Suppress("LongParameterList")
-internal fun driveScrollToEnd(
+fun driveScrollToEnd(
     rule: AndroidComposeTestRule<*, *>,
     axis: ScrollAxis,
     maxScrollPx: Int,
@@ -85,7 +85,7 @@ internal fun driveScrollToEnd(
  * jump to the bottom.
  */
 @Suppress("LongParameterList")
-internal fun driveScrollByViewport(
+fun driveScrollByViewport(
     rule: AndroidComposeTestRule<*, *>,
     axis: ScrollAxis,
     stepPx: Float,
@@ -148,7 +148,7 @@ internal fun driveScrollByViewport(
  * them by default — see issue #154.
  */
 @Suppress("LongParameterList")
-internal fun driveScrollToStart(
+fun driveScrollToStart(
     rule: AndroidComposeTestRule<*, *>,
     axis: ScrollAxis,
     maxIterations: Int = DEFAULT_MAX_ITERATIONS,
@@ -200,7 +200,7 @@ internal fun driveScrollToStart(
  * the GIF script builder can shape the sequence (slow ramp, fling decay,
  * inter-fling holds) without fighting the driver.
  */
-internal fun driveScrollBy(
+fun driveScrollBy(
     rule: AndroidComposeTestRule<*, *>,
     axis: ScrollAxis,
     deltaPx: Float,
@@ -238,7 +238,7 @@ internal fun driveScrollBy(
  * building the GIF scroll script; final length is still adaptive at
  * runtime because LazyList reports its max progressively.
  */
-internal fun remainingScrollPx(
+fun remainingScrollPx(
     rule: AndroidComposeTestRule<*, *>,
     axis: ScrollAxis,
 ): Float {
@@ -253,7 +253,7 @@ internal fun remainingScrollPx(
     return (range.maxValue() - range.value()).coerceAtLeast(0f)
 }
 
-internal sealed interface ScrollDriveResult {
+sealed interface ScrollDriveResult {
     /** No scrollable composable found on the requested axis. */
     data object NoScrollable : ScrollDriveResult
 

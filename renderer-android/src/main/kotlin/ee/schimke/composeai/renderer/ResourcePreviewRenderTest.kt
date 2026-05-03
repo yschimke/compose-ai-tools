@@ -12,6 +12,7 @@ import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
+import ee.schimke.composeai.scroll.ScrollGifEncoder
 import java.awt.image.BufferedImage
 import java.io.File
 import kotlinx.serialization.json.Json

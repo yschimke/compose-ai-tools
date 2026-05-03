@@ -1,5 +1,7 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.scroll.SliceCapture
+import ee.schimke.composeai.scroll.stitchSlicesWithFinalFrame
 import java.awt.Color
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO

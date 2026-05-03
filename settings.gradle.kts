@@ -81,6 +81,10 @@ include(":data-render-connector")
 
 project(":data-render-connector").projectDir = file("data/render/connector")
 
+include(":data-scroll-core")
+
+project(":data-scroll-core").projectDir = file("data/scroll/core")
+
 include(":data-history-connector")
 
 project(":data-history-connector").projectDir = file("data/history/connector")

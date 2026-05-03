@@ -1,10 +1,16 @@
+@file:Suppress(
+  "DEPRECATION"
+) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
+
+// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
+
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import tapmoc.TapmocExtension
 import tapmoc.configureKotlinCompatibility
 
 plugins {
-  alias(libs.plugins.kotlin.jvm)
-  alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.android.library)
   `maven-publish`
   alias(libs.plugins.maven.publish)
   alias(libs.plugins.tapmoc)
@@ -30,14 +36,28 @@ version =
       "$major.$minor.${patch + 1}-SNAPSHOT"
     }
 
-dependencies {
-  api(libs.kotlinx.serialization.json)
-  testImplementation(libs.junit)
+android {
+  namespace = "ee.schimke.composeai.data.scroll.core"
+  compileSdk = 36
+
+  defaultConfig { minSdk = 24 }
+
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
+
+  testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
+dependencies {
+  compileOnly(platform(libs.compose.bom.compat))
+  compileOnly(libs.compose.ui)
+  compileOnly("androidx.compose.ui:ui-test-junit4")
 
-tasks.withType<Test>().configureEach { useJUnit() }
+  testImplementation(libs.junit)
+  testImplementation(libs.robolectric)
+}
 
 publishing {
   repositories {
@@ -60,17 +80,20 @@ publishing {
 
 mavenPublishing {
   publishToMavenCentral(automaticRelease = true)
+  configure(
+    AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true)
+  )
   if (!version.toString().endsWith("SNAPSHOT")) {
     signAllPublications()
   }
 
-  coordinates("ee.schimke.composeai", "data-render-core", version.toString())
+  coordinates("ee.schimke.composeai", "data-scroll-core", version.toString())
 
   pom {
-    name.set("Compose Preview — Render Data Product (Core)")
+    name.set("Compose Preview — Scroll Data Product (Core)")
     description.set(
-      "Renderer-agnostic preview context and render data-product model classes shared by " +
-        "the Android renderer and daemon data-product connectors."
+      "Generic Android scroll data-product primitives: Compose test-rule scroll drivers, " +
+        "long-screenshot stitching, Wear pill clipping, and GIF encoding."
     )
     url.set("https://github.com/yschimke/compose-ai-tools")
     inceptionYear.set("2026")

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 import java.awt.Color
 import java.awt.image.BufferedImage

@@ -648,7 +648,8 @@ class DiscoveryFunctionalTest {
     }
 
     val longPreview = manifest.previews.single { it.functionName == "LongScrollPreview" }
-    assertThat(longPreview.captures.single().scroll)
+    assertThat(longPreview.captures.single().scroll).isNull()
+    assertThat(longPreview.dataProducts.single().scroll)
       .isEqualTo(
         ScrollCapture(
           mode = ScrollMode.LONG,
@@ -658,6 +659,9 @@ class DiscoveryFunctionalTest {
           frameIntervalMs = 80,
         )
       )
+    assertThat(longPreview.dataProducts.single().kind).isEqualTo("render/scroll/long")
+    assertThat(longPreview.dataProducts.single().output)
+      .isEqualTo("data/render-scroll-long/LongScrollPreview.png")
 
     val plain = manifest.previews.single { it.functionName == "PlainPreview" }
     assertThat(plain.captures.single().scroll).isNull()
@@ -682,12 +686,13 @@ class DiscoveryFunctionalTest {
       )
       .inOrder()
 
-    // Single-mode GIF: keeps the plain `renders/<id>.gif` name (no
+    // Single-mode GIF: moves to the scroll data-product path (no
     // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
     // manifest so the renderer can honour it.
     val gifOnly = manifest.previews.single { it.functionName == "GifScrollPreview" }
     assertThat(gifOnly.captures).hasSize(1)
-    assertThat(gifOnly.captures.single().scroll)
+    assertThat(gifOnly.captures.single().scroll).isNull()
+    assertThat(gifOnly.dataProducts.single().scroll)
       .isEqualTo(
         ScrollCapture(
           mode = ScrollMode.GIF,
@@ -697,22 +702,21 @@ class DiscoveryFunctionalTest {
           frameIntervalMs = 120,
         )
       )
-    assertThat(gifOnly.captures.single().renderOutput).isEqualTo("renders/GifScrollPreview_Gif.gif")
+    assertThat(gifOnly.dataProducts.single().kind).isEqualTo("render/scroll/gif")
+    assertThat(gifOnly.dataProducts.single().output)
+      .isEqualTo("data/render-scroll-gif/GifScrollPreview_Gif.gif")
 
-    // Multi-mode with GIF sibling: each capture gets its mode's
-    // extension (PNG for END, GIF for GIF) — the extension branches
-    // per-capture rather than per-preview.
+    // Multi-mode with GIF sibling: END remains a normal capture; GIF moves
+    // to a data product with its own `_SCROLL_gif` output path.
     val endAndGif = manifest.previews.single { it.functionName == "EndAndGifScrollPreview" }
-    assertThat(endAndGif.captures).hasSize(2)
-    assertThat(endAndGif.captures.map { it.scroll?.mode })
-      .containsExactly(ScrollMode.END, ScrollMode.GIF)
-      .inOrder()
+    assertThat(endAndGif.captures).hasSize(1)
+    assertThat(endAndGif.captures.map { it.scroll?.mode }).containsExactly(ScrollMode.END).inOrder()
     assertThat(endAndGif.captures.map { it.renderOutput })
-      .containsExactly(
-        "renders/EndAndGifScrollPreview_EndAndGif_SCROLL_end.png",
-        "renders/EndAndGifScrollPreview_EndAndGif_SCROLL_gif.gif",
-      )
+      .containsExactly("renders/EndAndGifScrollPreview_EndAndGif.png")
       .inOrder()
+    assertThat(endAndGif.dataProducts.single().scroll?.mode).isEqualTo(ScrollMode.GIF)
+    assertThat(endAndGif.dataProducts.single().output)
+      .isEqualTo("data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif_SCROLL_gif.gif")
   }
 
   @Test

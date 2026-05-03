@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.scroll.ScrollGifEncoder
 import kotlinx.serialization.Serializable
 
 enum class PreviewKind {

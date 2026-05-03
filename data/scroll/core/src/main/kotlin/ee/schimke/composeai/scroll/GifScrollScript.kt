@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 /**
  * One planned frame in the scripted `ScrollMode.GIF` walk.
@@ -12,7 +12,7 @@ package ee.schimke.composeai.renderer
  * the scripted sequence (see `handleGifCapture`) rather than appearing
  * here, so the script is purely the in-motion portion.
  */
-internal data class GifScrollStep(val scrollPx: Float, val delayMs: Int)
+data class GifScrollStep(val scrollPx: Float, val delayMs: Int)
 
 /**
  * Shapes a "realistic user" scroll for `ScrollMode.GIF`: the playback is
@@ -38,7 +38,7 @@ internal data class GifScrollStep(val scrollPx: Float, val delayMs: Int)
  * with no fling.
  */
 @Suppress("LongParameterList")
-internal fun buildGifScrollScript(
+fun buildGifScrollScript(
     contentExtentPxHint: Float,
     viewportPx: Float,
     density: Float,
@@ -112,17 +112,17 @@ internal fun buildGifScrollScript(
 // stay consistent across densities.
 // -----------------------------------------------------------------------------
 
-internal const val HOLD_START_MS: Int = 1000
-internal const val HOLD_END_MS: Int = 1000
+const val HOLD_START_MS: Int = 1000
+const val HOLD_END_MS: Int = 1000
 
-internal const val SLOW_RAMP_STEP_DP: Float = 30f
-internal const val SLOW_RAMP_FRAMES: Int = 4
+const val SLOW_RAMP_STEP_DP: Float = 30f
+const val SLOW_RAMP_FRAMES: Int = 4
 
 // 120 dp/frame at 80 ms cadence ≈ 1500 dp/s peak fling velocity — the
 // high end of a deliberate Android swipe.
-internal const val FLING_PEAK_DP_PER_FRAME: Float = 120f
-internal const val FLING_DECAY: Float = 0.85f
-internal const val FLING_MIN_STEP_DP: Float = 12f
-internal const val FLING_MAX_DISTANCE_VIEWPORTS: Float = 1.5f
+const val FLING_PEAK_DP_PER_FRAME: Float = 120f
+const val FLING_DECAY: Float = 0.85f
+const val FLING_MIN_STEP_DP: Float = 12f
+const val FLING_MAX_DISTANCE_VIEWPORTS: Float = 1.5f
 
-internal const val INTER_FLING_HOLD_MS: Int = 240
+const val INTER_FLING_HOLD_MS: Int = 240
