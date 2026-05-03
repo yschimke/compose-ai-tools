@@ -103,6 +103,21 @@ class RenderEngineTest {
         "0,0,64,64",
         semanticsJson["root"]!!.jsonObject["boundsInRoot"]!!.jsonPrimitive.content,
       )
+
+      val layoutFile =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("red-square")
+          .resolve(LayoutInspectorDataProducer.FILE)
+      assertTrue(
+        "layout/inspector data product should be written next to render data: $layoutFile",
+        layoutFile.exists(),
+      )
+      val layoutJson = Json.parseToJsonElement(layoutFile.readText()).jsonObject
+      val root = layoutJson["root"]!!.jsonObject
+      assertEquals(64, (root["size"]!!.jsonObject["width"] as JsonPrimitive).content.toInt())
+      assertEquals(0, (root["bounds"]!!.jsonObject["left"] as JsonPrimitive).content.toInt())
+      assertTrue("layout/inspector root should name a component", root["component"] != null)
     } finally {
       host.shutdown()
     }

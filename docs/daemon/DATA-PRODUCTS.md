@@ -372,7 +372,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `a11y/hierarchy`           | a11y | low  | `AccessibilityNode[]` (label, role, states, bounds). Powers a local overlay in VS Code. **First implementation.** Carries the `overlay` PNG as an extra. |
 | `a11y/overlay`             | a11y | low  | Path to the Paparazzi-style annotated PNG produced by `AccessibilityImageProcessor`. Pure-image kind — `transport='path'`, no JSON payload. **D2.1 — image-processor surface.** |
 | `a11y/touchTargets`        | a11y | low  | Derived from hierarchy; 48dp + overlap detection. **D2.2 — shipped inline payload.** Carries the `overlay` PNG as an extra. |
-| `layout/inspector`         | default | low | View / Compose hierarchy for layout-inspector style inspection: component tree, bounds, paddings, source-line refs. |
+| `layout/inspector`         | default | low | Compose layout/component hierarchy for layout-inspector style inspection: component tree, bounds, measured size, constraints, z-order, inspectable modifier values, and source refs. **Android daemon implementation:** walks Compose `RootForTest` → `LayoutNode` and correlates slot-table source information collected with `collectParameterInformation()`. |
 | `compose/semantics`        | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. **Android daemon implementation.** |
 | `compose/recomposition`    | instrumented | medium | `[{ nodeId, count, sinceFrameStreamId? }]`. Heat-map overlay. Static snapshot answers "what recomposed during initial composition"; the load-bearing case is **delta after a click** in interactive mode (see § Recomposition + interactive). Needs an instrumented re-render. |
 | `compose/theme`            | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed which tokens. |
@@ -462,6 +462,52 @@ Schema v1 deliberately does not capture state values. Until renderer-side
 partial screenshot and Compose runtime state hooks land, those fields are
 present as explicit fallback values so callers can distinguish "not
 captured" from "missing due to an older daemon."
+
+## Worked example: `layout/inspector`
+
+`layout/inspector` is for layout structure, not meaning. Use it for
+padding, alignment, clipping, parentage, size, and overlap questions.
+Use `compose/semantics` for semantic intent and `a11y/hierarchy` for
+assistive-technology output.
+
+Android v1 is backed by Compose's `RootForTest` carried on
+`PreviewContext.inspection`: the producer starts at
+`root.semanticsOwner.unmergedRootSemanticsNode`, resolves the backing
+`LayoutNode`, then walks Compose's layout tree. Modifier information is
+read from `LayoutInfo.modifierInfo`; when a modifier implements
+`InspectableValue`, its inspector name, value override, and named
+properties are emitted. Source information is correlated from captured
+slot-table `CompositionData` on the same preview inspection context.
+
+```ts
+// schemaVersion: 1
+{
+  root: {
+    nodeId: string;              // Compose semantics id when available
+    component: string;           // source component or measure-policy fallback
+    source?: string;             // e.g. "SettingsScreen.kt:42"
+    sourceInfo?: string;         // raw Compose slot-table sourceInfo
+    bounds: { left: number; top: number; right: number; bottom: number };
+    size: { width: number; height: number };
+    constraints?: {
+      minWidth: number;
+      maxWidth?: number;         // absent means infinity/unbounded
+      minHeight: number;
+      maxHeight?: number;
+    };
+    placed: boolean;
+    attached: boolean;
+    zIndex?: number;
+    modifiers: {
+      name: string;
+      value?: string;
+      properties?: Record<string, string>;
+      bounds?: { left: number; top: number; right: number; bottom: number };
+    }[];
+    children: LayoutInspectorNode[];
+  }
+}
+```
 
 ## Worked example: `a11y/hierarchy`
 
@@ -660,8 +706,10 @@ regions capped to the largest 50:
   re-render path for kinds the latest pass didn't compute. First
   consumer: agent-driven MCP calls that ask for `a11y/hierarchy`
   without first subscribing.
-- **D4 — `layout/inspector`.** Layout inspector. Shares the View walk with
-  a11y; cheap enough for the same overlay panel surface.
+- **D4 — `layout/inspector`.** Android daemon ships a Compose-rooted
+  layout inspector product backed by `RootForTest`, `LayoutNode`, slot-table
+  source information, and inspectable modifier values. Desktop parity is a
+  follow-up once its render surface exposes an equivalent root tree.
 - **D5+** — pick from the catalogue based on demand. `compose/recomposition`
   in `mode: "delta"` is the highest-value next step for VS Code parity
   with Android Studio, but it's gated on interactive mode landing so the
