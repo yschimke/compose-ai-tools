@@ -144,12 +144,57 @@ Current tools:
 | `unsubscribe_preview_data(uri, kind)` | Drop a preview data-product subscription. | MCP/session only. |
 | `render_preview_overlay(uri, kind?, inline?, overrides?)` | Render a preview and return an annotated overlay image. | Good later CLI fit, probably as `data get --extra overlay --output`. |
 | `get_preview_extras(uri, kind)` | List non-JSON outputs produced alongside a data product. | Good later CLI fit once `data get` exists. |
-| `record_preview(uri, fps?, scale?, format?, events, overrides?)` | Record a scripted preview interaction to APNG/MP4/WebM. | High value but not simple; keep MCP-first for now. |
+| `record_preview(uri, fps?, scale?, format?, events, overrides?)` | Record a scripted preview interaction to APNG/MP4/WebM. | Agent-facing MCP path for click/scroll verification; keep CLI direct support as a follow-up. |
 
 Note: the daemon's render queue is still single-priority FIFO today, so
 `setVisible` / `setFocus` traffic flows through the wire but doesn't yet
 reorder the queue. The plumbing is in place for B2.5 / predictive
 prefetch ([PREDICTIVE.md](PREDICTIVE.md)) to start honouring focus.
+
+### Scripted interaction recordings
+
+Use `record_preview` when an agent needs to prove that a preview changes after
+input, capture an interaction artifact, or exercise a Wear/scroll/toggle flow.
+It drives the daemon's `recording/start` → `recording/script` →
+`recording/stop` → `recording/encode` sequence against a held scene, so
+Compose state can survive across scripted events.
+
+Typical agent flow:
+
+1. Install or verify the MCP server with `compose-preview mcp install --module
+   <module>` and `compose-preview mcp doctor --json`.
+2. Call `register_project` or start `mcp serve --project <root>`, then `watch`
+   the workspace/module of interest.
+3. Wait for `notifications/resources/list_changed`, then call
+   `resources/list`. Daemon discovery can still be warming up when `watch`
+   returns, especially on Android/Robolectric, so retry `resources/list` until
+   the target `compose-preview://...` URI appears.
+4. Call `record_preview` with image-natural pixel coordinates:
+
+```json
+{
+  "uri": "compose-preview://workspace/_samples_android/com.example.TogglePreview",
+  "fps": 12,
+  "format": "apng",
+  "events": [
+    { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 80 },
+    { "tMs": 400, "kind": "click", "pixelX": 120, "pixelY": 80 }
+  ]
+}
+```
+
+On success the tool returns an inline media block plus a JSON metadata text
+block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,
+`frameCount`, `durationMs`, `framesDir`, `frameWidthPx`, and
+`frameHeightPx`. The raw PNG frames live at
+`<framesDir>/frame-00000.png`, `<framesDir>/frame-00001.png`, and so on, which
+is useful when a client cannot display APNG or wants to inspect individual
+frames.
+
+Sandbox note: Android recordings run through Robolectric. Restricted agent
+sandboxes must allow Robolectric to create its host cache/lock files, including
+`$HOME/.robolectric-download-lock`, or use a pre-warmed cache from an
+unrestricted run.
 
 ## CLI candidates from the MCP surface
 

@@ -1,14 +1,16 @@
 # Interactive mode (VS Code panel ↔ daemon)
 
-> **Status:** v1 — live-streaming surface plus `interactive/start` /
-> `interactive/stop` / `interactive/input` RPCs in the daemon. The daemon is
-> enabled by default through `composePreview.daemon.enabled`. Click coordinates are
-> forwarded to the daemon as `interactive/input` notifications; today the
-> daemon treats each input as a render trigger (LocalInspectionMode is still
-> true, so the renderer doesn't yet dispatch the click into the composition —
-> that's the v2 follow-up). Frame deduplication ships in v1: bytes-identical
-> follow-up renders carry `renderFinished.unchanged: true`, the client
-> short-circuits, and history is not re-archived. See
+> **Status:** implemented for daemon and MCP scripted recording paths. The
+> daemon exposes `interactive/start` / `interactive/stop` /
+> `interactive/input` plus `recording/*` RPCs; MCP `record_preview` drives a
+> held scene, dispatches scripted pointer input into the composition, and
+> returns an APNG/MP4/WebM plus metadata. Android/Robolectric and desktop
+> backends can keep composition state alive across recorded clicks. The VS Code
+> panel still uses its live-preview UI path separately; use
+> [MCP.md](MCP.md#scripted-interaction-recordings) for agent-facing scripted
+> interactions. Frame deduplication remains part of the live stream:
+> bytes-identical follow-up renders carry `renderFinished.unchanged: true`, the
+> client short-circuits, and history is not re-archived. See
 > [PROTOCOL.md](PROTOCOL.md) for the wire contract this builds on.
 
 ## 1. What it is
@@ -31,10 +33,11 @@ is the **UI shell** that:
    sequence of independent reloads.
 3. Surfaces "daemon not ready for this module" cleanly: the toggle is
    disabled with a tooltip rather than failing silently.
-4. Captures mouse-click coordinates on the rendered image and **logs them
-   to the extension output channel** for now, so the wire shape is
-   exercised and the click-target geometry is debuggable before any
-   round-trip RPC ships.
+4. Captures mouse-click coordinates on the rendered image in image-natural
+   pixel space. The MCP `record_preview` path uses the same coordinate
+   contract to drive daemon-side pointer input; the VS Code panel path can
+   route through `interactive/input` when it needs click-into-composition
+   behavior.
 
 ## 2. Why daemon-only
 
@@ -187,9 +190,9 @@ The webview attaches a click handler to the focused card's `<img>`
 }
 ```
 
-Extension logs the message to the output channel. **No daemon call is
-issued today.** Once `interactive/input` lands (§ 7) the same payload
-shape feeds the RPC.
+The same payload shape feeds daemon-side pointer input. MCP
+`record_preview.events` uses this coordinate contract directly; VS Code panel
+traffic can forward it through `interactive/input` for live click dispatch.
 
 ## 8. Click-input RPC (v1)
 
@@ -277,7 +280,7 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
    demuxes through the existing render-watcher thread back into
    `renderFinished`.
 
-### Open questions for the v2 protocol
+### Follow-up questions for richer input
 
 1. **Coalescing.** Should the daemon coalesce a burst of `pointerMove` into
    one render, or render every event? Today's frame budget says coalesce
@@ -287,15 +290,10 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
    only needs to recompose; we can probably skip the
    `setQualifiers`/sandbox setup. Daemon-side optimisation, not visible
    on the wire.
-3. **Hit testing.** The renderer needs to know which composable received
-   the click. For PNG-only output this is "send pixel coords, let Compose
-   figure it out via its existing pointer-input pipeline." Works as long
-   as `LocalInspectionMode = false` during interactive renders — see
-   [DESIGN § 8](DESIGN.md) on the inspection-mode trade-off. v1 leaves
-   `LocalInspectionMode = true`, so today's "click triggers a re-render"
-   doesn't yet route the input into the composition; v2 flips the local
-   to false during interactive frames and dispatches the pixel coords
-   into the active `ImageComposeScene`.
+3. **Hit testing.** The renderer receives image-natural pixel coordinates
+   and lets Compose route them through its pointer-input pipeline. Keep this
+   contract for new clients instead of inventing a separate component-level
+   hit-test API.
 
 ## 8a. Display overrides
 
@@ -360,9 +358,9 @@ rather than mutating JVM-wide `Locale.setDefault(...)`:
 
 ## 9. v2 — click dispatch into composition
 
-> **Status:** design only. v1 ships the wire shape; v2 makes
-> `interactive/input` actually mutate the composition. No protocol
-> changes — the v1 wire format already carries everything v2 needs.
+> **Status:** implemented for held-session backends and MCP scripted
+> recordings. This section is retained as the design rationale for why click
+> dispatch requires a held composition.
 
 ### 9.1 Why v1 isn't enough
 

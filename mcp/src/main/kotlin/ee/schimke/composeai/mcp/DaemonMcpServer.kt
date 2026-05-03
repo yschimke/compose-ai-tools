@@ -2074,6 +2074,7 @@ class DaemonMcpServer(
           put("sizeBytes", encoded.sizeBytes)
           put("frameCount", stopResult.frameCount)
           put("durationMs", stopResult.durationMs)
+          put("framesDir", stopResult.framesDir)
           put("frameWidthPx", stopResult.frameWidthPx)
           put("frameHeightPx", stopResult.frameHeightPx)
         }
