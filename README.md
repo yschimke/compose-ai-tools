@@ -32,11 +32,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SpinnerTimelinePreview · 500ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_500ms.png" width="150" /> |
 | `SpinnerTimelinePreview · 1500ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_1500ms.png" width="150" /> |
 | `RedToBlueEndThenGifPreview · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif.png" width="150" /> |
-| `RedToBlueEndThenGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif_SCROLL_gif.gif" width="150" /> |
-| `RedToBlueScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif" width="150" /> |
+| `RedToBlueScrollGifPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.png" width="150" /> |
 | `RedToBlueScrollPreview · scroll top` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_top.png" width="150" /> |
 | `RedToBlueScrollPreview · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_end.png" width="150" /> |
-| `SettingsListScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.gif" width="150" /> |
+| `SettingsListScrollGifPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.png" width="150" /> |
 
 ## samples:android-daemon-bench
 
@@ -111,8 +110,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Medium.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Normal.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Small.png" width="150" /> |
-| `ActivityListGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.gif" width="150" /> |
-| `ActivityListLongPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png" width="150" /> |
+| `ActivityListGifPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.png" width="150" /> |
+| `ActivityListLongPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png" width="150" /> |
 | `ActivityListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png" width="150" /> |
 | `ActivityListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListPreview_Devices_-_Small_Round.png" width="150" /> |
 | `BadWearButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png" width="150" /> |
