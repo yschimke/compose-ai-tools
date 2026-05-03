@@ -392,6 +392,7 @@ internal object ComposePreviewTasks {
       }
       moduleName.set(project.name)
       variantName.set(extension.variant)
+      projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
       // Generic data-product override:
       // `-PcomposePreview.previewExtensions.a11y.allChecks=true` wins over the
       // extension. Lets VSCode / CLI flip the feature on for a run without
