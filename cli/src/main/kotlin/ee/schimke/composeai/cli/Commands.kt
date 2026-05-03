@@ -297,8 +297,12 @@ abstract class Command(protected val args: List<String>) {
     return modules
   }
 
-  protected fun runGradle(gradle: GradleConnection, vararg tasks: String): Boolean {
-    return gradle.runTasks(*tasks, timeoutSeconds = timeoutSeconds)
+  protected fun runGradle(
+    gradle: GradleConnection,
+    vararg tasks: String,
+    arguments: List<String> = emptyList(),
+  ): Boolean {
+    return gradle.runTasks(*tasks, timeoutSeconds = timeoutSeconds, arguments = arguments)
   }
 
   /**
@@ -829,7 +833,7 @@ class RenderCommand(args: List<String>) : Command(args) {
  * (i.e. the configured `failOnErrors`/`failOnWarnings` threshold tripped) or if `--fail-on`
  * overrides the threshold at the CLI level.
  */
-class A11yCommand(args: List<String>) : Command(args) {
+class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) : Command(args) {
   private val jsonOutput = "--json" in args
   // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
   private val failOn: String? = args.flagValue("--fail-on")
@@ -838,7 +842,16 @@ class A11yCommand(args: List<String>) : Command(args) {
     withGradle { gradle ->
       val modules = resolveModules(gradle)
       val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
-      val buildOk = runGradle(gradle, *tasks)
+      val gradleArguments =
+        if (forceEnable) {
+          listOf(
+            "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
+            "-PcomposePreview.previewExtensions.a11y.annotateScreenshots=true",
+          )
+        } else {
+          emptyList()
+        }
+      val buildOk = runGradle(gradle, *tasks, arguments = gradleArguments)
       if (!buildOk) reportRenderFailures(gradle)
 
       val manifests = readAllManifests(modules)

@@ -47,7 +47,11 @@ class GradleConnection(
   fun lastTestFailures(): List<CapturedTestFailure> =
     synchronized(capturedTestFailures) { capturedTestFailures.toList() }
 
-  fun runTasks(vararg tasks: String, timeoutSeconds: Long = 300): Boolean {
+  fun runTasks(
+    vararg tasks: String,
+    timeoutSeconds: Long = 300,
+    arguments: List<String> = emptyList(),
+  ): Boolean {
     val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
     val startTime = System.currentTimeMillis()
     val runningTasks = Collections.synchronizedSet(linkedSetOf<String>())
@@ -109,6 +113,9 @@ class GradleConnection(
     return try {
       val launcher =
         connection.newBuild().forTasks(*tasks).withCancellationToken(tokenSource.token())
+      if (arguments.isNotEmpty()) {
+        launcher.withArguments(arguments)
+      }
 
       if (verbose) {
         launcher.setStandardOutput(System.err)

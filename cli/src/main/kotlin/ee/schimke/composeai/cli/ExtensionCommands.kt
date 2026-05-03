@@ -114,8 +114,9 @@ class ExtensionCommandsCommand(private val args: List<String>) {
     }
     val passthrough = args.withoutFirstPositionals(2)
     when (commandId) {
-      "atf-checks.run" -> A11yCommand(passthrough.withDefault("--json")).run()
-      "a11y-annotated-preview.render",
+      "atf-checks.run",
+      "a11y-annotated-preview.render" ->
+        A11yCommand(passthrough.withDefault("--json"), forceEnable = true).run()
       "scrolling-preview-annotation.render" -> ShowCommand(passthrough.withDefault("--json")).run()
       "a11y.hierarchy.get" ->
         DataCommand(passthrough.dataGet("a11y/hierarchy", defaultJson = true)).run()
