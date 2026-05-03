@@ -35,6 +35,7 @@ local.properties
 # Node / VS Code extension
 node_modules/
 vscode-extension/out/
+vscode-extension/.vscode-test/
 *.vsix
 
 # Python (for .github/actions/lib/ scripts and their tests)
