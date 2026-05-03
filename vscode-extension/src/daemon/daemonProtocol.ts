@@ -153,7 +153,19 @@ export interface PreviewExtensionDescriptor {
     displayName?: string;
     usageModes?: PreviewExtensionUsageMode[];
     componentExtensionIds?: string[];
+    cliCommands?: PreviewExtensionCliCommand[];
     steps?: PreviewPipelineStep[];
+}
+
+export interface PreviewExtensionCliCommand {
+    id: string;
+    displayName?: string;
+    summary?: string;
+    command: string[];
+    agentRecommended?: boolean;
+    requiresDaemon?: boolean;
+    usageModes?: PreviewExtensionUsageMode[];
+    productKinds?: string[];
 }
 
 export interface PreviewPipelineStep {

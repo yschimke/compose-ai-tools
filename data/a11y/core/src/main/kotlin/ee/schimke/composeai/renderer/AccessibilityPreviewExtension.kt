@@ -4,6 +4,7 @@ import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.pipeline.ExtractionSpec
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
@@ -47,6 +48,27 @@ object AccessibilitySemanticsPreviewExtension {
     PreviewExtensionDescriptor(
       id = ID,
       displayName = "Accessibility hierarchy",
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "a11y.hierarchy.get",
+            displayName = "Fetch accessibility hierarchy",
+            summary = "Reads the structured accessibility hierarchy for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "data",
+                "get",
+                "--id",
+                "<preview-id>",
+                "--kind",
+                KIND_HIERARCHY,
+                "--json",
+              ),
+            agentRecommended = true,
+            productKinds = listOf(KIND_HIERARCHY),
+          )
+        ),
       steps = listOf(finalSampleExtractor, eachFrameExtractor),
     )
 }
@@ -88,6 +110,34 @@ object AtfChecksPreviewExtension {
     PreviewExtensionDescriptor(
       id = ID,
       displayName = "ATF checks",
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "atf-checks.run",
+            displayName = "Run ATF accessibility checks",
+            summary = "Renders previews and returns ATF accessibility findings.",
+            command = listOf("compose-preview", "a11y", "--json"),
+            agentRecommended = true,
+            productKinds = listOf(KIND_ATF, KIND_TOUCH_TARGETS),
+          ),
+          PreviewExtensionCliCommand(
+            id = "atf-checks.get",
+            displayName = "Fetch ATF findings",
+            summary = "Reads previously emitted ATF findings for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "data",
+                "get",
+                "--id",
+                "<preview-id>",
+                "--kind",
+                KIND_ATF,
+                "--json",
+              ),
+            productKinds = listOf(KIND_ATF),
+          ),
+        ),
       steps = listOf(finalSampleChecker, eachFrameChecker),
     )
 }
@@ -116,6 +166,27 @@ object AccessibilityOverlayPreviewExtension {
       id = ID,
       displayName = "Accessibility overlay annotations",
       componentExtensionIds = listOf(AccessibilitySemanticsPreviewExtension.ID, AtfChecksPreviewExtension.ID),
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "a11y-overlay.get",
+            displayName = "Fetch accessibility overlay",
+            summary = "Reads the rendered accessibility overlay artifact for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "data",
+                "get",
+                "--id",
+                "<preview-id>",
+                "--kind",
+                KIND_OVERLAY,
+                "--output",
+                "<path>",
+              ),
+            productKinds = listOf(KIND_OVERLAY),
+          )
+        ),
       steps = listOf(annotationProcessor),
     )
 }
@@ -135,6 +206,16 @@ object AccessibilityAnnotatedPreviewExtension {
           AtfChecksPreviewExtension.ID,
           AccessibilityOverlayPreviewExtension.ID,
           "overlay-legend",
+        ),
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "a11y-annotated-preview.render",
+            displayName = "Render accessibility annotated previews",
+            summary = "Discovers and renders suggested accessibility annotated preview extras.",
+            command = listOf("compose-preview", "show", "--json"),
+            usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+          )
         ),
       steps =
         listOf(
