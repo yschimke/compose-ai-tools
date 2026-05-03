@@ -6,8 +6,7 @@ import ee.schimke.composeai.mcp.protocol.ToolDef
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
-import io.modelcontextprotocol.kotlin.sdk.shared.AbstractTransport
-import io.modelcontextprotocol.kotlin.sdk.shared.TransportSendOptions
+import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ContentBlock as SdkContentBlock
@@ -15,12 +14,10 @@ import io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource
 import io.modelcontextprotocol.kotlin.sdk.types.EmptyResult
 import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCMessage
 import io.modelcontextprotocol.kotlin.sdk.types.ListResourcesRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ListResourcesResult
 import io.modelcontextprotocol.kotlin.sdk.types.ListToolsRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult
-import io.modelcontextprotocol.kotlin.sdk.types.McpJson
 import io.modelcontextprotocol.kotlin.sdk.types.Method
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
@@ -38,7 +35,6 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import io.modelcontextprotocol.kotlin.sdk.types.UnsubscribeRequest
-import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
@@ -47,8 +43,9 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
+import kotlinx.io.asSink
+import kotlinx.io.asSource
+import kotlinx.io.buffered
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -97,7 +94,10 @@ class McpSession(
         {
           try {
             runBlocking(Dispatchers.IO) {
-              val session = server.createSession(StreamServerTransport(input, output))
+              val session =
+                server.createSession(
+                  StdioServerTransport(input.asSource().buffered(), output.asSink().buffered())
+                )
               sdkSession = session
               session.onClose {
                 closed.complete(Unit)
@@ -173,104 +173,6 @@ class McpSession(
         progressToken,
       )
     }
-  }
-}
-
-private class StreamServerTransport(
-  private val input: InputStream,
-  private val output: OutputStream,
-) : AbstractTransport() {
-  private val closed = CompletableFuture<Unit>()
-  private val outputLock = Any()
-  @Volatile private var readerThread: Thread? = null
-
-  override suspend fun start() {
-    if (readerThread != null) return
-    readerThread =
-      Thread(
-          {
-            try {
-              while (!closed.isDone) {
-                val payload = readFrame(input) ?: break
-                val message =
-                  McpJson.decodeFromString(
-                    JSONRPCMessage.serializer(),
-                    payload.toString(Charsets.UTF_8),
-                  )
-                runBlocking { _onMessage(message) }
-              }
-            } catch (t: Throwable) {
-              if (!closed.isDone) {
-                _onError(t)
-              }
-            } finally {
-              runBlocking { close() }
-            }
-          },
-          "mcp-sdk-stream-reader",
-        )
-        .apply {
-          isDaemon = true
-          start()
-        }
-  }
-
-  override suspend fun send(message: JSONRPCMessage, options: TransportSendOptions?) {
-    val jsonText = McpJson.encodeToString(JSONRPCMessage.serializer(), message)
-    val payload = jsonText.toByteArray(Charsets.UTF_8)
-    val header = "Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
-    synchronized(outputLock) {
-      output.write(header)
-      output.write(payload)
-      output.flush()
-    }
-  }
-
-  override suspend fun close() {
-    if (!closed.complete(Unit)) return
-    runCatching { input.close() }
-    runCatching { output.close() }
-    invokeOnCloseCallback()
-  }
-}
-
-private fun readFrame(input: InputStream): ByteArray? {
-  var contentLength = -1
-  val headerBuf = ByteArrayOutputStream(64)
-  while (true) {
-    val line = readHeaderLine(input, headerBuf) ?: return null
-    if (line.isEmpty()) break
-    val colon = line.indexOf(':')
-    if (colon <= 0) error("malformed header line: '$line'")
-    val name = line.substring(0, colon).trim()
-    val value = line.substring(colon + 1).trim()
-    if (name.equals("Content-Length", ignoreCase = true)) {
-      contentLength = value.toIntOrNull() ?: error("non-integer Content-Length: '$value'")
-    }
-  }
-  if (contentLength < 0) error("missing Content-Length header")
-  val payload = ByteArray(contentLength)
-  var off = 0
-  while (off < contentLength) {
-    val n = input.read(payload, off, contentLength - off)
-    if (n < 0) return null
-    off += n
-  }
-  return payload
-}
-
-private fun readHeaderLine(input: InputStream, buf: ByteArrayOutputStream): String? {
-  buf.reset()
-  while (true) {
-    val b = input.read()
-    if (b < 0) return if (buf.size() == 0) null else buf.toString(Charsets.US_ASCII.name())
-    if (b == '\n'.code) {
-      val bytes = buf.toByteArray()
-      val end =
-        if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1 else bytes.size
-      return String(bytes, 0, end, Charsets.US_ASCII)
-    }
-    buf.write(b)
   }
 }
 
