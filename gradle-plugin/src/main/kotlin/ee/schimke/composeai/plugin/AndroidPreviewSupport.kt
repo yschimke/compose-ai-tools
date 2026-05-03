@@ -1050,7 +1050,7 @@ internal object AndroidPreviewSupport {
         // doesn't invalidate the Gradle configuration cache. `systemProperty`
         // evaluates its value eagerly at configuration time — the provider
         // we'd read there becomes part of the config-cache key, so flipping
-        // `-PcomposePreview.dataPlugins.a11y.enableAllChecks` forces a ~5-10s
+        // `-PcomposePreview.previewExtensions.a11y.enableAllChecks` forces a ~5-10s
         // reconfigure. CommandLineArgumentProvider's `@Input` providers
         // are only evaluated at task execution, which is exactly the
         // lazy-input semantics we want for VSCode toggles.
@@ -1185,7 +1185,7 @@ internal object AndroidPreviewSupport {
     }
 
     // `verifyAccessibility` is ALWAYS registered so toggling
-    // `-PcomposePreview.dataPlugins.a11y.enableAllChecks` doesn't change the
+    // `-PcomposePreview.previewExtensions.a11y.enableAllChecks` doesn't change the
     // task graph — config cache stays valid across VSCode / CLI toggles.
     // An `onlyIf` gate backed by the lazy provider makes it a no-op when
     // the feature is off: the task configures but never executes, so the
@@ -1203,7 +1203,9 @@ internal object AndroidPreviewSupport {
         failOnErrors.set(a11yExtension(extension).failOnErrors)
         failOnWarnings.set(a11yExtension(extension).failOnWarnings)
         dependsOn(renderTask)
-        onlyIf("composePreview.dataPlugins.a11y.enableAllChecks") { a11yEnabledProvider.get() }
+        onlyIf("composePreview.previewExtensions.a11y.enableAllChecks") {
+          a11yEnabledProvider.get()
+        }
       }
 
     ComposePreviewTasks.registerRenderAllPreviews(
@@ -1344,10 +1346,10 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
       )
-      // Data-product plugin selection. The daemon consumes the same a11y selector as
+      // Preview extension selection. The daemon consumes the same a11y selector as
       // `renderPreviews`; there is no daemon-specific a11y feature flag.
       this.systemProperties.put(
-        "composeai.dataPlugins.a11y.enabled",
+        "composeai.previewExtensions.a11y.enabled",
         resolveA11yEnabled(project, extension).map { it.toString() },
       )
       this.systemProperties.put(
@@ -1425,9 +1427,9 @@ internal object AndroidPreviewSupport {
 
   /**
    * Returns a lazy `Provider<Boolean>` for the effective a11y data-product selection. The
-   * `-PcomposePreview.dataPlugins.a11y.enableAllChecks=<true|false>` Gradle property enables every
-   * a11y check; `-PcomposePreview.dataPlugins.a11y.checks=atf,hierarchy` enables only named a11y
-   * checks.
+   * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=<true|false>` Gradle property enables
+   * every a11y check; `-PcomposePreview.previewExtensions.a11y.checks=atf,hierarchy` enables only
+   * named a11y checks.
    *
    * **Deliberately returns a Provider, not a Boolean.** Reading `.get()` at configuration time keys
    * the configuration cache on the current property value, which means every VSCode toggle would
@@ -1440,7 +1442,7 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
     val a11y = a11yExtension(extension)
-    val genericA11y = extension.dataPlugins.plugins.findByName("a11y")
+    val genericA11y = extension.previewExtensions.extensions.findByName("a11y")
     val genericAllChecks =
       genericA11y?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
@@ -1448,21 +1450,21 @@ internal object AndroidPreviewSupport {
     val genericChecks =
       genericA11y?.checks
         ?: project.objects.listProperty(String::class.java).convention(emptyList())
-    val wholePlugin =
+    val wholeExtension =
       project.providers
-        .gradleProperty("composePreview.dataPlugins.a11y.enableAllChecks")
+        .gradleProperty("composePreview.previewExtensions.a11y.enableAllChecks")
         .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(configuredAllChecks)
     val selectedChecks =
       project.providers
-        .gradleProperty("composePreview.dataPlugins.a11y.checks")
+        .gradleProperty("composePreview.previewExtensions.a11y.checks")
         .map { raw -> parseCheckList(raw).any { it in A11Y_CHECK_IDS } }
         .orElse(
           a11y.checks.zip(genericChecks) { typedChecks, genericChecks ->
             (typedChecks + genericChecks).any { it in A11Y_CHECK_IDS }
           }
         )
-    return wholePlugin.zip(selectedChecks) { whole, selected -> whole || selected }
+    return wholeExtension.zip(selectedChecks) { whole, selected -> whole || selected }
   }
 
   /** Same config-cache-friendly treatment for `annotateScreenshots`. See [resolveA11yEnabled]. */
@@ -1471,12 +1473,12 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> =
     project.providers
-      .gradleProperty("composePreview.dataPlugins.a11y.annotateScreenshots")
+      .gradleProperty("composePreview.previewExtensions.a11y.annotateScreenshots")
       .map { it.toBooleanStrictOrNull() ?: true }
       .orElse(a11yExtension(extension).annotateScreenshots)
 
-  private fun a11yExtension(extension: PreviewExtension): A11yDataPluginExtension =
-    extension.dataPlugins.a11y
+  private fun a11yExtension(extension: PreviewExtension): A11yPreviewExtension =
+    extension.previewExtensions.a11y
 
   private fun parseCheckList(raw: String): Set<String> =
     raw.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
@@ -1488,8 +1490,8 @@ internal object AndroidPreviewSupport {
     project: org.gradle.api.Project,
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
-    val typed = extension.dataPlugins.composeAiTrace
-    val genericTrace = extension.dataPlugins.plugins.findByName("composeAiTrace")
+    val typed = extension.previewExtensions.composeAiTrace
+    val genericTrace = extension.previewExtensions.extensions.findByName("composeAiTrace")
     val genericAllChecks =
       genericTrace?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
@@ -1499,21 +1501,21 @@ internal object AndroidPreviewSupport {
     val genericChecks =
       genericTrace?.checks
         ?: project.objects.listProperty(String::class.java).convention(emptyList())
-    val wholePlugin =
+    val wholeExtension =
       project.providers
-        .gradleProperty("composePreview.dataPlugins.composeAiTrace.enableAllChecks")
+        .gradleProperty("composePreview.previewExtensions.composeAiTrace.enableAllChecks")
         .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(configuredAllChecks)
     val selectedChecks =
       project.providers
-        .gradleProperty("composePreview.dataPlugins.composeAiTrace.checks")
+        .gradleProperty("composePreview.previewExtensions.composeAiTrace.checks")
         .map { raw -> parseCheckList(raw).any { it in COMPOSE_AI_TRACE_CHECK_IDS } }
         .orElse(
           typed.checks.zip(genericChecks) { typedChecks, genericChecks ->
             (typedChecks + genericChecks).any { it in COMPOSE_AI_TRACE_CHECK_IDS }
           }
         )
-    return wholePlugin.zip(selectedChecks) { whole, selected -> whole || selected }
+    return wholeExtension.zip(selectedChecks) { whole, selected -> whole || selected }
   }
 
   private val COMPOSE_AI_TRACE_CHECK_IDS =
@@ -1691,7 +1693,7 @@ internal object AndroidPreviewSupport {
           append("\n  tiles-renderer required: wear.tiles signal was matched on this module.")
         }
         if (composeAiTraceRequired) {
-          append("\n  runtime-tracing required: composeAiTrace data plugin is enabled.")
+          append("\n  runtime-tracing required: composeAiTrace preview extension is enabled.")
         }
       }
       throw org.gradle.api.GradleException(

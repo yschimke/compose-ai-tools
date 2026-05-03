@@ -5,7 +5,7 @@ plugins {
 }
 
 composePreview {
-  dataPlugins {
+  previewExtensions {
     a11y {
       // Sample wires a deliberately-broken `BadWearButtonPreview` so the
       // `.a11y.png` for Wear exercises the stacked (legend-below) layout.

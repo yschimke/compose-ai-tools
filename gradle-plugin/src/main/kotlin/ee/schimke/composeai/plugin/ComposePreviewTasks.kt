@@ -387,7 +387,7 @@ internal object ComposePreviewTasks {
       moduleName.set(project.name)
       variantName.set(extension.variant)
       // Generic data-product override:
-      // `-PcomposePreview.dataPlugins.a11y.allChecks=true` wins over the
+      // `-PcomposePreview.previewExtensions.a11y.allChecks=true` wins over the
       // extension. Lets VSCode / CLI flip the feature on for a run without
       // editing build.gradle.kts. Isolated-Projects-safe because
       // `providers.gradleProperty` is.
@@ -395,7 +395,7 @@ internal object ComposePreviewTasks {
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as
-      // the data-product selector above.
+      // the preview-extension selector above.
       failOnEmpty.set(
         project.providers
           .gradleProperty("composePreview.failOnEmpty")

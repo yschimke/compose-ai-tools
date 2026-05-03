@@ -5,7 +5,7 @@ plugins {
 }
 
 composePreview {
-  dataPlugins {
+  previewExtensions {
     a11y {
       // Sample includes deliberately-broken previews (BadButton,
       // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /

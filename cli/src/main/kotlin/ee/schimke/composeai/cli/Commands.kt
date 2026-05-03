@@ -845,7 +845,7 @@ class A11yCommand(args: List<String>) : Command(args) {
         else {
           println(
             "No module has accessibility checks enabled. Add\n" +
-              "  composePreview { dataPlugins { a11y { enableAllChecks() } } }\n" +
+              "  composePreview { previewExtensions { a11y { enableAllChecks() } } }\n" +
               "to the module's build.gradle.kts."
           )
         }

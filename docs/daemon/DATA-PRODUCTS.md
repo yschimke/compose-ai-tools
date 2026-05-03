@@ -62,33 +62,33 @@ kinds are silently ignored both ways.
    `--emit kind` flag** and the CLI surface stays as "render to disk,
    look in `build/`." Kinds are selected via the consumer's
    `composePreview { ... }` Gradle config (the same channel that gates
-   `dataPlugins { a11y { ... } }`); duplicating that selection on
+   `previewExtensions { a11y { ... } }`); duplicating that selection on
    the CLI would just create two ways to express the same intent and
    let them drift. The agent ergonomics that justify a programmatic
    surface — `data/fetch` re-render, `data/subscribe` priming, kind
    discovery — live in the daemon protocol and its MCP front-end, not
    the CLI.
 
-Gradle-side selection is plugin-scoped:
+Gradle-side selection is preview-extension-scoped:
 
 ```kotlin
 composePreview {
-  dataPlugins {
-    // Well-known plugins get a typed DSL.
+  previewExtensions {
+    // Well-known preview extensions get a typed DSL.
     a11y { enableAllChecks() }
 
     // Or leave the plugin disabled and enable only specific checks.
     a11y { checks.add("atf") }
 
-    // Unknown/future plugins can still be addressed generically.
-    plugin("layout") { checks.add("tree") }
+    // Unknown/future preview extensions can still be addressed generically.
+    extension("layout") { checks.add("tree") }
   }
 }
 ```
 
 The matching one-shot properties are
-`-PcomposePreview.dataPlugins.<plugin>.enableAllChecks=true` and
-`-PcomposePreview.dataPlugins.<plugin>.checks=checkA,checkB`.
+`-PcomposePreview.previewExtensions.<plugin>.enableAllChecks=true` and
+`-PcomposePreview.previewExtensions.<plugin>.checks=checkA,checkB`.
 
 **Non-goals**:
 
@@ -379,7 +379,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `resources/used`           | default | low | `R.*` references resolved during render. Jump-to-source. |
 | `text/strings`             | default | low | Text drawn on screen with locale, fontScale, fontSize, foregroundColor, backgroundColor, bounds. **Android daemon implementation:** v1 prefers `GetTextLayoutResult` literal text and unambiguous style values, also emits semantics text/labels so visible text and accessibility text can differ; resource entry names belong to `resources/used`. |
 | `i18n/translations`        | default | low | Per-visible-string locale coverage and translations from Android `values*/strings.xml`. **Android daemon implementation.** Desktop returns `DataProductUnknown`. |
-| `render/composeAiTrace`    | default/live | low | compose-ai-tools render pipeline trace as Perfetto-importable Chrome trace JSON. Path transport with the same file also listed as the `perfetto` extra. Enabled by `composePreview.dataPlugins.composeAiTrace`. Android daemon launches also require `androidx.compose.runtime:runtime-tracing` on the test runtime classpath so Compose compiler trace hooks can participate when platform tracing is active. |
+| `render/composeAiTrace`    | default/live | low | compose-ai-tools render pipeline trace as Perfetto-importable Chrome trace JSON. Path transport with the same file also listed as the `perfetto` extra. Enabled by `composePreview.previewExtensions.composeAiTrace`. Android daemon launches also require `androidx.compose.runtime:runtime-tracing` on the test runtime classpath so Compose compiler trace hooks can participate when platform tracing is active. |
 | `render/trace`             | default | low | Phase breakdown. **Android + desktop daemon implementation:** v1 exposes the latest render as a trace-shaped payload from render metrics; nested `Trace.beginSection` markers are a follow-up. |
 | `fonts/used`               | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. **D6 — shipped inline payload when daemon history is enabled.** |

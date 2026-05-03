@@ -31,7 +31,7 @@ For accessibility:
 
 ```kotlin
 composePreview {
-    dataPlugins {
+    previewExtensions {
       a11y { enableAllChecks() }
     }
 }

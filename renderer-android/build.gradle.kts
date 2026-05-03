@@ -161,7 +161,7 @@ dependencies {
   implementation(libs.roborazzi)
   implementation(libs.roborazzi.compose)
   // ATF accessibility checks. Exercised only when consumers opt in via
-  // `composePreview { dataPlugins { a11y { enableAllChecks() } } }`, but always
+  // `composePreview { previewExtensions { a11y { enableAllChecks() } } }`, but always
   // on the classpath because the renderer test references these types
   // unconditionally.
   //
