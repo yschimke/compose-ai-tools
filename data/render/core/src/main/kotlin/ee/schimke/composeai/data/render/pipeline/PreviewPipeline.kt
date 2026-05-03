@@ -75,6 +75,7 @@ enum class PipelineCapability {
   SuggestedPreviews,
   DeviceGeometry,
   DeviceClip,
+  DeviceBackground,
   ScrollState,
   SemanticsSnapshot,
   AccessibilityNodes,

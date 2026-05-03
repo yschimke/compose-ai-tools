@@ -222,6 +222,7 @@ fun main(args: Array<String>) {
     CompositeDataProductRegistry(
       buildList {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        add(DeviceBackgroundDataProductRegistry(previewIndex = previewIndex))
         add(RenderTraceDataProductRegistry())
         add(TestFailureDataProductRegistry())
         add(themeRegistry)
@@ -264,6 +265,7 @@ fun main(args: Array<String>) {
       previewExtensions =
         buildList {
           add(RenderPreviewExtension.deviceClipDescriptor)
+          add(RenderPreviewExtension.deviceBackgroundDescriptor)
           add(RenderPreviewExtension.renderTraceDescriptor)
           if (composeTraceEnabled) {
             add(RenderPreviewExtension.composeTraceDescriptor)
