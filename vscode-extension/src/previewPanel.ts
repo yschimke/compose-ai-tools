@@ -7,15 +7,18 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private extensionUri: vscode.Uri;
     private onMessage: (msg: WebviewToExtension) => void;
+    private earlyFeaturesEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
 
     constructor(
         extensionUri: vscode.Uri,
         onMessage: (msg: WebviewToExtension) => void,
+        earlyFeaturesEnabled: () => boolean = () => false,
         shouldRestoreVisibility: () => boolean = () => false,
     ) {
         this.extensionUri = extensionUri;
         this.onMessage = onMessage;
+        this.earlyFeaturesEnabled = earlyFeaturesEnabled;
         this.shouldRestoreVisibility = shouldRestoreVisibility;
     }
 
@@ -45,6 +48,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
     private getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
+        const earlyFeaturesEnabled = this.earlyFeaturesEnabled();
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, 'media', 'preview.css'),
         );
@@ -151,6 +155,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     (function() {
         const vscode = acquireVsCodeApi();
         const state = vscode.getState() || { filters: {} };
+        let earlyFeaturesEnabled = ${earlyFeaturesEnabled ? 'true' : 'false'};
 
         const grid = document.getElementById('preview-grid');
         const focusInspector = document.getElementById('focus-inspector');
@@ -405,6 +410,17 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // declarations below are hoisted, so call sites above this block
         // resolve fine.
 
+        function applyEarlyFeatureVisibility() {
+            btnDiffHead.hidden = !earlyFeaturesEnabled;
+            btnDiffMain.hidden = !earlyFeaturesEnabled;
+            btnA11yOverlay.hidden = !earlyFeaturesEnabled || layoutMode.value !== 'focus';
+            btnRecording.hidden = !earlyFeaturesEnabled || layoutMode.value !== 'focus';
+            recordingFormat.hidden = !earlyFeaturesEnabled || layoutMode.value !== 'focus';
+            if (!earlyFeaturesEnabled) {
+                focusInspector.hidden = true;
+            }
+        }
+
         function isFocusedDaemonReady() {
             // The webview doesn't know moduleId per preview today. We fall
             // back to "any module ready" because the extension-side panel
@@ -481,9 +497,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function applyRecordingButtonState() {
             const inFocus = layoutMode.value === 'focus';
-            btnRecording.hidden = !inFocus;
-            recordingFormat.hidden = !inFocus;
-            if (!inFocus) {
+            btnRecording.hidden = !earlyFeaturesEnabled || !inFocus;
+            recordingFormat.hidden = !earlyFeaturesEnabled || !inFocus;
+            if (!earlyFeaturesEnabled || !inFocus) {
                 btnRecording.setAttribute('aria-pressed', 'false');
                 btnRecording.classList.remove('recording-on');
                 recordingFormat.disabled = true;
@@ -510,8 +526,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // tracks whether the currently focused preview has the overlay subscription on.
         function applyA11yOverlayButtonState() {
             const inFocus = layoutMode.value === 'focus';
-            btnA11yOverlay.hidden = !inFocus;
-            if (!inFocus) {
+            btnA11yOverlay.hidden = !earlyFeaturesEnabled || !inFocus;
+            if (!earlyFeaturesEnabled || !inFocus) {
                 btnA11yOverlay.setAttribute('aria-pressed', 'false');
                 return;
             }
@@ -530,6 +546,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // tears down immediately rather than waiting for a next render. When turning ON for a
         // different preview, first turn the previous one off so the wire stays clean.
         function toggleA11yOverlay() {
+            if (!earlyFeaturesEnabled) return;
             if (layoutMode.value !== 'focus') return;
             const card = getVisibleCards()[focusIndex];
             const previewId = card ? card.dataset.previewId : null;
@@ -670,6 +687,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         }
 
         function toggleRecording() {
+            if (!earlyFeaturesEnabled) return;
             if (layoutMode.value !== 'focus') return;
             const card = getVisibleCards()[focusIndex];
             const previewId = card ? card.dataset.previewId : null;
@@ -1036,17 +1054,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 const visible = getVisibleCards();
                 const card = mode === 'focus' ? visible[focusIndex] : null;
                 if (!card || card.dataset.previewId !== a11yOverlayPreviewId) {
-                    vscode.postMessage({
-                        command: 'setA11yOverlay',
-                        previewId: a11yOverlayPreviewId,
-                        enabled: false,
-                    });
+                    if (earlyFeaturesEnabled) {
+                        vscode.postMessage({
+                            command: 'setA11yOverlay',
+                            previewId: a11yOverlayPreviewId,
+                            enabled: false,
+                        });
+                    }
                     a11yOverlayPreviewId = null;
                 }
             }
             applyInteractiveButtonState();
             applyRecordingButtonState();
             applyA11yOverlayButtonState();
+            applyEarlyFeatureVisibility();
         }
 
         // Compute the focus-mode previewId. History is intentionally focus-only:
@@ -1104,8 +1125,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
         function renderFocusInspector(card) {
             focusInspector.innerHTML = '';
-            focusInspector.hidden = !card;
-            if (!card) return;
+            focusInspector.hidden = !earlyFeaturesEnabled || !card;
+            if (!earlyFeaturesEnabled || !card) return;
             const previewId = card.dataset.previewId;
             const p = allPreviews.find(pp => pp.id === previewId);
             if (!previewId || !p) return;
@@ -1355,6 +1376,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // resolve the comparison anchor (HEAD = latest archived render,
         // main = latest archived render on the main branch).
         function requestFocusedDiff(against) {
+            if (!earlyFeaturesEnabled) return;
             if (layoutMode.value !== 'focus') return;
             const visible = getVisibleCards();
             const card = visible[focusIndex];
@@ -2507,7 +2529,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             // the new render without clicking — symmetric with the
             // compose-preview/main ref watcher's auto-refresh on the right anchor.
             const openDiff = container.querySelector('.preview-diff-overlay');
-            if (openDiff) {
+            if (earlyFeaturesEnabled && openDiff) {
                 const against = openDiff.dataset.against;
                 if (against === 'head' || against === 'main') {
                     showDiffOverlay(card, against, null, null);
@@ -2946,6 +2968,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
 
                 case 'previewDiffReady': {
+                    if (!earlyFeaturesEnabled) break;
                     const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
                     if (!card) break;
                     showDiffOverlay(card, msg.against, {
@@ -2957,12 +2980,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'previewDiffError': {
+                    if (!earlyFeaturesEnabled) break;
                     const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
                     if (!card) break;
                     showDiffOverlay(card, msg.against, null, msg.message || 'Diff unavailable.');
                     break;
                 }
                 case 'focusAndDiff': {
+                    if (!earlyFeaturesEnabled) break;
                     const card = document.getElementById('preview-' + sanitizeId(msg.previewId));
                     if (!card) break;
                     focusOnCard(card);
@@ -3021,6 +3046,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'previewMainRefChanged': {
+                    if (!earlyFeaturesEnabled) break;
                     // compose-preview/main moved — re-issue any open vs-main
                     // diff overlay so the user sees the new bytes without
                     // clicking. Other diffs (HEAD, current, previous) are
@@ -3038,6 +3064,34 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                             against: 'main',
                         });
                     });
+                    break;
+                }
+                case 'setEarlyFeatures': {
+                    earlyFeaturesEnabled = !!msg.enabled;
+                    if (!earlyFeaturesEnabled) {
+                        document.querySelectorAll('.preview-diff-overlay').forEach(overlay => overlay.remove());
+                        enabledFocusProducts.clear();
+                        if (a11yOverlayPreviewId) {
+                            vscode.postMessage({
+                                command: 'setA11yOverlay',
+                                previewId: a11yOverlayPreviewId,
+                                enabled: false,
+                            });
+                            a11yOverlayPreviewId = null;
+                        }
+                        if (recordingPreviewIds.size > 0) {
+                            recordingPreviewIds.forEach(previewId => {
+                                vscode.postMessage({
+                                    command: 'setRecording',
+                                    previewId,
+                                    enabled: false,
+                                    format: recordingFormat.value,
+                                });
+                            });
+                            recordingPreviewIds.clear();
+                        }
+                    }
+                    applyLayout();
                     break;
                 }
             }
