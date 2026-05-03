@@ -291,6 +291,7 @@ class DoctorCommand(args: List<String>) {
   private var daemonJavaMajor: Int? = null
 
   private fun runProjectChecks(projectDir: File) {
+    var gradleAccessFailure: GradleAccessFailure? = null
     val model =
       try {
         GradleConnection(projectDir, verbose = verbose).use { gc ->
@@ -298,7 +299,9 @@ class DoctorCommand(args: List<String>) {
           // project-scope checks can compare against the daemon's JDK
           // (e.g. flagging test worker mismatch in #142).
           checkGradleDaemon(gc)
-          gc.runBuildAction(GatherComposePreviewModelAction())
+          gc.runBuildAction(GatherComposePreviewModelAction()).also {
+            gradleAccessFailure = gc.lastModelAccessFailure
+          }
         }
       } catch (e: Exception) {
         addCheck(
@@ -317,7 +320,51 @@ class DoctorCommand(args: List<String>) {
         return
       }
 
-    if (model == null || model.modules.isEmpty()) {
+    if (model == null) {
+      gradleAccessFailure?.let {
+        addCheck(
+          DoctorCheck(
+            id = "project.gradle-access",
+            category = "project",
+            status = "error",
+            message = "could not query Gradle project model",
+            detail =
+              "Gradle ${it.operation} failed: ${it.message}" +
+                (it.detail?.let { d -> " Caused by: $d" } ?: ""),
+            remediation =
+              DoctorRemediation(
+                summary =
+                  "Ensure the CLI can access the Gradle wrapper, distribution cache, and lock files, then rerun doctor.",
+                commands = listOf("./gradlew help"),
+              ),
+          )
+        )
+        addCheck(
+          DoctorCheck(
+            id = "project.plugin-applied",
+            category = "project",
+            status = "skipped",
+            message = "plugin application check skipped because Gradle model access failed",
+          )
+        )
+        return
+      }
+      addCheck(
+        DoctorCheck(
+          id = "project.model",
+          category = "project",
+          status = "error",
+          message = "could not fetch plugin Tooling model",
+          remediation =
+            DoctorRemediation(
+              summary = "Ensure the project builds (`./gradlew help`) and the plugin is applied."
+            ),
+        )
+      )
+      return
+    }
+
+    if (model.modules.isEmpty()) {
       addCheck(
         DoctorCheck(
           id = "project.plugin-applied",
