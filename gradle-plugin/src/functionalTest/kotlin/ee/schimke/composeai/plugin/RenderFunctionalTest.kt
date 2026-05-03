@@ -4,6 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -15,7 +17,10 @@ class RenderFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
 
-  private val json = Json { ignoreUnknownKeys = true }
+  private val json = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+  }
 
   private fun createTestProject(): File {
     val projectDir = tempDir.root
@@ -171,8 +176,57 @@ class RenderFunctionalTest {
         .withPluginClasspath()
         .buildAndFail()
 
-    assertThat(result.output).contains("render produced no PNG")
+    assertThat(result.output).contains("render produced no output file")
     assertThat(result.output).contains("NO-SOURCE")
+  }
+
+  @Test
+  fun `renderAllPreviews fails loudly when render produces no data product output`() {
+    val projectDir = createTestProject()
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("discoverPreviews")
+      .withPluginClasspath()
+      .build()
+
+    val manifestFile = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString<PreviewManifest>(manifestFile.readText())
+    val preview = manifest.previews.single()
+    val captureOutput = preview.captures.single().renderOutput
+    File(projectDir, "build/compose-previews/$captureOutput").also {
+      it.parentFile.mkdirs()
+      it.writeBytes(byteArrayOf(1, 2, 3))
+    }
+    manifestFile.writeText(
+      json.encodeToString(
+        manifest.copy(
+          previews =
+            listOf(
+              preview.copy(
+                dataProducts =
+                  listOf(
+                    PreviewDataProduct(
+                      kind = "render/scroll/long",
+                      output = "data/render-scroll-long/${preview.id}.png",
+                      cost = SCROLL_LONG_COST,
+                    )
+                  )
+              )
+            )
+        )
+      )
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("renderAllPreviews", "-x", "renderPreviews", "--stacktrace")
+        .withPluginClasspath()
+        .buildAndFail()
+
+    assertThat(result.output).contains("render produced no output file")
+    assertThat(result.output).contains(preview.id)
   }
 
   @Test

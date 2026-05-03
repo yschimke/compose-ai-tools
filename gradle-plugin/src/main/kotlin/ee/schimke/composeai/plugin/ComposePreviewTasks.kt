@@ -554,52 +554,12 @@ internal object ComposePreviewTasks {
         // from the `<stem>_*` glob so a `Foo_header.png` that
         // belongs to a different preview never gets treated as
         // part of `Foo`'s fan-out.
-        val siblingNames =
-          manifest.previews
-            .filter { it.params.previewParameterProviderClassName == null }
-            .flatMap { it.captures.map { c -> c.renderOutput } }
-            .filter { it.isNotEmpty() }
-            .map { java.io.File(outDir, it).name }
-            .toSet()
-        val missing =
-          manifest.previews
-            .filter { p ->
-              p.captures.any { c ->
-                // `tier=fast` legitimately skips heavy captures —
-                // their PNG/GIF either still exists on disk from a
-                // prior full run (and stays usable as the "stale"
-                // image) or hasn't been produced yet. Either way,
-                // it isn't a wiring bug worth failing the build
-                // over, so exclude them from the must-exist check.
-                if (isFastTier && isHeavyCost(c.cost)) return@any false
-                val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
-                // `@PreviewParameter` previews fan out at render
-                // time: manifest carries a `<stem>.png` template,
-                // but the actual files live at
-                // `<stem>_<label>.png` (one per provider value,
-                // or `_PARAM_<idx>` when the label can't be
-                // derived). Check that at least ONE matching
-                // fan-out file exists instead of demanding the
-                // template itself.
-                if (p.params.previewParameterProviderClassName != null) {
-                  val file = outDir.resolve(rel)
-                  val dir = file.parentFile ?: outDir
-                  val prefix = file.nameWithoutExtension + "_"
-                  val ext = ".${file.extension}"
-                  !(dir.listFiles()?.any { f ->
-                    f.name.startsWith(prefix) && f.name.endsWith(ext) && f.name !in siblingNames
-                  } ?: false)
-                } else {
-                  !outDir.resolve(rel).exists()
-                }
-              }
-            }
-            .map { it.id }
+        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
         if (missing.isNotEmpty()) {
           val preview = missing.take(3).joinToString(", ")
           val andMore = if (missing.size > 3) " (+${missing.size - 3} more)" else ""
           throw GradleException(
-            "renderAllPreviews: render produced no PNG for ${missing.size} of " +
+            "renderAllPreviews: render produced no output file for ${missing.size} of " +
               "${manifest.previews.size} preview(s): $preview$andMore. This means " +
               "`renderPreviews` was skipped or silently did nothing — on Android " +
               "that usually means it reported NO-SOURCE because " +
@@ -612,6 +572,67 @@ internal object ComposePreviewTasks {
         marker.writeText("validated\n")
       }
     }
+  }
+
+  internal fun missingPreviewOutputIds(
+    manifest: PreviewManifest,
+    outDir: java.io.File,
+    isFastTier: Boolean,
+  ): List<String> {
+    val siblingNames =
+      manifest.previews
+        .filter { it.params.previewParameterProviderClassName == null }
+        .flatMap { p ->
+          p.captures.map { c -> c.renderOutput } + p.dataProducts.map { product -> product.output }
+        }
+        .filter { it.isNotEmpty() }
+        .map { java.io.File(outDir, it).name }
+        .toSet()
+
+    return manifest.previews
+      .filter { p ->
+        val captureMissing =
+          p.captures.any { c ->
+            if (isFastTier && isHeavyCost(c.cost)) return@any false
+            val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
+            outputMissing(
+              outDir,
+              rel,
+              p.params.previewParameterProviderClassName != null,
+              siblingNames,
+            )
+          }
+        val productMissing =
+          p.dataProducts.any { product ->
+            if (isFastTier && isHeavyCost(product.cost)) return@any false
+            outputMissing(
+              outDir,
+              product.output,
+              p.params.previewParameterProviderClassName != null,
+              siblingNames,
+            )
+          }
+        captureMissing || productMissing
+      }
+      .map { it.id }
+  }
+
+  private fun outputMissing(
+    outDir: java.io.File,
+    rel: String,
+    isPreviewParameter: Boolean,
+    siblingNames: Set<String>,
+  ): Boolean {
+    if (isPreviewParameter) {
+      val file = outDir.resolve(rel)
+      val dir = file.parentFile ?: outDir
+      val prefix = file.nameWithoutExtension + "_"
+      val ext = ".${file.extension}"
+      return !(dir.listFiles()?.any { f ->
+        f.name.startsWith(prefix) && f.name.endsWith(ext) && f.name !in siblingNames
+      } ?: false)
+    }
+    return !outDir.resolve(rel).exists()
   }
 
   /**
