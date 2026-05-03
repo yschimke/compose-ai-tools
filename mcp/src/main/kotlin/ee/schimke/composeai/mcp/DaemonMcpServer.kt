@@ -28,6 +28,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
@@ -561,7 +562,9 @@ class DaemonMcpServer(
               "properties":{
                 "workspaceId":{"type":"string"},
                 "module":{"type":"string","description":"Optional Gradle module path; null = every module in the workspace."},
-                "fqnGlob":{"type":"string","description":"Optional FQN glob; '*' matches non-dot, '**' matches anything, '?' one non-dot char."}
+                "fqnGlob":{"type":"string","description":"Optional FQN glob; '*' matches non-dot, '**' matches anything, '?' one non-dot char."},
+                "awaitDiscovery":{"type":"boolean","description":"When true, block until every matched daemon has completed initial discovery, then return per-module readiness. Default false preserves non-blocking watch."},
+                "awaitTimeoutMs":{"type":"integer","description":"Maximum time to wait when awaitDiscovery=true. Defaults to the server render timeout."}
               },
               "required":["workspaceId"]
             }
@@ -1248,6 +1251,10 @@ class DaemonMcpServer(
         )
     val module = args["module"]?.jsonPrimitive?.contentOrNull
     val glob = args["fqnGlob"]?.jsonPrimitive?.contentOrNull
+    val awaitDiscovery =
+      args["awaitDiscovery"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+    val awaitTimeoutMs =
+      args["awaitTimeoutMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: renderTimeoutMs
     val entry = WatchEntry(workspaceId = workspaceId, modulePath = module, fqnGlobPattern = glob)
     subscriptions.watch(session, entry)
     // Eagerly spawn the daemons matching this watch so they begin emitting `discoveryUpdated`
@@ -1267,20 +1274,76 @@ class DaemonMcpServer(
     val toSpawnSet = toSpawn.toSet()
     val alreadySpawned = toSpawnSet.filter { project.daemons.containsKey(it) }
     val pending = toSpawnSet - alreadySpawned.toSet()
+    val pendingFutures = mutableMapOf<String, CompletableFuture<SupervisedDaemon>>()
     pending.forEach { mp ->
-      daemonLifecycleExecutor.execute {
-        runCatching { supervisor.daemonFor(workspaceId, mp) }
-          .onFailure { System.err.println("watch: async spawn failed for $mp: ${it.message}") }
-      }
+      pendingFutures[mp] =
+        CompletableFuture.supplyAsync(
+            { supervisor.daemonFor(workspaceId, mp) },
+            daemonLifecycleExecutor,
+          )
+          .whenComplete { _, error ->
+            if (error != null) {
+              System.err.println("watch: async spawn failed for $mp: ${error.message}")
+            }
+          }
     }
     // For daemons that are ALREADY up, recompute synchronously — the propagator skips daemons
     // whose URI set didn't change. The async spawns above will recompute themselves once their
     // initial discovery lands in `onDiscoveryUpdated`.
     alreadySpawned.forEach { mp -> project.daemons[mp]?.let { watchPropagator.recompute(it) } }
-    return textCallToolResult(
-      "watching $entry (already-up: ${alreadySpawned.size}, spawning: ${pending.size})"
-    )
+    if (awaitDiscovery && pendingFutures.isNotEmpty()) {
+      val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(awaitTimeoutMs)
+      for ((mp, future) in pendingFutures) {
+        val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
+        if (remainingMs <= 0) break
+        runCatching { future.get(remainingMs, TimeUnit.MILLISECONDS) }
+          .onFailure { System.err.println("watch: awaitDiscovery failed for $mp: ${it.message}") }
+      }
+    }
+    val readiness = watchReadiness(project, toSpawnSet)
+    val readyCount = readiness.count { it.discoveryReady }
+    val payload = buildJsonObject {
+      put("message", "watching $entry")
+      put("workspaceId", workspaceId.value)
+      module?.let { put("module", it) }
+      glob?.let { put("fqnGlob", it) }
+      put("awaitDiscovery", awaitDiscovery)
+      put("alreadyUp", alreadySpawned.size)
+      put("spawning", pending.size)
+      put("ready", readyCount == readiness.size)
+      put("readyModules", readyCount)
+      put("totalModules", readiness.size)
+      if (readyCount < readiness.size) put("retryAfterMs", WATCH_DISCOVERY_RETRY_AFTER_MS)
+      putJsonArray("modules") {
+        readiness.forEach { state ->
+          add(
+            buildJsonObject {
+              put("module", state.modulePath)
+              put("spawned", state.spawned)
+              put("discoveryReady", state.discoveryReady)
+              put("previewCount", state.previewCount)
+            }
+          )
+        }
+      }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
+
+  private fun watchReadiness(
+    project: RegisteredProject,
+    modulePaths: Set<String>,
+  ): List<WatchReadiness> =
+    modulePaths.sorted().map { mp ->
+      val daemon = project.daemons[mp]
+      val addr = DaemonAddr(project.workspaceId, mp)
+      WatchReadiness(
+        modulePath = mp,
+        spawned = daemon != null,
+        discoveryReady = daemon?.initialDiscoveryComplete == true,
+        previewCount = catalog[addr]?.size ?: 0,
+      )
+    }
 
   private fun toolUnwatch(session: McpSession, args: JsonObject): CallToolResult {
     val workspaceId = args["workspaceId"]?.jsonPrimitive?.contentOrNull?.let(::WorkspaceId)
@@ -2408,6 +2471,7 @@ class DaemonMcpServer(
   // -------------------------------------------------------------------------
 
   private fun onDiscoveryUpdated(daemon: SupervisedDaemon, params: JsonObject?) {
+    daemon.initialDiscoveryComplete = true
     val addr = DaemonAddr(daemon.workspaceId, daemon.modulePath)
     val byId = catalog.computeIfAbsent(addr) { ConcurrentHashMap() }
     val added = (params?.get("added") as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
@@ -2707,6 +2771,13 @@ class DaemonMcpServer(
     val extras: JsonElement? = null,
   )
 
+  private data class WatchReadiness(
+    val modulePath: String,
+    val spawned: Boolean,
+    val discoveryReady: Boolean,
+    val previewCount: Int,
+  )
+
   private sealed interface RenderOutcome {
     data class Finished(val pngPath: String) : RenderOutcome
 
@@ -2780,6 +2851,9 @@ class DaemonMcpServer(
      * replica-spawn pool cap.
      */
     private const val DAEMON_LIFECYCLE_THREADS: Int = 4
+
+    /** Suggested delay before polling `watch(awaitDiscovery=false)` readiness again. */
+    private const val WATCH_DISCOVERY_RETRY_AFTER_MS: Long = 500
 
     /**
      * D2.1 — default `kind` for `render_preview_overlay` when the caller doesn't specify one.

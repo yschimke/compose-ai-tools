@@ -196,37 +196,44 @@ class DaemonSupervisor(
     )
     supervised.attachSpawn(spawn)
     runCatching {
-      val result =
-        spawn.client.initialize(
-          workspaceRoot = project.path.absolutePath,
-          moduleId = descriptor.modulePath,
-          moduleProjectDir = descriptor.workingDirectory,
-          attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
+        val result =
+          spawn.client.initialize(
+            workspaceRoot = project.path.absolutePath,
+            moduleId = descriptor.modulePath,
+            moduleProjectDir = descriptor.workingDirectory,
+            attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
+          )
+        // D1 — surface the daemon's advertised data-product kinds so the MCP server's
+        // `list_data_products` tool can answer without a wire round-trip. Empty list on pre-D2
+        // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
+        // and `[]` collapse the same way client-side.
+        supervised.dataProductCapabilities = result.capabilities.dataProducts
+        // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
+        // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
+        // backend will actually apply (instead of silently no-op'ing fields the backend ignores)
+        // and
+        // reject typo'd `device` ids before they fall back to the default. Pre-feature daemons
+        // advertise `[]` for both, in which case validation falls open — clients are exactly where
+        // they were before the capability landed.
+        supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
+        supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
+        supervised.backendKind = result.capabilities.backend
+        // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
+        // open and `record_preview` calls round-trip without the diagnostic.
+        supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
+        // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
+        // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
+        // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
+        // reading that file and dispatching it through the router as if it were a wire-level
+        // event.
+        synthesiseInitialDiscovery(supervised, result.manifest.path)
+        supervised.initialDiscoveryComplete = true
+      }
+      .onFailure { e ->
+        System.err.println(
+          "daemon initialize failed for ${project.workspaceId}/${descriptor.modulePath}: ${e.message}"
         )
-      // D1 — surface the daemon's advertised data-product kinds so the MCP server's
-      // `list_data_products` tool can answer without a wire round-trip. Empty list on pre-D2
-      // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
-      // and `[]` collapse the same way client-side.
-      supervised.dataProductCapabilities = result.capabilities.dataProducts
-      // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
-      // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
-      // backend will actually apply (instead of silently no-op'ing fields the backend ignores) and
-      // reject typo'd `device` ids before they fall back to the default. Pre-feature daemons
-      // advertise `[]` for both, in which case validation falls open — clients are exactly where
-      // they were before the capability landed.
-      supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
-      supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
-      supervised.backendKind = result.capabilities.backend
-      // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
-      // open and `record_preview` calls round-trip without the diagnostic.
-      supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
-      // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
-      // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
-      // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
-      // reading that file and dispatching it through the router as if it were a wire-level
-      // event.
-      synthesiseInitialDiscovery(supervised, result.manifest.path)
-    }
+      }
 
     return supervised
   }
@@ -298,6 +305,16 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    * caller thread reads this through [client] / [allClients] without external synchronisation.
    */
   @Volatile private var spawn: DaemonSpawn? = null
+
+  /**
+   * True once the supervisor has completed the initialize round-trip and attempted to seed the MCP
+   * catalog from the daemon's initial manifest. A daemon can be discovery-complete with zero
+   * previews; clients should pair this flag with the MCP catalog's preview count rather than
+   * treating an empty resource list as "still warming".
+   */
+  @Volatile
+  var initialDiscoveryComplete: Boolean = false
+    internal set
 
   /**
    * D1 — kinds the daemon advertised via `initialize.capabilities.dataProducts`. Populated by

@@ -210,11 +210,60 @@ class DaemonMcpServerTest {
         },
       )
     assertThat(watchResp.firstTextContent()).contains("watching")
+    val watchPayload = json.parseToJsonElement(watchResp.firstTextContent()).jsonObject
+    assertThat(watchPayload["ready"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    val moduleState = watchPayload["modules"]!!.jsonArray.single().jsonObject
+    assertThat(moduleState["discoveryReady"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(moduleState["previewCount"]?.jsonPrimitive?.contentOrNull?.toInt()).isEqualTo(2)
 
     val visible = daemon.visibleSets.poll(2_000, TimeUnit.MILLISECONDS)
     val focus = daemon.focusSets.poll(2_000, TimeUnit.MILLISECONDS)
     assertThat(visible).isEqualTo(listOf("com.example.Red"))
     assertThat(focus).isEqualTo(listOf("com.example.Red"))
+  }
+
+  @Test
+  fun `watch awaitDiscovery waits for daemon startup and reports readiness`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val register =
+      client.callTool(
+        "register_project",
+        buildJsonObject {
+          put("path", projectDir.absolutePath)
+          put("rootProjectName", "demo")
+          putJsonArray("modules") { add(JsonPrimitive(":module")) }
+        },
+      )
+    val workspaceId =
+      WorkspaceId(
+        json
+          .parseToJsonElement(register.firstTextContent())
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      )
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val watchResp =
+      client.callTool(
+        "watch",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("awaitDiscovery", true)
+        },
+      )
+    val payload = json.parseToJsonElement(watchResp.firstTextContent()).jsonObject
+    assertThat(payload["awaitDiscovery"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(payload["ready"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(payload["spawning"]?.jsonPrimitive?.contentOrNull?.toInt()).isEqualTo(1)
+    val moduleState = payload["modules"]!!.jsonArray.single().jsonObject
+    assertThat(moduleState["module"]?.jsonPrimitive?.contentOrNull).isEqualTo(":module")
+    assertThat(moduleState["spawned"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(moduleState["discoveryReady"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(moduleState["previewCount"]?.jsonPrimitive?.contentOrNull?.toInt()).isEqualTo(0)
+    assertThat(factory.spawnHistory).hasSize(1)
   }
 
   @Test

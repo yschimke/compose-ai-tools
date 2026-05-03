@@ -107,6 +107,15 @@ not two (set semantics in [`Subscriptions`](../../mcp/src/main/kotlin/ee/schimke
 `discoveryUpdated` (the daemon's "set of previews changed" signal) maps
 to `notifications/resources/list_changed`.
 
+`watch` is non-blocking by default: it records the area of interest and
+starts any matching daemons in the background. The tool response includes
+per-module readiness (`spawned`, `discoveryReady`, `previewCount`, and
+`retryAfterMs` when not ready), so agents can tell whether an immediate
+`resources/list` is expected to include discovered previews yet. Agents that
+need deterministic startup can call `watch(..., awaitDiscovery=true)`, which
+keeps the existing watch semantics but waits until matched daemon startup has
+completed its initial discovery pass before returning.
+
 `historyAdded` (a new history entry landed for a preview) also maps to
 `notifications/resources/list_changed` — the entry-set for that preview
 grew by one, and a subscriber filtering on the `compose-preview-history://`
@@ -130,7 +139,7 @@ Current tools:
 | `list_projects()` | List registered projects. | MCP lifecycle only. |
 | `list_devices()` | List the known `@Preview(device=...)` catalog with resolved geometry. | **Good CLI fit:** pure query, no daemon spawn needed. |
 | `render_preview(uri, overrides?)` | Force-render a preview, returning the PNG inline. | Partly covered by `render`; daemon-backed overrides are a larger follow-up. |
-| `watch(workspaceId, module?, fqnGlob?)` | Register an area of interest and keep matching previews warm. | MCP/session only. |
+| `watch(workspaceId, module?, fqnGlob?, awaitDiscovery?, awaitTimeoutMs?)` | Register an area of interest and keep matching previews warm. With `awaitDiscovery=true`, wait for matched daemon startup/initial discovery before returning readiness. | MCP/session only. |
 | `unwatch(workspaceId?, module?, fqnGlob?)` | Drop matching watches. | MCP/session only. |
 | `list_watches()` | List watches registered by the current session. | MCP/session only. |
 | `notify_file_changed(workspaceId, path, kind?, changeType?)` | Forward a file-edit notification to daemon(s). | MCP/session only; CLI already uses Gradle tasks for one-shot freshness. |
