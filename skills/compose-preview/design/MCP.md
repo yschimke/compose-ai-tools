@@ -21,27 +21,35 @@ If you just want a one-shot render or a CI diff comment, the CLI
 (`compose-preview show --json`) is simpler and has the same render engine
 behind it. Reach for MCP when the loop is long-lived.
 
-## Setup in three commands
+## Setup
 
 The `compose-preview` CLI bundles the MCP server. There is no second
 download, no manual classpath, no `claude mcp add` argument to compose by
 hand.
 
 ```bash
-# 1. Bootstrap descriptors + previews.json for every plugin-applied module
-#    in your project. Idempotent; safe to re-run.
-compose-preview mcp install --project /abs/path/to/your-repo
+# Run from the project root. Bootstraps descriptors + previews.json for every
+# plugin-applied module. When run inside Antigravity, also installs the MCP
+# server into Antigravity's config.
+compose-preview mcp install
 
-# 2. Verify per-module state (descriptor present, enabled=true).
-compose-preview mcp doctor --project /abs/path/to/your-repo
+# Outside Antigravity, force the same config write explicitly.
+compose-preview mcp install --antigravity
 
-# 3. Wire it into your agent host. The exact command is what
-#    `mcp install` printed on stdout — copy/paste it.
+# Verify per-module state (descriptor present, enabled=true).
+compose-preview mcp doctor
+
+# For Claude Code, copy/paste the command that `mcp install` printed:
 claude mcp add compose-preview-mcp -- compose-preview mcp serve \
   --project=/abs/path/to/your-repo
 ```
 
-`compose-preview mcp install` does three things behind the scenes:
+`compose-preview mcp serve` also defaults `--project` to the current Gradle
+root when run from a project checkout. Antigravity auto-detection uses
+`__CFBundleIdentifier=com.google.antigravity` or `ANTIGRAVITY_CLI_ALIAS`. When
+Antigravity config is written, it still uses absolute paths because
+Antigravity may launch the server from a different working directory. `mcp
+install` does three things behind the scenes:
 
 1. Runs `composePreviewDaemonStart` for every module that applies the plugin,
    so each `<module>/build/compose-previews/daemon-launch.json` exists.
