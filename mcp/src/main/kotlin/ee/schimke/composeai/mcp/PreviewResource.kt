@@ -132,16 +132,15 @@ data class PreviewUri(
  * We round-trip the value through the URI without any encoding because the daemon's id format
  * already excludes `/` and `?`.
  */
-data class HistoryUri(
+class HistoryUri(
   val workspaceId: WorkspaceId,
-  val modulePath: String,
+  modulePath: String,
   val previewFqn: String,
   val entryId: String,
 ) {
+  val modulePath: String = normalizeModulePath(modulePath)
+
   init {
-    require(modulePath.startsWith(":")) {
-      "HistoryUri.modulePath must start with ':' (got '$modulePath')"
-    }
     require(!previewFqn.contains('/') && !previewFqn.contains('?')) {
       "HistoryUri.previewFqn must not contain '/' or '?' (got '$previewFqn')"
     }
@@ -157,6 +156,12 @@ data class HistoryUri(
 
   companion object {
     const val SCHEME: String = "compose-preview-history"
+
+    private fun normalizeModulePath(modulePath: String): String {
+      val trimmed = modulePath.trim()
+      require(trimmed.isNotEmpty()) { "HistoryUri.modulePath must not be blank" }
+      return if (trimmed.startsWith(":")) trimmed else ":$trimmed"
+    }
 
     fun parseOrNull(s: String): HistoryUri? {
       val prefix = "$SCHEME://"

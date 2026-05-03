@@ -66,6 +66,7 @@ wear-compose-remote = "1.0.0-alpha02"
 compose-ui-prerelease = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
+mcp-kotlin-sdk = "0.11.1"
 junit = "4.13.2"
 truth = "1.4.5"
 maven-publish = "0.36.0"
@@ -118,6 +119,7 @@ wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-m
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.59.0" }

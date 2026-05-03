@@ -44,6 +44,7 @@ tasks.named<Tar>("distTar") {
 dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
+  implementation(libs.mcp.kotlin.sdk.server)
   // For DaemonClasspathDescriptor (read at supervisor spawn time) and the protocol message types
   // exchanged with daemon JVMs.
   implementation(project(":daemon:core"))
@@ -52,13 +53,6 @@ dependencies {
   testImplementation(libs.truth)
   testImplementation(libs.kotlinx.coroutines.core)
 }
-
-// We deliberately do NOT depend on `io.modelcontextprotocol:kotlin-sdk` in v0:
-// - The SDK auto-registers internal handlers for `resources/list` / `resources/read` / `subscribe`,
-//   making the dynamic catalog + push subscription model we need awkward to bolt on.
-// - Rolling our own keeps the wire layer self-contained, mirrors the proven
-//   `:daemon:core` `JsonRpcServer` framing, and removes a 0.x-version-pin risk.
-// - The SDK can be reintroduced as a non-breaking internal refactor once the surface stabilises.
 
 tasks.withType<Test>().configureEach {
   // Opt-in real-mode: `-Pmcp.real=true` flips the JUnit `Assume` gate in
