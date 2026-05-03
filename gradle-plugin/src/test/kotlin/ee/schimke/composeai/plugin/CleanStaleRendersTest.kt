@@ -1,9 +1,13 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class CleanStaleRendersTest {
+
+  @get:Rule val tempDir = TemporaryFolder()
 
   private val expected = setOf("Foo.png", "sub/Bar.png", "Baz_TIME_500ms.png")
 
@@ -33,5 +37,81 @@ class CleanStaleRendersTest {
     // so the caller decides.
     assertThat(ComposePreviewTasks.isA11ySiblingOfExpected("Foo.png", expected)).isFalse()
     assertThat(ComposePreviewTasks.isA11ySiblingOfExpected("Foo.gif", expected)).isFalse()
+  }
+
+  @Test
+  fun `missing output check includes scroll data products`() {
+    val outDir = tempDir.root.resolve("build/compose-previews")
+    outDir.resolve("renders/Foo.png").also {
+      it.parentFile.mkdirs()
+      it.writeBytes(byteArrayOf(1))
+    }
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "Foo",
+              functionName = "Foo",
+              className = "com.example.PreviewsKt",
+              captures = listOf(Capture(renderOutput = "renders/Foo.png")),
+              dataProducts =
+                listOf(
+                  PreviewDataProduct(
+                    kind = "render/scroll/long",
+                    output = "data/render-scroll-long/Foo.png",
+                    cost = SCROLL_LONG_COST,
+                  )
+                ),
+            )
+          ),
+      )
+
+    assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = false))
+      .containsExactly("Foo")
+
+    outDir.resolve("data/render-scroll-long/Foo.png").also {
+      it.parentFile.mkdirs()
+      it.writeBytes(byteArrayOf(2))
+    }
+
+    assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = false))
+      .isEmpty()
+  }
+
+  @Test
+  fun `fast tier tolerates missing heavy data products`() {
+    val outDir = tempDir.root.resolve("build/compose-previews")
+    outDir.resolve("renders/Foo.png").also {
+      it.parentFile.mkdirs()
+      it.writeBytes(byteArrayOf(1))
+    }
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "Foo",
+              functionName = "Foo",
+              className = "com.example.PreviewsKt",
+              captures = listOf(Capture(renderOutput = "renders/Foo.png")),
+              dataProducts =
+                listOf(
+                  PreviewDataProduct(
+                    kind = "render/scroll/long",
+                    output = "data/render-scroll-long/Foo.png",
+                    cost = SCROLL_LONG_COST,
+                  )
+                ),
+            )
+          ),
+      )
+
+    assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = true))
+      .isEmpty()
   }
 }
