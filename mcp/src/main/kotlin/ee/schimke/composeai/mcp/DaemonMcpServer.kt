@@ -25,10 +25,12 @@ import ee.schimke.composeai.mcp.protocol.ToolDef
 import ee.schimke.composeai.mcp.protocol.ToolsCapability
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -910,6 +912,10 @@ class DaemonMcpServer(
             "`rememberInfiniteTransition` advance with virtual time, not wall-clock — agents can " +
             "compose a multi-second timeline in milliseconds of agent latency and the video plays " +
             "back at human cadence. " +
+            "**Verification metadata.** The text metadata block includes `frames[]` with per-frame " +
+            "paths, SHA-256 hashes, and changed-pixel counts from the previous frame, plus " +
+            "`changedFrameCount` / first-last changed-frame paths so agents can assert that a " +
+            "click or scroll changed UI without decoding APNG/MP4/WebM bytes. " +
             "**Component previews.** Pass `overrides.{widthPx,heightPx,backgroundColor}` to record " +
             "a button-sized preview at native size with a custom background; raise `scale` to " +
             "upsample for legibility. Pointer coords always reference image-natural pixels, never " +
@@ -2065,6 +2071,7 @@ class DaemonMcpServer(
           daemon.client.recordingScript(recordingId, events)
         }
         val stopResult = daemon.client.recordingStop(recordingId)
+        val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
         val encoded = daemon.client.recordingEncode(recordingId, format)
         val videoBytes = Files.readAllBytes(File(encoded.videoPath).toPath())
         val payload = buildJsonObject {
@@ -2077,6 +2084,38 @@ class DaemonMcpServer(
           put("framesDir", stopResult.framesDir)
           put("frameWidthPx", stopResult.frameWidthPx)
           put("frameHeightPx", stopResult.frameHeightPx)
+          put("framesDir", stopResult.framesDir)
+          put("changedFrameCount", frameMetadata.count { it.changedFromPrevious })
+          frameMetadata.firstOrNull()?.let { put("firstFramePath", it.path) }
+          frameMetadata.lastOrNull()?.let { put("lastFramePath", it.path) }
+          frameMetadata
+            .firstOrNull { it.changedFromPrevious }
+            ?.let {
+              put("firstChangedFramePath", it.path)
+              put("firstChangedFrameIndex", it.index)
+            }
+          frameMetadata
+            .lastOrNull { it.changedFromPrevious }
+            ?.let {
+              put("lastChangedFramePath", it.path)
+              put("lastChangedFrameIndex", it.index)
+            }
+          putJsonArray("frames") {
+            for (frame in frameMetadata) {
+              add(
+                buildJsonObject {
+                  put("index", frame.index)
+                  put("path", frame.path)
+                  put("sha256", frame.sha256)
+                  put("changedFromPrevious", frame.changedFromPrevious)
+                  frame.changedPixelsFromPrevious?.let { put("changedPixelsFromPrevious", it) }
+                  frame.dimensionChangedFromPrevious?.let {
+                    put("dimensionChangedFromPrevious", it)
+                  }
+                }
+              )
+            }
+          }
         }
         // Per the MCP 2025-06-18 spec, only `image/*` mimeTypes belong in `ContentBlock.Image`;
         // strict clients reject mismatches. APNG (`image/apng`) round-trips as an image; mp4 /
@@ -2099,6 +2138,83 @@ class DaemonMcpServer(
         CallToolResult(content = listOf(mediaBlock, ContentBlock.Text(payload.toString())))
       }
       .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
+  }
+
+  private data class RecordingFrameMetadata(
+    val index: Int,
+    val path: String,
+    val sha256: String,
+    val changedFromPrevious: Boolean,
+    val changedPixelsFromPrevious: Int?,
+    val dimensionChangedFromPrevious: Boolean?,
+  )
+
+  private fun inspectRecordingFrames(framesDir: File): List<RecordingFrameMetadata> {
+    val frames =
+      framesDir
+        .listFiles { f -> f.isFile && f.extension.equals("png", ignoreCase = true) }
+        ?.sortedBy { it.name }
+        .orEmpty()
+    var previous: java.awt.image.BufferedImage? = null
+    return frames.mapIndexed { index, frame ->
+      val image = runCatching { ImageIO.read(frame) }.getOrNull()
+      val previousImage = previous
+      val changedPixels =
+        if (previousImage != null && image != null && sameDimensions(previousImage, image)) {
+          countChangedPixels(previousImage, image)
+        } else {
+          null
+        }
+      val dimensionChanged =
+        if (previousImage != null && image != null) !sameDimensions(previousImage, image) else null
+      val changedFromPrevious =
+        when {
+          index == 0 -> false
+          changedPixels != null -> changedPixels > 0
+          dimensionChanged == true -> true
+          else -> false
+        }
+      if (image != null) previous = image
+      RecordingFrameMetadata(
+        index = index,
+        path = frame.absolutePath,
+        sha256 = sha256Hex(frame),
+        changedFromPrevious = changedFromPrevious,
+        changedPixelsFromPrevious = changedPixels,
+        dimensionChangedFromPrevious = dimensionChanged,
+      )
+    }
+  }
+
+  private fun sameDimensions(
+    a: java.awt.image.BufferedImage,
+    b: java.awt.image.BufferedImage,
+  ): Boolean = a.width == b.width && a.height == b.height
+
+  private fun countChangedPixels(
+    a: java.awt.image.BufferedImage,
+    b: java.awt.image.BufferedImage,
+  ): Int {
+    var changed = 0
+    for (y in 0 until a.height) {
+      for (x in 0 until a.width) {
+        if (a.getRGB(x, y) != b.getRGB(x, y)) changed++
+      }
+    }
+    return changed
+  }
+
+  private fun sha256Hex(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().buffered().use { input ->
+      val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+      while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        digest.update(buffer, 0, read)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
   }
 
   /**

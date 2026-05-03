@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
+import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -15,6 +16,7 @@ import java.util.Base64
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -799,6 +801,10 @@ class DaemonMcpServerTest {
     // the pre-loaded bytes to a temp file and the MCP server reads them back. That's enough to
     // verify the wire flow without standing up a real Compose backend.
     val recordingsDir = tmp.newFolder("recordings-out")
+    val framesDir = tmp.newFolder("recording-frames")
+    writeSolidPng(framesDir.resolve("frame-00000.png"), 0xFF000000.toInt())
+    writeSolidPng(framesDir.resolve("frame-00001.png"), 0xFFFFFFFF.toInt())
+    writeSolidPng(framesDir.resolve("frame-00002.png"), 0xFFFFFFFF.toInt())
     val cannedApngBytes =
       // PNG signature + an arbitrary tail. The MCP server reads these verbatim; we don't decode.
       byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02, 0x03, 0x04, 0x05)
@@ -809,7 +815,7 @@ class DaemonMcpServerTest {
         ee.schimke.composeai.daemon.protocol.RecordingStopResult(
           frameCount = 16,
           durationMs = 500L,
-          framesDir = "${recordingsDir.absolutePath}/frames",
+          framesDir = framesDir.absolutePath,
           frameWidthPx = 240,
           frameHeightPx = 80,
         )
@@ -905,6 +911,45 @@ class DaemonMcpServerTest {
       .isEqualTo("${recordingsDir.absolutePath}/frames")
     assertThat(metadata["frameWidthPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(240)
     assertThat(metadata["frameHeightPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(80)
+    assertThat(metadata["framesDir"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo(framesDir.absolutePath)
+    assertThat(metadata["changedFrameCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull())
+      .isEqualTo(1)
+    assertThat(metadata["firstFramePath"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo(framesDir.resolve("frame-00000.png").absolutePath)
+    assertThat(metadata["lastFramePath"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo(framesDir.resolve("frame-00002.png").absolutePath)
+    assertThat(metadata["firstChangedFramePath"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo(framesDir.resolve("frame-00001.png").absolutePath)
+    assertThat(metadata["lastChangedFrameIndex"]?.jsonPrimitive?.contentOrNull?.toIntOrNull())
+      .isEqualTo(1)
+    val frames = metadata["frames"]!!.jsonArray
+    assertThat(frames).hasSize(3)
+    assertThat(frames[0].jsonObject["index"]?.jsonPrimitive?.contentOrNull?.toIntOrNull())
+      .isEqualTo(0)
+    assertThat(frames[0].jsonObject["sha256"]?.jsonPrimitive?.contentOrNull).hasLength(64)
+    assertThat(frames[0].jsonObject["changedFromPrevious"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("false")
+    assertThat(frames[1].jsonObject["changedFromPrevious"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("true")
+    assertThat(
+        frames[1]
+          .jsonObject["changedPixelsFromPrevious"]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toIntOrNull()
+      )
+      .isEqualTo(4)
+    assertThat(frames[2].jsonObject["changedFromPrevious"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("false")
+    assertThat(
+        frames[2]
+          .jsonObject["changedPixelsFromPrevious"]
+          ?.jsonPrimitive
+          ?.contentOrNull
+          ?.toIntOrNull()
+      )
+      .isEqualTo(0)
     assertThat(metadata["sizeBytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull())
       .isEqualTo(cannedApngBytes.size.toLong())
   }
@@ -1914,6 +1959,16 @@ class DaemonMcpServerTest {
     // the fake responds and the spawn is recorded in factory.daemons.
     supervisor.daemonFor(workspaceId, modulePath)
     return factory.daemons.getValue(workspaceId to modulePath)
+  }
+
+  private fun writeSolidPng(file: java.io.File, argb: Int) {
+    val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB)
+    for (y in 0 until image.height) {
+      for (x in 0 until image.width) {
+        image.setRGB(x, y, argb)
+      }
+    }
+    ImageIO.write(image, "png", file)
   }
 
   private fun pipedPair(): Pair<OutputStream, InputStream> {
