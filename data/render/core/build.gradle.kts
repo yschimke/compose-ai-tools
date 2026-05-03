@@ -1,11 +1,34 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
+import tapmoc.TapmocExtension
+import tapmoc.configureKotlinCompatibility
+
 plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
+  `maven-publish`
+  alias(libs.plugins.maven.publish)
+  alias(libs.plugins.tapmoc)
 }
+
+// See preview-annotations/build.gradle.kts for the rationale.
+configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
+
+tasks.withType<KotlinCompilationTask<*>>().configureEach {
+  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
+}
+
+extensions.configure<TapmocExtension> { checkDependencies() }
 
 group = "ee.schimke.composeai"
 
-version = providers.environmentVariable("PLUGIN_VERSION").orNull ?: "0.0.0-SNAPSHOT"
+version =
+  providers.environmentVariable("PLUGIN_VERSION").orNull
+    ?: run {
+      val manifest = rootDir.resolve(".release-please-manifest.json").readText()
+      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
+      val (major, minor, patch) = current.split(".").map { it.toInt() }
+      "$major.$minor.${patch + 1}-SNAPSHOT"
+    }
 
 dependencies {
   api(libs.kotlinx.serialization.json)
@@ -15,3 +38,60 @@ dependencies {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 
 tasks.withType<Test>().configureEach { useJUnit() }
+
+publishing {
+  repositories {
+    maven {
+      name = "GitHubPackages"
+      url =
+        uri(
+          providers
+            .environmentVariable("GITHUB_REPOSITORY")
+            .map { "https://maven.pkg.github.com/$it" }
+            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
+        )
+      credentials {
+        username = providers.environmentVariable("GITHUB_ACTOR").orNull
+        password = providers.environmentVariable("GITHUB_TOKEN").orNull
+      }
+    }
+  }
+}
+
+mavenPublishing {
+  publishToMavenCentral(automaticRelease = true)
+  if (!version.toString().endsWith("SNAPSHOT")) {
+    signAllPublications()
+  }
+
+  coordinates("ee.schimke.composeai", "data-render-core", version.toString())
+
+  pom {
+    name.set("Compose Preview — Render Data Product (Core)")
+    description.set(
+      "Renderer-agnostic preview context and render data-product model classes shared by " +
+        "the Android renderer and daemon data-product connectors."
+    )
+    url.set("https://github.com/yschimke/compose-ai-tools")
+    inceptionYear.set("2026")
+    licenses {
+      license {
+        name.set("The Apache License, Version 2.0")
+        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+        distribution.set("repo")
+      }
+    }
+    developers {
+      developer {
+        id.set("yschimke")
+        name.set("Yuri Schimke")
+        url.set("https://github.com/yschimke")
+      }
+    }
+    scm {
+      url.set("https://github.com/yschimke/compose-ai-tools")
+      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
+    }
+  }
+}

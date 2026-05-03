@@ -54,6 +54,8 @@ jobs:
             :gradle-plugin:publishToMavenCentral \
             :data-a11y-core:publishToMavenCentral \
             :data-a11y-connector:publishToMavenCentral \
+            :data-render-core:publishToMavenCentral \
+            :data-scroll-core:publishToMavenCentral \
             :renderer-android:publishToMavenCentral \
             :preview-annotations:publishToMavenCentral \
             :daemon:core:publishToMavenCentral \
