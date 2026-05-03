@@ -432,6 +432,21 @@ host listens for `swapUserClassLoaders()` and posts an
 `channelClosed` cleanup (#424) catches the symmetric extension-side
 state cleanup.
 
+**State restoration after rebuild.** Issue #675 adds a stricter check
+on top of this lifecycle rule: if the preview uses `rememberSaveable`,
+the next session after a source edit should restore serializable state
+into the new composition while still resolving the edited bytecode.
+The test design lives in
+[`TEST-HARNESS.md` S11](TEST-HARNESS.md#s11--state-restoration-after-edit-proposed).
+The production rule stays the same: never keep the stale composition
+alive after `fileChanged(source)`. The new shape is a
+`state-restoration` preview extension that asks the Android host for
+explicit lifecycle operations: local save/restore, mocked
+`SavedStateRegistryOwner` read/write, Activity background/resume, or
+Activity recreate. The host snapshots Bundle-compatible state before
+close, swaps classloaders, and restores into the fresh held rule only
+when the requested scenario supports that handoff.
+
 ## 7. Host-side `AndroidInteractiveSession`
 
 Mirrors `DesktopInteractiveSession` (#408) at the protocol surface.

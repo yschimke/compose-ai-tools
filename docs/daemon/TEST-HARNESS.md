@@ -152,6 +152,7 @@ declarative — no helpers buried in test bodies.
 | S8 | Cost-model parity | none | cost catalogue matches measured wall-time |
 | S9 | Sandbox-recycle behaviour | B2.5 | recycle invariant (DESIGN § 9) |
 | S10 | Predictive prefetch hit | P2.5.2 | speculative renders surface as `tier=speculative-high` |
+| S11 | State restoration after edit | proposed | saveable UI state survives session rebuild after source edit |
 
 Detailed flow per scenario:
 
@@ -247,6 +248,199 @@ shortly before `setFocus(["B"])`. Asserts the `renderFinished` for B
 carries `metrics.speculation.tier == "speculative-high"` and that
 `renderUtilized({id:"B"})` arrives within the `speculative-high`
 horizon. Gated on P2.5.2; placeholder hook today.
+
+### S11 — State restoration after edit (proposed)
+
+Goal: prove the issue-675 failure mode directly: after a user changes
+source while an interactive preview has live state, the daemon tears down
+the stale composition, swaps to the fresh user classloader, restores
+saveable state, and the resumed UI is the same logical screen rendered
+from the edited bytecode.
+
+This should now be designed as a preview extension, not as a
+harness-only special case. The recent composable extension surface
+(`AroundComposableHook`, `ComposableExtractorHook`,
+`CompositionObserverHook`, frame drivers, and command discovery) gives
+us the right host-agnostic place to model lifecycle/state-restoration
+checks. The harness should drive that extension end-to-end; the extension
+should own the reusable Compose and Android saved-state mechanics.
+
+Research summary:
+
+- `androidx.compose.ui.test.junit4.StateRestorationTester` is the right
+  first reference for local `rememberSaveable` behavior. It saves state,
+  disposes the current composition, composes the content again, and
+  verifies `rememberSaveable` restores while regular `remember` state is
+  lost. AndroidX explicitly scopes it to local composable state and not
+  app/platform lifecycle or Activity callbacks.
+- The common Compose UI test API has an experimental
+  `androidx.compose.ui.test.StateRestorationTester` with the same
+  `rememberSaveable` focus, so the local rung can eventually be shared
+  with Compose Multiplatform hosts.
+- Platform integration needs AndroidX saved-state and lifecycle owners:
+  `SavedStateRegistryController.performAttach`, `performRestore`, and
+  `performSave`, with `ViewTreeLifecycleOwner` and
+  `ViewTreeSavedStateRegistryOwner` installed when the host is a raw
+  `ComposeView`.
+- Real Activity behavior should be a separate rung using
+  `ActivityScenario`: move to background/foreground states and call
+  `recreate()` when the audit needs true Activity instance replacement.
+
+Recommended extension shape:
+
+- Add a `state-restoration` preview extension descriptor whose first
+  surface is agent-usable primitives, not a single check. Initial
+  commands:
+  - `state-restoration.probe` reads named text/semantics probes from the
+    current composition.
+  - `state-restoration.save` snapshots serializable saveable state from
+    the current held composition or Activity owner.
+  - `state-restoration.restore` applies a prior saved-state checkpoint to
+    a freshly-created composition when the host supports it.
+  - `state-restoration.lifecycle` drives lifecycle operations such as
+    local save/restore, stop/start/resume, or Activity recreate.
+  - `state-restoration.reload` closes the current held session and starts
+    the same preview again, optionally restoring a checkpoint.
+  A later `state-restoration.verify` command can be a convenience policy
+  composed from these primitives.
+- Use data product kind `test/stateRestoration` for the evidence emitted
+  by each primitive operation and by any composed verification wrapper.
+- The product payload should record the requested scenario, lifecycle
+  phases driven, mutation script, operation id, checkpoint id, before/after
+  text or semantics probes, saved keys/value classes where safe to report,
+  screenshots or history ids, and an operation status. Agents should not
+  infer success from a screenshot alone.
+- Implement the reusable Compose wrapper as an `AroundComposableHook`
+  when the host needs to install test owners around raw content, and use
+  `CompositionObserverHook` or `ComposableExtractorHook` to emit probe
+  results into the sink. Host integrations can map that sink into
+  `test/stateRestoration`.
+- Keep the first implementation Android-only. The API should not bake in
+  Robolectric, but the only platform-level owner semantics we can test
+  now are Android lifecycle and saved-state.
+
+Fixture:
+
+- Add an Android real-mode fixture preview, for example
+  `RestorableCounterPreview`.
+- Its UI contains `var count by rememberSaveable { mutableStateOf(0) }`,
+  a stable clickable target that increments `count`, visible text
+  `count=<n>`, and visible text from bytecode that can change from
+  `version=before` to `version=after`.
+- Add a control value with plain `remember` so the local rung proves it
+  is lost while `rememberSaveable` survives.
+- Keep v1 saved values primitive or `Bundle`-compatible (`Int`,
+  `String`, lists/maps of primitives). Custom `Saver` objects loaded by
+  the old child classloader should be a later test, not the first
+  acceptance case.
+
+Test ladder:
+
+1. **Local saveable restore.** Use `StateRestorationTester` with a
+   `ComposeContentTestRule`. Mutate the preview, call
+   `emulateSavedInstanceStateRestore()`, and assert `rememberSaveable`
+   state returns while `remember` state resets. This is cheap and should
+   be the fastest backend unit/integration test.
+2. **Mocked owner read/write.** Mount the composable with mocked
+   `LifecycleOwner` and `SavedStateRegistryOwner`, backed by
+   `LifecycleRegistry` and `SavedStateRegistryController`. Attach and
+   restore the controller before `setContent`, move lifecycle to
+   `RESUMED`, mutate the UI, move through `ON_STOP`, call `performSave`
+   into a `Bundle`, create a second owner from that bundle, and assert
+   the composable reads the saved value. If hosted in a raw
+   `ComposeView`, install the mocked owners with
+   `ViewTreeLifecycleOwner.set(...)` and
+   `ViewTreeSavedStateRegistryOwner.set(...)` before `setContent`.
+3. **Activity resume/recreate.** Use `ActivityScenario` through the
+   Android host when the check requests platform simulation. Drive
+   `moveToState(STARTED/RESUMED)` for background/resume checks and
+   `recreate()` for true Activity replacement. This is the rung that
+   answers "will this survive Activity resumption?" rather than just
+   "does rememberSaveable work?"
+4. **Daemon source-edit rebuild.** Start the real Android daemon with
+   `sandboxCount >= 2`, start the fixture as an interactive preview,
+   mutate state, snapshot serializable saveable state, recompile the
+   fixture from `version=before` to `version=after` using the same
+   bytecode-edit technique as S3.5, send `fileChanged({kind:"source"})`,
+   assert the old session closes before classloader swap, then start the
+   same preview again and verify `count=1` plus `version=after`.
+
+Script/lifecycle helper direction:
+
+- Yes, script mode should grow lifecycle helpers. Pointer/key events are
+  not enough to audit restoration because the important operations are
+  save, stop, resume, recreate, and recompose.
+- Add lifecycle events to the scripted preview/recording surface as
+  first-class operations, for example `saveState`, `stop`, `start`,
+  `resume`, `recreateActivity`, `reloadPreview`, and `restoreState`.
+  Keep them distinct from pointer events so invalid host support can fail
+  early with a clear `LifecycleSimulationUnsupported` result.
+- Model source edits as an explicit checkpoint flow:
+  mutate -> `state-restoration.save` -> source edit/recompile ->
+  `fileChanged(source)` -> `state-restoration.reload` ->
+  `state-restoration.restore` -> `state-restoration.probe`.
+  The save operation should be explicit so the agent can cite the state it
+  checkpointed before the reload.
+- For non-Activity hosts, support a local `saveAndRestoreComposition`
+  helper that maps to the `StateRestorationTester` semantics. It should
+  be reported as local composable restoration, not Activity recreation.
+- Recordings should be able to include lifecycle markers in their
+  metadata even when they do not produce visible changed pixels. Agents
+  need structured proof that the lifecycle transition happened.
+
+Agent workflow:
+
+1. Discover support:
+   `list_extension_commands(agentRecommended=true)` should include the
+   `state-restoration.*` primitives once the extension ships.
+2. Compose the workflow from primitives, for example:
+   `probe` initial values, render/click or `record_preview` to mutate,
+   `save`, apply the source edit, `reload`, `restore`, then `probe`
+   restored values.
+3. Use `state-restoration.verify` only when the default policy matches
+   the review question. It should be a shortcut over the primitives, not
+   the only interface.
+4. Inspect the `test/stateRestoration` result, not just the image. A
+   successful result must name the restored probes and lifecycle phases.
+5. For visual corroboration, compare the before/mutated/restored frames
+   or use `history/diff/regions`; this is supporting evidence, not the
+   primary assertion.
+
+Implementation notes:
+
+- The save/restore handoff belongs in the Android backend around the
+  held-rule loop (`RobolectricHost` / `AndroidInteractiveSession`), where
+  the sandbox already owns the `ComposeContentTestRule` and Activity.
+- Do not attempt to keep the old composition alive across
+  `fileChanged(source)`. Existing lifecycle rules correctly close the
+  session because its composable references old bytecode.
+- Persist only serializable saveable values across the classloader
+  boundary. If a value cannot be restored safely, the check should fail
+  with an explicit diagnostic or report `restoreSkipped`; it must not
+  silently pass by rendering a fresh `count=0` composition.
+- Keep fake mode to protocol ordering and payload validation. FakeHost
+  cannot validate Compose saveable state, Activity recreation, or
+  classloader identity.
+
+Acceptance criteria:
+
+- Backend tests cover all three non-daemon rungs:
+  `StateRestorationTester`, mocked owners, and Activity
+  resume/recreate.
+- The extension advertises `test/stateRestoration` and primitive
+  `state-restoration.*` commands through the extension command catalog.
+- `state-restoration.verify`, if present, is implemented as a composed
+  policy over the primitives rather than a separate hidden code path.
+- A real Android harness scenario proves
+  mutate -> save -> source edit -> `fileChanged(source)` -> session
+  rebuild -> restore.
+- The resumed render shows old saveable state (`count=1`) and new
+  bytecode (`version=after`).
+- The old session is deterministically closed before classloader swap,
+  and no `renderFinished` from the stale stream is accepted after the
+  edit notification.
+- Unsupported lifecycle operations produce clear structured failures,
+  never false greens.
 
 ## 4. Image verification
 

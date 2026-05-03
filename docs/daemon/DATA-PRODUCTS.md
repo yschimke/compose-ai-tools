@@ -766,6 +766,75 @@ renders write path-backed product files under `build/compose-previews/data/`:
 showing the scroll from top to bottom. Non-scrollable previews no-op through the
 same fallback behaviour as the renderer's scroll capture path.
 
+`test/stateRestoration` is a proposed Android-first evidence product owned by a
+future `state-restoration` preview extension. It should be produced by
+agent-invoked lifecycle/state primitives first, with higher-level checks layered
+on top later. The extension uses composable hooks to install or observe
+state-restoration probes, then asks the Android host to run operations such as:
+
+- local `rememberSaveable` save/restore, equivalent to AndroidX Compose
+  `StateRestorationTester`;
+- mocked `LifecycleOwner` plus `SavedStateRegistryOwner` read/write through
+  `SavedStateRegistryController`;
+- true Activity background/resume or `ActivityScenario.recreate()` when the
+  host can launch the preview in an Activity-backed composition.
+
+Proposed primitive commands:
+
+```text
+compose-preview extensions run state-restoration.probe --id <preview-id> --json
+compose-preview extensions run state-restoration.save --id <preview-id> --json
+compose-preview extensions run state-restoration.reload --id <preview-id> --json
+compose-preview extensions run state-restoration.restore --id <preview-id> --checkpoint <id> --json
+compose-preview extensions run state-restoration.lifecycle --id <preview-id> --event recreateActivity --json
+```
+
+`state-restoration.verify` can exist later as a convenience wrapper, but it
+should be implemented by composing the primitives above so agents can still
+inspect each step.
+
+Proposed MCP command routing:
+
+```json
+{
+  "commandId": "state-restoration.save",
+  "uri": "compose-preview://workspace/app/com.example.FooPreview",
+  "params": {
+    "label": "after-counter-click"
+  }
+}
+```
+
+Payload shape:
+
+```json
+{
+  "operation": "save",
+  "status": "passed",
+  "checkpointId": "state-20260504-123000-abc123",
+  "scenario": "activityRecreate",
+  "lifecycle": ["created", "resumed"],
+  "probes": [
+    { "id": "counter", "value": "1" }
+  ],
+  "savedValues": [
+    { "key": "counter", "valueClass": "java.lang.Integer" }
+  ],
+  "unsupported": [],
+  "frames": {
+    "current": "history-id-2"
+  }
+}
+```
+
+The product should fail explicitly when a requested lifecycle operation is not
+available on the current host. A local save/restore result must not be reported
+as Activity recreation, even if the pixels happen to match. For source-edit
+checks, agents should use an explicit sequence:
+mutate -> `state-restoration.save` -> source edit/recompile ->
+`fileChanged(source)` -> `state-restoration.reload` ->
+`state-restoration.restore` -> `state-restoration.probe`.
+
 `history/diff/regions` is a cheap, inline, fetchable and attachable data product
 derived from the daemon history archive. It is advertised only when
 `HistoryManager` is active. Fetch and subscribe calls must pass an explicit

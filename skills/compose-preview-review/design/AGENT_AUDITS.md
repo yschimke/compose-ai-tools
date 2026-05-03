@@ -87,6 +87,67 @@ Check:
 - Trace output is treated as triage evidence unless the PR explicitly targets
   runtime behavior.
 
+### State restoration and lifecycle audit
+
+Sample composable:
+
+```kotlin
+@Preview
+@Composable
+fun RestorableCounterPreview() {
+    var saved by rememberSaveable { mutableIntStateOf(0) }
+    var volatile by remember { mutableIntStateOf(0) }
+
+    Column {
+        Text("saved=$saved", Modifier.testTag("saved-count"))
+        Text("volatile=$volatile", Modifier.testTag("volatile-count"))
+        Button(
+            modifier = Modifier.testTag("increment"),
+            onClick = {
+                saved += 1
+                volatile += 1
+            },
+        ) {
+            Text("Increment")
+        }
+    }
+}
+```
+
+Current command surface check tried locally: `compose-preview extensions --help`
+returns `Unknown command: extensions`; extension command routing is MCP-first.
+Use the MCP tools directly.
+
+Example MCP sequence:
+
+```text
+run_extension_command commandId=state-restoration.probe uri=<preview-uri> params='{"tags":["saved-count","volatile-count"]}'
+record_preview uri=<preview-uri> events='[{"tMs":0,"kind":"click","pixelX":120,"pixelY":180}]'
+run_extension_command commandId=state-restoration.probe uri=<preview-uri> params='{"tags":["saved-count","volatile-count"]}'
+run_extension_command commandId=state-restoration.save uri=<preview-uri> params='{"label":"after-increment"}'
+run_extension_command commandId=state-restoration.lifecycle uri=<preview-uri> params='{"event":"recreateActivity"}'
+run_extension_command commandId=state-restoration.restore uri=<preview-uri> params='{"checkpointId":"<id-from-save>"}'
+run_extension_command commandId=state-restoration.probe uri=<preview-uri> params='{"tags":["saved-count","volatile-count"]}'
+```
+
+Expected evidence for that sample: initial probe reports `saved=0` and
+`volatile=0`; the post-click probe reports `saved=1` and `volatile=1`; the
+post-restore probe reports `saved=1` and `volatile=0`. If the preview was
+edited between save and reload, also probe a visible version label to confirm
+the restored state is running on the new bytecode.
+
+Check:
+
+- Mutate the preview into a non-default state before the lifecycle step.
+- `rememberSaveable` or saved-state-backed UI restores the expected value.
+- Plain `remember` state is not treated as restored state.
+- The result distinguishes local save/restore, mocked owner restore, Activity
+  resume, and Activity recreate.
+- Prefer explicit primitive evidence (`save`, `lifecycle`, `restore`, `probe`)
+  over a single pass/fail wrapper when explaining a PR finding.
+- Unsupported lifecycle simulation is reported explicitly, not inferred from a
+  matching screenshot.
+
 ### Failure triage audit
 
 Sample command: `get_preview_data uri=<preview-uri> kind=test/failure`
