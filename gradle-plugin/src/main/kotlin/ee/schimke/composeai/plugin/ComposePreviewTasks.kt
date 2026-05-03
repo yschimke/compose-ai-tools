@@ -371,6 +371,12 @@ internal object ComposePreviewTasks {
 
     return project.tasks.register("discoverPreviews", DiscoverPreviewsTask::class.java) {
       classDirs.from(sourceClassDirs)
+      sourceFiles.from(
+        project.fileTree("src") {
+          include("**/*.kt")
+          include("**/*.java")
+        }
+      )
       project.configurations.findByName(dependencyConfigName)?.let { config ->
         // For Android projects, dependencies resolve as AARs. Use artifact view
         // filtering to request the extracted classes.jar (AGP registers the
