@@ -28,12 +28,37 @@ import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
 import ee.schimke.composeai.data.render.PreviewAnimationContext
+import ee.schimke.composeai.scroll.FLING_DECAY
+import ee.schimke.composeai.scroll.FLING_MAX_DISTANCE_VIEWPORTS
+import ee.schimke.composeai.scroll.FLING_MIN_STEP_DP
+import ee.schimke.composeai.scroll.FLING_PEAK_DP_PER_FRAME
+import ee.schimke.composeai.scroll.HOLD_END_MS
+import ee.schimke.composeai.scroll.HOLD_START_MS
+import ee.schimke.composeai.scroll.INTER_FLING_HOLD_MS
+import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
+import ee.schimke.composeai.scroll.ScrollDriveResult
+import ee.schimke.composeai.scroll.ScrollGifEncoder
+import ee.schimke.composeai.scroll.SliceCapture
+import ee.schimke.composeai.scroll.applyWearPillClip
+import ee.schimke.composeai.scroll.buildGifScrollScript
+import ee.schimke.composeai.scroll.driveScrollBy
+import ee.schimke.composeai.scroll.driveScrollByViewport
+import ee.schimke.composeai.scroll.driveScrollToEnd
+import ee.schimke.composeai.scroll.driveScrollToStart
+import ee.schimke.composeai.scroll.remainingScrollPx
+import ee.schimke.composeai.scroll.stitchSlicesWithFinalFrame
 import java.awt.image.BufferedImage
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
+
+private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
+    when (this) {
+        ScrollAxis.VERTICAL -> ProductScrollAxis.VERTICAL
+        ScrollAxis.HORIZONTAL -> ProductScrollAxis.HORIZONTAL
+    }
 
 /**
  * Loads the previews manifest and returns the subset assigned to `shardIndex`
@@ -679,7 +704,14 @@ abstract class RobolectricRenderTestBase(
                             preview.dataProducts.map {
                                 ProductRenderJob(it, outputFileFor(it, outputDir))
                             }
-                        ).sortedBy { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
+                        ).sortedWith(
+                            compareBy<RenderJob> { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
+                                // Animated captures consume a time window after their target.
+                                // Keep same-target still/product jobs before that window opens.
+                                .thenBy {
+                                    if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0
+                                }
+                        )
                 var captureIndex = 0
                 jobs.forEach { job ->
                     val target = job.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
@@ -768,7 +800,7 @@ abstract class RobolectricRenderTestBase(
                         if (scroll != null && scroll.mode == ScrollMode.END) {
                             val result = driveScrollToEnd(
                                 rule = rule,
-                                axis = scroll.axis,
+                                axis = scroll.axis.toProductAxis(),
                                 maxScrollPx = scroll.maxScrollPx,
                             )
                             if (result is ScrollDriveResult.NoScrollable) {
@@ -1042,7 +1074,7 @@ private fun handleLongCapture(
         // slicing — otherwise the first slice is the end state and
         // `driveScrollByViewport`'s first iteration bails with
         // remaining ≈ 0, yielding a single "stitched" slice. See #154.
-        driveScrollToStart(rule, scroll.axis)
+        driveScrollToStart(rule, scroll.axis.toProductAxis())
 
         // Drive at 80% of the viewport so each consecutive slice pair has a
         // ~20% physical overlap for the content-aware stitcher to lock onto.
@@ -1050,7 +1082,7 @@ private fun handleLongCapture(
         // placement is decided by pixel matching.
         val result = driveScrollByViewport(
             rule = rule,
-            axis = scroll.axis,
+            axis = scroll.axis.toProductAxis(),
             stepPx = viewportLayoutPx * 0.8f,
             maxScrollPx = scroll.maxScrollPx,
         ) { scrolledPx ->
@@ -1188,7 +1220,7 @@ private fun handleGifCapture(
         // would animate "from end to end" — a single frame indistinguishable
         // from the END capture. Reset to the top before the frame walk
         // starts. Fix for #154.
-        val resetResult = driveScrollToStart(rule, scroll.axis)
+        val resetResult = driveScrollToStart(rule, scroll.axis.toProductAxis())
         if (resetResult is ScrollDriveResult.NoScrollable) {
             System.err.println(
                 "@ScrollingPreview(GIF) on '$previewId': no scrollable composable — falling through.",
@@ -1203,7 +1235,7 @@ private fun handleGifCapture(
         // Upfront extent hint — capped to `maxScrollPx` when the
         // annotation sets one. Runtime clamps each step to live remaining
         // anyway, so LazyList's progressive maxValue doesn't over-scroll.
-        val liveRemaining = remainingScrollPx(rule, scroll.axis)
+        val liveRemaining = remainingScrollPx(rule, scroll.axis.toProductAxis())
         val cap = if (scroll.maxScrollPx > 0) scroll.maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
         val extentHint = minOf(liveRemaining, cap)
 
@@ -1224,7 +1256,7 @@ private fun handleGifCapture(
                     scriptHitEnd = true
                     break
                 }
-                val actual = driveScrollBy(rule, scroll.axis, target)
+                val actual = driveScrollBy(rule, scroll.axis.toProductAxis(), target)
                 if (actual <= 0f) {
                     scriptHitEnd = true
                     break
@@ -1248,7 +1280,7 @@ private fun handleGifCapture(
         if (!scriptHitEnd) {
             emitTailFlings(
                 rule = rule,
-                axis = scroll.axis,
+                axis = scroll.axis.toProductAxis(),
                 density = density,
                 viewportPx = viewportLayoutPx.toFloat(),
                 frameIntervalMs = frameIntervalMs,
@@ -1300,7 +1332,7 @@ private fun handleGifCapture(
 @Suppress("LongParameterList")
 private fun emitTailFlings(
     rule: AndroidComposeTestRule<*, *>,
-    axis: ScrollAxis,
+    axis: ProductScrollAxis,
     density: Float,
     viewportPx: Float,
     frameIntervalMs: Int,

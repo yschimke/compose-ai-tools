@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.scroll
 
 import java.awt.AlphaComposite
 import java.awt.Color
@@ -20,7 +20,7 @@ import kotlin.math.sqrt
  * offset is now used only as a **hint** to narrow the overlap search; the
  * actual alignment is driven by pixel content ([findOverlapShift]).
  */
-internal data class SliceCapture(val scrolledLayoutPx: Float, val file: File)
+data class SliceCapture(val scrolledLayoutPx: Float, val file: File)
 
 /**
  * Stitches per-viewport slices (see `driveScrollByViewport`) into a single
@@ -57,7 +57,7 @@ internal data class SliceCapture(val scrolledLayoutPx: Float, val file: File)
  *
  * Returns the written file, or `null` if [slices] is empty.
  */
-internal fun stitchSlices(
+fun stitchSlices(
     slices: List<SliceCapture>,
     viewportLayoutPx: Int,
     outputFile: File,
@@ -104,7 +104,7 @@ internal fun stitchSlices(
  * Falls back to writing [finalFrameFile] directly when [slices] has one
  * entry (no scroll history).
  */
-internal fun stitchSlicesWithFinalFrame(
+fun stitchSlicesWithFinalFrame(
     slices: List<SliceCapture>,
     finalFrameFile: File,
     viewportLayoutPx: Int,
@@ -925,7 +925,7 @@ private fun findBestAnchorMatch(
  * so the rendered scroll visually preserves the round screen edge at the top
  * of the first frame and the bottom of the last frame.
  */
-internal fun applyWearPillClip(file: File) {
+fun applyWearPillClip(file: File) {
     val src = ImageIO.read(file) ?: return
     val w = src.width
     val h = src.height
