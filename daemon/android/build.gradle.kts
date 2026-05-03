@@ -17,6 +17,7 @@
 // Pre-1.0; expect API breakage across minor versions.
 
 plugins {
+  id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   // D-harness.v2 — `PreviewManifestRouter` (mirrors :daemon:desktop's) reads a JSON
@@ -24,25 +25,12 @@ plugins {
   // the @Serializable processor; kotlinx-serialization-json is already on the classpath via
   // `:daemon:core`'s `api(libs.kotlinx.serialization.json)`.
   alias(libs.plugins.kotlin.serialization)
-  `maven-publish`
-  alias(libs.plugins.maven.publish)
 }
 
 // The daemon is launched as a local JVM process by the Gradle plugin (or
 // directly via the published JAR for embedders), so the older-Kotlin-runtime
 // ABI dance done in :renderer-android (via tapmoc.configureKotlinCompatibility)
 // is not required here. We get the project's default Kotlin stdlib at runtime.
-
-group = "ee.schimke.composeai"
-
-version =
-  providers.environmentVariable("PLUGIN_VERSION").orNull
-    ?: run {
-      val manifest = rootDir.resolve(".release-please-manifest.json").readText()
-      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
-      val (major, minor, patch) = current.split(".").map { it.toInt() }
-      "$major.$minor.${patch + 1}-SNAPSHOT"
-    }
 
 android {
   namespace = "ee.schimke.composeai.daemon"
@@ -280,24 +268,6 @@ val daemonHarnessClasspathFile by configurations.creating {
 }
 
 // GitHub Packages mirror — same shape as `:renderer-android`.
-publishing {
-  repositories {
-    maven {
-      name = "GitHubPackages"
-      url =
-        uri(
-          providers
-            .environmentVariable("GITHUB_REPOSITORY")
-            .map { "https://maven.pkg.github.com/$it" }
-            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-        )
-      credentials {
-        username = providers.environmentVariable("GITHUB_ACTOR").orNull
-        password = providers.environmentVariable("GITHUB_TOKEN").orNull
-      }
-    }
-  }
-}
 
 // Use the new (non-deprecated) AndroidSingleVariantLibrary constructor — takes typed JavadocJar /
 // SourcesJar instead of booleans. `JavadocJar.Empty()` ships an empty javadoc jar (Maven Central
@@ -344,45 +314,16 @@ afterEvaluate {
   }
 }
 
-mavenPublishing {
-  publishToMavenCentral(automaticRelease = true)
-  configure(androidSingleVariantLibrary)
-  if (!version.toString().endsWith("SNAPSHOT")) {
-    signAllPublications()
-  }
-
-  coordinates("ee.schimke.composeai", "daemon-android", version.toString())
-
-  pom {
-    name.set("Compose Preview — Daemon Android")
-    description.set(
-      "Robolectric-based Android backend of the compose-preview daemon: holds a long-lived " +
-        "Robolectric sandbox open via the dummy-@Test trick, renders @Preview composables to " +
-        "PNG. Compose / Roborazzi / UI-test stay compileOnly — consumer supplies runtime " +
-        "versions, same as :renderer-android. Pre-1.0; pairs with daemon-core."
-    )
-    url.set("https://github.com/yschimke/compose-ai-tools")
-    inceptionYear.set("2025")
-    licenses {
-      license {
-        name.set("The Apache License, Version 2.0")
-        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
-        distribution.set("repo")
-      }
-    }
-    developers {
-      developer {
-        id.set("yschimke")
-        name.set("Yuri Schimke")
-        url.set("https://github.com/yschimke")
-      }
-    }
-    scm {
-      url.set("https://github.com/yschimke/compose-ai-tools")
-      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
-      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
-    }
-  }
-}
-
 artifacts { add(daemonHarnessClasspathFile.name, writeDaemonClasspath) }
+
+mavenPublishing { configure(androidSingleVariantLibrary) }
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "daemon-android",
+    displayName = "Compose Preview — Daemon Android",
+    description =
+      "Robolectric-based Android backend of the compose-preview daemon: holds a long-lived Robolectric sandbox open via the dummy-@Test trick, renders @Preview composables to PNG. Compose / Roborazzi / UI-test stay compileOnly — consumer supplies runtime versions, same as :renderer-android. Pre-1.0; pairs with daemon-core.",
+  )
+  inceptionYear.set("2025")
+}

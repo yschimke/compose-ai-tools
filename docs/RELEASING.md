@@ -44,6 +44,7 @@ Both fallbacks share the same concurrency group as the primary path, so they can
    - **Daemon core** (pre-1.0) — `ee.schimke.composeai:daemon-core` — renderer-agnostic JSON-RPC server, protocol types, RenderHost interface
    - **Daemon desktop** (pre-1.0) — `ee.schimke.composeai:daemon-desktop` — Compose Multiplatform desktop backend (DesktopHost + DaemonMain)
    - **Daemon android** (pre-1.0) — `ee.schimke.composeai:daemon-android` — Robolectric backend; Compose / Roborazzi / UI-test stay `compileOnly`, consumer supplies runtime versions
+   - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
 2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
 4. Uploads the CLI + VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
@@ -77,6 +78,26 @@ https://central.sonatype.com/repository/maven-snapshots/
 
 Snapshots are unsigned, so they only need `MAVEN_CENTRAL_USERNAME` /
 `MAVEN_CENTRAL_PASSWORD`.
+
+For pre-merge testing, run **Publish snapshot** manually from the branch
+you want to test. Branch/manual runs publish the same Maven artifacts
+with a branch-qualified version by default:
+
+```
+<next-patch>-<branch-name>-<short-sha>-SNAPSHOT
+```
+
+For example, a run from `feature/layout-data` at `abc1234` after
+`v0.8.12` publishes `0.8.13-feature-layout-data-abc1234-SNAPSHOT`.
+The workflow also accepts an optional `suffix` input if you need a
+shorter coordinate, for example `issue-612` →
+`0.8.13-issue-612-SNAPSHOT`.
+
+This branch-qualified coordinate is what makes snapshots usable for
+testing in other projects before the PR merges. The older documented
+main-only coordinate is still published from pushes to `main`, but it is
+not enough for PR testing because every branch would otherwise publish
+to the same `0.8.13-SNAPSHOT` version.
 
 ## Consuming the artifacts
 
@@ -128,6 +149,15 @@ Then reference a `-SNAPSHOT` version:
 ```kotlin
 plugins {
     id("ee.schimke.composeai.preview") version "0.3.4-SNAPSHOT"
+}
+```
+
+For a branch snapshot, use the version printed in the workflow summary,
+for example:
+
+```kotlin
+plugins {
+    id("ee.schimke.composeai.preview") version "0.8.13-feature-layout-data-abc1234-SNAPSHOT"
 }
 ```
 
