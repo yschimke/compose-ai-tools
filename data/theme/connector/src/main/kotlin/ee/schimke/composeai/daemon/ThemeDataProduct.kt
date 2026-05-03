@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -11,17 +12,25 @@ import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
+import ee.schimke.composeai.daemon.protocol.Material3TypographyOverride
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorExtension
+import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
@@ -30,6 +39,41 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 const val MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY: String = "compose.material3.themePayload"
+
+@Composable
+fun Material3ThemeOverride(overrides: Material3ThemeOverrides?, content: @Composable () -> Unit) {
+  if (overrides == null || overrides.isEmpty()) {
+    content()
+    return
+  }
+  MaterialTheme(
+    colorScheme = MaterialTheme.colorScheme.withOverrides(overrides.colorScheme),
+    typography = MaterialTheme.typography.withOverrides(overrides.typography),
+    shapes = MaterialTheme.shapes.withOverrides(overrides.shapes),
+    content = content,
+  )
+}
+
+/**
+ * Clean Compose-facing connector for applying Material3 theme overrides.
+ *
+ * Hosts should plan this extension when a request carries Material3 override tokens instead of
+ * hardcoding a renderer-side `MaterialTheme` wrapper.
+ */
+class Material3ThemeOverrideExtension(private val overrides: Material3ThemeOverrides?) :
+  AroundComposableExtension(
+    id = DataExtensionId("compose/material3ThemeOverride"),
+    constraints =
+      DataExtensionConstraints(
+        phase = DataExtensionPhase.UserEnvironment,
+        provides = setOf(DataExtensionCapability("compose/material3ThemeOverride")),
+      ),
+  ) {
+  @Composable
+  override fun AroundComposable(content: @Composable () -> Unit) {
+    Material3ThemeOverride(overrides, content)
+  }
+}
 
 /**
  * Compose daemon producer for `compose/theme`.
@@ -464,6 +508,98 @@ internal object MaterialThemeInspectionSnapshot {
 
   private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
     listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
+}
+
+private fun Material3ThemeOverrides.isEmpty(): Boolean =
+  colorScheme.isEmpty() && typography.isEmpty() && shapes.isEmpty()
+
+private fun ColorScheme.withOverrides(overrides: Map<String, String>): ColorScheme {
+  if (overrides.isEmpty()) return this
+  fun color(name: String): Color? = overrides[name]?.parseComposeColor()
+  return copy(
+    primary = color("primary") ?: primary,
+    onPrimary = color("onPrimary") ?: onPrimary,
+    primaryContainer = color("primaryContainer") ?: primaryContainer,
+    onPrimaryContainer = color("onPrimaryContainer") ?: onPrimaryContainer,
+    inversePrimary = color("inversePrimary") ?: inversePrimary,
+    secondary = color("secondary") ?: secondary,
+    onSecondary = color("onSecondary") ?: onSecondary,
+    secondaryContainer = color("secondaryContainer") ?: secondaryContainer,
+    onSecondaryContainer = color("onSecondaryContainer") ?: onSecondaryContainer,
+    tertiary = color("tertiary") ?: tertiary,
+    onTertiary = color("onTertiary") ?: onTertiary,
+    tertiaryContainer = color("tertiaryContainer") ?: tertiaryContainer,
+    onTertiaryContainer = color("onTertiaryContainer") ?: onTertiaryContainer,
+    background = color("background") ?: background,
+    onBackground = color("onBackground") ?: onBackground,
+    surface = color("surface") ?: surface,
+    onSurface = color("onSurface") ?: onSurface,
+    surfaceVariant = color("surfaceVariant") ?: surfaceVariant,
+    onSurfaceVariant = color("onSurfaceVariant") ?: onSurfaceVariant,
+    surfaceTint = color("surfaceTint") ?: surfaceTint,
+    inverseSurface = color("inverseSurface") ?: inverseSurface,
+    inverseOnSurface = color("inverseOnSurface") ?: inverseOnSurface,
+    error = color("error") ?: error,
+    onError = color("onError") ?: onError,
+    errorContainer = color("errorContainer") ?: errorContainer,
+    onErrorContainer = color("onErrorContainer") ?: onErrorContainer,
+    outline = color("outline") ?: outline,
+    outlineVariant = color("outlineVariant") ?: outlineVariant,
+    scrim = color("scrim") ?: scrim,
+  )
+}
+
+private fun Typography.withOverrides(
+  overrides: Map<String, Material3TypographyOverride>
+): Typography {
+  if (overrides.isEmpty()) return this
+  fun TextStyle.override(name: String): TextStyle =
+    overrides[name]?.let { token ->
+      copy(
+        fontSize = token.fontSizeSp?.sp ?: fontSize,
+        lineHeight = token.lineHeightSp?.sp ?: lineHeight,
+        letterSpacing = token.letterSpacingSp?.sp ?: letterSpacing,
+        fontWeight = material3FontWeightOverride(token.fontWeight) ?: fontWeight,
+        fontStyle =
+          token.italic?.let { if (it) FontStyle.Italic else FontStyle.Normal } ?: fontStyle,
+      )
+    } ?: this
+  return copy(
+    displayLarge = displayLarge.override("displayLarge"),
+    displayMedium = displayMedium.override("displayMedium"),
+    displaySmall = displaySmall.override("displaySmall"),
+    headlineLarge = headlineLarge.override("headlineLarge"),
+    headlineMedium = headlineMedium.override("headlineMedium"),
+    headlineSmall = headlineSmall.override("headlineSmall"),
+    titleLarge = titleLarge.override("titleLarge"),
+    titleMedium = titleMedium.override("titleMedium"),
+    titleSmall = titleSmall.override("titleSmall"),
+    bodyLarge = bodyLarge.override("bodyLarge"),
+    bodyMedium = bodyMedium.override("bodyMedium"),
+    bodySmall = bodySmall.override("bodySmall"),
+    labelLarge = labelLarge.override("labelLarge"),
+    labelMedium = labelMedium.override("labelMedium"),
+    labelSmall = labelSmall.override("labelSmall"),
+  )
+}
+
+internal fun material3FontWeightOverride(weight: Int?): FontWeight? =
+  weight?.takeIf { it in 1..1000 }?.let(::FontWeight)
+
+private fun Shapes.withOverrides(overrides: Map<String, Float>): Shapes {
+  if (overrides.isEmpty()) return this
+  fun rounded(name: String) = overrides[name]?.let { RoundedCornerShape(it.dp) }
+  return copy(
+    extraSmall = rounded("extraSmall") ?: extraSmall,
+    small = rounded("small") ?: small,
+    medium = rounded("medium") ?: medium,
+    large = rounded("large") ?: large,
+    extraLarge = rounded("extraLarge") ?: extraLarge,
+  )
+}
+
+private fun String.parseComposeColor(): Color? {
+  return runCatching { ComposeColorSpec.resolve(this) }.getOrNull()
 }
 
 fun Color.hexArgb(): String = "#%08X".format(toArgb())

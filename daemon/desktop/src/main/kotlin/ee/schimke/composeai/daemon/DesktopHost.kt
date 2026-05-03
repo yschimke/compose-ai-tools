@@ -170,6 +170,7 @@ open class DesktopHost(
     add("uiMode")
     add("device")
     add("inspectionMode")
+    add("material3Theme")
   }
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
@@ -432,6 +433,7 @@ open class DesktopHost(
                 null -> null
               },
             inspectionMode = base.inspectionMode,
+            material3Theme = base.material3Theme,
           ),
         overrides = overrides,
       )
@@ -459,6 +461,7 @@ open class DesktopHost(
       uiMode = uiMode,
       orientation = orientation,
       inspectionMode = merged.inspectionMode,
+      material3Theme = merged.material3Theme,
       outputBaseName = "recording-$recordingId",
     )
   }

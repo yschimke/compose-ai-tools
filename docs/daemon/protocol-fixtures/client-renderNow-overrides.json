@@ -12,6 +12,22 @@
     "orientation": "portrait",
     "device": "id:pixel_5",
     "captureAdvanceMs": 250,
-    "inspectionMode": false
+    "inspectionMode": false,
+    "material3Theme": {
+      "colorScheme": {
+        "primary": "#FF336699",
+        "onPrimary": "#FFFFFFFF"
+      },
+      "typography": {
+        "bodyLarge": {
+          "fontSizeSp": 18.0,
+          "lineHeightSp": 24.0,
+          "fontWeight": 700
+        }
+      },
+      "shapes": {
+        "medium": 16.0
+      }
+    }
   }
 }

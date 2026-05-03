@@ -694,6 +694,20 @@ class DaemonMcpServerTest {
             put("device", "id:pixel_5")
             put("captureAdvanceMs", 250)
             put("inspectionMode", false)
+            putJsonObject("material3Theme") {
+              putJsonObject("colorScheme") {
+                put("primary", "#FF336699")
+                put("onPrimary", "#FFFFFFFF")
+              }
+              putJsonObject("typography") {
+                putJsonObject("bodyLarge") {
+                  put("fontSizeSp", 18)
+                  put("lineHeightSp", 24)
+                  put("fontWeight", 700)
+                }
+              }
+              putJsonObject("shapes") { put("medium", 16) }
+            }
           },
         )
       },
@@ -712,6 +726,10 @@ class DaemonMcpServerTest {
     assertThat(firstOverrides.device).isEqualTo("id:pixel_5")
     assertThat(firstOverrides.captureAdvanceMs).isEqualTo(250L)
     assertThat(firstOverrides.inspectionMode).isFalse()
+    val material3Theme = firstOverrides.material3Theme!!
+    assertThat(material3Theme.colorScheme["primary"]).isEqualTo("#FF336699")
+    assertThat(material3Theme.typography["bodyLarge"]!!.fontWeight).isEqualTo(700)
+    assertThat(material3Theme.shapes["medium"]).isEqualTo(16.0f)
 
     // A second render_preview call WITHOUT overrides now uses a different RenderKey and triggers
     // a fresh renderNow rather than dedup'ing onto the first. Pre-fix, the now-stale shared key

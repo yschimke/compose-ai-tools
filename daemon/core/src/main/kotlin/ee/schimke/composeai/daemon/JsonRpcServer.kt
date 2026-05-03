@@ -37,6 +37,7 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcResponse
 import ee.schimke.composeai.daemon.protocol.KnownDevice
 import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.PruneReasonWire
@@ -907,6 +908,19 @@ class JsonRpcServer(
       overrides.inspectionMode?.let {
         if (isNotEmpty()) append(';')
         append("inspectionMode=").append(it)
+      }
+      overrides.material3Theme?.let {
+        if (isNotEmpty()) append(';')
+        append("material3Theme=")
+        append(
+          Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+              json
+                .encodeToString(Material3ThemeOverrides.serializer(), it)
+                .toByteArray(Charsets.UTF_8)
+            )
+        )
       }
     }
   }

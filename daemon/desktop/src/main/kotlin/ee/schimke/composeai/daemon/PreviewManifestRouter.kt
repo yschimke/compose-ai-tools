@@ -102,6 +102,7 @@ class PreviewManifestRouter(
             inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
             inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
             inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
+            inbound["material3Theme"]?.let { append("material3Theme=").append(it).append(';') }
             append("outputBaseName=").append(resolved.outputBaseName)
           },
       )

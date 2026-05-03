@@ -31,9 +31,15 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
+import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.renderer.AccessibilityChecker
 import java.io.File
+import java.util.Base64
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 /**
  * Robolectric/Compose render body for the preview daemon — the per-preview inner loop that turns a
@@ -254,7 +260,15 @@ class RenderEngine(
                     themeFallbackCapture.capture(payload)
                   }
                   val content: @Composable () -> Unit = {
-                    Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                    ComposeDataExtensionPipeline.Apply(
+                      extensions =
+                        listOfNotNull(spec.material3Theme?.let(::Material3ThemeOverrideExtension)),
+                      previewId = spec.previewId,
+                      renderMode = spec.renderMode,
+                      sink = RecordingExtensionCompositionSink(),
+                    ) {
+                      Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                    }
                   }
                   InspectablePreviewContent(slotTableCapture, content)
                 }
@@ -732,6 +746,8 @@ data class RenderSpec(
    * semantics (`true`); a11y mode still forces `false` so accessibility semantics are populated.
    */
   val inspectionMode: Boolean? = null,
+  /** Optional Material 3 token overrides applied as a `MaterialTheme` composable wrapper. */
+  val material3Theme: Material3ThemeOverrides? = null,
 ) {
 
   enum class SpecUiMode {
@@ -797,7 +813,20 @@ data class RenderSpec(
           },
         captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
+        material3Theme = map["material3Theme"]?.decodeMaterial3ThemeOverrides(),
       )
     }
+
+    private val json = Json {
+      ignoreUnknownKeys = true
+      encodeDefaults = false
+    }
+
+    private fun String.decodeMaterial3ThemeOverrides(): Material3ThemeOverrides? =
+      runCatching {
+          val bytes = Base64.getUrlDecoder().decode(this)
+          json.decodeFromString(Material3ThemeOverrides.serializer(), bytes.toString(Charsets.UTF_8))
+        }
+        .getOrNull()
   }
 }

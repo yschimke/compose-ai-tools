@@ -142,7 +142,8 @@ Result:
   //
   // supportedOverrides — the `PreviewOverrides` field names this daemon's host actually applies
   // (subset of {"widthPx","heightPx","density","localeTag","fontScale","uiMode","orientation",
-  // "device","captureAdvanceMs","inspectionMode"}). Lets clients grey out unsupported sliders.
+  // "device","captureAdvanceMs","inspectionMode","material3Theme"}). Lets clients grey out
+  // unsupported sliders.
   // Empty list = pre-feature daemon;
   // treat absent and `[]` identically and assume any field might be ignored.
   // Today: Robolectric advertises every field; Desktop omits "orientation" (no rotation concept
@@ -241,6 +242,17 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
                                      // default ≈ 32ms. Bump for animation-heavy previews.
   inspectionMode?: boolean;          // Override LocalInspectionMode for this one-shot render.
                                      // Null/absent keeps normal preview semantics.
+  material3Theme?: {                 // Material 3 tokens applied as MaterialTheme { preview() }.
+    colorScheme?: Record<string, string>; // Role -> "#RRGGBB" or "#AARRGGBB".
+    typography?: Record<string, {    // Text style name -> partial override.
+      fontSizeSp?: number;
+      lineHeightSp?: number;
+      letterSpacingSp?: number;
+      fontWeight?: number;
+      italic?: boolean;
+    }>;
+    shapes?: Record<string, number>; // Shape token name -> rounded corner size in dp.
+  };
 }
 
 // result
@@ -252,7 +264,7 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
 
 The result resolves as soon as the request is queued, **not** when rendering completes. Per-render progress arrives as `renderStarted` / `renderFinished` / `renderFailed` notifications keyed by ID.
 
-`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop has no display rotation concept, so `orientation` is a no-op on the desktop render path today; desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`).
+`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop has no display rotation concept, so `orientation` is a no-op on the desktop render path today; desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`). `material3Theme` is applied in the renderer's normal Compose tree as a `MaterialTheme(...) { preview() }` wrapper, so it affects components that read Material 3 locals without requiring the preview source to declare its own theme.
 
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
