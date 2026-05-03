@@ -40,6 +40,25 @@
             "problemMatcher": []
         },
         {
+            "label": "gradle: publish runtime artifacts to mavenLocal",
+            "type": "shell",
+            "command": "../gradlew",
+            "args": [
+                "-p",
+                "..",
+                "publishToMavenLocal"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "extension: prepare artifact folder",
             "type": "shell",
             "command": "rm -rf .vscode-test/artifact-extension && mkdir -p .vscode-test/artifact-extension && cp package.json README.md .vscode-test/artifact-extension/ && cp -R out media .vscode-test/artifact-extension/",
@@ -90,6 +109,7 @@
             "dependsOn": [
                 "npm: compile",
                 "gradle: publish plugin to mavenLocal",
+                "gradle: publish runtime artifacts to mavenLocal",
                 "extension: prepare artifact folder",
                 "gradle: install CLI dist",
                 "meshcore: install CLI"
