@@ -50,6 +50,9 @@ interface Session {
   /** Sends `notifications/resources/list_changed`. */
   fun notifyResourceListChanged()
 
+  /** Sends `notifications/tools/list_changed`. */
+  fun notifyToolListChanged()
+
   /**
    * Sends a `notifications/progress` for the request identified by [token]. No-op when the client
    * didn't opt in (caller's responsibility to skip the call when the token is null).
@@ -118,6 +121,10 @@ class McpSession(
 
   override fun notifyResourceListChanged() {
     notify("notifications/resources/list_changed")
+  }
+
+  override fun notifyToolListChanged() {
+    notify("notifications/tools/list_changed")
   }
 
   /**
