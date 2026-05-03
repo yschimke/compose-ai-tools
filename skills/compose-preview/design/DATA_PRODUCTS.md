@@ -112,3 +112,10 @@ renderer-side producers).
 For accessibility specifically the older
 `build/compose-previews/accessibility-per-preview/<id>.json` location
 stays for one release as a back-compat alias, then retires.
+
+`test/failure` is daemon fetch-only. After a `renderFailed`
+notification, call `get_preview_data(..., kind = "test/failure")` to
+retrieve the latest failed-render postmortem for that preview: error
+type/message/top stack frame, a bounded stack trace, and explicit v1
+fallback fields for partial screenshot, pending effects, animation state,
+and redacted snapshot summary.

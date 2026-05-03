@@ -220,6 +220,7 @@ fun main(args: Array<String>) {
       buildList {
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
         add(RenderTraceDataProductRegistry())
+        add(TestFailureDataProductRegistry())
         add(themeRegistry)
         add(recompositionRegistry)
         if (PerfettoTraceDataProducer.enabled()) {

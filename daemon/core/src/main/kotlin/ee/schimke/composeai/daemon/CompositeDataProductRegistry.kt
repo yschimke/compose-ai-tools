@@ -52,6 +52,10 @@ class CompositeDataProductRegistry(private val registries: List<DataProductRegis
     registries.forEach { it.onRender(previewId, result, overrides, previewContext) }
   }
 
+  override fun onRenderFailed(previewId: String, cause: Throwable) {
+    registries.forEach { it.onRenderFailed(previewId, cause) }
+  }
+
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
     registries.firstOrNull { it.isKnown(kind) }?.onSubscribe(previewId, kind, params)
   }

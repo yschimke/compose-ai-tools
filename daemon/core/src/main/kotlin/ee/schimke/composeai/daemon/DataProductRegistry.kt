@@ -88,6 +88,12 @@ interface DataProductRegistry {
   }
 
   /**
+   * Render failure lifecycle hook. Called before `renderFailed` is emitted so failure-oriented
+   * producers can snapshot the throwable for a later `data/fetch`.
+   */
+  fun onRenderFailed(previewId: String, cause: Throwable) {}
+
+  /**
    * Producer-side subscription lifecycle hook. Called by the dispatcher when a client issues a
    * successful `data/subscribe` for `(previewId, kind)`. [params] carries the per-kind subscription
    * option bag — `compose/recomposition` reads `{ frameStreamId, mode }` from it; stateless kinds

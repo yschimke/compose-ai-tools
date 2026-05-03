@@ -383,7 +383,7 @@ SHIPPED; everything else is "we know the shape, no code yet."
 | `render/trace`             | default | low | Phase breakdown. **Android + desktop daemon implementation:** v1 exposes the latest render as a trace-shaped payload from render metrics; nested `Trace.beginSection` markers are a follow-up. |
 | `fonts/used`               | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions`     | default | low | Per-pixel bbox of changed regions vs. another history entry. **D6 — shipped inline payload when daemon history is enabled.** |
-| `test/failure`             | failed render | low | Partial bitmap + last Snapshot state + pending `LaunchedEffect` queue. |
+| `test/failure`             | failed render | low | Failed-render postmortem bundle. **Android + desktop daemon implementation:** v1 stores the latest failed render's error type, message, top stack frame, bounded stack trace, and explicit fallback fields for data that cannot yet be captured (`partialScreenshotAvailable=false`, redacted snapshot summary, unknown frame-clock/effect state). Fetch-only after `renderFailed`; successful renders clear the stale failure for that preview. |
 
 "Mode" picks which render configuration produces the data; "cost" is
 relative — the medium-cost kinds are why we default to opt-in.
@@ -426,6 +426,42 @@ input: the instrumentation runs for the lifetime of the interactive
 session, and counters reset at flush points rather than at sandbox
 boundaries. This keeps interactive-mode latency unchanged when the
 client isn't subscribed.
+
+## Worked example: `test/failure`
+
+`test/failure` is fetch-only and exists to make a `renderFailed`
+notification actionable. Agents should request it after a failed render
+instead of scraping daemon stderr; the payload is the structured
+postmortem for the latest failed render of that preview.
+
+```ts
+// schemaVersion: 1
+{
+  status: "failed";
+  phase: "unknown" | "composition" | "layout" | "draw" | "capture" | "timeout";
+  error: {
+    type: string;
+    message: string;
+    topFrame: string | null;      // e.g. "ExamplePreview.kt:37"
+    stackTrace: string[];         // bounded to the first 32 frames
+  };
+  partialScreenshot: string | null;
+  partialScreenshotAvailable: boolean;
+  pendingEffects: string[];
+  runningAnimations: string[];
+  frameClockState: { status: string };
+  lastSnapshotSummary: {
+    stateObjects: number | null;
+    valuesCaptured: boolean;
+    redaction: string;
+  };
+}
+```
+
+Schema v1 deliberately does not capture state values. Until renderer-side
+partial screenshot and Compose runtime state hooks land, those fields are
+present as explicit fallback values so callers can distinguish "not
+captured" from "missing due to an older daemon."
 
 ## Worked example: `a11y/hierarchy`
 
