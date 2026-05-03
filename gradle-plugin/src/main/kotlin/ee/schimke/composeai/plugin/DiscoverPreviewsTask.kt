@@ -7,6 +7,7 @@ import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
+import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -38,6 +39,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val moduleName: Property<String>
 
   @get:Input abstract val variantName: Property<String>
+
+  /**
+   * Project root path used to render module-relative source paths in the manifest. Captured at
+   * configuration time so the task action stays configuration-cache-safe.
+   */
+  @get:Input abstract val projectDirectory: Property<String>
 
   /**
    * When `true`, [outputFile] is written with a populated [PreviewManifest.accessibilityReport]
@@ -902,9 +909,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       sourceFiles.files.firstOrNull { file ->
         file.isFile && file.invariantSeparatorsPath.endsWith(packageQualified)
       }
-    return source
-      ?.let { project.projectDir.toPath().relativize(it.toPath()).toString() }
-      ?.replace(java.io.File.separatorChar, '/') ?: packageQualified
+    return source?.let { it.toRelativeStringSafe(File(projectDirectory.get())) } ?: packageQualified
+  }
+
+  private fun File.toRelativeStringSafe(root: File): String {
+    return try {
+      relativeTo(root).path.replace(File.separatorChar, '/')
+    } catch (_: IllegalArgumentException) {
+      absolutePath.replace(File.separatorChar, '/')
+    }
   }
 
   // Package-qualified source path, e.g. "com/example/samplewear/Previews.kt".

@@ -90,7 +90,10 @@ class DaemonSupervisor(
     }
     val canonical =
       runCatching { absolutePath.canonicalFile }.getOrDefault(absolutePath.absoluteFile)
-    val name = rootProjectName ?: canonical.name
+    val name =
+      rootProjectName?.takeIf { it.isNotBlank() }
+        ?: canonical.name.takeIf { it.isNotBlank() }
+        ?: "workspace"
     val workspaceId = WorkspaceId.derive(name, canonical)
     val project =
       projects.computeIfAbsent(workspaceId) {

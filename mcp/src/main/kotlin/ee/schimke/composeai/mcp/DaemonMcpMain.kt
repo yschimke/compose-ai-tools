@@ -33,6 +33,7 @@ object DaemonMcpMain {
 
   @JvmStatic
   fun main(args: Array<String>) {
+    disableKotlinLoggingStartupMessage()
     val replicasPerDaemon = parseReplicasPerDaemon(args)
     val supervisor =
       DaemonSupervisor(
@@ -57,6 +58,17 @@ object DaemonMcpMain {
     // thread so the JVM would otherwise terminate immediately; awaitClose pins main here.
     session.awaitClose()
     runCatching { supervisor.shutdown() }
+  }
+
+  private fun disableKotlinLoggingStartupMessage() {
+    runCatching {
+      val configurationClass =
+        Class.forName("io.github.oshai.kotlinlogging.KotlinLoggingConfiguration")
+      val instance = configurationClass.getField("INSTANCE").get(null)
+      configurationClass
+        .getMethod("setLogStartupMessage", java.lang.Boolean.TYPE)
+        .invoke(instance, false)
+    }
   }
 
   private fun parseProjects(args: Array<String>): List<Pair<String, String?>> {
