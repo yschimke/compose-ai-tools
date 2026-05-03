@@ -1,0 +1,104 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "npm",
+            "script": "compile",
+            "group": "build",
+            "presentation": {
+                "reveal": "silent"
+            },
+            "problemMatcher": "$tsc"
+        },
+        {
+            "type": "npm",
+            "script": "watch",
+            "group": "build",
+            "isBackground": true,
+            "presentation": {
+                "reveal": "never"
+            },
+            "problemMatcher": "$tsc-watch"
+        },
+        {
+            "label": "gradle: assemble plugin",
+            "type": "shell",
+            "command": "../gradlew",
+            "args": [
+                "-p",
+                "../gradle-plugin",
+                "assemble"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "extension: prepare artifact folder",
+            "type": "shell",
+            "command": "rm -rf .vscode-test/artifact-extension && mkdir -p .vscode-test/artifact-extension && cp package.json README.md .vscode-test/artifact-extension/ && cp -R out media .vscode-test/artifact-extension/",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "silent"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "gradle: install CLI dist",
+            "type": "shell",
+            "command": "../gradlew",
+            "args": [
+                "-p",
+                "..",
+                ":cli:installDist"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "meshcore: install CLI",
+            "type": "shell",
+            "command": "rm -rf ${env:HOME}/workspace/meshcore-mobile/.compose-preview-cli && mkdir -p ${env:HOME}/workspace/meshcore-mobile/.compose-preview-cli && cp -R ${workspaceFolder}/../cli/build/install/compose-preview/. ${env:HOME}/workspace/meshcore-mobile/.compose-preview-cli/",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "silent"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build: F5 artifacts",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "npm: compile",
+                "gradle: assemble plugin",
+                "extension: prepare artifact folder",
+                "gradle: install CLI dist",
+                "meshcore: install CLI"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

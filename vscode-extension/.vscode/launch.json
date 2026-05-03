@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Extension (artifacts, Meshcore)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/.vscode-test/artifact-extension",
+                "${env:HOME}/workspace/meshcore-mobile"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/.vscode-test/artifact-extension/out/**/*.js"
+            ],
+            "preLaunchTask": "build: F5 artifacts"
+        },
+        {
+            "name": "Extension Tests",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--extensionTestsPath=${workspaceFolder}/out/test/electron/suite/index"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/out/test/**/*.js"
+            ],
+            "preLaunchTask": "npm: compile"
+        }
+    ]
+}
