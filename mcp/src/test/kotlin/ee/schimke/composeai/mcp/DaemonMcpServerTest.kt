@@ -5,12 +5,11 @@ import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
 import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.io.PipedInputStream
-import java.io.PipedOutputStream
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.Base64
 import java.util.concurrent.LinkedBlockingQueue
@@ -2036,9 +2035,11 @@ class DaemonMcpServerTest {
   }
 
   private fun pipedPair(): Pair<OutputStream, InputStream> {
-    val out = PipedOutputStream()
-    val input = PipedInputStream(out, 64 * 1024)
-    return out to input
+    val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+    val client = java.net.Socket(server.inetAddress, server.localPort)
+    val accepted = server.accept()
+    server.close()
+    return client.getOutputStream() to accepted.getInputStream()
   }
 }
 
@@ -2088,7 +2089,7 @@ class McpTestClient(private val input: InputStream, private val output: OutputSt
       put("method", method)
       if (params != null) put("params", params)
     }
-    sendFrame(payload.toString())
+    sendMessage(payload.toString())
     val resp =
       slot.poll(timeoutMs, TimeUnit.MILLISECONDS)
         ?: error("request($method) timed out after ${timeoutMs}ms")
@@ -2133,7 +2134,7 @@ class McpTestClient(private val input: InputStream, private val output: OutputSt
       put("method", method)
       if (params != null) put("params", params)
     }
-    sendFrame(payload.toString())
+    sendMessage(payload.toString())
   }
 
   fun expectNotification(method: String, timeoutMs: Long): NotificationFrame {
@@ -2157,8 +2158,8 @@ class McpTestClient(private val input: InputStream, private val output: OutputSt
   private fun runReader() {
     try {
       while (!closed) {
-        val frame = readFrame(input) ?: break
-        val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+        val line = readMessage(input) ?: break
+        val obj = json.parseToJsonElement(line).jsonObject
         val id = obj["id"]?.jsonPrimitive?.intOrNull()
         if (id != null) {
           responses.computeIfAbsent(id.toLong()) { LinkedBlockingQueue() }.put(obj)
@@ -2176,54 +2177,26 @@ class McpTestClient(private val input: InputStream, private val output: OutputSt
 
   private fun JsonPrimitive.intOrNull(): Int? = runCatching { content.toInt() }.getOrNull()
 
-  private fun sendFrame(jsonText: String) {
-    val payload = jsonText.toByteArray(Charsets.UTF_8)
-    val header = "Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
+  private fun sendMessage(jsonText: String) {
     synchronized(output) {
-      output.write(header)
-      output.write(payload)
+      output.write(jsonText.toByteArray(Charsets.UTF_8))
+      output.write('\n'.code)
       output.flush()
     }
   }
 
-  private fun readFrame(input: InputStream): ByteArray? {
-    var contentLength = -1
-    val buf = ByteArrayOutputStream(64)
-    var sawAny = false
-    while (true) {
-      val line = readHeaderLine(input, buf) ?: return if (sawAny) null else null
-      sawAny = true
-      if (line.isEmpty()) break
-      val colon = line.indexOf(':')
-      if (colon <= 0) error("malformed header: '$line'")
-      if (line.substring(0, colon).trim().equals("Content-Length", ignoreCase = true)) {
-        contentLength = line.substring(colon + 1).trim().toInt()
-      }
-    }
-    if (contentLength < 0) error("missing Content-Length")
-    val payload = ByteArray(contentLength)
-    var off = 0
-    while (off < contentLength) {
-      val n = input.read(payload, off, contentLength - off)
-      if (n < 0) return null
-      off += n
-    }
-    return payload
-  }
-
-  private fun readHeaderLine(input: InputStream, buf: ByteArrayOutputStream): String? {
-    buf.reset()
+  private fun readMessage(input: InputStream): String? {
+    val bytes = mutableListOf<Byte>()
     while (true) {
       val b = input.read()
-      if (b < 0) return if (buf.size() == 0) null else buf.toString(Charsets.US_ASCII.name())
+      if (b < 0) return if (bytes.isEmpty()) null else bytes.toByteArray().toString(Charsets.UTF_8)
       if (b == '\n'.code) {
-        val bytes = buf.toByteArray()
-        val end =
-          if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1
-          else bytes.size
-        return String(bytes, 0, end, Charsets.US_ASCII)
+        if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) {
+          bytes.removeAt(bytes.lastIndex)
+        }
+        return bytes.toByteArray().toString(Charsets.UTF_8)
       }
-      buf.write(b)
+      bytes.add(b.toByte())
     }
   }
 }
