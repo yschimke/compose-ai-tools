@@ -28,12 +28,11 @@ class ExtensionCommandsTest {
     assertEquals(
       listOf(
         "compose-preview",
-        "data",
-        "get",
+        "extensions",
+        "run",
+        "compose-trace.get",
         "--id",
         "<preview-id>",
-        "--kind",
-        "render/composeAiTrace",
         "--json",
       ),
       command.command,

@@ -104,6 +104,8 @@ class DaemonMcpServerTest {
         "history_list",
         "history_diff",
         "list_data_products",
+        "list_extension_commands",
+        "run_extension_command",
         "get_preview_data",
         "subscribe_preview_data",
         "unsubscribe_preview_data",

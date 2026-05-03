@@ -1,9 +1,7 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.data.render.RenderPreviewExtension
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -26,6 +24,7 @@ data class ExtensionCommandsResponse(
 class ExtensionCommandsCommand(private val args: List<String>) {
   private val jsonOutput = "--json" in args
   private val onlyAgentRecommended = "--agent" in args || "--agent-recommended" in args
+  private val positionals = args.filter { !it.startsWith("-") }
 
   fun run() {
     if ("--help" in args || "-h" in args) {
@@ -33,11 +32,12 @@ class ExtensionCommandsCommand(private val args: List<String>) {
       return
     }
 
-    when (args.firstOrNull { !it.startsWith("-") } ?: "commands") {
+    when (positionals.firstOrNull() ?: "commands") {
       "commands",
       "list" -> printCommands()
+      "run" -> runExtensionCommand()
       else -> {
-        System.err.println("extensions supports: commands")
+        System.err.println("extensions supports: commands, run")
         printUsage()
         exitProcess(1)
       }
@@ -45,14 +45,17 @@ class ExtensionCommandsCommand(private val args: List<String>) {
   }
 
   private fun printCommands() {
-    val response = ExtensionCommandsResponse(extensions = BuiltInExtensionCliCatalog.extensions)
+    val response = ExtensionCommandsResponse(extensions = PreviewExtensionCommandCatalog.extensions)
     val filtered =
       if (onlyAgentRecommended) {
         response.copy(
           extensions =
             response.extensions
               .map { descriptor ->
-                descriptor.copy(cliCommands = descriptor.cliCommands.filter { it.agentRecommended })
+                descriptor.copy(
+                  cliCommands =
+                    descriptor.cliCommands.filter { it.agentRecommended && !it.requiresDaemon }
+                )
               }
               .filter { it.cliCommands.isNotEmpty() }
         )
@@ -86,218 +89,78 @@ class ExtensionCommandsCommand(private val args: List<String>) {
     println(
       """
       compose-preview extensions commands [--json] [--agent]
+      compose-preview extensions run COMMAND_ID [command options]
 
-      Lists command metadata contributed by built-in preview extensions. This is
-      daemon-free: clients can discover extension-oriented CLI entry points
-      without starting a render daemon.
+      Lists or runs command metadata contributed by built-in preview extensions.
+      Discovery is daemon-free; run routes shrinkwrapped command ids to stable
+      CLI primitives such as show, a11y, and data get.
       """
         .trimIndent()
     )
   }
+
+  private fun runExtensionCommand() {
+    val commandId =
+      positionals.getOrNull(1)
+        ?: run {
+          System.err.println("extensions run requires COMMAND_ID.")
+          printUsage()
+          exitProcess(1)
+        }
+    if (PreviewExtensionCommandCatalog.commandById(commandId) == null) {
+      System.err.println("Unknown extension command: $commandId")
+      printUsage()
+      exitProcess(1)
+    }
+    val passthrough = args.withoutFirstPositionals(2)
+    when (commandId) {
+      "atf-checks.run" -> A11yCommand(passthrough.withDefault("--json")).run()
+      "a11y-annotated-preview.render",
+      "scrolling-preview-annotation.render" -> ShowCommand(passthrough.withDefault("--json")).run()
+      "a11y.hierarchy.get" ->
+        DataCommand(passthrough.dataGet("a11y/hierarchy", defaultJson = true)).run()
+      "atf-checks.get" -> DataCommand(passthrough.dataGet("a11y/atf", defaultJson = true)).run()
+      "a11y-overlay.get" ->
+        DataCommand(passthrough.dataGet("a11y/overlay", defaultJson = false)).run()
+      "compose-trace.get" ->
+        DataCommand(passthrough.dataGet("render/composeAiTrace", defaultJson = true)).run()
+      "scroll-long.get" ->
+        DataCommand(passthrough.dataGet("render/scroll/long", defaultJson = false)).run()
+      "scroll-gif.get" ->
+        DataCommand(passthrough.dataGet("render/scroll/gif", defaultJson = false)).run()
+      "render-device-clip.get",
+      "render-trace.get" -> {
+        System.err.println(
+          "Extension command '$commandId' requires daemon data/fetch. Use MCP run_extension_command."
+        )
+        exitProcess(1)
+      }
+      else -> {
+        System.err.println("Extension command '$commandId' has no CLI runner yet.")
+        exitProcess(1)
+      }
+    }
+  }
 }
 
-private object BuiltInExtensionCliCatalog {
-  val extensions: List<PreviewExtensionDescriptor> =
-    listOf(
-      RenderPreviewExtension.deviceClipDescriptor,
-      RenderPreviewExtension.renderTraceDescriptor,
-      RenderPreviewExtension.composeTraceDescriptor,
-      RenderPreviewExtension.overlayLegendDescriptor,
-      accessibilityHierarchy(),
-      atfChecks(),
-      accessibilityOverlay(),
-      accessibilityAnnotatedPreview(),
-      scrollAnnotation(),
-      scrollLong(),
-      scrollGif(),
-    )
+private fun List<String>.withoutFirstPositionals(count: Int): List<String> {
+  var remaining = count
+  return filter { arg ->
+    if (remaining > 0 && !arg.startsWith("-")) {
+      remaining--
+      false
+    } else {
+      true
+    }
+  }
+}
 
-  private fun accessibilityHierarchy(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "a11y",
-      displayName = "Accessibility hierarchy",
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "a11y.hierarchy.get",
-            displayName = "Fetch accessibility hierarchy",
-            summary = "Reads the structured accessibility hierarchy for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "data",
-                "get",
-                "--id",
-                "<preview-id>",
-                "--kind",
-                "a11y/hierarchy",
-                "--json",
-              ),
-            agentRecommended = true,
-            productKinds = listOf("a11y/hierarchy"),
-          )
-        ),
-    )
+private fun List<String>.withDefault(flag: String): List<String> =
+  if (flag in this) this else this + flag
 
-  private fun atfChecks(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "atf-checks",
-      displayName = "ATF checks",
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "atf-checks.run",
-            displayName = "Run ATF accessibility checks",
-            summary = "Renders previews and returns ATF accessibility findings.",
-            command = listOf("compose-preview", "a11y", "--json"),
-            agentRecommended = true,
-            productKinds = listOf("a11y/atf", "a11y/touchTargets"),
-          ),
-          PreviewExtensionCliCommand(
-            id = "atf-checks.get",
-            displayName = "Fetch ATF findings",
-            summary = "Reads previously emitted ATF findings for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "data",
-                "get",
-                "--id",
-                "<preview-id>",
-                "--kind",
-                "a11y/atf",
-                "--json",
-              ),
-            productKinds = listOf("a11y/atf"),
-          ),
-        ),
-    )
-
-  private fun accessibilityOverlay(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "a11y-overlay",
-      displayName = "Accessibility overlay annotations",
-      componentExtensionIds = listOf("a11y", "atf-checks"),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "a11y-overlay.get",
-            displayName = "Fetch accessibility overlay",
-            summary = "Reads the rendered accessibility overlay artifact for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "data",
-                "get",
-                "--id",
-                "<preview-id>",
-                "--kind",
-                "a11y/overlay",
-                "--output",
-                "<path>",
-              ),
-            productKinds = listOf("a11y/overlay"),
-          )
-        ),
-    )
-
-  private fun accessibilityAnnotatedPreview(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "a11y-annotated-preview",
-      displayName = "Accessibility annotated preview",
-      usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-      componentExtensionIds = listOf("a11y", "atf-checks", "a11y-overlay", "overlay-legend"),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "a11y-annotated-preview.render",
-            displayName = "Render accessibility annotated previews",
-            summary = "Discovers and renders suggested accessibility annotated preview extras.",
-            command = listOf("compose-preview", "show", "--json"),
-            usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-          )
-        ),
-    )
-
-  private fun scrollAnnotation(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "scrolling-preview-annotation",
-      displayName = "ScrollingPreview annotation",
-      usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "scrolling-preview-annotation.render",
-            displayName = "Render scroll annotation suggestions",
-            summary = "Discovers @ScrollingPreview annotations and renders their suggested extras.",
-            command = listOf("compose-preview", "show", "--json"),
-            agentRecommended = true,
-            usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-          )
-        ),
-    )
-
-  private fun scrollLong(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "scroll-long",
-      displayName = "Long scroll",
-      usageModes =
-        setOf(
-          PreviewExtensionUsageMode.ExplicitEffect,
-          PreviewExtensionUsageMode.SuggestedExtraPreview,
-        ),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "scroll-long.get",
-            displayName = "Fetch long scroll image",
-            summary = "Reads a stitched long-scroll image artifact for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "data",
-                "get",
-                "--id",
-                "<preview-id>",
-                "--kind",
-                "render/scroll/long",
-                "--output",
-                "<path>",
-              ),
-            productKinds = listOf("render/scroll/long"),
-          )
-        ),
-    )
-
-  private fun scrollGif(): PreviewExtensionDescriptor =
-    PreviewExtensionDescriptor(
-      id = "scroll-gif",
-      displayName = "Scroll GIF",
-      usageModes =
-        setOf(
-          PreviewExtensionUsageMode.ExplicitEffect,
-          PreviewExtensionUsageMode.SuggestedExtraPreview,
-        ),
-      cliCommands =
-        listOf(
-          PreviewExtensionCliCommand(
-            id = "scroll-gif.get",
-            displayName = "Fetch scroll GIF",
-            summary = "Reads an animated scroll GIF artifact for one preview.",
-            command =
-              listOf(
-                "compose-preview",
-                "data",
-                "get",
-                "--id",
-                "<preview-id>",
-                "--kind",
-                "render/scroll/gif",
-                "--output",
-                "<path>",
-              ),
-            productKinds = listOf("render/scroll/gif"),
-          )
-        ),
-    )
+private fun List<String>.dataGet(kind: String, defaultJson: Boolean): List<String> {
+  val out = mutableListOf("get", "--kind", kind)
+  out += this
+  if (defaultJson && "--json" !in out && "--output" !in out) out += "--json"
+  return out
 }

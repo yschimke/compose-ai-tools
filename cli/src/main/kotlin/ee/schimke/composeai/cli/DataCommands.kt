@@ -213,11 +213,21 @@ private fun List<String>.dataSubcommand(): String? {
 
 internal fun scanDataProducts(module: String, projectDir: File): DataProductsModule {
   val dataDir = dataRoot(projectDir)
+  val manifest = readDataManifest(projectDir)
+  val manifestProductBuckets =
+    manifest
+      ?.previews
+      ?.flatMap { it.dataProducts }
+      ?.mapNotNull { product ->
+        product.output.removePrefix("data/").substringBefore('/').takeIf { it.isNotBlank() }
+      }
+      ?.toSet() ?: emptySet()
   val byKind = linkedMapOf<String, MutableSet<String>>()
   if (dataDir.isDirectory) {
     dataDir
       .listFiles()
       ?.filter { it.isDirectory }
+      ?.filter { it.name !in manifestProductBuckets }
       ?.sortedBy { it.name }
       ?.forEach { previewDir ->
         previewDir
@@ -228,6 +238,14 @@ internal fun scanDataProducts(module: String, projectDir: File): DataProductsMod
             byKind.getOrPut(descriptor.kind) { linkedSetOf() } += previewDir.name
           }
       }
+  }
+  manifest?.previews?.forEach { preview ->
+    preview.dataProducts.forEach { product ->
+      val file = projectDir.resolve("build/compose-previews/${product.output}")
+      if (product.output.isNotBlank() && file.isFile) {
+        byKind.getOrPut(product.kind) { linkedSetOf() } += preview.id
+      }
+    }
   }
 
   val products =
@@ -258,8 +276,23 @@ internal fun findDataProduct(
 ): LocalDataProduct? {
   val descriptor = descriptorForKind(kind)
   val file = dataRoot(module.projectDir).resolve(previewId).resolve(descriptor.fileName)
-  if (!file.exists() || !file.isFile) return null
-  return LocalDataProduct(module.gradlePath, previewId, descriptor, file.absoluteFile)
+  if (file.exists() && file.isFile) {
+    return LocalDataProduct(module.gradlePath, previewId, descriptor, file.absoluteFile)
+  }
+  val manifestProduct =
+    readDataManifest(module.projectDir)
+      ?.previews
+      ?.firstOrNull { it.id == previewId }
+      ?.dataProducts
+      ?.firstOrNull { it.kind == kind && it.output.isNotBlank() } ?: return null
+  val manifestFile = module.projectDir.resolve("build/compose-previews/${manifestProduct.output}")
+  if (!manifestFile.isFile) return null
+  return LocalDataProduct(
+    module.gradlePath,
+    previewId,
+    descriptorForManifestProduct(manifestProduct, manifestFile),
+    manifestFile.absoluteFile,
+  )
 }
 
 internal fun buildDataGetResponse(product: LocalDataProduct): DataGetResponse {
@@ -348,6 +381,32 @@ private fun descriptorForKind(kind: String): LocalDataProductDescriptor =
       transport = DataProductTransport.INLINE,
       fileName = "${kind.replace('/', '-')}.json",
     )
+
+private fun readDataManifest(projectDir: File): PreviewManifest? {
+  val manifestFile = projectDir.resolve("build/compose-previews/previews.json")
+  if (!manifestFile.isFile) return null
+  return runCatching {
+      dataJson.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
+    }
+    .getOrNull()
+}
+
+private fun descriptorForManifestProduct(
+  product: PreviewDataProduct,
+  file: File,
+): LocalDataProductDescriptor {
+  val transport =
+    when (file.extension.lowercase()) {
+      "json" -> DataProductTransport.INLINE
+      else -> DataProductTransport.PATH
+    }
+  return LocalDataProductDescriptor(
+    kind = product.kind,
+    schemaVersion = descriptorForKind(product.kind).schemaVersion,
+    transport = transport,
+    fileName = file.name,
+  )
+}
 
 private fun descriptorForFile(file: File): LocalDataProductDescriptor? =
   knownByFileName[file.name]

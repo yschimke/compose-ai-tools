@@ -105,12 +105,11 @@ object ScrollPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "scroll-long.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_LONG,
                 "--output",
                 "<path>",
               ),
@@ -131,7 +130,8 @@ object ScrollPreviewExtension {
             id = "scrolling-preview-annotation.render",
             displayName = "Render scroll annotation suggestions",
             summary = "Discovers @ScrollingPreview annotations and renders their suggested extras.",
-            command = listOf("compose-preview", "show", "--json"),
+            command =
+              listOf("compose-preview", "extensions", "run", "scrolling-preview-annotation.render", "--json"),
             agentRecommended = true,
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
           )
@@ -154,12 +154,11 @@ object ScrollPreviewExtension {
             command =
               listOf(
                 "compose-preview",
-                "data",
-                "get",
+                "extensions",
+                "run",
+                "scroll-gif.get",
                 "--id",
                 "<preview-id>",
-                "--kind",
-                KIND_GIF,
                 "--output",
                 "<path>",
               ),

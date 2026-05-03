@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.BackendKind
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -215,6 +216,7 @@ class DaemonSupervisor(
       // they were before the capability landed.
       supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
       supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
+      supervised.backendKind = result.capabilities.backend
       // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
       // open and `record_preview` calls round-trip without the diagnostic.
       supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
@@ -328,6 +330,15 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    */
   @Volatile
   var knownDeviceIds: Set<String> = emptySet()
+    internal set
+
+  /**
+   * PROTOCOL.md § 3 — renderer backend advertised by the daemon. Populated from
+   * `InitializeResult.capabilities.backend` during [DaemonSupervisor.spawn], alongside the other
+   * capability-derived MCP validation inputs.
+   */
+  @Volatile
+  var backendKind: BackendKind? = null
     internal set
 
   /**
