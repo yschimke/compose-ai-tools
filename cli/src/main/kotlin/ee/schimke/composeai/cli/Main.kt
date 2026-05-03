@@ -28,6 +28,9 @@ fun main(args: Array<String>) {
       "--plugin-version",
       "--fail-on",
       "--kind",
+      "--from",
+      "--to",
+      "--limit",
       "--desc",
       "--branch",
       "--remote",
@@ -45,6 +48,7 @@ fun main(args: Array<String>) {
       "devices",
       "data-products",
       "data",
+      "history",
       "share-gist",
       "publish-images",
       "mcp",
@@ -92,6 +96,7 @@ fun main(args: Array<String>) {
     "devices" -> DevicesCommand(allArgs).run()
     "data-products" -> DataProductsCommand(allArgs).run()
     "data" -> DataCommand(allArgs).run()
+    "history" -> HistoryCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
     "publish-images" -> PublishImagesCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
@@ -126,6 +131,7 @@ private fun printUsage() {
       devices          List known @Preview(device=...) ids and resolved geometry
       data-products    List data-product kinds already emitted for rendered previews
       data             Data-product commands: get
+      history          History commands: list | diff
       share-gist       Create a gist from a markdown file plus image attachments
       publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
@@ -138,7 +144,10 @@ private fun printUsage() {
       --filter <pattern>   Case-insensitive substring match on preview id
       --id <exact>         Exact match on preview id
       --kind <kind>        data get: data-product kind (for example a11y/atf)
-      --json               Emit JSON (show, list, a11y, data-products, data get)
+      --from <entry>       history diff: source entry id
+      --to <entry>         history diff: target entry id
+      --limit <n>          history list: maximum entries to emit
+      --json               Emit JSON (show, list, a11y, data-products, data get, history)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy matched preview PNG to this path (render)
