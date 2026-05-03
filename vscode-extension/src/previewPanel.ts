@@ -132,6 +132,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 aria-label="Stop live preview" hidden>
             <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
         </button>
+        <button class="icon-button" id="btn-recording" title="Record focused preview"
+                aria-label="Record focused preview" aria-pressed="false" disabled hidden>
+            <i class="codicon codicon-record-keys" aria-hidden="true"></i>
+        </button>
+        <select id="recording-format" title="Recording format" aria-label="Recording format" hidden>
+            <option value="apng">APNG</option>
+            <option value="mp4">MP4</option>
+        </select>
         <button class="icon-button" id="btn-exit-focus" title="Exit focus mode" aria-label="Exit focus mode">
             <i class="codicon codicon-close" aria-hidden="true"></i>
         </button>
@@ -159,6 +167,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const btnA11yOverlay = document.getElementById('btn-a11y-overlay');
         const btnInteractive = document.getElementById('btn-interactive');
         const btnStopInteractive = document.getElementById('btn-stop-interactive');
+        const btnRecording = document.getElementById('btn-recording');
+        const recordingFormat = document.getElementById('recording-format');
         const btnExitFocus = document.getElementById('btn-exit-focus');
         // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
         // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
@@ -351,6 +361,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const moduleDaemonReady = new Map();
         const moduleInteractiveSupported = new Map();
         const interactivePreviewIds = new Set();
+        const recordingPreviewIds = new Set();
 
         // Restore layout preference
         if (state.layout && ['grid', 'flow', 'column', 'focus'].includes(state.layout)) {
@@ -385,6 +396,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // expect.
         btnInteractive.addEventListener('click', (e) => toggleInteractive(e.shiftKey));
         btnStopInteractive.addEventListener('click', () => stopAllInteractive());
+        btnRecording.addEventListener('click', () => toggleRecording());
         btnExitFocus.addEventListener('click', () => exitFocus());
 
         // ----- Interactive (live-stream) mode helpers -----
@@ -465,6 +477,32 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             btnInteractive.innerHTML = live
                 ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
                 : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+        }
+
+        function applyRecordingButtonState() {
+            const inFocus = layoutMode.value === 'focus';
+            btnRecording.hidden = !inFocus;
+            recordingFormat.hidden = !inFocus;
+            if (!inFocus) {
+                btnRecording.setAttribute('aria-pressed', 'false');
+                btnRecording.classList.remove('recording-on');
+                recordingFormat.disabled = true;
+                return;
+            }
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            const ready = isFocusedDaemonReady();
+            const recording = !!previewId && recordingPreviewIds.has(previewId);
+            btnRecording.disabled = !ready && !recording;
+            recordingFormat.disabled = recording || (!ready && !recording);
+            btnRecording.setAttribute('aria-pressed', recording ? 'true' : 'false');
+            btnRecording.classList.toggle('recording-on', recording);
+            btnRecording.title = !ready
+                ? 'Daemon not ready — recording unavailable'
+                : (recording ? 'Stop recording focused preview' : 'Record focused preview');
+            btnRecording.innerHTML = recording
+                ? '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>'
+                : '<i class="codicon codicon-record-keys" aria-hidden="true"></i>';
         }
 
         // D2 — keep the a11y-overlay toggle in lockstep with focus-mode + the focused card
@@ -631,6 +669,39 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             renderFocusInspector(card);
         }
 
+        function toggleRecording() {
+            if (layoutMode.value !== 'focus') return;
+            const card = getVisibleCards()[focusIndex];
+            const previewId = card ? card.dataset.previewId : null;
+            if (!card || !previewId) return;
+            const turnOn = !recordingPreviewIds.has(previewId);
+            if (turnOn) {
+                recordingPreviewIds.forEach(prior => {
+                    if (prior === previewId) return;
+                    vscode.postMessage({
+                        command: 'setRecording',
+                        previewId: prior,
+                        enabled: false,
+                        format: recordingFormat.value,
+                    });
+                });
+                recordingPreviewIds.clear();
+                recordingPreviewIds.add(previewId);
+                const img = card.querySelector('.image-container img');
+                if (img) ensureInteractiveInputHandlers(card, img);
+            } else {
+                recordingPreviewIds.delete(previewId);
+            }
+            vscode.postMessage({
+                command: 'setRecording',
+                previewId,
+                enabled: turnOn,
+                format: recordingFormat.value,
+            });
+            applyRecordingButtonState();
+            renderFocusInspector(card);
+        }
+
         /**
          * Single-click-to-LIVE entry point from the in-card image click handler. Ensures
          * image clicks land here in any layout (focus, grid, flow, column) — the focus-mode
@@ -649,12 +720,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // moment live mode exits, so non-live cards never consume input.
         function ensureInteractiveInputHandlers(card, img) {
             const previewId = card.dataset.previewId;
-            const shouldHandle = !!previewId && interactivePreviewIds.has(previewId);
+            const shouldHandle =
+                !!previewId && (interactivePreviewIds.has(previewId) || recordingPreviewIds.has(previewId));
             if (shouldHandle && card.dataset.interactiveWheelBound !== '1') {
                 card.dataset.interactiveWheelBound = '1';
                 card.addEventListener('wheel', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (!id || (!interactivePreviewIds.has(id) && !recordingPreviewIds.has(id))) return;
                     // Live previews own wheel input while the cursor is inside the card. If the
                     // wheel lands on preview pixels, forward it as rotary scroll; if it lands on
                     // the card chrome, still consume it so enthusiastic scrolling cannot bubble to
@@ -681,7 +753,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 };
                 img.addEventListener('pointerdown', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (!id || (!interactivePreviewIds.has(id) && !recordingPreviewIds.has(id))) return;
                     if (evt.button !== 0 && evt.button !== 2) return;
                     state.pointerId = evt.pointerId;
                     state.start = imagePoint(img, evt);
@@ -694,7 +766,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 });
                 img.addEventListener('pointermove', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (!id || (!interactivePreviewIds.has(id) && !recordingPreviewIds.has(id))) return;
                     if (state.pointerId !== evt.pointerId || !state.start) return;
                     const next = imagePoint(img, evt);
                     if (!next) return;
@@ -716,7 +788,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 });
                 img.addEventListener('pointerup', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (!id || (!interactivePreviewIds.has(id) && !recordingPreviewIds.has(id))) return;
                     if (state.pointerId !== evt.pointerId || !state.start) return;
                     const point = imagePoint(img, evt) || state.last || state.start;
                     if (state.dragging) {
@@ -747,7 +819,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 });
                 img.addEventListener('contextmenu', (evt) => {
                     const id = card.dataset.previewId;
-                    if (!id || !interactivePreviewIds.has(id)) return;
+                    if (!id || (!interactivePreviewIds.has(id) && !recordingPreviewIds.has(id))) return;
                     evt.preventDefault();
                     evt.stopPropagation();
                 });
@@ -973,6 +1045,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                 }
             }
             applyInteractiveButtonState();
+            applyRecordingButtonState();
             applyA11yOverlayButtonState();
         }
 
@@ -1077,10 +1150,29 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                     onToggle: () => toggleFocusProduct('recomposition'),
                 },
             ]));
-            const placeholders = buildFocusPlaceholders();
-            if (placeholders) inspect.appendChild(placeholders);
+            const controls = document.createElement('section');
+            controls.className = 'focus-panel focus-controls-panel';
+            controls.appendChild(sectionHeader('settings-gear', 'Tools'));
+            const toolActions = document.createElement('div');
+            toolActions.className = 'focus-actions';
+            toolActions.appendChild(actionButton('eye', 'A11y', 'Toggle accessibility overlay', () => {
+                toggleA11yOverlay();
+            }));
+            toolActions.appendChild(actionButton('device-mobile', 'Device', 'Launch on connected Android device', () => {
+                requestLaunchOnDevice();
+            }));
+            toolActions.appendChild(actionButton('circle-large-outline', 'Live', 'Toggle live preview', () => {
+                toggleInteractive(false);
+            }));
+            toolActions.appendChild(actionButton('record-keys', 'Record', 'Record focused preview', () => {
+                toggleRecording();
+            }));
+            controls.appendChild(toolActions);
             focusInspector.appendChild(inspect);
             focusInspector.appendChild(historyPanel());
+            focusInspector.appendChild(controls);
+            const placeholders = buildFocusPlaceholders();
+            if (placeholders) inspect.appendChild(placeholders);
         }
 
         function sectionHeader(icon, label) {
@@ -2896,7 +2988,11 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         interactivePreviewIds.clear();
                         applyLiveBadge();
                     }
+                    if (!msg.ready && recordingPreviewIds.size > 0) {
+                        recordingPreviewIds.clear();
+                    }
                     applyInteractiveButtonState();
+                    applyRecordingButtonState();
                     break;
                 }
                 case 'clearInteractive': {
@@ -2913,6 +3009,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
                         applyLiveBadge();
                         applyInteractiveButtonState();
                     }
+                    break;
+                }
+                case 'clearRecording': {
+                    if (msg.previewId) {
+                        recordingPreviewIds.delete(msg.previewId);
+                    } else if (recordingPreviewIds.size > 0) {
+                        recordingPreviewIds.clear();
+                    }
+                    applyRecordingButtonState();
                     break;
                 }
                 case 'previewMainRefChanged': {

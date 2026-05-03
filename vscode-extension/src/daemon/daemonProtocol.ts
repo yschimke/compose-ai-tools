@@ -123,6 +123,106 @@ export interface DataProductCapability {
     attachable: boolean;
     fetchable: boolean;
     requiresRerender: boolean;
+    displayName?: string;
+    facets?: DataProductFacet[];
+    mediaTypes?: string[];
+    sampling?: SamplingPolicy;
+}
+
+export type DataProductFacet =
+    | 'structured'
+    | 'artifact'
+    | 'image'
+    | 'animation'
+    | 'overlay'
+    | 'check'
+    | 'diagnostic'
+    | 'profile'
+    | 'interactive';
+
+export type SamplingPolicy =
+    | 'Start'
+    | 'End'
+    | 'EachFrame'
+    | 'OnDemand'
+    | 'Aggregate'
+    | 'Failure';
+
+export interface PreviewExtensionDescriptor {
+    id: string;
+    displayName?: string;
+    usageModes?: PreviewExtensionUsageMode[];
+    componentExtensionIds?: string[];
+    cliCommands?: PreviewExtensionCliCommand[];
+    steps?: PreviewPipelineStep[];
+}
+
+export interface PreviewExtensionCliCommand {
+    id: string;
+    displayName?: string;
+    summary?: string;
+    command: string[];
+    agentRecommended?: boolean;
+    requiresDaemon?: boolean;
+    usageModes?: PreviewExtensionUsageMode[];
+    productKinds?: string[];
+}
+
+export interface PreviewPipelineStep {
+    id: string;
+    displayName?: string;
+    productKinds?: string[];
+    annotationFqns?: string[];
+    usageModes?: PreviewExtensionUsageMode[];
+    traits?: PipelineStepTrait[];
+    requires?: PipelineCapability[];
+    provides?: PipelineCapability[];
+    conflictsWith?: PipelineStepTrait[];
+    sampling?: SamplingPolicy | null;
+    extraction?: ExtractionSpec | null;
+}
+
+export type PreviewExtensionUsageMode =
+    | 'ExplicitEffect'
+    | 'SuggestedExtraPreview';
+
+export type PipelineStepTrait =
+    | 'ScenarioDriver'
+    | 'InteractiveDriver'
+    | 'AnnotationInspector'
+    | 'ExtraPreviewSuggester'
+    | 'FrameProcessor'
+    | 'FinalArtifactProcessor'
+    | 'DataExtractor'
+    | 'Check'
+    | 'Encoder'
+    | 'Profiler';
+
+export type PipelineCapability =
+    | 'Frames'
+    | 'SingleFrame'
+    | 'MultipleFrames'
+    | 'PreviewFunctionAnnotations'
+    | 'SuggestedPreviews'
+    | 'DeviceGeometry'
+    | 'DeviceClip'
+    | 'ScrollState'
+    | 'SemanticsSnapshot'
+    | 'AccessibilityNodes'
+    | 'AccessibilityFindings'
+    | 'OverlayAnnotations'
+    | 'ImageArtifact'
+    | 'AnnotatedImageArtifact'
+    | 'AnimatedArtifact'
+    | 'InteractiveSession'
+    | 'TraceEvents';
+
+export interface ExtractionSpec {
+    kind: string;
+    sampling: SamplingPolicy;
+    requiresImage?: boolean;
+    requiresSemantics?: boolean;
+    aggregate?: boolean;
 }
 
 export interface InitializeResult {
@@ -140,6 +240,7 @@ export interface InitializeResult {
          * kinds in subscribe/fetch with `DataProductUnknown` (-32020).
          */
         dataProducts: DataProductCapability[];
+        previewExtensions?: PreviewExtensionDescriptor[];
         /**
          * INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
          * `interactive/input` events into a held composition (v2 — clicks
@@ -555,6 +656,48 @@ export interface InteractiveInputParams {
     scrollDeltaY?: number;
     /** For `keyDown` / `keyUp`. */
     keyCode?: string;
+}
+
+export type RecordingFormat = 'apng' | 'mp4' | 'webm';
+
+export interface RecordingStartParams {
+    previewId: string;
+    fps?: number;
+    scale?: number;
+    overrides?: PreviewOverrides;
+    live?: boolean;
+}
+
+export interface RecordingStartResult { recordingId: string }
+
+export interface RecordingInputParams {
+    recordingId: string;
+    kind: InteractiveInputKind;
+    pixelX?: number;
+    pixelY?: number;
+    scrollDeltaY?: number;
+    keyCode?: string;
+}
+
+export interface RecordingStopParams { recordingId: string }
+
+export interface RecordingStopResult {
+    frameCount: number;
+    durationMs: number;
+    framesDir: string;
+    frameWidthPx: number;
+    frameHeightPx: number;
+}
+
+export interface RecordingEncodeParams {
+    recordingId: string;
+    format?: RecordingFormat;
+}
+
+export interface RecordingEncodeResult {
+    videoPath: string;
+    mimeType: string;
+    sizeBytes: number;
 }
 
 /**

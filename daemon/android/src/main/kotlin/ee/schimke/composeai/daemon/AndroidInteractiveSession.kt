@@ -230,11 +230,15 @@ internal constructor(
     replyError.get()?.let { throw it }
   }
 
-  override fun render(requestId: Long): RenderResult {
+  override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
     lastUsedAtMs.set(System.currentTimeMillis())
     slot.interactiveCommands.put(
-      InteractiveCommand.Render(streamId = streamId, requestId = requestId)
+      InteractiveCommand.Render(
+        streamId = streamId,
+        requestId = requestId,
+        advanceTimeMs = advanceTimeMs,
+      )
     )
     val resultQueue =
       DaemonHostBridge.results.computeIfAbsent(requestId) { LinkedBlockingQueue() }

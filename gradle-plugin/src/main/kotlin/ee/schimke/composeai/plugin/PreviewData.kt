@@ -203,6 +203,22 @@ data class Capture(
 data class PreviewDataProduct(
   /** Data-product kind, e.g. `render/scroll/long`. */
   val kind: String,
+  /** Extension that owns this suggested extra preview effect, e.g. `scroll`. */
+  val extensionId: String? = null,
+  /** Extension-local effect id, e.g. `long` or `gif`. */
+  val effectId: String? = null,
+  /** How the extension request is meant to be applied. */
+  val usageMode: PreviewExtensionUsageMode? = null,
+  /** Where this extra preview suggestion came from, e.g. an annotation FQN. */
+  val suggestedBy: String? = null,
+  /** Human-readable label clients can use without hardcoding every kind. */
+  val displayName: String? = null,
+  /** Generic shape markers clients can use to group and present products. */
+  val facets: List<PreviewDataProductFacet> = emptyList(),
+  /** Expected media types for path-backed artifacts. */
+  val mediaTypes: List<String> = emptyList(),
+  /** When the product samples a scenario. */
+  val sampling: PreviewDataProductSampling? = null,
   /**
    * Optional virtual clock coordinate shared with [Capture.advanceTimeMillis]. `null` means the
    * renderer's default capture advance.
@@ -215,6 +231,35 @@ data class PreviewDataProduct(
   /** Estimated render cost on the same scale as [Capture.cost]. */
   val cost: Float = STATIC_COST,
 )
+
+@Serializable
+enum class PreviewDataProductFacet {
+  STRUCTURED,
+  ARTIFACT,
+  IMAGE,
+  ANIMATION,
+  OVERLAY,
+  CHECK,
+  DIAGNOSTIC,
+  PROFILE,
+  INTERACTIVE,
+}
+
+@Serializable
+enum class PreviewDataProductSampling {
+  START,
+  END,
+  EACH_FRAME,
+  ON_DEMAND,
+  AGGREGATE,
+  FAILURE,
+}
+
+@Serializable
+enum class PreviewExtensionUsageMode {
+  EXPLICIT_EFFECT,
+  SUGGESTED_EXTRA_PREVIEW,
+}
 
 @Serializable
 data class PreviewInfo(

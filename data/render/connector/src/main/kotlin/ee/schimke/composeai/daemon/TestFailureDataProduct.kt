@@ -3,8 +3,10 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.TestFailureDataProduct
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 
@@ -22,6 +24,9 @@ class TestFailureDataProductRegistry : DataProductRegistry {
         attachable = false,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Render failure",
+        facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.DIAGNOSTIC),
+        sampling = SamplingPolicy.Failure,
       )
     )
 

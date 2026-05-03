@@ -77,12 +77,43 @@ export interface Capture {
 export interface PreviewDataProduct {
     /** Data-product kind, for example `render/scroll/long`. */
     kind: string;
+    extensionId?: string | null;
+    effectId?: string | null;
+    usageMode?: PreviewExtensionUsageMode | null;
+    suggestedBy?: string | null;
+    displayName?: string | null;
+    facets?: PreviewDataProductFacet[];
+    mediaTypes?: string[];
+    sampling?: PreviewDataProductSampling | null;
     advanceTimeMillis: number | null;
     scroll: ScrollCapture | null;
     /** Module-relative product file path under `build/compose-previews`. */
     output: string;
     cost?: number;
 }
+
+export type PreviewDataProductFacet =
+    | 'STRUCTURED'
+    | 'ARTIFACT'
+    | 'IMAGE'
+    | 'ANIMATION'
+    | 'OVERLAY'
+    | 'CHECK'
+    | 'DIAGNOSTIC'
+    | 'PROFILE'
+    | 'INTERACTIVE';
+
+export type PreviewDataProductSampling =
+    | 'START'
+    | 'END'
+    | 'EACH_FRAME'
+    | 'ON_DEMAND'
+    | 'AGGREGATE'
+    | 'FAILURE';
+
+export type PreviewExtensionUsageMode =
+    | 'EXPLICIT_EFFECT'
+    | 'SUGGESTED_EXTRA_PREVIEW';
 
 export interface PreviewInfo {
     id: string;
@@ -432,7 +463,8 @@ export type ExtensionToWebview =
      * without sending its own `setInteractive` messages back (those would
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
-    | { command: 'clearInteractive'; previewId?: string };
+    | { command: 'clearInteractive'; previewId?: string }
+    | { command: 'clearRecording'; previewId?: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
@@ -512,6 +544,7 @@ export type WebviewToExtension =
      * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
      */
     | { command: 'setInteractive'; previewId: string; enabled: boolean }
+    | { command: 'setRecording'; previewId: string; enabled: boolean; format?: 'apng' | 'mp4' }
     /**
      * Pointer/rotary input on the focused image while interactive mode is on.
      * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate

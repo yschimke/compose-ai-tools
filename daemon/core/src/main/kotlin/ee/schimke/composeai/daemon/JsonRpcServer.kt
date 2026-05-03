@@ -50,6 +50,7 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -182,6 +183,7 @@ class JsonRpcServer(
    * in `renderer-android`) is the first concrete implementation that gets wired in by `DaemonMain`.
    */
   private val dataProducts: DataProductRegistry = DataProductRegistry.Empty,
+  private val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
   /**
    * D3 — per-request budget for `data/fetch` re-render-on-demand (DATA-PRODUCTS.md § "Re-render
    * semantics"). When the registry returns [DataProductRegistry.Outcome.RequiresRerender] the
@@ -637,6 +639,7 @@ class JsonRpcServer(
             leakDetection = emptyList<LeakDetectionMode>(),
             // D1 — advertised kinds. Empty when no producer was wired (pre-D2 default).
             dataProducts = dataProducts.capabilities,
+            previewExtensions = previewExtensions,
             // INTERACTIVE.md § 9 — `true` when the host's `acquireInteractiveSession` returns a
             // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
             // default (FakeHost, RobolectricHost today) — clients fall back to v1 dispatch.

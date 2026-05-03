@@ -28,6 +28,13 @@ import {
     JsonRpcResponse,
     LogParams,
     PROTOCOL_VERSION,
+    RecordingEncodeParams,
+    RecordingEncodeResult,
+    RecordingInputParams,
+    RecordingStartParams,
+    RecordingStartResult,
+    RecordingStopParams,
+    RecordingStopResult,
     RenderFailedParams,
     RenderFinishedParams,
     RenderNowParams,
@@ -215,6 +222,22 @@ export class DaemonClient {
      *  before the prior frame arrives. */
     interactiveInput(params: InteractiveInputParams): void {
         this.notify('interactive/input', params);
+    }
+
+    recordingStart(params: RecordingStartParams): Promise<RecordingStartResult> {
+        return this.request<RecordingStartResult>('recording/start', params);
+    }
+
+    recordingInput(params: RecordingInputParams): void {
+        this.notify('recording/input', params);
+    }
+
+    recordingStop(params: RecordingStopParams): Promise<RecordingStopResult> {
+        return this.request<RecordingStopResult>('recording/stop', params);
+    }
+
+    recordingEncode(params: RecordingEncodeParams): Promise<RecordingEncodeResult> {
+        return this.request<RecordingEncodeResult>('recording/encode', params);
     }
 
     /** Drains in-flight renders, then resolves. Daemon will not exit until `exit` fires. */

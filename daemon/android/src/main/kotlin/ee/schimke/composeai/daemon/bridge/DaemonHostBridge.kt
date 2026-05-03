@@ -427,7 +427,11 @@ sealed interface InteractiveCommand {
    * `RobolectricHost.submit` does today — no new result channel needed because render ids are
    * already globally monotonic.
    */
-  data class Render(override val streamId: String, val requestId: Long) : InteractiveCommand
+  data class Render(
+    override val streamId: String,
+    val requestId: Long,
+    val advanceTimeMs: Long? = null,
+  ) : InteractiveCommand
 
   /**
    * Tear down the rule + ActivityScenario; the held statement returns and the slot reverts to
