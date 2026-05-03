@@ -436,6 +436,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
             for (const previewId of stale) {
                 activeInteractiveStreams.delete(previewId);
             }
+            for (const previewId of [...activeRecordingSessions.keys()]) {
+                if (previewModuleMap.get(previewId) === moduleId) {
+                    activeRecordingSessions.delete(previewId);
+                    activeRecordingFormats.delete(previewId);
+                    panel?.postMessage({ command: 'clearRecording', previewId });
+                }
+            }
             updateInteractiveStatus();
             if (stale.length > 0) {
                 logLine(
@@ -698,7 +705,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // below; the panel's own setPreviews flow would otherwise
                 // race this on the new file's manifest arrival.
                 void flushInteractiveStreams();
+                void flushRecordingSessions({ encode: true });
                 panel?.postMessage({ command: 'clearInteractive' });
+                panel?.postMessage({ command: 'clearRecording' });
                 clearHeavyRefreshOptIns();
                 // Reconcile the panel first, then pre-warm the daemon for
                 // this file's module. Once daemon startup finishes we run a
@@ -721,7 +730,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
                 // backing the live preview; stop the stream so the daemon doesn't keep
                 // rendering into an invisible panel.
                 void flushInteractiveStreams();
+                void flushRecordingSessions({ encode: true });
                 panel?.postMessage({ command: 'clearInteractive' });
+                panel?.postMessage({ command: 'clearRecording' });
                 clearHeavyRefreshOptIns();
                 refresh(false);
             }
@@ -848,6 +859,7 @@ export function deactivate() {
     // pins a warm sandbox. Fire-and-forget — `flushInteractiveStreams` itself
     // races against `daemonGate.dispose()` on a tight deadline.
     void flushInteractiveStreams();
+    void flushRecordingSessions({ encode: false });
     // Drain any live daemon JVMs so the user doesn't end up with orphaned
     // processes after a window close. Fire-and-forget — VS Code won't wait
     // for an async deactivate beyond a few seconds anyway.
@@ -879,6 +891,37 @@ async function flushInteractiveStreams(): Promise<void> {
             client?.interactiveStop({ frameStreamId: streamId });
         } catch {
             /* deactivate path — best-effort */
+        }
+    }));
+}
+
+async function flushRecordingSessions(options: { encode: boolean }): Promise<void> {
+    if (activeRecordingSessions.size === 0) { return; }
+    const entries = [...activeRecordingSessions.entries()];
+    const formats = new Map(activeRecordingFormats);
+    activeRecordingSessions.clear();
+    activeRecordingFormats.clear();
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    await Promise.all(entries.map(async ([previewId, recordingId]) => {
+        try {
+            const moduleId = previewModuleMap.get(previewId);
+            if (!moduleId) { return; }
+            const client = await daemonGate?.getOrSpawn(
+                moduleId, daemonScheduler!.daemonEvents(moduleId),
+            );
+            if (!client) { return; }
+            await client.recordingStop({ recordingId });
+            if (options.encode) {
+                const encoded = await client.recordingEncode({
+                    recordingId,
+                    format: formats.get(previewId) ?? 'apng',
+                });
+                void vscode.window.showInformationMessage(
+                    `Compose preview recording saved: ${encoded.videoPath}`,
+                );
+            }
+        } catch (err) {
+            logLine(`[recording] flush failed for ${previewId}: ${(err as Error).message}`);
         }
     }));
 }
@@ -2496,6 +2539,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case 'setInteractive':
             queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
+        case 'setRecording':
+            void handleSetRecording(msg.previewId, msg.enabled, msg.format ?? 'apng');
+            break;
         case 'recordInteractiveInput':
             logLine(
                 `[interactive] ${msg.kind} ${msg.previewId} px=${msg.pixelX},${msg.pixelY} `
@@ -2503,6 +2549,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 + (msg.scrollDeltaY != null ? ` deltaY=${msg.scrollDeltaY}` : ''),
             );
             void forwardInteractiveInput(msg);
+            void forwardRecordingInput(msg);
             break;
         case 'setA11yOverlay':
             void handleSetA11yOverlay(msg.previewId, msg.enabled);
@@ -3196,6 +3243,10 @@ async function handleSetInteractive(previewId: string, enabled: boolean): Promis
  */
 const activeInteractiveStreams = new Map<string, string>();
 
+const activeRecordingSessions = new Map<string, string>();
+
+const activeRecordingFormats = new Map<string, 'apng' | 'mp4'>();
+
 let interactiveMutationQueue: Promise<void> = Promise.resolve();
 
 function queueInteractiveMutation(previewId: string, enabled: boolean): void {
@@ -3250,6 +3301,78 @@ function updateInteractiveStatus(): void {
     interactiveStatusItem.show();
 }
 
+async function handleSetRecording(
+    previewId: string,
+    enabled: boolean,
+    format: 'apng' | 'mp4',
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) {
+        logLine(`[recording] no module for ${previewId}; ignoring setRecording`);
+        return;
+    }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId, daemonScheduler.daemonEvents(moduleId),
+    );
+    if (!client) {
+        panel?.postMessage({ command: 'clearRecording', previewId });
+        return;
+    }
+    if (!enabled) {
+        const recordingId = activeRecordingSessions.get(previewId);
+        if (!recordingId) {
+            panel?.postMessage({ command: 'clearRecording', previewId });
+            return;
+        }
+        activeRecordingSessions.delete(previewId);
+        const encodeFormat = activeRecordingFormats.get(previewId) ?? format;
+        activeRecordingFormats.delete(previewId);
+        try {
+            const stopped = await client.recordingStop({ recordingId });
+            const encoded = await client.recordingEncode({ recordingId, format: encodeFormat });
+            logLine(
+                `[recording] saved ${previewId}: ${encoded.videoPath} ` +
+                `(${stopped.frameCount} frames, ${stopped.durationMs}ms)`,
+            );
+            void vscode.window.showInformationMessage(
+                `Compose preview recording saved: ${encoded.videoPath}`,
+            );
+        } catch (err) {
+            logLine(`[recording] stop failed for ${previewId}: ${(err as Error).message}`);
+            void vscode.window.showErrorMessage(
+                `Compose preview recording failed: ${(err as Error).message}`,
+            );
+        } finally {
+            panel?.postMessage({ command: 'clearRecording', previewId });
+        }
+        return;
+    }
+
+    if (activeRecordingSessions.has(previewId)) { return; }
+    try {
+        const result = await client.recordingStart({
+            previewId,
+            fps: 30,
+            scale: 1.0,
+            live: true,
+        });
+        activeRecordingSessions.set(previewId, result.recordingId);
+        activeRecordingFormats.set(previewId, format);
+        await daemonScheduler.setFocus(moduleId, [previewId]);
+        logLine(
+            `[recording] live recording on for ${previewId} ` +
+            `(module=${moduleId}, recordingId=${result.recordingId})`,
+        );
+    } catch (err) {
+        logLine(`[recording] start failed for ${previewId}: ${(err as Error).message}`);
+        panel?.postMessage({ command: 'clearRecording', previewId });
+        void vscode.window.showErrorMessage(
+            `Compose preview recording failed: ${(err as Error).message}`,
+        );
+    }
+}
+
 /**
  * Forward panel-side input on a live preview to the daemon's `interactive/input`
  * notification. Drops silently when the previewId isn't currently in interactive mode
@@ -3270,6 +3393,28 @@ async function forwardInteractiveInput(
     if (!client) { return; }
     client.interactiveInput({
         frameStreamId: streamId,
+        kind: input.kind,
+        pixelX: input.pixelX,
+        pixelY: input.pixelY,
+        scrollDeltaY: input.scrollDeltaY,
+    });
+}
+
+async function forwardRecordingInput(
+    input: Extract<WebviewToExtension, { command: 'recordInteractiveInput' }>,
+): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) { return; }
+    const previewId = input.previewId;
+    const recordingId = activeRecordingSessions.get(previewId);
+    if (!recordingId) { return; }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) { return; }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId, daemonScheduler.daemonEvents(moduleId),
+    );
+    if (!client) { return; }
+    client.recordingInput({
+        recordingId,
         kind: input.kind,
         pixelX: input.pixelX,
         pixelY: input.pixelY,

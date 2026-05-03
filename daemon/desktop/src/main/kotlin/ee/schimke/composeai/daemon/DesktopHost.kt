@@ -302,7 +302,8 @@ open class DesktopHost(
     override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) =
       delegate.dispatch(input)
 
-    override fun render(requestId: Long): RenderResult = delegate.render(requestId)
+    override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult =
+      delegate.render(requestId, advanceTimeMs)
 
     override fun close() {
       if (closed) return

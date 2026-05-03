@@ -1513,7 +1513,7 @@ private class RecordingDisconnectSession(override val previewId: String) : Inter
 
   override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {}
 
-  override fun render(requestId: Long): RenderResult =
+  override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult =
     RenderResult(
       id = requestId,
       classLoaderHashCode = 0,

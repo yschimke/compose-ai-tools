@@ -491,7 +491,7 @@ private class RecordingSession(override val previewId: String, private val pngFi
     lastClickY = input.pixelY
   }
 
-  override fun render(requestId: Long): RenderResult {
+  override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     renderCount.incrementAndGet()
     return RenderResult(
       id = requestId,

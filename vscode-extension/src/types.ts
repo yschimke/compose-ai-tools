@@ -432,7 +432,8 @@ export type ExtensionToWebview =
      * without sending its own `setInteractive` messages back (those would
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
-    | { command: 'clearInteractive'; previewId?: string };
+    | { command: 'clearInteractive'; previewId?: string }
+    | { command: 'clearRecording'; previewId?: string };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
@@ -512,6 +513,7 @@ export type WebviewToExtension =
      * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
      */
     | { command: 'setInteractive'; previewId: string; enabled: boolean }
+    | { command: 'setRecording'; previewId: string; enabled: boolean; format?: 'apng' | 'mp4' }
     /**
      * Pointer/rotary input on the focused image while interactive mode is on.
      * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate

@@ -42,6 +42,159 @@ class AndroidRecordingSessionTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
   @Test
+  fun scriptedPlaybackPassesFrameDeltasToInteractiveRender() {
+    val framesDir = tempFolder.newFolder("delta-frames")
+    val encodedDir = tempFolder.newFolder("delta-encoded")
+    val sourcePng = File(tempFolder.newFolder("delta-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-deltas",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    session.postScript(
+      listOf(
+        RecordingScriptEvent(
+          tMs = 67L,
+          kind = InteractiveInputKind.CLICK,
+          pixelX = 4,
+          pixelY = 4,
+        )
+      )
+    )
+    val result = session.stop()
+
+    assertEquals(4, result.frameCount)
+    assertEquals(listOf(0L, 33L, 33L, 34L), interactive.renderAdvances)
+    assertEquals(1, interactive.dispatchCount)
+    assertEquals(true, interactive.closed)
+  }
+
+  @Test
+  fun liveRecordingCapturesFramesAndDispatchesQueuedInput() {
+    val framesDir = tempFolder.newFolder("live-frames")
+    val encodedDir = tempFolder.newFolder("live-encoded")
+    val sourcePng = File(tempFolder.newFolder("live-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-live-android",
+        fps = FPS,
+        scale = 1.0f,
+        live = true,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    session.postInput(
+      ee.schimke.composeai.daemon.protocol.RecordingInputParams(
+        recordingId = "test-rec-live-android",
+        kind = InteractiveInputKind.CLICK,
+        pixelX = 4,
+        pixelY = 4,
+      )
+    )
+    Thread.sleep(90)
+    val result = session.stop()
+
+    assertTrue("live recording should capture at least one frame", result.frameCount >= 1)
+    assertEquals(1, interactive.dispatchCount)
+    assertEquals(true, interactive.closed)
+    assertTrue(File(result.framesDir, "frame-00000.png").isFile)
+  }
+
+  @Test
+  fun liveRecordingRejectsScriptedEvents() {
+    val framesDir = tempFolder.newFolder("live-reject-frames")
+    val encodedDir = tempFolder.newFolder("live-reject-encoded")
+    val sourcePng = File(tempFolder.newFolder("live-reject-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-live-reject",
+        fps = FPS,
+        scale = 1.0f,
+        live = true,
+        interactive = RecordingDeltaSession(sourcePng),
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+    try {
+      try {
+        session.postScript(
+          listOf(RecordingScriptEvent(tMs = 0L, kind = InteractiveInputKind.CLICK, pixelX = 1, pixelY = 1))
+        )
+        fail("expected live recording to reject postScript")
+      } catch (expected: IllegalStateException) {
+        assertNotNull(expected.message)
+      }
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun scriptedRecordingRejectsLiveInput() {
+    val framesDir = tempFolder.newFolder("scripted-reject-frames")
+    val encodedDir = tempFolder.newFolder("scripted-reject-encoded")
+    val sourcePng = File(tempFolder.newFolder("scripted-reject-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-scripted-reject",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = RecordingDeltaSession(sourcePng),
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postInput(
+        ee.schimke.composeai.daemon.protocol.RecordingInputParams(
+          recordingId = "test-rec-scripted-reject",
+          kind = InteractiveInputKind.CLICK,
+          pixelX = 1,
+          pixelY = 1,
+        )
+      )
+      fail("expected scripted recording to reject postInput")
+    } catch (expected: IllegalStateException) {
+      assertNotNull(expected.message)
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -140,29 +293,24 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  fun acquireWithLiveTrueThrowsUnsupported() {
-    // Live mode is host-side rejected on Android — JsonRpcServer translates the throw to
-    // MethodNotFound on the wire, agents see "live recording not supported on Android".
+  fun acquireWithLiveTrueAllocatesLiveRecording() {
     val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
-      try {
+      val session =
         host.acquireRecordingSession(
           previewId = INTERACTIVE_PREVIEW_ID,
-          recordingId = "test-rec-live-rejected",
+          recordingId = "test-rec-live-allocated",
           classLoader = AndroidRecordingSessionTest::class.java.classLoader!!,
           fps = FPS,
           scale = 1.0f,
           overrides = null,
           live = true,
         )
-        fail("expected UnsupportedOperationException for live recording on Android")
-      } catch (expected: UnsupportedOperationException) {
-        assertNotNull(expected.message)
-        assertTrue(
-          "error message should mention live recording is unsupported on Android",
-          expected.message!!.contains("live recording", ignoreCase = true),
-        )
+      try {
+        assertEquals(true, session.live)
+      } finally {
+        session.close()
       }
     } finally {
       host.shutdown()
@@ -284,6 +432,32 @@ class AndroidRecordingSessionTest {
       }
     }
     return matches.toDouble() / (img.width.toLong() * img.height.toLong()).toDouble()
+  }
+
+  private class RecordingDeltaSession(private val sourcePng: File) : InteractiveSession {
+    override val previewId: String = INTERACTIVE_PREVIEW_ID
+    val renderAdvances = mutableListOf<Long?>()
+    var dispatchCount = 0
+    var closed = false
+
+    override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {
+      dispatchCount++
+    }
+
+    override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
+      renderAdvances.add(advanceTimeMs)
+      return RenderResult(
+        id = requestId,
+        classLoaderHashCode = 0,
+        classLoaderName = "recording-delta-session",
+        pngPath = sourcePng.absolutePath,
+        metrics = mapOf("tookMs" to 0L),
+      )
+    }
+
+    override fun close() {
+      closed = true
+    }
   }
 
   companion object {

@@ -557,6 +557,48 @@ export interface InteractiveInputParams {
     keyCode?: string;
 }
 
+export type RecordingFormat = 'apng' | 'mp4' | 'webm';
+
+export interface RecordingStartParams {
+    previewId: string;
+    fps?: number;
+    scale?: number;
+    overrides?: PreviewOverrides;
+    live?: boolean;
+}
+
+export interface RecordingStartResult { recordingId: string }
+
+export interface RecordingInputParams {
+    recordingId: string;
+    kind: InteractiveInputKind;
+    pixelX?: number;
+    pixelY?: number;
+    scrollDeltaY?: number;
+    keyCode?: string;
+}
+
+export interface RecordingStopParams { recordingId: string }
+
+export interface RecordingStopResult {
+    frameCount: number;
+    durationMs: number;
+    framesDir: string;
+    frameWidthPx: number;
+    frameHeightPx: number;
+}
+
+export interface RecordingEncodeParams {
+    recordingId: string;
+    format?: RecordingFormat;
+}
+
+export interface RecordingEncodeResult {
+    videoPath: string;
+    mimeType: string;
+    sizeBytes: number;
+}
+
 /**
  * Wire format of `<module>/build/compose-previews/daemon-launch.json`,
  * authored by `DaemonBootstrapTask`. See
