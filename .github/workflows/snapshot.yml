@@ -9,9 +9,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      suffix:
+        description: >-
+          Optional version suffix inserted before -SNAPSHOT. Leave blank to use
+          the plain next-patch snapshot on main, or a ref+SHA suffix on branches.
+        required: false
+        type: string
 
 concurrency:
-  group: snapshot-${{ github.ref }}
+  group: snapshot-${{ github.ref }}-${{ inputs.suffix || 'auto' }}
   cancel-in-progress: true
 
 # Snapshot publish only reads repo contents; auth for Central is via
@@ -29,9 +36,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: version
-        name: Compute snapshot version from last tag
+        name: Compute snapshot version
         # Take the latest `v*` tag, strip leading `v`, bump the patch digit,
-        # append `-SNAPSHOT`. Falls back to 0.0.1-SNAPSHOT if no tag exists yet.
+        # append `-SNAPSHOT`. Main keeps the stable next-patch coordinate
+        # documented for downstream consumers. Manual runs on branches get a
+        # ref+SHA suffix by default so PR snapshots can be tested without
+        # overwriting the main snapshot coordinate.
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_SUFFIX: ${{ inputs.suffix || '' }}
         run: |
           last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)"
           base="${last_tag#v}"
@@ -40,9 +53,31 @@ jobs:
           minor="${rest%%.*}"
           patch="${rest#*.}"
           patch="${patch%%-*}"                    # drop any pre-release suffix
-          next="${major}.${minor}.$((patch + 1))-SNAPSHOT"
-          echo "Last tag: $last_tag → snapshot version: $next"
+          next_base="${major}.${minor}.$((patch + 1))"
+
+          suffix="$INPUT_SUFFIX"
+          if [[ -z "$suffix" && "$REF_NAME" != "main" ]]; then
+            suffix="${REF_NAME}-${GITHUB_SHA::7}"
+          fi
+          if [[ -n "$suffix" ]]; then
+            suffix="$(
+              printf '%s' "$suffix" |
+                tr '[:upper:]' '[:lower:]' |
+                sed -E 's/[^a-z0-9.-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+            )"
+            if [[ -z "$suffix" ]]; then
+              echo "Snapshot suffix resolved to empty after sanitization." >&2
+              exit 1
+            fi
+            next="${next_base}-${suffix}-SNAPSHOT"
+          else
+            next="${next_base}-SNAPSHOT"
+          fi
+
+          echo "Last tag: $last_tag -> snapshot version: $next"
           echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "### Maven snapshot" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$next\`" >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup
       - name: Publish -SNAPSHOT to Maven Central snapshots
         env:
@@ -59,6 +94,7 @@ jobs:
             :data-history-connector:publishToMavenCentral \
             :data-layoutinspector-core:publishToMavenCentral \
             :data-layoutinspector-connector:publishToMavenCentral \
+            :data-recomposition-connector:publishToMavenCentral \
             :data-render-core:publishToMavenCentral \
             :data-render-connector:publishToMavenCentral \
             :data-resources-core:publishToMavenCentral \

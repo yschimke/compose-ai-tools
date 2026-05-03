@@ -104,6 +104,7 @@ jobs:
             :data-history-connector:publishAllPublicationsToGitHubPackagesRepository \
             :data-layoutinspector-core:publishAllPublicationsToGitHubPackagesRepository \
             :data-layoutinspector-connector:publishAllPublicationsToGitHubPackagesRepository \
+            :data-recomposition-connector:publishAllPublicationsToGitHubPackagesRepository \
             :data-render-core:publishAllPublicationsToGitHubPackagesRepository \
             :data-render-connector:publishAllPublicationsToGitHubPackagesRepository \
             :data-resources-core:publishAllPublicationsToGitHubPackagesRepository \
@@ -131,6 +132,7 @@ jobs:
             :data-history-connector:publishAndReleaseToMavenCentral \
             :data-layoutinspector-core:publishAndReleaseToMavenCentral \
             :data-layoutinspector-connector:publishAndReleaseToMavenCentral \
+            :data-recomposition-connector:publishAndReleaseToMavenCentral \
             :data-render-core:publishAndReleaseToMavenCentral \
             :data-render-connector:publishAndReleaseToMavenCentral \
             :data-resources-core:publishAndReleaseToMavenCentral \

@@ -2,11 +2,10 @@ import tapmoc.TapmocExtension
 import tapmoc.configureKotlinCompatibility
 
 plugins {
+  id("composeai.maven-publishing")
   `java-gradle-plugin`
   `kotlin-dsl`
-  `maven-publish`
   alias(libs.plugins.kotlin.serialization)
-  alias(libs.plugins.maven.publish)
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.tapmoc)
 }
@@ -20,22 +19,6 @@ ktfmt { googleStyle() }
 configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
 
 extensions.configure<TapmocExtension> { checkDependencies() }
-
-group = "ee.schimke.composeai"
-
-// CI sets PLUGIN_VERSION: release.yml passes the git tag (stripped of `v`);
-// snapshot.yml passes `<last-tag-patch+1>-SNAPSHOT`. Local builds fall back
-// to the next-patch SNAPSHOT derived from `.release-please-manifest.json`
-// at the outer repo root (this project is loaded as an included build, so
-// its own rootDir is `gradle-plugin/` — walk up one level).
-version =
-  providers.environmentVariable("PLUGIN_VERSION").orNull
-    ?: run {
-      val manifest = rootDir.parentFile.resolve(".release-please-manifest.json").readText()
-      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
-      val (major, minor, patch) = current.split(".").map { it.toInt() }
-      "$major.$minor.${patch + 1}-SNAPSHOT"
-    }
 
 gradlePlugin {
   website.set("https://github.com/yschimke/compose-ai-tools")
@@ -55,72 +38,6 @@ gradlePlugin {
 // Publish to both GitHub Packages (legacy / CI convenience) and Maven Central
 // via the new Central Portal. Snapshots (version ending in `-SNAPSHOT`) route
 // automatically to `https://central.sonatype.com/repository/maven-snapshots/`.
-publishing {
-  repositories {
-    maven {
-      name = "GitHubPackages"
-      url =
-        uri(
-          providers
-            .environmentVariable("GITHUB_REPOSITORY")
-            .map { "https://maven.pkg.github.com/$it" }
-            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-        )
-      credentials {
-        username = providers.environmentVariable("GITHUB_ACTOR").orNull
-        password = providers.environmentVariable("GITHUB_TOKEN").orNull
-      }
-    }
-  }
-}
-
-mavenPublishing {
-  // Central Portal (https://central.sonatype.com) is the only target in
-  // vanniktech ≥ 0.34. `automaticRelease = true` promotes to the central
-  // repo without a manual "release" click in the Portal UI. Snapshots route
-  // to https://central.sonatype.com/repository/maven-snapshots/ automatically.
-  publishToMavenCentral(automaticRelease = true)
-  // Vanniktech auto-detects `java-gradle-plugin` and publishes the plugin +
-  // marker artifacts with sources/javadoc jars. (If we ever apply the
-  // `com.gradle.plugin-publish` plugin for Plugin Portal, swap in
-  // `configure(GradlePublishPlugin())`.)
-  // Only require signing for non-snapshot builds — snapshots are unsigned on
-  // the Central snapshots repo, which is convenient for local/dev publishes.
-  if (!version.toString().endsWith("SNAPSHOT")) {
-    signAllPublications()
-  }
-
-  coordinates("ee.schimke.composeai", "compose-preview-plugin", version.toString())
-
-  pom {
-    name.set("Compose Preview Gradle Plugin")
-    description.set(
-      "Gradle plugin to discover and render Jetpack Compose / Compose Multiplatform " +
-        "@Preview functions to PNG outside Android Studio."
-    )
-    url.set("https://github.com/yschimke/compose-ai-tools")
-    inceptionYear.set("2025")
-    licenses {
-      license {
-        name.set("The Apache License, Version 2.0")
-        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
-        distribution.set("repo")
-      }
-    }
-    developers {
-      developer {
-        id.set("yschimke")
-        name.set("Yuri Schimke")
-        url.set("https://github.com/yschimke")
-      }
-    }
-    scm {
-      url.set("https://github.com/yschimke/compose-ai-tools")
-      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
-      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
-    }
-  }
-}
 
 dependencies {
   implementation(libs.classgraph)
@@ -173,3 +90,13 @@ val generatePluginVersionResource by tasks.registering {
 }
 
 sourceSets.main.get().resources.srcDir(generatePluginVersionResource)
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "compose-preview-plugin",
+    displayName = "Compose Preview Gradle Plugin",
+    description =
+      "Gradle plugin to discover and render Jetpack Compose / Compose Multiplatform @Preview functions to PNG outside Android Studio.",
+  )
+  inceptionYear.set("2025")
+}

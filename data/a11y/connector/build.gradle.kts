@@ -12,10 +12,9 @@ import tapmoc.configureKotlinCompatibility
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)" for the rationale.
 
 plugins {
+  id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)
-  `maven-publish`
-  alias(libs.plugins.maven.publish)
   alias(libs.plugins.tapmoc)
 }
 
@@ -26,17 +25,6 @@ tasks.withType<KotlinCompilationTask<*>>().configureEach {
 }
 
 extensions.configure<TapmocExtension> { checkDependencies() }
-
-group = "ee.schimke.composeai"
-
-version =
-  providers.environmentVariable("PLUGIN_VERSION").orNull
-    ?: run {
-      val manifest = rootDir.resolve(".release-please-manifest.json").readText()
-      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
-      val (major, minor, patch) = current.split(".").map { it.toInt() }
-      "$major.$minor.${patch + 1}-SNAPSHOT"
-    }
 
 android {
   namespace = "ee.schimke.composeai.data.a11y.connector"
@@ -66,27 +54,7 @@ dependencies {
   testImplementation(libs.kotlinx.serialization.json)
 }
 
-publishing {
-  repositories {
-    maven {
-      name = "GitHubPackages"
-      url =
-        uri(
-          providers
-            .environmentVariable("GITHUB_REPOSITORY")
-            .map { "https://maven.pkg.github.com/$it" }
-            .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-        )
-      credentials {
-        username = providers.environmentVariable("GITHUB_ACTOR").orNull
-        password = providers.environmentVariable("GITHUB_TOKEN").orNull
-      }
-    }
-  }
-}
-
 mavenPublishing {
-  publishToMavenCentral(automaticRelease = true)
   configure(
     com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
       javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
@@ -94,38 +62,14 @@ mavenPublishing {
       variant = "release",
     )
   )
-  if (!version.toString().endsWith("SNAPSHOT")) {
-    signAllPublications()
-  }
+}
 
-  coordinates("ee.schimke.composeai", "data-a11y-connector", version.toString())
-
-  pom {
-    name.set("Compose Preview — Accessibility Data Product (Connector)")
-    description.set(
-      "Daemon-side accessibility data-product connector: wires data-a11y-core into the " +
-        "compose-preview daemon's data/* JSON-RPC surface and overlay image processor."
-    )
-    url.set("https://github.com/yschimke/compose-ai-tools")
-    inceptionYear.set("2026")
-    licenses {
-      license {
-        name.set("The Apache License, Version 2.0")
-        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
-        distribution.set("repo")
-      }
-    }
-    developers {
-      developer {
-        id.set("yschimke")
-        name.set("Yuri Schimke")
-        url.set("https://github.com/yschimke")
-      }
-    }
-    scm {
-      url.set("https://github.com/yschimke/compose-ai-tools")
-      connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
-      developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
-    }
-  }
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "data-a11y-connector",
+    displayName = "Compose Preview — Accessibility Data Product (Connector)",
+    description =
+      "Daemon-side accessibility data-product connector: wires data-a11y-core into the compose-preview daemon's data/* JSON-RPC surface and overlay image processor.",
+  )
+  inceptionYear.set("2026")
 }

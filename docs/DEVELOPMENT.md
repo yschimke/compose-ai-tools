@@ -255,10 +255,12 @@ exist.
 ## Testing a downstream project against a `-SNAPSHOT`
 
 Every push to `main` publishes a `-SNAPSHOT` build to the Central
-snapshots repository, so a downstream project can try an unreleased
-change without going through `includeBuild` or `mavenLocal`. Add the
-snapshots repo to `pluginManagement` and bump the plugin version to the
-next patch `-SNAPSHOT`:
+snapshots repository. To test a PR before it merges, run the **Publish
+snapshot** workflow manually from that branch; it publishes the same
+Maven artifacts with a branch-qualified snapshot version so it does not
+collide with the `main` snapshot. Add the snapshots repo to
+`pluginManagement` and bump the plugin version to the version printed in
+the workflow summary:
 
 ```kotlin
 // settings.gradle.kts
@@ -277,10 +279,14 @@ pluginManagement {
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.3.5-SNAPSHOT"
+    id("ee.schimke.composeai.preview") version "0.8.13-feature-layout-data-abc1234-SNAPSHOT"
 }
 ```
 
-The snapshot version is the next patch ahead of the latest release
-(e.g. last tag `v0.3.4` → `0.3.5-SNAPSHOT`). Snapshots are unsigned.
-See [RELEASING.md](RELEASING.md) for more detail.
+For pushes to `main`, the snapshot version remains the next patch ahead
+of the latest release (e.g. last tag `v0.8.12` →
+`0.8.13-SNAPSHOT`). Manual branch runs default to
+`<next-patch>-<branch-name>-<short-sha>-SNAPSHOT`; the workflow also
+accepts a shorter `suffix` input if you want a stable test coordinate
+such as `0.8.13-issue-612-SNAPSHOT`. Snapshots are unsigned. See
+[RELEASING.md](RELEASING.md) for more detail.
