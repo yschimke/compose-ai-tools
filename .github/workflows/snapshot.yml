@@ -54,8 +54,19 @@ jobs:
             :gradle-plugin:publishToMavenCentral \
             :data-a11y-core:publishToMavenCentral \
             :data-a11y-connector:publishToMavenCentral \
+            :data-fonts-core:publishToMavenCentral \
+            :data-fonts-connector:publishToMavenCentral \
+            :data-history-connector:publishToMavenCentral \
+            :data-layoutinspector-core:publishToMavenCentral \
+            :data-layoutinspector-connector:publishToMavenCentral \
             :data-render-core:publishToMavenCentral \
+            :data-render-connector:publishToMavenCentral \
+            :data-resources-core:publishToMavenCentral \
+            :data-resources-connector:publishToMavenCentral \
             :data-scroll-core:publishToMavenCentral \
+            :data-strings-core:publishToMavenCentral \
+            :data-strings-connector:publishToMavenCentral \
+            :data-theme-connector:publishToMavenCentral \
             :renderer-android:publishToMavenCentral \
             :preview-annotations:publishToMavenCentral \
             :daemon:core:publishToMavenCentral \
