@@ -1,7 +1,8 @@
 # Capture modes
 
 Beyond a plain `@Preview`, the renderer supports multi-variant fan-out,
-deterministic animation captures, and scrolling captures.
+continuous animation capture, deterministic timeline snapshots, MCP scripted
+recordings, and scrolling captures.
 
 ## Multi-preview annotations
 
@@ -10,7 +11,75 @@ Functions can declare multiple `@Preview` variants via meta-annotations (e.g.
 variant appears as its own entry in `previews.json` with a unique id, so all
 CLI commands address them individually — no variant index needed.
 
-## Animations and the paused frame clock (Android only)
+## `@AnimatedPreview`: continuous GIF capture (Android only)
+
+Use `@AnimatedPreview` from `ee.schimke.composeai:preview-annotations` when
+the goal is to capture an actual animation artifact. This is the first choice
+for spinners, progress indicators, and other moving previews that should be
+verified as motion rather than as several unrelated PNG snapshots.
+
+```kotlin
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.wear.compose.material3.CircularProgressIndicator
+import ee.schimke.composeai.preview.AnimatedPreview
+
+@Preview(
+    name = "Animated Circular Progress",
+    device = "id:wearos_large_round",
+    showSystemUi = true,
+    showBackground = true,
+)
+@AnimatedPreview(durationMs = 1200, frameIntervalMs = 100, showCurves = false)
+@Composable
+fun AnimatedCircularProgressPreview() {
+    CircularProgressIndicator()
+}
+```
+
+The rendered artifact is a GIF under `build/compose-previews/renders/`. For
+`durationMs = 1200` and `frameIntervalMs = 100`, expect 13 frames: frame 0 plus
+one frame every 100ms through 1200ms.
+
+Use `durationMs = 0` to auto-detect finite animations. Indeterminate or
+infinite animations usually need a positive `durationMs` so the renderer knows
+how long to record. Set `showCurves = false` for ordinary visual regression or
+agent inspection; set it to `true` when you specifically want curve diagnostics
+in the output.
+
+Add the annotations artifact to the previewed module:
+
+```kotlin
+// libs.versions.toml
+[versions]
+composePreviewAnnotations = "0.8.12"
+
+[libraries]
+compose-preview-annotations = {
+    module = "ee.schimke.composeai:preview-annotations",
+    version.ref = "composePreviewAnnotations"
+}
+```
+
+```kotlin
+// build.gradle.kts
+implementation(libs.compose.preview.annotations)
+```
+
+Direct dependency form:
+
+```kotlin
+implementation("ee.schimke.composeai:preview-annotations:<version>")
+```
+
+If you are using a locally installed snapshot CLI/plugin, the matching
+`preview-annotations:<snapshot>` artifact may not be published. Use the latest
+published `preview-annotations` artifact unless you have also published the
+snapshot annotations artifact locally. The renderer discovers annotations by
+FQN, so a published annotations artifact can still work with a newer snapshot
+renderer.
+
+## Manual clock snapshots (Android only)
 
 The Android renderer pauses the Compose `mainClock` and advances by a fixed
 step before capture, so infinite animations
@@ -45,6 +114,48 @@ appears in the CLI's `captures[]` with `advanceTimeMillis` set.
 Caveats: a11y mode disables the paused clock (ATF needs live semantics), so
 don't combine it with timeline fan-outs. CMP Desktop has no per-preview
 clock control — pick a static frame if you need determinism.
+
+## MCP `record_preview`: scripted/live recording
+
+Use MCP `record_preview` when an agent needs a scripted recording with a
+preview URI, daemon state, input events, or a non-GIF output such as APNG. For
+an animation that does not require real interaction, a no-op pointer script is
+enough to define the recording duration:
+
+```json
+{
+  "uri": "compose-preview://<workspace>/_wear/ee.example.WearPreviewsKt.AnimatedCircularProgressPreview_Animated Circular Progress",
+  "fps": 10,
+  "scale": 1.0,
+  "format": "apng",
+  "events": [
+    { "tMs": 0, "kind": "pointerDown", "pixelX": 227, "pixelY": 227 },
+    { "tMs": 1200, "kind": "pointerUp", "pixelX": 227, "pixelY": 227 }
+  ]
+}
+```
+
+The response includes `recordingId`, `mimeType`, `sizeBytes`, `frameCount`,
+`durationMs`, `frameWidthPx`, and `frameHeightPx`. Raw frames are also written
+under:
+
+```text
+<module>/build/compose-previews/daemon-recordings/frames/<recordingId>/frame-00000.png
+```
+
+## Verification tips
+
+When ImageMagick is available, agents can verify animation output without
+depending only on GIF/APNG playback:
+
+```sh
+identify build/compose-previews/renders/<preview>.gif
+shasum -a 256 build/compose-previews/daemon-recordings/frames/rec-1/frame-*.png
+compare -metric AE frame-00000.png frame-00006.png /tmp/frame-diff.png
+```
+
+Useful checks: frame count matches the requested duration/fps, hashes differ
+across representative frames, and `compare -metric AE` reports changed pixels.
 
 ## Scrolling captures
 
