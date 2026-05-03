@@ -216,6 +216,8 @@ fun main(args: Array<String>) {
     )
   }
 
+  val composeTraceEnabled =
+    PerfettoTraceDataProducer.enabled() && System.getProperty(RenderEngine.OUTPUT_DIR_PROP) != null
   val dataProducts =
     CompositeDataProductRegistry(
       buildList {
@@ -224,7 +226,7 @@ fun main(args: Array<String>) {
         add(TestFailureDataProductRegistry())
         add(themeRegistry)
         add(recompositionRegistry)
-        if (PerfettoTraceDataProducer.enabled()) {
+        if (composeTraceEnabled) {
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
             val dataRoot =
               File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
@@ -260,12 +262,14 @@ fun main(args: Array<String>) {
       // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
       dataProducts = dataProducts,
       previewExtensions =
-        listOf(
-          RenderPreviewExtension.deviceClipDescriptor,
-          RenderPreviewExtension.renderTraceDescriptor,
-          RenderPreviewExtension.composeTraceDescriptor,
-          RenderPreviewExtension.overlayLegendDescriptor,
-        ),
+        buildList {
+          add(RenderPreviewExtension.deviceClipDescriptor)
+          add(RenderPreviewExtension.renderTraceDescriptor)
+          if (composeTraceEnabled) {
+            add(RenderPreviewExtension.composeTraceDescriptor)
+          }
+          add(RenderPreviewExtension.overlayLegendDescriptor)
+        },
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)

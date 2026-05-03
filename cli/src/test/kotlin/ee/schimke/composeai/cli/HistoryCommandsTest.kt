@@ -37,6 +37,27 @@ class HistoryCommandsTest {
   }
 
   @Test
+  fun `history list reports total matches before module pagination`() {
+    val projectDir = tempModule()
+    val source = LocalFsHistorySource(projectDir.resolve(".compose-preview-history").toPath())
+    repeat(LocalFsHistorySource.MAX_LIMIT + 1) { index ->
+      source.write(
+        historyEntry(
+          source,
+          id = "entry-$index",
+          timestamp = "2026-05-03T07:${(index % 60).toString().padStart(2, '0')}:00Z",
+        ),
+        bytes("entry-$index"),
+      )
+    }
+
+    val response = listLocalHistory(listOf(PreviewModule("app", projectDir)), limit = 1)
+
+    assertEquals(LocalFsHistorySource.MAX_LIMIT + 1, response.totalCount)
+    assertEquals(1, response.entries.size)
+  }
+
+  @Test
   fun `history diff response reports png hash changes and includes metadata`() {
     val projectDir = tempModule()
     val source = LocalFsHistorySource(projectDir.resolve(".compose-preview-history").toPath())

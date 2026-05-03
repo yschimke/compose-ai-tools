@@ -39,7 +39,7 @@ class PreviewDataTest {
                 listOf(
                   PreviewDataProduct(
                     kind = "render/scroll/long",
-                    extensionId = "scrolling-preview-annotation",
+                    extensionId = "scroll-long",
                     effectId = "long",
                     usageMode = PreviewExtensionUsageMode.SUGGESTED_EXTRA_PREVIEW,
                     suggestedBy = "ee.schimke.composeai.preview.ScrollingPreview",

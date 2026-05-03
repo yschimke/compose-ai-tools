@@ -247,6 +247,7 @@ fun main(args: Array<String>) {
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
   val a11yPreviewExtensionEnabled =
     System.getProperty(RenderEngine.A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true"
+  val composeTraceEnabled = renderOutputDir != null && PerfettoTraceDataProducer.enabled()
   val dataProducts: DataProductRegistry =
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
@@ -283,7 +284,7 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: FontsUsedDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(FontsUsedDataProductRegistry(rootDir = dataRoot))
-          if (PerfettoTraceDataProducer.enabled()) {
+          if (composeTraceEnabled) {
             System.err.println(
               "compose-ai-tools daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
             )
@@ -310,7 +311,9 @@ fun main(args: Array<String>) {
     buildList {
       add(RenderPreviewExtension.deviceClipDescriptor)
       add(RenderPreviewExtension.renderTraceDescriptor)
-      add(RenderPreviewExtension.composeTraceDescriptor)
+      if (composeTraceEnabled) {
+        add(RenderPreviewExtension.composeTraceDescriptor)
+      }
       add(RenderPreviewExtension.overlayLegendDescriptor)
       if (a11yPreviewExtensionEnabled) {
         add(AccessibilitySemanticsPreviewExtension.descriptor)

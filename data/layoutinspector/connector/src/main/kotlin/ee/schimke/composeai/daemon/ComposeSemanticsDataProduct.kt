@@ -395,7 +395,9 @@ object LayoutInspectorDataProducer {
 
   private fun String.sourceLocation(): String? {
     val file = Regex("""([A-Za-z0-9_./-]+\.kt)""").find(this)?.groupValues?.getOrNull(1)
-    val line = Regex("""(?::|@)(\d+)""").find(this)?.groupValues?.getOrNull(1)
+    val line =
+      Regex("""@(?:\d+)?L(\d+)""").find(this)?.groupValues?.getOrNull(1)
+        ?: Regex("""(?::|@)(\d+)""").find(this)?.groupValues?.getOrNull(1)
     return when {
       file != null && line != null -> "${file.substringAfterLast('/')}:$line"
       file != null -> file.substringAfterLast('/')

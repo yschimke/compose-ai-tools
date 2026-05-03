@@ -651,7 +651,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
           ScrollMode.GIF -> "gif"
           else -> error("non-product scroll mode ${scroll.mode}")
         }
-      val extensionId = "scrolling-preview-annotation"
+      val extensionId =
+        when (scroll.mode) {
+          ScrollMode.LONG -> "scroll-long"
+          ScrollMode.GIF -> "scroll-gif"
+          else -> error("non-product scroll mode ${scroll.mode}")
+        }
       val facets =
         when (scroll.mode) {
           ScrollMode.LONG -> listOf(PreviewDataProductFacet.ARTIFACT, PreviewDataProductFacet.IMAGE)
