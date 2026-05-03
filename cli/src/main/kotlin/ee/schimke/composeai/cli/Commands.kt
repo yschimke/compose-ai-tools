@@ -422,7 +422,7 @@ abstract class Command(protected val args: List<String>) {
           } else {
             p.captures
           }
-        val productCaptures = p.dataProducts.mapNotNull { it.asPreviewArtifactCapture() }
+        val productCaptures = p.dataProducts.mapNotNull { it.asPreviewArtifactCapture(module) }
         val resultCaptures =
           if (captures.isSingleStaticCapture() && productCaptures.isNotEmpty()) {
             productCaptures
@@ -493,13 +493,14 @@ abstract class Command(protected val args: List<String>) {
   private fun List<Capture>.isSingleStaticCapture(): Boolean =
     size == 1 && single().advanceTimeMillis == null && single().scroll == null
 
-  private fun PreviewDataProduct.asPreviewArtifactCapture(): Capture? {
+  private fun PreviewDataProduct.asPreviewArtifactCapture(module: PreviewModule): Capture? {
     if (output.isBlank()) return null
     val isImageOrAnimation =
       mediaTypes.any { it.startsWith("image/") } ||
         output.endsWith(".png") ||
         output.endsWith(".gif")
     if (!isImageOrAnimation) return null
+    if (!module.projectDir.resolve("build/compose-previews/$output").exists()) return null
     return Capture(advanceTimeMillis = advanceTimeMillis, scroll = scroll, renderOutput = output)
   }
 

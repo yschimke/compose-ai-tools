@@ -170,6 +170,46 @@ class PreviewListResponseTest {
     assertEquals("LONG", result.captures.single().scroll?.mode)
   }
 
+  @Test
+  fun `missing scroll artifact data products keep static preview capture`() {
+    val projectDir = Files.createTempDirectory("preview-result-test").toFile()
+    val clean =
+      projectDir.resolve("build/compose-previews/renders/LongPreview.png").also {
+        it.parentFile.mkdirs()
+        it.writeBytes(byteArrayOf(1, 2, 3))
+      }
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.LongPreview",
+              functionName = "LongPreview",
+              className = "com.example.PreviewsKt",
+              captures = listOf(Capture(renderOutput = "renders/${clean.name}")),
+              dataProducts =
+                listOf(
+                  PreviewDataProduct(
+                    kind = "render/scroll/long",
+                    output = "data/render-scroll-long/${clean.name}",
+                    mediaTypes = listOf("image/png"),
+                    scroll = ScrollCapture(mode = "LONG"),
+                  )
+                ),
+            )
+          ),
+      )
+
+    val result = ResultHarness().results(PreviewModule("app", projectDir), manifest).single()
+
+    assertEquals(clean.canonicalFile.absolutePath, result.pngPath)
+    assertEquals(1, result.captures.size)
+    assertEquals(clean.canonicalFile.absolutePath, result.captures.single().pngPath)
+    assertEquals(null, result.captures.single().scroll)
+  }
+
   private class ResultHarness : Command(emptyList()) {
     override fun run() = Unit
 
