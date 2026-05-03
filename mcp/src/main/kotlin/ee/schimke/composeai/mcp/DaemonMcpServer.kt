@@ -31,6 +31,7 @@ import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -43,6 +44,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * The load-bearing wiring layer. Owns:
@@ -159,11 +161,48 @@ class DaemonMcpServer(
   /**
    * Scheduled worker for periodic `notifications/progress` beats during slow renders. Pool size 1
    * is enough — beats fire at [PROGRESS_BEAT_INTERVAL_MS] and self-cancel as soon as the underlying
-   * [renderAndReadBytes] future completes.
+   * [renderAndReadBytes] future completes. Also owns the one-shot delayed check for slow tool
+   * catalog loading.
    */
   private val progressBeatExecutor: java.util.concurrent.ScheduledExecutorService =
     java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
       Thread(r, "mcp-progress-beat").apply { isDaemon = true }
+    }
+
+  /**
+   * Keep the MCP handshake off the full command-catalog path. Some clients enforce a tight startup
+   * deadline; parsing every schema and loading extension command metadata before `initialize` risks
+   * surfacing as "context deadline exceeded". Start with a compact core surface, build the full
+   * surface in the background, and notify clients only when that background load was actually
+   * delayed.
+   */
+  private val toolCatalogExecutor: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+      Thread(r, "mcp-tool-catalog").apply { isDaemon = true }
+    }
+
+  private val fullToolCatalogWasDelayed = AtomicBoolean(false)
+  @Volatile private var fullToolCatalogError: String? = null
+
+  private val fullToolDefsFuture: CompletableFuture<List<ToolDef>> =
+    CompletableFuture.supplyAsync({ buildFullToolDefs() }, toolCatalogExecutor).also { future ->
+      progressBeatExecutor.schedule(
+        {
+          if (!future.isDone) {
+            fullToolCatalogWasDelayed.set(true)
+          }
+        },
+        TOOL_CATALOG_NOTIFY_DELAY_MS,
+        TimeUnit.MILLISECONDS,
+      )
+      future.whenComplete { _, error ->
+        if (error != null) {
+          fullToolCatalogError = error.message ?: error::class.java.simpleName
+          System.err.println("compose-preview-mcp: full tool catalog failed: ${error.message}")
+        } else if (fullToolCatalogWasDelayed.get()) {
+          sessions.forEach { it.notifyToolListChanged() }
+        }
+      }
     }
 
   init {
@@ -189,7 +228,7 @@ class DaemonMcpServer(
     val handlers =
       object : McpHandlers {
         override fun listTools(session: McpSession): JsonElement =
-          json.encodeToJsonElement(ListToolsResult.serializer(), ListToolsResult(toolDefs))
+          json.encodeToJsonElement(ListToolsResult.serializer(), ListToolsResult(currentToolDefs()))
 
         override fun callTool(
           session: McpSession,
@@ -240,7 +279,7 @@ class DaemonMcpServer(
         serverInfo = serverInfo,
         capabilities =
           ServerCapabilities(
-            tools = ToolsCapability(listChanged = false),
+            tools = ToolsCapability(listChanged = true),
             resources = ResourcesCapability(subscribe = true, listChanged = true),
           ),
       )
@@ -461,8 +500,124 @@ class DaemonMcpServer(
   // Tool surface
   // -------------------------------------------------------------------------
 
-  private val toolDefs: List<ToolDef> =
+  private fun currentToolDefs(): List<ToolDef> =
+    if (!fullToolDefsFuture.isDone) {
+      bootstrapToolDefs
+    } else {
+      runCatching { fullToolDefsFuture.getNow(bootstrapToolDefs) }.getOrDefault(bootstrapToolDefs)
+    }
+
+  private val bootstrapToolDefs: List<ToolDef> by lazy {
     listOf(
+      ToolDef(
+        name = "status",
+        description =
+          "Report MCP server readiness, tool-catalog loading state, registered projects, and spawned daemon discovery state. Available immediately after initialize.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
+      ToolDef(
+        name = "register_project",
+        description =
+          "Register a project (workspace) so its previews can be listed and watched. Returns the assigned workspaceId.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string", "description": "Absolute path to the project root."},
+                "rootProjectName": {"type": "string", "description": "Optional override for the workspace's display name."},
+                "modules": {"type": "array", "items": {"type": "string"}, "description": "Optional initial set of preview-eligible Gradle module paths."}
+              },
+              "required": ["path"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "list_projects",
+        description = "List every registered project with its workspaceId, name, and path.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
+      ToolDef(
+        name = "list_devices",
+        description =
+          "List the `@Preview(device = ...)` ids the daemon's catalog recognises, paired with resolved geometry.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
+      ToolDef(
+        name = "render_preview",
+        description = "Force-render a preview by URI, bypassing any cache. Returns the PNG inline.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "overrides":{"type":"object","description":"Optional per-call display overrides."}
+              },
+              "required":["uri"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "watch",
+        description =
+          "Register an area of interest. The server keeps the matched previews warm and pushes notifications/resources/updated as they re-render.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "module":{"type":"string","description":"Optional Gradle module path; null = every module in the workspace."},
+                "fqnGlob":{"type":"string","description":"Optional FQN glob."},
+                "awaitDiscovery":{"type":"boolean"},
+                "awaitTimeoutMs":{"type":"integer"}
+              },
+              "required":["workspaceId"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "notify_file_changed",
+        description =
+          "Tell every daemon in the matched workspace that a file changed so it can re-run discovery or mark previews stale.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "workspaceId":{"type":"string"},
+                "path":{"type":"string","description":"Absolute path of the changed file."},
+                "kind":{"type":"string","enum":["source","resource","classpath"],"default":"source"},
+                "changeType":{"type":"string","enum":["modified","created","deleted"],"default":"modified"}
+              },
+              "required":["workspaceId","path"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+    )
+  }
+
+  private fun buildFullToolDefs(): List<ToolDef> =
+    listOf(
+      ToolDef(
+        name = "status",
+        description =
+          "Report MCP server readiness, tool-catalog loading state, registered projects, and spawned daemon discovery state.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
       ToolDef(
         name = "register_project",
         description =
@@ -983,6 +1138,7 @@ class DaemonMcpServer(
   ): CallToolResult {
     val args = (arguments as? JsonObject) ?: JsonObject(emptyMap())
     return when (name) {
+      "status" -> toolStatus()
       "register_project" -> toolRegisterProject(args)
       "unregister_project" -> toolUnregisterProject(args)
       "list_projects" -> toolListProjects()
@@ -1007,6 +1163,64 @@ class DaemonMcpServer(
       "record_preview" -> toolRecordPreview(args)
       else -> errorCallToolResult("unknown tool: $name")
     }
+  }
+
+  private fun toolStatus(): CallToolResult {
+    val catalogState =
+      when {
+        fullToolCatalogError != null -> "failed"
+        fullToolDefsFuture.isDone -> "ready"
+        else -> "loading"
+      }
+    val fullToolCount =
+      if (catalogState == "ready") {
+        runCatching { fullToolDefsFuture.getNow(emptyList()).size }.getOrDefault(0)
+      } else {
+        null
+      }
+    val payload = buildJsonObject {
+      put("schema", "compose-preview-mcp-status/v1")
+      put("ready", true)
+      putJsonObject("toolCatalog") {
+        put("status", catalogState)
+        put("bootstrapToolCount", bootstrapToolDefs.size)
+        fullToolCount?.let { put("fullToolCount", it) }
+        put("delayed", fullToolCatalogWasDelayed.get())
+        fullToolCatalogError?.let { put("error", it) }
+      }
+      putJsonArray("projects") {
+        supervisor.listProjects().forEach { project ->
+          add(
+            buildJsonObject {
+              put("workspaceId", project.workspaceId.value)
+              put("rootProjectName", project.rootProjectName)
+              put("path", project.path.absolutePath)
+              putJsonArray("modules") {
+                synchronized(project.knownModules) {
+                  project.knownModules.forEach { add(JsonPrimitive(it)) }
+                }
+              }
+              putJsonArray("daemons") {
+                project.daemons.forEach { (module, daemon) ->
+                  add(
+                    buildJsonObject {
+                      put("module", module)
+                      put("spawned", daemon.replicaCount() > 0)
+                      put("initialDiscoveryComplete", daemon.initialDiscoveryComplete)
+                      put(
+                        "previewCount",
+                        catalog[DaemonAddr(project.workspaceId, module)]?.size ?: 0,
+                      )
+                    }
+                  )
+                }
+              }
+            }
+          )
+        }
+      }
+    }
+    return textCallToolResult(payload.toString())
   }
 
   private fun toolRegisterProject(args: JsonObject): CallToolResult {
@@ -2844,6 +3058,12 @@ class DaemonMcpServer(
      * balance between "responsive UI updates" and "not flooding the wire on a fast render".
      */
     private const val PROGRESS_BEAT_INTERVAL_MS: Long = 500
+
+    /**
+     * If the full MCP tool catalog is still loading after this grace period, clients should keep
+     * using the bootstrap tools and refresh `tools/list` after `notifications/tools/list_changed`.
+     */
+    private const val TOOL_CATALOG_NOTIFY_DELAY_MS: Long = 3_000
 
     /**
      * Worker count for [daemonLifecycleExecutor]. Sized so a few modules can cold-start in parallel

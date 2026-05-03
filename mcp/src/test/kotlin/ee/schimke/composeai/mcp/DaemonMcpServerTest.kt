@@ -87,11 +87,11 @@ class DaemonMcpServerTest {
     assertThat(caps?.get("resources")?.jsonObject?.get("subscribe")?.jsonPrimitive?.contentOrNull)
       .isEqualTo("true")
 
-    val toolsResult = client.request("tools/list")
-    val tools = json.decodeFromJsonElement(ListToolsResult.serializer(), toolsResult)
+    val tools = client.awaitToolsContaining("record_preview")
     val names = tools.tools.map { it.name }.toSet()
     assertThat(names)
       .containsExactly(
+        "status",
         "register_project",
         "unregister_project",
         "list_projects",
@@ -115,6 +115,23 @@ class DaemonMcpServerTest {
         "get_preview_extras",
         "record_preview",
       )
+  }
+
+  @Test
+  fun `status is available from bootstrap tool surface`() {
+    client.initialize()
+
+    val bootstrapTools =
+      json.decodeFromJsonElement(ListToolsResult.serializer(), client.request("tools/list"))
+    assertThat(bootstrapTools.tools.map { it.name }).contains("status")
+
+    val status = client.callTool("status").firstTextContent()
+    val payload = json.parseToJsonElement(status).jsonObject
+    assertThat(payload["schema"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("compose-preview-mcp-status/v1")
+    assertThat(payload["ready"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(payload["toolCatalog"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull)
+      .isAnyOf("loading", "ready")
   }
 
   @Test
@@ -2095,6 +2112,21 @@ class McpTestClient(private val input: InputStream, private val output: OutputSt
     }
     val result = request("tools/call", params, timeoutMs)
     return McpToolResult(result)
+  }
+
+  fun awaitToolsContaining(name: String, timeoutMs: Long = 5_000): ListToolsResult {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var last: ListToolsResult? = null
+    while (System.currentTimeMillis() < deadline) {
+      val result = request("tools/list", timeoutMs = deadline - System.currentTimeMillis())
+      val tools = json.decodeFromJsonElement(ListToolsResult.serializer(), result)
+      if (tools.tools.any { it.name == name }) return tools
+      last = tools
+      runCatching { expectNotification("notifications/tools/list_changed", 250) }
+    }
+    error(
+      "tools/list did not contain '$name' after ${timeoutMs}ms; last names=${last?.tools?.map { it.name }}"
+    )
   }
 
   fun notifyOnly(method: String, params: JsonElement?) {
