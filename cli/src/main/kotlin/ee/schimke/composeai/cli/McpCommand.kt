@@ -21,8 +21,8 @@ import kotlinx.serialization.json.jsonPrimitive
  *   to stderr.
  * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
  *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
- *   required up-front this way), run `discoverPreviews`, and print the `claude mcp add` invocation
- *   an agent host needs.
+ *   required up-front this way), run `discoverPreviews`, and print or install the MCP host
+ *   configuration an agent host needs.
  * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) without
  *   making any changes.
  *
@@ -61,13 +61,18 @@ internal class McpCommand(args: List<String>) {
         serve    Start the MCP server on stdio. Forwards remaining flags to DaemonMcpMain
                  (--project <path>[:<rootName>], --replicas-per-daemon N).
         install  Bootstrap daemon descriptors for every module with the plugin applied,
-                 flip each descriptor's enabled flag, and print a `claude mcp add` line.
+                 flip each descriptor's enabled flag, print a `claude mcp add` line,
+                 and optionally write Antigravity's MCP config.
         doctor   Report per-module descriptor state (no mutations).
 
       Common options (install/doctor):
         --project <path>     Project root containing settings.gradle[.kts] (default: cwd)
         --module <gradlePath> Limit to one or more module paths (repeatable)
         --json               Emit a structured envelope on stdout (install, doctor)
+        --antigravity        install: write Antigravity's mcp_config.json
+                             (auto-enabled when running inside Antigravity)
+        --antigravity-config <path>
+                             install: override Antigravity config path
 
       See skills/compose-preview/design/MCP.md for the full agent flow.
       """
@@ -80,13 +85,17 @@ internal class McpCommand(args: List<String>) {
   private fun serve(args: List<String>) {
     // Pure delegation — the MCP server owns System.in / System.out for JSON-RPC framing. Anything
     // we print to stdout would corrupt the wire protocol; status goes to stderr.
-    DaemonMcpMain.main(args.toTypedArray())
+    val forwarded =
+      if (hasProjectArg(args)) args else args + "--project=${resolveProjectDir(args).absolutePath}"
+    DaemonMcpMain.main(forwarded.toTypedArray())
   }
 
   // -- install -----------------------------------------------------------------------------------
 
   private fun install(args: List<String>) {
     val emitJson = "--json" in args
+    val antigravityDetected = isAntigravityEnvironment()
+    val installAntigravity = "--antigravity" in args || antigravityDetected
     val projectDir = resolveProjectDir(args)
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
@@ -150,9 +159,24 @@ internal class McpCommand(args: List<String>) {
 
       // CLAUDE_CLOUD users need an absolute path because `~/.claude/skills/.../bin/compose-preview`
       // is the canonical launcher; we don't know how `compose-preview` is on the consumer's PATH.
-      val launcher = locateOwnLauncher() ?: "compose-preview"
+      val launcher =
+        locateHostLauncher()
+          ?: if (installAntigravity) {
+            System.err.println(
+              "compose-preview mcp install: cannot locate an absolute compose-preview launcher " +
+                "for Antigravity config"
+            )
+            exitProcess(1)
+          } else {
+            "compose-preview"
+          }
       val claudeMcpAdd =
         "claude mcp add compose-preview-mcp -- $launcher mcp serve --project=${projectDir.absolutePath}"
+      val antigravityConfig =
+        args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
+      if (installAntigravity) {
+        writeAntigravityConfig(antigravityConfig, launcher, projectDir)
+      }
 
       if (emitJson) {
         val payload = buildJsonObject {
@@ -160,6 +184,8 @@ internal class McpCommand(args: List<String>) {
           put("projectRoot", JsonPrimitive(projectDir.absolutePath))
           put("launcher", JsonPrimitive(launcher))
           put("claudeMcpAdd", JsonPrimitive(claudeMcpAdd))
+          put("antigravityConfig", JsonPrimitive(antigravityConfig.absolutePath))
+          put("antigravityInstalled", JsonPrimitive(installAntigravity))
           put(
             "modules",
             kotlinx.serialization.json.JsonArray(
@@ -183,6 +209,20 @@ internal class McpCommand(args: List<String>) {
         System.err.println()
         System.err.println("Attach an MCP-aware agent host with:")
         println(claudeMcpAdd)
+        if (installAntigravity) {
+          System.err.println()
+          System.err.println(
+            if (antigravityDetected) "Antigravity detected; MCP config updated:"
+            else "Antigravity MCP config updated:"
+          )
+          System.err.println("    ${antigravityConfig.absolutePath}")
+        } else {
+          System.err.println()
+          System.err.println(
+            "For Antigravity, re-run with `--antigravity` to update " +
+              antigravityConfig.absolutePath
+          )
+        }
       }
     }
   }
@@ -268,6 +308,10 @@ internal class McpCommand(args: List<String>) {
     return resolved
   }
 
+  private fun hasProjectArg(args: List<String>): Boolean = args.any {
+    it == "--project" || it.startsWith("--project=")
+  }
+
   private fun findGradleRoot(from: File): File? {
     var dir: File? = from.canonicalFile
     while (dir != null) {
@@ -296,15 +340,73 @@ internal class McpCommand(args: List<String>) {
       null
     }
 
+  private fun defaultAntigravityConfig(): File =
+    File(System.getProperty("user.home"), ".gemini/antigravity/mcp_config.json")
+
+  private fun isAntigravityEnvironment(): Boolean =
+    System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
+      !System.getenv("ANTIGRAVITY_CLI_ALIAS").isNullOrBlank()
+
+  private fun writeAntigravityConfig(file: File, launcher: String, projectDir: File) {
+    val existing =
+      if (file.isFile) {
+        try {
+          JSON.parseToJsonElement(file.readText()).jsonObject
+        } catch (e: Exception) {
+          System.err.println(
+            "compose-preview mcp install: Antigravity MCP config is not valid JSON: " +
+              "${file.absolutePath}: ${e.message}"
+          )
+          exitProcess(1)
+        }
+      } else {
+        JsonObject(emptyMap())
+      }
+
+    val existingServers = existing["mcpServers"]?.jsonObject ?: JsonObject(emptyMap())
+    val composePreviewServer = buildJsonObject {
+      put("command", JsonPrimitive(launcher))
+      put(
+        "args",
+        kotlinx.serialization.json.JsonArray(
+          listOf(
+            JsonPrimitive("mcp"),
+            JsonPrimitive("serve"),
+            JsonPrimitive("--project=${projectDir.absolutePath}"),
+          )
+        ),
+      )
+    }
+
+    val mergedServers =
+      JsonObject(existingServers + ("compose-preview-mcp" to composePreviewServer))
+    val merged = JsonObject(existing + ("mcpServers" to mergedServers))
+    file.parentFile?.mkdirs()
+    file.writeText(JSON.encodeToString(JsonObject.serializer(), merged) + "\n")
+  }
+
   /**
    * Locate the `compose-preview` launcher from `app_home` exported by the Gradle distribution
    * `application` plugin. Falls back to the `compose-preview` PATH entry when the env var isn't set
    * (e.g. running directly via `java -jar`).
    */
+  private fun locateHostLauncher(): String? = locateOwnLauncher() ?: locateOnPath("compose-preview")
+
   private fun locateOwnLauncher(): String? {
     val appHome = System.getenv("APP_HOME") ?: return null
     val candidate = File(appHome, "bin/compose-preview")
     return if (candidate.isFile) candidate.absolutePath else null
+  }
+
+  private fun locateOnPath(command: String): String? {
+    val path = System.getenv("PATH") ?: return null
+    return path
+      .split(File.pathSeparator)
+      .asSequence()
+      .map { File(it, command) }
+      .firstOrNull { it.isFile && it.canExecute() }
+      ?.canonicalFile
+      ?.absolutePath
   }
 
   private data class DescriptorState(
@@ -323,7 +425,8 @@ internal class McpCommand(args: List<String>) {
   private companion object {
     val JSON: Json = Json { prettyPrint = true }
 
-    private val VALUE_FLAGS = setOf("--project", "--module", "--replicas-per-daemon")
+    private val VALUE_FLAGS =
+      setOf("--project", "--module", "--replicas-per-daemon", "--antigravity-config")
 
     private fun parseSubcommand(args: List<String>): Pair<String, List<String>> {
       var i = 0

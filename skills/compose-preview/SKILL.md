@@ -136,6 +136,16 @@ curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scri
 compose-preview doctor
 ```
 
+From a Compose project root, bootstrap the MCP descriptors. When this runs
+inside Antigravity, it also installs the server into Antigravity's MCP config:
+
+```sh
+compose-preview mcp install
+```
+
+Outside Antigravity, use `compose-preview mcp install --antigravity` to force
+the same config write.
+
 `doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
 compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the script
 prints the exact command to add it.
