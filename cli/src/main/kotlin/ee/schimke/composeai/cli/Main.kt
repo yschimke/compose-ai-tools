@@ -46,6 +46,7 @@ fun main(args: Array<String>) {
       "a11y",
       "doctor",
       "devices",
+      "extensions",
       "data-products",
       "data",
       "history",
@@ -94,6 +95,7 @@ fun main(args: Array<String>) {
     "a11y" -> A11yCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "devices" -> DevicesCommand(allArgs).run()
+    "extensions" -> ExtensionCommandsCommand(allArgs).run()
     "data-products" -> DataProductsCommand(allArgs).run()
     "data" -> DataCommand(allArgs).run()
     "history" -> HistoryCommand(allArgs).run()
@@ -129,6 +131,7 @@ private fun printUsage() {
       a11y             Render previews and print ATF accessibility findings
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
+      extensions       List daemon-free preview extension command metadata
       data-products    List data-product kinds already emitted for rendered previews
       data             Data-product commands: get
       history          History commands: list | diff

@@ -36,7 +36,20 @@ data class PreviewExtensionDescriptor(
   val displayName: String = id,
   val usageModes: Set<PreviewExtensionUsageMode> = setOf(PreviewExtensionUsageMode.ExplicitEffect),
   val componentExtensionIds: List<String> = emptyList(),
+  val cliCommands: List<PreviewExtensionCliCommand> = emptyList(),
   val steps: List<PreviewPipelineStep> = emptyList(),
+)
+
+@Serializable
+data class PreviewExtensionCliCommand(
+  val id: String,
+  val displayName: String = id,
+  val summary: String = "",
+  val command: List<String>,
+  val agentRecommended: Boolean = false,
+  val requiresDaemon: Boolean = false,
+  val usageModes: Set<PreviewExtensionUsageMode> = emptySet(),
+  val productKinds: List<String> = emptyList(),
 )
 
 @Serializable

@@ -2,6 +2,7 @@ package ee.schimke.composeai.scroll
 
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
@@ -95,6 +96,27 @@ object ScrollPreviewExtension {
       displayName = "Long scroll",
       usageModes =
         setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "scroll-long.get",
+            displayName = "Fetch long scroll image",
+            summary = "Reads a stitched long-scroll image artifact for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "data",
+                "get",
+                "--id",
+                "<preview-id>",
+                "--kind",
+                KIND_LONG,
+                "--output",
+                "<path>",
+              ),
+            productKinds = listOf(KIND_LONG),
+          )
+        ),
       steps = listOf(longScrollScenario, longScrollEncoder),
     )
 
@@ -103,6 +125,17 @@ object ScrollPreviewExtension {
       id = ANNOTATION_ID,
       displayName = "ScrollingPreview annotation",
       usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "scrolling-preview-annotation.render",
+            displayName = "Render scroll annotation suggestions",
+            summary = "Discovers @ScrollingPreview annotations and renders their suggested extras.",
+            command = listOf("compose-preview", "show", "--json"),
+            agentRecommended = true,
+            usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
+          )
+        ),
       steps = listOf(annotationSuggester),
     )
 
@@ -112,6 +145,27 @@ object ScrollPreviewExtension {
       displayName = "Scroll GIF",
       usageModes =
         setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "scroll-gif.get",
+            displayName = "Fetch scroll GIF",
+            summary = "Reads an animated scroll GIF artifact for one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "data",
+                "get",
+                "--id",
+                "<preview-id>",
+                "--kind",
+                KIND_GIF,
+                "--output",
+                "<path>",
+              ),
+            productKinds = listOf(KIND_GIF),
+          )
+        ),
       steps = listOf(gifScrollScenario, gifScrollEncoder),
     )
 }
