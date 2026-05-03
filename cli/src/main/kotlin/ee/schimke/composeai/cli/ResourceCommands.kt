@@ -160,7 +160,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    withGradle { gradle ->
+    withGradle(silenceStdout = jsonOutput) { gradle ->
       // Auto-detect picks up every plugin-applied module — including CMP-only
       // ones that never get `:<module>:renderAndroidResources` (the resource
       // pipeline is gated on the Android-side `AndroidPreviewSupport` path,
@@ -171,7 +171,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       // When the user passes an explicit `--module samples:cmp`, the filter
       // still applies — we'd rather print a friendly "no Android modules"
       // message than surface a gradle "task not found" stack trace.
-      val modules = resolveModules(gradle).filter { isAndroidModule(it) }
+      val modules =
+        withGradleStdout(jsonOutput) { resolveModules(gradle).filter { isAndroidModule(it) } }
       if (modules.isEmpty()) {
         if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
         else println("No Android modules with the resource preview pipeline found.")
@@ -185,7 +186,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       }
 
       val tasks = modules.map { ":${it.gradlePath}:renderAndroidResources" }.toTypedArray()
-      if (!runGradle(gradle, *tasks)) {
+      val buildOk = withGradleStdout(jsonOutput) { runGradle(gradle, *tasks) }
+      if (!buildOk) {
         reportRenderFailures(gradle)
         System.err.println("Resource render failed")
         System.out.flush()

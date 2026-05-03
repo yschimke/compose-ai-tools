@@ -267,14 +267,26 @@ abstract class Command(protected val args: List<String>) {
 
   abstract fun run()
 
-  protected fun withGradle(block: (GradleConnection) -> Unit) {
+  protected fun withGradle(silenceStdout: Boolean = false, block: (GradleConnection) -> Unit) {
     val root =
       findProjectRoot()
         ?: run {
           System.err.println("Cannot find Gradle project root (no gradlew found)")
           exitProcess(1)
         }
-    GradleConnection(root, verbose, progress).use(block)
+    val connection = withGradleStdout(silenceStdout) { GradleConnection(root, verbose, progress) }
+    connection.use(block)
+  }
+
+  protected fun <T> withGradleStdout(silence: Boolean, block: () -> T): T {
+    if (!silence) return block()
+    val originalOut = System.out
+    return try {
+      System.setOut(System.err)
+      block()
+    } finally {
+      System.setOut(originalOut)
+    }
   }
 
   protected fun resolveModules(gradle: GradleConnection): List<PreviewModule> {
@@ -685,11 +697,16 @@ class ShowCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+    withGradle(silenceStdout = jsonOutput) { gradle ->
+      lateinit var modules: List<PreviewModule>
+      val buildOk =
+        withGradleStdout(jsonOutput) {
+          modules = resolveModules(gradle)
+          val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+          runGradle(gradle, *tasks)
+        }
 
-      if (!runGradle(gradle, *tasks)) {
+      if (!buildOk) {
         reportRenderFailures(gradle)
         System.err.println("Render failed")
         System.out.flush()
@@ -787,11 +804,16 @@ class ListCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:discoverPreviews" }.toTypedArray()
+    withGradle(silenceStdout = jsonOutput) { gradle ->
+      lateinit var modules: List<PreviewModule>
+      val buildOk =
+        withGradleStdout(jsonOutput) {
+          modules = resolveModules(gradle)
+          val tasks = modules.map { ":${it.gradlePath}:discoverPreviews" }.toTypedArray()
+          runGradle(gradle, *tasks)
+        }
 
-      if (!runGradle(gradle, *tasks)) exitProcess(1)
+      if (!buildOk) exitProcess(1)
 
       val manifests = readAllManifests(modules)
       // List runs discovery only — PNGs may not exist, so sha/changed are null.
@@ -887,9 +909,15 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
   private val failOn: String? = args.flagValue("--fail-on")
 
   override fun run() {
-    withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+    withGradle(silenceStdout = jsonOutput) { gradle ->
+      lateinit var modules: List<PreviewModule>
+      lateinit var tasks: Array<String>
+      modules =
+        withGradleStdout(jsonOutput) {
+          val resolved = resolveModules(gradle)
+          tasks = resolved.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+          resolved
+        }
       val gradleArguments =
         if (forceEnable) {
           listOf(
@@ -899,7 +927,8 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
         } else {
           emptyList()
         }
-      val buildOk = runGradle(gradle, *tasks, arguments = gradleArguments)
+      val buildOk =
+        withGradleStdout(jsonOutput) { runGradle(gradle, *tasks, arguments = gradleArguments) }
       if (!buildOk) reportRenderFailures(gradle)
 
       val manifests = readAllManifests(modules)
