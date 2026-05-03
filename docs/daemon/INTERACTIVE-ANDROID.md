@@ -1,11 +1,9 @@
 # Interactive mode on Android (Robolectric) — v3 design
 
-> **Status:** design only. v2 ships click-into-composition for the
-> desktop backend (#406, #408, #409). Android continues to fall back to
-> the v1 stateless dispatch path; the panel surfaces the v1-fallback
-> hint via #431. This doc captures the architecture for Android v3
-> behind a sandbox-pinning approach, with concrete bridge changes and a
-> three-PR rollout. Companion to
+> **Status:** implemented for MCP scripted recordings and daemon
+> held-session plumbing. This doc captures the Android/Robolectric
+> architecture behind the sandbox-pinning approach and remains the design
+> background for the implementation. Companion to
 > [INTERACTIVE.md § 9](INTERACTIVE.md#9-v2--click-dispatch-into-composition)
 > (desktop v2) and INTERACTIVE.md § 9.10 (which originally punted
 > Android to v3 with a "see this doc" pointer once it lands).

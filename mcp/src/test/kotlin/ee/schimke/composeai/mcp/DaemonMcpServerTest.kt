@@ -792,8 +792,8 @@ class DaemonMcpServerTest {
     //   2. The tool result carries an image content block (mimeType = image/apng) whose data
     //      decodes to the canned APNG bytes the fake daemon wrote.
     //   3. A sibling text block carries the metadata (recordingId, frameCount, durationMs,
-    //      sizeBytes) so an agent that prefers the path / metrics doesn't need to base64-decode
-    //      the bytes to find them.
+    //      framesDir, sizeBytes) so an agent that prefers the path / metrics doesn't need to
+    //      base64-decode the bytes to find them.
     //
     // The fake daemon doesn't actually render anything — its `recording/encode` handler writes
     // the pre-loaded bytes to a temp file and the MCP server reads them back. That's enough to
@@ -901,6 +901,8 @@ class DaemonMcpServerTest {
     assertThat(metadata["mimeType"]?.jsonPrimitive?.contentOrNull).isEqualTo("image/apng")
     assertThat(metadata["frameCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(16)
     assertThat(metadata["durationMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()).isEqualTo(500L)
+    assertThat(metadata["framesDir"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("${recordingsDir.absolutePath}/frames")
     assertThat(metadata["frameWidthPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(240)
     assertThat(metadata["frameHeightPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(80)
     assertThat(metadata["sizeBytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull())
