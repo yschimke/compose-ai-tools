@@ -59,7 +59,8 @@ internal class McpCommand(args: List<String>) {
 
       Subcommands:
         serve    Start the MCP server on stdio. Forwards remaining flags to DaemonMcpMain
-                 (--project <path>[:<rootName>], --replicas-per-daemon N).
+                 (--project <path>[:<rootName>] is optional; projects can also be registered
+                 later with the register_project MCP tool).
         install  Bootstrap daemon descriptors for every module with the plugin applied,
                  flip each descriptor's enabled flag, print a `claude mcp add` line,
                  and optionally write Antigravity's MCP config.
@@ -84,10 +85,9 @@ internal class McpCommand(args: List<String>) {
 
   private fun serve(args: List<String>) {
     // Pure delegation — the MCP server owns System.in / System.out for JSON-RPC framing. Anything
-    // we print to stdout would corrupt the wire protocol; status goes to stderr.
-    val forwarded =
-      if (hasProjectArg(args)) args else args + "--project=${resolveProjectDir(args).absolutePath}"
-    DaemonMcpMain.main(forwarded.toTypedArray())
+    // we print to stdout would corrupt the wire protocol; status goes to stderr. Do not infer a
+    // default project from cwd: MCP hosts may launch from "/" and projects can be registered later.
+    DaemonMcpMain.main(args.toTypedArray())
   }
 
   // -- install -----------------------------------------------------------------------------------
@@ -306,10 +306,6 @@ internal class McpCommand(args: List<String>) {
     val cwd = explicit ?: File(".").canonicalFile
     val resolved = findGradleRoot(cwd) ?: cwd
     return resolved
-  }
-
-  private fun hasProjectArg(args: List<String>): Boolean = args.any {
-    it == "--project" || it.startsWith("--project=")
   }
 
   private fun findGradleRoot(from: File): File? {
