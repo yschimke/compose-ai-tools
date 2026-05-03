@@ -2540,7 +2540,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
         case 'setRecording':
-            void handleSetRecording(msg.previewId, msg.enabled, msg.format ?? 'apng');
+            queueRecordingMutation(msg.previewId, msg.enabled, msg.format ?? 'apng');
             break;
         case 'recordInteractiveInput':
             logLine(
@@ -3257,6 +3257,29 @@ function queueInteractiveMutation(previewId: string, enabled: boolean): void {
             logLine(`[interactive] setInteractive failed for ${previewId}: ${(err as Error).message}`);
             panel?.postMessage({ command: 'clearInteractive', previewId });
         });
+}
+
+const recordingMutationQueues = new Map<string, Promise<void>>();
+
+function queueRecordingMutation(
+    previewId: string,
+    enabled: boolean,
+    format: 'apng' | 'mp4',
+): void {
+    const previous = recordingMutationQueues.get(previewId) ?? Promise.resolve();
+    const next = previous
+        .catch(() => {})
+        .then(() => handleSetRecording(previewId, enabled, format))
+        .catch((err) => {
+            logLine(`[recording] setRecording failed for ${previewId}: ${(err as Error).message}`);
+            panel?.postMessage({ command: 'clearRecording', previewId });
+        })
+        .finally(() => {
+            if (recordingMutationQueues.get(previewId) === next) {
+                recordingMutationQueues.delete(previewId);
+            }
+        });
+    recordingMutationQueues.set(previewId, next);
 }
 
 /**
