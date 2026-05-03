@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/yschimke/compose-ai-tools/compare/v0.9.0...v0.9.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **cli:** keep JSON output free of Gradle stdout ([#666](https://github.com/yschimke/compose-ai-tools/issues/666)) ([b660b04](https://github.com/yschimke/compose-ai-tools/commit/b660b04d505eb1eef5a829008a118c9832ce5886))
+* handle MCP serve without project ([#678](https://github.com/yschimke/compose-ai-tools/issues/678)) ([ec9980d](https://github.com/yschimke/compose-ai-tools/commit/ec9980dc08bc8272e77f4df8bd6edbd3ee0411aa))
+
 ## [0.9.0](https://github.com/yschimke/compose-ai-tools/compare/v0.8.12...v0.9.0) (2026-05-03)
 
 
