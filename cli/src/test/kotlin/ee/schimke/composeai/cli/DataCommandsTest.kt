@@ -140,6 +140,8 @@ class DataCommandsTest {
       projectDir.resolve("build/compose-previews/data/render-scroll-long/com.example.Foo.png")
     file.parentFile.mkdirs()
     file.writeBytes(byteArrayOf(1, 2, 3))
+    file.parentFile.resolve("com.example.Bar.txt").writeText("not a scroll artifact")
+    file.parentFile.resolve(".DS_Store").writeText("ignored")
 
     val product = scanDataProducts("app", projectDir).products.single()
 
