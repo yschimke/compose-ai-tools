@@ -34,12 +34,13 @@ runs:
         MODULE: ${{ inputs.module }}
       run: |
         set -euo pipefail
-        # `-PcomposePreview.accessibilityChecks.enabled=true` overrides the
-        # module DSL default so `./gradlew check` stays clean while CI still
-        # exercises the a11y path. The module's `verifyAccessibility` task is
-        # always registered; the property flips its `onlyIf` predicate.
+        # These properties override the module DSL default so `./gradlew check`
+        # stays clean while CI still exercises the a11y + ATF + overlay path.
+        # The module's `verifyAccessibility` task is always registered; the
+        # enableAllChecks property flips its `onlyIf` predicate.
         ./gradlew ":${MODULE}:renderAllPreviews" \
-          -PcomposePreview.accessibilityChecks.enabled=true \
+          -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
+          -PcomposePreview.previewExtensions.a11y.annotateScreenshots=true \
           --no-daemon
 
     - name: Copy annotated PNGs and emit findings.json

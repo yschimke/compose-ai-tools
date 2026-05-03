@@ -13,6 +13,33 @@ purposes:
 Both workflows ship from this repo as composite actions. Add two
 workflow files to your project; you're done.
 
+## Optional a11y overlay report
+
+Use `.github/actions/a11y-report` when you want a separate accessibility
+gallery. On pushes it renders with the built-in a11y hierarchy, ATF checks,
+and overlay annotation path enabled, then appends the annotated PNGs and
+`findings.json` to `compose-preview/a11y/main`. On pull requests it writes
+to `compose-preview/a11y/pr` and upserts a `<!-- a11y-report -->` comment.
+
+The action deliberately uses Gradle overrides instead of requiring every
+sample or app module to opt in permanently:
+
+```bash
+./gradlew ":samples:wear:renderAllPreviews" \
+  -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
+  -PcomposePreview.previewExtensions.a11y.annotateScreenshots=true
+```
+
+For local agent review outside CI, prefer the equivalent extension command:
+
+```bash
+compose-preview extensions run a11y-annotated-preview.render --module samples:wear --json
+```
+
+Then read `a11yAnnotatedPath` for the selected preview. A populated a11y
+baseline branch should contain `.a11y.png` files next to the clean PNGs; if
+the README only links clean PNGs, the a11y render path did not run.
+
 ## Workflow 1 — update baselines on push to `main`
 
 <!-- x-release-please-start-version -->

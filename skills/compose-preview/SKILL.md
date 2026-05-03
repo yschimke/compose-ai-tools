@@ -61,6 +61,8 @@ Commands:
   list     List discovered previews
   render   Render previews; with --output copies a single match to disk
   a11y     Render previews and print ATF accessibility findings
+  extensions run a11y-annotated-preview.render
+           One-shot a11y hierarchy + ATF + annotated overlay render
   doctor   Verify Java 17+ + project compatibility (run before Setup)
 
 Options:
