@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
+import ee.schimke.composeai.data.render.RenderPreviewExtension
 import java.io.File
 import java.nio.file.Path
 
@@ -258,6 +259,12 @@ fun main(args: Array<String>) {
       // path as a future Compose API rename. Wiring is intentionally global — kinds advertised
       // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
       dataProducts = dataProducts,
+      previewExtensions =
+        listOf(
+          RenderPreviewExtension.deviceClipDescriptor,
+          RenderPreviewExtension.renderTraceDescriptor,
+          RenderPreviewExtension.composeTraceDescriptor,
+        ),
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)

@@ -77,12 +77,43 @@ export interface Capture {
 export interface PreviewDataProduct {
     /** Data-product kind, for example `render/scroll/long`. */
     kind: string;
+    extensionId?: string | null;
+    effectId?: string | null;
+    usageMode?: PreviewExtensionUsageMode | null;
+    suggestedBy?: string | null;
+    displayName?: string | null;
+    facets?: PreviewDataProductFacet[];
+    mediaTypes?: string[];
+    sampling?: PreviewDataProductSampling | null;
     advanceTimeMillis: number | null;
     scroll: ScrollCapture | null;
     /** Module-relative product file path under `build/compose-previews`. */
     output: string;
     cost?: number;
 }
+
+export type PreviewDataProductFacet =
+    | 'STRUCTURED'
+    | 'ARTIFACT'
+    | 'IMAGE'
+    | 'ANIMATION'
+    | 'OVERLAY'
+    | 'CHECK'
+    | 'DIAGNOSTIC'
+    | 'PROFILE'
+    | 'INTERACTIVE';
+
+export type PreviewDataProductSampling =
+    | 'START'
+    | 'END'
+    | 'EACH_FRAME'
+    | 'ON_DEMAND'
+    | 'AGGREGATE'
+    | 'FAILURE';
+
+export type PreviewExtensionUsageMode =
+    | 'EXPLICIT_EFFECT'
+    | 'SUGGESTED_EXTRA_PREVIEW';
 
 export interface PreviewInfo {
     id: string;

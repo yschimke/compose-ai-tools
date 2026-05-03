@@ -51,6 +51,8 @@ android {
 }
 
 dependencies {
+  api(project(":data-render-core"))
+
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.ui)
   compileOnly("androidx.compose.ui:ui-test-junit4")

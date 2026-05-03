@@ -39,6 +39,14 @@ class PreviewDataTest {
                 listOf(
                   PreviewDataProduct(
                     kind = "render/scroll/long",
+                    extensionId = "scroll",
+                    effectId = "long",
+                    usageMode = PreviewExtensionUsageMode.SUGGESTED_EXTRA_PREVIEW,
+                    suggestedBy = "ee.schimke.composeai.preview.ScrollingPreview",
+                    facets =
+                      listOf(PreviewDataProductFacet.ARTIFACT, PreviewDataProductFacet.IMAGE),
+                    mediaTypes = listOf("image/png"),
+                    sampling = PreviewDataProductSampling.AGGREGATE,
                     scroll = ScrollCapture(mode = ScrollMode.LONG),
                     output =
                       "data/render-scroll-long/com.example.PreviewsKt.RedBoxPreview_Red Box.png",

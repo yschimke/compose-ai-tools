@@ -12,8 +12,10 @@ import androidx.compose.ui.unit.TextUnitType
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.io.File
 import java.util.Locale
 import kotlinx.serialization.json.Json
@@ -161,6 +163,10 @@ class ComposeSemanticsDataProductRegistry(private val rootDir: File) : DataProdu
         attachable = true,
         fetchable = true,
         requiresRerender = false,
+        displayName = "Compose semantics",
+        facets = listOf(DataProductFacet.STRUCTURED),
+        mediaTypes = listOf("application/json"),
+        sampling = SamplingPolicy.End,
       )
     )
 
