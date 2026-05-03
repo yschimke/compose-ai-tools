@@ -1338,6 +1338,42 @@ class DaemonMcpServerTest {
     assertThat(blob.mimeType).isEqualTo("image/png")
   }
 
+  @Test
+  fun `resources read forwards fileChanged when preview source mtime moved since discovery`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() {}")
+    val initialMtime = System.currentTimeMillis() - 10_000
+    assertThat(sourceFile.setLastModified(initialMtime)).isTrue()
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    sourceFile.writeText("@Preview fun Red() { /* changed */ }")
+    assertThat(sourceFile.setLastModified(initialMtime + 5_000)).isTrue()
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("fresh-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+    val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(fileChanged).isNotNull()
+    assertThat(fileChanged!!["path"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo(sourceFile.canonicalPath)
+    assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+    assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+      .isEqualTo(listOf(previewId))
+  }
+
   // -------------------------------------------------------------------------
   // D1 — data product tools
   // -------------------------------------------------------------------------

@@ -31,6 +31,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val dependencyJars: ConfigurableFileCollection
 
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val sourceFiles: ConfigurableFileCollection
+
   @get:Input abstract val moduleName: Property<String>
 
   @get:Input abstract val variantName: Property<String>
@@ -883,11 +887,24 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       id = id,
       functionName = method.name,
       className = classInfo.name,
-      sourceFile = packageQualifiedSourcePath(classInfo),
+      sourceFile = sourceFilePath(classInfo),
       params = params,
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
     )
+  }
+
+  // Module-relative source path, e.g. "src/main/kotlin/com/example/samplewear/Previews.kt".
+  // Fall back to the old package-qualified path when source files were not wired into the task.
+  private fun sourceFilePath(classInfo: ClassInfo): String? {
+    val packageQualified = packageQualifiedSourcePath(classInfo) ?: return null
+    val source =
+      sourceFiles.files.firstOrNull { file ->
+        file.isFile && file.invariantSeparatorsPath.endsWith(packageQualified)
+      }
+    return source
+      ?.let { project.projectDir.toPath().relativize(it.toPath()).toString() }
+      ?.replace(java.io.File.separatorChar, '/') ?: packageQualified
   }
 
   // Package-qualified source path, e.g. "com/example/samplewear/Previews.kt".

@@ -364,6 +364,7 @@ class DaemonMcpServer(
     overrides: PreviewOverrides? = null,
   ): RenderOutcome.Finished {
     val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    ensureSourceFreshBeforeRender(uri, daemon)
     val key = PreviewIdKey(uri.workspaceId, uri.modulePath, uri.previewFqn)
     val future = java.util.concurrent.CompletableFuture<RenderOutcome>()
     // Atomically join the right group. `becameFront` (captured outside the compute lambda)
@@ -430,6 +431,52 @@ class DaemonMcpServer(
         error("awaitNextRender failed for $uri: ${outcome.kind} ${outcome.message}")
       is RenderOutcome.Finished -> outcome
     }
+  }
+
+  private fun ensureSourceFreshBeforeRender(uri: PreviewUri, daemon: SupervisedDaemon) {
+    val addr = DaemonAddr(uri.workspaceId, uri.modulePath)
+    val entry = catalog[addr]?.get(uri.previewFqn) ?: return
+    val sourceFile = resolvePreviewSourceFile(uri, entry.sourceFile) ?: return
+    val currentModifiedMs = sourceFile.lastModified().takeIf { it > 0L } ?: return
+    val knownModifiedMs =
+      entry.sourceLastModifiedMs
+        ?: run {
+          catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
+            current.copy(sourceLastModifiedMs = currentModifiedMs)
+          }
+          return
+        }
+    if (currentModifiedMs <= knownModifiedMs) return
+
+    daemon.allClients().forEach { client ->
+      runCatching {
+        client.fileChanged(
+          path = sourceFile.absolutePath,
+          kind = FileKind.SOURCE,
+          changeType = ChangeType.MODIFIED,
+        )
+      }
+    }
+    catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
+      current.copy(sourceLastModifiedMs = currentModifiedMs)
+    }
+  }
+
+  private fun resolvePreviewSourceFile(uri: PreviewUri, sourceFile: String?): File? {
+    if (sourceFile.isNullOrBlank()) return null
+    val direct = File(sourceFile)
+    if (direct.isFile) return direct
+    val project = supervisor.project(uri.workspaceId) ?: return null
+    val moduleDir = moduleDir(project.path, uri.modulePath)
+    val fromModule = File(moduleDir, sourceFile)
+    if (fromModule.isFile) return fromModule
+    return null
+  }
+
+  private fun moduleDir(projectRoot: File, modulePath: String): File {
+    val trimmed = modulePath.trimStart(':')
+    if (trimmed.isEmpty()) return projectRoot
+    return File(projectRoot, trimmed.replace(':', File.separatorChar))
   }
 
   /**
@@ -2666,11 +2713,26 @@ class DaemonMcpServer(
         .orEmpty()
     for (entry in added + changed) {
       val id = entry["id"]?.jsonPrimitive?.contentOrNull ?: continue
+      val sourceFile = entry["sourceFile"]?.jsonPrimitive?.contentOrNull
+      val sourceLastModifiedMs =
+        resolvePreviewSourceFile(
+            PreviewUri(
+              workspaceId = daemon.workspaceId,
+              modulePath = daemon.modulePath,
+              previewFqn = id,
+              config = entry["config"]?.jsonPrimitive?.contentOrNull,
+            ),
+            sourceFile,
+          )
+          ?.lastModified()
+          ?.takeIf { it > 0L }
       byId[id] =
         PreviewEntry(
           fqn = id,
           displayName = entry["displayName"]?.jsonPrimitive?.contentOrNull,
           config = entry["config"]?.jsonPrimitive?.contentOrNull,
+          sourceFile = sourceFile,
+          sourceLastModifiedMs = sourceLastModifiedMs,
         )
     }
     removed.forEach { byId.remove(it) }
@@ -2900,7 +2962,13 @@ class DaemonMcpServer(
 
   private data class DaemonAddr(val workspaceId: WorkspaceId, val modulePath: String)
 
-  private data class PreviewEntry(val fqn: String, val displayName: String?, val config: String?)
+  private data class PreviewEntry(
+    val fqn: String,
+    val displayName: String?,
+    val config: String?,
+    val sourceFile: String?,
+    val sourceLastModifiedMs: Long? = null,
+  )
 
   /**
    * Per-previewId queue key for [previewQueues]. `(workspace, module, previewId)` identifies the

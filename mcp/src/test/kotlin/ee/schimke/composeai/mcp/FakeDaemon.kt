@@ -55,6 +55,8 @@ class FakeDaemon : DaemonSpawn {
   val focusSets = java.util.concurrent.LinkedBlockingQueue<List<String>>()
   /** `renderNow` invocations the fake observed. */
   val renderRequests = java.util.concurrent.LinkedBlockingQueue<List<String>>()
+  /** `fileChanged` notifications the fake observed. */
+  val fileChanges = java.util.concurrent.LinkedBlockingQueue<JsonObject>()
   /**
    * `renderNow.overrides` payloads the fake observed (in lockstep with [renderRequests]).
    * `LinkedBlockingQueue` rejects null elements, so we use `CopyOnWriteArrayList` and tests poll by
@@ -249,7 +251,11 @@ class FakeDaemon : DaemonSpawn {
   }
 
   /** Pushes a `discoveryUpdated` notification with one preview added. Test helper. */
-  fun emitDiscovery(previewId: String, displayName: String = previewId) {
+  fun emitDiscovery(
+    previewId: String,
+    displayName: String = previewId,
+    sourceFile: String? = null,
+  ) {
     val params = buildJsonObject {
       putJsonArray("added") {
         add(
@@ -258,6 +264,7 @@ class FakeDaemon : DaemonSpawn {
             put("className", previewId.substringBeforeLast('.'))
             put("methodName", previewId.substringAfterLast('.'))
             put("displayName", displayName)
+            if (sourceFile != null) put("sourceFile", sourceFile)
           }
         )
       }
@@ -604,6 +611,9 @@ class FakeDaemon : DaemonSpawn {
   private fun handleNotification(method: String, params: JsonObject?) {
     when (method) {
       "initialized" -> {}
+      "fileChanged" -> {
+        if (params != null) fileChanges.offer(params)
+      }
       "setVisible" -> {
         val ids =
           (params?.get("ids") as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
