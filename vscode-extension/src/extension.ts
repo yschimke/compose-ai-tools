@@ -170,6 +170,12 @@ let warnedJdkImageThisSession = false;
 const SETUP_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme';
 const JDK_DOCS_URL = 'https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints';
 
+function earlyFeaturesEnabled(): boolean {
+    return vscode.workspace
+        .getConfiguration('composePreview')
+        .get<boolean>('earlyFeatures.enabled', false);
+}
+
 /**
  * Show the remediation notification for a detected JdkImageError. The offered
  * "Open JDK setting" action reveals `java.import.gradle.java.home` — the
@@ -484,6 +490,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     panel = new PreviewPanel(
         context.extensionUri,
         handleWebviewMessage,
+        () => earlyFeaturesEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -690,6 +697,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Compos
     void gradleService.bootstrapAppliedMarkers();
 
     context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('composePreview.earlyFeatures.enabled')) {
+                panel?.postMessage({
+                    command: 'setEarlyFeatures',
+                    enabled: earlyFeaturesEnabled(),
+                });
+            }
+        }),
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor?.document.languageId === 'kotlin') {
                 const filePath = editor.document.uri.fsPath;
@@ -2529,7 +2544,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             void openSourceByFileName(msg.fileName, msg.line, msg.className);
             break;
         case 'requestPreviewDiff':
-            void runLivePreviewDiff(msg.previewId, msg.against);
+            if (earlyFeaturesEnabled()) {
+                void runLivePreviewDiff(msg.previewId, msg.against);
+            }
             break;
         case 'requestLaunchOnDevice':
             if (msg.previewId) {
@@ -2540,7 +2557,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
         case 'setRecording':
-            queueRecordingMutation(msg.previewId, msg.enabled, msg.format ?? 'apng');
+            if (earlyFeaturesEnabled()) {
+                queueRecordingMutation(msg.previewId, msg.enabled, msg.format ?? 'apng');
+            }
             break;
         case 'recordInteractiveInput':
             logLine(
@@ -2552,7 +2571,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             void forwardRecordingInput(msg);
             break;
         case 'setA11yOverlay':
-            void handleSetA11yOverlay(msg.previewId, msg.enabled);
+            if (earlyFeaturesEnabled()) {
+                void handleSetA11yOverlay(msg.previewId, msg.enabled);
+            }
             break;
     }
 }
@@ -2684,6 +2705,7 @@ async function runLivePreviewDiff(
     previewId: string,
     against: 'head' | 'main',
 ): Promise<void> {
+    if (!earlyFeaturesEnabled()) { return; }
     if (!panel || !historySource) { return; }
     const moduleId = previewModuleMap.get(previewId);
     const manifest = moduleId ? moduleManifestCache.get(moduleId) : undefined;
@@ -2981,6 +3003,12 @@ async function resolveLaunchPreview(
 }
 
 async function diffAllVsMain(): Promise<void> {
+    if (!earlyFeaturesEnabled()) {
+        vscode.window.showInformationMessage(
+            'Compose Preview: enable composePreview.earlyFeatures.enabled to use Diff All vs Main.',
+        );
+        return;
+    }
     if (!gradleService || !panel || !historySource) {
         vscode.window.showInformationMessage('Compose Preview is not ready yet.');
         return;

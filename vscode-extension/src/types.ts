@@ -464,7 +464,8 @@ export type ExtensionToWebview =
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
     | { command: 'clearInteractive'; previewId?: string }
-    | { command: 'clearRecording'; previewId?: string };
+    | { command: 'clearRecording'; previewId?: string }
+    | { command: 'setEarlyFeatures'; enabled: boolean };
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
