@@ -13,16 +13,11 @@ import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
-import ee.schimke.composeai.mcp.protocol.Implementation
-import ee.schimke.composeai.mcp.protocol.ListResourcesResult
-import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
 import ee.schimke.composeai.mcp.protocol.ResourceDescriptor
-import ee.schimke.composeai.mcp.protocol.ResourcesCapability
-import ee.schimke.composeai.mcp.protocol.ServerCapabilities
 import ee.schimke.composeai.mcp.protocol.ToolDef
-import ee.schimke.composeai.mcp.protocol.ToolsCapability
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -220,71 +215,47 @@ class DaemonMcpServer(
   }
 
   // -------------------------------------------------------------------------
-  // Public API consumed by McpSession via McpHandlers
+  // Public API consumed by the SDK-backed MCP session
   // -------------------------------------------------------------------------
 
   fun newSession(input: java.io.InputStream, output: java.io.OutputStream): McpSession {
     lateinit var session: McpSession
-    val handlers =
-      object : McpHandlers {
-        override fun listTools(session: McpSession): JsonElement =
-          json.encodeToJsonElement(ListToolsResult.serializer(), ListToolsResult(currentToolDefs()))
-
-        override fun callTool(
-          session: McpSession,
-          name: String,
-          arguments: JsonElement?,
-        ): CallToolResult = handleCallTool(session, name, arguments)
-
-        override fun listResources(session: McpSession): JsonElement {
-          val resources = catalogResources()
-          return json.encodeToJsonElement(
-            ListResourcesResult.serializer(),
-            ListResourcesResult(resources),
-          )
-        }
-
-        override fun readResource(
-          session: McpSession,
-          uri: String,
-          progressToken: JsonElement?,
-        ): ReadResourceResult = handleReadResource(session, uri, progressToken)
-
-        override fun subscribe(session: McpSession, uri: String) {
-          subscriptions.subscribe(uri, session)
-        }
-
-        override fun unsubscribe(session: McpSession, uri: String) {
-          subscriptions.unsubscribe(uri, session)
-        }
-
-        override fun onClose(session: McpSession) {
-          // Release the session's data-product subscriptions and tell the daemon to unsubscribe
-          // the keys whose last reference just dropped — otherwise daemon-side subscriptions
-          // would leak until `setVisible` churn drops them, and an interactive UI that wants to
-          // re-attach later would see stale state. We forward unsubscribes best-effort: a daemon
-          // that's already gone (classpathDirty respawn) or rejects the kind doesn't block
-          // session teardown.
-          val released = subscriptions.forgetDataSubscriptions(session)
-          released.forEach { key -> dispatchDataUnsubscribe(key) }
-          subscriptions.forget(session)
-          sessions.unregister(session)
-        }
-      }
+    val sdkServer = composePreviewSdkServer(serverInfo)
     session =
       McpSession(
+        server = sdkServer,
         input = input,
         output = output,
-        handlers = handlers,
-        serverInfo = serverInfo,
-        capabilities =
-          ServerCapabilities(
-            tools = ToolsCapability(listChanged = true),
-            resources = ResourcesCapability(subscribe = true, listChanged = true),
-          ),
+        configure = { sdkSession ->
+          sdkServer.installComposePreviewHandlers(
+            sdkSession = sdkSession,
+            session = session,
+            listTools = { currentToolDefs() },
+            callTool = { name, arguments -> handleCallTool(session, name, arguments) },
+            listResources = { catalogResources() },
+            readResource = { uri, progressToken ->
+              handleReadResource(session, uri, progressToken)
+            },
+            subscribe = { uri -> subscriptions.subscribe(uri, session) },
+            unsubscribe = { uri -> subscriptions.unsubscribe(uri, session) },
+          )
+        },
+        onClose = { closeSession(session) },
       )
     sessions.register(session)
     return session
+  }
+
+  private fun closeSession(session: Session) {
+    // Release the session's data-product subscriptions and tell the daemon to unsubscribe the keys
+    // whose last reference just dropped — otherwise daemon-side subscriptions would leak until
+    // `setVisible` churn drops them, and an interactive UI that wants to re-attach later would see
+    // stale state. We forward unsubscribes best-effort: a daemon that's already gone
+    // (classpathDirty respawn) or rejects the kind doesn't block session teardown.
+    val released = subscriptions.forgetDataSubscriptions(session)
+    released.forEach { key -> dispatchDataUnsubscribe(key) }
+    subscriptions.forget(session)
+    sessions.unregister(session)
   }
 
   // -------------------------------------------------------------------------
@@ -316,7 +287,7 @@ class DaemonMcpServer(
   }
 
   private fun handleReadResource(
-    session: McpSession,
+    session: Session,
     uri: String,
     progressToken: JsonElement?,
   ): ReadResourceResult {
@@ -358,7 +329,7 @@ class DaemonMcpServer(
 
   private fun renderAndReadBytes(
     uri: PreviewUri,
-    session: McpSession? = null,
+    session: Session? = null,
     progressToken: JsonElement? = null,
     overrides: PreviewOverrides? = null,
   ): ByteArray {
@@ -388,7 +359,7 @@ class DaemonMcpServer(
    */
   private fun awaitNextRender(
     uri: PreviewUri,
-    session: McpSession? = null,
+    session: Session? = null,
     progressToken: JsonElement? = null,
     overrides: PreviewOverrides? = null,
   ): RenderOutcome.Finished {
@@ -1132,7 +1103,7 @@ class DaemonMcpServer(
     )
 
   private fun handleCallTool(
-    session: McpSession,
+    session: Session,
     name: String,
     arguments: JsonElement?,
   ): CallToolResult {
@@ -1453,7 +1424,7 @@ class DaemonMcpServer(
     )
   }
 
-  private fun toolWatch(session: McpSession, args: JsonObject): CallToolResult {
+  private fun toolWatch(session: Session, args: JsonObject): CallToolResult {
     val ws =
       args["workspaceId"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("watch: missing 'workspaceId'")
@@ -1479,7 +1450,7 @@ class DaemonMcpServer(
     val toSpawn =
       if (module != null) listOf(module)
       else synchronized(project.knownModules) { project.knownModules.toList() }
-    // Spawn off-thread so the McpSession reader doesn't block on cold-start (Robolectric ~5–10s,
+    // Spawn off-thread so the SDK session doesn't block on cold-start (Robolectric ~5–10s,
     // desktop ~600ms). The supervisor's `daemonFor` is `computeIfAbsent`-safe so duplicate watches
     // racing on the same module are fine. Each successful spawn calls
     // `synthesiseInitialDiscovery`, which fires `discoveryUpdated` → `onDiscoveryUpdated` →
@@ -1559,7 +1530,7 @@ class DaemonMcpServer(
       )
     }
 
-  private fun toolUnwatch(session: McpSession, args: JsonObject): CallToolResult {
+  private fun toolUnwatch(session: Session, args: JsonObject): CallToolResult {
     val workspaceId = args["workspaceId"]?.jsonPrimitive?.contentOrNull?.let(::WorkspaceId)
     val module = args["module"]?.jsonPrimitive?.contentOrNull
     val glob = args["fqnGlob"]?.jsonPrimitive?.contentOrNull
@@ -1579,7 +1550,7 @@ class DaemonMcpServer(
     return textCallToolResult("unwatched $removed entries")
   }
 
-  private fun toolListWatches(session: McpSession): CallToolResult {
+  private fun toolListWatches(session: Session): CallToolResult {
     val payload = buildJsonObject {
       putJsonArray("watches") {
         subscriptions.watchesFor(session).forEach { e ->
@@ -2358,7 +2329,6 @@ class DaemonMcpServer(
           put("sizeBytes", encoded.sizeBytes)
           put("frameCount", stopResult.frameCount)
           put("durationMs", stopResult.durationMs)
-          put("framesDir", stopResult.framesDir)
           put("frameWidthPx", stopResult.frameWidthPx)
           put("frameHeightPx", stopResult.frameHeightPx)
           put("framesDir", stopResult.framesDir)
@@ -2560,7 +2530,7 @@ class DaemonMcpServer(
     }
 
   private fun toolDataSubOrUnsub(
-    session: McpSession,
+    session: Session,
     args: JsonObject,
     subscribe: Boolean,
   ): CallToolResult {
@@ -3011,7 +2981,7 @@ class DaemonMcpServer(
    * `message` carries a short status string the client can show as a tooltip / log line.
    */
   private fun startProgressBeatIfNeeded(
-    session: McpSession?,
+    session: Session?,
     progressToken: JsonElement?,
     future: java.util.concurrent.CompletableFuture<*>,
     uri: PreviewUri,

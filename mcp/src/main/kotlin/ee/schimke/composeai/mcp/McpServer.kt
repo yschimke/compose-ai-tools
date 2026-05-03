@@ -1,47 +1,64 @@
 package ee.schimke.composeai.mcp
 
-import ee.schimke.composeai.mcp.protocol.CallToolParams
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
-import ee.schimke.composeai.mcp.protocol.Implementation
-import ee.schimke.composeai.mcp.protocol.InitializeParams
-import ee.schimke.composeai.mcp.protocol.InitializeResult
-import ee.schimke.composeai.mcp.protocol.ListResourcesResult
-import ee.schimke.composeai.mcp.protocol.ListToolsResult
-import ee.schimke.composeai.mcp.protocol.McpError
-import ee.schimke.composeai.mcp.protocol.McpErrorCodes
-import ee.schimke.composeai.mcp.protocol.McpNotification
-import ee.schimke.composeai.mcp.protocol.McpResponse
-import ee.schimke.composeai.mcp.protocol.ReadResourceParams
-import ee.schimke.composeai.mcp.protocol.ReadResourceResult
-import ee.schimke.composeai.mcp.protocol.ResourceDescriptor
-import ee.schimke.composeai.mcp.protocol.ResourceUpdatedParams
-import ee.schimke.composeai.mcp.protocol.ServerCapabilities
-import ee.schimke.composeai.mcp.protocol.SubscribeParams
 import ee.schimke.composeai.mcp.protocol.ToolDef
-import ee.schimke.composeai.mcp.protocol.UnsubscribeParams
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
+import io.modelcontextprotocol.kotlin.sdk.shared.AbstractTransport
+import io.modelcontextprotocol.kotlin.sdk.shared.TransportSendOptions
+import io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
+import io.modelcontextprotocol.kotlin.sdk.types.ContentBlock as SdkContentBlock
+import io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource
+import io.modelcontextprotocol.kotlin.sdk.types.EmptyResult
+import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCMessage
+import io.modelcontextprotocol.kotlin.sdk.types.ListResourcesRequest
+import io.modelcontextprotocol.kotlin.sdk.types.ListResourcesResult
+import io.modelcontextprotocol.kotlin.sdk.types.ListToolsRequest
+import io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult
+import io.modelcontextprotocol.kotlin.sdk.types.McpJson
+import io.modelcontextprotocol.kotlin.sdk.types.Method
+import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
+import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
+import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceRequest
+import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceResult
+import io.modelcontextprotocol.kotlin.sdk.types.RequestId
+import io.modelcontextprotocol.kotlin.sdk.types.Resource
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceContents
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceUpdatedNotification
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceUpdatedNotificationParams
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.modelcontextprotocol.kotlin.sdk.types.SubscribeRequest
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
+import io.modelcontextprotocol.kotlin.sdk.types.Tool
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import io.modelcontextprotocol.kotlin.sdk.types.UnsubscribeRequest
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
-import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Transport-agnostic session surface. Only the notification fan-out methods that subscribers /
- * watchers / progress callers actually need; request handling stays inside the concrete transport
- * (today: [McpSession] over stdio).
- *
- * Defining this interface — instead of typing [Subscriptions] on the concrete [McpSession] — lets a
- * future HTTP / streamable-HTTP transport plug in its own per-connection session type without an
- * unsafe `as?` cast in the supervisor's notification routing.
+ * Transport-agnostic session surface. The concrete stdio implementation now comes from the official
+ * Kotlin MCP SDK; daemon orchestration only needs this notification surface.
  */
 interface Session {
   /** Sends `notifications/resources/updated` for [uri]. */
@@ -55,343 +72,329 @@ interface Session {
 
   /**
    * Sends a `notifications/progress` for the request identified by [token]. No-op when the client
-   * didn't opt in (caller's responsibility to skip the call when the token is null).
+   * didn't opt in or sent a token shape the SDK cannot represent.
    */
   fun notifyProgress(
-    token: kotlinx.serialization.json.JsonElement,
+    token: JsonElement,
     progress: Double,
     total: Double? = null,
     message: String? = null,
   )
 }
 
-/**
- * A single MCP session over `Content-Length`-framed stdio (matching MCP's stdio transport spec).
- *
- * Conceptually this is one connected MCP client. v0 ships one session per server process; HTTP
- * transport will multiplex many. Sessions own:
- *
- * - A read thread that drains [input] and dispatches request frames to [handlers].
- * - A write thread that serialises every reply + outgoing notification to [output].
- * - The set of subscribed URIs and registered watch entries (stored externally in [subscriptions],
- *   keyed by `this` reference so different sessions stay isolated).
- *
- * Method handlers are pluggable — [DaemonMcpServer] wires the resource/tool surface; tests can
- * register their own handlers for protocol conformance assertions.
- */
+/** SDK-backed stdio session with the same lifecycle shape the old hand-rolled session exposed. */
 class McpSession(
+  private val server: Server,
   private val input: InputStream,
   private val output: OutputStream,
-  private val handlers: McpHandlers,
-  private val serverInfo: Implementation,
-  private val capabilities: ServerCapabilities,
-  threadName: String = "mcp-session",
+  private val configure: (ServerSession) -> Unit,
+  private val onClose: () -> Unit,
 ) : Closeable, Session {
-
-  private val json = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = false
-  }
-  private val closed = AtomicBoolean(false)
-  private val initialized = AtomicBoolean(false)
-
-  private val readerThread = Thread({ runReader() }, "$threadName-reader").apply { isDaemon = true }
+  private val closed = CompletableFuture<Unit>()
+  @Volatile private var sdkSession: ServerSession? = null
+  private val thread =
+    Thread(
+        {
+          try {
+            runBlocking(Dispatchers.IO) {
+              val session = server.createSession(StreamServerTransport(input, output))
+              sdkSession = session
+              session.onClose {
+                closed.complete(Unit)
+                onClose()
+              }
+              configure(session)
+              while (!closed.isDone) {
+                delay(100)
+              }
+            }
+          } catch (t: Throwable) {
+            System.err.println("compose-preview-mcp: SDK stdio session failed: ${t.message}")
+            t.printStackTrace(System.err)
+          } finally {
+            onClose()
+          }
+        },
+        "mcp-sdk-stdio-session",
+      )
+      .apply { isDaemon = true }
 
   fun start() {
-    readerThread.start()
+    thread.start()
   }
 
-  /** Blocks until the reader thread exits (typically on stdin EOF). Used by stdio entry points. */
   fun awaitClose() {
-    readerThread.join()
+    thread.join()
   }
 
-  /** Sends a JSON-RPC notification. Safe to call from any thread; framed atomically on the wire. */
-  fun notify(method: String, params: JsonElement? = null) {
-    if (closed.get()) return
-    val n = McpNotification(method = method, params = params)
-    sendFrame(json.encodeToString(McpNotification.serializer(), n))
+  override fun close() {
+    runBlocking { server.close() }
+    closed.complete(Unit)
+    thread.join(2_000)
   }
 
   override fun notifyResourceUpdated(uri: String) {
-    val params =
-      json.encodeToJsonElement(ResourceUpdatedParams.serializer(), ResourceUpdatedParams(uri))
-    notify("notifications/resources/updated", params)
+    val session = sdkSession ?: return
+    runBlocking {
+      session.sendResourceUpdated(
+        ResourceUpdatedNotification(ResourceUpdatedNotificationParams(uri = uri))
+      )
+    }
   }
 
   override fun notifyResourceListChanged() {
-    notify("notifications/resources/list_changed")
+    val session = sdkSession ?: return
+    runBlocking { session.sendResourceListChanged() }
   }
 
   override fun notifyToolListChanged() {
-    notify("notifications/tools/list_changed")
+    val session = sdkSession ?: return
+    runBlocking { session.sendToolListChanged() }
   }
 
-  /**
-   * Sends a `notifications/progress` per the MCP spec:
-   * https://modelcontextprotocol.io/specification/2025-06-18/basic#progress-notifications.
-   *
-   * Only meaningful when the originating request opted in via `_meta.progressToken` in its params;
-   * the [token] argument is the verbatim value the client sent. [progress] is monotonic (caller's
-   * responsibility); [total] is optional and may be unknown for streaming work.
-   */
   override fun notifyProgress(
-    token: kotlinx.serialization.json.JsonElement,
+    token: JsonElement,
     progress: Double,
     total: Double?,
     message: String?,
   ) {
-    val params =
-      kotlinx.serialization.json.buildJsonObject {
-        put("progressToken", token)
-        put("progress", kotlinx.serialization.json.JsonPrimitive(progress))
-        if (total != null) put("total", kotlinx.serialization.json.JsonPrimitive(total))
-        if (message != null) put("message", kotlinx.serialization.json.JsonPrimitive(message))
-      }
-    notify("notifications/progress", params)
-  }
-
-  override fun close() {
-    if (!closed.compareAndSet(false, true)) return
-    runCatching { input.close() }
-    runCatching { output.close() }
-    readerThread.join(2_000)
-  }
-
-  // -------------------------------------------------------------------------
-  // Read loop
-  // -------------------------------------------------------------------------
-
-  private fun runReader() {
-    try {
-      while (!closed.get()) {
-        val frame = readFrame(input) ?: break
-        val obj = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
-        if (obj["id"] != null) dispatchRequest(obj) else dispatchNotification(obj)
-      }
-    } catch (_: IOException) {
-      // EOF — fall through
-    } catch (e: Throwable) {
-      System.err.println("McpSession reader: ${e.message}")
-      e.printStackTrace(System.err)
-    } finally {
-      runCatching { handlers.onClose(this) }
-    }
-  }
-
-  private fun dispatchRequest(obj: JsonObject) {
-    val id = obj["id"] ?: return
-    val method = obj["method"]?.jsonPrimitive?.contentOrNull
-    val params = obj["params"]
-    if (method == null) {
-      sendError(id, McpErrorCodes.INVALID_REQUEST, "missing method")
-      return
-    }
-    if (!initialized.get() && method != "initialize") {
-      sendError(id, McpErrorCodes.INVALID_REQUEST, "session not initialized (received $method)")
-      return
-    }
-    try {
-      when (method) {
-        "initialize" -> handleInitialize(id, params)
-        "ping" -> sendResult(id, JsonObject(emptyMap()))
-        "tools/list" -> sendResult(id, handlers.listTools(this))
-        "tools/call" -> handleCallTool(id, params)
-        "resources/list" -> sendResult(id, handlers.listResources(this))
-        "resources/read" -> handleReadResource(id, params)
-        "resources/subscribe" -> handleSubscribe(id, params)
-        "resources/unsubscribe" -> handleUnsubscribe(id, params)
-        else -> sendError(id, McpErrorCodes.METHOD_NOT_FOUND, "unknown method: $method")
-      }
-    } catch (e: Throwable) {
-      sendError(id, McpErrorCodes.INTERNAL_ERROR, e.message ?: "internal error")
-    }
-  }
-
-  private fun dispatchNotification(obj: JsonObject) {
-    val method = obj["method"]?.jsonPrimitive?.contentOrNull ?: return
-    when (method) {
-      "notifications/initialized" -> initialized.set(true)
-      "notifications/cancelled" -> {
-        /* v0 ignores cancellation */
-      }
-      else -> {
-        /* unknown notifications ignored per spec */
-      }
-    }
-  }
-
-  private fun handleInitialize(id: JsonElement, params: JsonElement?) {
-    val parsed = params?.let {
-      runCatching { json.decodeFromJsonElement(InitializeParams.serializer(), it) }.getOrNull()
-    }
-    val protocolVersion = parsed?.protocolVersion ?: "2025-06-18"
-    val result =
-      InitializeResult(
-        protocolVersion = protocolVersion,
-        capabilities = capabilities,
-        serverInfo = serverInfo,
+    val progressToken = token.toRequestId() ?: return
+    val session = sdkSession ?: return
+    runBlocking {
+      session.notification(
+        ProgressNotification(
+          ProgressNotificationParams(
+            progressToken = progressToken,
+            progress = progress,
+            total = total,
+            message = message,
+          )
+        ),
+        progressToken,
       )
-    sendResult(id, json.encodeToJsonElement(InitializeResult.serializer(), result))
-    // Some clients omit the `notifications/initialized` follow-up; treat the response as a
-    // gating signal so subsequent requests don't error out. The notification path still flips
-    // the flag if it arrives.
-    initialized.set(true)
+    }
+  }
+}
+
+private class StreamServerTransport(
+  private val input: InputStream,
+  private val output: OutputStream,
+) : AbstractTransport() {
+  private val closed = CompletableFuture<Unit>()
+  private val outputLock = Any()
+  @Volatile private var readerThread: Thread? = null
+
+  override suspend fun start() {
+    if (readerThread != null) return
+    readerThread =
+      Thread(
+          {
+            try {
+              while (!closed.isDone) {
+                val payload = readFrame(input) ?: break
+                val message =
+                  McpJson.decodeFromString(
+                    JSONRPCMessage.serializer(),
+                    payload.toString(Charsets.UTF_8),
+                  )
+                runBlocking { _onMessage(message) }
+              }
+            } catch (t: Throwable) {
+              if (!closed.isDone) {
+                _onError(t)
+              }
+            } finally {
+              runBlocking { close() }
+            }
+          },
+          "mcp-sdk-stream-reader",
+        )
+        .apply {
+          isDaemon = true
+          start()
+        }
   }
 
-  private fun handleCallTool(id: JsonElement, params: JsonElement?) {
-    val parsed =
-      params?.let {
-        runCatching { json.decodeFromJsonElement(CallToolParams.serializer(), it) }.getOrNull()
-      } ?: return sendError(id, McpErrorCodes.INVALID_PARAMS, "tools/call: missing params")
-    val result = handlers.callTool(this, parsed.name, parsed.arguments)
-    sendResult(id, json.encodeToJsonElement(CallToolResult.serializer(), result))
-  }
-
-  private fun handleReadResource(id: JsonElement, params: JsonElement?) {
-    val parsed =
-      params?.let {
-        runCatching { json.decodeFromJsonElement(ReadResourceParams.serializer(), it) }.getOrNull()
-      } ?: return sendError(id, McpErrorCodes.INVALID_PARAMS, "resources/read: missing uri")
-    // Per MCP spec, clients opt in to progress notifications by including a
-    // `_meta.progressToken` (string | number) on the request's params. Pull it out so the
-    // handler can fire periodic `notifications/progress` while a slow render runs.
-    val progressToken =
-      (params as? JsonObject)?.get("_meta")?.let { it as? JsonObject }?.get("progressToken")
-    val result = handlers.readResource(this, parsed.uri, progressToken)
-    sendResult(id, json.encodeToJsonElement(ReadResourceResult.serializer(), result))
-  }
-
-  private fun handleSubscribe(id: JsonElement, params: JsonElement?) {
-    val parsed =
-      params?.let {
-        runCatching { json.decodeFromJsonElement(SubscribeParams.serializer(), it) }.getOrNull()
-      } ?: return sendError(id, McpErrorCodes.INVALID_PARAMS, "resources/subscribe: missing uri")
-    handlers.subscribe(this, parsed.uri)
-    sendResult(id, JsonObject(emptyMap()))
-  }
-
-  private fun handleUnsubscribe(id: JsonElement, params: JsonElement?) {
-    val parsed =
-      params?.let {
-        runCatching { json.decodeFromJsonElement(UnsubscribeParams.serializer(), it) }.getOrNull()
-      } ?: return sendError(id, McpErrorCodes.INVALID_PARAMS, "resources/unsubscribe: missing uri")
-    handlers.unsubscribe(this, parsed.uri)
-    sendResult(id, JsonObject(emptyMap()))
-  }
-
-  // -------------------------------------------------------------------------
-  // Wire helpers
-  // -------------------------------------------------------------------------
-
-  private fun sendResult(id: JsonElement, result: JsonElement) {
-    val response = McpResponse(id = id, result = result)
-    sendFrame(json.encodeToString(McpResponse.serializer(), response))
-  }
-
-  private fun sendError(id: JsonElement, code: Int, message: String) {
-    val response = McpResponse(id = id, error = McpError(code = code, message = message))
-    sendFrame(json.encodeToString(McpResponse.serializer(), response))
-  }
-
-  private fun sendFrame(jsonText: String) {
+  override suspend fun send(message: JSONRPCMessage, options: TransportSendOptions?) {
+    val jsonText = McpJson.encodeToString(JSONRPCMessage.serializer(), message)
     val payload = jsonText.toByteArray(Charsets.UTF_8)
     val header = "Content-Length: ${payload.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
-    synchronized(output) {
+    synchronized(outputLock) {
       output.write(header)
       output.write(payload)
       output.flush()
     }
   }
 
-  private fun readFrame(input: InputStream): ByteArray? {
-    var contentLength = -1
-    val headerBuf = ByteArrayOutputStream(64)
-    var sawAny = false
-    while (true) {
-      val line = readHeaderLine(input, headerBuf) ?: return if (sawAny) null else null
-      sawAny = true
-      if (line.isEmpty()) break
-      val colon = line.indexOf(':')
-      if (colon <= 0) error("malformed header line: '$line'")
-      val name = line.substring(0, colon).trim()
-      val value = line.substring(colon + 1).trim()
-      if (name.equals("Content-Length", ignoreCase = true)) {
-        contentLength = value.toIntOrNull() ?: error("non-integer Content-Length: '$value'")
-      }
-    }
-    if (contentLength < 0) error("missing Content-Length header")
-    val payload = ByteArray(contentLength)
-    var off = 0
-    while (off < contentLength) {
-      val n = input.read(payload, off, contentLength - off)
-      if (n < 0) return null
-      off += n
-    }
-    return payload
-  }
-
-  private fun readHeaderLine(input: InputStream, buf: ByteArrayOutputStream): String? {
-    buf.reset()
-    while (true) {
-      val b = input.read()
-      if (b < 0) return if (buf.size() == 0) null else buf.toString(Charsets.US_ASCII.name())
-      if (b == '\n'.code) {
-        val bytes = buf.toByteArray()
-        val end =
-          if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1
-          else bytes.size
-        return String(bytes, 0, end, Charsets.US_ASCII)
-      }
-      buf.write(b)
-    }
+  override suspend fun close() {
+    if (!closed.complete(Unit)) return
+    runCatching { input.close() }
+    runCatching { output.close() }
+    invokeOnCloseCallback()
   }
 }
 
-/**
- * Pluggable handler set the [McpSession] dispatches to. [DaemonMcpServer] supplies the concrete
- * instance; tests can stub it for protocol-level assertions without dragging in a supervisor.
- *
- * Every method is called from the session's reader thread. Implementations must not block on
- * unrelated IO — the daemon's render path is already off-thread, so the main concern is keeping the
- * reader pumping.
- */
-interface McpHandlers {
-  fun listTools(session: McpSession): JsonElement
+private fun readFrame(input: InputStream): ByteArray? {
+  var contentLength = -1
+  val headerBuf = ByteArrayOutputStream(64)
+  while (true) {
+    val line = readHeaderLine(input, headerBuf) ?: return null
+    if (line.isEmpty()) break
+    val colon = line.indexOf(':')
+    if (colon <= 0) error("malformed header line: '$line'")
+    val name = line.substring(0, colon).trim()
+    val value = line.substring(colon + 1).trim()
+    if (name.equals("Content-Length", ignoreCase = true)) {
+      contentLength = value.toIntOrNull() ?: error("non-integer Content-Length: '$value'")
+    }
+  }
+  if (contentLength < 0) error("missing Content-Length header")
+  val payload = ByteArray(contentLength)
+  var off = 0
+  while (off < contentLength) {
+    val n = input.read(payload, off, contentLength - off)
+    if (n < 0) return null
+    off += n
+  }
+  return payload
+}
 
-  fun callTool(session: McpSession, name: String, arguments: JsonElement?): CallToolResult
-
-  fun listResources(session: McpSession): JsonElement
-
-  /**
-   * Reads the resource at [uri]. [progressToken], when non-null, is the client's opt-in handle for
-   * `notifications/progress` — implementations that perform slow work should fan out periodic
-   * progress notifications via [McpSession.notifyProgress] using this token.
-   */
-  fun readResource(
-    session: McpSession,
-    uri: String,
-    progressToken: JsonElement? = null,
-  ): ReadResourceResult
-
-  fun subscribe(session: McpSession, uri: String)
-
-  fun unsubscribe(session: McpSession, uri: String)
-
-  fun onClose(session: McpSession)
-
-  companion object {
-    /**
-     * Sentinel: encode a [ListToolsResult] / [ListResourcesResult] for [listTools] /
-     * [listResources].
-     */
-    fun encodeTools(json: Json, tools: List<ToolDef>): JsonElement =
-      json.encodeToJsonElement(ListToolsResult.serializer(), ListToolsResult(tools))
-
-    fun encodeResources(json: Json, resources: List<ResourceDescriptor>): JsonElement =
-      json.encodeToJsonElement(ListResourcesResult.serializer(), ListResourcesResult(resources))
+private fun readHeaderLine(input: InputStream, buf: ByteArrayOutputStream): String? {
+  buf.reset()
+  while (true) {
+    val b = input.read()
+    if (b < 0) return if (buf.size() == 0) null else buf.toString(Charsets.US_ASCII.name())
+    if (b == '\n'.code) {
+      val bytes = buf.toByteArray()
+      val end =
+        if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1 else bytes.size
+      return String(bytes, 0, end, Charsets.US_ASCII)
+    }
+    buf.write(b)
   }
 }
+
+/** Tracks every live [Session] so notifications can fan out to multiple connected clients. */
+class SessionRegistry {
+  private val sessions = ConcurrentHashMap.newKeySet<Session>()
+
+  fun register(session: Session) {
+    sessions.add(session)
+  }
+
+  fun unregister(session: Session) {
+    sessions.remove(session)
+  }
+
+  fun forEach(block: (Session) -> Unit) {
+    sessions.forEach { runCatching { block(it) } }
+  }
+}
+
+internal fun Server.installComposePreviewHandlers(
+  sdkSession: ServerSession,
+  session: Session,
+  listTools: () -> List<ToolDef>,
+  callTool: (name: String, arguments: JsonElement?) -> CallToolResult,
+  listResources: () -> List<ee.schimke.composeai.mcp.protocol.ResourceDescriptor>,
+  readResource:
+    (
+      uri: String, progressToken: JsonElement?,
+    ) -> ee.schimke.composeai.mcp.protocol.ReadResourceResult,
+  subscribe: (uri: String) -> Unit,
+  unsubscribe: (uri: String) -> Unit,
+) {
+  sdkSession.setRequestHandler<ListToolsRequest>(Method.Defined.ToolsList) { _, _ ->
+    ListToolsResult(tools = listTools().map { it.toSdkTool() }, nextCursor = null)
+  }
+  sdkSession.setRequestHandler<CallToolRequest>(Method.Defined.ToolsCall) { request, _ ->
+    callTool(request.name, request.arguments).toSdkCallToolResult()
+  }
+  sdkSession.setRequestHandler<ListResourcesRequest>(Method.Defined.ResourcesList) { _, _ ->
+    ListResourcesResult(resources = listResources().map { it.toSdkResource() }, nextCursor = null)
+  }
+  sdkSession.setRequestHandler<ReadResourceRequest>(Method.Defined.ResourcesRead) { request, _ ->
+    val progressToken = request.meta?.json?.get("progressToken")
+    readResource(request.uri, progressToken).toSdkReadResourceResult()
+  }
+  sdkSession.setRequestHandler<SubscribeRequest>(Method.Defined.ResourcesSubscribe) { request, _ ->
+    subscribe(request.uri)
+    EmptyResult()
+  }
+  sdkSession.setRequestHandler<UnsubscribeRequest>(Method.Defined.ResourcesUnsubscribe) { request, _
+    ->
+    unsubscribe(request.uri)
+    EmptyResult()
+  }
+}
+
+internal fun composePreviewSdkServer(serverInfo: Implementation): Server =
+  Server(
+    serverInfo = serverInfo,
+    options =
+      ServerOptions(
+        capabilities =
+          ServerCapabilities(
+            tools = ServerCapabilities.Tools(listChanged = true),
+            resources = ServerCapabilities.Resources(subscribe = true, listChanged = true),
+          )
+      ),
+  )
+
+private fun ToolDef.toSdkTool(): Tool {
+  val schemaObject = inputSchema.jsonObject
+  return Tool(
+    name = name,
+    inputSchema =
+      ToolSchema(
+        properties = schemaObject["properties"] as? JsonObject ?: JsonObject(emptyMap()),
+        required =
+          (schemaObject["required"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
+            it.jsonPrimitive.contentOrNull
+          },
+      ),
+    description = description,
+  )
+}
+
+private fun ee.schimke.composeai.mcp.protocol.ResourceDescriptor.toSdkResource(): Resource =
+  Resource(uri = uri, name = name, description = description, mimeType = mimeType)
+
+private fun ee.schimke.composeai.mcp.protocol.ReadResourceResult.toSdkReadResourceResult():
+  ReadResourceResult = ReadResourceResult(contents = contents.map { it.toSdkResourceContents() })
+
+private fun ee.schimke.composeai.mcp.protocol.ResourceContents.toSdkResourceContents():
+  ResourceContents =
+  when (this) {
+    is ee.schimke.composeai.mcp.protocol.ResourceContents.Text ->
+      TextResourceContents(text = text, uri = uri, mimeType = mimeType)
+    is ee.schimke.composeai.mcp.protocol.ResourceContents.Blob ->
+      BlobResourceContents(blob = blob, uri = uri, mimeType = mimeType)
+  }
+
+private fun CallToolResult.toSdkCallToolResult():
+  io.modelcontextprotocol.kotlin.sdk.types.CallToolResult =
+  io.modelcontextprotocol.kotlin.sdk.types.CallToolResult(
+    content = content.map { it.toSdkContent() },
+    isError = isError ?: false,
+  )
+
+private fun ContentBlock.toSdkContent(): SdkContentBlock =
+  when (this) {
+    is ContentBlock.Text -> TextContent(text = text)
+    is ContentBlock.Image -> ImageContent(data = data, mimeType = mimeType)
+    is ContentBlock.EmbeddedResource ->
+      EmbeddedResource(resource = resource.toSdkResourceContents())
+  }
+
+private fun JsonElement.toRequestId(): RequestId? =
+  when (this) {
+    is JsonPrimitive -> {
+      contentOrNull?.toLongOrNull()?.let { RequestId.NumberId(it) }
+        ?: contentOrNull?.let { RequestId.StringId(it) }
+    }
+    else -> null
+  }
 
 /**
  * Convenience: plain text response — every tool that just confirms an action ("watched", "ok") uses
@@ -407,20 +410,3 @@ fun pngCallToolResult(bytesBase64: String): CallToolResult =
 /** Convenience: error response — `isError = true` per MCP spec for tool-level errors. */
 fun errorCallToolResult(message: String): CallToolResult =
   CallToolResult(content = listOf(ContentBlock.Text(message)), isError = true)
-
-/** Tracks every live [McpSession] so notifications can fan out to multiple connected clients. */
-class SessionRegistry {
-  private val sessions = ConcurrentHashMap.newKeySet<McpSession>()
-
-  fun register(session: McpSession) {
-    sessions.add(session)
-  }
-
-  fun unregister(session: McpSession) {
-    sessions.remove(session)
-  }
-
-  fun forEach(block: (McpSession) -> Unit) {
-    sessions.forEach { runCatching { block(it) } }
-  }
-}

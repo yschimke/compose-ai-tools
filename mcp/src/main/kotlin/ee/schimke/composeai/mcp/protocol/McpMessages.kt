@@ -2,15 +2,23 @@ package ee.schimke.composeai.mcp.protocol
 
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 
 // ---------------------------------------------------------------------------
-// Trimmed MCP message shapes for the v0 server. We intentionally do not pull
-// in `io.modelcontextprotocol:kotlin-sdk`: the surface we need is small and
-// the SDK's auto-registered internal handlers complicate the dynamic catalog
-// model the supervisor wants. See ../build.gradle.kts for rationale.
+// Trimmed daemon-facing MCP message shapes. The SDK owns the wire/session layer;
+// these internal DTOs keep the supervisor/tool catalog code decoupled from SDK
+// types.
 //
 // References:
 // - https://modelcontextprotocol.io/specification/2025-06-18/basic
@@ -154,7 +162,7 @@ data class ResourceDescriptor(
 
 @Serializable data class ReadResourceResult(val contents: List<ResourceContents>)
 
-@Serializable
+@Serializable(with = ResourceContentsSerializer::class)
 sealed interface ResourceContents {
   @Serializable
   @SerialName("text")
@@ -165,6 +173,35 @@ sealed interface ResourceContents {
   @SerialName("blob")
   data class Blob(val uri: String, val mimeType: String? = null, val blob: String) :
     ResourceContents
+}
+
+object ResourceContentsSerializer : KSerializer<ResourceContents> {
+  override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+  override fun deserialize(decoder: Decoder): ResourceContents {
+    val jsonDecoder =
+      decoder as? JsonDecoder
+        ?: throw SerializationException("ResourceContents can only be decoded from JSON")
+    val element = jsonDecoder.decodeJsonElement()
+    val obj = element.jsonObject
+    return when {
+      "text" in obj -> jsonDecoder.json.decodeFromJsonElement<ResourceContents.Text>(element)
+      "blob" in obj -> jsonDecoder.json.decodeFromJsonElement<ResourceContents.Blob>(element)
+      else -> throw SerializationException("ResourceContents must contain either 'text' or 'blob'")
+    }
+  }
+
+  override fun serialize(encoder: Encoder, value: ResourceContents) {
+    val jsonEncoder =
+      encoder as? JsonEncoder
+        ?: throw SerializationException("ResourceContents can only be encoded to JSON")
+    when (value) {
+      is ResourceContents.Text ->
+        jsonEncoder.encodeSerializableValue(ResourceContents.Text.serializer(), value)
+      is ResourceContents.Blob ->
+        jsonEncoder.encodeSerializableValue(ResourceContents.Blob.serializer(), value)
+    }
+  }
 }
 
 @Serializable data class SubscribeParams(val uri: String)

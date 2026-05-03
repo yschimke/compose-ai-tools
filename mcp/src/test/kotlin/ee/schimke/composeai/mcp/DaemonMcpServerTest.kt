@@ -973,8 +973,6 @@ class DaemonMcpServerTest {
     assertThat(metadata["mimeType"]?.jsonPrimitive?.contentOrNull).isEqualTo("image/apng")
     assertThat(metadata["frameCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(16)
     assertThat(metadata["durationMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()).isEqualTo(500L)
-    assertThat(metadata["framesDir"]?.jsonPrimitive?.contentOrNull)
-      .isEqualTo("${recordingsDir.absolutePath}/frames")
     assertThat(metadata["frameWidthPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(240)
     assertThat(metadata["frameHeightPx"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(80)
     assertThat(metadata["framesDir"]?.jsonPrimitive?.contentOrNull)
