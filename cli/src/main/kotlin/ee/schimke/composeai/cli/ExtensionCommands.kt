@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import kotlin.system.exitProcess
@@ -21,7 +22,11 @@ data class ExtensionCommandsResponse(
   val commandCount: Int = extensions.sumOf { it.cliCommands.size }
 }
 
-class ExtensionCommandsCommand(private val args: List<String>) {
+class ExtensionCommandsCommand(
+  private val args: List<String>,
+  private val registeredExtensions: List<PreviewExtensionDescriptor> =
+    PreviewExtensionCommandCatalog.extensions,
+) {
   private val jsonOutput = "--json" in args
   private val onlyAgentRecommended = "--agent" in args || "--agent-recommended" in args
   private val positionals = args.filter { !it.startsWith("-") }
@@ -45,7 +50,7 @@ class ExtensionCommandsCommand(private val args: List<String>) {
   }
 
   private fun printCommands() {
-    val response = ExtensionCommandsResponse(extensions = PreviewExtensionCommandCatalog.extensions)
+    val response = ExtensionCommandsResponse(extensions = registeredExtensions)
     val filtered =
       if (onlyAgentRecommended) {
         response.copy(
@@ -107,42 +112,84 @@ class ExtensionCommandsCommand(private val args: List<String>) {
           printUsage()
           exitProcess(1)
         }
-    if (PreviewExtensionCommandCatalog.commandById(commandId) == null) {
+    val registeredCommand = registeredCommandById(commandId)
+    if (registeredCommand == null) {
       System.err.println("Unknown extension command: $commandId")
       printUsage()
       exitProcess(1)
     }
     val passthrough = args.withoutFirstPositionals(2)
-    when (commandId) {
-      "atf-checks.run",
-      "a11y-annotated-preview.render" ->
+    when (val invocation = registeredCommand.toCliInvocation()) {
+      ExtensionCommandInvocation.A11yRender ->
         A11yCommand(passthrough.withDefault("--json"), forceEnable = true).run()
-      "scrolling-preview-annotation.render" -> ShowCommand(passthrough.withDefault("--json")).run()
-      "a11y.hierarchy.get" ->
-        DataCommand(passthrough.dataGet("a11y/hierarchy", defaultJson = true)).run()
-      "atf-checks.get" -> DataCommand(passthrough.dataGet("a11y/atf", defaultJson = true)).run()
-      "a11y-overlay.get" ->
-        DataCommand(passthrough.dataGet("a11y/overlay", defaultJson = false)).run()
-      "compose-trace.get" ->
-        DataCommand(passthrough.dataGet("render/composeAiTrace", defaultJson = true)).run()
-      "scroll-long.get" ->
-        DataCommand(passthrough.dataGet("render/scroll/long", defaultJson = false)).run()
-      "scroll-gif.get" ->
-        DataCommand(passthrough.dataGet("render/scroll/gif", defaultJson = false)).run()
-      "render-device-clip.get",
-      "render-trace.get" -> {
+      ExtensionCommandInvocation.Show -> ShowCommand(passthrough.withDefault("--json")).run()
+      is ExtensionCommandInvocation.Data ->
+        DataCommand(passthrough.dataGet(invocation.kind, defaultJson = invocation.defaultJson))
+          .run()
+      ExtensionCommandInvocation.RequiresDaemon -> {
         System.err.println(
           "Extension command '$commandId' requires daemon data/fetch. Use MCP run_extension_command."
         )
         exitProcess(1)
       }
-      else -> {
+      ExtensionCommandInvocation.Unsupported -> {
         System.err.println("Extension command '$commandId' has no CLI runner yet.")
         exitProcess(1)
       }
     }
   }
+
+  private fun registeredCommandById(id: String): RegisteredExtensionCommand? =
+    registeredExtensions
+      .asSequence()
+      .flatMap { extension -> extension.cliCommands.asSequence().map { extension to it } }
+      .firstOrNull { (_, command) -> command.id == id }
+      ?.let { (extension, command) -> RegisteredExtensionCommand(extension, command) }
 }
+
+internal data class RegisteredExtensionCommand(
+  val extension: PreviewExtensionDescriptor,
+  val command: PreviewExtensionCliCommand,
+)
+
+internal sealed interface ExtensionCommandInvocation {
+  data object A11yRender : ExtensionCommandInvocation
+
+  data object Show : ExtensionCommandInvocation
+
+  data class Data(val kind: String, val defaultJson: Boolean) : ExtensionCommandInvocation
+
+  data object RequiresDaemon : ExtensionCommandInvocation
+
+  data object Unsupported : ExtensionCommandInvocation
+}
+
+internal fun RegisteredExtensionCommand.toCliInvocation(): ExtensionCommandInvocation {
+  if (command.requiresDaemon) return ExtensionCommandInvocation.RequiresDaemon
+
+  if (command.productKinds.size == 1) {
+    return ExtensionCommandInvocation.Data(
+      kind = command.productKinds.single(),
+      defaultJson = "--json" in command.command,
+    )
+  }
+
+  if (command.id.endsWith(".run") || command.id.endsWith(".render")) {
+    return if (isA11yCommand()) {
+      ExtensionCommandInvocation.A11yRender
+    } else {
+      ExtensionCommandInvocation.Show
+    }
+  }
+
+  return ExtensionCommandInvocation.Unsupported
+}
+
+private fun RegisteredExtensionCommand.isA11yCommand(): Boolean =
+  extension.id.startsWith("a11y") ||
+    extension.id.startsWith("atf") ||
+    extension.componentExtensionIds.any { it.startsWith("a11y") || it.startsWith("atf") } ||
+    command.productKinds.any { it.startsWith("a11y/") }
 
 private fun List<String>.withoutFirstPositionals(count: Int): List<String> {
   var remaining = count
