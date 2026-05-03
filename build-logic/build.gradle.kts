@@ -23,13 +23,13 @@ gradlePlugin {
       id = "composeai.jvm-conventions"
       implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiJvmConventionsPlugin"
     }
+    register("composeAiKotlinConventions") {
+      id = "composeai.kotlin-conventions"
+      implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiKotlinConventionsPlugin"
+    }
     register("composeAiMavenPublishing") {
       id = "composeai.maven-publishing"
       implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiMavenPublishingPlugin"
-    }
-    register("composeAiTapmocConventions") {
-      id = "composeai.tapmoc-conventions"
-      implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiTapmocConventionsPlugin"
     }
   }
 }

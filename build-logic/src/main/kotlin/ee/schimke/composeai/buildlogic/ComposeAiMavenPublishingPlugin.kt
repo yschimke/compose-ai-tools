@@ -1,26 +1,14 @@
 package ee.schimke.composeai.buildlogic
 
-import com.android.build.api.dsl.ApplicationExtension
-import com.android.build.api.dsl.LibraryExtension
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import java.io.File
 import javax.inject.Inject
-import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.model.ObjectFactory
-import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.Property
 import org.gradle.api.publish.PublishingExtension
-import org.gradle.api.tasks.testing.Test
-import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.kotlin.dsl.configure
-import org.gradle.kotlin.dsl.getByType
-import org.gradle.kotlin.dsl.withType
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-import tapmoc.TapmocExtension
-import tapmoc.configureKotlinCompatibility
 
 abstract class ComposeAiMavenPublishingExtension
 @Inject
@@ -41,7 +29,7 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
   override fun apply(project: Project) {
     project.pluginManager.apply("composeai.android-conventions")
     project.pluginManager.apply("composeai.jvm-conventions")
-    project.pluginManager.apply("composeai.tapmoc-conventions")
+    project.pluginManager.apply("composeai.kotlin-conventions")
     project.pluginManager.apply("maven-publish")
     project.pluginManager.apply("com.vanniktech.maven.publish")
 
@@ -116,80 +104,6 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
         }
       }
     }
-  }
-}
-
-class ComposeAiAndroidConventionsPlugin : Plugin<Project> {
-  override fun apply(project: Project) {
-    project.configureCommonAndroid()
-  }
-}
-
-class ComposeAiJvmConventionsPlugin : Plugin<Project> {
-  override fun apply(project: Project) {
-    project.configureCommonJvm()
-  }
-}
-
-class ComposeAiTapmocConventionsPlugin : Plugin<Project> {
-  override fun apply(project: Project) {
-    project.configureTapmocCompatibility()
-  }
-}
-
-private fun Project.configureCommonAndroid() {
-  pluginManager.withPlugin("com.android.library") {
-    extensions.configure<LibraryExtension> { configureLibraryDefaults() }
-  }
-  pluginManager.withPlugin("com.android.application") {
-    extensions.configure<ApplicationExtension> { configureApplicationDefaults() }
-  }
-}
-
-private fun LibraryExtension.configureLibraryDefaults() {
-  compileSdk = 36
-  defaultConfig { minSdk = 24 }
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-}
-
-private fun ApplicationExtension.configureApplicationDefaults() {
-  compileSdk = 36
-  defaultConfig { minSdk = 24 }
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-}
-
-private fun Project.configureCommonJvm() {
-  pluginManager.withPlugin("java") {
-    extensions.configure<JavaPluginExtension> {
-      toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
-    }
-    tasks.withType<Test>().configureEach { useJUnit() }
-  }
-}
-
-private fun Project.configureTapmocCompatibility() {
-  pluginManager.withPlugin("com.gradleup.tapmoc") {
-    val kotlinCoreLibraries =
-      extensions
-        .getByType<VersionCatalogsExtension>()
-        .named("libs")
-        .findVersion("kotlinCoreLibraries")
-        .get()
-        .requiredVersion
-
-    configureKotlinCompatibility(version = kotlinCoreLibraries)
-    tasks.withType<KotlinCompilationTask<*>>().configureEach {
-      compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
-    }
-    extensions.configure<TapmocExtension> { checkDependencies() }
   }
 }
 
