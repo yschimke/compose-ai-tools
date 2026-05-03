@@ -28,6 +28,12 @@ import org.gradle.tooling.events.test.TestOperationDescriptor
  */
 data class PreviewModule(val gradlePath: String, val projectDir: File)
 
+data class GradleAccessFailure(
+  val operation: String,
+  val message: String,
+  val detail: String? = null,
+)
+
 class GradleConnection(
   private val projectDir: File,
   private val verbose: Boolean,
@@ -35,6 +41,10 @@ class GradleConnection(
 ) : AutoCloseable {
   private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
   private val connection = connector.connect()
+  private var modelAccessFailure: GradleAccessFailure? = null
+
+  val lastModelAccessFailure: GradleAccessFailure?
+    get() = modelAccessFailure
 
   private val capturedTestFailures =
     Collections.synchronizedList(mutableListOf<CapturedTestFailure>())
@@ -312,10 +322,13 @@ class GradleConnection(
           }
         }
         .run()
+        .also { modelAccessFailure = null }
     } catch (e: org.gradle.tooling.GradleConnectionException) {
+      recordModelAccessFailure("BuildAction", e)
       if (verbose) System.err.println("Gradle connection failed: ${e.message}")
       null
     } catch (e: org.gradle.tooling.BuildException) {
+      recordModelAccessFailure("BuildAction", e)
       if (verbose) System.err.println("Build action failed: ${e.message}")
       null
     } finally {
@@ -331,8 +344,11 @@ class GradleConnection(
    */
   fun buildEnvironment(): org.gradle.tooling.model.build.BuildEnvironment? {
     return try {
-      connection.model(org.gradle.tooling.model.build.BuildEnvironment::class.java).get()
+      connection.model(org.gradle.tooling.model.build.BuildEnvironment::class.java).get().also {
+        modelAccessFailure = null
+      }
     } catch (e: Exception) {
+      recordModelAccessFailure("BuildEnvironment", e)
       if (verbose) System.err.println("Could not query BuildEnvironment: ${e.message}")
       null
     }
@@ -352,6 +368,7 @@ class GradleConnection(
   fun findPreviewModules(): List<PreviewModule> {
     return try {
       val model = connection.model(org.gradle.tooling.model.GradleProject::class.java).get()
+      modelAccessFailure = null
       val modules = mutableListOf<PreviewModule>()
       fun visit(project: org.gradle.tooling.model.GradleProject) {
         val hasPreviewTask = project.tasks.any { it.name == "discoverPreviews" }
@@ -366,6 +383,7 @@ class GradleConnection(
       visit(model)
       modules
     } catch (e: Exception) {
+      recordModelAccessFailure("GradleProject", e)
       if (verbose) System.err.println("Could not query project model: ${e.message}")
       emptyList()
     }
@@ -385,6 +403,16 @@ class GradleConnection(
   override fun close() {
     connection.close()
   }
+
+  private fun recordModelAccessFailure(operation: String, error: Throwable) {
+    val messages = error.causeMessages()
+    modelAccessFailure =
+      GradleAccessFailure(
+        operation = operation,
+        message = messages.firstOrNull() ?: error::class.java.simpleName,
+        detail = messages.drop(1).takeIf { it.isNotEmpty() }?.joinToString(" -> "),
+      )
+  }
 }
 
 private object NullOutputStream : OutputStream() {
@@ -393,4 +421,14 @@ private object NullOutputStream : OutputStream() {
   override fun write(b: ByteArray) {}
 
   override fun write(b: ByteArray, off: Int, len: Int) {}
+}
+
+private fun Throwable.causeMessages(): List<String> {
+  val messages = mutableListOf<String>()
+  var cause: Throwable? = this
+  while (cause != null) {
+    cause.message?.takeIf { it.isNotBlank() && it !in messages }?.let(messages::add)
+    cause = cause.cause
+  }
+  return messages
 }

@@ -284,6 +284,17 @@ abstract class Command(protected val args: List<String>) {
       // any custom `project.projectDir` override.
       val one = gradle.findPreviewModule(explicitModule)
       if (one == null) {
+        gradle.lastModelAccessFailure?.let {
+          System.err.println(
+            "Could not query Gradle project model while resolving module '$explicitModule'."
+          )
+          System.err.println("Gradle ${it.operation} failed: ${it.message}")
+          it.detail?.let { detail -> System.err.println("Caused by: $detail") }
+          System.err.println(
+            "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
+          )
+          exitProcess(1)
+        }
         System.err.println(
           "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin."
         )
@@ -294,6 +305,15 @@ abstract class Command(protected val args: List<String>) {
 
     val modules = gradle.findPreviewModules()
     if (modules.isEmpty()) {
+      gradle.lastModelAccessFailure?.let {
+        System.err.println("Could not query Gradle project model.")
+        System.err.println("Gradle ${it.operation} failed: ${it.message}")
+        it.detail?.let { detail -> System.err.println("Caused by: $detail") }
+        System.err.println(
+          "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
+        )
+        exitProcess(1)
+      }
       System.err.println("No modules with compose-ai-tools plugin found.")
       System.err.println("Apply the plugin: id(\"ee.schimke.composeai.preview\")")
       exitProcess(1)
