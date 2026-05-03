@@ -80,11 +80,12 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val manageDependencies: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
-  /** Generic selector for plugins that produce data products alongside preview PNGs. */
-  val dataPlugins: DataPluginsExtension = objects.newInstance(DataPluginsExtension::class.java)
+  /** Generic selector for preview extensions that produce data alongside preview PNGs. */
+  val previewExtensions: PreviewExtensionsExtension =
+    objects.newInstance(PreviewExtensionsExtension::class.java)
 
-  fun dataPlugins(action: Action<DataPluginsExtension>) {
-    action.execute(dataPlugins)
+  fun previewExtensions(action: Action<PreviewExtensionsExtension>) {
+    action.execute(previewExtensions)
   }
 
   /**
@@ -120,55 +121,55 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   }
 }
 
-abstract class DataPluginsExtension @Inject constructor(objects: ObjectFactory) {
-  val plugins: NamedDomainObjectContainer<DataPluginExtension> =
-    objects.domainObjectContainer(DataPluginExtension::class.java) { name ->
-      objects.newInstance(DataPluginExtension::class.java, name)
+abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFactory) {
+  val extensions: NamedDomainObjectContainer<PreviewExtensionConfig> =
+    objects.domainObjectContainer(PreviewExtensionConfig::class.java) { name ->
+      objects.newInstance(PreviewExtensionConfig::class.java, name)
     }
 
-  val a11y: A11yDataPluginExtension =
-    objects.newInstance(A11yDataPluginExtension::class.java, "a11y")
+  val a11y: A11yPreviewExtension = objects.newInstance(A11yPreviewExtension::class.java, "a11y")
 
-  val composeAiTrace: ComposeAiTraceDataPluginExtension =
-    objects.newInstance(ComposeAiTraceDataPluginExtension::class.java, "composeAiTrace")
+  val composeAiTrace: ComposeAiTracePreviewExtension =
+    objects.newInstance(ComposeAiTracePreviewExtension::class.java, "composeAiTrace")
 
-  /** Configure the built-in accessibility data plugin. */
-  fun a11y(action: Action<A11yDataPluginExtension>) {
+  /** Configure the built-in accessibility preview extension. */
+  fun a11y(action: Action<A11yPreviewExtension>) {
     action.execute(a11y)
   }
 
-  /** Configure the compose-ai-tools render trace data plugin. */
-  fun composeAiTrace(action: Action<ComposeAiTraceDataPluginExtension>) {
+  /** Configure the compose-ai-tools render trace preview extension. */
+  fun composeAiTrace(action: Action<ComposeAiTracePreviewExtension>) {
     action.execute(composeAiTrace)
   }
 
   /**
-   * Configure one producer plugin by id. [DataPluginExtension.enableAllChecks] enables every check
-   * that plugin provides; [DataPluginExtension.checks] enables only named checks for that plugin.
+   * Configure one preview extension by id. [PreviewExtensionConfig.enableAllChecks] enables every
+   * check that extension provides; [PreviewExtensionConfig.checks] enables only named checks for
+   * that extension.
    */
-  fun plugin(name: String, action: Action<DataPluginExtension>) {
-    action.execute(plugins.maybeCreate(name))
+  fun extension(name: String, action: Action<PreviewExtensionConfig>) {
+    action.execute(extensions.maybeCreate(name))
   }
 }
 
-abstract class DataPluginExtension
+abstract class PreviewExtensionConfig
 @Inject
-constructor(private val pluginName: String, objects: ObjectFactory) : Named {
-  override fun getName(): String = pluginName
+constructor(private val extensionName: String, objects: ObjectFactory) : Named {
+  override fun getName(): String = extensionName
 
   /** Internal state behind [enableAllChecks]. Default: false. */
   internal val allChecksEnabled: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
-  /** Enable every check/data product this plugin provides. */
+  /** Enable every check/data product this preview extension provides. */
   fun enableAllChecks() {
     allChecksEnabled.set(true)
   }
 
   /**
-   * Specific check ids to enable for this plugin when [enableAllChecks] has not been called. For
-   * the built-in a11y producer, `atf`, `hierarchy`, and `overlay` all turn on the accessibility
-   * render pass.
+   * Specific check ids to enable for this preview extension when [enableAllChecks] has not been
+   * called. For the built-in a11y producer, `atf`, `hierarchy`, and `overlay` all turn on the
+   * accessibility render pass.
    */
   val checks: ListProperty<String> =
     objects.listProperty(String::class.java).convention(emptyList())
@@ -197,13 +198,15 @@ constructor(private val pluginName: String, objects: ObjectFactory) : Named {
     objects.property(Boolean::class.java).convention(true)
 }
 
-abstract class A11yDataPluginExtension
+abstract class A11yPreviewExtension
 @Inject
-constructor(pluginName: String, objects: ObjectFactory) : DataPluginExtension(pluginName, objects)
+constructor(extensionName: String, objects: ObjectFactory) :
+  PreviewExtensionConfig(extensionName, objects)
 
-abstract class ComposeAiTraceDataPluginExtension
+abstract class ComposeAiTracePreviewExtension
 @Inject
-constructor(pluginName: String, objects: ObjectFactory) : DataPluginExtension(pluginName, objects)
+constructor(extensionName: String, objects: ObjectFactory) :
+  PreviewExtensionConfig(extensionName, objects)
 
 abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFactory) {
   /**

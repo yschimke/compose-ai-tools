@@ -324,7 +324,7 @@ from a phone's. Specifically watch for:
 
 - **Tap-target size** — `androidx.wear.compose.material3.Button` defaults
   meet the spec, but custom `Box`/`IconButton` content can fall below the
-  48dp ATF threshold. Enable `composePreview { dataPlugins {
+  48dp ATF threshold. Enable `composePreview { previewExtensions {
   a11y { enableAllChecks() } } }` and run `compose-preview a11y`
   to surface these.
 - **Content descriptions** — Wear UI relies more heavily on icons; an

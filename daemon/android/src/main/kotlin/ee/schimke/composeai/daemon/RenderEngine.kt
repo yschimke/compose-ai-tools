@@ -139,11 +139,12 @@ class RenderEngine(
      * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
      * render, traded for simpler implementation than per-render kind threading.
      *
-     * Defaults to the [A11Y_DATA_PLUGIN_ENABLED_PROP] system property set by the Gradle data-plugin
+     * Defaults to the [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] system property set by the Gradle preview
+     * extension.
      * selector. False (the default) keeps the pre-D2 paused-clock + `LocalInspectionMode = true`
      * fast path used by the harness's fake-mode tests.
      */
-    runAccessibility: Boolean = System.getProperty(A11Y_DATA_PLUGIN_ENABLED_PROP) == "true",
+    runAccessibility: Boolean = System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true",
   ): RenderResult {
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
@@ -545,12 +546,13 @@ class RenderEngine(
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
 
     /**
-     * Data-plugin selector for the a11y producer. When set to `"true"`, each render runs in a11y
-     * mode and writes `a11y-{atf,hierarchy}.json` artefacts under
-     * `<outputDir.parent>/data/<previewId>/`. Tests and callers that do not enable the plugin leave
-     * it unset and the fast path stays unchanged.
+     * Preview extension selector for the a11y producer. When set to `"true"`, each render runs in
+     * a11y mode and writes `a11y-{atf,hierarchy}.json` artefacts under
+     * `<outputDir.parent>/data/<previewId>/`. Tests and callers that do not enable the extension
+     * leave it unset and the fast path stays unchanged.
      */
-    const val A11Y_DATA_PLUGIN_ENABLED_PROP: String = "composeai.dataPlugins.a11y.enabled"
+    const val A11Y_PREVIEW_EXTENSION_ENABLED_PROP: String =
+      "composeai.previewExtensions.a11y.enabled"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.

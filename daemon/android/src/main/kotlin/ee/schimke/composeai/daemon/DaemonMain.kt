@@ -240,8 +240,8 @@ fun main(args: Array<String>) {
   // Android render loop whenever a render output dir exists. A11y is selected through the generic
   // data-plugin property emitted by Gradle, not a daemon-specific feature flag.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-  val a11yDataPluginEnabled =
-    System.getProperty(RenderEngine.A11Y_DATA_PLUGIN_ENABLED_PROP) == "true"
+  val a11yPreviewExtensionEnabled =
+    System.getProperty(RenderEngine.A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true"
   val dataProducts: DataProductRegistry =
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
@@ -284,7 +284,7 @@ fun main(args: Array<String>) {
             "compose-ai-tools daemon: TextStringsDataProductRegistry active (dataRoot=$dataRoot)"
           )
           add(TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex))
-          if (a11yDataPluginEnabled) {
+          if (a11yPreviewExtensionEnabled) {
             System.err.println(
               "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
             )

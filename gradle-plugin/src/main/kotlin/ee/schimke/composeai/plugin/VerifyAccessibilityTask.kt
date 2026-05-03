@@ -21,7 +21,7 @@ import org.gradle.api.tasks.TaskAction
  * configured on the built-in `a11y` data-product plugin.
  *
  * Runs once per Android module after `renderPreviews`. Only registered when
- * `composePreview.dataPlugins { a11y { enableAllChecks() } }`.
+ * `composePreview.previewExtensions { a11y { enableAllChecks() } }`.
  */
 @CacheableTask
 abstract class VerifyAccessibilityTask : DefaultTask() {
@@ -124,7 +124,7 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
       throw GradleException(
         "Accessibility check failed: ${failures.joinToString(", ")}. " +
           "See ${out.absolutePath} for the full report, or disable the " +
-          "relevant `failOn*` flag in `composePreview.dataPlugins.a11y` " +
+          "relevant `failOn*` flag in `composePreview.previewExtensions.a11y` " +
           "to downgrade to a warning."
       )
     }
