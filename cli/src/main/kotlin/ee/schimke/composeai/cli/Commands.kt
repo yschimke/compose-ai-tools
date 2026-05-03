@@ -77,7 +77,14 @@ data class PreviewInfo(
   val dataProducts: List<PreviewDataProduct> = emptyList(),
 )
 
-@Serializable data class PreviewDataProduct(val kind: String, val output: String = "")
+@Serializable
+data class PreviewDataProduct(
+  val kind: String,
+  val output: String = "",
+  val mediaTypes: List<String> = emptyList(),
+  val advanceTimeMillis: Long? = null,
+  val scroll: ScrollCapture? = null,
+)
 
 @Serializable
 data class PreviewManifest(
@@ -415,7 +422,14 @@ abstract class Command(protected val args: List<String>) {
           } else {
             p.captures
           }
-        val captureResults = captures.mapIndexed { index, capture ->
+        val productCaptures = p.dataProducts.mapNotNull { it.asPreviewArtifactCapture() }
+        val resultCaptures =
+          if (captures.isSingleStaticCapture() && productCaptures.isNotEmpty()) {
+            productCaptures
+          } else {
+            captures + productCaptures
+          }
+        val captureResults = resultCaptures.mapIndexed { index, capture ->
           val pngFile =
             capture.renderOutput
               .takeIf { it.isNotEmpty() }
@@ -475,6 +489,19 @@ abstract class Command(protected val args: List<String>) {
   /** True if the preview has at least one capture with `changed = true`. */
   protected fun PreviewResult.anyChanged(): Boolean =
     captures.any { it.changed == true } || changed == true
+
+  private fun List<Capture>.isSingleStaticCapture(): Boolean =
+    size == 1 && single().advanceTimeMillis == null && single().scroll == null
+
+  private fun PreviewDataProduct.asPreviewArtifactCapture(): Capture? {
+    if (output.isBlank()) return null
+    val isImageOrAnimation =
+      mediaTypes.any { it.startsWith("image/") } ||
+        output.endsWith(".png") ||
+        output.endsWith(".gif")
+    if (!isImageOrAnimation) return null
+    return Capture(advanceTimeMillis = advanceTimeMillis, scroll = scroll, renderOutput = output)
+  }
 
   /**
    * Globs the on-disk `<stem>_<suffix>.<ext>` fan-out for a parameterized preview capture. The

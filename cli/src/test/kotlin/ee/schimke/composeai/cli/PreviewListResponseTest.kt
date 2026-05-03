@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -122,5 +123,57 @@ class PreviewListResponseTest {
     assertEquals("g", parsed.previews.single().params.group)
     // Default capture list is a single empty capture.
     assertEquals(1, parsed.previews.single().captures.size)
+  }
+
+  @Test
+  fun `scroll artifact data products surface as preview captures`() {
+    val projectDir = Files.createTempDirectory("preview-result-test").toFile()
+    val clean =
+      projectDir.resolve("build/compose-previews/renders/LongPreview.png").also {
+        it.parentFile.mkdirs()
+        it.writeBytes(byteArrayOf(1, 2, 3))
+      }
+    val long =
+      projectDir.resolve("build/compose-previews/data/render-scroll-long/LongPreview.png").also {
+        it.parentFile.mkdirs()
+        it.writeBytes(byteArrayOf(4, 5, 6))
+      }
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.LongPreview",
+              functionName = "LongPreview",
+              className = "com.example.PreviewsKt",
+              captures = listOf(Capture(renderOutput = "renders/${clean.name}")),
+              dataProducts =
+                listOf(
+                  PreviewDataProduct(
+                    kind = "render/scroll/long",
+                    output = "data/render-scroll-long/${long.name}",
+                    mediaTypes = listOf("image/png"),
+                    scroll = ScrollCapture(mode = "LONG"),
+                  )
+                ),
+            )
+          ),
+      )
+
+    val result = ResultHarness().results(PreviewModule("app", projectDir), manifest).single()
+
+    assertEquals(long.canonicalFile.absolutePath, result.pngPath)
+    assertEquals(1, result.captures.size)
+    assertEquals(long.canonicalFile.absolutePath, result.captures.single().pngPath)
+    assertEquals("LONG", result.captures.single().scroll?.mode)
+  }
+
+  private class ResultHarness : Command(emptyList()) {
+    override fun run() = Unit
+
+    fun results(module: PreviewModule, manifest: PreviewManifest): List<PreviewResult> =
+      buildResults(listOf(module to manifest))
   }
 }
