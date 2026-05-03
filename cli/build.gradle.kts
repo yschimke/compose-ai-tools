@@ -6,6 +6,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
 
 plugins {
+  id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
   application
@@ -113,5 +114,3 @@ val generateCliVersionResource by tasks.registering {
 }
 
 sourceSets.main.get().resources.srcDir(generateCliVersionResource)
-
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }

@@ -16,6 +16,7 @@
 import java.net.URLClassLoader
 
 plugins {
+  id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
 }
@@ -124,10 +125,7 @@ tasks.withType<Test>().configureEach {
   )
 }
 
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
 tasks.withType<Test>().configureEach {
-  useJUnit()
   // D-harness.v1.5a — `-Pharness.host=fake|real` flag. Default `fake` keeps the existing 7
   // scenarios self-contained (no Compose Desktop spawn cost when verifying scenario logic).
   // Real-mode flips the launcher in `HarnessTestSupport.launcherFor(...)` and unblocks
@@ -249,7 +247,6 @@ val regenerateBaselines by
     systemProperty("composeai.harness.host", "real")
     systemProperty("composeai.harness.target", findProperty("harness.target") ?: "desktop")
     systemProperty("composeai.harness.regenerate", "true")
-    useJUnit()
     val baseTest = tasks.test.get()
     classpath = baseTest.classpath
     testClassesDirs = baseTest.testClassesDirs

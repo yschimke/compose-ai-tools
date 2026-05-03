@@ -1,7 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-import tapmoc.TapmocExtension
-import tapmoc.configureKotlinCompatibility
-
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
@@ -9,23 +5,10 @@ plugins {
   alias(libs.plugins.tapmoc)
 }
 
-// See preview-annotations/build.gradle.kts for the rationale.
-configureKotlinCompatibility(version = libs.versions.kotlinCoreLibraries.get())
-
-tasks.withType<KotlinCompilationTask<*>>().configureEach {
-  compilerOptions.freeCompilerArgs.add("-Xsuppress-version-warnings")
-}
-
-extensions.configure<TapmocExtension> { checkDependencies() }
-
 dependencies {
   api(libs.kotlinx.serialization.json)
   testImplementation(libs.junit)
 }
-
-java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
-
-tasks.withType<Test>().configureEach { useJUnit() }
 
 composeAiMavenPublishing {
   coordinates(
