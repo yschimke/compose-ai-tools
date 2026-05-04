@@ -140,14 +140,28 @@ private fun PreviewContext.material3Background(): DeviceBackground? {
 @Suppress("UNCHECKED_CAST")
 private fun PreviewContext.material3ColorScheme(): Map<String, String>? {
   val payload = inspection.values["compose.material3.themePayload"] ?: return null
-  val resolvedTokens =
-    runCatching { payload.javaClass.getMethod("getResolvedTokens").invoke(payload) }.getOrNull()
-      ?: return null
-  return runCatching {
-      resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
-        as? Map<String, String>
-    }
-    .getOrNull()
+  return MaterialThemePayloadSnapshot.colorScheme(payload)
+}
+
+/**
+ * Domain API for reading theme payloads without coupling this render product to the theme
+ * connector's concrete model classes.
+ *
+ * Prefer a typed/composable payload path when the data-extension pipeline owns this handoff. Until
+ * then, keep the compatibility bridge isolated here.
+ */
+internal object MaterialThemePayloadSnapshot {
+  @Suppress("UNCHECKED_CAST")
+  fun colorScheme(payload: Any): Map<String, String>? {
+    val resolvedTokens =
+      runCatching { payload.javaClass.getMethod("getResolvedTokens").invoke(payload) }.getOrNull()
+        ?: return null
+    return runCatching {
+        resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
+          as? Map<String, String>
+      }
+      .getOrNull()
+  }
 }
 
 private fun fallbackBackground(): DeviceBackground =

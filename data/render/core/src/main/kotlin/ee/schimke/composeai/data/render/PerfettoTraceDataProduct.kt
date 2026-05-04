@@ -75,13 +75,22 @@ object PerfettoTraceDataProducer {
   }
 
   private fun composeRuntimeTracingOnClasspath(): Boolean =
+    ComposeRuntimeTracingAvailability.isAvailable()
+}
+
+/**
+ * Domain API for optional Compose runtime tracing detection.
+ *
+ * This keeps reflective classpath probing out of the trace producer logic; callers only care
+ * whether the optional tracing API is available.
+ */
+internal object ComposeRuntimeTracingAvailability {
+  fun isAvailable(
+    classLoader: ClassLoader =
+      Thread.currentThread().contextClassLoader ?: PerfettoTraceDataProducer::class.java.classLoader
+  ): Boolean =
     runCatching {
-        Class.forName(
-          "androidx.compose.runtime.tracing.ComposeRuntimeTracing",
-          false,
-          Thread.currentThread().contextClassLoader
-            ?: PerfettoTraceDataProducer::class.java.classLoader,
-        )
+        Class.forName("androidx.compose.runtime.tracing.ComposeRuntimeTracing", false, classLoader)
       }
       .isSuccess
 }

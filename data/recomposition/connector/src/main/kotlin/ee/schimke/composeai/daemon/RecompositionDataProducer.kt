@@ -385,45 +385,8 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     }
   }
 
-  /**
-   * Reflectively reach the [androidx.compose.runtime.Recomposer] that drives [scene]'s held
-   * composition. The chain is:
-   *
-   * `ImageComposeScene` (public) → field `scene: ComposeScene` (private) → concrete
-   * `BaseComposeScene` → field `recomposer: ComposeSceneRecomposer` (private) → field `recomposer:
-   * Recomposer` (private).
-   *
-   * Throws on any link breaking — caller wraps in the LinkageError/NoSuchMethodError safety net so
-   * a future Compose-UI refactor degrades to "instrumentation unavailable".
-   */
   private fun reflectRecomposer(scene: ImageComposeScene): androidx.compose.runtime.Recomposer {
-    val sceneField = ImageComposeScene::class.java.getDeclaredField("scene")
-    sceneField.isAccessible = true
-    val composeScene = sceneField.get(scene) ?: error("ImageComposeScene.scene was null")
-    // Walk up the class hierarchy looking for `recomposer: ComposeSceneRecomposer` — defined on
-    // BaseComposeScene; subclasses (CanvasLayersComposeScene, etc.) inherit it.
-    val sceneRecomposerField = findDeclaredField(composeScene.javaClass, "recomposer")
-    sceneRecomposerField.isAccessible = true
-    val sceneRecomposer =
-      sceneRecomposerField.get(composeScene)
-        ?: error("ComposeScene.recomposer was null on ${composeScene.javaClass.name}")
-    val recomposerField = findDeclaredField(sceneRecomposer.javaClass, "recomposer")
-    recomposerField.isAccessible = true
-    val recomposer =
-      recomposerField.get(sceneRecomposer) ?: error("ComposeSceneRecomposer.recomposer was null")
-    return recomposer as androidx.compose.runtime.Recomposer
-  }
-
-  private fun findDeclaredField(start: Class<*>, name: String): java.lang.reflect.Field {
-    var cls: Class<*>? = start
-    while (cls != null) {
-      try {
-        return cls.getDeclaredField(name)
-      } catch (_: NoSuchFieldException) {
-        cls = cls.superclass
-      }
-    }
-    throw NoSuchFieldException("$name not found on $start or any superclass")
+    return DesktopSceneRecomposer.current(scene)
   }
 
   private fun parseParams(params: JsonElement?): SubscribeParamsView? {
@@ -497,6 +460,47 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
       encodeDefaults = true
       prettyPrint = false
     }
+  }
+}
+
+/**
+ * Domain API for reading the recomposer that drives a desktop [ImageComposeScene].
+ *
+ * The regular recomposition extension should be authored against Compose runtime observer APIs.
+ * This object hides Compose Desktop implementation details, making it easy to replace with a
+ * composable extractor or public scene API when available.
+ */
+internal object DesktopSceneRecomposer {
+  fun current(scene: ImageComposeScene): androidx.compose.runtime.Recomposer =
+    currentFromSceneHandle(scene) as androidx.compose.runtime.Recomposer
+
+  internal fun currentFromSceneHandle(scene: Any): Any {
+    val composeScene = fieldValue(scene, "scene") ?: error("ImageComposeScene.scene was null")
+    val sceneRecomposer =
+      fieldValue(composeScene, "recomposer")
+        ?: error("ComposeScene.recomposer was null on ${composeScene.javaClass.name}")
+    val recomposer =
+      fieldValue(sceneRecomposer, "recomposer")
+        ?: error("ComposeSceneRecomposer.recomposer was null")
+    return recomposer
+  }
+
+  private fun fieldValue(receiver: Any, name: String): Any? {
+    val field = findDeclaredField(receiver.javaClass, name)
+    field.isAccessible = true
+    return field.get(receiver)
+  }
+
+  private fun findDeclaredField(start: Class<*>, name: String): java.lang.reflect.Field {
+    var cls: Class<*>? = start
+    while (cls != null) {
+      try {
+        return cls.getDeclaredField(name)
+      } catch (_: NoSuchFieldException) {
+        cls = cls.superclass
+      }
+    }
+    throw NoSuchFieldException("$name not found on $start or any superclass")
   }
 }
 

@@ -198,22 +198,209 @@ fun themePayloadFromPreviewContext(
   fallbackTypography: Typography?,
   fallbackShapes: Shapes?,
 ): ThemePayload? {
-  val groups =
-    context.inspection.slotTables
-      .asSequence()
-      .filterIsInstance<CompositionData>()
-      .flatMap { data -> data.compositionGroups.asSequence() }
-      .flatMap { group -> group.flattenGroups().asSequence() }
-      .toList()
-  val materialThemeCalls = groups.filter { group ->
-    group.sourceInfo?.startsWith("C(MaterialTheme)") == true
+  MaterialThemeInspectionSnapshot.payload(
+      slotTables = context.inspection.slotTables,
+      fallbackTypography = fallbackTypography,
+      fallbackShapes = fallbackShapes,
+    )
+    ?.let {
+      return it
+    }
+  return context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload
+}
+
+fun themePayloadFromPreviewContext(context: PreviewContext): ThemePayload? =
+  themePayloadFromPreviewContext(context, fallbackTypography = null, fallbackShapes = null)
+
+fun colorTokens(source: Any?): Map<String, String> = MaterialThemeTokens.colorScheme(source)
+
+fun typographyTokens(source: Any?): Map<String, TypographyToken> =
+  MaterialThemeTokens.typography(source)
+
+fun shapeTokens(source: Any?): Map<String, String> = MaterialThemeTokens.shapes(source)
+
+/**
+ * Domain API for reading Material theme tokens from either public Material3 objects or backend
+ * token objects captured from Compose inspection.
+ *
+ * The API intentionally returns stable token maps. If a backend object needs reflective access,
+ * that implementation detail stays behind [TokenObjectAccess].
+ */
+internal object MaterialThemeTokens {
+  fun colorScheme(source: Any?): Map<String, String> =
+    when (source) {
+      null -> emptyMap()
+      is ColorScheme ->
+        linkedMapOf(
+          "primary" to source.primary.hexArgb(),
+          "onPrimary" to source.onPrimary.hexArgb(),
+          "primaryContainer" to source.primaryContainer.hexArgb(),
+          "onPrimaryContainer" to source.onPrimaryContainer.hexArgb(),
+          "inversePrimary" to source.inversePrimary.hexArgb(),
+          "secondary" to source.secondary.hexArgb(),
+          "onSecondary" to source.onSecondary.hexArgb(),
+          "secondaryContainer" to source.secondaryContainer.hexArgb(),
+          "onSecondaryContainer" to source.onSecondaryContainer.hexArgb(),
+          "tertiary" to source.tertiary.hexArgb(),
+          "onTertiary" to source.onTertiary.hexArgb(),
+          "tertiaryContainer" to source.tertiaryContainer.hexArgb(),
+          "onTertiaryContainer" to source.onTertiaryContainer.hexArgb(),
+          "background" to source.background.hexArgb(),
+          "onBackground" to source.onBackground.hexArgb(),
+          "surface" to source.surface.hexArgb(),
+          "onSurface" to source.onSurface.hexArgb(),
+          "surfaceVariant" to source.surfaceVariant.hexArgb(),
+          "onSurfaceVariant" to source.onSurfaceVariant.hexArgb(),
+          "surfaceTint" to source.surfaceTint.hexArgb(),
+          "inverseSurface" to source.inverseSurface.hexArgb(),
+          "inverseOnSurface" to source.inverseOnSurface.hexArgb(),
+          "error" to source.error.hexArgb(),
+          "onError" to source.onError.hexArgb(),
+          "errorContainer" to source.errorContainer.hexArgb(),
+          "onErrorContainer" to source.onErrorContainer.hexArgb(),
+          "outline" to source.outline.hexArgb(),
+          "outlineVariant" to source.outlineVariant.hexArgb(),
+          "scrim" to source.scrim.hexArgb(),
+        )
+      else ->
+        TokenObjectAccess.colorProperties(source).mapValues { (_, value) ->
+          when (value) {
+            is Color -> value.hexArgb()
+            is Long -> Color(value.toULong()).hexArgb()
+            else -> error("Unsupported color token value ${value::class.java.name}")
+          }
+        }
+    }
+
+  fun typography(source: Any?): Map<String, TypographyToken> =
+    when (source) {
+      null -> emptyMap()
+      is Typography ->
+        linkedMapOf(
+          "displayLarge" to source.displayLarge.token(),
+          "displayMedium" to source.displayMedium.token(),
+          "displaySmall" to source.displaySmall.token(),
+          "headlineLarge" to source.headlineLarge.token(),
+          "headlineMedium" to source.headlineMedium.token(),
+          "headlineSmall" to source.headlineSmall.token(),
+          "titleLarge" to source.titleLarge.token(),
+          "titleMedium" to source.titleMedium.token(),
+          "titleSmall" to source.titleSmall.token(),
+          "bodyLarge" to source.bodyLarge.token(),
+          "bodyMedium" to source.bodyMedium.token(),
+          "bodySmall" to source.bodySmall.token(),
+          "labelLarge" to source.labelLarge.token(),
+          "labelMedium" to source.labelMedium.token(),
+          "labelSmall" to source.labelSmall.token(),
+        )
+      else ->
+        TokenObjectAccess.textStyleProperties(source).mapValues { (_, value) -> value.token() }
+    }
+
+  fun shapes(source: Any?): Map<String, String> =
+    when (source) {
+      null -> emptyMap()
+      is Shapes ->
+        linkedMapOf(
+          "extraSmall" to source.extraSmall.toString(),
+          "small" to source.small.toString(),
+          "medium" to source.medium.toString(),
+          "large" to source.large.toString(),
+          "extraLarge" to source.extraLarge.toString(),
+        )
+      else -> TokenObjectAccess.shapeProperties(source).mapValues { (_, value) -> value.toString() }
+    }
+
+  private object TokenObjectAccess {
+    fun colorProperties(source: Any): Map<String, Any> =
+      linkedMapOf<String, Any>().also { tokens ->
+        for (method in source.javaClass.readableNoArgMethods()) {
+          val name = method.propertyName()
+          val value = method.invokeOrNull(source)
+          when (value) {
+            is Color -> tokens[name] = value
+            is Long -> if (method.returnType == java.lang.Long.TYPE) tokens[name] = value
+          }
+        }
+      }
+
+    fun textStyleProperties(source: Any): Map<String, TextStyle> =
+      linkedMapOf<String, TextStyle>().also { tokens ->
+        for (method in source.javaClass.readableNoArgMethods()) {
+          val value = method.invokeOrNull(source)
+          if (value is TextStyle) tokens[method.propertyName()] = value
+        }
+      }
+
+    fun shapeProperties(source: Any): Map<String, Any> =
+      linkedMapOf<String, Any>().also { tokens ->
+        for (method in source.javaClass.readableNoArgMethods()) {
+          val value = method.invokeOrNull(source) ?: continue
+          if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
+            tokens[method.propertyName()] = value
+          }
+        }
+      }
+
+    private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
+      method.parameterCount == 0 &&
+        method.name.startsWith("get") &&
+        method.name != "getClass" &&
+        method.returnType != java.lang.Void.TYPE
+    }
+
+    private fun Method.invokeOrNull(receiver: Any): Any? =
+      runCatching {
+          isAccessible = true
+          invoke(receiver)
+        }
+        .getOrNull()
+
+    private fun Method.propertyName(): String =
+      name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
   }
-  val namedMaterialThemeCalls = groups.filter { group ->
-    group.sourceInfo?.contains("MaterialTheme") == true &&
-      group.sourceInfo?.contains("CaptureMaterialTheme") != true
+}
+
+/**
+ * Facade for Compose slot-table inspection used as a fallback when a composable extractor did not
+ * publish [MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY]. New extensions should prefer composable extractors
+ * that read CompositionLocals directly.
+ */
+internal object MaterialThemeInspectionSnapshot {
+  fun payload(
+    slotTables: List<Any>,
+    fallbackTypography: Typography?,
+    fallbackShapes: Shapes?,
+  ): ThemePayload? {
+    val groups =
+      slotTables
+        .asSequence()
+        .filterIsInstance<CompositionData>()
+        .flatMap { data -> data.compositionGroups.asSequence() }
+        .flatMap { group -> group.flattenGroups().asSequence() }
+        .toList()
+    val materialThemeCalls = groups.filter { group ->
+      group.sourceInfo?.startsWith("C(MaterialTheme)") == true
+    }
+    val namedMaterialThemeCalls = groups.filter { group ->
+      group.sourceInfo?.contains("MaterialTheme") == true &&
+        group.sourceInfo?.contains("CaptureMaterialTheme") != true
+    }
+
+    payloadFromGroups(materialThemeCalls, fallbackTypography, fallbackShapes)?.let {
+      return it
+    }
+    payloadFromGroups(namedMaterialThemeCalls, fallbackTypography, fallbackShapes)?.let {
+      return it
+    }
+    return null
   }
 
-  fun payloadFromGroups(groups: List<CompositionGroup>): ThemePayload? {
+  private fun payloadFromGroups(
+    groups: List<CompositionGroup>,
+    fallbackTypography: Typography?,
+    fallbackShapes: Shapes?,
+  ): ThemePayload? {
     for (group in groups.asReversed()) {
       val values = group.data.toList()
       val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
@@ -230,138 +417,9 @@ fun themePayloadFromPreviewContext(
     return null
   }
 
-  payloadFromGroups(materialThemeCalls)?.let {
-    return it
-  }
-  payloadFromGroups(namedMaterialThemeCalls)?.let {
-    return it
-  }
-  return context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload
+  private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
+    listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
 }
-
-fun themePayloadFromPreviewContext(context: PreviewContext): ThemePayload? =
-  themePayloadFromPreviewContext(context, fallbackTypography = null, fallbackShapes = null)
-
-fun colorTokens(source: Any?): Map<String, String> =
-  when (source) {
-    null -> emptyMap()
-    is ColorScheme ->
-      linkedMapOf(
-        "primary" to source.primary.hexArgb(),
-        "onPrimary" to source.onPrimary.hexArgb(),
-        "primaryContainer" to source.primaryContainer.hexArgb(),
-        "onPrimaryContainer" to source.onPrimaryContainer.hexArgb(),
-        "inversePrimary" to source.inversePrimary.hexArgb(),
-        "secondary" to source.secondary.hexArgb(),
-        "onSecondary" to source.onSecondary.hexArgb(),
-        "secondaryContainer" to source.secondaryContainer.hexArgb(),
-        "onSecondaryContainer" to source.onSecondaryContainer.hexArgb(),
-        "tertiary" to source.tertiary.hexArgb(),
-        "onTertiary" to source.onTertiary.hexArgb(),
-        "tertiaryContainer" to source.tertiaryContainer.hexArgb(),
-        "onTertiaryContainer" to source.onTertiaryContainer.hexArgb(),
-        "background" to source.background.hexArgb(),
-        "onBackground" to source.onBackground.hexArgb(),
-        "surface" to source.surface.hexArgb(),
-        "onSurface" to source.onSurface.hexArgb(),
-        "surfaceVariant" to source.surfaceVariant.hexArgb(),
-        "onSurfaceVariant" to source.onSurfaceVariant.hexArgb(),
-        "surfaceTint" to source.surfaceTint.hexArgb(),
-        "inverseSurface" to source.inverseSurface.hexArgb(),
-        "inverseOnSurface" to source.inverseOnSurface.hexArgb(),
-        "error" to source.error.hexArgb(),
-        "onError" to source.onError.hexArgb(),
-        "errorContainer" to source.errorContainer.hexArgb(),
-        "onErrorContainer" to source.onErrorContainer.hexArgb(),
-        "outline" to source.outline.hexArgb(),
-        "outlineVariant" to source.outlineVariant.hexArgb(),
-        "scrim" to source.scrim.hexArgb(),
-      )
-    else -> reflectedColorTokens(source)
-  }
-
-fun typographyTokens(source: Any?): Map<String, TypographyToken> =
-  when (source) {
-    null -> emptyMap()
-    is Typography ->
-      linkedMapOf(
-        "displayLarge" to source.displayLarge.token(),
-        "displayMedium" to source.displayMedium.token(),
-        "displaySmall" to source.displaySmall.token(),
-        "headlineLarge" to source.headlineLarge.token(),
-        "headlineMedium" to source.headlineMedium.token(),
-        "headlineSmall" to source.headlineSmall.token(),
-        "titleLarge" to source.titleLarge.token(),
-        "titleMedium" to source.titleMedium.token(),
-        "titleSmall" to source.titleSmall.token(),
-        "bodyLarge" to source.bodyLarge.token(),
-        "bodyMedium" to source.bodyMedium.token(),
-        "bodySmall" to source.bodySmall.token(),
-        "labelLarge" to source.labelLarge.token(),
-        "labelMedium" to source.labelMedium.token(),
-        "labelSmall" to source.labelSmall.token(),
-      )
-    else ->
-      linkedMapOf<String, TypographyToken>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source)
-          if (value is TextStyle) tokens[method.propertyName()] = value.token()
-        }
-      }
-  }
-
-fun shapeTokens(source: Any?): Map<String, String> =
-  when (source) {
-    null -> emptyMap()
-    is Shapes ->
-      linkedMapOf(
-        "extraSmall" to source.extraSmall.toString(),
-        "small" to source.small.toString(),
-        "medium" to source.medium.toString(),
-        "large" to source.large.toString(),
-        "extraLarge" to source.extraLarge.toString(),
-      )
-    else ->
-      linkedMapOf<String, String>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source) ?: continue
-          if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
-            tokens[method.propertyName()] = value.toString()
-          }
-        }
-      }
-  }
-
-private fun reflectedColorTokens(source: Any): Map<String, String> =
-  linkedMapOf<String, String>().also { tokens ->
-    for (method in source.javaClass.readableNoArgMethods()) {
-      val name = method.propertyName()
-      val value = method.invokeOrNull(source)
-      when (value) {
-        is Color -> tokens[name] = value.hexArgb()
-        is Long ->
-          if (method.returnType == java.lang.Long.TYPE)
-            tokens[name] = Color(value.toULong()).hexArgb()
-      }
-    }
-  }
-
-private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
-  method.parameterCount == 0 &&
-    method.name.startsWith("get") &&
-    method.name != "getClass" &&
-    method.returnType != java.lang.Void.TYPE
-}
-
-private fun Method.invokeOrNull(receiver: Any): Any? =
-  runCatching {
-      isAccessible = true
-      invoke(receiver)
-    }
-    .getOrNull()
-
-private fun Method.propertyName(): String =
-  name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
 
 fun Color.hexArgb(): String = "#%08X".format(toArgb())
 
@@ -377,6 +435,3 @@ private fun TextStyle.token(): TypographyToken =
     letterSpacing = letterSpacing.takeIf { it.isSpecified }?.value,
     letterSpacingUnit = letterSpacing.takeIf { it.isSpecified }?.type?.toString(),
   )
-
-private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
-  listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
