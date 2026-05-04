@@ -1,6 +1,8 @@
 package ee.schimke.composeai.data.render.extensions.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
@@ -24,6 +26,7 @@ data class ExtensionComposeContext(
   val renderMode: String?,
   val attributes: Map<String, Any?> = emptyMap(),
   val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
+  val states: ExtensionStateRegistry = RecordingExtensionStateRegistry(),
 ) {
   val slotTables: ExtensionSlotTables
     get() = extraction.slotTables
@@ -31,6 +34,14 @@ data class ExtensionComposeContext(
   fun <T : Any> get(key: ExtensionContextKey<T>): T? = extraction.get(key)
 
   fun <T : Any> require(key: ExtensionContextKey<T>): T = extraction.require(key)
+
+  fun <T : Any> exportState(key: ExtensionStateKey<T>, state: State<T>) {
+    states.export(key, state)
+  }
+
+  fun <T : Any> state(key: ExtensionStateKey<T>): State<T>? = states.state(key)
+
+  fun <T : Any> value(key: ExtensionStateKey<T>): T? = states.value(key)
 }
 
 data class ExtensionContextKey<T : Any>(val name: String, val type: Class<T>) {
@@ -93,6 +104,49 @@ object CommonExtensionContextKeys {
   val RenderPreviewContext: ExtensionContextKey<PreviewContext> =
     ExtensionContextKey("preview-context", PreviewContext::class.java)
 }
+
+data class ExtensionStateKey<T : Any>(
+  val owner: DataExtensionId,
+  val name: String,
+  val type: Class<T>,
+) {
+  init {
+    require(name.isNotBlank()) { "Extension state key name must not be blank." }
+  }
+}
+
+interface ExtensionStateRegistry {
+  fun <T : Any> export(key: ExtensionStateKey<T>, state: State<T>)
+
+  fun <T : Any> state(key: ExtensionStateKey<T>): State<T>?
+
+  fun <T : Any> value(key: ExtensionStateKey<T>): T? = state(key)?.value
+
+  fun <T : Any> requireState(key: ExtensionStateKey<T>): State<T> =
+    state(key) ?: error("Extension state '${key.owner.value}/${key.name}' is not available.")
+
+  fun <T : Any> requireValue(key: ExtensionStateKey<T>): T = requireState(key).value
+}
+
+class RecordingExtensionStateRegistry : ExtensionStateRegistry {
+  private val values: MutableMap<ExtensionStateKey<*>, State<*>> = linkedMapOf()
+
+  override fun <T : Any> export(key: ExtensionStateKey<T>, state: State<T>) {
+    key.type.cast(state.value)
+    values[key] = state
+  }
+
+  override fun <T : Any> state(key: ExtensionStateKey<T>): State<T>? {
+    val state = values[key] ?: return null
+    key.type.cast(state.value)
+    @Suppress("UNCHECKED_CAST")
+    return state as State<T>
+  }
+}
+
+class StaticExtensionState<T : Any>(override val value: T) : State<T>
+
+fun <T : Any> staticExtensionState(value: T): State<T> = StaticExtensionState(value)
 
 interface ExtensionCompositionSink {
   fun put(extensionId: DataExtensionId, key: String, value: Any?)
@@ -211,7 +265,16 @@ data class ExtensionFrameContext(
   val renderMode: String?,
   val attributes: Map<String, Any?> = emptyMap(),
   val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
-)
+  val states: ExtensionStateRegistry = RecordingExtensionStateRegistry(),
+) {
+  fun <T : Any> exportState(key: ExtensionStateKey<T>, state: State<T>) {
+    states.export(key, state)
+  }
+
+  fun <T : Any> state(key: ExtensionStateKey<T>): State<T>? = states.state(key)
+
+  fun <T : Any> value(key: ExtensionStateKey<T>): T? = states.value(key)
+}
 
 data class ExtensionFrame(
   val index: Int,
@@ -298,8 +361,10 @@ object ComposeDataExtensionPipeline {
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
+    states: ExtensionStateRegistry? = null,
     content: @Composable () -> Unit,
   ) {
+    val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
     Observe(
       extensions = extensions,
       previewId = previewId,
@@ -307,6 +372,7 @@ object ComposeDataExtensionPipeline {
       sink = sink,
       attributes = attributes,
       extraction = extraction,
+      states = extensionStates,
     )
     Extract(
       extensions = extensions,
@@ -315,6 +381,7 @@ object ComposeDataExtensionPipeline {
       sink = sink,
       attributes = attributes,
       extraction = extraction,
+      states = extensionStates,
     )
     Around(
       hooks = extensions.filterIsInstance<AroundComposableHook>(),
@@ -323,6 +390,7 @@ object ComposeDataExtensionPipeline {
       renderMode = renderMode,
       attributes = attributes,
       extraction = extraction,
+      states = extensionStates,
       content = content,
     )
   }
@@ -335,7 +403,9 @@ object ComposeDataExtensionPipeline {
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
+    states: ExtensionStateRegistry? = null,
   ) {
+    val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
     for (hook in extensions.filterIsInstance<ComposableExtractorHook>()) {
       hook.Extract(
         context =
@@ -345,6 +415,7 @@ object ComposeDataExtensionPipeline {
             renderMode = renderMode,
             attributes = attributes,
             extraction = extraction,
+            states = extensionStates,
           ),
         sink = sink,
       )
@@ -359,7 +430,9 @@ object ComposeDataExtensionPipeline {
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
+    states: ExtensionStateRegistry? = null,
   ) {
+    val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
     for (hook in extensions.filterIsInstance<CompositionObserverHook>()) {
       hook.Observe(
         context =
@@ -369,6 +442,7 @@ object ComposeDataExtensionPipeline {
             renderMode = renderMode,
             attributes = attributes,
             extraction = extraction,
+            states = extensionStates,
           ),
         sink = sink,
       )
@@ -383,6 +457,7 @@ object ComposeDataExtensionPipeline {
     renderMode: String?,
     attributes: Map<String, Any?>,
     extraction: ExtensionExtractionContext,
+    states: ExtensionStateRegistry,
     content: @Composable () -> Unit,
   ) {
     val hook = hooks.getOrNull(index)
@@ -399,6 +474,7 @@ object ComposeDataExtensionPipeline {
           renderMode = renderMode,
           attributes = attributes,
           extraction = extraction,
+          states = states,
         )
     ) {
       Around(
@@ -408,6 +484,7 @@ object ComposeDataExtensionPipeline {
         renderMode = renderMode,
         attributes = attributes,
         extraction = extraction,
+        states = states,
         content = content,
       )
     }

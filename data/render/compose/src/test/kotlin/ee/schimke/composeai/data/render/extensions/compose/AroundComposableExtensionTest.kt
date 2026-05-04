@@ -103,6 +103,29 @@ class AroundComposableExtensionTest {
     assertNull(context.get(ExtensionContextKey("missing", String::class.java)))
   }
 
+  @Test
+  fun extensionContextExposesTypedStateExports() {
+    val owner = DataExtensionId("scroll-gif")
+    val framesKey = ExtensionStateKey(owner = owner, name = "frames", type = String::class.java)
+    val registry = RecordingExtensionStateRegistry()
+    val context =
+      ExtensionComposeContext(
+        extensionId = owner,
+        previewId = "preview",
+        renderMode = "gif",
+        states = registry,
+      )
+
+    context.exportState(framesKey, staticExtensionState("planned"))
+
+    assertEquals("planned", context.value(framesKey))
+    assertEquals("planned", context.state(framesKey)?.value)
+    assertEquals("planned", registry.requireValue(framesKey))
+    assertNull(
+      context.state(ExtensionStateKey(owner = owner, name = "missing", String::class.java))
+    )
+  }
+
   private class SimpleBackgroundExtension :
     AroundComposableExtension(DataExtensionId("render-device-background")) {
     @Composable
