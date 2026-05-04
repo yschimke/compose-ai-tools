@@ -2595,8 +2595,8 @@ class DaemonMcpServer(
    * so the wrapper surfaces "invalid events: …" rather than dying inside the daemon's notification
    * decoder. Unknown extra keys are tolerated for forward compatibility (same shape rule the
    * `decodePreviewOverrides` helper uses). Closed-set validation against the daemon's advertised
-   * input + extension kinds happens later in [validateRecordingScriptKinds] once the daemon has been
-   * resolved.
+   * input + extension kinds happens later in [validateRecordingScriptKinds] once the daemon has
+   * been resolved.
    */
   private fun decodeRecordingEvents(arr: JsonArray): List<RecordingScriptEvent> {
     return arr.mapIndexed { idx, elem ->
@@ -2642,10 +2642,11 @@ class DaemonMcpServer(
    * 2. **Extension events** — namespaced ids advertised in
    *    `ServerCapabilities.dataExtensions[].recordingScriptEvents[]`. We accept only those flagged
    *    `supported = true` by the daemon. Advertising an event with `supported = false` is the
-   *    daemon's roadmap signal — agents see it via `list_data_products` so they know what's planned,
-   *    but the script wrapper rejects it up front rather than letting the agent watch a quiet
-   *    `unsupported` evidence trail come back. (The daemon-side fallback that emits `unsupported`
-   *    evidence stays in place as defense-in-depth for older MCP servers + direct daemon clients.)
+   *    daemon's roadmap signal — agents see it via `list_data_products` so they know what's
+   *    planned, but the script wrapper rejects it up front rather than letting the agent watch a
+   *    quiet `unsupported` evidence trail come back. (The daemon-side fallback that emits
+   *    `unsupported` evidence stays in place as defense-in-depth for older MCP servers + direct
+   *    daemon clients.)
    */
   private fun validateRecordingScriptKinds(
     events: List<RecordingScriptEvent>,

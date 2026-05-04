@@ -908,8 +908,7 @@ class DaemonMcpServerTest {
               ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence(
                 tMs = 250L,
                 kind = "recording.probe",
-                status =
-                  ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+                status = ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
                 label = "before-rotate",
                 checkpointId = "checkpoint-1",
                 message = "probe marker reached",

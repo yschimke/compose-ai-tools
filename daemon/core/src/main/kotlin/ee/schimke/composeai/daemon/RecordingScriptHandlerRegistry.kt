@@ -7,10 +7,10 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 /**
  * Per-event dispatch context passed to each [RecordingScriptEventHandler] invocation.
  *
- * Carries the virtual-clock stamps the handler needs when driving the held scene/rule.
- * `tNanos` and `tMs` are the **frame's** virtual time, not the event's `tMs` — events whose
- * `event.tMs <= frame.tMs` are dispatched against the upcoming frame, so handlers should send
- * pointer events at the frame's nanoTime so `scene.render(nanoTime)` and `sendPointerEvent` agree.
+ * Carries the virtual-clock stamps the handler needs when driving the held scene/rule. `tNanos` and
+ * `tMs` are the **frame's** virtual time, not the event's `tMs` — events whose `event.tMs <=
+ * frame.tMs` are dispatched against the upcoming frame, so handlers should send pointer events at
+ * the frame's nanoTime so `scene.render(nanoTime)` and `sendPointerEvent` agree.
  *
  * Live tick-loop callers reuse the same shape with the wall-clock-anchored virtual nanoTime.
  */
@@ -31,8 +31,8 @@ data class SimpleRecordingDispatchContext(override val tNanos: Long, override va
  * owns a [RecordingScriptHandlerRegistry] mapping kind → handler and looks up by `event.kind`.
  *
  * Implementations close over host-specific scene/rule state (Skiko `ImageComposeScene` on desktop,
- * `AndroidInteractiveSession` on Android). They MUST return well-formed [RecordingScriptEvidence]
- * — never throw — so a malformed event aborts at most a single dispatch slot, not the whole
+ * `AndroidInteractiveSession` on Android). They MUST return well-formed [RecordingScriptEvidence] —
+ * never throw — so a malformed event aborts at most a single dispatch slot, not the whole
  * recording. Use [appliedEvidence] / [unsupportedEvidence] to build the result.
  */
 fun interface RecordingScriptEventHandler {
@@ -73,10 +73,7 @@ class RecordingScriptHandlerRegistry(
  * Build an [RecordingScriptEvidence] for an applied event. Optional [message] is forwarded as the
  * `message` field for human-readable trace context.
  */
-fun appliedEvidence(
-  event: RecordingScriptEvent,
-  message: String? = null,
-): RecordingScriptEvidence =
+fun appliedEvidence(event: RecordingScriptEvent, message: String? = null): RecordingScriptEvidence =
   RecordingScriptEvidence(
     tMs = event.tMs,
     kind = event.kind,
