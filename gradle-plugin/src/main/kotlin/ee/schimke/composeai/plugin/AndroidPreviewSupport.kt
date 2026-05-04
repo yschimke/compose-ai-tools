@@ -307,7 +307,7 @@ internal object AndroidPreviewSupport {
       ComposePreviewTasks.registerDiscoverTask(
         project,
         sourceClassDirs,
-        dependencyConfigName,
+        { dependencyConfigName },
         previewOutputDir,
         extension,
       ) {

@@ -55,7 +55,19 @@ internal object ComposePreviewTasks {
     // *and* the KMP-Android plugin resolves AAR deps via the Android
     // resolvable, where AGP's artifact transforms hand back the extracted
     // `classes.jar` (dependencyJars's `android-classes` artifact view).
-    val dependencyConfigName =
+    //
+    // Resolved lazily (called from inside each task's `tasks.register {}`
+    // configuration block, which Gradle invokes only when the task is
+    // realised). For KMP-Android-shared modules (`samples:cmp-shared`-shape
+    // — issue: validate task hitting `androidRuntimeClasspath`) the
+    // `kotlin { jvm("desktop") }` block runs AFTER `pluginManager.withPlugin`
+    // fires, so `desktopRuntimeClasspath` doesn't exist yet at the moment
+    // [registerDesktopTasks] is invoked. Eager resolution would fall through
+    // to `androidRuntimeClasspath` and pin the desktop renderer to
+    // `androidx.compose.ui:ui-android` AAR variants, which the new
+    // [ValidateComposePreviewClasspathTask] correctly rejects (and
+    // `ImageComposeScene` would crash on too).
+    val resolveDependencyConfigName: () -> String = {
       listOf(
           "jvmRuntimeClasspath",
           "desktopRuntimeClasspath",
@@ -63,12 +75,13 @@ internal object ComposePreviewTasks {
           "runtimeClasspath",
         )
         .firstOrNull { project.configurations.findByName(it) != null } ?: "runtimeClasspath"
+    }
 
     val discoverTask =
       registerDiscoverTask(
         project,
         sourceClassDirs,
-        dependencyConfigName,
+        resolveDependencyConfigName,
         previewOutputDir,
         extension,
       ) {
@@ -103,7 +116,7 @@ internal object ComposePreviewTasks {
         registerDesktopClasspathGuard(
           project = project,
           taskName = "validateComposePreviewDesktopRenderClasspath",
-          dependencyConfigName = dependencyConfigName,
+          dependencyConfigName = resolveDependencyConfigName,
           toolClasspath = rendererConfig,
         )
       val renderTask =
@@ -115,7 +128,9 @@ internal object ComposePreviewTasks {
           useComposeRenderer.set(true)
           tier.set(tierProperty(project))
           renderClasspath.from(sourceClassDirs)
-          project.configurations.findByName(dependencyConfigName)?.let { renderClasspath.from(it) }
+          project.configurations.findByName(resolveDependencyConfigName())?.let {
+            renderClasspath.from(it)
+          }
           renderClasspath.from(rendererConfig)
           group = "compose preview"
           description = "Render all previews to PNG"
@@ -134,7 +149,7 @@ internal object ComposePreviewTasks {
         project,
         previewOutputDir,
         sourceClassDirs,
-        dependencyConfigName,
+        resolveDependencyConfigName,
         discoverTask,
         extension,
       )
@@ -145,7 +160,7 @@ internal object ComposePreviewTasks {
       extension,
       previewOutputDir,
       sourceClassDirs,
-      dependencyConfigName,
+      resolveDependencyConfigName,
     )
   }
 
@@ -170,7 +185,7 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
     previewOutputDir: Provider<Directory>,
     sourceClassDirs: FileCollection,
-    dependencyConfigName: String,
+    dependencyConfigName: () -> String,
   ) {
     val daemonProjectDir = project.rootDir.resolve("daemon/desktop")
     val useLocalDaemon =
@@ -269,7 +284,7 @@ internal object ComposePreviewTasks {
       // the parent classloader before `UserClassLoaderHolder` constructs its child URL loader.
       classpath.from(sourceClassDirs)
       // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
-      project.configurations.findByName(dependencyConfigName)?.let { classpath.from(it) }
+      project.configurations.findByName(dependencyConfigName())?.let { classpath.from(it) }
 
       // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
       // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
@@ -346,13 +361,13 @@ internal object ComposePreviewTasks {
   private fun registerDesktopClasspathGuard(
     project: Project,
     taskName: String,
-    dependencyConfigName: String,
+    dependencyConfigName: () -> String,
     toolClasspath: org.gradle.api.artifacts.Configuration,
   ): TaskProvider<ValidateComposePreviewClasspathTask> =
     project.tasks.register(taskName, ValidateComposePreviewClasspathTask::class.java) {
       platform.set("desktop")
       classpath.from(toolClasspath)
-      project.configurations.findByName(dependencyConfigName)?.let { classpath.from(it) }
+      project.configurations.findByName(dependencyConfigName())?.let { classpath.from(it) }
     }
 
   /**
@@ -391,7 +406,7 @@ internal object ComposePreviewTasks {
   fun registerDiscoverTask(
     project: Project,
     sourceClassDirs: FileCollection,
-    dependencyConfigName: String,
+    dependencyConfigName: () -> String,
     previewOutputDir: Provider<Directory>,
     extension: PreviewExtension,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
@@ -406,7 +421,7 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
       )
-      project.configurations.findByName(dependencyConfigName)?.let { config ->
+      project.configurations.findByName(dependencyConfigName())?.let { config ->
         // For Android projects, dependencies resolve as AARs. Use artifact view
         // filtering to request the extracted classes.jar (AGP registers the
         // transform). Desktop/JVM projects already return JARs so this is a no-op.
@@ -476,7 +491,7 @@ internal object ComposePreviewTasks {
     project: Project,
     previewOutputDir: Provider<Directory>,
     sourceClassDirs: FileCollection,
-    dependencyConfigName: String,
+    dependencyConfigName: () -> String,
     discoverTask: TaskProvider<DiscoverPreviewsTask>,
     extension: PreviewExtension,
   ) {
@@ -489,7 +504,7 @@ internal object ComposePreviewTasks {
         useComposeRenderer.set(false)
         tier.set(tierProperty(project))
         renderClasspath.from(sourceClassDirs)
-        project.configurations.findByName(dependencyConfigName)?.let { renderClasspath.from(it) }
+        project.configurations.findByName(dependencyConfigName())?.let { renderClasspath.from(it) }
         group = "compose preview"
         description = "Render all previews to PNG (stub)"
         dependsOn(discoverTask)
