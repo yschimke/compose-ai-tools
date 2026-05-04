@@ -140,6 +140,11 @@ from `compose/semantics` and
 `a11y/hierarchy`; fetch those when the question is semantic intent or
 assistive-technology output.
 
+`compose/recomposition` is the agent-facing performance signal for
+unnecessary recomposition. For review guidance, bad examples, and direct
+composition-counter probes, use
+[`compose-preview-review/design/AGENT_AUDITS.md`](../../compose-preview-review/design/AGENT_AUDITS.md).
+
 `test/failure` is daemon fetch-only. After a `renderFailed`
 notification, call `get_preview_data(..., kind = "test/failure")` to
 retrieve the latest failed-render postmortem for that preview: error

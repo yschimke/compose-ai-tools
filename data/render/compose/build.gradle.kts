@@ -1,14 +1,14 @@
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
 }
 
 dependencies {
   api(project(":data-render-core"))
-  api(platform(libs.compose.bom.compat))
-  api(libs.compose.runtime)
-  api(libs.compose.ui)
+  api(libs.jetbrains.compose.runtime)
+  api(libs.jetbrains.compose.ui)
 
   testImplementation(libs.junit)
 }

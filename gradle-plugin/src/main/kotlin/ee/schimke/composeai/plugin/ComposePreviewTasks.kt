@@ -99,6 +99,13 @@ internal object ComposePreviewTasks {
       }
 
     if (hasDesktopRenderer) {
+      val renderClasspathGuard =
+        registerDesktopClasspathGuard(
+          project = project,
+          taskName = "validateComposePreviewDesktopRenderClasspath",
+          dependencyConfigName = dependencyConfigName,
+          toolClasspath = rendererConfig,
+        )
       val renderTask =
         project.tasks.register("renderPreviews", RenderPreviewsTask::class.java) {
           onlyIf { extension.enabled.get() }
@@ -113,6 +120,7 @@ internal object ComposePreviewTasks {
           group = "compose preview"
           description = "Render all previews to PNG"
           dependsOn(discoverTask)
+          dependsOn(renderClasspathGuard)
         }
       registerRenderAllPreviews(
         project,
@@ -194,6 +202,14 @@ internal object ComposePreviewTasks {
         "ee.schimke.composeai:daemon-desktop:${PluginVersion.value}",
       )
     }
+
+    val daemonClasspathGuard =
+      registerDesktopClasspathGuard(
+        project = project,
+        taskName = "validateComposePreviewDesktopDaemonClasspath",
+        dependencyConfigName = dependencyConfigName,
+        toolClasspath = daemonRendererConfig,
+      )
 
     // Mirror the Android registration's eager-resolved values (see
     // AndroidPreviewSupport.kt) so each MapProperty / ListProperty entry's Provider chain
@@ -320,11 +336,24 @@ internal object ComposePreviewTasks {
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
       outputFile.set(outputFileProvider)
+      dependsOn(daemonClasspathGuard)
       group = "compose preview"
       description =
         "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
     }
   }
+
+  private fun registerDesktopClasspathGuard(
+    project: Project,
+    taskName: String,
+    dependencyConfigName: String,
+    toolClasspath: org.gradle.api.artifacts.Configuration,
+  ): TaskProvider<ValidateComposePreviewClasspathTask> =
+    project.tasks.register(taskName, ValidateComposePreviewClasspathTask::class.java) {
+      platform.set("desktop")
+      classpath.from(toolClasspath)
+      project.configurations.findByName(dependencyConfigName)?.let { classpath.from(it) }
+    }
 
   /**
    * Tier-1 cheap-signal file set for the desktop daemon's [ClasspathFingerprint][
