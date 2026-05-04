@@ -322,6 +322,13 @@ class McpClient:
     def first_text(self, tool_result: dict[str, Any]) -> dict[str, Any]:
         return json.loads(tool_result["content"][0]["text"])
 
+    def text_blocks(self, tool_result: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            json.loads(block["text"])
+            for block in tool_result["content"]
+            if block.get("type") == "text" and "text" in block
+        ]
+
     def shutdown(self) -> None:
         try:
             if self.proc.stdin:
@@ -363,7 +370,16 @@ def setup_mcp() -> tuple[McpClient, str]:
     )
     client.notify("notifications/initialized")
     workspace_id = workspace_id_from_register(client)
-    client.call_tool("watch", {"workspaceId": workspace_id, "module": ":samples:android"})
+    client.call_tool(
+        "watch",
+        {
+            "workspaceId": workspace_id,
+            "module": ":samples:android",
+            "awaitDiscovery": True,
+            "awaitTimeoutMs": 240_000,
+        },
+        timeout=300,
+    )
     return client, workspace_id
 
 
@@ -496,6 +512,79 @@ def test_mcp_data_products() -> None:
             and item.get("resourceName") == "agent_audit_warning_red"
             and item.get("resolvedValue", "").upper() == "#FFB00020",
             "resources/used did not record the warning color resource",
+        )
+
+        recording = client.call_tool(
+            "record_preview",
+            {
+                "uri": done_uri,
+                "fps": 4,
+                "format": "apng",
+                "events": [
+                    {
+                        "tMs": 0,
+                        "kind": "click",
+                        "pixelX": 48,
+                        "pixelY": 24,
+                    },
+                    {
+                        "tMs": 0,
+                        "kind": "state.save",
+                        "checkpointId": "before-resume",
+                    },
+                    {
+                        "tMs": 250,
+                        "kind": "lifecycle.event",
+                        "lifecycleEvent": "resume",
+                    },
+                    {
+                        "tMs": 250,
+                        "kind": "state.restore",
+                        "checkpointId": "before-resume",
+                    },
+                    {
+                        "tMs": 250,
+                        "kind": "recording.probe",
+                        "label": "after-restore-same-tick",
+                    },
+                ],
+            },
+            timeout=600,
+        )
+        recording_payloads = client.text_blocks(recording)
+        if not recording_payloads:
+            raise AssertionError(f"record_preview returned no metadata text block: {recording}")
+        recording_meta = recording_payloads[-1]
+        OUT.joinpath("same-tick-recording.json").write_text(json.dumps(recording_meta, indent=2))
+        script_events = recording_meta["scriptEvents"]
+        same_tick = [
+            event
+            for event in script_events
+            if event.get("tMs") == 250
+            and event.get("kind") in {"lifecycle.event", "state.restore", "recording.probe"}
+        ]
+        if [event.get("kind") for event in same_tick] != [
+            "lifecycle.event",
+            "state.restore",
+            "recording.probe",
+        ]:
+            raise AssertionError(
+                "record_preview did not preserve the expected same-tick lifecycle/restore/probe "
+                f"group: {script_events}"
+            )
+        assert_any(
+            same_tick,
+            lambda item: item.get("kind") == "recording.probe"
+            and item.get("label") == "after-restore-same-tick"
+            and item.get("status") == "applied",
+            "recording.probe at the restore tick was not applied",
+        )
+        assert_any(
+            same_tick,
+            lambda item: item.get("kind") == "state.restore"
+            and item.get("checkpointId") == "before-resume"
+            and item.get("status") in {"applied", "unsupported"},
+            "state.restore at the resume tick did not produce script evidence",
         )
     finally:
         client.shutdown()

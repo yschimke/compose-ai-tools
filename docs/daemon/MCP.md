@@ -188,10 +188,19 @@ Typical agent flow:
   "events": [
     { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 80 },
     { "tMs": 200, "kind": "state.save", "checkpointId": "before-second-click" },
-    { "tMs": 400, "kind": "click", "pixelX": 120, "pixelY": 80 }
+    { "tMs": 400, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+    { "tMs": 400, "kind": "state.restore", "checkpointId": "before-second-click" },
+    { "tMs": 400, "kind": "recording.probe", "label": "after-restore" },
+    { "tMs": 600, "kind": "click", "pixelX": 120, "pixelY": 80 }
   ]
 }
 ```
+
+Events sharing a `tMs` are treated as one script step. Control/state markers in
+the step are applied before the frame for that timestamp is captured, so agents
+should put `lifecycle.event`, `state.restore`, and a verification
+`recording.probe` at the same `tMs` when they need the preview to observe
+restored state immediately.
 
 On success the tool returns an inline media block plus a JSON metadata text
 block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,

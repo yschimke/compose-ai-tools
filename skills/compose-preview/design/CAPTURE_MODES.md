@@ -142,12 +142,18 @@ Scripts can also include audit/control markers:
   "uri": "compose-preview://<workspace>/<module>/<preview>",
   "events": [
     { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
-    { "tMs": 200, "kind": "state.save", "checkpointId": "before" },
-    { "tMs": 250, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
-    { "tMs": 300, "kind": "state.restore", "checkpointId": "before" }
+    { "tMs": 0, "kind": "state.save", "checkpointId": "before" },
+    { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+    { "tMs": 200, "kind": "state.restore", "checkpointId": "before" },
+    { "tMs": 200, "kind": "recording.probe", "label": "after-restore" }
   ]
 }
 ```
+
+Events with the same `tMs` form a single script step. Control/state events in
+that step are applied before the frame for that timestamp is captured, so a
+preview should observe restored state immediately on the `tMs: 200` frame above
+rather than after an artificial delay.
 
 Always inspect `scriptEvents` in the metadata. Input and `recording.probe`
 events may be `applied`; state/lifecycle markers can be `unsupported` on

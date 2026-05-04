@@ -516,7 +516,29 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-Sample MCP call: `record_preview uri=<preview-uri> events='[{"tMs":0,"kind":"click","pixelX":120,"pixelY":40},{"tMs":200,"kind":"state.save","checkpointId":"before"},{"tMs":250,"kind":"lifecycle.event","lifecycleEvent":"resume"},{"tMs":300,"kind":"state.restore","checkpointId":"before"}]'`
+Sample MCP call:
+
+```json
+{
+  "tool": "record_preview",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
+    "events": [
+      { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 0, "kind": "state.save", "checkpointId": "before" },
+      { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+      { "tMs": 200, "kind": "state.restore", "checkpointId": "before" },
+      { "tMs": 200, "kind": "recording.probe", "label": "after-restore" }
+    ]
+  }
+}
+```
+
+Events with the same `tMs` are one script step: lifecycle, saved-state, and
+probe markers at `tMs: 200` are expected to happen together before the frame for
+that tick is captured. Do not add fake delays between `resume` and
+`state.restore`; that would test timing luck instead of restored-state
+semantics.
 
 Check:
 
@@ -526,7 +548,7 @@ Check:
 - `unsupported` script events are reported as tool capability gaps, not app
   regressions.
 - Do not claim state restoration passed unless the evidence shows applied
-  save/restore lifecycle events and stable restored UI.
+  save/restore lifecycle events in the same script step and stable restored UI.
 
 ### Failure triage audit
 
