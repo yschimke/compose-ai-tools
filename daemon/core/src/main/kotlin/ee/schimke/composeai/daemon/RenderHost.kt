@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -229,6 +230,23 @@ interface RenderHost {
     throw UnsupportedOperationException(
       "recording unsupported by ${this::class.simpleName ?: this::class.java.name}"
     )
+
+  /**
+   * Recording-script extension events this host's [RecordingSession]s actually dispatch — surfaced
+   * in `InitializeResult.capabilities.dataExtensions` alongside any roadmap descriptors the daemon
+   * advertises.
+   *
+   * Each entry's `recordingScriptEvents[*]` MUST flag `supported = true` and MUST be registered in
+   * the [RecordingScriptHandlerRegistry] the host's recording sessions build — agents take
+   * `supported = true` as a contract that `record_preview` will accept and the daemon will
+   * dispatch. Hosts without a recording session (FakeHost) inherit the default empty list.
+   *
+   * Roadmap items (`supported = false`) DO NOT belong here — they're advertised separately by
+   * `DaemonMain` (see `RecordingScriptDataExtensions.roadmapDescriptors`) so a host that wires real
+   * dispatch for one of them can flip just its own contribution to `supported = true` without
+   * editing the global roadmap list.
+   */
+  fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> = emptyList()
 
   companion object {
     /**

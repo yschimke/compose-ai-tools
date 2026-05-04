@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
+import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
@@ -149,6 +151,16 @@ open class DesktopHost(
             add("webm")
           }
         }
+
+  /**
+   * `recording.probe` is the only extension event [DesktopRecordingSession] dispatches today; click
+   * / pointer kinds are built-in inputs, not extensions. The descriptor is empty when the host
+   * can't actually allocate a session ([supportsRecording] = false) so agents don't see
+   * supported = true on a daemon that would reject `recording/start` anyway.
+   */
+  override fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> =
+    if (supportsRecording) listOf(RecordingScriptDataExtensions.recordingDescriptor)
+    else emptyList()
 
   /**
    * PROTOCOL.md § 3 (`InitializeResult.capabilities.supportedOverrides`) — the desktop renderer

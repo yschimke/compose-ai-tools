@@ -337,12 +337,14 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       dataProducts = dataProducts,
-      // Base recording-script descriptors are renderer-agnostic; the a11y action descriptors are
-      // Android-only and only meaningful when the a11y preview extension is enabled. They ship as
-      // `supported = false` until the recording-script handler registry refactor lands the actual
-      // dispatch — `record_preview` rejects them up front via `validateRecordingScriptKinds`.
+      // dataExtensions = host's supported descriptors + renderer-agnostic roadmap +
+      // (when the a11y preview extension is enabled) the Android-only a11y action roadmap. The
+      // host method tracks what `RobolectricHost`'s recording sessions actually dispatch
+      // (`recording.probe` today). The two roadmap lists carry `supported = false` until the
+      // handlers ship; `record_preview` rejects them up front via `validateRecordingScriptKinds`.
       dataExtensions =
-        RecordingScriptDataExtensions.descriptors +
+        host.recordingScriptEventDescriptors() +
+          RecordingScriptDataExtensions.roadmapDescriptors +
           (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.descriptors
           else emptyList()),
       previewExtensions = previewExtensions,
