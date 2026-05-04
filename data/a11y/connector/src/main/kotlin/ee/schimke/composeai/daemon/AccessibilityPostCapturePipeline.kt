@@ -53,17 +53,20 @@ fun runAccessibilityPostCapturePipeline(
       if (imageArtifact != null) add(CommonDataProducts.ImageArtifact)
     }
 
-  val requestedOutputs =
-    extensions
-      .filter { ext -> imageArtifact != null || CommonDataProducts.ImageArtifact !in ext.inputs }
-      .flatMap { it.outputs }
-      .toSet()
+  // Only request outputs whose full dependency chain can be satisfied from initialProducts +
+  // extensions on this render. Direct-input filtering isn't enough — an extension with no direct
+  // image dependency may still transitively depend on one through another extension's output, in
+  // which case planOutputs would error on the missing ImageArtifact and strand every output for
+  // this render. Computing the runnable closure first lets unaffected outputs (e.g. touch-targets)
+  // still run.
+  val runnableExtensions = runnableExtensionsFor(extensions, initialProducts)
+  val requestedOutputs = runnableExtensions.flatMap { it.outputs }.toSet()
 
   if (requestedOutputs.isEmpty()) return store
 
   val plan =
     DataExtensionPlanner.planOutputs(
-      extensions = extensions,
+      extensions = runnableExtensions,
       requestedOutputs = requestedOutputs,
       initialProducts = initialProducts,
       target = target,
@@ -106,4 +109,32 @@ fun runAccessibilityPostCapturePipeline(
  */
 object AccessibilityPostCaptureExtensions {
   val defaults: List<PlannedDataExtension> = listOf(TouchTargetsExtension())
+}
+
+/**
+ * Walks the dependency closure forward from [initialProducts] and returns the subset of
+ * [extensions] whose full input chain is ultimately satisfied. Used to drop extensions whose
+ * declared inputs (or transitive inputs through other extensions in the list) can't be produced
+ * on this render so their unsatisfiable outputs don't poison [DataExtensionPlanner.planOutputs]
+ * for the rest.
+ *
+ * Fixpoint iteration over the producer map. O(n²) in the worst case for n extensions; n is small
+ * (single-digit) for any realistic registered set, so the simple shape stays cheaper than a
+ * topological sort with cycle handling.
+ */
+internal fun runnableExtensionsFor(
+  extensions: List<PlannedDataExtension>,
+  initialProducts: Set<DataProductKey<*>>,
+): List<PlannedDataExtension> {
+  val producible = initialProducts.toMutableSet()
+  val runnable = mutableListOf<PlannedDataExtension>()
+  val pending = extensions.toMutableList()
+  do {
+    val newlyRunnable = pending.filter { ext -> ext.inputs.all { it in producible } }
+    if (newlyRunnable.isEmpty()) break
+    runnable += newlyRunnable
+    newlyRunnable.forEach { producible += it.outputs }
+    pending.removeAll(newlyRunnable)
+  } while (pending.isNotEmpty())
+  return runnable
 }

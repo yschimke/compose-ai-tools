@@ -114,6 +114,55 @@ class AccessibilityPostCapturePipelineTest {
   }
 
   @Test
+  fun transitiveImageDependencyDoesNotStrandUnrelatedConsumers() {
+    // Chain: chained ← intermediate ← ImageArtifact. When ImageArtifact isn't seeded, neither
+    // of those should run, but TouchTargetsExtension (no image dep, anywhere in its chain) must
+    // still run — the previous direct-input filter would let `chained` slip through and the
+    // planner would then error on the missing ImageArtifact for the whole render.
+    val intermediate =
+      recordingProcessor(
+        id = "intermediate",
+        inputs = setOf(CommonDataProducts.ImageArtifact),
+        outputs = setOf(IntermediateProduct),
+        invocations = mutableListOf(),
+      )
+    val chained =
+      recordingProcessor(
+        id = "chained",
+        inputs = setOf(IntermediateProduct),
+        outputs = setOf(ChainedProduct),
+        invocations = mutableListOf(),
+      )
+
+    val store =
+      runAccessibilityPostCapturePipeline(
+        previewId = "preview",
+        hierarchy =
+          AccessibilityHierarchyPayload(
+            nodes =
+              listOf(
+                AccessibilityNode(
+                  label = "Tiny",
+                  states = listOf("clickable"),
+                  boundsInScreen = "0,0,80,80",
+                )
+              )
+          ),
+        findings = AccessibilityFindingsPayload(emptyList()),
+        density = 2f,
+        imageArtifact = null,
+        extensions = listOf(intermediate, chained, TouchTargetsExtension()),
+      )
+
+    assertNull(store.get(IntermediateProduct))
+    assertNull(store.get(ChainedProduct))
+    assertNotNull(
+      "TouchTargetsExtension must still run when an unrelated chain is unsatisfiable",
+      store.get(AccessibilityDataProducts.TouchTargets),
+    )
+  }
+
+  @Test
   fun extensionFailureIsLoggedAndDoesNotStrandLaterProducts() {
     val failingExtension =
       object : PostCaptureProcessor {
@@ -186,5 +235,11 @@ class AccessibilityPostCapturePipelineTest {
 
     private val FailingOutput: DataProductKey<String> =
       DataProductKey("test/failing", schemaVersion = 1, String::class.java)
+
+    private val IntermediateProduct: DataProductKey<String> =
+      DataProductKey("test/intermediate", schemaVersion = 1, String::class.java)
+
+    private val ChainedProduct: DataProductKey<String> =
+      DataProductKey("test/chained", schemaVersion = 1, String::class.java)
   }
 }
