@@ -149,3 +149,17 @@ val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
 
 /** Wire-name set derived from [INTERACTIVE_INPUT_KIND_BY_WIRE_NAME]. */
 val INTERACTIVE_INPUT_KIND_WIRE_NAMES: Set<String> = INTERACTIVE_INPUT_KIND_BY_WIRE_NAME.keys
+
+/**
+ * Reverse lookup — typed [InteractiveInputKind] back to its wire-name string. Used by live-mode
+ * recording sessions to translate a typed `RecordingInputParams` into a synthetic
+ * [RecordingScriptEvent] for dispatch through the same [RecordingScriptHandlerRegistry] scripted
+ * playback uses. Derived from [INTERACTIVE_INPUT_KIND_BY_WIRE_NAME] so the round-trip stays in
+ * lockstep — adding a new enum constant + wire name extends both directions automatically.
+ */
+private val INTERACTIVE_INPUT_KIND_TO_WIRE_NAME: Map<InteractiveInputKind, String> =
+  INTERACTIVE_INPUT_KIND_BY_WIRE_NAME.entries.associate { (wire, kind) -> kind to wire }
+
+/** Wire-name string for an [InteractiveInputKind] (the reverse of [toInteractiveInputKindOrNull]). */
+fun InteractiveInputKind.wireName(): String =
+  INTERACTIVE_INPUT_KIND_TO_WIRE_NAME.getValue(this)

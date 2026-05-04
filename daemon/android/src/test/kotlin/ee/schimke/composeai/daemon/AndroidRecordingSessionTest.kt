@@ -83,6 +83,57 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun liveRecordingRoutesQueuedInputThroughTheSameRegistryAsScripted() {
+    // Live mode used to call a separate `dispatchLiveInput` ladder; now both paths funnel through
+    // `scriptHandlers.dispatch(...)`. Pin that the click in `liveInputs` reaches the same
+    // `interactive.dispatch(InteractiveInputParams)` call the scripted `kind = "click"` handler
+    // makes — verifying the wireName translation + registry routing without standing up a real
+    // Robolectric sandbox.
+    val framesDir = tempFolder.newFolder("live-registry-frames")
+    val encodedDir = tempFolder.newFolder("live-registry-encoded")
+    val sourcePng = File(tempFolder.newFolder("live-registry-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-live-registry",
+        fps = FPS,
+        scale = 1.0f,
+        live = true,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    session.postInput(
+      ee.schimke.composeai.daemon.protocol.RecordingInputParams(
+        recordingId = "test-rec-live-registry",
+        kind = InteractiveInputKind.CLICK,
+        pixelX = 4,
+        pixelY = 4,
+      )
+    )
+    Thread.sleep(90)
+    val result = session.stop()
+
+    assertTrue("live recording should capture at least one frame", result.frameCount >= 1)
+    assertEquals(
+      "the queued click must route through the registry's `click` handler",
+      1,
+      interactive.dispatchCount,
+    )
+    assertTrue(
+      "live mode must not emit script-event evidence — only scripted [stop] populates it",
+      result.scriptEvents.isEmpty(),
+    )
+  }
+
+  @Test
   fun liveRecordingCapturesFramesAndDispatchesQueuedInput() {
     val framesDir = tempFolder.newFolder("live-frames")
     val encodedDir = tempFolder.newFolder("live-encoded")

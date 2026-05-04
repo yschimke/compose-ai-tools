@@ -332,9 +332,14 @@ class AndroidRecordingSession(
         val frameIndex = liveFrameCount
         val tNanos = System.nanoTime() - startNs
         val tMs = tNanos / 1_000_000L
+        // Same registry the scripted path uses — typed RecordingInputParams translates to a
+        // synthetic RecordingScriptEvent keyed by `kind.wireName()`. Live mode discards the
+        // per-event evidence (only the scripted [stop] result carries `scriptEvents`); the
+        // dispatch's effect on the held interactive composition is what matters here.
+        val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
         while (true) {
           val next = liveInputs.poll() ?: break
-          dispatchLiveInput(next)
+          scriptHandlers.dispatch(next.toScriptEvent(tMs), ctx)
         }
 
         val advanceTimeMs = if (frameIndex == 0) 0L else (tMs - lastFrameTimeMs).coerceAtLeast(0L)
@@ -379,20 +384,24 @@ class AndroidRecordingSession(
     }
   }
 
-  private fun dispatchLiveInput(input: RecordingInputParams) {
-    if (input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP) {
-      return
-    }
-    interactive.dispatch(
-      InteractiveInputParams(
-        frameStreamId = "android-recording-live",
-        kind = input.kind,
-        pixelX = input.pixelX,
-        pixelY = input.pixelY,
-        keyCode = input.keyCode,
-      )
+  /**
+   * Translate a typed live-mode [RecordingInputParams] into a synthetic [RecordingScriptEvent]
+   * keyed by the same wire-name string the scripted path emits — so [scriptHandlers] dispatches
+   * both modes through one registry. `tMs` is the **frame's** virtual time (live mode stamps the
+   * input at the current frame boundary, same convention scripted playback uses).
+   *
+   * `RecordingInputParams` doesn't carry `scrollDeltaY` today (the wire shape is set by
+   * `JsonRpcServer.handleRecordingInput`); future rotary-aware live drivers can extend this
+   * synthesisation when the new payload field is wired through.
+   */
+  private fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
+    RecordingScriptEvent(
+      tMs = tMs,
+      kind = kind.wireName(),
+      pixelX = pixelX,
+      pixelY = pixelY,
+      keyCode = keyCode,
     )
-  }
 
   override fun encode(format: RecordingFormat): EncodedRecording {
     val r =
