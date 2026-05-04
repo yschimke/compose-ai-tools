@@ -975,25 +975,47 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
 
       val errorCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
       val warnCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
-      val cliFailed =
-        when (failOn) {
-          "errors" -> errorCount > 0
-          "warnings" -> errorCount > 0 || warnCount > 0
-          "none",
-          null -> false
-          else -> {
-            System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
-            exitProcess(1)
-          }
-        }
-      exitProcess(
-        when {
-          cliFailed -> 2
-          !buildOk -> 2
-          else -> 0
-        }
-      )
+      val exit = a11yExitCode(buildOk, errorCount, warnCount, failOn)
+      if (exit == EXIT_UNKNOWN_FAIL_ON) {
+        System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
+      }
+      exitProcess(exit)
     }
+  }
+}
+
+/** Sentinel returned by [a11yExitCode] when `failOn` is not one of the accepted values. */
+internal const val EXIT_UNKNOWN_FAIL_ON = 1
+
+/**
+ * Pure exit-code policy for `compose-preview a11y`.
+ *
+ * Returns:
+ * - `0` — clean run, build succeeded, threshold not tripped.
+ * - `2` — Gradle build failed, OR the CLI-side `--fail-on` threshold tripped.
+ * - [EXIT_UNKNOWN_FAIL_ON] (`1`) — `failOn` is set to something other than
+ *   `errors`/`warnings`/`none`. Caller is responsible for printing the user-facing message; this
+ *   helper stays free of stderr side effects so it's unit-testable.
+ *
+ * `failOn` semantics:
+ * - `null` (default) — exit code mirrors the underlying Gradle build.
+ * - `"errors"` — trip iff any `ERROR`-level finding exists.
+ * - `"warnings"` — trip iff any `ERROR` or `WARNING`-level finding exists.
+ * - `"none"` — never trip on findings; mirror the Gradle exit code.
+ */
+internal fun a11yExitCode(buildOk: Boolean, errorCount: Int, warnCount: Int, failOn: String?): Int {
+  val cliFailed =
+    when (failOn) {
+      "errors" -> errorCount > 0
+      "warnings" -> errorCount > 0 || warnCount > 0
+      "none",
+      null -> false
+      else -> return EXIT_UNKNOWN_FAIL_ON
+    }
+  return when {
+    cliFailed -> 2
+    !buildOk -> 2
+    else -> 0
   }
 }
 
