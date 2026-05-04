@@ -28,6 +28,8 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.DataProductKey
+import ee.schimke.composeai.data.render.extensions.DataProductSink
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
@@ -197,22 +199,31 @@ class ThemeCaptureExtension :
         provides = setOf(DataExtensionCapability(ThemeDataProductRegistry.KIND)),
       ),
   ) {
+  override val outputs: Set<DataProductKey<*>> = setOf(ThemeProduct)
+
   @Composable
-  override fun Extract(sink: ExtensionCompositionSink) {
+  override fun Extract(sink: ExtensionCompositionSink, products: DataProductSink) {
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     val shapes = MaterialTheme.shapes
     SideEffect {
-      sink.put(
-        extensionId = id,
-        key = PAYLOAD_KEY,
-        value = themePayloadFromMaterialTheme(colorScheme, typography, shapes),
-      )
+      val payload = themePayloadFromMaterialTheme(colorScheme, typography, shapes)
+      products.put(ThemeProduct, payload)
+      // String-keyed sink kept for hosts that read from PreviewContext.inspection.values until
+      // they migrate to the typed product channel.
+      sink.put(extensionId = id, key = PAYLOAD_KEY, value = payload)
     }
   }
 
   companion object {
     const val PAYLOAD_KEY: String = MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY
+
+    val ThemeProduct: DataProductKey<ThemePayload> =
+      DataProductKey(
+        ThemeDataProductRegistry.KIND,
+        ThemeDataProductRegistry.SCHEMA_VERSION,
+        ThemePayload::class.java,
+      )
   }
 }
 
