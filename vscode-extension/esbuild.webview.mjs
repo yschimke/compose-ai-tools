@@ -15,6 +15,15 @@ const common = {
     legalComments: "none",
     define: { "process.env.NODE_ENV": '"production"' },
     minify: !watch,
+    // Without this, esbuild falls back to the project-root tsconfig.json
+    // (the host config — no `experimentalDecorators`) and compiles the
+    // Lit `@customElement` / `@state()` decorators as TC39 standard
+    // decorators. Lit 3 supports both modes but the source uses the
+    // experimental syntax (plain class fields, no `accessor` keyword), so
+    // mismatched compilation silently breaks element registration and
+    // `@state` reactivity — the panel renders blank. Pinning the webview
+    // tsconfig keeps the bundle in experimental-decorator mode.
+    tsconfig: resolve(root, "tsconfig.webview.json"),
 };
 
 const entries = [
