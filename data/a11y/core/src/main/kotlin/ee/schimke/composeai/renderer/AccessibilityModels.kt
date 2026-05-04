@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.data.render.extensions.DataProductKey
 import kotlinx.serialization.Serializable
 
 // ---------------------------------------------------------------------------
@@ -104,3 +105,49 @@ data class AccessibilityFinding(
     /** `left,top,right,bottom` in the preview's pixel space — agents can highlight on the PNG. */
     val boundsInScreen: String? = null,
 )
+
+@Serializable data class AccessibilityHierarchyPayload(val nodes: List<AccessibilityNode>)
+
+@Serializable data class AccessibilityFindingsPayload(val findings: List<AccessibilityFinding>)
+
+@Serializable
+data class AccessibilityTouchTarget(
+    val nodeId: String,
+    val boundsInScreen: String,
+    val widthDp: Float,
+    val heightDp: Float,
+    val findings: List<String>,
+    val overlappingNodeIds: List<String>? = null,
+)
+
+@Serializable data class AccessibilityTouchTargetsPayload(val targets: List<AccessibilityTouchTarget>)
+
+@Serializable
+data class AccessibilityOverlayArtifact(
+    val path: String,
+    val mediaType: String = "image/png",
+)
+
+object AccessibilityDataProducts {
+    const val SCHEMA_VERSION: Int = 1
+    const val KIND_HIERARCHY: String = "a11y/hierarchy"
+    const val KIND_ATF: String = "a11y/atf"
+    const val KIND_TOUCH_TARGETS: String = "a11y/touchTargets"
+    const val KIND_OVERLAY: String = "a11y/overlay"
+
+    val Hierarchy: DataProductKey<AccessibilityHierarchyPayload> =
+        DataProductKey(KIND_HIERARCHY, SCHEMA_VERSION, AccessibilityHierarchyPayload::class.java)
+
+    val Atf: DataProductKey<AccessibilityFindingsPayload> =
+        DataProductKey(KIND_ATF, SCHEMA_VERSION, AccessibilityFindingsPayload::class.java)
+
+    val TouchTargets: DataProductKey<AccessibilityTouchTargetsPayload> =
+        DataProductKey(
+            KIND_TOUCH_TARGETS,
+            SCHEMA_VERSION,
+            AccessibilityTouchTargetsPayload::class.java,
+        )
+
+    val Overlay: DataProductKey<AccessibilityOverlayArtifact> =
+        DataProductKey(KIND_OVERLAY, SCHEMA_VERSION, AccessibilityOverlayArtifact::class.java)
+}

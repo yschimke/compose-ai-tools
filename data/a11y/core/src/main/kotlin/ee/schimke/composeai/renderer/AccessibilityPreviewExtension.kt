@@ -1,6 +1,13 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.data.render.RenderPreviewExtension
+import ee.schimke.composeai.data.render.extensions.CommonDataProducts
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
+import ee.schimke.composeai.data.render.extensions.SimplePlannedDataExtension
 import ee.schimke.composeai.data.render.pipeline.ExtractionSpec
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
@@ -221,4 +228,66 @@ object AccessibilityAnnotatedPreviewExtension {
           ),
         ),
     )
+}
+
+/** Typed data-product graph for the split a11y extension stack. */
+object AccessibilityDataProductExtensions {
+  val hierarchy: PlannedDataExtension =
+    SimplePlannedDataExtension(
+      id = DataExtensionId(AccessibilitySemanticsPreviewExtension.ID),
+      hooks = setOf(DataExtensionHookKind.AfterCapture),
+      constraints = DataExtensionConstraints(phase = DataExtensionPhase.Capture),
+      inputs = setOf(CommonDataProducts.SemanticsSnapshot),
+      outputs = setOf(AccessibilityDataProducts.Hierarchy),
+    )
+
+  val atf: PlannedDataExtension =
+    SimplePlannedDataExtension(
+      id = DataExtensionId(AtfChecksPreviewExtension.ID),
+      hooks = setOf(DataExtensionHookKind.AfterCapture),
+      constraints =
+        DataExtensionConstraints(
+          phase = DataExtensionPhase.PostProcess,
+          after = setOf(DataExtensionId(AccessibilitySemanticsPreviewExtension.ID)),
+        ),
+      inputs = setOf(AccessibilityDataProducts.Hierarchy),
+      outputs = setOf(AccessibilityDataProducts.Atf),
+    )
+
+  val touchTargets: PlannedDataExtension =
+    SimplePlannedDataExtension(
+      id = DataExtensionId("a11y-touch-targets"),
+      hooks = setOf(DataExtensionHookKind.AfterCapture),
+      constraints =
+        DataExtensionConstraints(
+          phase = DataExtensionPhase.PostProcess,
+          after = setOf(DataExtensionId(AccessibilitySemanticsPreviewExtension.ID)),
+        ),
+      inputs = setOf(AccessibilityDataProducts.Hierarchy, CommonDataProducts.Density),
+      outputs = setOf(AccessibilityDataProducts.TouchTargets),
+    )
+
+  val overlay: PlannedDataExtension =
+    SimplePlannedDataExtension(
+      id = DataExtensionId(AccessibilityOverlayPreviewExtension.ID),
+      hooks = setOf(DataExtensionHookKind.AfterRender),
+      constraints =
+        DataExtensionConstraints(
+          phase = DataExtensionPhase.Publish,
+          after =
+            setOf(
+              DataExtensionId(AccessibilitySemanticsPreviewExtension.ID),
+              DataExtensionId(AtfChecksPreviewExtension.ID),
+            ),
+        ),
+      inputs =
+        setOf(
+          CommonDataProducts.ImageArtifact,
+          AccessibilityDataProducts.Hierarchy,
+          AccessibilityDataProducts.Atf,
+        ),
+      outputs = setOf(AccessibilityDataProducts.Overlay),
+    )
+
+  val all: List<PlannedDataExtension> = listOf(hierarchy, atf, touchTargets, overlay)
 }

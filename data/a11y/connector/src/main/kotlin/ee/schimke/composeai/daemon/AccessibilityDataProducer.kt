@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
 import java.io.File
@@ -38,16 +39,16 @@ object AccessibilityDataProducer {
   }
 
   /** Schema version pinned alongside the on-disk shape. Bumped when the shape changes. */
-  const val SCHEMA_VERSION: Int = 1
+  const val SCHEMA_VERSION: Int = AccessibilityDataProducts.SCHEMA_VERSION
 
   /** `a11y/atf` — findings array. */
-  const val KIND_ATF: String = "a11y/atf"
+  const val KIND_ATF: String = AccessibilityDataProducts.KIND_ATF
 
   /** `a11y/hierarchy` — accessibility-relevant nodes with bounds + label + states. */
-  const val KIND_HIERARCHY: String = "a11y/hierarchy"
+  const val KIND_HIERARCHY: String = AccessibilityDataProducts.KIND_HIERARCHY
 
   /** `a11y/touchTargets` — clickable node sizes and overlap findings derived from hierarchy. */
-  const val KIND_TOUCH_TARGETS: String = "a11y/touchTargets"
+  const val KIND_TOUCH_TARGETS: String = AccessibilityDataProducts.KIND_TOUCH_TARGETS
 
   /**
    * D2.1 — `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style
@@ -55,7 +56,7 @@ object AccessibilityDataProducer {
    * directly without first asking for the JSON kinds. Also surfaces as an `overlay` extra on
    * the JSON kinds, so a panel that subscribed to `a11y/atf` still has the PNG path handy.
    */
-  const val KIND_OVERLAY: String = "a11y/overlay"
+  const val KIND_OVERLAY: String = AccessibilityDataProducts.KIND_OVERLAY
 
   /** File names under `<rootDir>/<previewId>/`. */
   const val FILE_ATF: String = "a11y-atf.json"
