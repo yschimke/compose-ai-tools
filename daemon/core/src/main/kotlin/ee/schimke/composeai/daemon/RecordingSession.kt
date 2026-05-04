@@ -1,8 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 
 /**
  * Held-scene recording session for one `recordingId` — see
@@ -119,7 +121,20 @@ data class RecordingResult(
   val framesDir: String,
   val frameWidthPx: Int,
   val frameHeightPx: Int,
+  val scriptEvents: List<RecordingScriptEvidence> = emptyList(),
 )
 
 /** Metadata returned by [RecordingSession.encode]. */
 data class EncodedRecording(val videoPath: String, val mimeType: String, val sizeBytes: Long)
+
+fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
+  when (this) {
+    "click" -> InteractiveInputKind.CLICK
+    "pointerDown" -> InteractiveInputKind.POINTER_DOWN
+    "pointerMove" -> InteractiveInputKind.POINTER_MOVE
+    "pointerUp" -> InteractiveInputKind.POINTER_UP
+    "rotaryScroll" -> InteractiveInputKind.ROTARY_SCROLL
+    "keyDown" -> InteractiveInputKind.KEY_DOWN
+    "keyUp" -> InteractiveInputKind.KEY_UP
+    else -> null
+  }

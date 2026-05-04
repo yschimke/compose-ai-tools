@@ -894,6 +894,8 @@ class DaemonMcpServerTest {
     factory.daemonConfigurer = { d ->
       d.recordingEncodedBytes = cannedApngBytes
       d.recordingEncodeDir = recordingsDir
+      d.advertisedDataExtensions =
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors
       d.recordingStopResult =
         ee.schimke.composeai.daemon.protocol.RecordingStopResult(
           frameCount = 16,
@@ -901,6 +903,18 @@ class DaemonMcpServerTest {
           framesDir = framesDir.absolutePath,
           frameWidthPx = 240,
           frameHeightPx = 80,
+          scriptEvents =
+            listOf(
+              ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence(
+                tMs = 250L,
+                kind = "state.save",
+                status =
+                  ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+                label = "before-rotate",
+                checkpointId = "checkpoint-1",
+                message = "state checkpoints are not implemented by this daemon",
+              )
+            ),
         )
     }
     client.initialize()
@@ -937,6 +951,15 @@ class DaemonMcpServerTest {
                 put("pixelY", 40)
               }
             )
+            add(
+              buildJsonObject {
+                put("tMs", 250)
+                put("kind", "state.save")
+                put("label", "before-rotate")
+                put("checkpointId", "checkpoint-1")
+                putJsonArray("tags") { add(JsonPrimitive("state-restoration")) }
+              }
+            )
           }
           putJsonObject("overrides") {
             put("widthPx", 240)
@@ -959,13 +982,16 @@ class DaemonMcpServerTest {
 
     val scriptCall = daemon.recordingScripts.poll(2_000, TimeUnit.MILLISECONDS)
     assertThat(scriptCall).isNotNull()
-    assertThat(scriptCall!!.events).hasSize(2)
+    assertThat(scriptCall!!.events).hasSize(3)
     assertThat(scriptCall.events[0].tMs).isEqualTo(0L)
-    assertThat(scriptCall.events[0].kind)
-      .isEqualTo(ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK)
+    assertThat(scriptCall.events[0].kind).isEqualTo("click")
     assertThat(scriptCall.events[0].pixelX).isEqualTo(120)
     assertThat(scriptCall.events[0].pixelY).isEqualTo(40)
     assertThat(scriptCall.events[1].tMs).isEqualTo(500L)
+    assertThat(scriptCall.events[2].kind).isEqualTo("state.save")
+    assertThat(scriptCall.events[2].label).isEqualTo("before-rotate")
+    assertThat(scriptCall.events[2].checkpointId).isEqualTo("checkpoint-1")
+    assertThat(scriptCall.events[2].tags).containsExactly("state-restoration")
 
     val stopCall = daemon.recordingStops.poll(2_000, TimeUnit.MILLISECONDS)
     assertThat(stopCall).isNotNull()
@@ -1023,6 +1049,14 @@ class DaemonMcpServerTest {
       .isEqualTo(4)
     assertThat(frames[2].jsonObject["changedFromPrevious"]?.jsonPrimitive?.contentOrNull)
       .isEqualTo("false")
+    val scriptEvents = metadata["scriptEvents"]!!.jsonArray
+    assertThat(scriptEvents).hasSize(1)
+    assertThat(scriptEvents[0].jsonObject["kind"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("state.save")
+    assertThat(scriptEvents[0].jsonObject["status"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("unsupported")
+    assertThat(scriptEvents[0].jsonObject["checkpointId"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("checkpoint-1")
     assertThat(
         frames[2]
           .jsonObject["changedPixelsFromPrevious"]
@@ -1067,6 +1101,39 @@ class DaemonMcpServerTest {
     assertThat(resp.isError()).isTrue()
     assertThat(resp.firstTextContent()).contains("invalid events")
     // No daemon-side recording session should have been allocated when validation fails.
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
+  fun `record_preview rejects unadvertised extension event without starting recording`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "unknown.event")
+              }
+            )
+          }
+        },
+      )
+
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("not advertised by this daemon")
     assertThat(daemon.recordingStarts).isEmpty()
   }
 

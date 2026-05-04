@@ -187,6 +187,7 @@ Typical agent flow:
   "format": "apng",
   "events": [
     { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 80 },
+    { "tMs": 200, "kind": "state.save", "checkpointId": "before-second-click" },
     { "tMs": 400, "kind": "click", "pixelX": 120, "pixelY": 80 }
   ]
 }
@@ -195,7 +196,11 @@ Typical agent flow:
 On success the tool returns an inline media block plus a JSON metadata text
 block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,
 `frameCount`, `durationMs`, `framesDir`, `frameWidthPx`, and
-`frameHeightPx`. The raw PNG frames live at
+`frameHeightPx`. It also includes `scriptEvents[]`, a per-event evidence list
+with `applied` or `unsupported` status for input, probe, state, and lifecycle
+script events. Non-input script events are namespaced ids advertised by
+`capabilities.dataExtensions[].recordingScriptEvents[]`. Treat `unsupported` as
+a compose-ai-tools capability gap, not as an app regression. The raw PNG frames live at
 `<framesDir>/frame-00000.png`, `<framesDir>/frame-00001.png`, and so on, which
 is useful when a client cannot display APNG or wants to inspect individual
 frames.

@@ -51,6 +51,7 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
@@ -184,6 +185,7 @@ class JsonRpcServer(
    * in `renderer-android`) is the first concrete implementation that gets wired in by `DaemonMain`.
    */
   private val dataProducts: DataProductRegistry = DataProductRegistry.Empty,
+  private val dataExtensions: List<DataExtensionDescriptor> = emptyList(),
   private val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
   /**
    * D3 — per-request budget for `data/fetch` re-render-on-demand (DATA-PRODUCTS.md § "Re-render
@@ -640,6 +642,7 @@ class JsonRpcServer(
             leakDetection = emptyList<LeakDetectionMode>(),
             // D1 — advertised kinds. Empty when no producer was wired (pre-D2 default).
             dataProducts = dataProducts.capabilities,
+            dataExtensions = dataExtensions,
             previewExtensions = previewExtensions,
             // INTERACTIVE.md § 9 — `true` when the host's `acquireInteractiveSession` returns a
             // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
@@ -2270,6 +2273,7 @@ class JsonRpcServer(
                   framesDir = r.framesDir,
                   frameWidthPx = r.frameWidthPx,
                   frameHeightPx = r.frameHeightPx,
+                  scriptEvents = r.scriptEvents,
                 ),
               ),
             )

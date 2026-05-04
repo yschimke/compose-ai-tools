@@ -94,6 +94,12 @@ class FakeDaemon : DaemonSpawn {
    */
   @Volatile var advertisedRecordingFormats: List<String> = emptyList()
 
+  /** Data extensions advertised in `initialize.capabilities.dataExtensions`. */
+  @Volatile
+  var advertisedDataExtensions:
+    List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor> =
+    emptyList()
+
   /**
    * D1 — fake handler for `data/fetch`. When set, the lambda receives `(previewId, kind, params,
    * inline)` and returns either the [DataFetchOutcome] the daemon should respond with. Default
@@ -361,6 +367,7 @@ class FakeDaemon : DaemonSpawn {
                 sandboxRecycle = false,
                 leakDetection = emptyList(),
                 dataProducts = advertisedDataProducts,
+                dataExtensions = advertisedDataExtensions,
                 knownDevices = advertisedKnownDevices,
                 supportedOverrides = advertisedSupportedOverrides,
                 recordingFormats = advertisedRecordingFormats,

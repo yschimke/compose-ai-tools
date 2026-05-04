@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -67,7 +68,7 @@ class AndroidRecordingSessionTest {
       listOf(
         RecordingScriptEvent(
           tMs = 67L,
-          kind = InteractiveInputKind.CLICK,
+          kind = "click",
           pixelX = 4,
           pixelY = 4,
         )
@@ -145,7 +146,14 @@ class AndroidRecordingSessionTest {
     try {
       try {
         session.postScript(
-          listOf(RecordingScriptEvent(tMs = 0L, kind = InteractiveInputKind.CLICK, pixelX = 1, pixelY = 1))
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "click",
+              pixelX = 1,
+              pixelY = 1,
+            )
+          )
         )
         fail("expected live recording to reject postScript")
       } catch (expected: IllegalStateException) {
@@ -195,6 +203,73 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun scriptedRecordingReportsUnsupportedStateEventsWithoutDispatchingThem() {
+    val framesDir = tempFolder.newFolder("scripted-state-events-frames")
+    val encodedDir = tempFolder.newFolder("scripted-state-events-encoded")
+    val sourcePng = File(tempFolder.newFolder("scripted-state-events-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-scripted-state-events",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = "click",
+            pixelX = 1,
+            pixelY = 1,
+          ),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = RecordingScriptDataExtensions.STATE_SAVE_EVENT,
+            label = "before",
+            checkpointId = "c1",
+          ),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = RecordingScriptDataExtensions.PROBE_EVENT,
+            label = "after-save-marker",
+          ),
+        )
+      )
+      val result = session.stop()
+
+      assertEquals("only the click should dispatch through interactive input", 1, interactive.dispatchCount)
+      assertEquals(3, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[1].status,
+      )
+      assertEquals("c1", result.scriptEvents[1].checkpointId)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[2].status,
+      )
+      assertEquals("after-save-marker", result.scriptEvents[2].label)
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -231,7 +306,7 @@ class AndroidRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 67L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = INTERACTIVE_WIDTH_PX / 2,
               pixelY = INTERACTIVE_HEIGHT_PX / 2,
             )

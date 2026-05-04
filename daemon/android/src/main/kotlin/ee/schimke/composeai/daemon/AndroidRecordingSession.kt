@@ -5,6 +5,9 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
@@ -152,6 +155,7 @@ class AndroidRecordingSession(
     var lastFrameTimeMs = 0L
     var frameWidthPx = 0
     var frameHeightPx = 0
+    val evidence = mutableListOf<RecordingScriptEvidence>()
     for (frameIndex in 0 until totalFrames) {
       val tMs: Long = frameIndex.toLong() * 1000L / fps.toLong()
 
@@ -161,16 +165,27 @@ class AndroidRecordingSession(
       // doesn't matter on the host side (the underlying session has its own streamId).
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        if (e.kind != InteractiveInputKind.KEY_DOWN && e.kind != InteractiveInputKind.KEY_UP) {
+        val inputKind = e.kind.toInteractiveInputKindOrNull()
+        if (e.kind == RecordingScriptDataExtensions.PROBE_EVENT) {
+          evidence.add(e.appliedEvidence("probe marker reached"))
+        } else if (inputKind == null) {
+          evidence.add(e.unsupportedEvidence("script event kind '${e.kind}' is not implemented"))
+        } else if (
+          inputKind == InteractiveInputKind.KEY_DOWN || inputKind == InteractiveInputKind.KEY_UP
+        ) {
+          evidence.add(e.unsupportedEvidence("key dispatch is not implemented for Android recording"))
+        } else {
           interactive.dispatch(
             InteractiveInputParams(
               frameStreamId = "android-recording-internal",
-              kind = e.kind,
+              kind = inputKind,
               pixelX = e.pixelX,
               pixelY = e.pixelY,
+              scrollDeltaY = e.scrollDeltaY,
               keyCode = e.keyCode,
             )
           )
+          evidence.add(e.appliedEvidence())
         }
         nextEventIdx++
       }
@@ -206,6 +221,7 @@ class AndroidRecordingSession(
       framesDir = framesDir.absolutePath,
       frameWidthPx = frameWidthPx,
       frameHeightPx = frameHeightPx,
+      scriptEvents = evidence,
     )
   }
 
@@ -235,6 +251,30 @@ class AndroidRecordingSession(
       frameHeightPx = liveFrameHeightPx,
     )
   }
+
+  private fun RecordingScriptEvent.appliedEvidence(message: String? = null): RecordingScriptEvidence =
+    RecordingScriptEvidence(
+      tMs = tMs,
+      kind = kind,
+      status = RecordingScriptEventStatus.APPLIED,
+      label = label,
+      checkpointId = checkpointId,
+      lifecycleEvent = lifecycleEvent,
+      tags = tags,
+      message = message,
+    )
+
+  private fun RecordingScriptEvent.unsupportedEvidence(message: String): RecordingScriptEvidence =
+    RecordingScriptEvidence(
+      tMs = tMs,
+      kind = kind,
+      status = RecordingScriptEventStatus.UNSUPPORTED,
+      label = label,
+      checkpointId = checkpointId,
+      lifecycleEvent = lifecycleEvent,
+      tags = tags,
+      message = message,
+    )
 
   private fun runLiveTickLoop() {
     val startNs = System.nanoTime()

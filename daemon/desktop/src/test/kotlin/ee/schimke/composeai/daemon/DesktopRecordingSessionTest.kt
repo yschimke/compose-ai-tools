@@ -95,13 +95,13 @@ class DesktopRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 0L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = COMPONENT_WIDTH_PX / 2,
               pixelY = COMPONENT_HEIGHT_PX / 2,
             ),
             RecordingScriptEvent(
               tMs = 500L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = COMPONENT_WIDTH_PX / 2,
               pixelY = COMPONENT_HEIGHT_PX / 2,
             ),
@@ -226,7 +226,7 @@ class DesktopRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 0L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = COMPONENT_WIDTH_PX / 2,
               pixelY = COMPONENT_HEIGHT_PX / 2,
             )
@@ -315,13 +315,13 @@ class DesktopRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 0L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = COMPONENT_WIDTH_PX / 2,
               pixelY = COMPONENT_HEIGHT_PX / 2,
             ),
             RecordingScriptEvent(
               tMs = 200L,
-              kind = InteractiveInputKind.CLICK,
+              kind = "click",
               pixelX = COMPONENT_WIDTH_PX / 2,
               pixelY = COMPONENT_HEIGHT_PX / 2,
             ),
@@ -525,16 +525,7 @@ class DesktopRecordingSessionTest {
         )
       try {
         val thrown =
-          runCatching {
-              session.postScript(
-                listOf(
-                  RecordingScriptEvent(
-                    tMs = 0L,
-                    kind = ee.schimke.composeai.daemon.protocol.InteractiveInputKind.CLICK,
-                  )
-                )
-              )
-            }
+          runCatching { session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "click"))) }
             .exceptionOrNull()
         assertTrue(
           "postScript on a live session must throw IllegalStateException; got ${thrown?.javaClass}",
