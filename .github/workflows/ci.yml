@@ -132,6 +132,23 @@ jobs:
       - name: Build CLI
         run: ./gradlew :cli:build
 
+  agent-audit-samples:
+    name: Agent Audit Samples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run agent audit sample scripts
+        run: python3 skills/compose-preview-review/scripts/run-agent-audit-samples.py
+      - name: Upload agent audit outputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-audit-sample-outputs
+          path: build/agent-audit-samples/
+
   # Pure-stdlib unittest for the script that drives `preview-baselines` and
   # `preview-comment` actions. Lives here because the script is JSON-shape-
   # coupled to the CLI — running it on every PR catches contract breaks

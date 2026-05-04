@@ -18,6 +18,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "skills/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/integration.yml"
+      - ".github/workflows/preview-comment.yml"
   workflow_dispatch:
   schedule:
     # Weekly — catches drift when consumer repos bump AGP/Kotlin without us.
@@ -328,6 +333,11 @@ jobs:
           mapfile -t pngs < <(find . -path '*/build/compose-previews/renders/*.png' -not -path '*/external/build/*' 2>/dev/null)
           if [ "${#pngs[@]}" -eq 0 ]; then
             echo "::error::renderPreviews ran but no PNG files were produced."
+            mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' -not -path '*/external/build/*' 2>/dev/null)
+            if [ "${#sidecars[@]}" -gt 0 ]; then
+              echo "Render error sidecars:"
+              printf '  %s\n' "${sidecars[@]}"
+            fi
             exit 1
           fi
           echo "Rendered ${#pngs[@]} PNG file(s):"
@@ -470,7 +480,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: renders-${{ matrix.slug }}
-          path: external/**/build/compose-previews/renders/*.png
+          path: |
+            external/**/build/compose-previews/renders/*.png
+            external/**/build/compose-previews/renders/*.error.json
           if-no-files-found: warn
           retention-days: 7
 

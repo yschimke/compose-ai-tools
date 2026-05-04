@@ -5,9 +5,54 @@ focused audit is needed beyond the basic before/after screenshot diff. Keep
 comments evidence-based: cite the preview, locale/device when relevant, and the
 data product or screenshot that supports the finding.
 
+The examples below are exercised by
+[`../scripts/run-agent-audit-samples.py`](../scripts/run-agent-audit-samples.py):
+the script writes temporary Kotlin/resource fixtures, runs the documented
+CLI/MCP commands, and asserts the expected data-product output shapes.
+
 ### Accessibility audit
 
-Sample command: `compose-preview a11y --filter <screen> --json --fail-on warnings`
+Use this when a PR changes tappable controls, icon-only actions, semantics,
+contrast, or screen state. Run ATF first, then inspect the annotated PNG path
+from the JSON output.
+
+Example problem:
+
+```kotlin
+@Preview(showBackground = true)
+@Composable
+fun SaveToolbarPreview() {
+  IconButton(onClick = {}) {
+    Icon(Icons.Default.Save, contentDescription = null)
+  }
+}
+```
+
+Command:
+
+```sh
+compose-preview a11y --filter SaveToolbar --json --fail-on warnings
+```
+
+Issue-identifying output:
+
+```json
+{
+  "previewId": "com.example.SaveToolbarPreview",
+  "a11yFindings": [
+    {
+      "level": "WARNING",
+      "type": "SpeakableTextPresentCheck",
+      "message": "This item may not have a label readable by screen readers.",
+      "viewDescription": "IconButton"
+    }
+  ],
+  "a11yAnnotatedPath": "build/compose-previews/renders/com.example.SaveToolbarPreview.a11y.png"
+}
+```
+
+Action: ask for a meaningful `contentDescription` or a parent semantics label,
+then rerun the same command and cite the cleared finding or remaining warning.
 
 Check:
 
@@ -19,7 +64,105 @@ Check:
 
 ### Localisation audit
 
-Sample command: `render_preview uri=<preview-uri> overrides.localeTag=fr-FR`
+Use this when copy, string resources, date/number formatting, or row layout
+changed. Test at least one longer locale and one RTL locale for user-facing
+screens.
+
+Example problem:
+
+```kotlin
+// res/values/strings.xml
+// <string name="done">Done</string>
+//
+// res/values-de/strings.xml
+// <string name="done">Vollstaendig und unwiderruflich abgeschlossen</string>
+
+@Preview(name = "English", showBackground = true)
+@Composable
+fun DoneButtonPreview() {
+  Button(onClick = {}, modifier = Modifier.width(96.dp)) {
+    Text(stringResource(R.string.done), maxLines = 1)
+  }
+}
+```
+
+Commands:
+
+```json
+{
+  "tool": "render_preview",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.DoneButtonPreview",
+    "overrides": { "localeTag": "de-DE" }
+  }
+}
+```
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.DoneButtonPreview",
+    "kind": "text/strings"
+  }
+}
+```
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.DoneButtonPreview",
+    "kind": "resources/used"
+  }
+}
+```
+
+Issue-identifying output:
+
+```json
+{
+  "kind": "text/strings",
+  "payload": {
+    "texts": [
+      {
+        "text": "Vollstaendig und unwiderruflich abgeschlossen",
+        "textSource": "layout",
+        "nodeId": "7",
+        "boundsInScreen": "16,10,96,34",
+        "localeTag": "de-DE",
+        "fontScale": 1.0
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "kind": "resources/used",
+  "payload": {
+    "references": [
+      {
+        "resourceType": "string",
+        "resourceName": "done",
+        "packageName": "com.example",
+        "resolvedValue": "Vollstaendig und unwiderruflich abgeschlossen",
+        "resolvedFile": "/workspace/app/src/main/res/values-de/strings.xml",
+        "consumers": []
+      }
+    ]
+  }
+}
+```
+
+Action: cite both products: `resources/used` proves the German resource was
+selected, and `text/strings` proves the German text is what was laid out in
+the 96 dp button. Open the rendered PNG to confirm visible truncation; explicit
+`truncated` / `clipBounds` fields are not exposed yet (tracked in
+compose-ai-tools#705). Ask for flexible width, wrapping, shorter localized
+copy, or an alternate compact layout. Then rerender with the same `localeTag`
+override.
 
 Check:
 
@@ -30,7 +173,58 @@ Check:
 
 ### Wear and round-device audit
 
-Sample command: `get_preview_data uri=<wear-preview-uri> kind=render/deviceClip`
+Use this when Wear UI, round-device previews, edge buttons, or scrolling lists
+changed. Fetch the device clip metadata and compare it with the rendered PNG.
+
+Example problem:
+
+```kotlin
+@WearPreviewLargeRound
+@Composable
+fun AlertRoundPreview() {
+  Box(Modifier.fillMaxSize()) {
+    Text(
+      "High priority alert",
+      modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp),
+    )
+  }
+}
+```
+
+Command:
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_wear/com.example.AlertRoundPreview",
+    "kind": "render/deviceClip"
+  }
+}
+```
+
+Issue-identifying output:
+
+```json
+{
+  "kind": "render/deviceClip",
+  "payload": {
+    "clip": {
+      "shape": "circle",
+      "centerXDp": 113.5,
+      "centerYDp": 113.5,
+      "radiusDp": 113.5
+    }
+  }
+}
+```
+
+Action: cite `render/deviceClip` to prove this preview is captured under a
+round mask, then inspect the PNG or a11y overlay for actual clipping. The data
+product does not yet report safe bounds or content intersections (tracked in
+compose-ai-tools#704). If content is clipped, ask for `ScreenScaffold`, list
+`contentPadding`, or a lower top alignment. Then rerun the fetch and inspect
+the PNG to confirm the text is no longer hidden by the round edge.
 
 Check:
 
@@ -43,7 +237,67 @@ Check:
 
 ### Text overflow and readability audit
 
-Sample command: `get_preview_data uri=<preview-uri> kind=text/strings`
+Use this when a PR changes text, badges, counters, font sizes, density, or
+container widths. Prefer a font-scale preview variant when available.
+
+Example problem:
+
+```kotlin
+@Preview(name = "fontScale 1.3", fontScale = 1.3f, showBackground = true)
+@Composable
+fun AccountLimitPreview() {
+  Row(Modifier.width(180.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    Text("Available balance")
+    Text("$12,450.00")
+  }
+}
+```
+
+Command:
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.AccountLimitPreview",
+    "kind": "text/strings"
+  }
+}
+```
+
+Issue-identifying output:
+
+```json
+{
+  "kind": "text/strings",
+  "payload": {
+    "texts": [
+      {
+        "text": "Available balance",
+        "textSource": "layout",
+        "nodeId": "4",
+        "boundsInScreen": "0,8,146,32",
+        "localeTag": "en-US",
+        "fontScale": 1.3
+      },
+      {
+        "text": "$12,450.00",
+        "textSource": "layout",
+        "nodeId": "5",
+        "boundsInScreen": "92,8,180,32",
+        "localeTag": "en-US",
+        "fontScale": 1.3
+      }
+    ]
+  }
+}
+```
+
+Action: ask for wrapping, a vertical layout at larger font scales, constrained
+number formatting, or `TextOverflow.Ellipsis` only when truncation is accepted
+by product. `text/strings` does not yet report overlap or truncation directly
+(tracked in compose-ai-tools#705), so confirm with the same data product and
+the rendered PNG.
 
 Check:
 
@@ -54,7 +308,69 @@ Check:
 
 ### Resource and theme provenance audit
 
-Sample command: `get_preview_data uri=<preview-uri> kind=resources/used`
+Use this when a PR changes resources, themes, dynamic colors, typography,
+icons, drawables, or preview overrides. Fetch provenance and verify the
+visible preview matches the intended token/resource.
+
+Example problem:
+
+```kotlin
+@Preview(uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun WarningBannerDarkPreview() {
+  Text(
+    "Payment failed",
+    color = Color(0xFFB00020),
+    modifier = Modifier.background(MaterialTheme.colorScheme.background),
+  )
+}
+```
+
+Command:
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.WarningBannerDarkPreview",
+    "kind": "resources/used"
+  }
+}
+```
+
+Issue-identifying output:
+
+```json
+{
+  "kind": "resources/used",
+  "payload": {
+    "references": [
+      {
+        "resourceType": "color",
+        "resourceName": "warning_red",
+        "packageName": "com.example",
+        "resolvedValue": "#FFB00020",
+        "resolvedFile": "/workspace/app/src/main/res/values/colors.xml",
+        "consumers": []
+      },
+      {
+        "resourceType": "string",
+        "resourceName": "payment_failed",
+        "packageName": "com.example",
+        "resolvedValue": "Payment failed",
+        "resolvedFile": "/workspace/app/src/main/res/values/strings.xml",
+        "consumers": []
+      }
+    ]
+  }
+}
+```
+
+Action: cite `references[]` to prove which resources resolved. If an expected
+theme token or resource is absent, ask for the design-system token
+(`MaterialTheme.colorScheme.error`, `onError`, etc.) or a named resource
+instead of a literal. If the visual diff is intentionally unchanged, the PR
+should explain why the provenance changed.
 
 Check:
 
@@ -67,7 +383,49 @@ Check:
 
 ### Visual regression and changed-region audit
 
-Sample command: `compose-preview show --filter <screen> --json --changed-only`
+Use this as the default PR audit once previews have been rendered on base and
+head. Start from `changed: true` entries, then inspect only the named PNGs and
+diffs.
+
+Example problem:
+
+```kotlin
+@Preview(showBackground = true)
+@Composable
+fun ProfileHeaderPreview() {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Avatar()
+    Text("Jordan Lee", modifier = Modifier.padding(start = 4.dp))
+  }
+}
+```
+
+Command:
+
+```sh
+compose-preview show --filter ProfileHeader --json --changed-only
+```
+
+Issue-identifying output:
+
+```json
+{
+  "previews": [
+    {
+      "id": "com.example.ProfileHeaderPreview",
+      "changed": true,
+      "pngPath": "build/compose-previews/renders/com.example.ProfileHeaderPreview.png",
+      "diffPath": "build/compose-previews/diffs/com.example.ProfileHeaderPreview.diff.png",
+      "changedPixels": 18420
+    }
+  ],
+  "counts": { "changed": 1, "unchanged": 0, "missing": 0 }
+}
+```
+
+Action: open `diffPath` first. If pixels changed outside the intended header
+area, ask for the layout cause or fix. If the change is expected, cite the
+preview id and diff path in the PR review summary.
 
 Check:
 
@@ -158,7 +516,66 @@ payload evidence and the state/parameter path you found in code.
 
 ### Failure triage audit
 
-Sample command: `get_preview_data uri=<preview-uri> kind=test/failure`
+Use this when a preview fails to render or a daemon/CI report says a data
+product is unavailable. Fetch the failure payload before guessing from the
+Gradle log.
+
+Example problem:
+
+```kotlin
+@Preview
+@Composable
+fun DetailPreview() {
+  DetailScreen(id = checkNotNull(null))
+}
+```
+
+Command:
+
+```json
+{
+  "tool": "get_preview_data",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.DetailPreview",
+    "kind": "test/failure"
+  }
+}
+```
+
+Issue-identifying output:
+
+```json
+{
+  "kind": "test/failure",
+  "payload": {
+    "status": "failed",
+    "phase": "unknown",
+    "error": {
+      "type": "IllegalStateException",
+      "message": "Required value was null.",
+      "topFrame": "DetailPreview.kt:42",
+      "stackTrace": [
+        "com.example.DetailPreviewKt.DetailPreview(DetailPreview.kt:42)"
+      ]
+    },
+    "partialScreenshot": null,
+    "partialScreenshotAvailable": false,
+    "pendingEffects": [],
+    "runningAnimations": [],
+    "frameClockState": { "status": "unknown" },
+    "lastSnapshotSummary": {
+      "stateObjects": null,
+      "valuesCaptured": false,
+      "redaction": "state values are not captured in schema v1"
+    }
+  }
+}
+```
+
+Action: ask for deterministic preview state or fake data at
+`payload.error.topFrame`. If the payload says `DataProductUnknown`, switch to
+`list_data_products` and verify the producer is enabled before filing a
+renderer bug.
 
 Check:
 
