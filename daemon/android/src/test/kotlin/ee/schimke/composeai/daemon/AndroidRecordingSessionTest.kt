@@ -68,7 +68,7 @@ class AndroidRecordingSessionTest {
       listOf(
         RecordingScriptEvent(
           tMs = 67L,
-          kind = "click",
+          kind = "input.click",
           pixelX = 4,
           pixelY = 4,
         )
@@ -86,7 +86,7 @@ class AndroidRecordingSessionTest {
   fun liveRecordingRoutesQueuedInputThroughTheSameRegistryAsScripted() {
     // Live mode used to call a separate `dispatchLiveInput` ladder; now both paths funnel through
     // `scriptHandlers.dispatch(...)`. Pin that the click in `liveInputs` reaches the same
-    // `interactive.dispatch(InteractiveInputParams)` call the scripted `kind = "click"` handler
+    // `interactive.dispatch(InteractiveInputParams)` call the scripted `kind = "input.click"` handler
     // makes — verifying the wireName translation + registry routing without standing up a real
     // Robolectric sandbox.
     val framesDir = tempFolder.newFolder("live-registry-frames")
@@ -200,7 +200,7 @@ class AndroidRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 0L,
-              kind = "click",
+              kind = "input.click",
               pixelX = 1,
               pixelY = 1,
             )
@@ -280,7 +280,7 @@ class AndroidRecordingSessionTest {
         listOf(
           RecordingScriptEvent(
             tMs = 0L,
-            kind = "click",
+            kind = "input.click",
             pixelX = 1,
             pixelY = 1,
           ),
@@ -1118,7 +1118,7 @@ class AndroidRecordingSessionTest {
           listOf(
             RecordingScriptEvent(
               tMs = 67L,
-              kind = "click",
+              kind = "input.click",
               pixelX = INTERACTIVE_WIDTH_PX / 2,
               pixelY = INTERACTIVE_HEIGHT_PX / 2,
             )

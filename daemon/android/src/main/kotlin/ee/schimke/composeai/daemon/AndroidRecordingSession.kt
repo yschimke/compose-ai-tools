@@ -246,13 +246,28 @@ class AndroidRecordingSession(
   private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
     RecordingScriptHandlerRegistry(
       buildMap {
-        put("click", interactiveDispatchHandler(InteractiveInputKind.CLICK))
-        put("pointerDown", interactiveDispatchHandler(InteractiveInputKind.POINTER_DOWN))
-        put("pointerMove", interactiveDispatchHandler(InteractiveInputKind.POINTER_MOVE))
-        put("pointerUp", interactiveDispatchHandler(InteractiveInputKind.POINTER_UP))
-        put("rotaryScroll", interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL))
-        put("keyDown", androidUnsupported("keyDown"))
-        put("keyUp", androidUnsupported("keyUp"))
+        put(
+          InputTouchRecordingScriptEvents.CLICK_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.CLICK),
+        )
+        put(
+          InputTouchRecordingScriptEvents.POINTER_DOWN_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.POINTER_DOWN),
+        )
+        put(
+          InputTouchRecordingScriptEvents.POINTER_MOVE_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.POINTER_MOVE),
+        )
+        put(
+          InputTouchRecordingScriptEvents.POINTER_UP_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.POINTER_UP),
+        )
+        put(
+          InputRsbRecordingScriptEvents.ROTARY_SCROLL_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL),
+        )
+        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, androidUnsupported("keyDown"))
+        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, androidUnsupported("keyUp"))
         put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
           appliedEvidence(e, "probe marker reached")
         })

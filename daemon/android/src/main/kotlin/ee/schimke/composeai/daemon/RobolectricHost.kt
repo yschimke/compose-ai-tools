@@ -197,11 +197,13 @@ open class RobolectricHost(
    * dispatch:
    *
    * - `recording.probe` (renderer-agnostic) — the in-script timeline marker.
-   * - `lifecycle.event` (Android-only) — drives `ActivityScenario.moveToState(...)` against the
-   *   held rule's activity.
+   * - `input.touch` (renderer-agnostic) — pointer events through the held-rule loop.
+   * - `input.keyboard` (renderer-agnostic) — roadmap on every host; key dispatch isn't wired.
+   * - `input.rsb` (Android-only) — rotary side-button scroll on Wear previews.
+   * - `lifecycle.{pause,resume,stop}` (Android-only) — `ActivityScenario.moveToState(...)`.
    * - `preview.reload` (Android-only today) — forces a fresh composition via the held rule's
    *   `key(...)` reload counter.
-   * - `state.recreate` (Android-only today) — Compose-level save+restore round-trip via the
+   * - `state.{recreate,save,restore}` (Android-only today) — Compose-level save/restore via the
    *   held rule's `SaveableStateRegistry` bridge.
    *
    * The a11y action descriptors live in `:data-a11y-connector` and are concatenated into
@@ -214,6 +216,9 @@ open class RobolectricHost(
     if (supportsRecording)
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
+        InputTouchRecordingScriptEvents.descriptor,
+        InputKeyboardRecordingScriptEvents.descriptor,
+        InputRsbRecordingScriptEvents.descriptor,
         LifecycleRecordingScriptEvents.descriptor,
         PreviewReloadRecordingScriptEvents.descriptor,
         StateRecordingScriptEvents.descriptor,

@@ -274,13 +274,22 @@ class DesktopRecordingSession(
   private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
     RecordingScriptHandlerRegistry(
       buildMap {
-        put("click", clickHandler())
-        put("pointerDown", pointerHandler(PointerEventType.Press))
-        put("pointerMove", pointerHandler(PointerEventType.Move))
-        put("pointerUp", pointerHandler(PointerEventType.Release))
-        put("rotaryScroll", desktopUnsupported("rotary scroll"))
-        put("keyDown", desktopUnsupported("keyDown"))
-        put("keyUp", desktopUnsupported("keyUp"))
+        put(InputTouchRecordingScriptEvents.CLICK_EVENT, clickHandler())
+        put(
+          InputTouchRecordingScriptEvents.POINTER_DOWN_EVENT,
+          pointerHandler(PointerEventType.Press),
+        )
+        put(
+          InputTouchRecordingScriptEvents.POINTER_MOVE_EVENT,
+          pointerHandler(PointerEventType.Move),
+        )
+        put(
+          InputTouchRecordingScriptEvents.POINTER_UP_EVENT,
+          pointerHandler(PointerEventType.Release),
+        )
+        put("input.rotaryScroll", desktopUnsupported("rotary scroll"))
+        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, desktopUnsupported("keyDown"))
+        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, desktopUnsupported("keyUp"))
         put(
           RecordingScriptDataExtensions.PROBE_EVENT,
           RecordingScriptEventHandler { e, _ -> appliedEvidence(e, "probe marker reached") },

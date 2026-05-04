@@ -1,6 +1,5 @@
 package ee.schimke.composeai.mcp
 
-import ee.schimke.composeai.daemon.INTERACTIVE_INPUT_KIND_WIRE_NAMES
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
@@ -1128,7 +1127,7 @@ class DaemonMcpServer(
                     "type":"object",
                     "properties":{
                       "tMs":{"type":"integer","description":"Virtual time offset from recording/start, in milliseconds. Must be ≥ 0."},
-                      "kind":{"type":"string","description":"Input event kind (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`, `keyDown`, `keyUp`) or a namespaced data-extension script event id the daemon advertises with `supported = true` — `recording.probe` is the only one wired today; `state.save`, `state.restore`, `lifecycle.event`, and `preview.reload` appear in `list_data_products` as roadmap entries (`supported = false`) and are rejected up front by record_preview."},
+                      "kind":{"type":"string","description":"Namespaced script-event id from `list_data_products`. Every event — input (`input.click`, `input.pointerDown`, `input.rotaryScroll`, …), accessibility actions (`a11y.action.click`, …), lifecycle (`lifecycle.pause`/`resume`/`stop`), state (`state.recreate`/`save`/`restore`), `preview.reload`, `recording.probe` — is advertised in the daemon's `dataExtensions[].recordingScriptEvents[]`. Only entries with `supported = true` are accepted; `supported = false` entries are roadmap and rejected up front."},
                       "pixelX":{"type":"integer","description":"X coord in image-natural pixel space (the preview's own widthPx)."},
                       "pixelY":{"type":"integer","description":"Y coord in image-natural pixel space."},
                       "scrollDeltaY":{"type":"number","description":"For 'rotaryScroll'."},
@@ -2633,28 +2632,27 @@ class DaemonMcpServer(
     }
 
   /**
-   * Per-event closed-set validation against the resolved daemon's advertised capabilities.
+   * Per-event closed-set validation against the resolved daemon's advertised capabilities. Every
+   * recording-script event id (input + extension events alike) is checked against
+   * `ServerCapabilities.dataExtensions[].recordingScriptEvents[]`:
    *
-   * Events fall into two buckets:
-   * 1. **Input kinds** — `click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`,
-   *    `keyDown`, `keyUp`. Sourced from [INTERACTIVE_INPUT_KIND_WIRE_NAMES] (the same enum
-   *    [InteractiveInputKind] the daemon dispatches against). Always accepted at the MCP layer; the
-   *    daemon's recording session decides what to actually do with each (e.g. desktop returns
-   *    `unsupported` for `keyDown` until key dispatch lands).
-   * 2. **Extension events** — namespaced ids advertised in
-   *    `ServerCapabilities.dataExtensions[].recordingScriptEvents[]`. We accept only those flagged
-   *    `supported = true` by the daemon. Advertising an event with `supported = false` is the
-   *    daemon's roadmap signal — agents see it via `list_data_products` so they know what's
-   *    planned, but the script wrapper rejects it up front rather than letting the agent watch a
-   *    quiet `unsupported` evidence trail come back. (The daemon-side fallback that emits
-   *    `unsupported` evidence stays in place as defense-in-depth for older MCP servers + direct
-   *    daemon clients.)
+   * - **`supported = true`** — accepted; the daemon will dispatch.
+   * - **`supported = false`** — rejected with a precise diagnostic that points at
+   *   `list_data_products` so the agent sees the roadmap shape rather than a quiet `unsupported`
+   *   evidence trail. (The daemon-side fallback that emits `unsupported` evidence stays in
+   *   place as defense-in-depth for older MCP servers + direct daemon clients.)
+   * - **Not advertised** — rejected with "not advertised by this daemon".
+   *
+   * Input kinds (`input.click`, `input.pointerDown`, …) are advertised through
+   * `InputTouchRecordingScriptEvents` / `InputKeyboardRecordingScriptEvents` /
+   * `InputRsbRecordingScriptEvents` — same code path as every other extension. No special-case
+   * branch.
    */
   private fun validateRecordingScriptKinds(
     events: List<RecordingScriptEvent>,
     daemon: SupervisedDaemon,
   ): List<String> {
-    val supportedExtensionEventIds =
+    val supportedEventIds =
       daemon.dataExtensionDescriptors
         .flatMap { it.recordingScriptEvents }
         .filter { it.supported }
@@ -2668,15 +2666,13 @@ class DaemonMcpServer(
         .toSet()
     return events.mapIndexedNotNull { index, event ->
       when {
-        event.kind in INTERACTIVE_INPUT_KIND_WIRE_NAMES -> null
-        event.kind in supportedExtensionEventIds -> null
+        event.kind in supportedEventIds -> null
         event.kind in advertisedButUnsupported ->
-          "event[$index] extension script event '${event.kind}' is advertised by this daemon but " +
-            "not yet implemented (supported=false); list_data_products to inspect the roadmap"
+          "event[$index] script event '${event.kind}' is advertised by this daemon but not yet " +
+            "implemented (supported=false); list_data_products to inspect the roadmap"
         else ->
-          "event[$index] kind '${event.kind}' is not a recognised input event " +
-            "(${INTERACTIVE_INPUT_KIND_WIRE_NAMES.sorted()}) and not advertised by this daemon as " +
-            "an extension event"
+          "event[$index] kind '${event.kind}' is not advertised by this daemon. Call " +
+            "list_data_products to see the available script-event ids."
       }
     }
   }

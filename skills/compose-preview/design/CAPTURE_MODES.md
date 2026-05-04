@@ -129,8 +129,8 @@ enough to define the recording duration:
   "scale": 1.0,
   "format": "apng",
   "events": [
-    { "tMs": 0, "kind": "pointerDown", "pixelX": 227, "pixelY": 227 },
-    { "tMs": 1200, "kind": "pointerUp", "pixelX": 227, "pixelY": 227 }
+    { "tMs": 0, "kind": "input.pointerDown", "pixelX": 227, "pixelY": 227 },
+    { "tMs": 1200, "kind": "input.pointerUp", "pixelX": 227, "pixelY": 227 }
   ]
 }
 ```
@@ -145,7 +145,7 @@ front (compose-ai-tools#714).
 {
   "uri": "compose-preview://<workspace>/<module>/<preview>",
   "events": [
-    { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
+    { "tMs": 0, "kind": "input.click", "pixelX": 120, "pixelY": 40 },
     { "tMs": 200, "kind": "recording.probe", "label": "after-click" }
   ]
 }

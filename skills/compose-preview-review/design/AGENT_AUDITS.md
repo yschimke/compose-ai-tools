@@ -556,7 +556,7 @@ lifecycle round-trip:
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
-      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
       { "tMs": 200, "kind": "lifecycle.pause" },
       { "tMs": 200, "kind": "lifecycle.resume" },
       { "tMs": 200, "kind": "recording.probe", "label": "after-resume" }
@@ -593,7 +593,7 @@ is the kind of thing this variant catches:
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
-      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
       { "tMs": 200, "kind": "preview.reload" },
       { "tMs": 200, "kind": "recording.probe", "label": "after-reload" }
     ]
@@ -611,9 +611,9 @@ A, verify return-trip behaves correctly:
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
-      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
       { "tMs": 100, "kind": "state.save", "checkpointId": "after-first-click" },
-      { "tMs": 200, "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 200, "kind": "input.click", "pixelX": 120, "pixelY": 40 },
       { "tMs": 300, "kind": "state.save", "checkpointId": "after-second-click" },
       { "tMs": 400, "kind": "state.restore", "checkpointId": "after-first-click" },
       { "tMs": 400, "kind": "recording.probe", "label": "after-restore-to-first" }
@@ -638,7 +638,7 @@ test of just the saveable path:
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
-      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
       { "tMs": 200, "kind": "state.recreate" },
       { "tMs": 200, "kind": "recording.probe", "label": "after-recreate" }
     ]
