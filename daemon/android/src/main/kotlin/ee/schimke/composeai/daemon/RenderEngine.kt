@@ -106,13 +106,13 @@ class RenderEngine(
   private val dataDir: File? =
     (outputDir.parentFile ?: outputDir).resolve("data"),
   /**
-   * D2.1 — image processors that run after the PNG + JSON artefacts are written. Defaults to
-   * a single [AccessibilityImageProcessor] so the Paparazzi-style overlay PNG lands under
-   * `<dataDir>/<previewId>/a11y-overlay.png` whenever a11y mode produced findings or nodes.
-   * Empty list disables — useful for the harness's fake-mode runs that don't exercise the
-   * processor surface.
+   * Legacy image-processor escape hatch kept for embedders that registered custom processors
+   * alongside the old [AccessibilityImageProcessor]. Empty by default — overlay generation now
+   * runs through the typed extension graph (`OverlayExtension` inside
+   * `runAccessibilityPostCapturePipeline`), so the daemon's default wiring no longer pre-installs
+   * `AccessibilityImageProcessor`.
    */
-  private val imageProcessors: List<ImageProcessor> = listOf(AccessibilityImageProcessor()),
+  private val imageProcessors: List<ImageProcessor> = emptyList(),
 ) {
 
   /**

@@ -6,20 +6,18 @@ import ee.schimke.composeai.renderer.AccessibilityNode
 import ee.schimke.composeai.renderer.AccessibilityOverlay
 
 /**
- * D2.1 — first concrete [ImageProcessor]. When the render ran in a11y mode and produced any
- * findings or nodes, generates the Paparazzi-style annotated overlay via
- * [AccessibilityOverlay.generate] and attaches it to `a11y/atf`, `a11y/hierarchy`, and the
- * dedicated `a11y/overlay` kind as the `overlay` extra.
- *
- * Output path: `<dataDir>/<previewId>/a11y-overlay.png`. Same naming convention the JSON
- * artefacts use (slash-to-dash on the kind), so the registry's reverse mapping stays
- * mechanical.
- *
- * Reads its typed payload off [ImageProcessorInput.context] — the producer
- * ([AccessibilityDataProducer.writeArtifacts]) hands an [AccessibilityImageContext] in
- * there. A render whose context is missing or has a different shape gets an empty map back,
- * matching the "this render skipped a11y" no-op case.
+ * D2.1 — first concrete [ImageProcessor]. Kept for backwards compatibility with embedders that
+ * registered custom [ImageProcessor]s alongside it; the default daemon wiring no longer installs
+ * this. Overlay generation now runs through the typed extension graph
+ * ([ee.schimke.composeai.renderer.OverlayExtension] inside
+ * [runAccessibilityPostCapturePipeline]).
  */
+@Deprecated(
+  message =
+    "Overlay generation now runs through OverlayExtension in the typed extension graph. " +
+      "Embedders relying on AccessibilityImageProcessor should migrate to a PostCaptureProcessor " +
+      "or stop installing this — it's no longer the default wiring.",
+)
 class AccessibilityImageProcessor : ImageProcessor {
   override val name: String = "a11y-overlay"
 
@@ -54,8 +52,16 @@ class AccessibilityImageProcessor : ImageProcessor {
   }
 
   companion object {
-    /** [DataProductExtra.name] used for the rendered overlay PNG. */
-    const val OVERLAY_NAME: String = "overlay"
+    /**
+     * @deprecated Moved to [AccessibilityDataProducer.OVERLAY_EXTRA_NAME] — the constant is a
+     *   property of the data product, not the legacy processor. Kept here as a forwarding alias
+     *   so embedders that referenced the old name keep compiling.
+     */
+    @Deprecated(
+      message = "Use AccessibilityDataProducer.OVERLAY_EXTRA_NAME.",
+      replaceWith = ReplaceWith("AccessibilityDataProducer.OVERLAY_EXTRA_NAME"),
+    )
+    const val OVERLAY_NAME: String = AccessibilityDataProducer.OVERLAY_EXTRA_NAME
 
     /** Filename under `<dataDir>/<previewId>/`. Mirrors `a11y-{atf,hierarchy}.json`. */
     const val OVERLAY_FILE: String = "a11y-overlay.png"

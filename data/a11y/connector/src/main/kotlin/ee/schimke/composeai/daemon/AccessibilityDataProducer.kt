@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding
@@ -67,19 +68,24 @@ object AccessibilityDataProducer {
   const val FILE_TOUCH_TARGETS: String = "a11y-touchTargets.json"
   const val FILE_OVERLAY: String = "a11y-overlay.png"
 
+  /** [DataProductExtra.name] used for the rendered overlay PNG attached to a11y JSON kinds. */
+  const val OVERLAY_EXTRA_NAME: String = "overlay"
+
   @Serializable internal data class AtfPayload(val findings: List<AccessibilityFinding>)
 
   @Serializable internal data class HierarchyPayload(val nodes: List<AccessibilityNode>)
 
   /**
-   * Writes both JSON files to `<rootDir>/<previewId>/` (creating the directory tree if needed).
-   * Idempotent — overwrites prior files. Called from [RenderEngine.render]'s a11y branch with
-   * the result of [ee.schimke.composeai.renderer.AccessibilityChecker.analyze].
+   * Writes ATF + hierarchy JSON to `<rootDir>/<previewId>/` and runs the typed post-capture
+   * pipeline ([runAccessibilityPostCapturePipeline]) so [TouchTargetsExtension] writes the
+   * touch-targets JSON and [OverlayExtension] writes the overlay PNG. Idempotent — overwrites
+   * prior files.
    *
-   * When [pngFile] is supplied (the captured screenshot), the configured [imageProcessors]
-   * also run — for the daemon's default wiring that means [AccessibilityImageProcessor]
-   * generates `a11y-overlay.png`. Each processor failure is logged + skipped so a single
-   * bad processor never strands the JSON the consumer already cares about.
+   * Legacy [imageProcessors] still run after the typed pipeline, for embedders that registered
+   * custom processors alongside [AccessibilityImageProcessor]. The default daemon wiring no
+   * longer pre-installs [AccessibilityImageProcessor] — overlay generation is now owned by the
+   * typed extension graph. Each processor failure is logged + skipped so one bad processor
+   * never strands the JSON the consumer already cares about.
    */
   fun writeArtifacts(
     rootDir: File,
@@ -100,15 +106,20 @@ object AccessibilityDataProducer {
       .resolve(FILE_HIERARCHY)
       .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
 
-    // Touch targets ride through the typed extension graph so the consumer side stays exercised
-    // on real production data. JSON shape is byte-identical to the previous inline call —
-    // TouchTargetsExtension wraps the same buildTouchTargets math.
+    // Typed post-capture pipeline: TouchTargetsExtension always runs; OverlayExtension runs when
+    // pngFile is supplied (it requires CommonDataProducts.ImageArtifact). Both write their
+    // outputs through the typed product store and we serialize touchTargets here. Overlay
+    // writes its own PNG side-effectfully — the store carries the resulting AccessibilityOverlayArtifact
+    // for any future consumer that wants the path inline.
     val store =
       runAccessibilityPostCapturePipeline(
         previewId = previewId,
         hierarchy = AccessibilityHierarchyPayload(nodes),
         findings = AccessibilityFindingsPayload(findings),
         density = density,
+        imageArtifact = pngFile?.let { RenderImageArtifact(path = it.absolutePath) },
+        outputDirectory = previewDir,
+        isRound = isRound,
       )
     store.get(AccessibilityDataProducts.TouchTargets)?.let { touchTargets ->
       previewDir
@@ -298,7 +309,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
     if (!overlay.exists()) return emptyList()
     return listOf(
       DataProductExtra(
-        name = AccessibilityImageProcessor.OVERLAY_NAME,
+        name = AccessibilityDataProducer.OVERLAY_EXTRA_NAME,
         path = overlay.absolutePath,
         mediaType = "image/png",
         sizeBytes = overlay.length().takeIf { it > 0 },
