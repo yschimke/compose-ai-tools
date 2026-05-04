@@ -7,7 +7,6 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
-import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
@@ -188,25 +187,8 @@ class DesktopRecordingSession(
 
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        val inputKind = e.kind.toInteractiveInputKindOrNull()
-        if (e.kind == RecordingScriptDataExtensions.PROBE_EVENT) {
-          evidence.add(e.appliedEvidence("probe marker reached"))
-        } else if (inputKind == null) {
-          evidence.add(e.unsupportedEvidence("script event kind '${e.kind}' is not implemented"))
-        } else if (
-          inputKind == InteractiveInputKind.KEY_DOWN ||
-            inputKind == InteractiveInputKind.KEY_UP ||
-            inputKind == InteractiveInputKind.ROTARY_SCROLL
-        ) {
-          evidence.add(
-            e.unsupportedEvidence(
-              "key and rotary dispatch are not implemented for desktop recording"
-            )
-          )
-        } else {
-          dispatchInput(inputKind, e.pixelX, e.pixelY, tNanos, tMs)
-          evidence.add(e.appliedEvidence())
-        }
+        val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
+        evidence.add(scriptHandlers.dispatch(e, ctx))
         nextEventIdx++
       }
 
@@ -277,31 +259,95 @@ class DesktopRecordingSession(
     )
   }
 
-  private fun RecordingScriptEvent.appliedEvidence(
-    message: String? = null
-  ): RecordingScriptEvidence =
-    RecordingScriptEvidence(
-      tMs = tMs,
-      kind = kind,
-      status = RecordingScriptEventStatus.APPLIED,
-      label = label,
-      checkpointId = checkpointId,
-      lifecycleEvent = lifecycleEvent,
-      tags = tags,
-      message = message,
+  /**
+   * Per-session script-event handler registry. Built once per session so each handler closes over
+   * the held [state.scene]; the dispatch loop in [stopScripted] just calls
+   * [scriptHandlers.dispatch] and never branches on event kind directly.
+   *
+   * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`) are registered as
+   * real Skiko `sendPointerEvent` calls. `rotaryScroll`, `keyDown`, and `keyUp` register as
+   * unsupported handlers so the agent gets a specific reason rather than the generic "no handler"
+   * message. The probe extension handler appears once, here, instead of leaking into the dispatch
+   * loop's special-case branch.
+   */
+  private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
+
+  private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
+    RecordingScriptHandlerRegistry(
+      buildMap {
+        put("click", clickHandler())
+        put("pointerDown", pointerHandler(PointerEventType.Press))
+        put("pointerMove", pointerHandler(PointerEventType.Move))
+        put("pointerUp", pointerHandler(PointerEventType.Release))
+        put("rotaryScroll", desktopUnsupported("rotary scroll"))
+        put("keyDown", desktopUnsupported("keyDown"))
+        put("keyUp", desktopUnsupported("keyUp"))
+        put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
+          appliedEvidence(e, "probe marker reached")
+        })
+      }
     )
 
-  private fun RecordingScriptEvent.unsupportedEvidence(message: String): RecordingScriptEvidence =
-    RecordingScriptEvidence(
-      tMs = tMs,
-      kind = kind,
-      status = RecordingScriptEventStatus.UNSUPPORTED,
-      label = label,
-      checkpointId = checkpointId,
-      lifecycleEvent = lifecycleEvent,
-      tags = tags,
-      message = message,
-    )
+  private fun clickHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, ctx ->
+      val px = event.pixelX
+      val py = event.pixelY
+      if (px == null || py == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires both pixelX and pixelY",
+        )
+      }
+      val offset = sceneOffset(px, py)
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Press,
+        position = offset,
+        timeMillis = ctx.tMs,
+        button = PointerButton.Primary,
+        buttons = PointerButtons(isPrimaryPressed = true),
+      )
+      state.scene.render(nanoTime = ctx.tNanos)
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Release,
+        position = offset,
+        timeMillis = ctx.tMs,
+        button = PointerButton.Primary,
+        buttons = PointerButtons(),
+      )
+      appliedEvidence(event)
+    }
+
+  /**
+   * Single-event pointer dispatch. `Press` carries the primary-button-pressed buttons mask;
+   * `Move` keeps the primary button held (a drag); `Release` clears the mask. Matches the
+   * pattern [DesktopInteractiveSession] uses so `Modifier.clickable {}` and other tap-gesture
+   * detectors see consistent down→up sequences regardless of mode.
+   */
+  private fun pointerHandler(eventType: PointerEventType): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, ctx ->
+      val px = event.pixelX
+      val py = event.pixelY
+      if (px == null || py == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires both pixelX and pixelY",
+        )
+      }
+      val pressed = eventType != PointerEventType.Release
+      state.scene.sendPointerEvent(
+        eventType = eventType,
+        position = sceneOffset(px, py),
+        timeMillis = ctx.tMs,
+        button = PointerButton.Primary,
+        buttons = PointerButtons(isPrimaryPressed = pressed),
+      )
+      appliedEvidence(event)
+    }
+
+  private fun desktopUnsupported(label: String): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      unsupportedEvidence(event, "$label dispatch is not implemented for desktop recording")
+    }
 
   /**
    * Live tick loop body. Runs on the dedicated `compose-ai-daemon-recording-live-<id>` thread.

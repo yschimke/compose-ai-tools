@@ -5,7 +5,6 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
-import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.awt.RenderingHints
@@ -165,28 +164,8 @@ class AndroidRecordingSession(
       // doesn't matter on the host side (the underlying session has its own streamId).
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        val inputKind = e.kind.toInteractiveInputKindOrNull()
-        if (e.kind == RecordingScriptDataExtensions.PROBE_EVENT) {
-          evidence.add(e.appliedEvidence("probe marker reached"))
-        } else if (inputKind == null) {
-          evidence.add(e.unsupportedEvidence("script event kind '${e.kind}' is not implemented"))
-        } else if (
-          inputKind == InteractiveInputKind.KEY_DOWN || inputKind == InteractiveInputKind.KEY_UP
-        ) {
-          evidence.add(e.unsupportedEvidence("key dispatch is not implemented for Android recording"))
-        } else {
-          interactive.dispatch(
-            InteractiveInputParams(
-              frameStreamId = "android-recording-internal",
-              kind = inputKind,
-              pixelX = e.pixelX,
-              pixelY = e.pixelY,
-              scrollDeltaY = e.scrollDeltaY,
-              keyCode = e.keyCode,
-            )
-          )
-          evidence.add(e.appliedEvidence())
-        }
+        val ctx = SimpleRecordingDispatchContext(tNanos = tMs * 1_000_000L, tMs = tMs)
+        evidence.add(scriptHandlers.dispatch(e, ctx))
         nextEventIdx++
       }
 
@@ -252,29 +231,58 @@ class AndroidRecordingSession(
     )
   }
 
-  private fun RecordingScriptEvent.appliedEvidence(message: String? = null): RecordingScriptEvidence =
-    RecordingScriptEvidence(
-      tMs = tMs,
-      kind = kind,
-      status = RecordingScriptEventStatus.APPLIED,
-      label = label,
-      checkpointId = checkpointId,
-      lifecycleEvent = lifecycleEvent,
-      tags = tags,
-      message = message,
+  /**
+   * Per-session script-event handler registry. Built once so each handler closes over [interactive];
+   * [stopScripted]'s loop just calls `scriptHandlers.dispatch(...)` and never branches on event
+   * kind directly.
+   *
+   * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`) all
+   * route through the held-rule loop's [InteractiveSession.dispatch] — same path the live tick loop
+   * uses. `keyDown` / `keyUp` register as unsupported (Robolectric key dispatch is a follow-up).
+   * The probe extension handler appears once, here, instead of as a dispatch-loop special case.
+   */
+  private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
+
+  private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
+    RecordingScriptHandlerRegistry(
+      buildMap {
+        put("click", interactiveDispatchHandler(InteractiveInputKind.CLICK))
+        put("pointerDown", interactiveDispatchHandler(InteractiveInputKind.POINTER_DOWN))
+        put("pointerMove", interactiveDispatchHandler(InteractiveInputKind.POINTER_MOVE))
+        put("pointerUp", interactiveDispatchHandler(InteractiveInputKind.POINTER_UP))
+        put("rotaryScroll", interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL))
+        put("keyDown", androidUnsupported("keyDown"))
+        put("keyUp", androidUnsupported("keyUp"))
+        put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
+          appliedEvidence(e, "probe marker reached")
+        })
+      }
     )
 
-  private fun RecordingScriptEvent.unsupportedEvidence(message: String): RecordingScriptEvidence =
-    RecordingScriptEvidence(
-      tMs = tMs,
-      kind = kind,
-      status = RecordingScriptEventStatus.UNSUPPORTED,
-      label = label,
-      checkpointId = checkpointId,
-      lifecycleEvent = lifecycleEvent,
-      tags = tags,
-      message = message,
-    )
+  /**
+   * Forward an input event through the held-rule loop. Mirrors the live tick path's
+   * [dispatchLiveInput]; the wire-string kind translates to the typed [InteractiveInputKind]
+   * once at registration time so the handler body doesn't repeat the lookup.
+   */
+  private fun interactiveDispatchHandler(kind: InteractiveInputKind): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      interactive.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "android-recording-internal",
+          kind = kind,
+          pixelX = event.pixelX,
+          pixelY = event.pixelY,
+          scrollDeltaY = event.scrollDeltaY,
+          keyCode = event.keyCode,
+        )
+      )
+      appliedEvidence(event)
+    }
+
+  private fun androidUnsupported(label: String): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      unsupportedEvidence(event, "$label dispatch is not implemented for Android recording")
+    }
 
   private fun runLiveTickLoop() {
     val startNs = System.nanoTime()
