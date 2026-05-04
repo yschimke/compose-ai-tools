@@ -144,6 +144,74 @@ class DeviceBackgroundDataProductRegistryTest {
   }
 
   @Test
+  fun `render context preserves explicit preview background color`() {
+    val registry =
+      DeviceBackgroundDataProductRegistry(
+        PreviewIndex.fromMap(
+          path = null,
+          byId =
+            mapOf(
+              "explicit" to
+                PreviewInfoDto(
+                  id = "explicit",
+                  className = "com.example.PreviewKt",
+                  methodName = "Explicit",
+                  params = PreviewParamsDto(backgroundColor = 0xFF112233),
+                )
+            ),
+        )
+      )
+    registry.onRender(
+      "explicit",
+      RenderResult(
+        id = 1,
+        classLoaderHashCode = 1,
+        classLoaderName = "loader",
+        previewContext = themeContext("explicit", mapOf("background" to "#FFABCDEF")),
+      ),
+    )
+
+    val payload = fetchPayload(registry, "explicit")
+
+    assertEquals("#FF112233", payload["color"]!!.jsonPrimitive.content)
+    assertEquals("preview.backgroundColor", payload["source"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun `render context preserves showBackground preview background`() {
+    val registry =
+      DeviceBackgroundDataProductRegistry(
+        PreviewIndex.fromMap(
+          path = null,
+          byId =
+            mapOf(
+              "show-background" to
+                PreviewInfoDto(
+                  id = "show-background",
+                  className = "com.example.PreviewKt",
+                  methodName = "ShowBackground",
+                  params = PreviewParamsDto(showBackground = true),
+                )
+            ),
+        )
+      )
+    registry.onRender(
+      "show-background",
+      RenderResult(
+        id = 1,
+        classLoaderHashCode = 1,
+        classLoaderName = "loader",
+        previewContext = themeContext("show-background", mapOf("background" to "#FFABCDEF")),
+      ),
+    )
+
+    val payload = fetchPayload(registry, "show-background")
+
+    assertEquals("#FFFFFFFF", payload["color"]!!.jsonPrimitive.content)
+    assertEquals("preview.showBackground", payload["source"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun `render context falls back to material surface when background is transparent`() {
     val registry =
       DeviceBackgroundDataProductRegistry(
@@ -218,6 +286,19 @@ class DeviceBackgroundDataProductRegistryTest {
     assertTrue(outcome is DataProductRegistry.Outcome.Ok)
     return (outcome as DataProductRegistry.Outcome.Ok).result.payload!!.jsonObject
   }
+
+  private fun themeContext(previewId: String, colors: Map<String, String>): PreviewContext =
+    PreviewContext.Builder(
+        previewId = previewId,
+        backend = null,
+        renderMode = null,
+        outputBaseName = null,
+      )
+      .putInspectionValue(
+        "compose.material3.themePayload",
+        FakeThemePayload(FakeResolvedTokens(colors)),
+      )
+      .build()
 
   private data class FakeThemePayload(val resolvedTokens: FakeResolvedTokens)
 

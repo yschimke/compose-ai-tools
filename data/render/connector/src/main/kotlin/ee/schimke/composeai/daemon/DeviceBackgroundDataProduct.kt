@@ -63,6 +63,7 @@ class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProd
   override fun onRender(previewId: String, result: RenderResult) {
     result.previewContext?.let { context ->
       val current = backgrounds[previewId]
+      if (current?.previewExplicit == true) return
       backgrounds[previewId] = context.material3Background() ?: current ?: fallbackBackground()
     }
   }
@@ -95,15 +96,28 @@ class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProd
   }
 }
 
-private data class DeviceBackground(val color: String, val source: String)
+private data class DeviceBackground(
+  val color: String,
+  val source: String,
+  val previewExplicit: Boolean = false,
+)
 
 private fun PreviewInfoDto.background(): DeviceBackground {
   val previewParams = params
   val backgroundColor = previewParams?.backgroundColor
   return when {
     backgroundColor != null && backgroundColor != 0L ->
-      DeviceBackground(backgroundColor.hexArgb(), "preview.backgroundColor")
-    previewParams?.showBackground == true -> DeviceBackground("#FFFFFFFF", "preview.showBackground")
+      DeviceBackground(
+        color = backgroundColor.hexArgb(),
+        source = "preview.backgroundColor",
+        previewExplicit = true,
+      )
+    previewParams?.showBackground == true ->
+      DeviceBackground(
+        color = "#FFFFFFFF",
+        source = "preview.showBackground",
+        previewExplicit = true,
+      )
     else -> fallbackBackground()
   }
 }
