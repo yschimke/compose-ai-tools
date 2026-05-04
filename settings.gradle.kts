@@ -78,6 +78,10 @@ include(":data-render-core")
 
 project(":data-render-core").projectDir = file("data/render/core")
 
+include(":data-render-compose")
+
+project(":data-render-compose").projectDir = file("data/render/compose")
+
 include(":data-render-connector")
 
 project(":data-render-connector").projectDir = file("data/render/connector")
