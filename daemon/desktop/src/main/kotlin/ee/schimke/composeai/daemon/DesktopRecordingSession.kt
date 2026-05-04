@@ -3,7 +3,6 @@ package ee.schimke.composeai.daemon
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
-import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -388,10 +387,15 @@ class DesktopRecordingSession(
 
         // Drain inputs accumulated since the last tick; dispatch each at the current virtual
         // nanoTime. Inputs that arrive *during* the dispatch+render below are picked up next
-        // tick.
+        // tick. Routes through the same [scriptHandlers] registry the scripted path uses — the
+        // typed `RecordingInputParams` translates to a synthetic [RecordingScriptEvent] keyed by
+        // `kind.wireName()`. Live mode discards the per-event evidence (only the scripted
+        // [stop] result carries `scriptEvents`); the dispatch's side effects on the held scene
+        // are what live mode cares about.
+        val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
         while (true) {
           val next = liveInputs.poll() ?: break
-          dispatchInput(next.kind, next.pixelX, next.pixelY, tNanos, tMs)
+          scriptHandlers.dispatch(next.toScriptEvent(tMs), ctx)
         }
 
         val image = state.scene.render(nanoTime = tNanos)
@@ -508,78 +512,22 @@ class DesktopRecordingSession(
   }
 
   /**
-   * Common pointer-input dispatch shared by scripted ([stopScripted]) and live ([runLiveTickLoop])
-   * paths. Translates protocol [InteractiveInputKind] into Skiko `sendPointerEvent` calls at the
-   * supplied virtual `tNanos` / `tMs`. Same Press → render-tick → Release pattern for CLICK as
-   * [DesktopInteractiveSession] uses, so `Modifier.clickable {}` and other tap-gesture detectors
-   * see a clean down→up sequence regardless of mode.
+   * Translate a typed live-mode [RecordingInputParams] into a synthetic [RecordingScriptEvent]
+   * keyed by the same wire-name string the scripted path emits — so [scriptHandlers] dispatches
+   * both modes through one registry. `tMs` is the **frame's** virtual time (live mode stamps the
+   * input at the current frame boundary, same convention scripted playback uses).
    */
-  private fun dispatchInput(
-    kind: InteractiveInputKind,
-    pixelX: Int?,
-    pixelY: Int?,
-    tNanos: Long,
-    tMs: Long,
-  ) {
-    val px = pixelX
-    val py = pixelY
-    when (kind) {
-      InteractiveInputKind.CLICK -> {
-        if (px == null || py == null) return
-        val offset = sceneOffset(px, py)
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Press,
-          position = offset,
-          timeMillis = tMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
-        state.scene.render(nanoTime = tNanos)
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Release,
-          position = offset,
-          timeMillis = tMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(),
-        )
-      }
-      InteractiveInputKind.POINTER_DOWN -> {
-        if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Press,
-          position = sceneOffset(px, py),
-          timeMillis = tMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
-      }
-      InteractiveInputKind.POINTER_MOVE -> {
-        if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Move,
-          position = sceneOffset(px, py),
-          timeMillis = tMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
-      }
-      InteractiveInputKind.POINTER_UP -> {
-        if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Release,
-          position = sceneOffset(px, py),
-          timeMillis = tMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(),
-        )
-      }
-      InteractiveInputKind.ROTARY_SCROLL,
-      InteractiveInputKind.KEY_DOWN,
-      InteractiveInputKind.KEY_UP -> {
-        // Reserved for v2 key dispatch; same no-op as DesktopInteractiveSession.
-      }
-    }
-  }
+  private fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
+    RecordingScriptEvent(
+      tMs = tMs,
+      kind = kind.wireName(),
+      pixelX = pixelX,
+      pixelY = pixelY,
+      keyCode = keyCode,
+      // RecordingInputParams doesn't carry scrollDeltaY today (the wire shape is set by the
+      // panel-side recording/input notification handler in JsonRpcServer); future rotary-aware
+      // live drivers can extend this synthesisation when they wire the new payload field.
+    )
 
   private fun writeFramePng(image: Image, frameIndex: Int) {
     val outFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")

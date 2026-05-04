@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import org.junit.Assert.assertEquals
@@ -106,6 +107,23 @@ class RecordingScriptHandlerRegistryTest {
       RecordingScriptHandlerRegistry(mapOf("click" to sentinel, "recording.probe" to sentinel))
 
     assertEquals(setOf("click", "recording.probe"), registry.knownKinds())
+  }
+
+  @Test
+  fun `wireName round-trips with toInteractiveInputKindOrNull for every enum value`() {
+    // Live mode synthesises a RecordingScriptEvent from a typed RecordingInputParams via
+    // `kind.wireName()`; the scripted path resolves the same wire name back to the enum via
+    // `toInteractiveInputKindOrNull`. Pin that the round-trip is bijective for every enum value
+    // so adding a new InteractiveInputKind keeps both directions wired (the reverse map is
+    // derived, so this test catches "added the enum, forgot the wire-name entry").
+    for (kind in InteractiveInputKind.entries) {
+      val wire = kind.wireName()
+      assertEquals(
+        "wireName -> toInteractiveInputKindOrNull must be the identity on enum '$kind'",
+        kind,
+        wire.toInteractiveInputKindOrNull(),
+      )
+    }
   }
 
   @Test
