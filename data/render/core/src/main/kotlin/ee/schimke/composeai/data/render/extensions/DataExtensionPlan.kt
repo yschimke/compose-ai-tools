@@ -3,6 +3,111 @@ package ee.schimke.composeai.data.render.extensions
 import kotlinx.serialization.Serializable
 
 /**
+ * Stable, typed identity for one data product emitted by the extension graph.
+ *
+ * [kind] is the protocol/on-disk name clients already know (`"a11y/hierarchy"`). [type] is the
+ * in-process payload shape extension authors consume from [DataProductStore]. Keeping both on the
+ * same key lets planner code stay protocol-compatible while extension implementations depend on
+ * compile-time payload types instead of string joins.
+ */
+data class DataProductKey<T : Any>(val kind: String, val schemaVersion: Int, val type: Class<T>) :
+  Comparable<DataProductKey<*>> {
+  init {
+    require(kind.isNotBlank()) { "Data product kind must not be blank." }
+    require(schemaVersion > 0) { "Data product schema version must be positive." }
+  }
+
+  override fun compareTo(other: DataProductKey<*>): Int =
+    compareValuesBy(this, other, DataProductKey<*>::kind, DataProductKey<*>::schemaVersion)
+
+  override fun toString(): String = "$kind@v$schemaVersion"
+}
+
+/** Read-only view of declared inputs for an extension. */
+interface DataProductSource {
+  fun <T : Any> get(key: DataProductKey<T>): T?
+
+  fun <T : Any> require(key: DataProductKey<T>): T =
+    get(key) ?: error("Data product '$key' is not available.")
+}
+
+/** Write-only view for emitting an extension's declared outputs. */
+interface DataProductSink {
+  fun <T : Any> put(key: DataProductKey<T>, value: T)
+}
+
+/** A small in-process product store used by downstream extensions to consume declared inputs. */
+interface DataProductStore : DataProductSource, DataProductSink {
+  /**
+   * Returns a per-extension view that enforces the declared `inputs`/`outputs` contract: `get` only
+   * succeeds for keys in [PlannedDataExtension.inputs] (or already produced), `put` only for keys
+   * in [PlannedDataExtension.outputs]. Use this to wrap the shared store before handing it to a
+   * hook so contract drift is caught at runtime, not days later in a downstream consumer.
+   */
+  fun scopedFor(extension: PlannedDataExtension): DataProductStore =
+    ScopedDataProductStore(this, extension)
+}
+
+class RecordingDataProductStore : DataProductStore {
+  private val values: MutableMap<DataProductKey<*>, Any> = linkedMapOf()
+
+  override fun <T : Any> get(key: DataProductKey<T>): T? {
+    val value = values[key] ?: return null
+    return key.type.cast(value)
+  }
+
+  override fun <T : Any> put(key: DataProductKey<T>, value: T) {
+    values[key] = key.type.cast(value)
+  }
+}
+
+private class ScopedDataProductStore(
+  private val delegate: DataProductStore,
+  private val extension: PlannedDataExtension,
+) : DataProductStore {
+  override fun <T : Any> get(key: DataProductKey<T>): T? {
+    require(key in extension.inputs) {
+      "Data extension '${extension.id}' read undeclared product '$key'; " + "declare it in inputs."
+    }
+    return delegate.get(key)
+  }
+
+  override fun <T : Any> put(key: DataProductKey<T>, value: T) {
+    require(key in extension.outputs) {
+      "Data extension '${extension.id}' wrote undeclared product '$key'; " +
+        "declare it in outputs."
+    }
+    delegate.put(key, value)
+  }
+}
+
+data class RenderImageArtifact(val path: String, val mediaType: String = "image/png")
+
+data class RenderSemanticsSnapshot(val handle: String)
+
+data class RenderDensity(val density: Float)
+
+object CommonDataProducts {
+  val ImageArtifact: DataProductKey<RenderImageArtifact> =
+    DataProductKey("render/image", schemaVersion = 1, RenderImageArtifact::class.java)
+
+  val SemanticsSnapshot: DataProductKey<RenderSemanticsSnapshot> =
+    DataProductKey(
+      "render/semanticsSnapshot",
+      schemaVersion = 1,
+      RenderSemanticsSnapshot::class.java,
+    )
+
+  val Density: DataProductKey<RenderDensity> =
+    DataProductKey("render/density", schemaVersion = 1, RenderDensity::class.java)
+}
+
+enum class DataExtensionTarget {
+  Android,
+  Desktop,
+}
+
+/**
  * Renderer-agnostic identity for a data extension.
  *
  * Extension ids are stable protocol/configuration names, not Kotlin class names. They are used in
@@ -87,6 +192,14 @@ interface PlannedDataExtension {
   val id: DataExtensionId
   val hooks: Set<DataExtensionHookKind>
   val constraints: DataExtensionConstraints
+  val inputs: Set<DataProductKey<*>>
+    get() = emptySet()
+
+  val outputs: Set<DataProductKey<*>>
+    get() = emptySet()
+
+  val targets: Set<DataExtensionTarget>
+    get() = emptySet()
 }
 
 interface DataExtension<in Request> {
@@ -189,6 +302,9 @@ data class SimplePlannedDataExtension(
   override val id: DataExtensionId,
   override val hooks: Set<DataExtensionHookKind> = emptySet(),
   override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
+  override val inputs: Set<DataProductKey<*>> = emptySet(),
+  override val outputs: Set<DataProductKey<*>> = emptySet(),
+  override val targets: Set<DataExtensionTarget> = emptySet(),
 ) : PlannedDataExtension
 
 data class OrderedDataExtensionPlan(
@@ -216,6 +332,71 @@ data class DataExtensionPlanningResult(
 }
 
 object DataExtensionPlanner {
+  fun planOutputs(
+    extensions: List<PlannedDataExtension>,
+    requestedOutputs: Set<DataProductKey<*>>,
+    initialProducts: Set<DataProductKey<*>> = emptySet(),
+    initialCapabilities: Set<DataExtensionCapability> = emptySet(),
+    target: DataExtensionTarget? = null,
+  ): DataExtensionPlanningResult {
+    val eligibleExtensions =
+      if (target == null) extensions
+      else
+        extensions.filter { extension ->
+          extension.targets.isEmpty() || target in extension.targets
+        }
+    val duplicateErrors =
+      duplicateIdErrors(eligibleExtensions) + duplicateOutputErrors(eligibleExtensions)
+    if (duplicateErrors.isNotEmpty()) {
+      return DataExtensionPlanningResult(emptyList(), duplicateErrors)
+    }
+
+    val byOutput =
+      eligibleExtensions
+        .flatMap { extension -> extension.outputs.map { output -> output to extension } }
+        .associate { it.first to it.second }
+    val selected = linkedMapOf<DataExtensionId, PlannedDataExtension>()
+    val visiting = linkedSetOf<DataProductKey<*>>()
+    val errors = mutableListOf<DataExtensionPlanningError>()
+
+    fun resolve(product: DataProductKey<*>) {
+      if (product in initialProducts) return
+      val provider = byOutput[product]
+      if (provider == null) {
+        errors +=
+          DataExtensionPlanningError(
+            code = "MissingProductProvider",
+            message = "No data extension provides requested product '$product'.",
+          )
+        return
+      }
+      if (provider.id in selected) return
+      if (!visiting.add(product)) {
+        errors +=
+          DataExtensionPlanningError(
+            code = "ProductDependencyCycle",
+            message = "Data product dependency graph contains a cycle at '$product'.",
+            extensions = listOf(provider.id),
+          )
+        return
+      }
+      provider.inputs.sorted().forEach(::resolve)
+      visiting.remove(product)
+      selected[provider.id] = provider
+    }
+
+    requestedOutputs.sorted().forEach(::resolve)
+    if (errors.isNotEmpty()) {
+      return DataExtensionPlanningResult(emptyList(), errors)
+    }
+
+    val sorted = plan(selected.values.toList(), initialCapabilities = initialCapabilities)
+    return DataExtensionPlanningResult(
+      orderedExtensions = sorted.orderedExtensions,
+      errors = sorted.errors + validateProducts(sorted.orderedExtensions, initialProducts),
+    )
+  }
+
   fun <Request> planRequest(
     extensions: List<DataExtension<Request>>,
     request: Request,
@@ -251,6 +432,24 @@ object DataExtensionPlanner {
           code = "DuplicateExtensionId",
           message = "Data extension '$id' is planned ${matches.size} times.",
           extensions = listOf(id),
+        )
+      }
+
+  private fun duplicateOutputErrors(
+    extensions: List<PlannedDataExtension>
+  ): List<DataExtensionPlanningError> =
+    extensions
+      .flatMap { extension -> extension.outputs.map { output -> output to extension.id } }
+      .groupBy { it.first }
+      .filterValues { it.size > 1 }
+      .map { (output, matches) ->
+        DataExtensionPlanningError(
+          code = "DuplicateProductProvider",
+          message =
+            "Data product '$output' is provided by multiple extensions: " +
+              matches.joinToString { it.second.value } +
+              ".",
+          extensions = matches.map { it.second },
         )
       }
 
@@ -421,6 +620,28 @@ object DataExtensionPlanner {
       }
 
       provided += extension.constraints.provides
+    }
+  }
+
+  private fun validateProducts(
+    ordered: List<PlannedDataExtension>,
+    initialProducts: Set<DataProductKey<*>>,
+  ): List<DataExtensionPlanningError> = buildList {
+    var provided = initialProducts
+    for (extension in ordered) {
+      val missing = extension.inputs - provided
+      if (missing.isNotEmpty()) {
+        add(
+          DataExtensionPlanningError(
+            code = "MissingProductInput",
+            message =
+              "Data extension '${extension.id}' requires data products that are not " +
+                "available yet: ${missing.joinToString()}.",
+            extensions = listOf(extension.id),
+          )
+        )
+      }
+      provided += extension.outputs
     }
   }
 }

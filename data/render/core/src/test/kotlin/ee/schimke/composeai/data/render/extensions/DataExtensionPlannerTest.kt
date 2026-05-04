@@ -2,6 +2,8 @@ package ee.schimke.composeai.data.render.extensions
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -117,6 +119,154 @@ class DataExtensionPlannerTest {
     assertEquals(listOf("fonts", "theme"), result.orderedIds())
   }
 
+  @Test
+  fun expandsRequestedOutputsThroughTypedProductDependencies() {
+    val semantics = product("render/semantics")
+    val hierarchy = product("a11y/hierarchy")
+    val atf = product("a11y/atf")
+    val overlay = product("a11y/overlay")
+
+    val hierarchyExtension =
+      extension(
+        id = "a11y",
+        phase = DataExtensionPhase.Capture,
+        inputs = setOf(semantics),
+        outputs = setOf(hierarchy),
+      )
+    val atfExtension =
+      extension(
+        id = "atf",
+        phase = DataExtensionPhase.PostProcess,
+        inputs = setOf(hierarchy),
+        outputs = setOf(atf),
+      )
+    val overlayExtension =
+      extension(
+        id = "overlay",
+        phase = DataExtensionPhase.Publish,
+        inputs = setOf(hierarchy, atf),
+        outputs = setOf(overlay),
+      )
+
+    val result =
+      DataExtensionPlanner.planOutputs(
+        extensions = listOf(overlayExtension, atfExtension, hierarchyExtension),
+        requestedOutputs = setOf(overlay),
+        initialProducts = setOf(semantics),
+      )
+
+    assertTrue(result.errors.toString(), result.isValid)
+    assertEquals(listOf("a11y", "atf", "overlay"), result.orderedIds())
+  }
+
+  @Test
+  fun reportsMissingProviderForRequestedTypedProduct() {
+    val result =
+      DataExtensionPlanner.planOutputs(
+        extensions = emptyList(),
+        requestedOutputs = setOf(product("a11y/overlay")),
+      )
+
+    assertFalse(result.isValid)
+    assertEquals(listOf("MissingProductProvider"), result.errors.map { it.code })
+  }
+
+  @Test
+  fun reportsDuplicateTypedProductProviders() {
+    val hierarchy = product("a11y/hierarchy")
+
+    val result =
+      DataExtensionPlanner.planOutputs(
+        extensions =
+          listOf(
+            extension("android-hierarchy", outputs = setOf(hierarchy)),
+            extension("desktop-hierarchy", outputs = setOf(hierarchy)),
+          ),
+        requestedOutputs = setOf(hierarchy),
+      )
+
+    assertFalse(result.isValid)
+    assertEquals(listOf("DuplicateProductProvider"), result.errors.map { it.code })
+  }
+
+  @Test
+  fun filtersTypedProductProvidersByTargetBeforeResolvingGraph() {
+    val semantics = product("render/semantics")
+    val hierarchy = product("a11y/hierarchy")
+
+    val result =
+      DataExtensionPlanner.planOutputs(
+        extensions =
+          listOf(
+            extension(
+              "android-hierarchy",
+              inputs = setOf(semantics),
+              outputs = setOf(hierarchy),
+              targets = setOf(DataExtensionTarget.Android),
+            ),
+            extension(
+              "desktop-hierarchy",
+              inputs = setOf(semantics),
+              outputs = setOf(hierarchy),
+              targets = setOf(DataExtensionTarget.Desktop),
+            ),
+          ),
+        requestedOutputs = setOf(hierarchy),
+        initialProducts = setOf(semantics),
+        target = DataExtensionTarget.Desktop,
+      )
+
+    assertTrue(result.errors.toString(), result.isValid)
+    assertEquals(listOf("desktop-hierarchy"), result.orderedIds())
+  }
+
+  @Test
+  fun scopedStoreAllowsDeclaredPutAndGet() {
+    val hierarchy = product("a11y/hierarchy")
+    val atf = product("a11y/atf")
+    val producer = extension("a11y", outputs = setOf(hierarchy))
+    val consumer = extension("atf", inputs = setOf(hierarchy), outputs = setOf(atf))
+
+    val store = RecordingDataProductStore()
+    store.scopedFor(producer).put(hierarchy, "nodes")
+    val view = store.scopedFor(consumer)
+
+    assertEquals("nodes", view.get(hierarchy))
+    assertEquals("nodes", view.require(hierarchy))
+  }
+
+  @Test
+  fun scopedStoreRejectsUndeclaredPut() {
+    val hierarchy = product("a11y/hierarchy")
+    val producer = extension("hierarchy")
+
+    val ex =
+      assertThrows(IllegalArgumentException::class.java) {
+        RecordingDataProductStore().scopedFor(producer).put(hierarchy, "nodes")
+      }
+    assertTrue(ex.message!!.contains("undeclared product"))
+  }
+
+  @Test
+  fun scopedStoreRejectsUndeclaredGet() {
+    val hierarchy = product("a11y/hierarchy")
+    val consumer = extension("atf")
+
+    val ex =
+      assertThrows(IllegalArgumentException::class.java) {
+        RecordingDataProductStore().scopedFor(consumer).get(hierarchy)
+      }
+    assertTrue(ex.message!!.contains("undeclared product"))
+  }
+
+  @Test
+  fun scopedStoreReturnsNullForDeclaredButMissingInput() {
+    val hierarchy = product("a11y/hierarchy")
+    val consumer = extension("atf", inputs = setOf(hierarchy))
+
+    assertNull(RecordingDataProductStore().scopedFor(consumer).get(hierarchy))
+  }
+
   private fun DataExtensionPlanningResult.orderedIds(): List<String> = orderedExtensions.map {
     it.id.value
   }
@@ -129,6 +279,9 @@ class DataExtensionPlannerTest {
     requires: Set<String> = emptySet(),
     provides: Set<String> = emptySet(),
     conflictsWith: Set<String> = emptySet(),
+    inputs: Set<DataProductKey<*>> = emptySet(),
+    outputs: Set<DataProductKey<*>> = emptySet(),
+    targets: Set<DataExtensionTarget> = emptySet(),
   ): SimplePlannedDataExtension =
     SimplePlannedDataExtension(
       id = DataExtensionId(id),
@@ -141,7 +294,13 @@ class DataExtensionPlannerTest {
           provides = provides.map(::cap).toSet(),
           conflictsWith = conflictsWith.map(::cap).toSet(),
         ),
+      inputs = inputs,
+      outputs = outputs,
+      targets = targets,
     )
 
   private fun cap(value: String): DataExtensionCapability = DataExtensionCapability(value)
+
+  private fun product(kind: String): DataProductKey<String> =
+    DataProductKey(kind, schemaVersion = 1, String::class.java)
 }

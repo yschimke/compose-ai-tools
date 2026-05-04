@@ -120,4 +120,5 @@ class AccessibilityPreviewExtensionTest {
       AccessibilityAnnotatedPreviewExtension.descriptor.cliCommands.single { it.id == "a11y-overlay.get" }
     assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), command.productKinds)
   }
+
 }
