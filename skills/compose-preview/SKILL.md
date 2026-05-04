@@ -9,21 +9,14 @@ Render `@Preview` composables to PNG images without launching Android Studio.
 Works on both Android (Jetpack Compose via Robolectric) and Compose Multiplatform
 Desktop (via `ImageComposeScene` + Skia).
 
-## Source
-
-This skill is maintained at
-[github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
+Maintained at [github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
 under `skills/compose-preview/`. The bundle this documentation ships with is
 <!-- x-release-please-start-version -->
 **v0.9.1**.
 <!-- x-release-please-end -->
-
-To check the locally installed version, run `compose-preview --version` (it
-also lives at `~/.claude/skills/compose-preview/.skill-version`). Run
-`compose-preview doctor` to compare against the latest GitHub release — it
-emits an `env.bundle-version` line and warns when the installed bundle
-trails. To upgrade, run `compose-preview update`, which re-runs the
-[bootstrap installer](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh).
+Run `compose-preview --version` to check the installed bundle, `compose-preview doctor`
+to compare against the latest release (warns when the local copy trails), and
+`compose-preview update` to re-run the bootstrap installer.
 
 ## What this skill provides
 
@@ -45,7 +38,7 @@ Applied to each module that declares the plugin:
 | `:<module>:discoverAndroidResources` | Walk `res/drawable*` + `res/mipmap*`, parse `AndroidManifest.xml`, emit `build/compose-previews/resources.json`. See [design/RESOURCE_PREVIEWS.md](./design/RESOURCE_PREVIEWS.md). |
 | `:<module>:renderAndroidResources` | Render every discovered XML drawable / mipmap to PNG / GIF under `build/compose-previews/renders/resources/`. |
 
-Both are Gradle-cacheable with strict configuration caching — unchanged inputs
+All Gradle-cacheable with strict configuration caching — unchanged inputs
 produce no re-work.
 
 ## CLI
@@ -79,30 +72,23 @@ Options:
 
 OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by default
 in a TTY and auto-disables when stdout is piped. Textual progress lines are
-off by default and opt-in via `--progress`.
+opt-in via `--progress`.
 
 Exit codes: `0` success, `1` build failure, `2` render failure, `3` no previews.
 
-JSON output per entry includes the full `PreviewParams` (device, widthDp,
+`--json` output per entry includes the full `PreviewParams` (device, widthDp,
 heightDp, fontScale, uiMode, …), the absolute `pngPath`, the `sha256` of
 the PNG bytes, and a `changed` boolean computed against the previous
 invocation. State is persisted per-module under
 `<module>/build/compose-previews/.cli-state.json` and gets wiped by
 `./gradlew clean`.
 
-## Workflow: iterate on a design
+## Iterating on a design
 
-1. **List** previews: `compose-preview list` (optionally `--filter <name>` or
-   `--id <exact>`).
-2. **Render** current state: `compose-preview show --json`. Each entry includes
-   the absolute `pngPath`, its `sha256`, and a `changed` flag relative to the
-   previous invocation — read the PNG to view the image.
-3. **Edit** the composable.
-4. **Re-render**: `compose-preview show --json` again. Gradle task caching reruns
-   only what changed; agents can inspect `changed: true` entries to know
-   which PNGs need re-reading, avoiding wasted reads of unchanged images.
-5. **Verify visually** — always read the PNG after a UI change. Don't assume
-   the change looks correct.
+`list` → edit → `show --json` → read the PNGs whose `changed: true`. Gradle
+caching means re-renders only redo what changed; the `changed` flag lets
+agents skip reading PNGs that didn't move. Always read the PNG after a UI
+change — don't assume the change looks correct.
 
 ## Designing composables for previewability
 
@@ -113,42 +99,34 @@ stateful wrapper (wires runtime deps) and a stateless inner composable that
 takes state + callbacks. Preview the stateless layer with hand-rolled
 fixtures.
 
-**Agent guidance:** if you're asked to iterate on a composable that accepts
-a ViewModel or injected dependency, **first propose extracting a stateless
-inner composable** and preview that instead. The one-time extraction unlocks
-the fast `compose-preview` iteration loop for every future change on that
-screen.
-
-See [design/STATE_HOISTING.md](./design/STATE_HOISTING.md) for the full
-pattern with code.
+**Agent guidance:** if asked to iterate on a composable that accepts a
+ViewModel or injected dependency, first propose extracting a stateless
+inner composable and preview that. The one-time extraction unlocks the
+fast `compose-preview` iteration loop for every future change on that
+screen. See [design/STATE_HOISTING.md](./design/STATE_HOISTING.md) for
+the pattern with code.
 
 ## Setup
 
-The plugin is published to Maven Central, so no credentials or registry
-configuration is required. Most projects already have `mavenCentral()` in
-their plugin repositories.
-
+The plugin is on Maven Central — most projects already have `mavenCentral()`
+in their plugin repositories, so no credentials or extra registry config.
 Bootstrap the CLI and verify the environment:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
-
 compose-preview doctor
 ```
 
-From a Compose project root, bootstrap the MCP descriptors. When this runs
-inside Antigravity, it also installs the server into Antigravity's MCP config:
+`doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
+compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the
+script prints the exact command to add it.
+
+From a Compose project root, install the MCP server descriptors:
 
 ```sh
-compose-preview mcp install
+compose-preview mcp install                  # auto-detects Antigravity
+compose-preview mcp install --antigravity    # force the Antigravity config write
 ```
-
-Outside Antigravity, use `compose-preview mcp install --antigravity` to force
-the same config write.
-
-`doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
-compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the script
-prints the exact command to add it.
 
 Apply the plugin in `<module>/build.gradle.kts`:
 
@@ -204,16 +182,3 @@ diff, text comment), and wiring `compose-preview/main` baselines +
 PR-comment GitHub Actions. The bootstrap installer
 ([`scripts/install.sh`](https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh))
 sets up both skills together.
-
-## Tips
-
-- First render is slow (module compile + renderer bootstrap); later renders
-  reuse Gradle caching and are much faster.
-- Resource changes (`.xml`, `.json`) trigger recompilation and re-render on the
-  next task run.
-- Always visually verify after UI changes — show the user the before and after
-  PNG.
-- Iterate on a single variant first (e.g. `small_round` at 1x font scale), then
-  follow up with fixes for other sizes and scales.
-- Use a coloured border or an overlay `Canvas` when highlighting something
-  specific for the user.
