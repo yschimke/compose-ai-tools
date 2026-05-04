@@ -514,6 +514,12 @@ def test_mcp_data_products() -> None:
             "resources/used did not record the warning color resource",
         )
 
+        # State-restoration audit: today only `recording.probe` is wired as a script event
+        # (the other extension events are advertised with `supported = false` and rejected by
+        # record_preview up front — see compose-ai-tools#714). Drive the click that should
+        # change state and a same-tick probe to ground the verification; once state/lifecycle
+        # extensions ship as `supported = true`, extend the script with the matching markers in
+        # the same `tMs` group.
         recording = client.call_tool(
             "record_preview",
             {
@@ -528,24 +534,9 @@ def test_mcp_data_products() -> None:
                         "pixelY": 24,
                     },
                     {
-                        "tMs": 0,
-                        "kind": "state.save",
-                        "checkpointId": "before-resume",
-                    },
-                    {
-                        "tMs": 250,
-                        "kind": "lifecycle.event",
-                        "lifecycleEvent": "resume",
-                    },
-                    {
-                        "tMs": 250,
-                        "kind": "state.restore",
-                        "checkpointId": "before-resume",
-                    },
-                    {
                         "tMs": 250,
                         "kind": "recording.probe",
-                        "label": "after-restore-same-tick",
+                        "label": "after-click-same-tick",
                     },
                 ],
             },
@@ -557,34 +548,13 @@ def test_mcp_data_products() -> None:
         recording_meta = recording_payloads[-1]
         OUT.joinpath("same-tick-recording.json").write_text(json.dumps(recording_meta, indent=2))
         script_events = recording_meta["scriptEvents"]
-        same_tick = [
-            event
-            for event in script_events
-            if event.get("tMs") == 250
-            and event.get("kind") in {"lifecycle.event", "state.restore", "recording.probe"}
-        ]
-        if [event.get("kind") for event in same_tick] != [
-            "lifecycle.event",
-            "state.restore",
-            "recording.probe",
-        ]:
-            raise AssertionError(
-                "record_preview did not preserve the expected same-tick lifecycle/restore/probe "
-                f"group: {script_events}"
-            )
         assert_any(
-            same_tick,
-            lambda item: item.get("kind") == "recording.probe"
-            and item.get("label") == "after-restore-same-tick"
+            script_events,
+            lambda item: item.get("tMs") == 250
+            and item.get("kind") == "recording.probe"
+            and item.get("label") == "after-click-same-tick"
             and item.get("status") == "applied",
-            "recording.probe at the restore tick was not applied",
-        )
-        assert_any(
-            same_tick,
-            lambda item: item.get("kind") == "state.restore"
-            and item.get("checkpointId") == "before-resume"
-            and item.get("status") in {"applied", "unsupported"},
-            "state.restore at the resume tick did not produce script evidence",
+            "recording.probe at the verification tick was not applied",
         )
     finally:
         client.shutdown()

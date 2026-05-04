@@ -907,12 +907,12 @@ class DaemonMcpServerTest {
             listOf(
               ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence(
                 tMs = 250L,
-                kind = "state.save",
+                kind = "recording.probe",
                 status =
-                  ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+                  ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
                 label = "before-rotate",
                 checkpointId = "checkpoint-1",
-                message = "state checkpoints are not implemented by this daemon",
+                message = "probe marker reached",
               )
             ),
         )
@@ -954,7 +954,7 @@ class DaemonMcpServerTest {
             add(
               buildJsonObject {
                 put("tMs", 250)
-                put("kind", "state.save")
+                put("kind", "recording.probe")
                 put("label", "before-rotate")
                 put("checkpointId", "checkpoint-1")
                 putJsonArray("tags") { add(JsonPrimitive("state-restoration")) }
@@ -988,7 +988,7 @@ class DaemonMcpServerTest {
     assertThat(scriptCall.events[0].pixelX).isEqualTo(120)
     assertThat(scriptCall.events[0].pixelY).isEqualTo(40)
     assertThat(scriptCall.events[1].tMs).isEqualTo(500L)
-    assertThat(scriptCall.events[2].kind).isEqualTo("state.save")
+    assertThat(scriptCall.events[2].kind).isEqualTo("recording.probe")
     assertThat(scriptCall.events[2].label).isEqualTo("before-rotate")
     assertThat(scriptCall.events[2].checkpointId).isEqualTo("checkpoint-1")
     assertThat(scriptCall.events[2].tags).containsExactly("state-restoration")
@@ -1052,9 +1052,9 @@ class DaemonMcpServerTest {
     val scriptEvents = metadata["scriptEvents"]!!.jsonArray
     assertThat(scriptEvents).hasSize(1)
     assertThat(scriptEvents[0].jsonObject["kind"]?.jsonPrimitive?.contentOrNull)
-      .isEqualTo("state.save")
+      .isEqualTo("recording.probe")
     assertThat(scriptEvents[0].jsonObject["status"]?.jsonPrimitive?.contentOrNull)
-      .isEqualTo("unsupported")
+      .isEqualTo("applied")
     assertThat(scriptEvents[0].jsonObject["checkpointId"]?.jsonPrimitive?.contentOrNull)
       .isEqualTo("checkpoint-1")
     assertThat(
@@ -1099,7 +1099,9 @@ class DaemonMcpServerTest {
         },
       )
     assertThat(resp.isError()).isTrue()
-    assertThat(resp.firstTextContent()).contains("invalid events")
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("kind 'scroll' is not a recognised input event")
+    assertThat(msg).contains("not advertised by this daemon")
     // No daemon-side recording session should have been allocated when validation fails.
     assertThat(daemon.recordingStarts).isEmpty()
   }
@@ -1134,6 +1136,52 @@ class DaemonMcpServerTest {
 
     assertThat(resp.isError()).isTrue()
     assertThat(resp.firstTextContent()).contains("not advertised by this daemon")
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
+  fun `record_preview rejects extension events advertised but not yet implemented`() {
+    // The daemon advertises `state.save` in `dataExtensions[].recordingScriptEvents` with
+    // `supported = false` to signal a planned-but-unwired roadmap item. MCP rejects up front so the
+    // agent doesn't watch a quiet `unsupported` evidence trail come back from a recording that
+    // otherwise looks healthy. The daemon-side fallback (returning `unsupported` evidence) stays as
+    // defense-in-depth for direct daemon clients.
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataExtensions =
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "state.save")
+                put("checkpointId", "before")
+              }
+            )
+          }
+        },
+      )
+
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("'state.save'")
+    assertThat(msg).contains("not yet implemented")
+    assertThat(msg).contains("supported=false")
     assertThat(daemon.recordingStarts).isEmpty()
   }
 
