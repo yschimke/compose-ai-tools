@@ -26,9 +26,16 @@ export async function run(): Promise<void> {
     });
 
     const testsRoot = __dirname;
-    const files = await glob("**/*.test.js", { cwd: testsRoot });
+    // E2E mode (COMPOSE_PREVIEW_E2E=1, set by runTest.ts when launched via
+    // `npm run test:e2e`) runs only the slow real-Gradle suite; the fast
+    // suite excludes it. Pattern selection here so each mode's run output
+    // doesn't list "skipped" entries for the other mode's tests.
+    const e2eMode = process.env.COMPOSE_PREVIEW_E2E === "1";
+    const pattern = e2eMode ? "**/e2e.test.js" : "**/*.test.js";
+    const ignore = e2eMode ? [] : ["**/e2e.test.js"];
+    const files = await glob(pattern, { cwd: testsRoot, ignore });
     console.log(
-        `[suite] discovered ${files.length} test file(s) in ${testsRoot}`,
+        `[suite] discovered ${files.length} test file(s) in ${testsRoot} (e2e=${e2eMode})`,
     );
     for (const f of files) {
         const abs = path.resolve(testsRoot, f);
