@@ -14,7 +14,9 @@ import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFindingsPayload
 import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
+import ee.schimke.composeai.renderer.OverlayExtension
 import ee.schimke.composeai.renderer.TouchTargetsExtension
+import java.io.File
 
 /**
  * Seeds a [DataProductStore] with hierarchy + ATF + density (and image artifact when present),
@@ -35,6 +37,8 @@ fun runAccessibilityPostCapturePipeline(
   findings: AccessibilityFindingsPayload,
   density: Float,
   imageArtifact: RenderImageArtifact? = null,
+  outputDirectory: File? = null,
+  isRound: Boolean = false,
   attributes: Map<String, Any?> = emptyMap(),
   extensions: List<PlannedDataExtension> = AccessibilityPostCaptureExtensions.defaults,
   target: DataExtensionTarget? = DataExtensionTarget.Android,
@@ -44,6 +48,15 @@ fun runAccessibilityPostCapturePipeline(
   store.put(AccessibilityDataProducts.Atf, findings)
   store.put(CommonDataProducts.Density, RenderDensity(density))
   imageArtifact?.let { store.put(CommonDataProducts.ImageArtifact, it) }
+
+  // Merge caller attributes with the OverlayExtension contract slots — caller wins on conflict so
+  // tests can override. Folding outputDirectory + isRound into a typed product later (see
+  // RenderDataDirectory / RenderDeviceShape follow-up) lets us drop these named slots.
+  val mergedAttributes = buildMap<String, Any?> {
+    if (outputDirectory != null) put(OverlayExtension.OUTPUT_DIRECTORY_ATTRIBUTE, outputDirectory)
+    put(OverlayExtension.IS_ROUND_ATTRIBUTE, isRound)
+    putAll(attributes)
+  }
 
   val initialProducts =
     buildSet<DataProductKey<*>> {
@@ -88,7 +101,7 @@ fun runAccessibilityPostCapturePipeline(
           previewId = previewId,
           renderMode = null,
           products = store.scopedFor(ext),
-          attributes = attributes,
+          attributes = mergedAttributes,
         )
       )
     } catch (t: Throwable) {
@@ -102,13 +115,12 @@ fun runAccessibilityPostCapturePipeline(
 }
 
 /**
- * Default consumer set for [runAccessibilityPostCapturePipeline]. Currently just
- * [TouchTargetsExtension] — overlay generation still goes through the legacy
- * [AccessibilityImageProcessor] hook on [AccessibilityDataProducer.writeArtifacts] until that path
- * gets folded into the typed graph in a follow-up.
+ * Default consumer set for [runAccessibilityPostCapturePipeline]. Both [TouchTargetsExtension] and
+ * [OverlayExtension] now run through the typed graph; the legacy [AccessibilityImageProcessor]
+ * hook is no longer installed by default and is kept only for embedders with custom processors.
  */
 object AccessibilityPostCaptureExtensions {
-  val defaults: List<PlannedDataExtension> = listOf(TouchTargetsExtension())
+  val defaults: List<PlannedDataExtension> = listOf(TouchTargetsExtension(), OverlayExtension())
 }
 
 /**

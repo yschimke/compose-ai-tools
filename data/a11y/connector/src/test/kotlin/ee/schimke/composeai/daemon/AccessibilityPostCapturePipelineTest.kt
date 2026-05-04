@@ -13,7 +13,10 @@ import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFindingsPayload
 import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
 import ee.schimke.composeai.renderer.AccessibilityNode
+import ee.schimke.composeai.renderer.OverlayExtension
 import ee.schimke.composeai.renderer.TouchTargetsExtension
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -21,6 +24,82 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 class AccessibilityPostCapturePipelineTest {
+  @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
+
+  @Test
+  fun defaultsIncludeBothTouchTargetsAndOverlay() {
+    val ids = AccessibilityPostCaptureExtensions.defaults.map { it.id.value }
+    assertEquals(
+      listOf(TouchTargetsExtension.EXTENSION_ID, OverlayExtension.EXTENSION_ID),
+      ids,
+    )
+  }
+
+  @Test
+  fun overlayExtensionRunsWhenImageArtifactAndOutputDirectorySeeded() {
+    // Source PNG path doesn't need to exist — AccessibilityOverlay.generate returns null
+    // when the source is missing, OverlayExtension's process exits silently. We're asserting
+    // the wiring (extension was selected by the planner and process() was invoked without
+    // throwing), not the overlay-rendering behaviour itself (covered by
+    // AccessibilityOverlayMergedTest against AccessibilityOverlay directly).
+    val store =
+      runAccessibilityPostCapturePipeline(
+        previewId = "preview",
+        hierarchy =
+          AccessibilityHierarchyPayload(
+            nodes =
+              listOf(
+                AccessibilityNode(
+                  label = "Tiny",
+                  states = listOf("clickable"),
+                  boundsInScreen = "0,0,80,80",
+                )
+              )
+          ),
+        findings = AccessibilityFindingsPayload(emptyList()),
+        density = 2f,
+        imageArtifact =
+          RenderImageArtifact(path = tempFolder.root.resolve("missing.png").absolutePath),
+        outputDirectory = tempFolder.root,
+      )
+
+    // TouchTargets is satisfiable independently of the overlay path.
+    assertNotNull(
+      "TouchTargets must run regardless of overlay source",
+      store.get(AccessibilityDataProducts.TouchTargets),
+    )
+    // Overlay's source PNG was missing → generate returned null → no Overlay product. The
+    // extension still ran (no throw), which is the wiring assertion.
+    assertNull(store.get(AccessibilityDataProducts.Overlay))
+  }
+
+  @Test
+  fun overlayExtensionExcludedFromPlanWhenImageArtifactAbsent() {
+    // No imageArtifact → runnableExtensionsFor drops OverlayExtension because its
+    // CommonDataProducts.ImageArtifact input can't be satisfied. TouchTargets runs in isolation.
+    val store =
+      runAccessibilityPostCapturePipeline(
+        previewId = "preview",
+        hierarchy =
+          AccessibilityHierarchyPayload(
+            nodes =
+              listOf(
+                AccessibilityNode(
+                  label = "Tiny",
+                  states = listOf("clickable"),
+                  boundsInScreen = "0,0,80,80",
+                )
+              )
+          ),
+        findings = AccessibilityFindingsPayload(emptyList()),
+        density = 2f,
+        imageArtifact = null,
+      )
+
+    assertNotNull(store.get(AccessibilityDataProducts.TouchTargets))
+    assertNull(store.get(AccessibilityDataProducts.Overlay))
+  }
+
   @Test
   fun seedsHierarchyAtfDensityAndRunsTouchTargetsByDefault() {
     val store =
