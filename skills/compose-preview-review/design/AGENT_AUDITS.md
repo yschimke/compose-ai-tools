@@ -514,6 +514,20 @@ from snapshot-state writes and dirty parameter slots. compose-preview does not
 yet expose DejaVu's `testTag`/source/dirty-bit causality, so name the scoped
 payload evidence and the state/parameter path you found in code.
 
+### State restoration and lifecycle audit
+
+Sample MCP call: `record_preview uri=<preview-uri> events='[{"tMs":0,"kind":"click","pixelX":120,"pixelY":40},{"tMs":200,"kind":"state.save","checkpointId":"before"},{"tMs":250,"kind":"lifecycle.event","lifecycleEvent":"resume"},{"tMs":300,"kind":"state.restore","checkpointId":"before"}]'`
+
+Check:
+
+- The recording metadata includes `scriptEvents` for every state/lifecycle
+  marker.
+- Input events that should change state produce changed frames.
+- `unsupported` script events are reported as tool capability gaps, not app
+  regressions.
+- Do not claim state restoration passed unless the evidence shows applied
+  save/restore lifecycle events and stable restored UI.
+
 ### Failure triage audit
 
 Use this when a preview fails to render or a daemon/CI report says a data

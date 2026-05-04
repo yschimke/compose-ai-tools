@@ -168,6 +168,19 @@ export interface PreviewExtensionCliCommand {
     productKinds?: string[];
 }
 
+export interface DataExtensionDescriptor {
+    id: string;
+    displayName?: string;
+    recordingScriptEvents?: RecordingScriptEventDescriptor[];
+}
+
+export interface RecordingScriptEventDescriptor {
+    id: string;
+    displayName?: string;
+    summary?: string;
+    supported?: boolean;
+}
+
 export interface PreviewPipelineStep {
     id: string;
     displayName?: string;
@@ -240,6 +253,7 @@ export interface InitializeResult {
          * kinds in subscribe/fetch with `DataProductUnknown` (-32020).
          */
         dataProducts: DataProductCapability[];
+        dataExtensions?: DataExtensionDescriptor[];
         previewExtensions?: PreviewExtensionDescriptor[];
         /**
          * INTERACTIVE.md § 9 — `true` when the daemon's host can dispatch
@@ -683,6 +697,8 @@ export interface InteractiveInputParams {
 
 export type RecordingFormat = "apng" | "mp4" | "webm";
 
+export type RecordingScriptEventStatus = "applied" | "unsupported";
+
 export interface RecordingStartParams {
     previewId: string;
     fps?: number;
@@ -704,6 +720,30 @@ export interface RecordingInputParams {
     keyCode?: string;
 }
 
+export interface RecordingScriptEvent {
+    tMs: number;
+    kind: string;
+    pixelX?: number;
+    pixelY?: number;
+    scrollDeltaY?: number;
+    keyCode?: string;
+    label?: string;
+    checkpointId?: string;
+    lifecycleEvent?: string;
+    tags?: string[];
+}
+
+export interface RecordingScriptEvidence {
+    tMs: number;
+    kind: string;
+    status: RecordingScriptEventStatus;
+    label?: string;
+    checkpointId?: string;
+    lifecycleEvent?: string;
+    tags?: string[];
+    message?: string;
+}
+
 export interface RecordingStopParams {
     recordingId: string;
 }
@@ -714,6 +754,7 @@ export interface RecordingStopResult {
     framesDir: string;
     frameWidthPx: number;
     frameHeightPx: number;
+    scriptEvents?: RecordingScriptEvidence[];
 }
 
 export interface RecordingEncodeParams {

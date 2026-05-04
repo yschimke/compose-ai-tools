@@ -2,12 +2,12 @@ package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
-import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
@@ -1127,10 +1127,15 @@ class DaemonMcpServer(
                     "type":"object",
                     "properties":{
                       "tMs":{"type":"integer","description":"Virtual time offset from recording/start, in milliseconds. Must be ≥ 0."},
-                      "kind":{"type":"string","enum":["click","pointerDown","pointerUp","keyDown","keyUp"],"description":"Input event kind. 'click' is Press+Release at the same virtual tMs."},
+                      "kind":{"type":"string","description":"Input event kind (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`, `keyDown`, `keyUp`) or a namespaced data-extension script event id advertised by the daemon, for example `recording.probe` or `state.save`."},
                       "pixelX":{"type":"integer","description":"X coord in image-natural pixel space (the preview's own widthPx)."},
                       "pixelY":{"type":"integer","description":"Y coord in image-natural pixel space."},
-                      "keyCode":{"type":"string","description":"For 'keyDown'/'keyUp' (reserved; v1 dispatch is a no-op)."}
+                      "scrollDeltaY":{"type":"number","description":"For 'rotaryScroll'."},
+                      "keyCode":{"type":"string","description":"For 'keyDown'/'keyUp' (reserved; v1 dispatch is a no-op)."},
+                      "label":{"type":"string","description":"Agent label copied into scriptEvents evidence for probes/checkpoints."},
+                      "checkpointId":{"type":"string","description":"Checkpoint id for state save/restore audit events."},
+                      "lifecycleEvent":{"type":"string","description":"Lifecycle transition for lifecycle script events, e.g. resume, pause, destroy."},
+                      "tags":{"type":"array","items":{"type":"string"},"description":"Optional agent tags copied into scriptEvents evidence."}
                     },
                     "required":["tMs","kind"]
                   }
@@ -1846,6 +1851,17 @@ class DaemonMcpServer(
                     )
                   }
                 }
+                putJsonArray("dataExtensions") {
+                  daemon.dataExtensionDescriptors.forEach { extension ->
+                    add(
+                      json.encodeToJsonElement(
+                        ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
+                          .serializer(),
+                        extension,
+                      )
+                    )
+                  }
+                }
               }
             )
           }
@@ -2344,6 +2360,10 @@ class DaemonMcpServer(
         return errorCallToolResult("record_preview: ${violations.joinToString("; ")}")
       }
     }
+    val scriptKindViolations = validateRecordingScriptKinds(events, daemon)
+    if (scriptKindViolations.isNotEmpty()) {
+      return errorCallToolResult("record_preview: ${scriptKindViolations.joinToString("; ")}")
+    }
     // RECORDING.md § "encoded formats" — when the daemon advertises a non-empty `recordingFormats`
     // capability, reject formats outside the advertised set up front so the agent sees a clean
     // diagnostic instead of waiting on a `recording/encode` round-trip that would only fail.
@@ -2423,6 +2443,24 @@ class DaemonMcpServer(
                   frame.dimensionChangedFromPrevious?.let {
                     put("dimensionChangedFromPrevious", it)
                   }
+                }
+              )
+            }
+          }
+          putJsonArray("scriptEvents") {
+            for (event in stopResult.scriptEvents) {
+              add(
+                buildJsonObject {
+                  put("tMs", event.tMs)
+                  put("kind", event.kind)
+                  put("status", event.status.wireName())
+                  event.label?.let { put("label", it) }
+                  event.checkpointId?.let { put("checkpointId", it) }
+                  event.lifecycleEvent?.let { put("lifecycleEvent", it) }
+                  if (event.tags.isNotEmpty()) {
+                    putJsonArray("tags") { for (tag in event.tags) add(JsonPrimitive(tag)) }
+                  }
+                  event.message?.let { put("message", it) }
                 }
               )
             }
@@ -2565,22 +2603,48 @@ class DaemonMcpServer(
           ?: error("event[$idx] missing or invalid 'tMs'")
       require(tMs >= 0) { "event[$idx] tMs must be ≥ 0; got $tMs" }
       val kindStr = obj["kind"]?.jsonPrimitive?.contentOrNull ?: error("event[$idx] missing 'kind'")
-      val kind =
-        when (kindStr) {
-          "click" -> InteractiveInputKind.CLICK
-          "pointerDown" -> InteractiveInputKind.POINTER_DOWN
-          "pointerUp" -> InteractiveInputKind.POINTER_UP
-          "keyDown" -> InteractiveInputKind.KEY_DOWN
-          "keyUp" -> InteractiveInputKind.KEY_UP
-          else -> error("event[$idx] unknown kind '$kindStr'")
-        }
+      require(kindStr.isNotBlank()) { "event[$idx] kind must not be blank" }
+      if (kindStr !in RECORDING_INPUT_KINDS && !kindStr.contains('.')) {
+        error(
+          "event[$idx] unknown input kind '$kindStr' and extension event ids must be namespaced"
+        )
+      }
       RecordingScriptEvent(
         tMs = tMs,
-        kind = kind,
+        kind = kindStr,
         pixelX = obj["pixelX"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         pixelY = obj["pixelY"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        scrollDeltaY = obj["scrollDeltaY"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
         keyCode = obj["keyCode"]?.jsonPrimitive?.contentOrNull,
+        label = obj["label"]?.jsonPrimitive?.contentOrNull,
+        checkpointId = obj["checkpointId"]?.jsonPrimitive?.contentOrNull,
+        lifecycleEvent = obj["lifecycleEvent"]?.jsonPrimitive?.contentOrNull,
+        tags =
+          (obj["tags"] as? JsonArray)?.mapNotNull { tag -> tag.jsonPrimitive.contentOrNull }
+            ?: emptyList(),
       )
+    }
+  }
+
+  private fun RecordingScriptEventStatus.wireName(): String =
+    when (this) {
+      RecordingScriptEventStatus.APPLIED -> "applied"
+      RecordingScriptEventStatus.UNSUPPORTED -> "unsupported"
+    }
+
+  private fun validateRecordingScriptKinds(
+    events: List<RecordingScriptEvent>,
+    daemon: SupervisedDaemon,
+  ): List<String> {
+    val extensionEventIds =
+      daemon.dataExtensionDescriptors.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
+    return events.mapIndexedNotNull { index, event ->
+      when {
+        event.kind in RECORDING_INPUT_KINDS -> null
+        event.kind in extensionEventIds -> null
+        else ->
+          "event[$index] extension script event '${event.kind}' is not advertised by this daemon"
+      }
     }
   }
 
@@ -3137,5 +3201,8 @@ class DaemonMcpServer(
      * valid arguments without code changes here.
      */
     private const val DEFAULT_OVERLAY_KIND: String = "a11y/overlay"
+
+    private val RECORDING_INPUT_KINDS =
+      setOf("click", "pointerDown", "pointerMove", "pointerUp", "rotaryScroll", "keyDown", "keyUp")
   }
 }

@@ -97,6 +97,94 @@ interface DataExtension<in Request> {
   fun plan(request: Request): PlannedDataExtension?
 }
 
+@Serializable
+data class DataExtensionDescriptor(
+  val id: DataExtensionId,
+  val displayName: String = id.value,
+  val recordingScriptEvents: List<RecordingScriptEventDescriptor> = emptyList(),
+)
+
+@Serializable
+data class RecordingScriptEventDescriptor(
+  val id: String,
+  val displayName: String = id,
+  val summary: String = "",
+  val supported: Boolean = false,
+) {
+  init {
+    require(id.contains('.')) {
+      "Recording script event id '$id' must be namespaced, e.g. '${id}.event'."
+    }
+    require(id.isNotBlank()) { "Recording script event id must not be blank." }
+  }
+}
+
+object RecordingScriptDataExtensions {
+  const val PROBE_EVENT: String = "recording.probe"
+  const val STATE_SAVE_EVENT: String = "state.save"
+  const val STATE_RESTORE_EVENT: String = "state.restore"
+  const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
+  const val LIFECYCLE_EVENT: String = "lifecycle.event"
+
+  val descriptors: List<DataExtensionDescriptor> =
+    listOf(
+      DataExtensionDescriptor(
+        id = DataExtensionId("recording"),
+        displayName = "Recording script markers",
+        recordingScriptEvents =
+          listOf(
+            RecordingScriptEventDescriptor(
+              id = PROBE_EVENT,
+              displayName = "Probe marker",
+              summary = "Records a named point in the recording timeline.",
+              supported = true,
+            )
+          ),
+      ),
+      DataExtensionDescriptor(
+        id = DataExtensionId("state"),
+        displayName = "State restoration script markers",
+        recordingScriptEvents =
+          listOf(
+            RecordingScriptEventDescriptor(
+              id = STATE_SAVE_EVENT,
+              displayName = "Save state checkpoint",
+              summary = "Requests a saved-state checkpoint in a recording script.",
+            ),
+            RecordingScriptEventDescriptor(
+              id = STATE_RESTORE_EVENT,
+              displayName = "Restore state checkpoint",
+              summary = "Requests restoration from a saved-state checkpoint.",
+            ),
+          ),
+      ),
+      DataExtensionDescriptor(
+        id = DataExtensionId("preview"),
+        displayName = "Preview script controls",
+        recordingScriptEvents =
+          listOf(
+            RecordingScriptEventDescriptor(
+              id = PREVIEW_RELOAD_EVENT,
+              displayName = "Reload preview",
+              summary = "Requests preview reload during a recording script.",
+            )
+          ),
+      ),
+      DataExtensionDescriptor(
+        id = DataExtensionId("lifecycle"),
+        displayName = "Lifecycle script controls",
+        recordingScriptEvents =
+          listOf(
+            RecordingScriptEventDescriptor(
+              id = LIFECYCLE_EVENT,
+              displayName = "Lifecycle event",
+              summary = "Requests a lifecycle transition during a recording script.",
+            )
+          ),
+      ),
+    )
+}
+
 data class SimplePlannedDataExtension(
   override val id: DataExtensionId,
   override val hooks: Set<DataExtensionHookKind> = emptySet(),

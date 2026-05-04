@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.protocol
 
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import kotlinx.serialization.EncodeDefault
@@ -140,6 +141,8 @@ data class ServerCapabilities(
   // client side treats absent and `[]` identically). See
   // docs/daemon/DATA-PRODUCTS.md § "Wire surface".
   val dataProducts: List<DataProductCapability> = emptyList(),
+  /** Metadata for registered data extensions, including namespaced recording script events. */
+  val dataExtensions: List<DataExtensionDescriptor> = emptyList(),
   /**
    * Metadata for extension steps the daemon can plan into a render pipeline. Clients should use
    * this for generic UI affordances and validation instead of keying behavior off product strings.
@@ -993,23 +996,55 @@ data class RecordingInputParams(
  */
 @Serializable data class RecordingStartResult(val recordingId: String)
 
-/** One scripted input event on the virtual timeline. */
+@Serializable
+enum class RecordingScriptEventStatus {
+  @SerialName("applied") APPLIED,
+  @SerialName("unsupported") UNSUPPORTED,
+}
+
+/** One scripted input/control event on the virtual timeline. */
 @Serializable
 data class RecordingScriptEvent(
   /** Virtual time offset from `recording/start`, in milliseconds. Must be ≥ 0. */
   val tMs: Long,
-  val kind: InteractiveInputKind,
+  /**
+   * Input event wire value (`click`, `pointerDown`, …) or a namespaced data-extension script event
+   * id advertised in `ServerCapabilities.dataExtensions[].recordingScriptEvents[]`.
+   */
+  val kind: String,
   /** Image-natural pixel coordinates. Same coordinate system as `interactive/input`. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /** For `keyDown` / `keyUp` (no-op in v1; reserved for v2 key dispatch). */
   val keyCode: String? = null,
+  /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
+  val scrollDeltaY: Float? = null,
+  /** Agent-supplied label for probes and state checkpoints. */
+  val label: String? = null,
+  /** Agent-supplied checkpoint id for save/restore state markers. */
+  val checkpointId: String? = null,
+  /** Lifecycle transition name for `kind = lifecycle`, e.g. `resume`, `pause`, or `destroy`. */
+  val lifecycleEvent: String? = null,
+  /** Optional free-form tags copied into script evidence. */
+  val tags: List<String> = emptyList(),
 )
 
 @Serializable
 data class RecordingScriptParams(val recordingId: String, val events: List<RecordingScriptEvent>)
 
 @Serializable data class RecordingStopParams(val recordingId: String)
+
+@Serializable
+data class RecordingScriptEvidence(
+  val tMs: Long,
+  val kind: String,
+  val status: RecordingScriptEventStatus,
+  val label: String? = null,
+  val checkpointId: String? = null,
+  val lifecycleEvent: String? = null,
+  val tags: List<String> = emptyList(),
+  val message: String? = null,
+)
 
 /**
  * Result of `recording/stop`. The daemon has played the script back in virtual time, written one
@@ -1029,6 +1064,8 @@ data class RecordingStopResult(
   val frameWidthPx: Int,
   /** Frame height in pixels, after `scale`. */
   val frameHeightPx: Int,
+  /** Per-script-event execution evidence for input, lifecycle, state, and probe events. */
+  val scriptEvents: List<RecordingScriptEvidence> = emptyList(),
 )
 
 /**

@@ -7,6 +7,9 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.jetbrains.skia.EncodedImageFormat
@@ -171,20 +174,39 @@ class DesktopRecordingSession(
     val durationMs: Long = sortedEvents.maxOfOrNull { it.tMs } ?: 0L
     // Frames are paced as `frameIndex * 1000 / fps` (integer division on the ms side keeps the
     // virtual cadence stable across long timelines; nanoTime stays exact via the 1e9/fps split
-    // below). We always render frame 0 plus one frame per `frameStep` covering the timeline up
-    // to and including `durationMs`. So a 500ms timeline at 30fps produces frames 0..15 (16
-    // frames in total — t = 0, 33, 66, ..., 500ms).
-    val totalFrames = (durationMs * fps / 1000).toInt() + 1
+    // below). We always render frame 0 plus enough frames to drain every event in the timeline.
+    // So a 67ms timeline at 30fps produces frames 0..3 (t = 0, 33, 66, 100ms), and the 67ms event
+    // is dispatched before the final frame instead of silently missing both input and evidence.
+    val totalFrames = ((durationMs * fps + 999L) / 1000L).toInt() + 1
 
     val startNs = System.nanoTime()
     var nextEventIdx = 0
+    val evidence = mutableListOf<RecordingScriptEvidence>()
     for (frameIndex in 0 until totalFrames) {
       val tNanos: Long = frameIndex.toLong() * 1_000_000_000L / fps.toLong()
       val tMs: Long = tNanos / 1_000_000L
 
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        dispatchInput(e.kind, e.pixelX, e.pixelY, tNanos, tMs)
+        val inputKind = e.kind.toInteractiveInputKindOrNull()
+        if (e.kind == RecordingScriptDataExtensions.PROBE_EVENT) {
+          evidence.add(e.appliedEvidence("probe marker reached"))
+        } else if (inputKind == null) {
+          evidence.add(e.unsupportedEvidence("script event kind '${e.kind}' is not implemented"))
+        } else if (
+          inputKind == InteractiveInputKind.KEY_DOWN ||
+            inputKind == InteractiveInputKind.KEY_UP ||
+            inputKind == InteractiveInputKind.ROTARY_SCROLL
+        ) {
+          evidence.add(
+            e.unsupportedEvidence(
+              "key and rotary dispatch are not implemented for desktop recording"
+            )
+          )
+        } else {
+          dispatchInput(inputKind, e.pixelX, e.pixelY, tNanos, tMs)
+          evidence.add(e.appliedEvidence())
+        }
         nextEventIdx++
       }
 
@@ -203,6 +225,7 @@ class DesktopRecordingSession(
       framesDir = framesDir.absolutePath,
       frameWidthPx = frameWidthPx,
       frameHeightPx = frameHeightPx,
+      scriptEvents = evidence,
     )
   }
 
@@ -253,6 +276,32 @@ class DesktopRecordingSession(
       frameHeightPx = frameHeightPx,
     )
   }
+
+  private fun RecordingScriptEvent.appliedEvidence(
+    message: String? = null
+  ): RecordingScriptEvidence =
+    RecordingScriptEvidence(
+      tMs = tMs,
+      kind = kind,
+      status = RecordingScriptEventStatus.APPLIED,
+      label = label,
+      checkpointId = checkpointId,
+      lifecycleEvent = lifecycleEvent,
+      tags = tags,
+      message = message,
+    )
+
+  private fun RecordingScriptEvent.unsupportedEvidence(message: String): RecordingScriptEvidence =
+    RecordingScriptEvidence(
+      tMs = tMs,
+      kind = kind,
+      status = RecordingScriptEventStatus.UNSUPPORTED,
+      label = label,
+      checkpointId = checkpointId,
+      lifecycleEvent = lifecycleEvent,
+      tags = tags,
+      message = message,
+    )
 
   /**
    * Live tick loop body. Runs on the dedicated `compose-ai-daemon-recording-live-<id>` thread.

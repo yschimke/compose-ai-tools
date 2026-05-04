@@ -211,6 +211,7 @@ class DaemonSupervisor(
         // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
         // and `[]` collapse the same way client-side.
         supervised.dataProductCapabilities = result.capabilities.dataProducts
+        supervised.dataExtensionDescriptors = result.capabilities.dataExtensions
         // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
         // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
         // backend will actually apply (instead of silently no-op'ing fields the backend ignores)
@@ -359,6 +360,12 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
    */
   @Volatile
   var backendKind: BackendKind? = null
+    internal set
+
+  @Volatile
+  var dataExtensionDescriptors:
+    List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor> =
+    emptyList()
     internal set
 
   /**

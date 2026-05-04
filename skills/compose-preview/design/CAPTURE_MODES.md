@@ -135,9 +135,29 @@ enough to define the recording duration:
 }
 ```
 
+Scripts can also include audit/control markers:
+
+```json
+{
+  "uri": "compose-preview://<workspace>/<module>/<preview>",
+  "events": [
+    { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
+    { "tMs": 200, "kind": "state.save", "checkpointId": "before" },
+    { "tMs": 250, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+    { "tMs": 300, "kind": "state.restore", "checkpointId": "before" }
+  ]
+}
+```
+
+Always inspect `scriptEvents` in the metadata. Input and `recording.probe`
+events may be `applied`; state/lifecycle markers can be `unsupported` on
+daemons that do not yet drive real saved-state or activity lifecycle
+transitions. Non-input script event ids are namespaced and must be advertised
+under `capabilities.dataExtensions[].recordingScriptEvents[]`.
+
 The response includes `recordingId`, `mimeType`, `sizeBytes`, `frameCount`,
-`durationMs`, `frameWidthPx`, and `frameHeightPx`. Raw frames are also written
-under:
+`durationMs`, `frameWidthPx`, `frameHeightPx`, `frames[]`, and `scriptEvents[]`.
+Raw frames are also written under:
 
 ```text
 <module>/build/compose-previews/daemon-recordings/frames/<recordingId>/frame-00000.png
