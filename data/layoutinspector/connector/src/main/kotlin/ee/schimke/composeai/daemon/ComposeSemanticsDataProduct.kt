@@ -186,7 +186,10 @@ object LayoutInspectorDataProducer {
     previewContext: PreviewContext,
   ) {
     val root = previewContext.inspection.rootForTest as? RootForTest ?: return
-    val layoutRoot = root.semanticsOwner.unmergedRootSemanticsNode.layoutNodeOrNull() ?: return
+    val layoutRoot =
+      LayoutInspectorReflectionFacade.layoutNodeOrNull(
+        root.semanticsOwner.unmergedRootSemanticsNode
+      ) ?: return
     val sources = LayoutSourceIndex(previewContext.inspection.slotTables)
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload =
@@ -200,7 +203,7 @@ object LayoutInspectorDataProducer {
     rootCoordinates: LayoutCoordinates?,
     sources: LayoutSourceIndex,
   ): LayoutInspectorNode {
-    val coordinates = call("getCoordinates") as? LayoutCoordinates
+    val coordinates = LayoutInspectorReflectionFacade.call(this, "getCoordinates") as? LayoutCoordinates
     val rootCoords = rootCoordinates ?: coordinates
     val bounds = coordinates.boundsIn(rootCoords)
     val nodeId = semanticsId()?.toString() ?: identityId()
@@ -224,13 +227,13 @@ object LayoutInspectorDataProducer {
 
   private fun Any.childrenLayoutNodes(): List<Any> =
     sequenceOf("getZSortedChildren", "getChildren\$ui_release", "getFoldedChildren\$ui_release")
-      .mapNotNull { call(it) as? Iterable<*> }
+      .mapNotNull { LayoutInspectorReflectionFacade.call(this, it) as? Iterable<*> }
       .firstOrNull()
       ?.filterNotNull()
       ?: emptyList()
 
   private fun Any.modifierInfo(rootCoordinates: LayoutCoordinates?): List<LayoutInspectorModifier> =
-    (call("getModifierInfo") as? Iterable<*>)
+    (LayoutInspectorReflectionFacade.call(this, "getModifierInfo") as? Iterable<*>)
       ?.filterIsInstance<ModifierInfo>()
       ?.mapNotNull { info -> info.toWireModifier(rootCoordinates) }
       ?: emptyList()
@@ -255,15 +258,14 @@ object LayoutInspectorDataProducer {
   }
 
   private fun Any.constraints(): LayoutInspectorConstraints? {
-    val delegate = call("getLayoutDelegate\$ui_release") ?: return null
-    val constraints = delegate.call("getLastConstraints-DWUhwKw") ?: return null
+    val delegate = LayoutInspectorReflectionFacade.call(this, "getLayoutDelegate\$ui_release") ?: return null
+    val constraints = LayoutInspectorReflectionFacade.call(delegate, "getLastConstraints-DWUhwKw") ?: return null
     val raw = constraintsLong(constraints) ?: return null
-    val minWidth = constraintsStatic("getMinWidth-impl", raw) ?: return null
-    val minHeight = constraintsStatic("getMinHeight-impl", raw) ?: return null
-    val maxWidth = constraintsStatic("getMaxWidth-impl", raw)
-    val maxHeight = constraintsStatic("getMaxHeight-impl", raw)
-    val infinity =
-      Class.forName("androidx.compose.ui.unit.Constraints").getField("Infinity").getInt(null)
+    val minWidth = LayoutInspectorReflectionFacade.constraintsStatic("getMinWidth-impl", raw) ?: return null
+    val minHeight = LayoutInspectorReflectionFacade.constraintsStatic("getMinHeight-impl", raw) ?: return null
+    val maxWidth = LayoutInspectorReflectionFacade.constraintsStatic("getMaxWidth-impl", raw)
+    val maxHeight = LayoutInspectorReflectionFacade.constraintsStatic("getMaxHeight-impl", raw)
+    val infinity = LayoutInspectorReflectionFacade.constraintsInfinity()
     return LayoutInspectorConstraints(
       minWidth = minWidth,
       maxWidth = maxWidth?.takeIf { it != infinity },
@@ -273,13 +275,23 @@ object LayoutInspectorDataProducer {
   }
 
   private fun Any.zIndex(): Float? {
-    val delegate = call("getLayoutDelegate\$ui_release")
-    val measure = delegate?.call("getMeasurePassDelegate\$ui_release")
-    return (measure?.call("getZIndex\$ui_release") as? Float)?.takeIf { it != 0f }
+    val delegate = LayoutInspectorReflectionFacade.call(this, "getLayoutDelegate\$ui_release")
+    val measure =
+      delegate?.let {
+        LayoutInspectorReflectionFacade.call(it, "getMeasurePassDelegate\$ui_release")
+      }
+    return (measure?.let {
+      LayoutInspectorReflectionFacade.call(it, "getZIndex\$ui_release")
+    } as? Float)
+      ?.takeIf { it != 0f }
   }
 
   private fun Any.componentFallback(): String =
-    call("getMeasurePolicy")?.javaClass?.name?.substringAfterLast('.')?.substringBefore('$')
+    LayoutInspectorReflectionFacade.call(this, "getMeasurePolicy")
+      ?.javaClass
+      ?.name
+      ?.substringAfterLast('.')
+      ?.substringBefore('$')
       ?: javaClass.simpleName
 
   private fun LayoutCoordinates?.boundsIn(
@@ -302,12 +314,14 @@ object LayoutInspectorDataProducer {
       )
     }
 
-  private fun Any.semanticsId(): Int? = call("getSemanticsId") as? Int
+  private fun Any.semanticsId(): Int? =
+    LayoutInspectorReflectionFacade.call(this, "getSemanticsId") as? Int
 
-  private fun Any.intProperty(name: String): Int = call(name) as? Int ?: 0
+  private fun Any.intProperty(name: String): Int =
+    LayoutInspectorReflectionFacade.call(this, name) as? Int ?: 0
 
   private fun Any.booleanProperty(name: String, default: Boolean): Boolean =
-    call(name) as? Boolean ?: default
+    LayoutInspectorReflectionFacade.call(this, name) as? Boolean ?: default
 
   private fun Any.identityId(): String =
     "${javaClass.name}@${System.identityHashCode(this).toString(16)}"
@@ -315,16 +329,8 @@ object LayoutInspectorDataProducer {
   private fun constraintsLong(value: Any): Long? =
     when (value) {
       is Long -> value
-      else -> value.call("unbox-impl") as? Long
+      else -> LayoutInspectorReflectionFacade.call(value, "unbox-impl") as? Long
     }
-
-  private fun constraintsStatic(name: String, raw: Long): Int? =
-    runCatching {
-        Class.forName("androidx.compose.ui.unit.Constraints")
-          .getMethod(name, java.lang.Long.TYPE)
-          .invoke(null, raw) as Int
-      }
-      .getOrNull()
 
   private fun Any?.wireValue(): String = when (this) {
     null -> "null"
@@ -333,28 +339,6 @@ object LayoutInspectorDataProducer {
     is Boolean -> toString()
     else -> toString()
   }
-
-  private fun Any.call(name: String): Any? =
-    runCatching {
-        val method = javaClass.findZeroArgMethod(name) ?: return null
-        method.isAccessible = true
-        method.invoke(this)
-      }
-      .getOrNull()
-
-  private fun Class<*>.findZeroArgMethod(name: String): Method? {
-    var current: Class<*>? = this
-    while (current != null) {
-      current.declaredMethods.firstOrNull { it.name == name && it.parameterCount == 0 }?.let {
-        return it
-      }
-      current = current.superclass
-    }
-    return methods.firstOrNull { it.name == name && it.parameterCount == 0 }
-  }
-
-  private fun Any.layoutNodeOrNull(): Any? =
-    call("getLayoutNode\$ui_release") ?: call("getLayoutInfo")
 
   private data class LayoutSource(
     val component: String,
@@ -403,6 +387,48 @@ object LayoutInspectorDataProducer {
       file != null -> file.substringAfterLast('/')
       else -> null
     }
+  }
+}
+
+/**
+ * Facade for layout-inspector access to Compose UI implementation details.
+ *
+ * Layout inspection still needs internal LayoutNode/Constraints members until the renderer captures
+ * a composable extractor model directly. Keep those reflective reads behind this facade so the
+ * producer body stays expressed as ordinary tree/model extraction.
+ */
+internal object LayoutInspectorReflectionFacade {
+  fun call(receiver: Any, name: String): Any? =
+    runCatching {
+        val method = receiver.javaClass.findZeroArgMethod(name) ?: return null
+        method.isAccessible = true
+        method.invoke(receiver)
+      }
+      .getOrNull()
+
+  fun layoutNodeOrNull(semanticsNode: Any): Any? =
+    call(semanticsNode, "getLayoutNode\$ui_release") ?: call(semanticsNode, "getLayoutInfo")
+
+  fun constraintsStatic(name: String, raw: Long): Int? =
+    runCatching {
+        Class.forName("androidx.compose.ui.unit.Constraints")
+          .getMethod(name, java.lang.Long.TYPE)
+          .invoke(null, raw) as Int
+      }
+      .getOrNull()
+
+  fun constraintsInfinity(): Int =
+    Class.forName("androidx.compose.ui.unit.Constraints").getField("Infinity").getInt(null)
+
+  private fun Class<*>.findZeroArgMethod(name: String): Method? {
+    var current: Class<*>? = this
+    while (current != null) {
+      current.declaredMethods.firstOrNull { it.name == name && it.parameterCount == 0 }?.let {
+        return it
+      }
+      current = current.superclass
+    }
+    return methods.firstOrNull { it.name == name && it.parameterCount == 0 }
   }
 }
 

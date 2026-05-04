@@ -198,44 +198,14 @@ fun themePayloadFromPreviewContext(
   fallbackTypography: Typography?,
   fallbackShapes: Shapes?,
 ): ThemePayload? {
-  val groups =
-    context.inspection.slotTables
-      .asSequence()
-      .filterIsInstance<CompositionData>()
-      .flatMap { data -> data.compositionGroups.asSequence() }
-      .flatMap { group -> group.flattenGroups().asSequence() }
-      .toList()
-  val materialThemeCalls = groups.filter { group ->
-    group.sourceInfo?.startsWith("C(MaterialTheme)") == true
-  }
-  val namedMaterialThemeCalls = groups.filter { group ->
-    group.sourceInfo?.contains("MaterialTheme") == true &&
-      group.sourceInfo?.contains("CaptureMaterialTheme") != true
-  }
-
-  fun payloadFromGroups(groups: List<CompositionGroup>): ThemePayload? {
-    for (group in groups.asReversed()) {
-      val values = group.data.toList()
-      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
-      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
-      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
-      return themePayloadFromThemeObjects(
-        colorSource = colorSource,
-        typographySource = typographySource,
-        shapesSource = shapesSource,
-        fallbackTypography = fallbackTypography,
-        fallbackShapes = fallbackShapes,
-      )
+  MaterialThemeSlotTableExtractor.payloadFromSlotTables(
+      slotTables = context.inspection.slotTables,
+      fallbackTypography = fallbackTypography,
+      fallbackShapes = fallbackShapes,
+    )
+    ?.let {
+      return it
     }
-    return null
-  }
-
-  payloadFromGroups(materialThemeCalls)?.let {
-    return it
-  }
-  payloadFromGroups(namedMaterialThemeCalls)?.let {
-    return it
-  }
   return context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload
 }
 
@@ -302,11 +272,8 @@ fun typographyTokens(source: Any?): Map<String, TypographyToken> =
         "labelSmall" to source.labelSmall.token(),
       )
     else ->
-      linkedMapOf<String, TypographyToken>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source)
-          if (value is TextStyle) tokens[method.propertyName()] = value.token()
-        }
+      ThemeTokenReflectionFacade.readTextStyleProperties(source).mapValues { (_, value) ->
+        value.token()
       }
   }
 
@@ -322,46 +289,135 @@ fun shapeTokens(source: Any?): Map<String, String> =
         "extraLarge" to source.extraLarge.toString(),
       )
     else ->
-      linkedMapOf<String, String>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source) ?: continue
-          if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
-            tokens[method.propertyName()] = value.toString()
-          }
-        }
+      ThemeTokenReflectionFacade.readShapeLikeProperties(source).mapValues { (_, value) ->
+        value.toString()
       }
   }
 
 private fun reflectedColorTokens(source: Any): Map<String, String> =
-  linkedMapOf<String, String>().also { tokens ->
-    for (method in source.javaClass.readableNoArgMethods()) {
-      val name = method.propertyName()
-      val value = method.invokeOrNull(source)
-      when (value) {
-        is Color -> tokens[name] = value.hexArgb()
-        is Long ->
-          if (method.returnType == java.lang.Long.TYPE)
-            tokens[name] = Color(value.toULong()).hexArgb()
-      }
+  ThemeTokenReflectionFacade.readColorProperties(source).mapValues { (_, value) ->
+    when (value) {
+      is Color -> value.hexArgb()
+      is Long -> Color(value.toULong()).hexArgb()
+      else -> error("Unsupported color token value ${value::class.java.name}")
     }
   }
 
-private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
-  method.parameterCount == 0 &&
-    method.name.startsWith("get") &&
-    method.name != "getClass" &&
-    method.returnType != java.lang.Void.TYPE
+/**
+ * Facade for the reflection fallback used when Material tokens are represented by backend/internal
+ * token objects rather than public Material3 [ColorScheme], [Typography], or [Shapes] instances.
+ *
+ * The normal authoring path should stay composable and strongly typed. Reflection is deliberately
+ * isolated here so callers can read theme tokens through small, stable maps.
+ */
+internal object ThemeTokenReflectionFacade {
+  fun readColorProperties(source: Any): Map<String, Any> =
+    linkedMapOf<String, Any>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val name = method.propertyName()
+        val value = method.invokeOrNull(source)
+        when (value) {
+          is Color -> tokens[name] = value
+          is Long -> if (method.returnType == java.lang.Long.TYPE) tokens[name] = value
+        }
+      }
+    }
+
+  fun readTextStyleProperties(source: Any): Map<String, TextStyle> =
+    linkedMapOf<String, TextStyle>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val value = method.invokeOrNull(source)
+        if (value is TextStyle) tokens[method.propertyName()] = value
+      }
+    }
+
+  fun readShapeLikeProperties(source: Any): Map<String, Any> =
+    linkedMapOf<String, Any>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val value = method.invokeOrNull(source) ?: continue
+        if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
+          tokens[method.propertyName()] = value
+        }
+      }
+    }
+
+  private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
+    method.parameterCount == 0 &&
+      method.name.startsWith("get") &&
+      method.name != "getClass" &&
+      method.returnType != java.lang.Void.TYPE
+  }
+
+  private fun Method.invokeOrNull(receiver: Any): Any? =
+    runCatching {
+        isAccessible = true
+        invoke(receiver)
+      }
+      .getOrNull()
+
+  private fun Method.propertyName(): String =
+    name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
 }
 
-private fun Method.invokeOrNull(receiver: Any): Any? =
-  runCatching {
-      isAccessible = true
-      invoke(receiver)
+/**
+ * Facade for Compose slot-table inspection used as a fallback when a composable extractor did not
+ * publish [MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY]. New extensions should prefer composable extractors
+ * that read CompositionLocals directly.
+ */
+internal object MaterialThemeSlotTableExtractor {
+  fun payloadFromSlotTables(
+    slotTables: List<Any>,
+    fallbackTypography: Typography?,
+    fallbackShapes: Shapes?,
+  ): ThemePayload? {
+    val groups =
+      slotTables
+        .asSequence()
+        .filterIsInstance<CompositionData>()
+        .flatMap { data -> data.compositionGroups.asSequence() }
+        .flatMap { group -> group.flattenGroups().asSequence() }
+        .toList()
+    val materialThemeCalls = groups.filter { group ->
+      group.sourceInfo?.startsWith("C(MaterialTheme)") == true
     }
-    .getOrNull()
+    val namedMaterialThemeCalls = groups.filter { group ->
+      group.sourceInfo?.contains("MaterialTheme") == true &&
+        group.sourceInfo?.contains("CaptureMaterialTheme") != true
+    }
 
-private fun Method.propertyName(): String =
-  name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
+    payloadFromGroups(materialThemeCalls, fallbackTypography, fallbackShapes)?.let {
+      return it
+    }
+    payloadFromGroups(namedMaterialThemeCalls, fallbackTypography, fallbackShapes)?.let {
+      return it
+    }
+    return null
+  }
+
+  private fun payloadFromGroups(
+    groups: List<CompositionGroup>,
+    fallbackTypography: Typography?,
+    fallbackShapes: Shapes?,
+  ): ThemePayload? {
+    for (group in groups.asReversed()) {
+      val values = group.data.toList()
+      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
+      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
+      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
+      return themePayloadFromThemeObjects(
+        colorSource = colorSource,
+        typographySource = typographySource,
+        shapesSource = shapesSource,
+        fallbackTypography = fallbackTypography,
+        fallbackShapes = fallbackShapes,
+      )
+    }
+    return null
+  }
+
+  private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
+    listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
+}
 
 fun Color.hexArgb(): String = "#%08X".format(toArgb())
 
@@ -377,6 +433,3 @@ private fun TextStyle.token(): TypographyToken =
     letterSpacing = letterSpacing.takeIf { it.isSpecified }?.value,
     letterSpacingUnit = letterSpacing.takeIf { it.isSpecified }?.type?.toString(),
   )
-
-private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
-  listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
