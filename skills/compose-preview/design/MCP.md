@@ -54,7 +54,7 @@ install` does three things behind the scenes:
 1. Runs `composePreviewDaemonStart` for every module that applies the plugin,
    so each `<module>/build/compose-previews/daemon-launch.json` exists.
 2. Patches each descriptor's `enabled` flag to `true`. (The Gradle DSL knob
-   `composePreview.experimental.daemon { enabled = true }` is intentionally
+   `composePreview.daemon { enabled = true }` is intentionally
    not propagated via `-P`, so the on-disk patch is the canonical way to flip
    it from outside the build script.)
 3. Runs `discoverPreviews` so `previews.json` sits alongside.

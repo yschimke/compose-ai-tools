@@ -14,7 +14,6 @@ import {
 import { DaemonLaunchDescriptor } from "./daemonProtocol";
 
 const SETTING_ENABLED = "daemon.enabled";
-const LEGACY_SETTING_ENABLED = "experimental.daemon.enabled";
 
 /**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
@@ -45,14 +44,10 @@ export class DaemonGate {
     isEnabled(): boolean {
         const config = vscode.workspace.getConfiguration("composePreview");
         const current = config.inspect<boolean>(SETTING_ENABLED);
-        const legacy = config.inspect<boolean>(LEGACY_SETTING_ENABLED);
         const value =
             current?.workspaceFolderValue ??
             current?.workspaceValue ??
             current?.globalValue ??
-            legacy?.workspaceFolderValue ??
-            legacy?.workspaceValue ??
-            legacy?.globalValue ??
             true;
         if (!value && !this.warnedUserDisabled) {
             this.warnedUserDisabled = true;

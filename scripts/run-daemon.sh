@@ -24,12 +24,12 @@
 # (PROTOCOL.md § 1). Send `shutdown` then `exit` JSON-RPC requests, or close
 # stdin, to terminate the daemon.
 #
-# The DaemonExtension `enabled` flag defaults to false; when the descriptor
+# The DaemonExtension `enabled` flag defaults to true; when the descriptor
 # reports `enabled: false` we still spawn the JVM (the rest of the
 # descriptor's fields are populated honestly per DaemonClasspathDescriptor
 # kdoc) and print a one-line note on stderr. Flip
-# `composePreview { experimental { daemon { enabled = true } } }` in the
-# module's build script to silence the note.
+# `composePreview { daemon { enabled = true } }` in the module's build script
+# to silence the note.
 #
 # Requires: bash, python3 (for JSON), the bundled ./gradlew.
 
@@ -92,7 +92,7 @@ with open(sys.argv[1]) as f:
 if not d.get("enabled"):
     print(
         "[run-daemon] note: descriptor enabled=false; spawning anyway "
-        "(set composePreview.experimental.daemon.enabled = true to silence)",
+        "(set composePreview.daemon.enabled = true to silence)",
         file=sys.stderr,
     )
 java = d.get("javaLauncher") or "java"

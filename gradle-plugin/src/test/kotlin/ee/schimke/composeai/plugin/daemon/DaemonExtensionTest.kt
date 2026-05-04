@@ -30,18 +30,6 @@ class DaemonExtensionTest {
   }
 
   @Test
-  fun `daemon block is reachable via legacy experimental namespace`() {
-    val project = ProjectBuilder.builder().build()
-    val experimental = project.objects.newInstance(ExperimentalExtension::class.java)
-
-    // The action-form configuration entry point — the shape consumers will
-    // type in build scripts.
-    experimental.daemon { enabled.set(true) }
-
-    assertThat(experimental.daemon.enabled.get()).isTrue()
-  }
-
-  @Test
   fun `daemon block is reachable via top-level composePreview namespace`() {
     val project = ProjectBuilder.builder().build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
