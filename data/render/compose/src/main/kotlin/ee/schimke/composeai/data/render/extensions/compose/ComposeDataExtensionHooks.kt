@@ -1,6 +1,7 @@
 package ee.schimke.composeai.data.render.extensions.compose
 
 import androidx.compose.runtime.Composable
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
@@ -43,6 +44,41 @@ class RecordingExtensionCompositionSink : ExtensionCompositionSink {
 
 interface AroundComposableHook : PlannedDataExtension {
   @Composable fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit)
+}
+
+/**
+ * Convenience base for the common case where an extension is just a composable wrapper.
+ *
+ * Use this for extensions like device background or theme overrides: the extension metadata
+ * declares that it participates as [DataExtensionHookKind.AroundComposable], and the implementation
+ * stays shaped like ordinary Compose code.
+ *
+ * ```kotlin
+ * class DeviceBackgroundExtension(
+ *   private val background: Color,
+ * ) : AroundComposableExtension(DataExtensionId("render-device-background")) {
+ *   @Composable
+ *   override fun AroundComposable(content: @Composable () -> Unit) {
+ *     Box(Modifier.background(background)) {
+ *       content()
+ *     }
+ *   }
+ * }
+ * ```
+ */
+abstract class AroundComposableExtension(
+  override val id: DataExtensionId,
+  override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
+) : AroundComposableHook {
+  final override val hooks: Set<DataExtensionHookKind> =
+    setOf(DataExtensionHookKind.AroundComposable)
+
+  @Composable
+  final override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    AroundComposable(content)
+  }
+
+  @Composable abstract fun AroundComposable(content: @Composable () -> Unit)
 }
 
 interface ComposableExtractorHook : PlannedDataExtension {
