@@ -7,6 +7,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataExtensionTarget
 import ee.schimke.composeai.data.render.extensions.DataProductKey
+import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 
@@ -39,8 +40,9 @@ data class AccessibilityAnalysis(
 /**
  * Default binding for [AccessibilityHierarchyExtractor]: invokes it after the bitmap is captured
  * and emits the typed products into the store. Reads the captured `View` root from
- * `attributes[VIEW_ROOT_ATTRIBUTE]`, which the host populates from its own platform handle (the
- * daemon's RenderEngine has the View, the Robolectric Test runner has it via `ViewRootForTest`).
+ * [AccessibilityHierarchyContextKeys.ViewRoot] — the host populates it from its own platform
+ * handle (the daemon's RenderEngine has the View directly; the Robolectric test runner gets it
+ * via `ViewRootForTest`).
  *
  * `targets = {Android}` — a future Compose Multiplatform Desktop hierarchy producer would target
  * `{Desktop}` and emit the same product keys; the planner's target filter selects exactly one.
@@ -55,9 +57,7 @@ class AccessibilityHierarchyExtension : PostCaptureProcessor {
   override val targets: Set<DataExtensionTarget> = setOf(DataExtensionTarget.Android)
 
   override fun process(context: ExtensionPostCaptureContext) {
-    val view =
-      context.attributes[VIEW_ROOT_ATTRIBUTE] as? View
-        ?: error("AccessibilityHierarchyExtension requires '$VIEW_ROOT_ATTRIBUTE' in attributes.")
+    val view = context.require(AccessibilityHierarchyContextKeys.ViewRoot)
     val analysis = AccessibilityHierarchyExtractor.extract(context.previewId, view)
     context.products.put(AccessibilityDataProducts.Hierarchy, analysis.hierarchy)
     context.products.put(AccessibilityDataProducts.Atf, analysis.findings)
@@ -65,6 +65,15 @@ class AccessibilityHierarchyExtension : PostCaptureProcessor {
 
   companion object {
     const val EXTENSION_ID: String = "a11y"
-    const val VIEW_ROOT_ATTRIBUTE: String = "a11y-hierarchy.viewRoot"
   }
+}
+
+/**
+ * Typed keys this extension reads from [ExtensionPostCaptureContext.data]. The Android-platform
+ * binding lives here (where [View] is in scope); a future `:data-a11y-hierarchy-desktop` would
+ * declare its own `ViewRoot` key with the Desktop equivalent type.
+ */
+object AccessibilityHierarchyContextKeys {
+  val ViewRoot: ExtensionContextKey<View> =
+    ExtensionContextKey(name = "a11y-hierarchy.viewRoot", type = View::class.java)
 }

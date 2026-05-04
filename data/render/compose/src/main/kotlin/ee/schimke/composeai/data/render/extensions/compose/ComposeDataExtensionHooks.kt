@@ -12,6 +12,8 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataProductSink
 import ee.schimke.composeai.data.render.extensions.DataProductStore
+import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 
@@ -46,37 +48,6 @@ data class ExtensionComposeContext(
   fun <T : Any> state(key: ExtensionStateKey<T>): State<T>? = states.state(key)
 
   fun <T : Any> value(key: ExtensionStateKey<T>): T? = states.value(key)
-}
-
-data class ExtensionContextKey<T : Any>(val name: String, val type: Class<T>) {
-  init {
-    require(name.isNotBlank()) { "Extension context key name must not be blank." }
-  }
-}
-
-data class ExtensionContextValue<T : Any>(val key: ExtensionContextKey<T>, val value: T)
-
-infix fun <T : Any> ExtensionContextKey<T>.provides(value: T): ExtensionContextValue<T> =
-  ExtensionContextValue(this, value)
-
-class ExtensionContextData
-private constructor(private val values: Map<ExtensionContextKey<*>, Any>) {
-  fun <T : Any> get(key: ExtensionContextKey<T>): T? {
-    val value = values[key] ?: return null
-    return key.type.cast(value)
-  }
-
-  fun <T : Any> require(key: ExtensionContextKey<T>): T =
-    get(key) ?: error("Extension context value '${key.name}' is not available.")
-
-  fun contains(key: ExtensionContextKey<*>): Boolean = key in values
-
-  companion object {
-    val Empty: ExtensionContextData = ExtensionContextData(emptyMap())
-
-    fun of(vararg values: ExtensionContextValue<*>): ExtensionContextData =
-      ExtensionContextData(values.associate { it.key to it.value })
-  }
 }
 
 fun interface ExtensionSlotTables {

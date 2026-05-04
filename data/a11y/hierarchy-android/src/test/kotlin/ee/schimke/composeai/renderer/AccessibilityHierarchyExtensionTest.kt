@@ -23,7 +23,7 @@ class AccessibilityHierarchyExtensionTest {
   }
 
   @Test
-  fun failsLoudlyWhenViewRootAttributeMissing() {
+  fun failsLoudlyWhenViewRootContextKeyMissing() {
     val store = RecordingDataProductStore()
 
     val ex =
@@ -39,7 +39,7 @@ class AccessibilityHierarchyExtensionTest {
       }
     assertTrue(
       ex.message!!,
-      ex.message!!.contains(AccessibilityHierarchyExtension.VIEW_ROOT_ATTRIBUTE),
+      ex.message!!.contains(AccessibilityHierarchyContextKeys.ViewRoot.name),
     )
   }
 
