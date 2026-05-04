@@ -13,13 +13,22 @@
 // queries below resolve.
 
 import { getVsCodeApi } from "../shared/vscode";
+import { previewStore } from "./previewStore";
 
 export function setupPreviewBehavior(
     initialEarlyFeaturesEnabled: boolean,
 ): void {
     const vscode = getVsCodeApi();
     const state = vscode.getState() || { filters: {} };
-    let earlyFeaturesEnabled = initialEarlyFeaturesEnabled;
+    // `earlyFeaturesEnabled` lives in `previewStore` so future
+    // components can subscribe to it without going through this
+    // closure. Reads inside this file go through the local helper for
+    // terseness; writes go straight to `previewStore.setState`.
+    previewStore.setState({
+        earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
+    });
+    const earlyFeatures = (): boolean =>
+        previewStore.getState().earlyFeaturesEnabled;
 
     const grid = document.getElementById("preview-grid");
     const focusInspector = document.getElementById("focus-inspector");
@@ -152,15 +161,15 @@ export function setupPreviewBehavior(
     // resolve fine.
 
     function applyEarlyFeatureVisibility() {
-        btnDiffHead.hidden = !earlyFeaturesEnabled;
-        btnDiffMain.hidden = !earlyFeaturesEnabled;
+        btnDiffHead.hidden = !earlyFeatures();
+        btnDiffMain.hidden = !earlyFeatures();
         btnA11yOverlay.hidden =
-            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
+            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
         btnRecording.hidden =
-            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
+            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
         recordingFormat.hidden =
-            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
-        if (!earlyFeaturesEnabled) {
+            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
+        if (!earlyFeatures()) {
             focusInspector.hidden = true;
         }
     }
@@ -243,9 +252,9 @@ export function setupPreviewBehavior(
 
     function applyRecordingButtonState() {
         const inFocus = filterToolbar.getLayoutValue() === "focus";
-        btnRecording.hidden = !earlyFeaturesEnabled || !inFocus;
-        recordingFormat.hidden = !earlyFeaturesEnabled || !inFocus;
-        if (!earlyFeaturesEnabled || !inFocus) {
+        btnRecording.hidden = !earlyFeatures() || !inFocus;
+        recordingFormat.hidden = !earlyFeatures() || !inFocus;
+        if (!earlyFeatures() || !inFocus) {
             btnRecording.setAttribute("aria-pressed", "false");
             btnRecording.classList.remove("recording-on");
             recordingFormat.disabled = true;
@@ -274,8 +283,8 @@ export function setupPreviewBehavior(
     // tracks whether the currently focused preview has the overlay subscription on.
     function applyA11yOverlayButtonState() {
         const inFocus = filterToolbar.getLayoutValue() === "focus";
-        btnA11yOverlay.hidden = !earlyFeaturesEnabled || !inFocus;
-        if (!earlyFeaturesEnabled || !inFocus) {
+        btnA11yOverlay.hidden = !earlyFeatures() || !inFocus;
+        if (!earlyFeatures() || !inFocus) {
             btnA11yOverlay.setAttribute("aria-pressed", "false");
             return;
         }
@@ -294,7 +303,7 @@ export function setupPreviewBehavior(
     // tears down immediately rather than waiting for a next render. When turning ON for a
     // different preview, first turn the previous one off so the wire stays clean.
     function toggleA11yOverlay() {
-        if (!earlyFeaturesEnabled) return;
+        if (!earlyFeatures()) return;
         if (filterToolbar.getLayoutValue() !== "focus") return;
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
@@ -438,7 +447,7 @@ export function setupPreviewBehavior(
     }
 
     function toggleRecording() {
-        if (!earlyFeaturesEnabled) return;
+        if (!earlyFeatures()) return;
         if (filterToolbar.getLayoutValue() !== "focus") return;
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
@@ -850,7 +859,7 @@ export function setupPreviewBehavior(
             const visible = getVisibleCards();
             const card = mode === "focus" ? visible[focusIndex] : null;
             if (!card || card.dataset.previewId !== a11yOverlayPreviewId) {
-                if (earlyFeaturesEnabled) {
+                if (earlyFeatures()) {
                     vscode.postMessage({
                         command: "setA11yOverlay",
                         previewId: a11yOverlayPreviewId,
@@ -928,8 +937,8 @@ export function setupPreviewBehavior(
 
     function renderFocusInspector(card) {
         focusInspector.innerHTML = "";
-        focusInspector.hidden = !earlyFeaturesEnabled || !card;
-        if (!earlyFeaturesEnabled || !card) return;
+        focusInspector.hidden = !earlyFeatures() || !card;
+        if (!earlyFeatures() || !card) return;
         const previewId = card.dataset.previewId;
         const p = allPreviews.find((pp) => pp.id === previewId);
         if (!previewId || !p) return;
@@ -1236,7 +1245,7 @@ export function setupPreviewBehavior(
     // resolve the comparison anchor (HEAD = latest archived render,
     // main = latest archived render on the main branch).
     function requestFocusedDiff(against) {
-        if (!earlyFeaturesEnabled) return;
+        if (!earlyFeatures()) return;
         if (filterToolbar.getLayoutValue() !== "focus") return;
         const visible = getVisibleCards();
         const card = visible[focusIndex];
@@ -2513,7 +2522,7 @@ export function setupPreviewBehavior(
         // the new render without clicking — symmetric with the
         // compose-preview/main ref watcher's auto-refresh on the right anchor.
         const openDiff = container.querySelector(".preview-diff-overlay");
-        if (earlyFeaturesEnabled && openDiff) {
+        if (earlyFeatures() && openDiff) {
             const against = openDiff.dataset.against;
             if (against === "head" || against === "main") {
                 showDiffOverlay(card, against, null, null);
@@ -3001,7 +3010,7 @@ export function setupPreviewBehavior(
             // showMessage is handled by <message-banner>.
 
             case "previewDiffReady": {
-                if (!earlyFeaturesEnabled) break;
+                if (!earlyFeatures()) break;
                 const card = document.getElementById(
                     "preview-" + sanitizeId(msg.previewId),
                 );
@@ -3020,7 +3029,7 @@ export function setupPreviewBehavior(
                 break;
             }
             case "previewDiffError": {
-                if (!earlyFeaturesEnabled) break;
+                if (!earlyFeatures()) break;
                 const card = document.getElementById(
                     "preview-" + sanitizeId(msg.previewId),
                 );
@@ -3034,7 +3043,7 @@ export function setupPreviewBehavior(
                 break;
             }
             case "focusAndDiff": {
-                if (!earlyFeaturesEnabled) break;
+                if (!earlyFeatures()) break;
                 const card = document.getElementById(
                     "preview-" + sanitizeId(msg.previewId),
                 );
@@ -3098,7 +3107,7 @@ export function setupPreviewBehavior(
                 break;
             }
             case "previewMainRefChanged": {
-                if (!earlyFeaturesEnabled) break;
+                if (!earlyFeatures()) break;
                 // compose-preview/main moved — re-issue any open vs-main
                 // diff overlay so the user sees the new bytes without
                 // clicking. Other diffs (HEAD, current, previous) are
@@ -3121,8 +3130,8 @@ export function setupPreviewBehavior(
                 break;
             }
             case "setEarlyFeatures": {
-                earlyFeaturesEnabled = !!msg.enabled;
-                if (!earlyFeaturesEnabled) {
+                previewStore.setState({ earlyFeaturesEnabled: !!msg.enabled });
+                if (!earlyFeatures()) {
                     document
                         .querySelectorAll(".preview-diff-overlay")
                         .forEach((overlay) => overlay.remove());
