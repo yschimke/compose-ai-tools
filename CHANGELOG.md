@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.9.2](https://github.com/yschimke/compose-ai-tools/compare/v0.9.1...v0.9.2) (2026-05-04)
+
+
+### Features
+
+* **a11y:** hierarchy-android producer in its own small module ([#724](https://github.com/yschimke/compose-ai-tools/issues/724)) ([99e5148](https://github.com/yschimke/compose-ai-tools/commit/99e514843cd2f9034ccae3a5a0fc0c5aad7ce1dc))
+* **a11y:** OverlayExtension as 3-input PostCaptureProcessor ([#719](https://github.com/yschimke/compose-ai-tools/issues/719)) ([489b756](https://github.com/yschimke/compose-ai-tools/commit/489b756fa3a48d4feb752acfe0966f9194c52df6))
+* **a11y:** OverlayExtension runs through the typed pipeline ([#732](https://github.com/yschimke/compose-ai-tools/issues/732)) ([720fe49](https://github.com/yschimke/compose-ai-tools/commit/720fe492de8831a376fe6f60fa6f5a6c1572c738))
+* **a11y:** route TouchTargets through typed pipeline at runtime ([#726](https://github.com/yschimke/compose-ai-tools/issues/726)) ([44cbbb4](https://github.com/yschimke/compose-ai-tools/commit/44cbbb415362d5391fefdb1a80a75b88387cc88a))
+* **a11y:** TouchTargetsExtension via new PostCaptureProcessor hook ([#717](https://github.com/yschimke/compose-ai-tools/issues/717)) ([0aa157c](https://github.com/yschimke/compose-ai-tools/commit/0aa157cf8eebc57bfa1e734cf0dcf5ba7fbb9c68))
+* **a11y:** wire 11 more a11y.action.* dispatchers via SemanticsActions ([#738](https://github.com/yschimke/compose-ai-tools/issues/738)) ([7876d19](https://github.com/yschimke/compose-ai-tools/commit/7876d19f7171393d2f8aa78e83ccdc1505aef588))
+* **a11y:** wire a11y.action.click end-to-end through SemanticsActions.OnClick ([#734](https://github.com/yschimke/compose-ai-tools/issues/734)) ([8523180](https://github.com/yschimke/compose-ai-tools/commit/8523180602e74c010d13418e760f844e6c8d170c))
+* **a11y:** wire AccessibilityHierarchyExtension on both render paths ([#751](https://github.com/yschimke/compose-ai-tools/issues/751)) ([8dd4421](https://github.com/yschimke/compose-ai-tools/commit/8dd4421ba2592f658128ae1822a9c4fe5ae60a28))
+* add device background around composable hook ([#699](https://github.com/yschimke/compose-ai-tools/issues/699)) ([90a1ae4](https://github.com/yschimke/compose-ai-tools/commit/90a1ae4b3da958b597d39b31271aa7a37bf76845))
+* add device background preview extension ([#682](https://github.com/yschimke/compose-ai-tools/issues/682)) ([0451390](https://github.com/yschimke/compose-ai-tools/commit/04513901a48c591cd01c3f71d842041eacfb21f5))
+* add device background theme capture facade ([#710](https://github.com/yschimke/compose-ai-tools/issues/710)) ([24e4015](https://github.com/yschimke/compose-ai-tools/commit/24e4015aa985e141758ee86411bf888450bc2653))
+* add device clip around composable hook ([#700](https://github.com/yschimke/compose-ai-tools/issues/700)) ([b1e7161](https://github.com/yschimke/compose-ai-tools/commit/b1e716160da7dccd62eef86b90f2819df371836d))
+* add layout inspector capture context ([#709](https://github.com/yschimke/compose-ai-tools/issues/709)) ([dc0c2dc](https://github.com/yschimke/compose-ai-tools/commit/dc0c2dc6fc7d4055e1c5bebfc535afe44d7a1da8))
+* add material theme preview overrides ([#683](https://github.com/yschimke/compose-ai-tools/issues/683)) ([1ce7959](https://github.com/yschimke/compose-ai-tools/commit/1ce7959e1ed12a553ec8ee7993f198e14c1884e2))
+* add scroll gif frame driver hook ([#703](https://github.com/yschimke/compose-ai-tools/issues/703)) ([b62e030](https://github.com/yschimke/compose-ai-tools/commit/b62e030904a42a60142f2e6f8661ebcccb058388))
+* add theme token capture facade ([#714](https://github.com/yschimke/compose-ai-tools/issues/714)) ([2c64548](https://github.com/yschimke/compose-ai-tools/commit/2c64548f720cca295efbe3f73a6981e4cf00d80e))
+* **daemon:** wire lifecycle.event as a host-owned recording-script extension ([#741](https://github.com/yschimke/compose-ai-tools/issues/741)) ([d2f7ef2](https://github.com/yschimke/compose-ai-tools/commit/d2f7ef2b01ef63e78b20878089980ecd224c86aa))
+* **daemon:** wire preview.reload via key(...) invalidation ([#742](https://github.com/yschimke/compose-ai-tools/issues/742)) ([74ac182](https://github.com/yschimke/compose-ai-tools/commit/74ac182d396d6435d1a76db0748bdf97fb79f2f0))
+* **daemon:** wire state.recreate via SaveableStateRegistry snapshot+restore ([#744](https://github.com/yschimke/compose-ai-tools/issues/744)) ([eec9948](https://github.com/yschimke/compose-ai-tools/commit/eec99487906ad9055ee06ee6d29c58db5f287719))
+* **daemon:** wire state.save / state.restore with named checkpoints ([#749](https://github.com/yschimke/compose-ai-tools/issues/749)) ([94f96d8](https://github.com/yschimke/compose-ai-tools/commit/94f96d8b9aeaa055f858316cf749295be4b6f4ee))
+* **extensions:** typed context keys for non-product hook inputs ([#739](https://github.com/yschimke/compose-ai-tools/issues/739)) ([872f723](https://github.com/yschimke/compose-ai-tools/commit/872f7235641f5b25ac4c2605df134a03a9afa9ba))
+* **extensions:** typed runtime contract for data extensions ([#716](https://github.com/yschimke/compose-ai-tools/issues/716)) ([6a57253](https://github.com/yschimke/compose-ai-tools/commit/6a57253132e735cb890f3c5b6f752addc5250d87))
+
+
+### Bug Fixes
+
+* **a11y:** plan only transitively-runnable extensions per render ([#728](https://github.com/yschimke/compose-ai-tools/issues/728)) ([55708aa](https://github.com/yschimke/compose-ai-tools/commit/55708aa8e43f6436c883b6b6f13b4efa2c2f7f58))
+* **daemon-android:** import getOrNull for SemanticsConfiguration ([#745](https://github.com/yschimke/compose-ai-tools/issues/745)) ([1fa7755](https://github.com/yschimke/compose-ai-tools/commit/1fa7755851b01d62cb3e1d225f80b44657ed87b8))
+* **plugin:** defer KMP-Android desktop runtime classpath lookup ([#725](https://github.com/yschimke/compose-ai-tools/issues/725)) ([3b4f086](https://github.com/yschimke/compose-ai-tools/commit/3b4f086ebe34777829c2826aeeb972890233d4be))
+* **vscode:** hide icon-button[hidden] in the focus-mode toolbar ([#765](https://github.com/yschimke/compose-ai-tools/issues/765)) ([2cd106a](https://github.com/yschimke/compose-ai-tools/commit/2cd106a21aac0b67957e9c88e4926b1b76ba139c))
+* **vscode:** pin webview esbuild to tsconfig.webview.json ([#758](https://github.com/yschimke/compose-ai-tools/issues/758)) ([2d026f5](https://github.com/yschimke/compose-ai-tools/commit/2d026f50f7bd5a0050eb89d862ea1c7b566024b0))
+
 ## [0.9.1](https://github.com/yschimke/compose-ai-tools/compare/v0.9.0...v0.9.1) (2026-05-03)
 
 

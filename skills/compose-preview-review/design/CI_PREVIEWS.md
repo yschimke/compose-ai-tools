@@ -67,9 +67,9 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@v0.9.1
+      - uses: yschimke/compose-ai-tools/.github/actions/preview-baselines@v0.9.2
         with:
-          cli-version: catalog   # or "latest", or a literal "0.9.1"
+          cli-version: catalog   # or "latest", or a literal "0.9.2"
 ```
 <!-- x-release-please-end -->
 
@@ -103,7 +103,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
-      - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@v0.9.1
+      - uses: yschimke/compose-ai-tools/.github/actions/preview-comment@v0.9.2
         with:
           cli-version: catalog
 ```
