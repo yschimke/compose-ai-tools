@@ -15,40 +15,43 @@ import org.junit.Test
 class AccessibilityRecordingScriptEventsTest {
 
   @Test
-  fun `supportedDescriptors expose only a11y action click as supported`() {
+  fun `supportedDescriptors carry the wired a11y action ids`() {
     val supported = AccessibilityRecordingScriptEvents.supportedDescriptors
-    val supportedEvents = supported.flatMap { it.recordingScriptEvents }
-    assertEquals(1, supportedEvents.size)
-    val click = supportedEvents.single()
-    assertEquals(AccessibilityRecordingScriptEvents.ACTION_CLICK, click.id)
-    assertTrue(
-      "a11y.action.click must advertise supported = true so record_preview accepts it",
-      click.supported,
-    )
-  }
-
-  @Test
-  fun `roadmapDescriptors carry the unwired a11y action ids`() {
-    val roadmap = AccessibilityRecordingScriptEvents.roadmapDescriptors
-    val roadmapIds = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
-    val expectedRoadmapIds =
+    val supportedIds = supported.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
+    val expectedSupportedIds =
       setOf(
+        AccessibilityRecordingScriptEvents.ACTION_CLICK,
         AccessibilityRecordingScriptEvents.ACTION_LONG_CLICK,
         AccessibilityRecordingScriptEvents.ACTION_FOCUS,
-        AccessibilityRecordingScriptEvents.ACTION_CLEAR_FOCUS,
-        AccessibilityRecordingScriptEvents.ACTION_ACCESSIBILITY_FOCUS,
-        AccessibilityRecordingScriptEvents.ACTION_CLEAR_ACCESSIBILITY_FOCUS,
-        AccessibilityRecordingScriptEvents.ACTION_SELECT,
-        AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
+        AccessibilityRecordingScriptEvents.ACTION_EXPAND,
+        AccessibilityRecordingScriptEvents.ACTION_COLLAPSE,
+        AccessibilityRecordingScriptEvents.ACTION_DISMISS,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_FORWARD,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_BACKWARD,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_UP,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_DOWN,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
-        AccessibilityRecordingScriptEvents.ACTION_EXPAND,
-        AccessibilityRecordingScriptEvents.ACTION_COLLAPSE,
-        AccessibilityRecordingScriptEvents.ACTION_DISMISS,
+      )
+    assertEquals(expectedSupportedIds, supportedIds)
+    val allSupported = supported.flatMap { it.recordingScriptEvents }.all { it.supported }
+    assertTrue(
+      "every entry in supportedDescriptors must be supported = true so record_preview accepts it",
+      allSupported,
+    )
+  }
+
+  @Test
+  fun `roadmapDescriptors carry the actions without a clean SemanticsActions equivalent`() {
+    val roadmap = AccessibilityRecordingScriptEvents.roadmapDescriptors
+    val roadmapIds = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
+    val expectedRoadmapIds =
+      setOf(
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_ACCESSIBILITY_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_ACCESSIBILITY_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_SELECT,
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
         AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
         AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
       )

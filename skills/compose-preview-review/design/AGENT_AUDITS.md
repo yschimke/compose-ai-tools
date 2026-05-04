@@ -571,12 +571,15 @@ Check:
 
 ### Accessibility-driven interaction audit
 
-> **Capability split.** `a11y.action.click` is wired end-to-end on the Android backend (resolves
-> the target node by content description, invokes `SemanticsActions.OnClick` — same path
-> `AccessibilityNodeInfo.performAction(ACTION_CLICK)` walks). The other `a11y.action.*` ids
-> (`longClick`, `focus`, `scrollForward`, `expand`, `dismiss`, …) appear in `list_data_products`
-> as `supported = false` roadmap entries and are rejected up front by `record_preview`; they
-> land one-by-one as their handler factory ships.
+> **Capability split.** Twelve `a11y.action.*` ids are wired end-to-end on the Android backend —
+> `click`, `longClick`, `focus`, `expand`, `collapse`, `dismiss`, `scrollForward`,
+> `scrollBackward`, `scrollUp`, `scrollDown`, `scrollLeft`, `scrollRight`. Each resolves the
+> target node by content description and invokes the matching `SemanticsActions` constant —
+> same path `AccessibilityNodeInfo.performAction(...)` walks via TalkBack. The remaining
+> seven (`clearFocus`, `accessibilityFocus`, `clearAccessibilityFocus`, `select`,
+> `clearSelection`, `nextAtGranularity`, `previousAtGranularity`) appear in
+> `list_data_products` as `supported = false` roadmap entries and are rejected up front by
+> `record_preview` — they don't have a clean Compose `SemanticsActions` equivalent today.
 
 Use this when a PR changes a screen reader–facing flow: clickable nodes, `Modifier.semantics`
 handlers, scrollable containers consumed by a screen reader, or anything that should be reachable

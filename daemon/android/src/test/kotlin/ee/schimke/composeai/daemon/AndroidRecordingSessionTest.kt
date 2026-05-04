@@ -321,6 +321,80 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun a11ySemanticsActionsRouteThroughDispatch() {
+    // Pin every entry in `AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS`: the handler must read
+    // `nodeContentDescription`, route through `interactive.dispatchSemanticsAction(actionKind,
+    // description)`, and produce `applied` evidence naming the action when the dispatch returned
+    // true. Adding a new entry to A11Y_SEMANTIC_ACTIONS without registering an arm in
+    // `RobolectricHost.performSemanticsActionByContentDescription` won't fail this test (it tests
+    // the host-side routing, not the sandbox dispatch — the `RecordingDeltaSession` fake just
+    // returns `semanticsActionResult`), but the descriptor split test pins the supported set
+    // alongside it so a missing pair is caught at unit-test time.
+    val framesDir = tempFolder.newFolder("a11y-actions-frames")
+    val encodedDir = tempFolder.newFolder("a11y-actions-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-actions-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { semanticsActionResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-a11y-actions",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS.map { actionKind ->
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = "a11y.action.$actionKind",
+            nodeContentDescription = "Target-$actionKind",
+          )
+        }
+      )
+      val result = session.stop()
+
+      // Every action routed through dispatchSemanticsAction with its own kind + description.
+      assertEquals(
+        AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS.map { actionKind ->
+          actionKind to "Target-$actionKind"
+        },
+        interactive.semanticsActionCalls,
+      )
+      // None should have routed through pointer dispatch.
+      assertEquals(
+        "no a11y.action.* event must touch the pointer-input dispatch path",
+        0,
+        interactive.dispatchCount,
+      )
+      // Every action's evidence is applied with the action name in the message.
+      AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS.forEachIndexed { index, actionKind ->
+        val evidence = result.scriptEvents[index]
+        assertEquals(
+          "evidence for a11y.action.$actionKind must be applied",
+          ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+          evidence.status,
+        )
+        val message = evidence.message ?: ""
+        assertTrue(
+          "evidence message must name the action kind '$actionKind'; got '$message'",
+          message.contains("'$actionKind'"),
+        )
+      }
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun a11yActionClickRoutesThroughDispatchSemanticsAction() {
     // Happy path for the new `a11y.action.click` registry entry: the handler reads
     // `nodeContentDescription`, calls `interactive.dispatchSemanticsAction("click", description)`,

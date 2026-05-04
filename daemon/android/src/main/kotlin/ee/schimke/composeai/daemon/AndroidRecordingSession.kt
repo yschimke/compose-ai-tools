@@ -256,11 +256,18 @@ class AndroidRecordingSession(
         put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
           appliedEvidence(e, "probe marker reached")
         })
-        // Accessibility-driven dispatch — wire `a11y.action.click` end-to-end. Other
-        // `a11y.action.*` ids stay roadmap (`supported = false`) until their handler lands; each
-        // is a tiny extension to this registry plus a `when` arm in
-        // [RobolectricHost.performSemanticsActionByContentDescription].
-        put("a11y.action.click", a11ySemanticsClickHandler())
+        // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
+        // SemanticsActions equivalent registers here. Each handler shares the same shape:
+        // resolve a node by `nodeContentDescription`, route through
+        // `interactive.dispatchSemanticsAction(kind, description)`, surface applied / unsupported
+        // evidence with a specific reason. The action arm in
+        // [RobolectricHost.performSemanticsActionByContentDescription] does the actual lookup +
+        // invoke. Action ids without a clean equivalent (`accessibilityFocus`, `clearFocus`,
+        // `select`, granularity navigation) stay in
+        // `AccessibilityRecordingScriptEvents.roadmapDescriptors` and are rejected at MCP.
+        for (action in A11Y_SEMANTIC_ACTIONS) {
+          put("a11y.action.$action", a11ySemanticsActionHandler(action))
+        }
       }
     )
 
@@ -290,17 +297,18 @@ class AndroidRecordingSession(
     }
 
   /**
-   * Handler for `a11y.action.click` — resolves a node by its visible content description and
-   * invokes `SemanticsActions.OnClick` against it. Same semantic path a screen reader would walk
-   * via `AccessibilityNodeInfo.performAction(ACTION_CLICK)`. The match is exact + uses the
-   * unmerged tree, so a clickable parent's merged children remain reachable.
+   * Shared factory for every `a11y.action.<actionKind>` script event. Resolves a node by its
+   * visible content description and forwards to
+   * `interactive.dispatchSemanticsAction(actionKind, description)` — the sandbox-side `when` in
+   * [RobolectricHost.performSemanticsActionByContentDescription] picks the matching
+   * `SemanticsActions` constant.
    *
    * Reports `unsupported` (with a specific reason) when the agent didn't supply
-   * `nodeContentDescription`, when no node matched, or when the matched node didn't expose an
-   * `OnClick` semantic. Throws (propagating into stop()) only when the action body itself fails
-   * — same shape as a regular `click` handler under a Compose runtime error.
+   * `nodeContentDescription`, when no node matched, or when the matched node didn't expose the
+   * requested semantic action. Throws (propagating into stop()) only when the action body
+   * itself fails — same shape as a regular pointer dispatch under a Compose runtime error.
    */
-  private fun a11ySemanticsClickHandler(): RecordingScriptEventHandler =
+  private fun a11ySemanticsActionHandler(actionKind: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
       val description = event.nodeContentDescription
       if (description.isNullOrBlank()) {
@@ -309,16 +317,16 @@ class AndroidRecordingSession(
           "${event.kind} requires a non-blank 'nodeContentDescription' to resolve the target node",
         )
       }
-      val matched = interactive.dispatchSemanticsAction("click", description)
+      val matched = interactive.dispatchSemanticsAction(actionKind, description)
       if (matched) {
         appliedEvidence(
           event,
-          "a11y action 'click' fired against contentDescription='$description'",
+          "a11y action '$actionKind' fired against contentDescription='$description'",
         )
       } else {
         unsupportedEvidence(
           event,
-          "no node with contentDescription='$description' exposes an OnClick semantic",
+          "no node with contentDescription='$description' exposes the '$actionKind' semantic",
         )
       }
     }
@@ -518,5 +526,32 @@ class AndroidRecordingSession(
       }
     ImageIO.write(out, "png", dst)
     return outW to outH
+  }
+
+  companion object {
+    /**
+     * `actionKind` strings advertised under `AccessibilityRecordingScriptEvents.supportedDescriptors`
+     * — each registers in [scriptHandlers] as `a11y.action.<kind>` and fans out to a `when` arm in
+     * [RobolectricHost.performSemanticsActionByContentDescription]. Adding a new entry requires
+     * three coordinated edits: (a) the descriptor in [AccessibilityRecordingScriptEvents], (b)
+     * this list, (c) the matching arm in `performSemanticsActionByContentDescription`. Test
+     * coverage is `AndroidRecordingSessionTest.a11ySemanticsActionsRouteThroughDispatch` which
+     * loops every entry here so a missing arm is caught at unit-test time.
+     */
+    internal val A11Y_SEMANTIC_ACTIONS: List<String> =
+      listOf(
+        "click",
+        "longClick",
+        "focus",
+        "expand",
+        "collapse",
+        "dismiss",
+        "scrollForward",
+        "scrollBackward",
+        "scrollUp",
+        "scrollDown",
+        "scrollLeft",
+        "scrollRight",
+      )
   }
 }
