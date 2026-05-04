@@ -1023,7 +1023,14 @@ data class RecordingScriptEvent(
   val label: String? = null,
   /** Agent-supplied checkpoint id for save/restore state markers. */
   val checkpointId: String? = null,
-  /** Lifecycle transition name for `kind = lifecycle`, e.g. `resume`, `pause`, or `destroy`. */
+  /**
+   * Vestigial after compose-ai-tools#754: the legacy `kind = "lifecycle.event"` /
+   * `lifecycleEvent: <transition>` shape was split into per-id events (`lifecycle.pause` /
+   * `lifecycle.resume` / `lifecycle.stop`), so no handler reads this field anymore. Retained on
+   * the wire as a free-form passthrough — agents that set it for trace context still see it
+   * round-trip into [RecordingScriptEvidence.lifecycleEvent]. Future cleanup may remove the
+   * field entirely.
+   */
   val lifecycleEvent: String? = null,
   /** Optional free-form tags copied into script evidence. */
   val tags: List<String> = emptyList(),

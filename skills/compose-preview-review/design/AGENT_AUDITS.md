@@ -516,13 +516,13 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-> **Capability split.** `recording.probe`, `lifecycle.event`, `preview.reload`, `state.recreate`,
-> `state.save`, and `state.restore` (all Android-only) are wired and `record_preview` accepts
-> them.
+> **Capability split.** `recording.probe`, `lifecycle.pause` / `lifecycle.resume` /
+> `lifecycle.stop`, `preview.reload`, `state.recreate`, `state.save`, and `state.restore` (all
+> Android-only) are wired and `record_preview` accepts them.
 >
 > **Choose between the state-shaped events:**
 >
-> - `lifecycle.event:pause` then `:resume` — verifies state survives an Android configuration
+> - `lifecycle.pause` then `lifecycle.resume` — verifies state survives an Android configuration
 >   change. The activity is intact across the round-trip; `remember` and `rememberSaveable`
 >   both survive.
 > - `state.recreate` — single-event round-trip. The composition is torn down and rebuilt;
@@ -557,8 +557,8 @@ lifecycle round-trip:
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
       { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "pause" },
-      { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+      { "tMs": 200, "kind": "lifecycle.pause" },
+      { "tMs": 200, "kind": "lifecycle.resume" },
       { "tMs": 200, "kind": "recording.probe", "label": "after-resume" }
     ]
   }
@@ -572,8 +572,8 @@ events; that tests timing luck instead of state-survival semantics.
 
 Check:
 
-- `list_data_products` advertises `recording.probe` and `lifecycle.event` with `supported: true`
-  on the daemon under test.
+- `list_data_products` advertises `recording.probe`, `lifecycle.pause`, and `lifecycle.resume`
+  with `supported: true` on the daemon under test.
 - The recording metadata's `scriptEvents` for both lifecycle events report `status: "applied"`
   (each handler emits a message naming the transition).
 - Input events that should change state produce changed frames before the lifecycle round-trip
@@ -648,10 +648,10 @@ test of just the saveable path:
 
 A `rememberSaveable`-backed counter that survives `state.recreate` but resets under
 `preview.reload` is correctly wired; one that resets under both is missing the saveable
-configuration; one that resets under `state.recreate` but survives `lifecycle.event:pause`+
-`:resume` is suspect — the activity-level path is preserving state the saveable registry
-isn't, which usually points to retained-instance bookkeeping that won't survive a real config
-change.
+configuration; one that resets under `state.recreate` but survives `lifecycle.pause` +
+`lifecycle.resume` is suspect — the activity-level path is preserving state the saveable
+registry isn't, which usually points to retained-instance bookkeeping that won't survive a
+real config change.
 
 ### Accessibility-driven interaction audit
 
