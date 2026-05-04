@@ -8,6 +8,7 @@ plugins {
 
 dependencies {
   api(project(":daemon:core"))
+  api(project(":data-render-compose"))
   implementation(compose.runtime)
   implementation(compose.ui)
   testImplementation(libs.junit)
