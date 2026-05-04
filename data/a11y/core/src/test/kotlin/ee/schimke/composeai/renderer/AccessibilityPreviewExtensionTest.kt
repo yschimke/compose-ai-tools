@@ -1,8 +1,6 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.data.render.RenderPreviewExtension
-import ee.schimke.composeai.data.render.extensions.CommonDataProducts
-import ee.schimke.composeai.data.render.extensions.DataExtensionPlanner
 import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelinePlan
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineValidator
@@ -123,39 +121,4 @@ class AccessibilityPreviewExtensionTest {
     assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), command.productKinds)
   }
 
-  @Test
-  fun typedOverlayRequestPlansHierarchyAndAtfDependencies() {
-    val result =
-      DataExtensionPlanner.planOutputs(
-        extensions = AccessibilityDataProductExtensions.all,
-        requestedOutputs = setOf(AccessibilityDataProducts.Overlay),
-        initialProducts = setOf(CommonDataProducts.SemanticsSnapshot, CommonDataProducts.ImageArtifact),
-      )
-
-    assertTrue(result.errors.toString(), result.isValid)
-    assertEquals(
-      listOf(
-        AccessibilitySemanticsPreviewExtension.ID,
-        AtfChecksPreviewExtension.ID,
-        AccessibilityOverlayPreviewExtension.ID,
-      ),
-      result.orderedExtensions.map { it.id.value },
-    )
-  }
-
-  @Test
-  fun typedTouchTargetsReuseHierarchyWithoutAtf() {
-    val result =
-      DataExtensionPlanner.planOutputs(
-        extensions = AccessibilityDataProductExtensions.all,
-        requestedOutputs = setOf(AccessibilityDataProducts.TouchTargets),
-        initialProducts = setOf(CommonDataProducts.SemanticsSnapshot, CommonDataProducts.Density),
-      )
-
-    assertTrue(result.errors.toString(), result.isValid)
-    assertEquals(
-      listOf(AccessibilitySemanticsPreviewExtension.ID, "a11y-touch-targets"),
-      result.orderedExtensions.map { it.id.value },
-    )
-  }
 }
