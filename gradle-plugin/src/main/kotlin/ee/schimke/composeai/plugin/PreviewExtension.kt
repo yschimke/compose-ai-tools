@@ -1,7 +1,6 @@
 package ee.schimke.composeai.plugin
 
 import ee.schimke.composeai.plugin.daemon.DaemonExtension
-import ee.schimke.composeai.plugin.daemon.ExperimentalExtension
 import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.Named
@@ -108,16 +107,6 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
 
   fun daemon(action: Action<DaemonExtension>) {
     action.execute(daemon)
-  }
-
-  /**
-   * Namespace for in-progress / experimental features whose DSL shape may change. Kept for backward
-   * source compatibility; new daemon configuration belongs in [daemon].
-   */
-  val experimental: ExperimentalExtension = objects.newInstance(ExperimentalExtension::class.java)
-
-  fun experimental(action: Action<ExperimentalExtension>) {
-    action.execute(experimental)
   }
 }
 
