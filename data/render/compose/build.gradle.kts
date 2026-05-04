@@ -8,6 +8,7 @@ dependencies {
   api(project(":data-render-core"))
   api(platform(libs.compose.bom.compat))
   api(libs.compose.runtime)
+  api(libs.compose.ui)
 
   testImplementation(libs.junit)
 }

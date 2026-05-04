@@ -2,6 +2,11 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
+import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -9,6 +14,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeviceBackgroundDataProductRegistryTest {
+  @Test
+  fun `device background extension declares around composable hook`() {
+    val extension = DeviceBackgroundExtension("#FFFFFBFE")
+    val hook: AroundComposableHook = extension
+
+    assertEquals(DataExtensionId(DeviceBackgroundDataProductRegistry.KIND), extension.id)
+    assertEquals(setOf(DataExtensionHookKind.AroundComposable), extension.hooks)
+    assertEquals(DataExtensionPhase.OuterEnvironment, extension.constraints.phase)
+    assertTrue(extension.hasAroundComposableHook)
+    assertEquals(extension, hook)
+  }
+
   @Test
   fun `capability advertises inline fetchable attachable device background`() {
     val registry = DeviceBackgroundDataProductRegistry(PreviewIndex.empty())

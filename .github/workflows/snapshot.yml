@@ -95,6 +95,7 @@ jobs:
             :data-layoutinspector-core:publishToMavenCentral \
             :data-layoutinspector-connector:publishToMavenCentral \
             :data-recomposition-connector:publishToMavenCentral \
+            :data-render-compose:publishToMavenCentral \
             :data-render-core:publishToMavenCentral \
             :data-render-connector:publishToMavenCentral \
             :data-resources-core:publishToMavenCentral \
