@@ -108,19 +108,19 @@ class DesktopHostTest {
   }
 
   /**
-   * With a resolver wired, `recordingScriptEventDescriptors()` advertises only `recording.probe`
-   * (supported = true). Roadmap descriptors stay out of the host contribution — they're appended
-   * separately by DaemonMain.
+   * With a resolver wired, `recordingScriptEventDescriptors()` advertises three extensions:
+   * `recording` (probe, supported), `input.touch` (4 pointer events, supported), and
+   * `input.keyboard` (2 key events, roadmap). The Wear-only `input.rsb` lives on the Android
+   * host; desktop daemons skip it.
    */
   @Test
-  fun recordingScriptEventDescriptorsAdvertiseProbeWhenResolverPresent() {
+  fun recordingScriptEventDescriptorsAdvertiseSupportedExtensions() {
     val descriptors = DesktopHost(previewSpecResolver = { null }).recordingScriptEventDescriptors()
-    assertEquals(1, descriptors.size)
-    val recording = descriptors.single()
-    assertEquals("recording", recording.id.value)
-    assertEquals(1, recording.recordingScriptEvents.size)
-    val probe = recording.recordingScriptEvents.single()
-    assertEquals("recording.probe", probe.id)
-    assertTrue("desktop must advertise recording.probe as supported", probe.supported)
+    val advertisedExtensionIds = descriptors.map { it.id.value }.toSet()
+    assertEquals(setOf("recording", "input.touch", "input.keyboard"), advertisedExtensionIds)
+    assertTrue(
+      "input.rsb is Wear-only and must NOT appear on the desktop host",
+      "input.rsb" !in advertisedExtensionIds,
+    )
   }
 }

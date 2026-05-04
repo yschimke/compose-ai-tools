@@ -131,24 +131,26 @@ fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
   INTERACTIVE_INPUT_KIND_BY_WIRE_NAME[this]
 
 /**
- * Wire-name table for [InteractiveInputKind]. Single source of truth shared by the daemon's
- * recording sessions ([toInteractiveInputKindOrNull]) and the MCP server's `record_preview`
- * validator. Adding a new enum constant + wire name extends both call sites automatically — there's
- * no separate hard-coded set to keep in sync.
+ * Wire-name table for [InteractiveInputKind]. Single source of truth for the recording-script
+ * `kind` strings these enum values map to — used by the live-mode tick loops' `wireName()`
+ * synthesis and the registry's per-kind handler lookup.
+ *
+ * Naming follows the per-extension `<extension>.<event>` convention: `input.click`,
+ * `input.pointerDown`, etc. Three input extensions advertise these ids — see
+ * `InputTouchRecordingScriptEvents`, `InputKeyboardRecordingScriptEvents`, and
+ * `InputRsbRecordingScriptEvents`. The MCP `validateRecordingScriptKinds` checks every kind
+ * against the daemon's advertised set — no special-case branch for input kinds anymore.
  */
 val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
   mapOf(
-    "click" to InteractiveInputKind.CLICK,
-    "pointerDown" to InteractiveInputKind.POINTER_DOWN,
-    "pointerMove" to InteractiveInputKind.POINTER_MOVE,
-    "pointerUp" to InteractiveInputKind.POINTER_UP,
-    "rotaryScroll" to InteractiveInputKind.ROTARY_SCROLL,
-    "keyDown" to InteractiveInputKind.KEY_DOWN,
-    "keyUp" to InteractiveInputKind.KEY_UP,
+    "input.click" to InteractiveInputKind.CLICK,
+    "input.pointerDown" to InteractiveInputKind.POINTER_DOWN,
+    "input.pointerMove" to InteractiveInputKind.POINTER_MOVE,
+    "input.pointerUp" to InteractiveInputKind.POINTER_UP,
+    "input.rotaryScroll" to InteractiveInputKind.ROTARY_SCROLL,
+    "input.keyDown" to InteractiveInputKind.KEY_DOWN,
+    "input.keyUp" to InteractiveInputKind.KEY_UP,
   )
-
-/** Wire-name set derived from [INTERACTIVE_INPUT_KIND_BY_WIRE_NAME]. */
-val INTERACTIVE_INPUT_KIND_WIRE_NAMES: Set<String> = INTERACTIVE_INPUT_KIND_BY_WIRE_NAME.keys
 
 /**
  * Reverse lookup — typed [InteractiveInputKind] back to its wire-name string. Used by live-mode

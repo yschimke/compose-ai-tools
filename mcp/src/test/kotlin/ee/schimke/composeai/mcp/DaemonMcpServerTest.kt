@@ -895,7 +895,8 @@ class DaemonMcpServerTest {
       d.recordingEncodedBytes = cannedApngBytes
       d.recordingEncodeDir = recordingsDir
       d.advertisedDataExtensions =
-        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors +
+          ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor
       d.recordingStopResult =
         ee.schimke.composeai.daemon.protocol.RecordingStopResult(
           frameCount = 16,
@@ -937,7 +938,7 @@ class DaemonMcpServerTest {
             add(
               buildJsonObject {
                 put("tMs", 0)
-                put("kind", "click")
+                put("kind", "input.click")
                 put("pixelX", 120)
                 put("pixelY", 40)
               }
@@ -945,7 +946,7 @@ class DaemonMcpServerTest {
             add(
               buildJsonObject {
                 put("tMs", 500)
-                put("kind", "click")
+                put("kind", "input.click")
                 put("pixelX", 120)
                 put("pixelY", 40)
               }
@@ -983,7 +984,7 @@ class DaemonMcpServerTest {
     assertThat(scriptCall).isNotNull()
     assertThat(scriptCall!!.events).hasSize(3)
     assertThat(scriptCall.events[0].tMs).isEqualTo(0L)
-    assertThat(scriptCall.events[0].kind).isEqualTo("click")
+    assertThat(scriptCall.events[0].kind).isEqualTo("input.click")
     assertThat(scriptCall.events[0].pixelX).isEqualTo(120)
     assertThat(scriptCall.events[0].pixelY).isEqualTo(40)
     assertThat(scriptCall.events[1].tMs).isEqualTo(500L)
@@ -1089,7 +1090,7 @@ class DaemonMcpServerTest {
             add(
               buildJsonObject {
                 put("tMs", 0)
-                put("kind", "scroll") // not a recognised InteractiveInputKind
+                put("kind", "scroll") // not a wire-name id any extension advertises
                 put("pixelX", 10)
                 put("pixelY", 10)
               }
@@ -1099,8 +1100,8 @@ class DaemonMcpServerTest {
       )
     assertThat(resp.isError()).isTrue()
     val msg = resp.firstTextContent()
-    assertThat(msg).contains("kind 'scroll' is not a recognised input event")
-    assertThat(msg).contains("not advertised by this daemon")
+    assertThat(msg).contains("kind 'scroll' is not advertised by this daemon")
+    assertThat(msg).contains("list_data_products")
     // No daemon-side recording session should have been allocated when validation fails.
     assertThat(daemon.recordingStarts).isEmpty()
   }
@@ -1227,6 +1228,8 @@ class DaemonMcpServerTest {
     val recordingsDir = tmp.newFolder("mp4-recordings-out")
     factory.daemonConfigurer = { d ->
       d.advertisedRecordingFormats = listOf("apng", "mp4", "webm")
+      d.advertisedDataExtensions =
+        listOf(ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor)
       d.recordingEncodeDir = recordingsDir
       // Tiny canned payload — content doesn't matter for the wire-shape assertion.
       d.recordingEncodedBytes =
@@ -1261,7 +1264,7 @@ class DaemonMcpServerTest {
             add(
               buildJsonObject {
                 put("tMs", 0)
-                put("kind", "click")
+                put("kind", "input.click")
                 put("pixelX", 10)
                 put("pixelY", 10)
               }

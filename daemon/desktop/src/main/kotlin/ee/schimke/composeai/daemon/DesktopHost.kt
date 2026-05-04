@@ -153,13 +153,23 @@ open class DesktopHost(
         }
 
   /**
-   * `recording.probe` is the only extension event [DesktopRecordingSession] dispatches today; click
-   * / pointer kinds are built-in inputs, not extensions. The descriptor is empty when the host
-   * can't actually allocate a session ([supportsRecording] = false) so agents don't see supported =
-   * true on a daemon that would reject `recording/start` anyway.
+   * Script-event descriptors this host's [DesktopRecordingSession] dispatches:
+   *
+   * - `recording.probe` — timeline marker.
+   * - `input.touch` — click + pointer up/down/move via `ImageComposeScene.sendPointerEvent`.
+   * - `input.keyboard` — advertised as roadmap (supported = false); key dispatch isn't wired.
+   *
+   * `input.rsb` is Wear-only and lives on `RobolectricHost`; desktop daemons skip it. The empty
+   * list when [supportsRecording] is `false` mirrors the `supportedRecordingFormats` shape so
+   * agents don't see supported = true on a daemon that would reject `recording/start` anyway.
    */
   override fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> =
-    if (supportsRecording) listOf(RecordingScriptDataExtensions.recordingDescriptor)
+    if (supportsRecording)
+      listOf(
+        RecordingScriptDataExtensions.recordingDescriptor,
+        InputTouchRecordingScriptEvents.descriptor,
+        InputKeyboardRecordingScriptEvents.descriptor,
+      )
     else emptyList()
 
   /**

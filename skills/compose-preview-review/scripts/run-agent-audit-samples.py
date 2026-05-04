@@ -529,7 +529,7 @@ def test_mcp_data_products() -> None:
                 "events": [
                     {
                         "tMs": 0,
-                        "kind": "click",
+                        "kind": "input.click",
                         "pixelX": 48,
                         "pixelY": 24,
                     },
