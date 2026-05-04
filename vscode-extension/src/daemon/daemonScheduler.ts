@@ -140,16 +140,6 @@ export class DaemonScheduler {
         private readonly logger: { appendLine(s: string): void } = {
             appendLine() {},
         },
-        /**
-         * D2 — read freshly per `setVisible` so toggling the user setting
-         * `composePreview.a11y.alwaysSubscribe` doesn't need a reload. When `true`,
-         * newly-visible previews are auto-subscribed to a11y data products
-         * ([A11Y_OVERLAY_KINDS] + the ambient atf kind); when `false` (the default),
-         * the focus-mode toggle is the only path — no wire traffic for unfocused
-         * cards. Tests pass a constant lambda; production wires
-         * `vscode.workspace.getConfiguration('composePreview').get('a11y.alwaysSubscribe')`.
-         */
-        private readonly isA11yAlwaysSubscribed: () => boolean = () => false,
     ) {}
 
     /**
@@ -314,33 +304,6 @@ export class DaemonScheduler {
             const id = sep < 0 ? rest : rest.slice(0, sep);
             if (!visibleSetForSub.has(id)) {
                 this.subscribedPairs.delete(key);
-            }
-        }
-
-        // D2 — when the user opted into ambient a11y via
-        // `composePreview.a11y.alwaysSubscribe`, subscribe every newly-visible preview to
-        // [A11Y_OVERLAY_KINDS] so diagnostics + the hierarchy overlay fire without entering
-        // focus mode. dataSubscribe rejects gracefully (DataProductUnknown) when the daemon
-        // was not built with the a11y data plugin enabled; that path absorbs the
-        // rejection and rolls back the bookkeeping (matching `setDataProductSubscription`).
-        if (this.isA11yAlwaysSubscribed()) {
-            for (const id of visible) {
-                for (const kind of A11Y_OVERLAY_KINDS) {
-                    const subKey = `${moduleId}::${id}::${kind}`;
-                    if (this.subscribedPairs.has(subKey)) {
-                        continue;
-                    }
-                    this.subscribedPairs.add(subKey);
-                    client
-                        .dataSubscribe({ previewId: id, kind })
-                        .catch((err) => {
-                            const msg = (err as Error)?.message ?? String(err);
-                            this.logger.appendLine(
-                                `[daemon] alwaysSubscribe dataSubscribe(${id}, ${kind}) failed: ${msg}`,
-                            );
-                            this.subscribedPairs.delete(subKey);
-                        });
-                }
             }
         }
 
