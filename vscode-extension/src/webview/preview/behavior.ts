@@ -62,7 +62,13 @@ export function setupPreviewBehavior(
     // can also arrive via the Gradle sidecar path) doesn't appear without an explicit
     // user gesture. State is per-previewId because hopping between focused cards re-applies
     // the toggle to the new target.
-    let a11yOverlayPreviewId = null;
+    // `a11yOverlayPreviewId` lives in `previewStore`. Local helpers
+    // for terseness — same pattern as `earlyFeatures()`.
+    const a11yOverlay = (): string | null =>
+        previewStore.getState().a11yOverlayPreviewId;
+    const setA11yOverlay = (id: string | null): void => {
+        previewStore.setState({ a11yOverlayPreviewId: id });
+    };
     const enabledFocusProducts = new Set();
     let focusProductPickerOpen = false;
     let focusHistoryOpen = false;
@@ -290,7 +296,7 @@ export function setupPreviewBehavior(
         }
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
-        const on = previewId !== null && previewId === a11yOverlayPreviewId;
+        const on = previewId !== null && previewId === a11yOverlay();
         btnA11yOverlay.setAttribute("aria-pressed", on ? "true" : "false");
         btnA11yOverlay.title = on
             ? "Hide accessibility overlay"
@@ -308,15 +314,15 @@ export function setupPreviewBehavior(
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
         if (!previewId) return;
-        const turningOn = previewId !== a11yOverlayPreviewId;
-        if (a11yOverlayPreviewId && a11yOverlayPreviewId !== previewId) {
+        const turningOn = previewId !== a11yOverlay();
+        if (a11yOverlay() && a11yOverlay() !== previewId) {
             vscode.postMessage({
                 command: "setA11yOverlay",
-                previewId: a11yOverlayPreviewId,
+                previewId: a11yOverlay(),
                 enabled: false,
             });
         }
-        a11yOverlayPreviewId = turningOn ? previewId : null;
+        setA11yOverlay(turningOn ? previewId : null);
         vscode.postMessage({
             command: "setA11yOverlay",
             previewId,
@@ -855,18 +861,18 @@ export function setupPreviewBehavior(
         // D2 — same teardown for the a11y overlay: navigating off the previewed card
         // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
         // user isn't looking at.
-        if (a11yOverlayPreviewId) {
+        if (a11yOverlay()) {
             const visible = getVisibleCards();
             const card = mode === "focus" ? visible[focusIndex] : null;
-            if (!card || card.dataset.previewId !== a11yOverlayPreviewId) {
+            if (!card || card.dataset.previewId !== a11yOverlay()) {
                 if (earlyFeatures()) {
                     vscode.postMessage({
                         command: "setA11yOverlay",
-                        previewId: a11yOverlayPreviewId,
+                        previewId: a11yOverlay(),
                         enabled: false,
                     });
                 }
-                a11yOverlayPreviewId = null;
+                setA11yOverlay(null);
             }
         }
         applyInteractiveButtonState();
@@ -893,6 +899,11 @@ export function setupPreviewBehavior(
         }
         if (previewId === lastScopedPreviewId) return;
         lastScopedPreviewId = previewId;
+        // Mirror to the store so subscribed components (the upcoming
+        // `<focus-controls>`, `<focus-inspector>`, etc.) react without
+        // re-walking the DOM. Same value goes upstream to the extension
+        // so the History panel can re-scope.
+        previewStore.setState({ focusedPreviewId: previewId });
         vscode.postMessage({
             command: "previewScopeChanged",
             previewId,
@@ -960,7 +971,7 @@ export function setupPreviewBehavior(
                               " finding" +
                               (findings.length === 1 ? "" : "s")
                             : "Overlay",
-                    enabled: previewId === a11yOverlayPreviewId,
+                    enabled: previewId === a11yOverlay(),
                     state: findings.length > 0 ? "warn" : "idle",
                     onToggle: () => toggleA11yOverlay(),
                 },
@@ -2862,6 +2873,7 @@ export function setupPreviewBehavior(
                 // stale id from the previous module would dedupe the
                 // first publish and the History panel would miss it.
                 lastScopedPreviewId = null;
+                previewStore.setState({ focusedPreviewId: null });
                 // Cards are gone — escalation timer has nothing left to
                 // promote. Avoids a stray timer firing after the next
                 // refresh has installed fresh minimal overlays.
@@ -3136,13 +3148,13 @@ export function setupPreviewBehavior(
                         .querySelectorAll(".preview-diff-overlay")
                         .forEach((overlay) => overlay.remove());
                     enabledFocusProducts.clear();
-                    if (a11yOverlayPreviewId) {
+                    if (a11yOverlay()) {
                         vscode.postMessage({
                             command: "setA11yOverlay",
-                            previewId: a11yOverlayPreviewId,
+                            previewId: a11yOverlay(),
                             enabled: false,
                         });
-                        a11yOverlayPreviewId = null;
+                        setA11yOverlay(null);
                     }
                     if (recordingPreviewIds.size > 0) {
                         recordingPreviewIds.forEach((previewId) => {
