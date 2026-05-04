@@ -14,7 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MaterialThemeTokensTest {
+class MaterialThemeTokenCaptureTest {
   @Test
   fun themeCaptureExtensionDeclaresComposableExtractorHook() {
     val extension = ThemeCaptureExtension()
@@ -28,10 +28,18 @@ class MaterialThemeTokensTest {
   }
 
   @Test
-  fun readsColorSchemeFromTokenObject() {
+  fun capturesColorSchemeFromInspectionTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = MaterialThemeTokens.colorScheme(source)
+    val capture =
+      MaterialThemeTokenCapture.fromInspectionSources(
+        colorSource = source,
+        typographySource = null,
+        shapesSource = null,
+        fallbackTypography = null,
+        fallbackShapes = null,
+      )
+    val tokens = requireNotNull(capture).colorScheme
 
     assertEquals(Color.Red.hexArgb(), tokens["primary"])
     assertEquals(Color(0xFF00FF00u).hexArgb(), tokens["secondary"])
@@ -39,23 +47,53 @@ class MaterialThemeTokensTest {
   }
 
   @Test
-  fun readsTypographyFromTokenObject() {
+  fun capturesTypographyFromInspectionTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = MaterialThemeTokens.typography(source)
+    val capture =
+      MaterialThemeTokenCapture.fromInspectionSources(
+        colorSource = source,
+        typographySource = source,
+        shapesSource = null,
+        fallbackTypography = null,
+        fallbackShapes = null,
+      )
+    val tokens = requireNotNull(capture).typography
 
     assertEquals(16f, tokens.getValue("bodyLarge").fontSize)
     assertFalse(tokens.containsKey("primary"))
   }
 
   @Test
-  fun readsShapesFromTokenObject() {
+  fun capturesShapesFromInspectionTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = MaterialThemeTokens.shapes(source)
+    val capture =
+      MaterialThemeTokenCapture.fromInspectionSources(
+        colorSource = source,
+        typographySource = null,
+        shapesSource = source,
+        fallbackTypography = null,
+        fallbackShapes = null,
+      )
+    val tokens = requireNotNull(capture).shapes
 
     assertEquals(ShapeDefaults.Small.toString(), tokens["small"])
     assertFalse(tokens.containsKey("bodyLarge"))
+  }
+
+  @Test
+  fun returnsNullWhenInspectionTokenObjectHasNoColorScheme() {
+    val capture =
+      MaterialThemeTokenCapture.fromInspectionSources(
+        colorSource = Any(),
+        typographySource = ReflectedThemeTokens(),
+        shapesSource = ReflectedThemeTokens(),
+        fallbackTypography = null,
+        fallbackShapes = null,
+      )
+
+    assertEquals(null, capture)
   }
 
   @Suppress("unused")
