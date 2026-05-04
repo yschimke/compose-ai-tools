@@ -894,6 +894,7 @@ internal object AndroidPreviewSupport {
 
     val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirectory = previewOutputDir.map { it.dir("renders") }
+    val dataProductsDirectory = previewOutputDir.map { it.dir("data") }
     val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
     // Per-preview ATF findings land here. `verifyAccessibility` rolls them
@@ -1097,6 +1098,12 @@ internal object AndroidPreviewSupport {
         // checkout but the renders are never restored, which is exactly
         // how previous modules silently vanished from `compose-preview/main`.
         outputs.dir(rendersDirectory).withPropertyName("rendersDir")
+        // Heavy preview extensions such as @ScrollingPreview(LONG/GIF)
+        // write their artefacts under build/compose-previews/data rather
+        // than renders/. Declare that tree too so remote cache hits restore
+        // the files that renderAllPreviews validates from manifest
+        // dataProducts.
+        outputs.dir(dataProductsDirectory).withPropertyName("dataProductsDir")
 
         dependsOn(discoverTask)
         dependsOn(generateRobolectricPropertiesTask)
