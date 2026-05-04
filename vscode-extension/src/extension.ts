@@ -42,6 +42,14 @@ import {
 } from "./previewMainSource";
 import { watchPreviewMainRef } from "./previewMainWatcher";
 import { LogFilter, parseLogLevel } from "./logFilter";
+import {
+    isGeneratedOutputPath,
+    isPreviewSourceFile,
+    isSourceFile,
+    sameScope,
+} from "./pathPredicates";
+import { isAntigravityHost } from "./hostDetection";
+import { formatRelativeShort } from "./relativeTime";
 import { pickRefreshModeFor, RefreshMode } from "./refreshMode";
 import {
     BuildProgressTracker,
@@ -1167,35 +1175,6 @@ async function flushRecordingSessions(options: {
     );
 }
 
-function sameScope(a: string[], b: string[]): boolean {
-    if (a.length !== b.length) {
-        return false;
-    }
-    const set = new Set(b);
-    return a.every((m) => set.has(m));
-}
-
-function isSourceFile(filePath: string): boolean {
-    if (isGeneratedOutputPath(filePath)) {
-        return false;
-    }
-    return /\.(kt|xml|json|properties)$/i.test(filePath);
-}
-
-function isGeneratedOutputPath(filePath: string): boolean {
-    const segments = filePath.split(/[\\/]+/);
-    return segments.includes("build") || segments.includes("bin");
-}
-
-/** True iff this is a Kotlin source file (.kt), not generated output or a Gradle build script. */
-function isPreviewSourceFile(filePath: string): boolean {
-    return (
-        filePath.endsWith(".kt") &&
-        !filePath.endsWith(".gradle.kts") &&
-        !isGeneratedOutputPath(filePath)
-    );
-}
-
 /**
  * Resolve which file the panel should scope to, in priority order:
  *   1. Caller-provided path (explicit user action).
@@ -1276,14 +1255,6 @@ function isFileVisibleInEditor(filePath: string): boolean {
 function isFileOpenInTextDocument(filePath: string): boolean {
     return vscode.workspace.textDocuments.some(
         (document) => document.uri.fsPath === filePath,
-    );
-}
-
-function isAntigravityHost(): boolean {
-    const bundleId = process.env.__CFBundleIdentifier?.toLowerCase() ?? "";
-    return (
-        bundleId.includes("antigravity") ||
-        process.env.ANTIGRAVITY_CLI_ALIAS !== undefined
     );
 }
 
@@ -3911,30 +3882,6 @@ async function diffAllVsMain(): Promise<void> {
         previewId: picked.previewId,
         against: "main",
     });
-}
-
-function formatRelativeShort(iso: string | undefined): string {
-    if (!iso) {
-        return "(unknown)";
-    }
-    const t = Date.parse(iso);
-    if (isNaN(t)) {
-        return iso;
-    }
-    const s = Math.round((Date.now() - t) / 1000);
-    if (s < 60) {
-        return s + "s ago";
-    }
-    const m = Math.round(s / 60);
-    if (m < 60) {
-        return m + "m ago";
-    }
-    const h = Math.round(m / 60);
-    if (h < 24) {
-        return h + "h ago";
-    }
-    const d = Math.round(h / 24);
-    return d + "d ago";
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {
