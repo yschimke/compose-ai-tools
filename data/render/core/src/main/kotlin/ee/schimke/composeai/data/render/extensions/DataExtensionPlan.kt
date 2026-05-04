@@ -61,6 +61,7 @@ enum class DataExtensionLifecycle {
 @Serializable
 enum class DataExtensionHookKind {
   AroundComposable,
+  ComposableExtractor,
   CompositionObserver,
   BeforeRender,
   AfterCapture,

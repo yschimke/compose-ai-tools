@@ -5,6 +5,14 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 
+/**
+ * Compose-facing data-extension hook surface.
+ *
+ * Design rule: when an extension needs reflection or Compose runtime internals, keep that access
+ * behind a small facade owned by the extension and expose the normal path as a simple composable
+ * API. Typical extensions should look like regular Compose wrappers or extractors: read
+ * CompositionLocals, install effects, and emit values through [ExtensionCompositionSink].
+ */
 data class ExtensionComposeContext(
   val extensionId: DataExtensionId,
   val previewId: String?,
@@ -37,6 +45,10 @@ interface AroundComposableHook : PlannedDataExtension {
   @Composable fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit)
 }
 
+interface ComposableExtractorHook : PlannedDataExtension {
+  @Composable fun Extract(context: ExtensionComposeContext, sink: ExtensionCompositionSink)
+}
+
 interface CompositionObserverHook : PlannedDataExtension {
   @Composable fun Observe(context: ExtensionComposeContext, sink: ExtensionCompositionSink)
 }
@@ -58,6 +70,13 @@ object ComposeDataExtensionPipeline {
       sink = sink,
       attributes = attributes,
     )
+    Extract(
+      extensions = extensions,
+      previewId = previewId,
+      renderMode = renderMode,
+      sink = sink,
+      attributes = attributes,
+    )
     Around(
       hooks = extensions.filterIsInstance<AroundComposableHook>(),
       index = 0,
@@ -66,6 +85,28 @@ object ComposeDataExtensionPipeline {
       attributes = attributes,
       content = content,
     )
+  }
+
+  @Composable
+  fun Extract(
+    extensions: List<PlannedDataExtension>,
+    previewId: String?,
+    renderMode: String?,
+    sink: ExtensionCompositionSink,
+    attributes: Map<String, Any?> = emptyMap(),
+  ) {
+    for (hook in extensions.filterIsInstance<ComposableExtractorHook>()) {
+      hook.Extract(
+        context =
+          ExtensionComposeContext(
+            extensionId = hook.id,
+            previewId = previewId,
+            renderMode = renderMode,
+            attributes = attributes,
+          ),
+        sink = sink,
+      )
+    }
   }
 
   @Composable
@@ -128,6 +169,9 @@ object ComposeDataExtensionPipeline {
 
 val PlannedDataExtension.hasAroundComposableHook: Boolean
   get() = DataExtensionHookKind.AroundComposable in hooks && this is AroundComposableHook
+
+val PlannedDataExtension.hasComposableExtractorHook: Boolean
+  get() = DataExtensionHookKind.ComposableExtractor in hooks && this is ComposableExtractorHook
 
 val PlannedDataExtension.hasCompositionObserverHook: Boolean
   get() = DataExtensionHookKind.CompositionObserver in hooks && this is CompositionObserverHook
