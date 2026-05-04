@@ -1,8 +1,11 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.graphics.Color
@@ -14,6 +17,12 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorExtension
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
@@ -124,6 +133,42 @@ class ThemeDataProductRegistry : DataProductRegistry {
       encodeDefaults = true
       prettyPrint = false
     }
+  }
+}
+
+/**
+ * Clean Compose-facing connector for `compose/theme` capture.
+ *
+ * This is the preferred implementation shape for theme data extensions: read public Material
+ * CompositionLocals, build the product payload, and emit it through the extension sink. Slot-table
+ * inspection remains only as a fallback facade for hosts that have not installed this extractor
+ * yet.
+ */
+class ThemeCaptureExtension :
+  ComposableExtractorExtension(
+    id = DataExtensionId(ThemeDataProductRegistry.KIND),
+    constraints =
+      DataExtensionConstraints(
+        phase = DataExtensionPhase.Capture,
+        provides = setOf(DataExtensionCapability(ThemeDataProductRegistry.KIND)),
+      ),
+  ) {
+  @Composable
+  override fun Extract(sink: ExtensionCompositionSink) {
+    val colorScheme = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+    val shapes = MaterialTheme.shapes
+    SideEffect {
+      sink.put(
+        extensionId = id,
+        key = PAYLOAD_KEY,
+        value = themePayloadFromMaterialTheme(colorScheme, typography, shapes),
+      )
+    }
+  }
+
+  companion object {
+    const val PAYLOAD_KEY: String = MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY
   }
 }
 

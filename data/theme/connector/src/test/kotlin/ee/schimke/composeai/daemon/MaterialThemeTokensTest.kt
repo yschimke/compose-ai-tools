@@ -4,11 +4,29 @@ import androidx.compose.material3.ShapeDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorHook
+import ee.schimke.composeai.data.render.extensions.compose.hasComposableExtractorHook
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MaterialThemeTokensTest {
+  @Test
+  fun themeCaptureExtensionDeclaresComposableExtractorHook() {
+    val extension = ThemeCaptureExtension()
+    val hook: ComposableExtractorHook = extension
+
+    assertEquals(DataExtensionId(ThemeDataProductRegistry.KIND), extension.id)
+    assertEquals(setOf(DataExtensionHookKind.ComposableExtractor), extension.hooks)
+    assertEquals(DataExtensionPhase.Capture, extension.constraints.phase)
+    assertTrue(extension.hasComposableExtractorHook)
+    assertEquals(extension, hook)
+  }
+
   @Test
   fun readsColorSchemeFromTokenObject() {
     val source = ReflectedThemeTokens()
