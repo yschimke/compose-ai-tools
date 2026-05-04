@@ -85,8 +85,51 @@ interface ComposableExtractorHook : PlannedDataExtension {
   @Composable fun Extract(context: ExtensionComposeContext, sink: ExtensionCompositionSink)
 }
 
+/**
+ * Convenience base for extensions that read Compose state and emit data.
+ *
+ * Use this for extensions like theme capture or CompositionLocal-backed metadata extraction. The
+ * implementation can stay focused on normal Compose reads and sink writes; reflection, when needed,
+ * should remain behind the extension's own typed facade.
+ */
+abstract class ComposableExtractorExtension(
+  override val id: DataExtensionId,
+  override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
+) : ComposableExtractorHook {
+  final override val hooks: Set<DataExtensionHookKind> =
+    setOf(DataExtensionHookKind.ComposableExtractor)
+
+  @Composable
+  final override fun Extract(context: ExtensionComposeContext, sink: ExtensionCompositionSink) {
+    Extract(sink)
+  }
+
+  @Composable abstract fun Extract(sink: ExtensionCompositionSink)
+}
+
 interface CompositionObserverHook : PlannedDataExtension {
   @Composable fun Observe(context: ExtensionComposeContext, sink: ExtensionCompositionSink)
+}
+
+/**
+ * Convenience base for extensions that install Compose effects or observers.
+ *
+ * Use this for extensions like recomposition observation where the extension participates in the
+ * composition lifecycle but does not wrap user content.
+ */
+abstract class CompositionObserverExtension(
+  override val id: DataExtensionId,
+  override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
+) : CompositionObserverHook {
+  final override val hooks: Set<DataExtensionHookKind> =
+    setOf(DataExtensionHookKind.CompositionObserver)
+
+  @Composable
+  final override fun Observe(context: ExtensionComposeContext, sink: ExtensionCompositionSink) {
+    Observe(sink)
+  }
+
+  @Composable abstract fun Observe(sink: ExtensionCompositionSink)
 }
 
 object ComposeDataExtensionPipeline {
