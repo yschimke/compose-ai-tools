@@ -511,4 +511,27 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     val replyApplied: AtomicBoolean,
   ) : InteractiveCommand
+
+  /**
+   * Force a Compose-level save+restore round-trip — exercise the `rememberSaveable` path
+   * without depending on Android's `onSaveInstanceState` / `onCreate(savedInstanceState)`. Used
+   * by `record_preview`'s `state.recreate` script event for "verify state survives a recreate"
+   * audits.
+   *
+   * The sandbox-side handler snapshots the current `SaveableStateRegistry` via `performSave()`,
+   * stashes it, then increments a recreate counter that the wrapping `key(...)` block reads.
+   * The new composition initializes a fresh `SaveableStateRegistry` from the stashed map, so
+   * `rememberSaveable` reads see the saved values. `remember` state is lost (same as a real
+   * activity recreate).
+   *
+   * No payload — the recreate target is implicit (the held composition this stream is driving).
+   * `replyApplied` reports success (`true`) or that the host doesn't carry the bridge wiring
+   * (`false`). Throwables ride [replyError].
+   */
+  data class DispatchStateRecreate(
+    override val streamId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
 }

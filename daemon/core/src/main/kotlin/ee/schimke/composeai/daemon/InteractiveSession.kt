@@ -112,6 +112,25 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchPreviewReload(): Boolean = false
 
   /**
+   * Force a Compose-level save+restore round-trip: snapshot `rememberSaveable` state from the
+   * current composition, tear it down under a `key(...)` boundary, and rebuild with the snapshot
+   * restored. Same audit signal as an Android `ActivityScenario.recreate()` — verifies state
+   * survives a teardown — but lives entirely at the Compose level so it doesn't depend on the
+   * activity's `onSaveInstanceState`/onCreate path.
+   *
+   * Returns `true` when the recreate fired; `false` when the host doesn't have the
+   * `SaveableStateRegistry` bridge wired (DesktopHost today). Throws when the rebuild itself
+   * failed.
+   *
+   * Note: `remember` state is lost across the boundary (same as a real recreate);
+   * `rememberSaveable` survives via the snapshot/restore. Use [dispatchPreviewReload] when you
+   * want a true cold composition (both `remember` and `rememberSaveable` reset). Use
+   * [dispatchLifecycle] (`pause` / `resume`) when you want a real Android lifecycle round-trip
+   * with the activity intact.
+   */
+  fun dispatchStateRecreate(): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via

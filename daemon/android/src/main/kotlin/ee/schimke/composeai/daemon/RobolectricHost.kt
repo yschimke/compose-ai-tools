@@ -200,6 +200,8 @@ open class RobolectricHost(
    *   held rule's activity.
    * - `preview.reload` (Android-only today) — forces a fresh composition via the held rule's
    *   `key(...)` reload counter.
+   * - `state.recreate` (Android-only today) — Compose-level save+restore round-trip via the
+   *   held rule's `SaveableStateRegistry` bridge.
    *
    * The a11y action descriptors live in `:data-a11y-connector` and are concatenated into
    * `dataExtensions` by `DaemonMain` only when the a11y preview extension is enabled, so they
@@ -213,6 +215,7 @@ open class RobolectricHost(
         RecordingScriptDataExtensions.recordingDescriptor,
         LifecycleRecordingScriptEvents.descriptor,
         PreviewReloadRecordingScriptEvents.descriptor,
+        StateRecreateRecordingScriptEvents.descriptor,
       )
     else emptyList()
 
@@ -1547,17 +1550,50 @@ open class RobolectricHost(
             // Lives here (not as a class-level field) because the held composition is local to
             // this `evaluate()` invocation; one reload counter per stream.
             val reloadCounter = androidx.compose.runtime.mutableIntStateOf(0)
+            // `state.recreate` uses a sibling pattern but PRESERVES `rememberSaveable` across the
+            // rebuild. The flow:
+            //   1. Snapshot the current `SaveableStateRegistry` via `performSave()`,
+            //      stash into `recreateSavedState`.
+            //   2. Increment `recreateGeneration`. The wrapping `key(...)` rebuilds; the inner
+            //      `remember(generation) { SaveableStateRegistry(restoredValues = ...) }`
+            //      seeds a new registry from the stash.
+            //   3. `rememberSaveable` reads the restored values from the new registry.
+            // `recreateRegistryRef` exposes the live registry to the command handler (which runs
+            // outside Compose). The `SideEffect` below updates it on every (re)composition.
+            val recreateGeneration = androidx.compose.runtime.mutableIntStateOf(0)
+            val recreateSavedState =
+              androidx.compose.runtime.mutableStateOf<Map<String, List<Any?>>>(emptyMap())
+            val recreateRegistryRef =
+              java.util.concurrent.atomic.AtomicReference<
+                androidx.compose.runtime.saveable.SaveableStateRegistry?
+              >(null)
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
-                  androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalInspectionMode provides
-                      (start.inspectionMode ?: false)
-                  ) {
-                    androidx.compose.foundation.layout.Box(
-                      modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                  androidx.compose.runtime.key(recreateGeneration.intValue) {
+                    val parentRegistry =
+                      androidx.compose.runtime.saveable.LocalSaveableStateRegistry.current
+                    val recreateRegistry =
+                      androidx.compose.runtime.remember(recreateGeneration.intValue) {
+                        androidx.compose.runtime.saveable.SaveableStateRegistry(
+                          restoredValues = recreateSavedState.value,
+                          canBeSaved = { parentRegistry?.canBeSaved(it) ?: true },
+                        )
+                      }
+                    androidx.compose.runtime.SideEffect {
+                      recreateRegistryRef.set(recreateRegistry)
+                    }
+                    androidx.compose.runtime.CompositionLocalProvider(
+                      androidx.compose.ui.platform.LocalInspectionMode provides
+                        (start.inspectionMode ?: false),
+                      androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides
+                        recreateRegistry,
                     ) {
-                      InvokeHeldComposable(composableMethod)
+                      androidx.compose.foundation.layout.Box(
+                        modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                      ) {
+                        InvokeHeldComposable(composableMethod)
+                      }
                     }
                   }
                 }
@@ -1675,6 +1711,27 @@ open class RobolectricHost(
                     // Settle window — Compose has to detect the key change, dispose the old
                     // slot table, and run the new composition's first frame before subsequent
                     // inputs / renders observe the rebuilt state.
+                    rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                    rule.waitForIdle()
+                    cmd.replyApplied.set(true)
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.DispatchStateRecreate -> {
+                  try {
+                    rule.runOnUiThread {
+                      // Snapshot the current registry, stash it, then bump the generation to
+                      // trigger a key-driven rebuild that initializes a fresh registry from the
+                      // stash. `performSave` returns null when nothing has registered (empty
+                      // composition); treat that as an empty map so the rebuild's
+                      // `restoredValues` parameter is always well-defined.
+                      val current = recreateRegistryRef.get()
+                      recreateSavedState.value = current?.performSave().orEmpty()
+                      recreateGeneration.intValue++
+                    }
                     rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
                     rule.waitForIdle()
                     cmd.replyApplied.set(true)

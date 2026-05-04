@@ -275,6 +275,10 @@ class AndroidRecordingSession(
         // Preview reload — `preview.reload` forces a fresh composition via the held rule's
         // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
         put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
+        // State recreate — Compose-level save+restore round-trip. Distinct from preview.reload:
+        // `rememberSaveable` is preserved via the SaveableStateRegistry snapshot/restore.
+        // See [StateRecreateRecordingScriptEvents].
+        put(StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
       }
     )
 
@@ -356,6 +360,32 @@ class AndroidRecordingSession(
         unsupportedEvidence(
           event,
           "host did not apply preview reload; held composition may be missing a reload counter",
+        )
+      }
+    }
+
+  /**
+   * Handler for `state.recreate` — forces a Compose-level save+restore round-trip via
+   * `interactive.dispatchStateRecreate()`. The Robolectric sandbox snapshots the current
+   * `SaveableStateRegistry`, increments a recreate counter, and rebuilds the slot table with the
+   * snapshot restored. `rememberSaveable` survives; `remember` resets.
+   *
+   * Reports `unsupported` when the host can't dispatch recreate (interactive returned `false`,
+   * e.g. on a backend without the SaveableStateRegistry bridge wired).
+   */
+  private fun stateRecreateHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val applied = interactive.dispatchStateRecreate()
+      if (applied) {
+        appliedEvidence(
+          event,
+          "rememberSaveable state snapshotted and restored across a key(...) recreate",
+        )
+      } else {
+        unsupportedEvidence(
+          event,
+          "host did not apply state recreate; held composition may be missing the " +
+            "SaveableStateRegistry bridge",
         )
       }
     }

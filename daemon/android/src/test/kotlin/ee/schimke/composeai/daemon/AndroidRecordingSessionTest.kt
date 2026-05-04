@@ -836,6 +836,114 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun stateRecreateRoutesThroughDispatchStateRecreate() {
+    // Happy path for the new `state.recreate` registry entry: handler calls
+    // `interactive.dispatchStateRecreate()` and reports `applied` evidence with a message
+    // describing the snapshot+restore round-trip.
+    val framesDir = tempFolder.newFolder("state-recreate-frames")
+    val encodedDir = tempFolder.newFolder("state-recreate-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-recreate-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { stateRecreateResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-recreate",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT,
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(
+        "state.recreate must route through dispatchStateRecreate, not pointer/reload dispatch",
+        0,
+        interactive.dispatchCount,
+      )
+      assertEquals(0, interactive.previewReloadCount)
+      assertEquals(1, interactive.stateRecreateCount)
+      assertEquals(1, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "evidence must mention the rememberSaveable snapshot/restore round-trip; got '$message'",
+        message.contains("rememberSaveable") && message.contains("recreate"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun stateRecreateReportsUnsupportedWhenHostCannotRecreate() {
+    // When `dispatchStateRecreate` returns false (no SaveableStateRegistry bridge wired), the
+    // handler must surface a specific unsupported reason naming the bridge.
+    val framesDir = tempFolder.newFolder("state-recreate-miss-frames")
+    val encodedDir = tempFolder.newFolder("state-recreate-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-recreate-miss-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { stateRecreateResult = false }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-recreate-miss",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT,
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(1, interactive.stateRecreateCount)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "miss diagnostic must mention the SaveableStateRegistry bridge; got '$message'",
+        message.contains("SaveableStateRegistry"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -1129,6 +1237,21 @@ class AndroidRecordingSessionTest {
       previewReloadCount++
       val override = previewReloadResult
       return override ?: super.dispatchPreviewReload()
+    }
+
+    var stateRecreateCount: Int = 0
+
+    /**
+     * When non-null, [dispatchStateRecreate] returns this value verbatim and increments
+     * [stateRecreateCount]. When null (the default), the inherited interface-level default
+     * (`return false`) is used so existing tests don't have to opt in.
+     */
+    var stateRecreateResult: Boolean? = null
+
+    override fun dispatchStateRecreate(): Boolean {
+      stateRecreateCount++
+      val override = stateRecreateResult
+      return override ?: super.dispatchStateRecreate()
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

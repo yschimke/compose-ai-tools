@@ -516,18 +516,26 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-> **Capability split.** `recording.probe`, `lifecycle.event`, and `preview.reload` (all
-> Android-only) are wired and `record_preview` accepts them. `lifecycle.event` drives
-> `ActivityScenario.moveToState(...)` against the held rule's activity (accepts `pause` /
-> `resume` / `stop` — `destroy` is rejected). `preview.reload` forces a fresh composition by
-> tearing down the held content under its `key(...)` boundary and rebuilding (`remember` and
-> `rememberSaveable` state both reset). `state.save` / `state.restore` are still advertised as
-> `supported = false` roadmap and rejected up front.
+> **Capability split.** `recording.probe`, `lifecycle.event`, `preview.reload`, and
+> `state.recreate` (all Android-only) are wired and `record_preview` accepts them.
+> `lifecycle.event` drives `ActivityScenario.moveToState(...)` against the held rule's activity
+> (accepts `pause` / `resume` / `stop` — `destroy` is rejected). `preview.reload` forces a fresh
+> composition by tearing down under a `key(...)` boundary (`remember` and `rememberSaveable`
+> both reset). `state.recreate` is the middle ground — a Compose-level save+restore via the
+> `SaveableStateRegistry` (`rememberSaveable` survives, `remember` resets). The named-checkpoint
+> pair `state.save` / `state.restore` is still advertised as `supported = false` roadmap and
+> rejected up front.
 >
-> **Choose `lifecycle.event` vs `preview.reload`.** Use `lifecycle.event:pause` then `:resume`
-> when verifying that state survives a configuration change — `rememberSaveable` is preserved.
-> Use `preview.reload` when verifying the screen handles a cold composition — both `remember`
-> and `rememberSaveable` reset.
+> **Choose `lifecycle.event` vs `state.recreate` vs `preview.reload`:**
+>
+> - `lifecycle.event:pause` then `:resume` — verifies state survives an Android configuration
+>   change. The activity is intact across the round-trip; `remember` and `rememberSaveable`
+>   both survive.
+> - `state.recreate` — verifies state survives a recreate. The composition is torn down and
+>   rebuilt; `rememberSaveable` is restored from a snapshot, `remember` resets. Same audit
+>   signal as a real `ActivityScenario.recreate()` but Compose-level only.
+> - `preview.reload` — verifies the screen handles a cold composition. Both `remember` and
+>   `rememberSaveable` reset.
 
 First check the daemon's advertised extension events:
 
@@ -593,6 +601,32 @@ is the kind of thing this variant catches:
   }
 }
 ```
+
+**Recreate variant.** Use `state.recreate` to exercise the `rememberSaveable` save+restore
+path without depending on the activity lifecycle — verifies the saved-state side of state
+preservation in isolation. Useful when the lifecycle path is unavailable or you want a tighter
+test of just the saveable path:
+
+```json
+{
+  "tool": "record_preview",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
+    "events": [
+      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 200, "kind": "state.recreate" },
+      { "tMs": 200, "kind": "recording.probe", "label": "after-recreate" }
+    ]
+  }
+}
+```
+
+A `rememberSaveable`-backed counter that survives `state.recreate` but resets under
+`preview.reload` is correctly wired; one that resets under both is missing the saveable
+configuration; one that resets under `state.recreate` but survives `lifecycle.event:pause`+
+`:resume` is suspect — the activity-level path is preserving state the saveable registry
+isn't, which usually points to retained-instance bookkeeping that won't survive a real config
+change.
 
 ### Accessibility-driven interaction audit
 
