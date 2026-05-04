@@ -22,8 +22,8 @@ export function setupHistoryBehavior(): void {
     const filterBranchEl = document.getElementById("filter-branch");
     const btnRefreshEl = document.getElementById("btn-refresh");
     const btnDiffEl = document.getElementById("btn-diff");
-    const scopeChipEl = document.getElementById("scope-chip");
-    const scopeChipLabelEl = document.getElementById("scope-chip-label");
+    // Scope chip is owned by `<scope-chip>` — see
+    // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
     let entries = [];
     let selectedIds = new Set();
@@ -683,15 +683,7 @@ export function setupHistoryBehavior(): void {
             case "showMessage":
                 setMessage(msg.text || "");
                 break;
-            case "setScopeLabel":
-                if (msg.label) {
-                    scopeChipLabelEl.textContent = msg.label;
-                    scopeChipEl.hidden = false;
-                } else {
-                    scopeChipLabelEl.textContent = "";
-                    scopeChipEl.hidden = true;
-                }
-                break;
+            // setScopeLabel is handled by <scope-chip>.
             case "imageReady":
                 fillExpansion(msg.id, msg.imageData, msg.entry);
                 break;

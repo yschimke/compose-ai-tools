@@ -29,9 +29,12 @@ export function setupPreviewBehavior(
     // clearAll). showMessage messages from the extension reach the
     // component directly without going through this code.
     const messageBanner = document.querySelector("message-banner");
-    const filterFunction = document.getElementById("filter-function");
-    const filterGroup = document.getElementById("filter-group");
-    const layoutMode = document.getElementById("layout-mode");
+    // `<filter-toolbar>` owns the function/group/layout selects,
+    // their options, and the user-interaction events. We grab a handle
+    // here for the programmatic get/set + populate paths used by
+    // applyFilters / applyLayout / setPreviews / setFunctionFilter /
+    // focusOnCard / exitFocus / restoreFilterState.
+    const filterToolbar = document.querySelector("filter-toolbar");
     const focusControls = document.getElementById("focus-controls");
     const btnPrev = document.getElementById("btn-prev");
     const btnNext = document.getElementById("btn-next");
@@ -105,7 +108,7 @@ export function setupPreviewBehavior(
         state.layout &&
         ["grid", "flow", "column", "focus"].includes(state.layout)
     ) {
-        layoutMode.value = state.layout;
+        filterToolbar.setLayoutValue(state.layout);
     }
     applyLayout();
 
@@ -114,11 +117,14 @@ export function setupPreviewBehavior(
     // message (Building…, empty-state notice, cards) will replace it.
     messageBanner.setMessage("Loading Compose previews…", "fallback");
 
-    layoutMode.addEventListener("change", () => {
-        if (layoutMode.value === "focus" && state.layout !== "focus") {
+    filterToolbar.addEventListener("layout-changed", () => {
+        if (
+            filterToolbar.getLayoutValue() === "focus" &&
+            state.layout !== "focus"
+        ) {
             previousLayout = state.layout || "grid";
         }
-        state.layout = layoutMode.value;
+        state.layout = filterToolbar.getLayoutValue();
         vscode.setState(state);
         applyLayout();
     });
@@ -149,11 +155,11 @@ export function setupPreviewBehavior(
         btnDiffHead.hidden = !earlyFeaturesEnabled;
         btnDiffMain.hidden = !earlyFeaturesEnabled;
         btnA11yOverlay.hidden =
-            !earlyFeaturesEnabled || layoutMode.value !== "focus";
+            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
         btnRecording.hidden =
-            !earlyFeaturesEnabled || layoutMode.value !== "focus";
+            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
         recordingFormat.hidden =
-            !earlyFeaturesEnabled || layoutMode.value !== "focus";
+            !earlyFeaturesEnabled || filterToolbar.getLayoutValue() !== "focus";
         if (!earlyFeaturesEnabled) {
             focusInspector.hidden = true;
         }
@@ -182,7 +188,7 @@ export function setupPreviewBehavior(
     }
 
     function applyInteractiveButtonState() {
-        const inFocus = layoutMode.value === "focus";
+        const inFocus = filterToolbar.getLayoutValue() === "focus";
         // Hide outright when not in focus mode — the toolbar already
         // hides itself, but this keeps aria-pressed correct for tests
         // that snapshot the button in either layout.
@@ -236,7 +242,7 @@ export function setupPreviewBehavior(
     }
 
     function applyRecordingButtonState() {
-        const inFocus = layoutMode.value === "focus";
+        const inFocus = filterToolbar.getLayoutValue() === "focus";
         btnRecording.hidden = !earlyFeaturesEnabled || !inFocus;
         recordingFormat.hidden = !earlyFeaturesEnabled || !inFocus;
         if (!earlyFeaturesEnabled || !inFocus) {
@@ -267,7 +273,7 @@ export function setupPreviewBehavior(
     // identity. Outside focus mode the button hides; inside focus mode aria-pressed
     // tracks whether the currently focused preview has the overlay subscription on.
     function applyA11yOverlayButtonState() {
-        const inFocus = layoutMode.value === "focus";
+        const inFocus = filterToolbar.getLayoutValue() === "focus";
         btnA11yOverlay.hidden = !earlyFeaturesEnabled || !inFocus;
         if (!earlyFeaturesEnabled || !inFocus) {
             btnA11yOverlay.setAttribute("aria-pressed", "false");
@@ -289,7 +295,7 @@ export function setupPreviewBehavior(
     // different preview, first turn the previous one off so the wire stays clean.
     function toggleA11yOverlay() {
         if (!earlyFeaturesEnabled) return;
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
         if (!previewId) return;
@@ -384,7 +390,7 @@ export function setupPreviewBehavior(
         // Drives the LIVE button in the focus-mode toolbar — operates on the currently
         // focused card. Body factored into setInteractiveForCard so the in-card click handler
         // (any layout) can reuse the same plain-vs-Shift logic.
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         const visible = getVisibleCards();
         const card = visible[focusIndex];
         if (!card) return;
@@ -433,7 +439,7 @@ export function setupPreviewBehavior(
 
     function toggleRecording() {
         if (!earlyFeaturesEnabled) return;
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         const card = getVisibleCards()[focusIndex];
         const previewId = card ? card.dataset.previewId : null;
         if (!card || !previewId) return;
@@ -693,7 +699,7 @@ export function setupPreviewBehavior(
     // when an input-like element has focus (the layout dropdown,
     // future text inputs) so native keyboard semantics aren't stolen.
     document.addEventListener("keydown", (e) => {
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
         const tag = e.target && e.target.tagName;
         if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -701,37 +707,31 @@ export function setupPreviewBehavior(
         e.preventDefault();
     });
 
-    for (const sel of [filterFunction, filterGroup]) {
-        sel.addEventListener("change", () => {
-            saveFilterState();
-            if (filterDebounce) clearTimeout(filterDebounce);
-            filterDebounce = setTimeout(applyFilters, 100);
-        });
-    }
+    filterToolbar.addEventListener("filter-changed", () => {
+        saveFilterState();
+        if (filterDebounce) clearTimeout(filterDebounce);
+        filterDebounce = setTimeout(applyFilters, 100);
+    });
 
     function saveFilterState() {
         state.filters = {
-            fn: filterFunction.value,
-            group: filterGroup.value,
+            fn: filterToolbar.getFunctionValue(),
+            group: filterToolbar.getGroupValue(),
         };
         vscode.setState(state);
     }
 
     function restoreFilterState() {
         const f = state.filters || {};
-        if (f.fn && hasOption(filterFunction, f.fn))
-            filterFunction.value = f.fn;
-        if (f.group && hasOption(filterGroup, f.group))
-            filterGroup.value = f.group;
-    }
-
-    function hasOption(select, value) {
-        return Array.from(select.options).some((o) => o.value === value);
+        if (f.fn && filterToolbar.hasFunctionOption(f.fn))
+            filterToolbar.setFunctionValue(f.fn);
+        if (f.group && filterToolbar.hasGroupOption(f.group))
+            filterToolbar.setGroupValue(f.group);
     }
 
     function applyFilters() {
-        const fnVal = filterFunction.value;
-        const grpVal = filterGroup.value;
+        const fnVal = filterToolbar.getFunctionValue();
+        const grpVal = filterToolbar.getGroupValue();
 
         let visibleCount = 0;
         document.querySelectorAll(".preview-card").forEach((card) => {
@@ -785,7 +785,7 @@ export function setupPreviewBehavior(
     }
 
     function applyLayout() {
-        const mode = layoutMode.value;
+        const mode = filterToolbar.getLayoutValue();
         grid.className = "preview-grid layout-" + mode;
         focusControls.hidden = mode !== "focus";
 
@@ -873,7 +873,7 @@ export function setupPreviewBehavior(
     function publishScopedPreview() {
         const visible = getVisibleCards();
         let previewId = null;
-        if (layoutMode.value === "focus") {
+        if (filterToolbar.getLayoutValue() === "focus") {
             if (
                 visible.length > 0 &&
                 focusIndex >= 0 &&
@@ -909,9 +909,9 @@ export function setupPreviewBehavior(
         const idx = visible.indexOf(card);
         if (idx === -1) return;
         focusIndex = idx;
-        if (layoutMode.value !== "focus") {
-            previousLayout = layoutMode.value;
-            layoutMode.value = "focus";
+        if (filterToolbar.getLayoutValue() !== "focus") {
+            previousLayout = filterToolbar.getLayoutValue();
+            filterToolbar.setLayoutValue("focus");
             state.layout = "focus";
             vscode.setState(state);
         }
@@ -919,8 +919,8 @@ export function setupPreviewBehavior(
     }
 
     function exitFocus() {
-        if (layoutMode.value !== "focus") return;
-        layoutMode.value = previousLayout;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
+        filterToolbar.setLayoutValue(previousLayout);
         state.layout = previousLayout;
         vscode.setState(state);
         applyLayout();
@@ -1185,7 +1185,8 @@ export function setupPreviewBehavior(
             enabledFocusProducts.add(id);
         }
         const card = getVisibleCards()[focusIndex];
-        if (layoutMode.value === "focus" && card) renderFocusInspector(card);
+        if (filterToolbar.getLayoutValue() === "focus" && card)
+            renderFocusInspector(card);
     }
 
     function buildFocusPlaceholders() {
@@ -1236,7 +1237,7 @@ export function setupPreviewBehavior(
     // main = latest archived render on the main branch).
     function requestFocusedDiff(against) {
         if (!earlyFeaturesEnabled) return;
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         const visible = getVisibleCards();
         const card = visible[focusIndex];
         if (!card) return;
@@ -1256,7 +1257,7 @@ export function setupPreviewBehavior(
     // -- the extension uses the focused previewId to pick the owning
     // module before falling back to a quick-pick.
     function requestLaunchOnDevice() {
-        if (layoutMode.value !== "focus") return;
+        if (filterToolbar.getLayoutValue() !== "focus") return;
         const visible = getVisibleCards();
         const card = visible[focusIndex];
         if (!card) return;
@@ -1567,22 +1568,12 @@ export function setupPreviewBehavior(
         el.dataset.state = "changed";
     }
 
-    function populateFilter(select, values, label) {
-        const prev = select.value;
-        select.innerHTML = "";
-        const allOpt = document.createElement("option");
-        allOpt.value = "all";
-        allOpt.textContent = "All " + label;
-        select.appendChild(allOpt);
-        for (const v of values) {
-            if (!v) continue;
-            const opt = document.createElement("option");
-            opt.value = v;
-            opt.textContent = v;
-            select.appendChild(opt);
-        }
-        if (hasOption(select, prev)) select.value = prev;
-    }
+    // populateFilter / hasOption are gone — `<filter-toolbar>` owns the
+    // option lists via setFunctionOptions / setGroupOptions and exposes
+    // hasFunctionOption / hasGroupOption for membership tests. The
+    // current selected value is preserved across reseeds because
+    // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
+    // when only `fnOptions` / `grpOptions` change.
 
     function sanitizeId(id) {
         return id.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -1693,7 +1684,7 @@ export function setupPreviewBehavior(
         focusBtn.setAttribute("aria-label", "Focus this preview");
         focusBtn.addEventListener("click", (evt) => {
             evt.stopPropagation();
-            if (layoutMode.value === "focus") {
+            if (filterToolbar.getLayoutValue() === "focus") {
                 exitFocus();
             } else {
                 focusOnCard(card);
@@ -2618,7 +2609,7 @@ export function setupPreviewBehavior(
                 if (layer) layer.remove();
             }
         }
-        if (layoutMode.value === "focus") {
+        if (filterToolbar.getLayoutValue() === "focus") {
             const focused = getVisibleCards()[focusIndex];
             if (focused === card) renderFocusInspector(card);
         }
@@ -2829,8 +2820,8 @@ export function setupPreviewBehavior(
                     ),
                 ].sort();
 
-                populateFilter(filterFunction, fns, "functions");
-                populateFilter(filterGroup, groups, "groups");
+                filterToolbar.setFunctionOptions(fns);
+                filterToolbar.setGroupOptions(groups);
 
                 restoreFilterState();
                 applyFilters();
@@ -2894,17 +2885,10 @@ export function setupPreviewBehavior(
 
             case "setFunctionFilter": {
                 // Driven by the gutter-icon hover link: narrow the grid
-                // to a single @Preview function. If the option isn't yet
-                // in the dropdown (arrived before setPreviews populated
-                // it) add it so the value sticks and filter still applies.
-                const fn = msg.functionName;
-                if (!hasOption(filterFunction, fn)) {
-                    const opt = document.createElement("option");
-                    opt.value = fn;
-                    opt.textContent = fn;
-                    filterFunction.appendChild(opt);
-                }
-                filterFunction.value = fn;
+                // to a single @Preview function. `<filter-toolbar>`'s
+                // setFunctionValue ensures the option exists for the
+                // gutter-before-setPreviews case so the value sticks.
+                filterToolbar.setFunctionValue(msg.functionName);
                 saveFilterState();
                 applyFilters();
                 break;

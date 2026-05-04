@@ -11,6 +11,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { setupHistoryBehavior } from "./behavior";
+import "./components/ScopeChip";
 
 @customElement("history-app")
 export class HistoryApp extends LitElement {
@@ -41,17 +42,7 @@ export class HistoryApp extends LitElement {
                     Diff selected
                 </button>
             </div>
-            <div
-                id="scope-chip"
-                class="scope-chip"
-                role="status"
-                aria-live="polite"
-                hidden
-                title="History narrowed because a single preview is selected in the live panel — change focus or filters there to widen."
-            >
-                <i class="codicon codicon-filter" aria-hidden="true"></i>
-                <span id="scope-chip-label"></span>
-            </div>
+            <scope-chip></scope-chip>
             <div id="message" class="message">Loading…</div>
             <div
                 id="timeline"

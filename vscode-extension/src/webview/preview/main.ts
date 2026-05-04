@@ -12,6 +12,7 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { setupPreviewBehavior } from "./behavior";
 import "./components/CompileErrorsBanner";
+import "./components/FilterToolbar";
 import "./components/MessageBanner";
 import "./components/ProgressBar";
 
@@ -27,55 +28,7 @@ export class PreviewApp extends LitElement {
         return html`
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
-            <div
-                class="toolbar"
-                id="toolbar"
-                role="toolbar"
-                aria-label="Preview filters"
-            >
-                <div class="select-wrapper">
-                    <select
-                        id="filter-function"
-                        title="Filter by function"
-                        aria-label="Function filter"
-                    >
-                        <option value="all">All functions</option>
-                    </select>
-                    <i
-                        class="codicon codicon-chevron-down select-chevron"
-                        aria-hidden="true"
-                    ></i>
-                </div>
-                <div class="select-wrapper">
-                    <select
-                        id="filter-group"
-                        title="Filter by @Preview group"
-                        aria-label="Group filter"
-                    >
-                        <option value="all">All groups</option>
-                    </select>
-                    <i
-                        class="codicon codicon-chevron-down select-chevron"
-                        aria-hidden="true"
-                    ></i>
-                </div>
-                <div class="select-wrapper">
-                    <select
-                        id="layout-mode"
-                        title="Layout"
-                        aria-label="Layout mode"
-                    >
-                        <option value="grid">Grid</option>
-                        <option value="flow">Flow</option>
-                        <option value="column">Column</option>
-                        <option value="focus">Focus</option>
-                    </select>
-                    <i
-                        class="codicon codicon-chevron-down select-chevron"
-                        aria-hidden="true"
-                    ></i>
-                </div>
-            </div>
+            <filter-toolbar></filter-toolbar>
 
             <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
