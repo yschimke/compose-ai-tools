@@ -7,12 +7,8 @@ import * as path from "path";
 const PACKAGE_RE = /^\s*package\s+([a-zA-Z_][\w.]*)\s*;?\s*$/m;
 
 /**
- * Builds the package-qualified source path used as the `sourceFile` field in
- * the Gradle plugin's `previews.json` — e.g. `com/example/samplewear/Previews.kt`.
- *
- * Derived from the file's own `package` declaration so two files with the same
- * basename in different packages don't collide. Files in the default package
- * (or unreadable files) fall back to the bare basename.
+ * Builds the older package-qualified source path that some preview manifests
+ * used for `sourceFile`, e.g. `com/example/samplewear/Previews.kt`.
  */
 export function packageQualifiedSourcePath(filePath: string): string {
     const basename = path.basename(filePath);
@@ -26,4 +22,60 @@ export function packageQualifiedSourcePath(filePath: string): string {
         /* fall through to basename */
     }
     return basename;
+}
+
+/**
+ * Builds the canonical module-relative source path used by current manifests,
+ * e.g. `src/main/kotlin/com/example/samplewear/Previews.kt`.
+ */
+export function moduleRelativeSourcePath(
+    filePath: string,
+    workspaceRoot: string,
+    module: string,
+): string {
+    return normalizeSourcePath(
+        path.relative(path.join(workspaceRoot, module), filePath),
+    );
+}
+
+function normalizeSourcePath(value: string): string {
+    return value.replace(/\\/g, "/").replace(/^\.\/+/, "");
+}
+
+function sourcePathCandidates(
+    filePath: string,
+    workspaceRoot: string,
+    module: string,
+): Set<string> {
+    const candidates = new Set<string>();
+    candidates.add(normalizeSourcePath(packageQualifiedSourcePath(filePath)));
+    candidates.add(moduleRelativeSourcePath(filePath, workspaceRoot, module));
+    candidates.add(normalizeSourcePath(path.relative(workspaceRoot, filePath)));
+    candidates.add(normalizeSourcePath(filePath));
+    candidates.add(path.basename(filePath));
+    return candidates;
+}
+
+/**
+ * Matches the source path stored in previews.json against the active file.
+ *
+ * Current manifests use module-relative paths including the source set
+ * (`src/main/kotlin/com/example/Previews.kt`). Older manifests used
+ * package-qualified (`com/example/Previews.kt`) or basename-only values. The
+ * VS Code panel only needs to know whether a manifest entry belongs to the
+ * focused file, so accept all known stable shapes here.
+ */
+export function previewSourceMatches(
+    previewSourceFile: string | null | undefined,
+    filePath: string,
+    workspaceRoot: string,
+    module: string,
+): boolean {
+    if (!previewSourceFile) {
+        return false;
+    }
+    const sourceFile = normalizeSourcePath(previewSourceFile);
+    return sourcePathCandidates(filePath, workspaceRoot, module).has(
+        sourceFile,
+    );
 }
