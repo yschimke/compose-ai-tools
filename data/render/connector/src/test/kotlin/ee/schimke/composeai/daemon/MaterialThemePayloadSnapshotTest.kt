@@ -4,20 +4,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class MaterialThemePayloadReflectionFacadeTest {
+class MaterialThemePayloadSnapshotTest {
   @Test
-  fun readsColorSchemeFromThemePayloadFacade() {
+  fun readsColorSchemeFromThemePayload() {
     val colors = mapOf("background" to "#FFFFFFFF")
     val payload = ThemePayloadLike(ResolvedTokensLike(colors))
 
-    val result = MaterialThemePayloadReflectionFacade.colorScheme(payload)
+    val result = MaterialThemePayloadSnapshot.colorScheme(payload)
 
     assertEquals(colors, result)
   }
 
   @Test
   fun returnsNullForUnknownPayloadShape() {
-    val result = MaterialThemePayloadReflectionFacade.colorScheme(Any())
+    val result = MaterialThemePayloadSnapshot.colorScheme(Any())
 
     assertNull(result)
   }

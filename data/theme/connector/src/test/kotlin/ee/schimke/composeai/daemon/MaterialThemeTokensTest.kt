@@ -8,35 +8,35 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
-class ThemeTokenReflectionFacadeTest {
+class MaterialThemeTokensTest {
   @Test
-  fun readsColorPropertiesThroughFacade() {
+  fun readsColorSchemeFromTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = ThemeTokenReflectionFacade.readColorProperties(source)
+    val tokens = MaterialThemeTokens.colorScheme(source)
 
-    assertEquals(Color.Red.value.toLong(), tokens["primary"])
-    assertEquals(0xFF00FF00L, tokens["secondary"])
+    assertEquals(Color.Red.hexArgb(), tokens["primary"])
+    assertEquals(Color(0xFF00FF00u).hexArgb(), tokens["secondary"])
     assertFalse(tokens.containsKey("ignored"))
   }
 
   @Test
-  fun readsTextStylePropertiesThroughFacade() {
+  fun readsTypographyFromTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = ThemeTokenReflectionFacade.readTextStyleProperties(source)
+    val tokens = MaterialThemeTokens.typography(source)
 
-    assertEquals(16.sp, tokens.getValue("bodyLarge").fontSize)
+    assertEquals(16f, tokens.getValue("bodyLarge").fontSize)
     assertFalse(tokens.containsKey("primary"))
   }
 
   @Test
-  fun readsShapeLikePropertiesThroughFacade() {
+  fun readsShapesFromTokenObject() {
     val source = ReflectedThemeTokens()
 
-    val tokens = ThemeTokenReflectionFacade.readShapeLikeProperties(source)
+    val tokens = MaterialThemeTokens.shapes(source)
 
-    assertEquals(ShapeDefaults.Small, tokens["small"])
+    assertEquals(ShapeDefaults.Small.toString(), tokens["small"])
     assertFalse(tokens.containsKey("bodyLarge"))
   }
 

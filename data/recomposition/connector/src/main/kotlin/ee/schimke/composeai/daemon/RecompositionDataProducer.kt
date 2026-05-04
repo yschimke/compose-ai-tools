@@ -386,7 +386,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
   }
 
   private fun reflectRecomposer(scene: ImageComposeScene): androidx.compose.runtime.Recomposer {
-    return DesktopRecomposerReflectionFacade.recomposerFrom(scene)
+    return DesktopSceneRecomposer.current(scene)
   }
 
   private fun parseParams(params: JsonElement?): SubscribeParamsView? {
@@ -464,15 +464,17 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
 }
 
 /**
- * Facade for the desktop-only reflective bridge from [ImageComposeScene] to its held
- * [androidx.compose.runtime.Recomposer].
+ * Domain API for reading the recomposer that drives a desktop [ImageComposeScene].
  *
  * The regular recomposition extension should be authored against Compose runtime observer APIs.
- * This object contains the unavoidable Compose Desktop implementation-detail walk, making it easy
- * to replace with a composable extractor or public scene API when available.
+ * This object hides Compose Desktop implementation details, making it easy to replace with a
+ * composable extractor or public scene API when available.
  */
-internal object DesktopRecomposerReflectionFacade {
-  fun recomposerFrom(scene: ImageComposeScene): androidx.compose.runtime.Recomposer {
+internal object DesktopSceneRecomposer {
+  fun current(scene: ImageComposeScene): androidx.compose.runtime.Recomposer =
+    currentFromSceneHandle(scene) as androidx.compose.runtime.Recomposer
+
+  internal fun currentFromSceneHandle(scene: Any): Any {
     val composeScene = fieldValue(scene, "scene") ?: error("ImageComposeScene.scene was null")
     val sceneRecomposer =
       fieldValue(composeScene, "recomposer")
@@ -480,10 +482,10 @@ internal object DesktopRecomposerReflectionFacade {
     val recomposer =
       fieldValue(sceneRecomposer, "recomposer")
         ?: error("ComposeSceneRecomposer.recomposer was null")
-    return recomposer as androidx.compose.runtime.Recomposer
+    return recomposer
   }
 
-  fun fieldValue(receiver: Any, name: String): Any? {
+  private fun fieldValue(receiver: Any, name: String): Any? {
     val field = findDeclaredField(receiver.javaClass, name)
     field.isAccessible = true
     return field.get(receiver)

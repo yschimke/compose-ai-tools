@@ -140,17 +140,17 @@ private fun PreviewContext.material3Background(): DeviceBackground? {
 @Suppress("UNCHECKED_CAST")
 private fun PreviewContext.material3ColorScheme(): Map<String, String>? {
   val payload = inspection.values["compose.material3.themePayload"] ?: return null
-  return MaterialThemePayloadReflectionFacade.colorScheme(payload)
+  return MaterialThemePayloadSnapshot.colorScheme(payload)
 }
 
 /**
- * Facade for reading theme payloads without coupling this render product to the theme connector's
- * concrete model classes.
+ * Domain API for reading theme payloads without coupling this render product to the theme
+ * connector's concrete model classes.
  *
  * Prefer a typed/composable payload path when the data-extension pipeline owns this handoff. Until
- * then, keep the reflective compatibility bridge isolated here.
+ * then, keep the compatibility bridge isolated here.
  */
-internal object MaterialThemePayloadReflectionFacade {
+internal object MaterialThemePayloadSnapshot {
   @Suppress("UNCHECKED_CAST")
   fun colorScheme(payload: Any): Map<String, String>? {
     val resolvedTokens =

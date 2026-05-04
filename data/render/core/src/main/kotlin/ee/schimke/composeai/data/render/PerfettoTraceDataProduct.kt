@@ -75,16 +75,16 @@ object PerfettoTraceDataProducer {
   }
 
   private fun composeRuntimeTracingOnClasspath(): Boolean =
-    ComposeRuntimeTracingClasspathFacade.isAvailable()
+    ComposeRuntimeTracingAvailability.isAvailable()
 }
 
 /**
- * Facade for optional Compose runtime tracing detection.
+ * Domain API for optional Compose runtime tracing detection.
  *
  * This keeps reflective classpath probing out of the trace producer logic; callers only care
  * whether the optional tracing API is available.
  */
-internal object ComposeRuntimeTracingClasspathFacade {
+internal object ComposeRuntimeTracingAvailability {
   fun isAvailable(
     classLoader: ClassLoader =
       Thread.currentThread().contextClassLoader ?: PerfettoTraceDataProducer::class.java.classLoader
