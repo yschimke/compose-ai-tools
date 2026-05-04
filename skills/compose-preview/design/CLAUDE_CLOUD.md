@@ -6,8 +6,6 @@ CMP Desktop / pure-JVM; Android-consumer builds need one extra step.
 
 ## TL;DR
 
-Two things, in order:
-
 1. **Network level → Custom** with these four hosts allowlisted (keep
    "include Trusted defaults" on):
 
@@ -22,49 +20,21 @@ Two things, in order:
    are Android + downloadable-fonts specific. Don't use **Full**; it's broader
    than needed.
 
-   Extra conditional hosts, covered in detail further down:
-   - `repo.gradle.org` — only if building `:cli` from source (hosts
-     `gradle-tooling-api`); skipped by the release-tarball path.
-   - `api.adoptium.net` — only if you let Gradle auto-provision a JDK
-     instead of using `install.sh`'s pinned `JAVA_HOME`.
-   - `api.github.com` — rate-limited on shared sandbox IPs;
-     `install.sh` deliberately avoids it.
-
 2. **Drop the install script into the environment setup script:**
 
    ```
    curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
    ```
 
-   Auto-detects the Claude Code cloud sandbox (via `$CLAUDE_ENV_FILE` /
-   `$CLAUDE_CODE_SESSION_ID`) and handles the things the default image is
-   missing: reuses the pre-installed JDK 21 when present (the CLI, plugin,
-   and renderer JARs target JDK 17 bytecode and run fine on any newer
-   JDK) and only falls back to apt-installing `openjdk-17-jdk-headless` if
-   no Java 17+ is on PATH. Appends `PATH` (and `JAVA_HOME` when the fallback
-   fired) to `$CLAUDE_ENV_FILE` so every subsequent tool invocation sees
-   them. Lands the skill at `~/.claude/skills/compose-preview/` (where Claude
-   Code discovers it) with the CLI as a sibling under `cli/`, and symlinks
-   `~/.local/bin/compose-preview` for direct CLI use.
-
-Verify in a fresh session:
-
-```
-compose-preview doctor
-```
-
-When it sees `$CLAUDE_CODE_SESSION_ID` / `$CLAUDE_ENV_FILE`, doctor emits an
-`env.claude-cloud` info check at the top, probes the four hosts above, and
-tailors its remediation to the Claude Code UI (Trusted → Custom, add the
-missing host) rather than generic "allow in your proxy" text.
-
-Put project-specific Gradle pre-warm in the **environment setup script**
-after the install line — what to render is yours to fill in.
+3. **Verify** in a fresh session: `compose-preview doctor`. With the cloud
+   sandbox detected (via `$CLAUDE_ENV_FILE` / `$CLAUDE_CODE_SESSION_ID`),
+   doctor emits an `env.claude-cloud` info check, probes the four hosts
+   above, and tailors remediation to the Claude Code UI ("Trusted → Custom,
+   add the missing host") rather than generic proxy text.
 
 ## Cloud sandbox network levels
 
-Per the [Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web#network-access)
-the cloud session has four selectable levels:
+Per the [Claude Code on the web docs](https://code.claude.com/docs/en/claude-code-on-the-web#network-access):
 
 | Level | What it is | When to pick it for this project |
 | --- | --- | --- |
@@ -84,33 +54,19 @@ What's **not** on the Trusted defaults and matters here:
   CLI *from source* requires Custom mode. Running the CLI from the release
   tarball doesn't hit this host; `./scripts/install.sh` covers the common
   case without needing it.
-- `api.adoptium.net` and friends — Gradle's JDK toolchain auto-provisioning
-  endpoints. Ask Gradle to download a JDK and the build fails. Workaround
-  below.
+- `api.adoptium.net` — Gradle's JDK toolchain auto-provisioning. Ask Gradle
+  to download a JDK and the build fails. See gotchas below.
 - `api.github.com` — rate-limits unauthenticated calls from shared sandbox
-  IPs. `scripts/install.sh` deliberately avoids it (uses the public
-  `github.com` HTML redirect for version resolution and
-  `github.com/.../releases/download/` for the asset).
+  IPs. `scripts/install.sh` deliberately avoids it (uses `github.com` HTML
+  redirects for version resolution and `releases/download/` for assets).
 
-Pre-installed toolchains: **OpenJDK 21 only.** The CLI, plugin, and
-renderer JARs are compiled to JDK 17 bytecode and run fine on the
-pre-installed 21, so `install.sh` reuses it — no apt-install step needed
-in the common case. If you're building *this* repo from source (not just
-running the released CLI), Gradle's daemon is pinned to JDK 17 via
-`gradle/gradle-daemon-jvm.properties`, and `install.sh` will apt-install
-`openjdk-17-jdk-headless` as a fallback when 17 isn't already on disk.
+Pre-installed toolchain: **OpenJDK 21 only.** The CLI, plugin, and renderer
+JARs target JDK 17 bytecode and run fine on 21, so `install.sh` reuses it
+in the common case. Building this repo from source needs JDK 17 (the
+Gradle daemon is pinned via `gradle/gradle-daemon-jvm.properties`);
+`install.sh` apt-installs `openjdk-17-jdk-headless` as a fallback.
 
-## One-step install
-
-`scripts/install.sh` (also fetchable as a remote one-liner from
-`raw.githubusercontent.com`) bootstraps both halves of the bundle in one
-shot:
-
-```
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
-```
-
-Layout it produces:
+## What `install.sh` produces
 
 ```
 ~/.claude/skills/compose-preview/
@@ -121,111 +77,46 @@ Layout it produces:
 ```
 
 `~/.claude/skills/compose-preview/` is the path Claude Code's skill
-discovery walks, so dropping the bundle here makes the skill available in
-any subsequent session — no project-level `.claude/skills/` copy needed.
-Also symlinks `~/.local/bin/compose-preview` so direct CLI use (outside
-agent invocation) still works without knowing the bundle path.
+discovery walks, so dropping the bundle there makes the skill available in
+any subsequent session. `~/.local/bin/compose-preview` is also symlinked
+for direct CLI use outside agent invocation.
 
-Auto-detected as a Claude cloud sandbox via `$CLAUDE_ENV_FILE` /
-`$CLAUDE_CODE_SESSION_ID` (force with `CLAUDE_CLOUD=1` / `CLAUDE_CLOUD=0`).
-What it does when it sees the sandbox:
+In cloud mode the script also: appends `JAVA_HOME` and `PATH` to
+`$CLAUDE_ENV_FILE` so subsequent tool invocations inherit them; translates
+`$https_proxy` / `$http_proxy` into `JAVA_TOOL_OPTIONS`
+(`-Dhttps.proxyHost` / `-Dhttp.proxyHost`) and writes that to the same env
+file (the JVM's `HttpURLConnection` ignores shell proxy env vars — see
+gotchas). Force with `CLAUDE_CLOUD=1` / disable with `CLAUDE_CLOUD=0`.
+Idempotent on re-run.
 
-- Reuses the pre-installed JDK 21 when present. Only falls back to
-  `apt-get install -y openjdk-17-jdk-headless` when no JDK 17+ is on
-  PATH — Gradle's auto-provisioning is firewalled, so we can't lazily
-  download a toolchain.
-- Downloads release tarballs from `github.com` directly, skipping
-  `api.github.com` (rate-limited on shared sandbox IPs).
-- Appends `JAVA_HOME` and `PATH` to `$CLAUDE_ENV_FILE` so subsequent tool
-  invocations in the session inherit them.
-- Translates `$https_proxy` / `$http_proxy` into `JAVA_TOOL_OPTIONS`
-  (`-Dhttps.proxyHost` / `-Dhttp.proxyHost`) and writes that to
-  `$CLAUDE_ENV_FILE` as well. The JVM's `HttpURLConnection` ignores the
-  shell proxy env vars, so without this the Gradle wrapper's first-run
-  distribution download fails with `UnknownHostException` on
-  `services.gradle.org` (see the "known gotchas" section below).
+## Trusted mode (CMP / pure-JVM)
 
-Idempotent: rerunning is a fast no-op once things are in place.
-
-## Trusted mode quickstart
-
-Recipe for getting `compose-preview` running end-to-end on the **default
-Trusted** network level — no allowlist changes, no Custom hosts, no Full
-access. Works for CMP Desktop / pure-JVM consumer projects. For Android
-consumers, follow this same recipe but switch to Custom first (see below).
-
-### Step 1 — Confirm the network level
-
-In the Claude Code web UI for your repo, leave the network access level
-at **Trusted** (the default). This covers Maven Central, the Gradle Plugin
-Portal, the Gradle distribution download, and GitHub release assets.
-
-### Step 2 — Environment setup script
-
-Paste this into the repo's environment setup script (Claude Code web UI →
-Environment → Setup script). It runs once when the environment is built
-and the resulting filesystem is cached into the snapshot.
+Setup script for the **default Trusted** network level — works for CMP
+Desktop / pure-JVM consumer projects. For Android consumers, use this same
+recipe but switch to Custom first (see below).
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Installs the compose-preview skill bundle (skill files + CLI under
-# ~/.claude/skills/compose-preview/), reusing the pre-installed JDK 21
-# (or falling back to apt-installing JDK 17 if no 17+ JDK is available).
-# Writes PATH (and JAVA_HOME when fallback fires) to $CLAUDE_ENV_FILE.
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
 
-# Optional: pre-warm your project's Gradle cache so the populated deps
-# get baked into the env snapshot. What to render is project-specific —
-# swap in whichever module(s) apply the plugin.
+# Optional pre-warm — bakes Gradle's downloaded deps into the env snapshot.
+# CLI auto-discovers every module that applies the plugin.
 export PATH=$HOME/.local/bin:$PATH
 compose-preview show --json --brief || true
 ```
 
-The CLI auto-discovers every module that applies the plugin, so the
-pre-warm step doesn't need a hardcoded `:app` / `:samples:cmp` /
-whatever — `compose-preview show` resolves them on its own. Tolerate
-failure (`|| true`) — even a partial render still populates Gradle's
-cache.
+Verify with `compose-preview doctor`. Expected: a `[env]` block showing
+JDK 17+ on PATH (21 on current images), Gradle reachable, and four
+`env.network.*` checks. On Trusted, the Google hosts will warn — that's
+expected if you only render CMP Desktop / JVM. The `[project]` block
+either lists per-module results or reports "no modules have the
+compose-preview plugin applied".
 
-No separate SessionStart hook is needed — `install.sh` writes the env
-vars once and they persist across sessions via the env snapshot.
-
-### Step 3 — Verify
-
-Open a fresh session and run:
-
-```bash
-compose-preview doctor
-```
-
-Expected: a `[env]` block showing JDK 17+ on PATH (21 on current images),
-Gradle reachable, and four `env.network.*` checks (one each for `maven.google.com`,
-`dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). On
-**Trusted**, the Google hosts will show as warnings — that's expected if
-you only render CMP Desktop / JVM projects. Switch to **Custom** and add
-them if you render Android or use downloadable Google Fonts.
-
-The `[project]` block will show either per-module results (if the plugin
-is applied somewhere) or "no modules have the compose-preview plugin
-applied" if not.
-
-The plugin resolves from Maven Central, so doctor no longer probes GitHub
-Packages or expects any credentials. If your project still declares
-`maven.pkg.github.com` in `settings.gradle[.kts]` (typically from an older
-README snippet), you can drop that repository.
-
-Then drive an actual render against any module with the plugin applied:
-
-```bash
-compose-preview list                      # discovery only — no PNG render
-compose-preview show --json --brief       # render + JSON paths/hashes
-```
-
-If `show` succeeds and prints PNG paths, Trusted mode is fully working
-end-to-end. If it fails complaining about `dl.google.com` or `maven.google.com`,
-your project pulls AGP/AndroidX — switch to Custom mode.
+The plugin resolves from Maven Central, so doctor doesn't probe GitHub
+Packages. Drop any leftover `maven.pkg.github.com` from older
+`settings.gradle[.kts]` snippets.
 
 ## Custom mode (Android consumers)
 
@@ -238,26 +129,23 @@ Trusted defaults" on, and add:
 - `fonts.googleapis.com` + `fonts.gstatic.com` — only if you use
   `androidx.compose.ui:ui-text-google-fonts` at render time
 
-The same `curl … install.sh | bash` bootstrap applies, with `--android-sdk`
-appended to also install the Android SDK (cmdline-tools +
-`platforms;android-36` + `platform-tools` + `build-tools;36.0.0`) into
-`/opt/android-sdk` and append `ANDROID_HOME` to `$CLAUDE_ENV_FILE`:
+Same install bootstrap with `--android-sdk` to also install the Android
+SDK (cmdline-tools + `platforms;android-36` + `platform-tools` +
+`build-tools;36.0.0`) into `/opt/android-sdk` and append `ANDROID_HOME`
+to `$CLAUDE_ENV_FILE`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
   | bash -s -- --android-sdk
 
-# Optional: pre-warm the Android render path so AGP / Robolectric jars get
-# baked into the env snapshot. `|| true` so a partial render still populates
-# the cache.
+# Optional pre-warm; `|| true` so a partial render still populates the cache.
 ./gradlew --no-daemon :samples:android:renderAllPreviews || true
 ```
 
-Override the install location with `ANDROID_HOME=…` before the curl if you
-want it somewhere other than `/opt/android-sdk` (e.g. `$HOME/android-sdk`
+Override the install location with `ANDROID_HOME=…` before the curl if
+you want it somewhere other than `/opt/android-sdk` (e.g. `$HOME/android-sdk`
 to avoid the sudo path). Idempotent — re-running with the SDK already
-present at `$ANDROID_HOME/platforms/android-36` is a fast no-op, which
-matches how the Cloud snapshot caches it across sessions.
+present at `$ANDROID_HOME/platforms/android-36` is a fast no-op.
 
 ## Two known gotchas
 
@@ -295,8 +183,8 @@ that hits the same issue), two manual workarounds:
 `api.adoptium.net` (and the other toolchain vendor APIs) aren't on the
 Trusted allowlist. Any Gradle build that asks for a JDK it doesn't have —
 e.g. a Java-25 toolchain in an env that ships JDK 21 — fails with
-"Unable to download toolchain". Add the JDK in the setup script (see step
-2), or add the vendor APIs via Custom.
+"Unable to download toolchain". Install the JDK in the setup script (see
+above), or add the vendor APIs via Custom.
 
 ## Other caveats
 

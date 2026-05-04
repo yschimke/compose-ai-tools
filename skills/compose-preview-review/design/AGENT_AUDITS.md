@@ -516,39 +516,26 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
+Use this when a PR changes anything that should survive a configuration change, process death,
+or cold composition: `remember` / `rememberSaveable` keys, `SavedStateHandle`, retained
+instance objects, or screens that read scoped state.
+
 > **Capability split.** `recording.probe`, `lifecycle.pause` / `lifecycle.resume` /
-> `lifecycle.stop`, `preview.reload`, `state.recreate`, `state.save`, and `state.restore` (all
-> Android-only) are wired and `record_preview` accepts them.
->
-> **Choose between the state-shaped events:**
->
-> - `lifecycle.pause` then `lifecycle.resume` — verifies state survives an Android configuration
->   change. The activity is intact across the round-trip; `remember` and `rememberSaveable`
->   both survive.
-> - `state.recreate` — single-event round-trip. The composition is torn down and rebuilt;
->   `rememberSaveable` is restored from a snapshot, `remember` resets. Same audit signal as a
->   real `ActivityScenario.recreate()` but Compose-level only.
-> - `state.save` / `state.restore` (paired with `checkpointId`) — named checkpoints. `save`
->   captures the current `rememberSaveable` state under an agent-supplied id without rebuilding;
->   `restore` looks up an earlier save by id and rebuilds with that bundle restored. Multiple
->   checkpoints can coexist; useful when an audit needs to compare two saved states or restore
->   to an earlier checkpoint after intermediate edits.
-> - `preview.reload` — verifies the screen handles a cold composition. Both `remember` and
->   `rememberSaveable` reset.
+> `lifecycle.stop`, `preview.reload`, `state.recreate`, `state.save`, and `state.restore` are
+> all Android-only and accepted by `record_preview`. Confirm with `list_data_products` →
+> `dataExtensions[].recordingScriptEvents[]` before scripting.
 
-First check the daemon's advertised extension events:
+**Pick the right round-trip.** The four shapes verify different layers of the state-survival
+stack:
 
-```json
-{ "tool": "list_data_products", "arguments": { "workspaceId": "<workspace>" } }
-```
+| Round-trip | Triggers | What survives |
+|---|---|---|
+| `lifecycle.pause` then `lifecycle.resume` | Android config change | `remember` AND `rememberSaveable` |
+| `state.recreate` | Compose-level rebuild from saved bundle | only `rememberSaveable` |
+| `state.save` + `state.restore` (with `checkpointId`) | named snapshot, then rebuild from it | `rememberSaveable` from the named save; multiple checkpoints can coexist |
+| `preview.reload` | cold composition | nothing — both `remember` and `rememberSaveable` reset |
 
-Inspect `dataExtensions[].recordingScriptEvents[]`: only entries with `supported: true` may
-appear in a `record_preview` script. If the audit needs an event that's still
-`supported: false`, name the gap in the review and stop — this is a tooling roadmap item, not a
-PR-level finding.
-
-Then drive the click flow plus a pause-resume cycle to verify state survives an Android
-lifecycle round-trip:
+**Worked example — pause/resume.** Click a stateful preview, then bounce the lifecycle:
 
 ```json
 {
@@ -565,110 +552,52 @@ lifecycle round-trip:
 }
 ```
 
-Events with the same `tMs` are one script step — the `pause` + `resume` + verification probe at
-`tMs: 200` happen before the frame for that tick is captured, so the rendered frame at 200ms
-already reflects the post-resume composition. Do not add fake delays around the lifecycle
-events; that tests timing luck instead of state-survival semantics.
+Events with the same `tMs` are one script step — the pause + resume + probe at `tMs: 200`
+happen before the frame for that tick is captured, so the rendered frame already reflects the
+post-resume composition. Don't add fake delays around lifecycle events; that tests timing luck
+instead of state-survival semantics.
+
+For the other round-trips, swap the lifecycle pair for the corresponding event(s):
+`{ "kind": "preview.reload" }`, `{ "kind": "state.recreate" }`, or
+`{ "kind": "state.save", "checkpointId": "<id>" }` followed later by
+`{ "kind": "state.restore", "checkpointId": "<id>" }`. Multiple saves to the same id
+overwrite the prior bundle; restoring an unknown id comes back as `unsupported` with a
+diagnostic naming the missing id.
 
 Check:
 
-- `list_data_products` advertises `recording.probe`, `lifecycle.pause`, and `lifecycle.resume`
-  with `supported: true` on the daemon under test.
-- The recording metadata's `scriptEvents` for both lifecycle events report `status: "applied"`
-  (each handler emits a message naming the transition).
-- Input events that should change state produce changed frames before the lifecycle round-trip
-  AND survive the round-trip (`changedFromPrevious: false` on the post-resume frame would mean
-  the click state was lost across pause-resume).
-- Once `state.save` / `state.restore` ship as `supported: true`, extend this audit with named
-  checkpoint pairs for explicit save/restore verification.
+- `scriptEvents[*].status = "applied"` for every lifecycle / state event in the recording
+  metadata.
+- The post-input frame is changed (`changedFromPrevious: true`) BEFORE the round-trip; the
+  post-round-trip frame matches the layer the round-trip should preserve. A
+  `changedFromPrevious: false` post-resume frame would mean the click state was lost.
+- New or removed events appear as MCP rejections rather than daemon evidence — that's a
+  tooling gap, not an app regression.
 
-**Cold-composition variant.** Replace the `pause`+`resume` pair with `preview.reload` to verify
-the screen recovers cleanly from a recompose-from-zero (`remember` and `rememberSaveable` both
-reset). A regression that lost `rememberSaveable` state under reload but not under pause-resume
-is the kind of thing this variant catches:
+**Diagnostic ladder.** Cross-reference round-trips when a regression is unclear:
 
-```json
-{
-  "tool": "record_preview",
-  "arguments": {
-    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
-    "events": [
-      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 200, "kind": "preview.reload" },
-      { "tMs": 200, "kind": "recording.probe", "label": "after-reload" }
-    ]
-  }
-}
-```
-
-**Named-checkpoint variant.** Use `state.save` + `state.restore` when the audit needs to
-compare specific points in the flow — capture state at A, do work, capture state at B, restore
-A, verify return-trip behaves correctly:
-
-```json
-{
-  "tool": "record_preview",
-  "arguments": {
-    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
-    "events": [
-      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 100, "kind": "state.save", "checkpointId": "after-first-click" },
-      { "tMs": 200, "kind": "input.click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 300, "kind": "state.save", "checkpointId": "after-second-click" },
-      { "tMs": 400, "kind": "state.restore", "checkpointId": "after-first-click" },
-      { "tMs": 400, "kind": "recording.probe", "label": "after-restore-to-first" }
-    ]
-  }
-}
-```
-
-`state.save` doesn't rebuild the composition — it just snapshots `rememberSaveable` state under
-the named id. `state.restore` does the rebuild. Multiple saves to the same id overwrite the
-prior bundle. A `state.restore` for a `checkpointId` that was never saved comes back as
-`unsupported` with a diagnostic that names the missing id.
-
-**Recreate variant.** Use `state.recreate` to exercise the `rememberSaveable` save+restore
-path without depending on the activity lifecycle — verifies the saved-state side of state
-preservation in isolation. Useful when the lifecycle path is unavailable or you want a tighter
-test of just the saveable path:
-
-```json
-{
-  "tool": "record_preview",
-  "arguments": {
-    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
-    "events": [
-      { "tMs": 0,   "kind": "input.click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 200, "kind": "state.recreate" },
-      { "tMs": 200, "kind": "recording.probe", "label": "after-recreate" }
-    ]
-  }
-}
-```
-
-A `rememberSaveable`-backed counter that survives `state.recreate` but resets under
-`preview.reload` is correctly wired; one that resets under both is missing the saveable
-configuration; one that resets under `state.recreate` but survives `lifecycle.pause` +
-`lifecycle.resume` is suspect — the activity-level path is preserving state the saveable
-registry isn't, which usually points to retained-instance bookkeeping that won't survive a
-real config change.
+- Survives `state.recreate` but resets under `preview.reload` — correctly wired
+  (`rememberSaveable` is doing its job; `remember` resetting is expected).
+- Resets under both `state.recreate` and `preview.reload` — missing
+  `rememberSaveable` configuration on the offending state holder.
+- Resets under `state.recreate` but survives `lifecycle.pause` + `lifecycle.resume` —
+  suspect: the activity-level path is preserving state the saveable registry isn't, which
+  usually points to retained-instance bookkeeping that won't survive a real config change.
 
 ### Accessibility-driven interaction audit
-
-> **Capability split.** Twelve `a11y.action.*` ids are wired end-to-end on the Android backend —
-> `click`, `longClick`, `focus`, `expand`, `collapse`, `dismiss`, `scrollForward`,
-> `scrollBackward`, `scrollUp`, `scrollDown`, `scrollLeft`, `scrollRight`. Each resolves the
-> target node by content description and invokes the matching `SemanticsActions` constant —
-> same path `AccessibilityNodeInfo.performAction(...)` walks via TalkBack. The remaining
-> seven (`clearFocus`, `accessibilityFocus`, `clearAccessibilityFocus`, `select`,
-> `clearSelection`, `nextAtGranularity`, `previousAtGranularity`) appear in
-> `list_data_products` as `supported = false` roadmap entries and are rejected up front by
-> `record_preview` — they don't have a clean Compose `SemanticsActions` equivalent today.
 
 Use this when a PR changes a screen reader–facing flow: clickable nodes, `Modifier.semantics`
 handlers, scrollable containers consumed by a screen reader, or anything that should be reachable
 without a pointer event. The intent is to drive the preview the way assistive technology does
 rather than by pixel coordinates.
+
+> **Capability split.** Wired (Android, with the a11y preview extension enabled): `click`,
+> `longClick`, `focus`, `expand`, `collapse`, `dismiss`, plus `scroll{Forward,Backward,Up,Down,Left,Right}`.
+> Each resolves the target node by content description and invokes the matching
+> `SemanticsActions` constant — the same path `AccessibilityNodeInfo.performAction(...)` walks
+> via TalkBack. Roadmap (`supported = false` in `list_data_products`):
+> `clearFocus`, `accessibilityFocus`, `clearAccessibilityFocus`, `select`, `clearSelection`,
+> `nextAtGranularity`, `previousAtGranularity` — no clean Compose `SemanticsActions` equivalent yet.
 
 Driving sequence:
 
