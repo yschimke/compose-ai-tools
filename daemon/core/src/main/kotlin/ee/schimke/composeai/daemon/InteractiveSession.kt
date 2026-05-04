@@ -142,10 +142,10 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchStateSave(checkpointId: String): Boolean = false
 
   /**
-   * Look up the bundle stashed by an earlier [dispatchStateSave] with matching [checkpointId]
-   * and rebuild the held composition with it restored. Returns `true` when the restore fired,
-   * `false` when no checkpoint with that id has been saved (caller surfaces unsupported
-   * evidence). Throws when the rebuild itself failed.
+   * Look up the bundle stashed by an earlier [dispatchStateSave] with matching [checkpointId] and
+   * rebuild the held composition with it restored. Returns `true` when the restore fired, `false`
+   * when no checkpoint with that id has been saved (caller surfaces unsupported evidence). Throws
+   * when the rebuild itself failed.
    */
   fun dispatchStateRestore(checkpointId: String): Boolean = false
 
