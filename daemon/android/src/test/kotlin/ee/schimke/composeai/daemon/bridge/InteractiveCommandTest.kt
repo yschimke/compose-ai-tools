@@ -151,6 +151,35 @@ class InteractiveCommandTest {
   }
 
   @Test
+  fun dispatchPreviewReloadRoundTripsThroughTheBridge() {
+    // Pin the cross-classloader contract for the new variant: only `java.*` types in the
+    // payload, round-trips through `interactiveCommands` by reference. No event-specific fields
+    // — reload is parameterless; the held composition is implicit.
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchPreviewReload(
+        streamId = "stream-A",
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asReload = drained as InteractiveCommand.DispatchPreviewReload
+    assertSame(replyLatch, asReload.replyLatch)
+    assertSame(replyError, asReload.replyError)
+    assertSame(replyApplied, asReload.replyApplied)
+    assertNull("replyError defaults to null", asReload.replyError.get())
+    assertFalse("replyApplied defaults to false", asReload.replyApplied.get())
+  }
+
+  @Test
   fun dispatchLifecycleRoundTripsThroughTheBridge() {
     // Pin the cross-classloader contract for the new variant: only `java.*` types in the
     // payload, round-trips through `interactiveCommands` by reference (so the host's latch /

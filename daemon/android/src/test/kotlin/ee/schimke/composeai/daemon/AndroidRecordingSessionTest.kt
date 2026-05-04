@@ -728,6 +728,114 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun previewReloadRoutesThroughDispatchPreviewReload() {
+    // Happy path for the new `preview.reload` registry entry: handler calls
+    // `interactive.dispatchPreviewReload()` and reports `applied` evidence with a message
+    // describing the rebuild. No payload validation needed — the kind alone is sufficient.
+    val framesDir = tempFolder.newFolder("preview-reload-frames")
+    val encodedDir = tempFolder.newFolder("preview-reload-encoded")
+    val sourcePng = File(tempFolder.newFolder("preview-reload-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { previewReloadResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-preview-reload",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT,
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(
+        "the registry must route preview.reload through dispatchPreviewReload, not pointer dispatch",
+        0,
+        interactive.dispatchCount,
+      )
+      assertEquals(1, interactive.previewReloadCount)
+      assertEquals(1, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "evidence must mention the composition rebuild; got '$message'",
+        message.contains("composition") && message.contains("rebuilt"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun previewReloadReportsUnsupportedWhenHostCannotReload() {
+    // When `dispatchPreviewReload` returns false (no held rule, or reload counter wasn't wired),
+    // the handler must surface a specific unsupported reason — not let the agent think the
+    // reload landed.
+    val framesDir = tempFolder.newFolder("preview-reload-miss-frames")
+    val encodedDir = tempFolder.newFolder("preview-reload-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("preview-reload-miss-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { previewReloadResult = false }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-preview-reload-miss",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT,
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(1, interactive.previewReloadCount)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "miss diagnostic must mention reload counter wiring; got '$message'",
+        message.contains("reload counter"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -1006,6 +1114,21 @@ class AndroidRecordingSessionTest {
       lifecycleCalls += lifecycleEvent
       val override = lifecycleResult
       return override ?: super.dispatchLifecycle(lifecycleEvent)
+    }
+
+    var previewReloadCount: Int = 0
+
+    /**
+     * When non-null, [dispatchPreviewReload] returns this value verbatim and increments
+     * [previewReloadCount]. When null (the default), the inherited interface-level default
+     * (`return false`) is used so existing tests don't have to opt in.
+     */
+    var previewReloadResult: Boolean? = null
+
+    override fun dispatchPreviewReload(): Boolean {
+      previewReloadCount++
+      val override = previewReloadResult
+      return override ?: super.dispatchPreviewReload()
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

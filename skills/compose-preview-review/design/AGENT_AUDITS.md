@@ -516,12 +516,18 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-> **Capability split.** `recording.probe` and `lifecycle.event` (Android-only — drives
-> `ActivityScenario.moveToState(...)` against the held rule's activity) are wired and
-> `record_preview` accepts them. `state.save` / `state.restore` and `preview.reload` are still
-> advertised as `supported = false` roadmap and rejected up front. The lifecycle event accepts
-> `pause` / `resume` / `stop` in v1 — `destroy` is rejected because moving the scenario to
-> DESTROYED would break subsequent renders.
+> **Capability split.** `recording.probe`, `lifecycle.event`, and `preview.reload` (all
+> Android-only) are wired and `record_preview` accepts them. `lifecycle.event` drives
+> `ActivityScenario.moveToState(...)` against the held rule's activity (accepts `pause` /
+> `resume` / `stop` — `destroy` is rejected). `preview.reload` forces a fresh composition by
+> tearing down the held content under its `key(...)` boundary and rebuilding (`remember` and
+> `rememberSaveable` state both reset). `state.save` / `state.restore` are still advertised as
+> `supported = false` roadmap and rejected up front.
+>
+> **Choose `lifecycle.event` vs `preview.reload`.** Use `lifecycle.event:pause` then `:resume`
+> when verifying that state survives a configuration change — `rememberSaveable` is preserved.
+> Use `preview.reload` when verifying the screen handles a cold composition — both `remember`
+> and `rememberSaveable` reset.
 
 First check the daemon's advertised extension events:
 
@@ -568,6 +574,25 @@ Check:
   the click state was lost across pause-resume).
 - Once `state.save` / `state.restore` ship as `supported: true`, extend this audit with named
   checkpoint pairs for explicit save/restore verification.
+
+**Cold-composition variant.** Replace the `pause`+`resume` pair with `preview.reload` to verify
+the screen recovers cleanly from a recompose-from-zero (`remember` and `rememberSaveable` both
+reset). A regression that lost `rememberSaveable` state under reload but not under pause-resume
+is the kind of thing this variant catches:
+
+```json
+{
+  "tool": "record_preview",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
+    "events": [
+      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 200, "kind": "preview.reload" },
+      { "tMs": 200, "kind": "recording.probe", "label": "after-reload" }
+    ]
+  }
+}
+```
 
 ### Accessibility-driven interaction audit
 
