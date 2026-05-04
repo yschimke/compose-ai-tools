@@ -1,11 +1,21 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
@@ -96,6 +106,27 @@ class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProd
   }
 }
 
+/**
+ * Clean Compose-facing connector for applying the selected device background.
+ *
+ * The metadata product still decides which color wins. Hosts that want the background applied in
+ * composition can plan this extension instead of hardcoding a renderer-side `Box` wrapper.
+ */
+class DeviceBackgroundExtension(private val color: String) :
+  AroundComposableExtension(
+    id = DataExtensionId(DeviceBackgroundDataProductRegistry.KIND),
+    constraints =
+      DataExtensionConstraints(
+        phase = DataExtensionPhase.OuterEnvironment,
+        provides = setOf(DataExtensionCapability(DeviceBackgroundDataProductRegistry.KIND)),
+      ),
+  ) {
+  @Composable
+  override fun AroundComposable(content: @Composable () -> Unit) {
+    Box(modifier = Modifier.background(color.toComposeColor())) { content() }
+  }
+}
+
 private data class DeviceBackground(
   val color: String,
   val source: String,
@@ -168,6 +199,17 @@ private fun fallbackBackground(): DeviceBackground =
   DeviceBackground("#FFFFFBFE", "material3.lightBackgroundFallback")
 
 private fun Long.hexArgb(): String = "#%08X".format(this and 0xFFFFFFFFL)
+
+private fun String.toComposeColor(): Color {
+  val raw = removePrefix("#")
+  val argb =
+    when (raw.length) {
+      6 -> "FF$raw"
+      8 -> raw
+      else -> error("Expected #RRGGBB or #AARRGGBB device background color, got '$this'.")
+    }
+  return Color(argb.toULong(16))
+}
 
 private fun isTransparentColor(color: String): Boolean =
   color.length == 9 && color.startsWith("#") && color.substring(1, 3).equals("00", true)
