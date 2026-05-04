@@ -128,12 +128,7 @@ interface CapturedImage {
     pngPath: string;
 }
 
-interface BuildOptions {
-    /** D2 — drives `composePreview.a11y.alwaysSubscribe`. Defaults to false to mirror prod. */
-    a11yAlwaysSubscribe?: () => boolean;
-}
-
-function build(opts: BuildOptions = {}) {
+function build() {
     const gate = new FakeGate();
     const log: string[] = [];
     const images: CapturedImage[] = [];
@@ -200,7 +195,6 @@ function build(opts: BuildOptions = {}) {
         gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
         events,
         { appendLine: (s) => log.push(s) },
-        opts.a11yAlwaysSubscribe ?? (() => false),
     );
     return {
         gate,
@@ -742,64 +736,6 @@ describe("DaemonScheduler", () => {
                 (c) => c.method === "dataSubscribe",
             );
             assert.strictEqual(subs.length, 0);
-        });
-
-        it("auto-subscribes both a11y kinds for newly-visible previews when alwaysSubscribe is on", async () => {
-            const { gate, scheduler } = build({
-                a11yAlwaysSubscribe: () => true,
-            });
-            await scheduler.setVisible("mod", ["a", "b"], []);
-            const subs = gate.client!.calls.filter(
-                (c) => c.method === "dataSubscribe",
-            );
-            // 2 kinds × 2 previews = 4 subscribes.
-            assert.strictEqual(subs.length, 4);
-            const kinds = new Set(
-                subs.map((c) => (c.args as { kind: string }).kind),
-            );
-            assert.deepStrictEqual([...kinds].sort(), [
-                "a11y/atf",
-                "a11y/hierarchy",
-            ]);
-            const ids = new Set(
-                subs.map((c) => (c.args as { previewId: string }).previewId),
-            );
-            assert.deepStrictEqual([...ids].sort(), ["a", "b"]);
-        });
-
-        it("alwaysSubscribe re-reads on every setVisible — flipping the setting takes effect immediately", async () => {
-            let alwaysOn = false;
-            const { gate, scheduler } = build({
-                a11yAlwaysSubscribe: () => alwaysOn,
-            });
-            await scheduler.setVisible("mod", ["a"], []);
-            const initial = gate.client!.calls.filter(
-                (c) => c.method === "dataSubscribe",
-            );
-            assert.strictEqual(initial.length, 0);
-            // User flips the setting on between setVisible calls.
-            alwaysOn = true;
-            await scheduler.setVisible("mod", ["a", "b"], []);
-            // 'a' was previously visible but skipped under the off setting; 'b' is new.
-            // With alwaysOn now true, both get subscribed (we haven't seen them yet under
-            // the on setting, so subscribedPairs is empty for them).
-            const subs = gate.client!.calls.filter(
-                (c) => c.method === "dataSubscribe",
-            );
-            assert.strictEqual(subs.length, 4);
-        });
-
-        it("alwaysSubscribe does not re-subscribe (previewId, kind) pairs already in flight", async () => {
-            const { gate, scheduler } = build({
-                a11yAlwaysSubscribe: () => true,
-            });
-            await scheduler.setVisible("mod", ["a"], []);
-            await scheduler.setVisible("mod", ["a", "b"], []); // 'a' already subscribed
-            const subs = gate.client!.calls.filter(
-                (c) => c.method === "dataSubscribe",
-            );
-            // 'a': 2 kinds (round 1) + 'b': 2 kinds (round 2) = 4. 'a' is NOT re-subscribed.
-            assert.strictEqual(subs.length, 4);
         });
 
         it("setDataProductSubscription(true) issues data/subscribe per kind", async () => {

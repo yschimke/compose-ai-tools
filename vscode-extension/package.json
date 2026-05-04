@@ -128,11 +128,6 @@
                     "default": true,
                     "description": "Use the persistent preview daemon for refresh on saves to files the user has open, plus scroll-ahead speculative renders. When on, daemon failures are shown as errors instead of silently falling back to the Gradle `renderPreviews` task. Turning this off temporarily uses the Gradle path, but the daemon will become required by the extension in a future release."
                 },
-                "composePreview.a11y.alwaysSubscribe": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "When on, the panel auto-subscribes to a11y data products (`a11y/atf` for diagnostic squigglies, `a11y/hierarchy` for the local overlay) for every visible preview in daemon mode — diagnostics fire ambient without entering focus mode. Off (the default) keeps the focus-mode 'Show accessibility overlay' button as the only opt-in. The producer side must also be enabled with the Gradle preview extension (`composePreview { previewExtensions { a11y { enableAllChecks() } } }` or the matching `-PcomposePreview.previewExtensions.a11y.*` properties); when the daemon advertises no a11y kinds this setting has no effect."
-                },
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,

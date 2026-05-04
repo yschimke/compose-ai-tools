@@ -553,12 +553,6 @@ export async function activate(
             },
         },
         outputChannel,
-        // D2 — read the user setting freshly on each `setVisible` so toggling
-        // `composePreview.a11y.alwaysSubscribe` doesn't need a window reload.
-        () =>
-            vscode.workspace
-                .getConfiguration("composePreview")
-                .get<boolean>("a11y.alwaysSubscribe", false),
     );
 
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
