@@ -269,10 +269,13 @@ class AndroidRecordingSession(
         for (action in A11Y_SEMANTIC_ACTIONS) {
           put("a11y.action.$action", a11ySemanticsActionHandler(action))
         }
-        // Lifecycle dispatch — `lifecycle.event` reads `lifecycleEvent` payload and routes
-        // through `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`.
-        // See [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
-        put(LifecycleRecordingScriptEvents.LIFECYCLE_EVENT, lifecycleEventHandler())
+        // Lifecycle dispatch — one event id per state transition (`lifecycle.pause` /
+        // `lifecycle.resume` / `lifecycle.stop`). Each routes through
+        // `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`. See
+        // [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
+        put(LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT, lifecycleEventHandler("pause"))
+        put(LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT, lifecycleEventHandler("resume"))
+        put(LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT, lifecycleEventHandler("stop"))
         // Preview reload — `preview.reload` forces a fresh composition via the held rule's
         // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
         put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
@@ -460,40 +463,27 @@ class AndroidRecordingSession(
     }
 
   /**
-   * Handler for `lifecycle.event` — reads `event.lifecycleEvent` (the wire-name string) and
-   * forwards to `interactive.dispatchLifecycle(...)`. The Robolectric sandbox maps the string to
-   * a `Lifecycle.State` and calls `ActivityScenario.moveToState(...)`.
+   * Handler factory for the three `lifecycle.*` event ids — each registry entry pre-binds the
+   * lifecycle target ("pause" / "resume" / "stop") at registration time so the dispatch body
+   * doesn't re-parse a payload field. Forwards to `interactive.dispatchLifecycle(...)`; the
+   * Robolectric sandbox maps the string to a `Lifecycle.State` and calls
+   * `ActivityScenario.moveToState(...)`.
    *
-   * Reports `unsupported` (with a specific reason) when the event payload omits the
-   * `lifecycleEvent` field, when the named transition isn't in the v1 supported set
-   * ([LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS]), or when the host can't
-   * dispatch lifecycle (interactive returned `false`).
+   * Reports `unsupported` only when the host couldn't apply the transition (interactive
+   * returned `false` — typically because it has no ActivityScenario). Validation of the
+   * transition name happened up front: the registry only carries the three wired ids, so
+   * unknown lifecycle.* kinds are rejected at MCP via the descriptor's closed set.
    */
-  private fun lifecycleEventHandler(): RecordingScriptEventHandler =
+  private fun lifecycleEventHandler(target: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
-      val lifecycleEvent = event.lifecycleEvent
-      if (lifecycleEvent.isNullOrBlank()) {
-        return@RecordingScriptEventHandler unsupportedEvidence(
-          event,
-          "${event.kind} requires a non-blank 'lifecycleEvent' (one of " +
-            "${LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()})",
-        )
-      }
-      if (lifecycleEvent !in LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS) {
-        return@RecordingScriptEventHandler unsupportedEvidence(
-          event,
-          "lifecycleEvent '$lifecycleEvent' is not supported (one of " +
-            "${LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()})",
-        )
-      }
-      val applied = interactive.dispatchLifecycle(lifecycleEvent)
+      val applied = interactive.dispatchLifecycle(target)
       if (applied) {
-        appliedEvidence(event, "lifecycle transition '$lifecycleEvent' fired on the held activity")
+        appliedEvidence(event, "lifecycle transition '$target' fired on the held activity")
       } else {
         unsupportedEvidence(
           event,
-          "host did not apply lifecycle transition '$lifecycleEvent'; held composition may be " +
-            "missing an ActivityScenario",
+          "host did not apply lifecycle transition '$target'; held composition may be missing " +
+            "an ActivityScenario",
         )
       }
     }

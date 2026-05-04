@@ -253,7 +253,6 @@ object RecordingScriptDataExtensions {
   const val STATE_SAVE_EVENT: String = "state.save"
   const val STATE_RESTORE_EVENT: String = "state.restore"
   const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
-  const val LIFECYCLE_EVENT: String = "lifecycle.event"
 
   /**
    * `recording.probe` descriptor with `supported = true`. Returned from each

@@ -1,7 +1,6 @@
 package ee.schimke.composeai.daemon
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -9,33 +8,42 @@ import org.junit.Test
  * Pins [LifecycleRecordingScriptEvents] — the Android-only lifecycle-driven script-event
  * descriptor that `RobolectricHost` advertises from `recordingScriptEventDescriptors()`.
  *
- * The split between supported transitions and roadmap (`destroy`) is also pinned in
- * [AndroidRecordingSessionTest] via `lifecycleEventReportsUnsupportedForUnknownTransition`; this
- * test keeps the descriptor side honest.
+ * Each supported transition has its own event id (`lifecycle.pause` / `lifecycle.resume` /
+ * `lifecycle.stop`) so the MCP validator can reject unknown transitions at the kind level. The
+ * dispatch routing is pinned in [AndroidRecordingSessionTest]; this test keeps the descriptor
+ * side honest.
  */
 class LifecycleRecordingScriptEventsTest {
 
   @Test
-  fun `descriptor advertises lifecycle event with supported = true`() {
+  fun `descriptor advertises one lifecycle event id per wired transition`() {
     val descriptor = LifecycleRecordingScriptEvents.descriptor
     assertEquals("lifecycle", descriptor.id.value)
-    val events = descriptor.recordingScriptEvents
-    assertEquals(1, events.size)
-    val lifecycleEvent = events.single()
-    assertEquals(LifecycleRecordingScriptEvents.LIFECYCLE_EVENT, lifecycleEvent.id)
+    val ids = descriptor.recordingScriptEvents.map { it.id }.toSet()
+    assertEquals(
+      setOf(
+        LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT,
+        LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT,
+        LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT,
+      ),
+      ids,
+    )
+    val allSupported = descriptor.recordingScriptEvents.all { it.supported }
     assertTrue(
-      "lifecycle.event must advertise supported = true so record_preview accepts it on Android",
-      lifecycleEvent.supported,
+      "every wired lifecycle event id must advertise supported = true",
+      allSupported,
     )
   }
 
   @Test
-  fun `supported transitions cover pause resume stop without destroy`() {
-    val supported = LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS
-    assertEquals(setOf("pause", "resume", "stop"), supported)
-    assertFalse(
+  fun `wired event set covers pause resume stop without destroy`() {
+    assertEquals(
+      setOf("lifecycle.pause", "lifecycle.resume", "lifecycle.stop"),
+      LifecycleRecordingScriptEvents.WIRED_EVENTS,
+    )
+    assertTrue(
       "destroy must stay out of v1 — moving the scenario to DESTROYED breaks subsequent renders",
-      "destroy" in supported,
+      "lifecycle.destroy" !in LifecycleRecordingScriptEvents.WIRED_EVENTS,
     )
   }
 
