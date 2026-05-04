@@ -2,9 +2,11 @@ package ee.schimke.composeai.daemon.bridge
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -146,5 +148,37 @@ class InteractiveCommandTest {
       slot0.interactiveCommands.isEmpty(),
     )
     assertEquals(cmd, slot1.interactiveCommands.poll(1, TimeUnit.SECONDS))
+  }
+
+  @Test
+  fun dispatchSemanticsActionRoundTripsThroughTheBridge() {
+    // Pin the cross-classloader contract for the new variant: only `java.*` types in the payload,
+    // round-trips through `interactiveCommands` by reference (so the host's latch / atomic refs
+    // come back out unchanged for the await pattern). Mirrors the assertion shape the input
+    // `Dispatch` variant gets in `queueRoundTripsEveryVariantInFifoOrder`.
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyMatched = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchSemanticsAction(
+        streamId = "stream-A",
+        actionKind = "click",
+        nodeContentDescription = "Save",
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyMatched = replyMatched,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asAction = drained as InteractiveCommand.DispatchSemanticsAction
+    assertSame(replyLatch, asAction.replyLatch)
+    assertSame(replyError, asAction.replyError)
+    assertSame(replyMatched, asAction.replyMatched)
+    assertNull("replyError defaults to null", asAction.replyError.get())
+    assertFalse("replyMatched defaults to false", asAction.replyMatched.get())
   }
 }

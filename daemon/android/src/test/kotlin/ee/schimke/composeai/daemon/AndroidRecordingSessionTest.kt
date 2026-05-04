@@ -270,6 +270,166 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun a11yActionClickRoutesThroughDispatchSemanticsAction() {
+    // Happy path for the new `a11y.action.click` registry entry: the handler reads
+    // `nodeContentDescription`, calls `interactive.dispatchSemanticsAction("click", description)`,
+    // and reports `applied` evidence with a message naming the description it matched.
+    val framesDir = tempFolder.newFolder("a11y-click-frames")
+    val encodedDir = tempFolder.newFolder("a11y-click-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-click-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { semanticsActionResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-a11y-click",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = "a11y.action.click",
+            nodeContentDescription = "Save",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(
+        "the registry must route a11y.action.click through dispatchSemanticsAction, not dispatch",
+        0,
+        interactive.dispatchCount,
+      )
+      assertEquals(listOf("click" to "Save"), interactive.semanticsActionCalls)
+      assertEquals(1, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "evidence must name the matched contentDescription; got '$message'",
+        message.contains("'Save'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun a11yActionClickReportsUnsupportedWhenNoNodeMatches() {
+    // When `dispatchSemanticsAction` returns false (no matching node, or matched node didn't
+    // expose OnClick), the handler must surface a specific unsupported reason — not let the agent
+    // think the click landed.
+    val framesDir = tempFolder.newFolder("a11y-click-miss-frames")
+    val encodedDir = tempFolder.newFolder("a11y-click-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-click-miss-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { semanticsActionResult = false }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-a11y-click-miss",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = "a11y.action.click",
+            nodeContentDescription = "Nonexistent",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(1, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "miss diagnostic must mention the contentDescription so the agent can debug; got '$message'",
+        message.contains("'Nonexistent'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun a11yActionClickRequiresNodeContentDescription() {
+    // Bare `kind = "a11y.action.click"` with no contentDescription is meaningless — the registry
+    // handler short-circuits to unsupported BEFORE touching `interactive.dispatchSemanticsAction`,
+    // so we know at most we waste an empty-string lookup.
+    val framesDir = tempFolder.newFolder("a11y-click-blank-frames")
+    val encodedDir = tempFolder.newFolder("a11y-click-blank-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-click-blank-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-a11y-click-blank",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(RecordingScriptEvent(tMs = 0L, kind = "a11y.action.click"))
+      )
+      val result = session.stop()
+
+      assertTrue(
+        "handler must short-circuit before calling interactive.dispatchSemanticsAction",
+        interactive.semanticsActionCalls.isEmpty(),
+      )
+      assertEquals(1, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "diagnostic must call out the missing nodeContentDescription; got '$message'",
+        message.contains("nodeContentDescription"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -514,9 +674,26 @@ class AndroidRecordingSessionTest {
     val renderAdvances = mutableListOf<Long?>()
     var dispatchCount = 0
     var closed = false
+    val semanticsActionCalls = mutableListOf<Pair<String, String>>()
+
+    /**
+     * When non-null, [dispatchSemanticsAction] returns this value verbatim and records the call
+     * into [semanticsActionCalls]. When null (the default), the inherited interface-level default
+     * (`return false`) is used so existing tests don't have to opt in.
+     */
+    var semanticsActionResult: Boolean? = null
 
     override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {
       dispatchCount++
+    }
+
+    override fun dispatchSemanticsAction(
+      actionKind: String,
+      nodeContentDescription: String,
+    ): Boolean {
+      semanticsActionCalls += actionKind to nodeContentDescription
+      val override = semanticsActionResult
+      return override ?: super.dispatchSemanticsAction(actionKind, nodeContentDescription)
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

@@ -1136,7 +1136,8 @@ class DaemonMcpServer(
                       "label":{"type":"string","description":"Agent label copied into scriptEvents evidence for probes/checkpoints."},
                       "checkpointId":{"type":"string","description":"Checkpoint id for state save/restore audit events."},
                       "lifecycleEvent":{"type":"string","description":"Lifecycle transition for lifecycle script events, e.g. resume, pause, destroy."},
-                      "tags":{"type":"array","items":{"type":"string"},"description":"Optional agent tags copied into scriptEvents evidence."}
+                      "tags":{"type":"array","items":{"type":"string"},"description":"Optional agent tags copied into scriptEvents evidence."},
+                      "nodeContentDescription":{"type":"string","description":"For `a11y.action.*` kinds — visible content description of the target accessibility node (`Modifier.semantics { contentDescription = ... }` / `Icon(contentDescription = ...)`). The daemon resolves this against the held composition's semantics tree and dispatches the corresponding SemanticsActions action — same lookup a screen reader walks via AccessibilityNodeInfo.performAction. Ignored for input/probe/state/lifecycle events."}
                     },
                     "required":["tMs","kind"]
                   }
@@ -2620,6 +2621,7 @@ class DaemonMcpServer(
         tags =
           (obj["tags"] as? JsonArray)?.mapNotNull { tag -> tag.jsonPrimitive.contentOrNull }
             ?: emptyList(),
+        nodeContentDescription = obj["nodeContentDescription"]?.jsonPrimitive?.contentOrNull,
       )
     }
   }

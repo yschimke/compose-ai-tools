@@ -22,11 +22,12 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * base recording-script descriptors when `a11y` is enabled — same gate as the a11y preview-
  * extension publishers.
  *
- * **Status:** all entries ship with `supported = false` for now. The MCP layer
- * (`record_preview`'s `validateRecordingScriptKinds`) rejects them up front so an agent that picks
- * one up from `list_data_products` doesn't watch a quiet `unsupported` evidence trail come back.
- * The actual dispatch path lands once the recording-script handler registry refactor consolidates
- * input + extension dispatch under one interface (compose-ai-tools#714 follow-up).
+ * **Status:** [supportedDescriptors] today carries `a11y.action.click` only — wired end-to-end
+ * through `AndroidInteractiveSession.dispatchSemanticsAction` →
+ * `RobolectricHost.performSemanticsActionByContentDescription` →
+ * `SemanticsActions.OnClick.action.invoke()`. [roadmapDescriptors] carries the other 18 actions
+ * with `supported = false`; the MCP layer rejects them up front, and each lands one-by-one as
+ * its sandbox-side `when` arm + handler factory ships.
  */
 object AccessibilityRecordingScriptEvents {
 
@@ -51,90 +52,130 @@ object AccessibilityRecordingScriptEvents {
   const val ACTION_NEXT_AT_GRANULARITY: String = "a11y.action.nextAtGranularity"
   const val ACTION_PREVIOUS_AT_GRANULARITY: String = "a11y.action.previousAtGranularity"
 
-  val descriptor: DataExtensionDescriptor =
-    DataExtensionDescriptor(
-      id = DataExtensionId("a11y"),
-      displayName = "Accessibility script actions",
-      recordingScriptEvents =
-        listOf(
-          event(ACTION_CLICK, "Click", "Performs ACTION_CLICK on the targeted accessibility node."),
-          event(
-            ACTION_LONG_CLICK,
-            "Long click",
-            "Performs ACTION_LONG_CLICK on the targeted accessibility node.",
+  /**
+   * `a11y.action.click` is the only a11y action wired today. `RobolectricHost`'s sandbox-side
+   * loop resolves the matching node by `hasContentDescription(...)` and invokes
+   * `SemanticsActions.OnClick.action.invoke()` — same semantic path
+   * `AccessibilityNodeInfo.performAction(ACTION_CLICK)` walks. The descriptor advertises
+   * `supported = true` so `record_preview` accepts it; the rest of the action ids appear in
+   * [roadmapDescriptors] until their handler ships.
+   */
+  val supportedDescriptors: List<DataExtensionDescriptor> =
+    listOf(
+      DataExtensionDescriptor(
+        id = DataExtensionId("a11y"),
+        displayName = "Accessibility script actions",
+        recordingScriptEvents =
+          listOf(
+            RecordingScriptEventDescriptor(
+              id = ACTION_CLICK,
+              displayName = "Click",
+              summary =
+                "Performs ACTION_CLICK on the accessibility node identified by " +
+                  "`nodeContentDescription`. Same path a screen reader walks via " +
+                  "AccessibilityNodeInfo.performAction(ACTION_CLICK).",
+              supported = true,
+            )
           ),
-          event(ACTION_FOCUS, "Focus", "Performs ACTION_FOCUS on the targeted node."),
-          event(
-            ACTION_CLEAR_FOCUS,
-            "Clear focus",
-            "Performs ACTION_CLEAR_FOCUS on the targeted node.",
-          ),
-          event(
-            ACTION_ACCESSIBILITY_FOCUS,
-            "Accessibility focus",
-            "Performs ACTION_ACCESSIBILITY_FOCUS — the action a screen reader emits when the user " +
-              "swipes onto a node.",
-          ),
-          event(
-            ACTION_CLEAR_ACCESSIBILITY_FOCUS,
-            "Clear accessibility focus",
-            "Performs ACTION_CLEAR_ACCESSIBILITY_FOCUS, the screen-reader counterpart to " +
-              "swiping off a node.",
-          ),
-          event(ACTION_SELECT, "Select", "Performs ACTION_SELECT on the targeted node."),
-          event(
-            ACTION_CLEAR_SELECTION,
-            "Clear selection",
-            "Performs ACTION_CLEAR_SELECTION on the targeted node.",
-          ),
-          event(
-            ACTION_SCROLL_FORWARD,
-            "Scroll forward",
-            "Performs ACTION_SCROLL_FORWARD on the targeted scrollable node.",
-          ),
-          event(
-            ACTION_SCROLL_BACKWARD,
-            "Scroll backward",
-            "Performs ACTION_SCROLL_BACKWARD on the targeted scrollable node.",
-          ),
-          event(
-            ACTION_SCROLL_UP,
-            "Scroll up",
-            "Performs ACTION_SCROLL_UP on the targeted scrollable node.",
-          ),
-          event(
-            ACTION_SCROLL_DOWN,
-            "Scroll down",
-            "Performs ACTION_SCROLL_DOWN on the targeted scrollable node.",
-          ),
-          event(
-            ACTION_SCROLL_LEFT,
-            "Scroll left",
-            "Performs ACTION_SCROLL_LEFT on the targeted scrollable node.",
-          ),
-          event(
-            ACTION_SCROLL_RIGHT,
-            "Scroll right",
-            "Performs ACTION_SCROLL_RIGHT on the targeted scrollable node.",
-          ),
-          event(ACTION_EXPAND, "Expand", "Performs ACTION_EXPAND on the targeted node."),
-          event(ACTION_COLLAPSE, "Collapse", "Performs ACTION_COLLAPSE on the targeted node."),
-          event(ACTION_DISMISS, "Dismiss", "Performs ACTION_DISMISS on the targeted node."),
-          event(
-            ACTION_NEXT_AT_GRANULARITY,
-            "Next at movement granularity",
-            "Performs ACTION_NEXT_AT_MOVEMENT_GRANULARITY on the targeted text node.",
-          ),
-          event(
-            ACTION_PREVIOUS_AT_GRANULARITY,
-            "Previous at movement granularity",
-            "Performs ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY on the targeted text node.",
-          ),
-        ),
+      )
     )
 
-  /** Convenience for the daemon's wiring code that takes a list of descriptors. */
-  val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
+  /**
+   * Roadmap a11y action descriptors — `supported = false`. Each one ships individually as a
+   * `RobolectricHost.performSemanticsActionByContentDescription` arm + a registry entry in
+   * `AndroidRecordingSession`. When that lands, move the matching `RecordingScriptEventDescriptor`
+   * into the `supportedDescriptors` `a11y` extension above.
+   */
+  val roadmapDescriptors: List<DataExtensionDescriptor> =
+    listOf(
+      DataExtensionDescriptor(
+        id = DataExtensionId("a11y.roadmap"),
+        displayName = "Accessibility script actions (roadmap)",
+        recordingScriptEvents =
+          listOf(
+            event(
+              ACTION_LONG_CLICK,
+              "Long click",
+              "Performs ACTION_LONG_CLICK on the targeted accessibility node.",
+            ),
+            event(ACTION_FOCUS, "Focus", "Performs ACTION_FOCUS on the targeted node."),
+            event(
+              ACTION_CLEAR_FOCUS,
+              "Clear focus",
+              "Performs ACTION_CLEAR_FOCUS on the targeted node.",
+            ),
+            event(
+              ACTION_ACCESSIBILITY_FOCUS,
+              "Accessibility focus",
+              "Performs ACTION_ACCESSIBILITY_FOCUS — the action a screen reader emits when the " +
+                "user swipes onto a node.",
+            ),
+            event(
+              ACTION_CLEAR_ACCESSIBILITY_FOCUS,
+              "Clear accessibility focus",
+              "Performs ACTION_CLEAR_ACCESSIBILITY_FOCUS, the screen-reader counterpart to " +
+                "swiping off a node.",
+            ),
+            event(ACTION_SELECT, "Select", "Performs ACTION_SELECT on the targeted node."),
+            event(
+              ACTION_CLEAR_SELECTION,
+              "Clear selection",
+              "Performs ACTION_CLEAR_SELECTION on the targeted node.",
+            ),
+            event(
+              ACTION_SCROLL_FORWARD,
+              "Scroll forward",
+              "Performs ACTION_SCROLL_FORWARD on the targeted scrollable node.",
+            ),
+            event(
+              ACTION_SCROLL_BACKWARD,
+              "Scroll backward",
+              "Performs ACTION_SCROLL_BACKWARD on the targeted scrollable node.",
+            ),
+            event(
+              ACTION_SCROLL_UP,
+              "Scroll up",
+              "Performs ACTION_SCROLL_UP on the targeted scrollable node.",
+            ),
+            event(
+              ACTION_SCROLL_DOWN,
+              "Scroll down",
+              "Performs ACTION_SCROLL_DOWN on the targeted scrollable node.",
+            ),
+            event(
+              ACTION_SCROLL_LEFT,
+              "Scroll left",
+              "Performs ACTION_SCROLL_LEFT on the targeted scrollable node.",
+            ),
+            event(
+              ACTION_SCROLL_RIGHT,
+              "Scroll right",
+              "Performs ACTION_SCROLL_RIGHT on the targeted scrollable node.",
+            ),
+            event(ACTION_EXPAND, "Expand", "Performs ACTION_EXPAND on the targeted node."),
+            event(ACTION_COLLAPSE, "Collapse", "Performs ACTION_COLLAPSE on the targeted node."),
+            event(ACTION_DISMISS, "Dismiss", "Performs ACTION_DISMISS on the targeted node."),
+            event(
+              ACTION_NEXT_AT_GRANULARITY,
+              "Next at movement granularity",
+              "Performs ACTION_NEXT_AT_MOVEMENT_GRANULARITY on the targeted text node.",
+            ),
+            event(
+              ACTION_PREVIOUS_AT_GRANULARITY,
+              "Previous at movement granularity",
+              "Performs ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY on the targeted text node.",
+            ),
+          ),
+      )
+    )
+
+  /**
+   * Combined list ([supportedDescriptors] + [roadmapDescriptors]) for callers that want to
+   * advertise the full a11y action surface in one go. New code should prefer the split lists so
+   * supported / roadmap halves can flow through the host-derived dataExtensions composition
+   * without re-flagging supported flags.
+   */
+  val descriptors: List<DataExtensionDescriptor> = supportedDescriptors + roadmapDescriptors
 
   private fun event(
     id: String,
