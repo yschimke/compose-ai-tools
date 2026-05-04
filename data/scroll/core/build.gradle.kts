@@ -16,6 +16,7 @@ android { namespace = "ee.schimke.composeai.data.scroll.core" }
 
 dependencies {
   api(project(":data-render-core"))
+  api(project(":data-render-compose"))
 
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.ui)

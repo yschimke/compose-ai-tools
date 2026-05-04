@@ -37,16 +37,19 @@ import ee.schimke.composeai.scroll.HOLD_START_MS
 import ee.schimke.composeai.scroll.INTER_FLING_HOLD_MS
 import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
 import ee.schimke.composeai.scroll.ScrollDriveResult
+import ee.schimke.composeai.scroll.ScrollGifFrameDriverExtension
+import ee.schimke.composeai.scroll.ScrollGifFramePlan
 import ee.schimke.composeai.scroll.ScrollGifEncoder
 import ee.schimke.composeai.scroll.SliceCapture
 import ee.schimke.composeai.scroll.applyWearPillClip
-import ee.schimke.composeai.scroll.buildGifScrollScript
 import ee.schimke.composeai.scroll.driveScrollBy
 import ee.schimke.composeai.scroll.driveScrollByViewport
 import ee.schimke.composeai.scroll.driveScrollToEnd
 import ee.schimke.composeai.scroll.driveScrollToStart
 import ee.schimke.composeai.scroll.remainingScrollPx
 import ee.schimke.composeai.scroll.stitchSlicesWithFinalFrame
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import java.awt.image.BufferedImage
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -1239,19 +1242,29 @@ private fun handleGifCapture(
         val cap = if (scroll.maxScrollPx > 0) scroll.maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
         val extentHint = minOf(liveRemaining, cap)
 
-        val script = buildGifScrollScript(
-            contentExtentPxHint = extentHint,
-            viewportPx = viewportLayoutPx.toFloat(),
-            density = density,
-            frameIntervalMs = frameIntervalMs,
-        )
+        val scrollFrames =
+            ScrollGifFrameDriverExtension(
+                    ScrollGifFramePlan(
+                        contentExtentPxHint = extentHint,
+                        viewportPx = viewportLayoutPx.toFloat(),
+                        density = density,
+                        frameIntervalMs = frameIntervalMs,
+                    ),
+                )
+                .scrollFrames(
+                    ExtensionFrameContext(
+                        extensionId = DataExtensionId("render/scroll/gif"),
+                        previewId = previewId,
+                        renderMode = "scroll-gif",
+                    ),
+                )
 
         var scrolledPx = 0f
         var scriptHitEnd = false
-        for (step in script) {
-            if (step.scrollPx > 0f) {
+        for (scrollFrame in scrollFrames.frames.drop(1)) {
+            if (scrollFrame.scrollDeltaPx > 0f) {
                 val headroom = (cap - scrolledPx).coerceAtLeast(0f)
-                val target = minOf(step.scrollPx, headroom)
+                val target = minOf(scrollFrame.scrollDeltaPx, headroom)
                 if (target <= 0f) {
                     scriptHitEnd = true
                     break
@@ -1268,7 +1281,7 @@ private fun handleGifCapture(
                 // ticking honestly across the hold.
                 rule.mainClock.advanceTimeBy(frameIntervalMs.toLong())
             }
-            captureFrame(step.delayMs)
+            captureFrame(scrollFrame.frame.delayMillis)
         }
 
         // Tail flings: LazyList reports `maxValue` progressively, so the
