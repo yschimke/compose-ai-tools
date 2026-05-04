@@ -87,6 +87,75 @@ Check:
 - Trace output is treated as triage evidence unless the PR explicitly targets
   runtime behavior.
 
+Use the recomposition data extension directly. In delta mode it observes the
+held interactive composition, resets counters on each flush, and returns the
+scopes that recomposed after the last input. A useful bad example is a parent
+passing `count` into static children that do not use it, so one click can make
+the header, value, and footer all recompose.
+
+```kotlin
+@Preview
+@Composable
+fun BadCounterPreview() {
+  var count by remember { mutableIntStateOf(0) }
+
+  Column(Modifier.clickable { count++ }.padding(16.dp)) {
+    BadCounterHeader(count)
+    Text("Count: $count")
+    BadCounterFooter(count)
+  }
+}
+
+@Composable
+private fun BadCounterHeader(count: Int) {
+  Text("Checkout")
+}
+
+@Composable
+private fun BadCounterFooter(count: Int) {
+  Text("Tap anywhere to increment")
+}
+```
+
+Agent flow:
+
+```text
+list_data_products workspaceId=<workspace>
+get_preview_data uri=<preview-uri> kind=compose/recomposition \
+  params='{"mode":"delta","frameStreamId":"<stream-id>"}'
+```
+
+The payload to inspect has this shape:
+
+```json
+{
+  "mode": "delta",
+  "sinceFrameStreamId": "agent-run-1",
+  "inputSeq": 1,
+  "nodes": [
+    { "nodeId": "header-scope", "count": 1 },
+    { "nodeId": "counter-value-scope", "count": 1 },
+    { "nodeId": "footer-scope", "count": 1 }
+  ]
+}
+```
+
+This is a bad signal for the example above because one click changed three
+scopes. The counter text is expected to recompose; the header and footer are
+not, because they display static copy. The agent should infer that only the
+counter value needed `count`, narrow the child parameters, rerun the
+interaction, and confirm the next delta only reports the counter-related
+scope. A follow-up flush without another input should return `nodes: []`,
+which confirms the extension reset the delta counters.
+
+Use DejaVu-style reasoning for this audit: a recomposition count is evidence,
+not the finding by itself. Matt McKenna's DejaVu library formalizes this as
+test assertions with `createRecompositionTrackingRule()`,
+`assertRecompositions(...)`, and `assertStable()`, plus causality diagnostics
+from snapshot-state writes and dirty parameter slots. compose-preview does not
+yet expose DejaVu's `testTag`/source/dirty-bit causality, so name the scoped
+payload evidence and the state/parameter path you found in code.
+
 ### Failure triage audit
 
 Sample command: `get_preview_data uri=<preview-uri> kind=test/failure`
