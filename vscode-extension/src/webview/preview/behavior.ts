@@ -50,154 +50,14 @@ export function setupPreviewBehavior(
     let focusProductPickerOpen = false;
     let focusHistoryOpen = false;
     const focusPosition = document.getElementById("focus-position");
-    const progressBar = document.getElementById("progress-bar");
-    const progressFill = progressBar.querySelector(".progress-fill");
-    const progressLabel = document.getElementById("progress-label");
-    // Auto-reset-to-idle timer for the bar after it lands at 100%.
-    // Holds for a beat so the user sees the completed state, then
-    // resets the fill + label to their idle look. The strip itself
-    // stays mounted — see notes in setProgress().
-    let progressHideTimer = null;
-    // Deferred-paint state. We don't paint a fill until ~200ms of
-    // in-flight work has accumulated, so warm-cache refreshes never
-    // pulse the bar. The strip itself is ALWAYS mounted (no
-    // display:none toggle), so deferring the paint keeps the layout
-    // identical between idle and pending — only the fill width and
-    // label text change once the deferral elapses.
-    const PROGRESS_PAINT_DELAY_MS = 200;
-    let progressPaintTimer = null;
-    let progressActive = false;
-    let pendingProgressState = null;
+    // Progress bar is owned by `<progress-bar>` — see
+    // `components/ProgressBar.ts`. It listens for `setProgress` /
+    // `clearProgress` directly and owns its own deferred-paint timing.
 
-    function resetProgressVisuals() {
-        progressBar.classList.remove("progress-finishing", "progress-slow");
-        progressFill.style.width = "0%";
-        progressBar.setAttribute("aria-valuenow", "0");
-        progressLabel.textContent = "";
-    }
-
-    function applyProgressState(state) {
-        const pct = Math.max(0, Math.min(1, state.percent));
-        progressActive = true;
-        progressBar.classList.remove("progress-finishing");
-        progressBar.classList.toggle("progress-slow", !!state.slow);
-        progressFill.style.width = (pct * 100).toFixed(1) + "%";
-        progressBar.setAttribute(
-            "aria-valuenow",
-            String(Math.round(pct * 100)),
-        );
-        const slowSuffix = state.slow ? " (slow)" : "";
-        progressLabel.textContent = state.label
-            ? state.label + slowSuffix + " · " + Math.round(pct * 100) + "%"
-            : "";
-        if (pct >= 1) {
-            progressBar.classList.add("progress-finishing");
-            progressHideTimer = setTimeout(() => {
-                progressActive = false;
-                resetProgressVisuals();
-                progressHideTimer = null;
-            }, 600);
-        }
-    }
-
-    function setProgress(label, percent, slow) {
-        if (progressHideTimer) {
-            clearTimeout(progressHideTimer);
-            progressHideTimer = null;
-        }
-        const state = { label: label || "", percent, slow: !!slow };
-        // Already painting — apply directly so the bar stays in lockstep
-        // with the tracker rather than re-entering the deferral window.
-        if (progressActive) {
-            applyProgressState(state);
-            return;
-        }
-        // Latched state for when the deferral timer fires.
-        pendingProgressState = state;
-        // Terminal state: paint immediately so the user gets a visible
-        // completion even on instant refreshes (rare path — tracker
-        // emits an immediate done=100% on an up-to-date discover).
-        if (state.percent >= 1) {
-            applyProgressState(state);
-            return;
-        }
-        if (progressPaintTimer === null) {
-            progressPaintTimer = setTimeout(() => {
-                progressPaintTimer = null;
-                if (pendingProgressState) {
-                    applyProgressState(pendingProgressState);
-                }
-            }, PROGRESS_PAINT_DELAY_MS);
-        }
-    }
-
-    function clearProgress() {
-        if (progressHideTimer) {
-            clearTimeout(progressHideTimer);
-            progressHideTimer = null;
-        }
-        if (progressPaintTimer) {
-            clearTimeout(progressPaintTimer);
-            progressPaintTimer = null;
-        }
-        pendingProgressState = null;
-        progressActive = false;
-        resetProgressVisuals();
-    }
-
-    // Compile-error banner state. Cards stay rendered while the banner
-    // is visible — they're decorated via .compile-stale on the grid so
-    // the user keeps the last-good render visible while reading the
-    // error list.
-    const compileErrorsBox = document.getElementById("compile-errors");
-    const compileErrorsList = document.getElementById("compile-errors-list");
-    const compileErrorsTitle = document.getElementById("compile-errors-title");
-
-    function setCompileErrors(errors) {
-        compileErrorsList.innerHTML = "";
-        const count = errors.length;
-        compileErrorsTitle.textContent =
-            count === 1 ? "1 compile error" : count + " compile errors";
-        for (const e of errors) {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "compile-error-row";
-            row.title = "Open " + e.file + ":" + e.line + ":" + e.column;
-            const loc = document.createElement("span");
-            loc.className = "compile-error-loc";
-            loc.textContent = e.file + ":" + e.line + ":" + e.column;
-            const msg = document.createElement("span");
-            msg.className = "compile-error-msg";
-            msg.textContent = e.message;
-            row.appendChild(loc);
-            row.appendChild(msg);
-            // Each error carries its own absolute path — required so
-            // a cross-file kotlinc error (e.g. broken Theme.kt while
-            // editing Previews.kt) opens the right file rather than
-            // whichever file the panel happened to be scoped to.
-            const path = e.path;
-            row.addEventListener("click", () => {
-                vscode.postMessage({
-                    command: "openCompileError",
-                    sourceFile: path,
-                    line: e.line,
-                    column: e.column,
-                });
-            });
-            compileErrorsList.appendChild(row);
-        }
-        compileErrorsBox.hidden = false;
-        // Dim existing cards via a grid-level class so the user sees
-        // they're stale relative to the buffer. CSS handles the visual.
-        grid.classList.add("compile-stale");
-    }
-
-    function clearCompileErrors() {
-        compileErrorsBox.hidden = true;
-        compileErrorsList.innerHTML = "";
-        compileErrorsTitle.textContent = "";
-        grid.classList.remove("compile-stale");
-    }
+    // Compile-error banner is owned by `<compile-errors-banner>` —
+    // see `components/CompileErrorsBanner.ts`. It listens for
+    // `setCompileErrors` / `clearCompileErrors` directly and toggles
+    // the `compile-stale` class on `#preview-grid` itself.
 
     let allPreviews = [];
     let moduleDir = "";
@@ -3079,21 +2939,9 @@ export function setupPreviewBehavior(
                 // it competes with the bar for visual attention.
                 break;
 
-            case "setProgress":
-                setProgress(msg.label || "", msg.percent || 0, msg.slow);
-                break;
-
-            case "clearProgress":
-                clearProgress();
-                break;
-
-            case "setCompileErrors":
-                setCompileErrors(msg.errors || []);
-                break;
-
-            case "clearCompileErrors":
-                clearCompileErrors();
-                break;
+            // setProgress / clearProgress are handled by <progress-bar>.
+            // setCompileErrors / clearCompileErrors are handled by
+            // <compile-errors-banner>.
 
             case "setError":
             case "setImageError": {

@@ -11,6 +11,8 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { setupPreviewBehavior } from "./behavior";
+import "./components/CompileErrorsBanner";
+import "./components/ProgressBar";
 
 @customElement("preview-app")
 export class PreviewApp extends LitElement {
@@ -22,30 +24,8 @@ export class PreviewApp extends LitElement {
 
     protected render(): TemplateResult {
         return html`
-            <div
-                id="progress-bar"
-                class="progress-bar"
-                role="progressbar"
-                aria-label="Refresh progress"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="0"
-            >
-                <div class="progress-label" id="progress-label"></div>
-                <div class="progress-track">
-                    <div class="progress-fill"></div>
-                </div>
-            </div>
-            <div id="compile-errors" class="compile-errors" role="alert" hidden>
-                <div class="compile-errors-header">
-                    <i class="codicon codicon-error" aria-hidden="true"></i>
-                    <span id="compile-errors-title">Compile errors</span>
-                </div>
-                <div id="compile-errors-list" class="compile-errors-list"></div>
-                <div class="compile-errors-footnote">
-                    Showing last successful render.
-                </div>
-            </div>
+            <progress-bar></progress-bar>
+            <compile-errors-banner></compile-errors-banner>
             <div
                 class="toolbar"
                 id="toolbar"
