@@ -187,23 +187,42 @@ Typical agent flow:
   "format": "apng",
   "events": [
     { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 80 },
-    { "tMs": 200, "kind": "state.save", "checkpointId": "before-second-click" },
-    { "tMs": 400, "kind": "click", "pixelX": 120, "pixelY": 80 }
+    { "tMs": 400, "kind": "recording.probe", "label": "after-first-click" },
+    { "tMs": 600, "kind": "click", "pixelX": 120, "pixelY": 80 }
   ]
 }
 ```
+
+Events sharing a `tMs` are treated as one script step. Control markers in the
+step are applied before the frame for that timestamp is captured, so agents
+should colocate a verification `recording.probe` with the input that should
+change state.
+
+`record_preview` accepts two kinds of events:
+
+1. **Built-in input kinds** — `click`, `pointerDown`, `pointerMove`, `pointerUp`,
+   `rotaryScroll`, `keyDown`, `keyUp`. Sourced from `InteractiveInputKind`; what
+   each backend actually dispatches depends on the host (e.g. desktop reports
+   `unsupported` for `keyDown` until key dispatch lands).
+2. **Namespaced data-extension events** — advertised by the daemon via
+   `capabilities.dataExtensions[].recordingScriptEvents[]`. Only entries with
+   `supported = true` are accepted; entries advertised with `supported = false`
+   are roadmap signals (visible via `list_data_products`) and are rejected up
+   front by `record_preview`. Today the only `supported = true` extension event
+   is `recording.probe`; `state.save`, `state.restore`, `lifecycle.event`, and
+   `preview.reload` are advertised as roadmap (compose-ai-tools#714).
 
 On success the tool returns an inline media block plus a JSON metadata text
 block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,
 `frameCount`, `durationMs`, `framesDir`, `frameWidthPx`, and
 `frameHeightPx`. It also includes `scriptEvents[]`, a per-event evidence list
-with `applied` or `unsupported` status for input, probe, state, and lifecycle
-script events. Non-input script events are namespaced ids advertised by
-`capabilities.dataExtensions[].recordingScriptEvents[]`. Treat `unsupported` as
-a compose-ai-tools capability gap, not as an app regression. The raw PNG frames live at
-`<framesDir>/frame-00000.png`, `<framesDir>/frame-00001.png`, and so on, which
-is useful when a client cannot display APNG or wants to inspect individual
-frames.
+with `applied` or `unsupported` status for input and probe events. Non-input
+events that reach the daemon (i.e. ones MCP didn't reject) get the same
+evidence treatment — `unsupported` here is the daemon's defense-in-depth path
+for older MCP servers or direct daemon clients; standard MCP usage will only
+see `applied`. The raw PNG frames live at `<framesDir>/frame-00000.png`,
+`<framesDir>/frame-00001.png`, and so on, which is useful when a client cannot
+display APNG or wants to inspect individual frames.
 
 Sandbox note: Android recordings run through Robolectric. Restricted agent
 sandboxes must allow Robolectric to create its host cache/lock files, including

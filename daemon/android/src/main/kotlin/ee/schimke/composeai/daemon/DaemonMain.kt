@@ -337,7 +337,14 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       dataProducts = dataProducts,
-      dataExtensions = RecordingScriptDataExtensions.descriptors,
+      // Base recording-script descriptors are renderer-agnostic; the a11y action descriptors are
+      // Android-only and only meaningful when the a11y preview extension is enabled. They ship as
+      // `supported = false` until the recording-script handler registry refactor lands the actual
+      // dispatch — `record_preview` rejects them up front via `validateRecordingScriptKinds`.
+      dataExtensions =
+        RecordingScriptDataExtensions.descriptors +
+          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.descriptors
+          else emptyList()),
       previewExtensions = previewExtensions,
     )
   server.run()

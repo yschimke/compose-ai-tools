@@ -322,6 +322,13 @@ class McpClient:
     def first_text(self, tool_result: dict[str, Any]) -> dict[str, Any]:
         return json.loads(tool_result["content"][0]["text"])
 
+    def text_blocks(self, tool_result: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            json.loads(block["text"])
+            for block in tool_result["content"]
+            if block.get("type") == "text" and "text" in block
+        ]
+
     def shutdown(self) -> None:
         try:
             if self.proc.stdin:
@@ -363,7 +370,16 @@ def setup_mcp() -> tuple[McpClient, str]:
     )
     client.notify("notifications/initialized")
     workspace_id = workspace_id_from_register(client)
-    client.call_tool("watch", {"workspaceId": workspace_id, "module": ":samples:android"})
+    client.call_tool(
+        "watch",
+        {
+            "workspaceId": workspace_id,
+            "module": ":samples:android",
+            "awaitDiscovery": True,
+            "awaitTimeoutMs": 240_000,
+        },
+        timeout=300,
+    )
     return client, workspace_id
 
 
@@ -496,6 +512,49 @@ def test_mcp_data_products() -> None:
             and item.get("resourceName") == "agent_audit_warning_red"
             and item.get("resolvedValue", "").upper() == "#FFB00020",
             "resources/used did not record the warning color resource",
+        )
+
+        # State-restoration audit: today only `recording.probe` is wired as a script event
+        # (the other extension events are advertised with `supported = false` and rejected by
+        # record_preview up front — see compose-ai-tools#714). Drive the click that should
+        # change state and a same-tick probe to ground the verification; once state/lifecycle
+        # extensions ship as `supported = true`, extend the script with the matching markers in
+        # the same `tMs` group.
+        recording = client.call_tool(
+            "record_preview",
+            {
+                "uri": done_uri,
+                "fps": 4,
+                "format": "apng",
+                "events": [
+                    {
+                        "tMs": 0,
+                        "kind": "click",
+                        "pixelX": 48,
+                        "pixelY": 24,
+                    },
+                    {
+                        "tMs": 250,
+                        "kind": "recording.probe",
+                        "label": "after-click-same-tick",
+                    },
+                ],
+            },
+            timeout=600,
+        )
+        recording_payloads = client.text_blocks(recording)
+        if not recording_payloads:
+            raise AssertionError(f"record_preview returned no metadata text block: {recording}")
+        recording_meta = recording_payloads[-1]
+        OUT.joinpath("same-tick-recording.json").write_text(json.dumps(recording_meta, indent=2))
+        script_events = recording_meta["scriptEvents"]
+        assert_any(
+            script_events,
+            lambda item: item.get("tMs") == 250
+            and item.get("kind") == "recording.probe"
+            and item.get("label") == "after-click-same-tick"
+            and item.get("status") == "applied",
+            "recording.probe at the verification tick was not applied",
         )
     finally:
         client.shutdown()

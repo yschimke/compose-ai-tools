@@ -128,13 +128,24 @@ data class RecordingResult(
 data class EncodedRecording(val videoPath: String, val mimeType: String, val sizeBytes: Long)
 
 fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
-  when (this) {
-    "click" -> InteractiveInputKind.CLICK
-    "pointerDown" -> InteractiveInputKind.POINTER_DOWN
-    "pointerMove" -> InteractiveInputKind.POINTER_MOVE
-    "pointerUp" -> InteractiveInputKind.POINTER_UP
-    "rotaryScroll" -> InteractiveInputKind.ROTARY_SCROLL
-    "keyDown" -> InteractiveInputKind.KEY_DOWN
-    "keyUp" -> InteractiveInputKind.KEY_UP
-    else -> null
-  }
+  INTERACTIVE_INPUT_KIND_BY_WIRE_NAME[this]
+
+/**
+ * Wire-name table for [InteractiveInputKind]. Single source of truth shared by the daemon's
+ * recording sessions ([toInteractiveInputKindOrNull]) and the MCP server's `record_preview`
+ * validator. Adding a new enum constant + wire name extends both call sites automatically — there's
+ * no separate hard-coded set to keep in sync.
+ */
+val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
+  mapOf(
+    "click" to InteractiveInputKind.CLICK,
+    "pointerDown" to InteractiveInputKind.POINTER_DOWN,
+    "pointerMove" to InteractiveInputKind.POINTER_MOVE,
+    "pointerUp" to InteractiveInputKind.POINTER_UP,
+    "rotaryScroll" to InteractiveInputKind.ROTARY_SCROLL,
+    "keyDown" to InteractiveInputKind.KEY_DOWN,
+    "keyUp" to InteractiveInputKind.KEY_UP,
+  )
+
+/** Wire-name set derived from [INTERACTIVE_INPUT_KIND_BY_WIRE_NAME]. */
+val INTERACTIVE_INPUT_KIND_WIRE_NAMES: Set<String> = INTERACTIVE_INPUT_KIND_BY_WIRE_NAME.keys

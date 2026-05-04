@@ -135,25 +135,32 @@ enough to define the recording duration:
 }
 ```
 
-Scripts can also include audit/control markers:
+Scripts can also include audit/control markers. Today only `recording.probe`
+is dispatched; `state.save`, `state.restore`, `lifecycle.event`, and
+`preview.reload` are advertised on the daemon's `dataExtensions` as
+`supported = false` roadmap entries, and `record_preview` rejects them up
+front (compose-ai-tools#714).
 
 ```json
 {
   "uri": "compose-preview://<workspace>/<module>/<preview>",
   "events": [
     { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
-    { "tMs": 200, "kind": "state.save", "checkpointId": "before" },
-    { "tMs": 250, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
-    { "tMs": 300, "kind": "state.restore", "checkpointId": "before" }
+    { "tMs": 200, "kind": "recording.probe", "label": "after-click" }
   ]
 }
 ```
 
+Events with the same `tMs` form a single script step. Control events in that
+step are applied before the frame for that timestamp is captured, so colocate
+a verification `recording.probe` with the input that should change state.
+
 Always inspect `scriptEvents` in the metadata. Input and `recording.probe`
-events may be `applied`; state/lifecycle markers can be `unsupported` on
-daemons that do not yet drive real saved-state or activity lifecycle
-transitions. Non-input script event ids are namespaced and must be advertised
-under `capabilities.dataExtensions[].recordingScriptEvents[]`.
+events may be `applied` or `unsupported` (the daemon's defense-in-depth path
+for events MCP didn't reject — older MCP servers or direct daemon clients).
+Non-input script event ids are namespaced and must be advertised under
+`capabilities.dataExtensions[].recordingScriptEvents[]` with
+`supported = true`.
 
 The response includes `recordingId`, `mimeType`, `sizeBytes`, `frameCount`,
 `durationMs`, `frameWidthPx`, `frameHeightPx`, `frames[]`, and `scriptEvents[]`.
