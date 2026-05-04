@@ -2,6 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ExperimentalComposeRuntimeApi
 import androidx.compose.runtime.RecomposeScope
 import androidx.compose.runtime.tooling.CompositionObserver
@@ -14,6 +16,16 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.CompositionObserverHook
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionContextKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -460,6 +472,56 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
       encodeDefaults = true
       prettyPrint = false
     }
+  }
+}
+
+fun interface RecompositionObservationHandle {
+  fun dispose()
+}
+
+fun interface RecompositionObservationSession {
+  fun observe(onPayload: (RecompositionPayload) -> Unit): RecompositionObservationHandle
+}
+
+object RecompositionExtensionContextKeys {
+  val ObservationSession: ExtensionContextKey<RecompositionObservationSession> =
+    ExtensionContextKey(
+      "compose.recomposition.observationSession",
+      RecompositionObservationSession::class.java,
+    )
+}
+
+/**
+ * Clean Compose-facing connector for recomposition observation.
+ *
+ * Hosts provide a typed [RecompositionObservationSession] through [ExtensionComposeContext]. This
+ * keeps scene/recomposer access, including any reflection needed by a specific host, behind a
+ * product-owned facade while the extension itself stays shaped like a normal Compose lifecycle
+ * hook.
+ */
+class RecompositionObserverExtension : CompositionObserverHook {
+  override val id: DataExtensionId = DataExtensionId(RecompositionDataProductRegistry.KIND)
+  override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.CompositionObserver)
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.Instrumentation,
+      provides = setOf(DataExtensionCapability(RecompositionDataProductRegistry.KIND)),
+      lifecycle = DataExtensionLifecycle.Subscribed,
+    )
+
+  @Composable
+  override fun Observe(context: ExtensionComposeContext, sink: ExtensionCompositionSink) {
+    val session = context.get(RecompositionExtensionContextKeys.ObservationSession) ?: return
+    DisposableEffect(session, sink) {
+      val handle = session.observe { payload ->
+        sink.put(extensionId = id, key = PAYLOAD_KEY, value = payload)
+      }
+      onDispose { handle.dispose() }
+    }
+  }
+
+  companion object {
+    const val PAYLOAD_KEY: String = "payload"
   }
 }
 
