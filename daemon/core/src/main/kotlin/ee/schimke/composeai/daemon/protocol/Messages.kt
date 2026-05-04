@@ -1033,8 +1033,8 @@ data class RecordingScriptEvent(
    * `Icon(contentDescription = "Save")`). The handler resolves this against the held composition's
    * semantics tree and dispatches the corresponding `SemanticsActions` action — same lookup a
    * screen reader would perform. Ignored for input/probe/state/lifecycle events. Future a11y
-   * matchers (visible text, role, tag) will land as sibling fields rather than a generic params
-   * map so per-action validation stays typed end-to-end.
+   * matchers (visible text, role, tag) will land as sibling fields rather than a generic params map
+   * so per-action validation stays typed end-to-end.
    */
   val nodeContentDescription: String? = null,
 )
