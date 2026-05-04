@@ -11,6 +11,7 @@ android { namespace = "ee.schimke.composeai.data.layoutinspector.connector" }
 
 dependencies {
   api(project(":data-layoutinspector-core"))
+  api(project(":data-render-compose"))
   api(project(":daemon:core"))
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.ui)
