@@ -53,12 +53,17 @@ object AccessibilityRecordingScriptEvents {
   const val ACTION_PREVIOUS_AT_GRANULARITY: String = "a11y.action.previousAtGranularity"
 
   /**
-   * `a11y.action.click` is the only a11y action wired today. `RobolectricHost`'s sandbox-side
-   * loop resolves the matching node by `hasContentDescription(...)` and invokes
-   * `SemanticsActions.OnClick.action.invoke()` — same semantic path
-   * `AccessibilityNodeInfo.performAction(ACTION_CLICK)` walks. The descriptor advertises
-   * `supported = true` so `record_preview` accepts it; the rest of the action ids appear in
-   * [roadmapDescriptors] until their handler ships.
+   * Currently-wired a11y actions. Each `recording.scriptEvents[*].id` here corresponds to a
+   * `when` arm in `RobolectricHost.performSemanticsActionByContentDescription` plus a registry
+   * entry in `AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS`. The handler resolves a node by
+   * `hasContentDescription(...)` and invokes the matching `SemanticsActions` constant — same
+   * path `AccessibilityNodeInfo.performAction(...)` walks via TalkBack.
+   *
+   * The 6 scroll variants all ride on `SemanticsActions.ScrollBy(dx, dy)`: `scrollForward` /
+   * `scrollDown` push y forward by one viewport-height, `scrollBackward` / `scrollUp` push y
+   * backward, `scrollLeft` / `scrollRight` push x. Horizontal scrollers should use the explicit
+   * left/right ids; the forward/backward pair is vertical-axis-first. Future iteration could
+   * read the node's scroll-axis ranges and pick the dominant axis automatically.
    */
   val supportedDescriptors: List<DataExtensionDescriptor> =
     listOf(
@@ -67,24 +72,90 @@ object AccessibilityRecordingScriptEvents {
         displayName = "Accessibility script actions",
         recordingScriptEvents =
           listOf(
-            RecordingScriptEventDescriptor(
-              id = ACTION_CLICK,
-              displayName = "Click",
-              summary =
-                "Performs ACTION_CLICK on the accessibility node identified by " +
-                  "`nodeContentDescription`. Same path a screen reader walks via " +
-                  "AccessibilityNodeInfo.performAction(ACTION_CLICK).",
-              supported = true,
-            )
+            supportedEvent(
+              ACTION_CLICK,
+              "Click",
+              "Performs ACTION_CLICK on the targeted accessibility node via SemanticsActions.OnClick.",
+            ),
+            supportedEvent(
+              ACTION_LONG_CLICK,
+              "Long click",
+              "Performs ACTION_LONG_CLICK on the targeted accessibility node via SemanticsActions.OnLongClick.",
+            ),
+            supportedEvent(
+              ACTION_FOCUS,
+              "Focus",
+              "Performs ACTION_FOCUS on the targeted node via SemanticsActions.RequestFocus.",
+            ),
+            supportedEvent(
+              ACTION_EXPAND,
+              "Expand",
+              "Performs ACTION_EXPAND on the targeted node via SemanticsActions.Expand.",
+            ),
+            supportedEvent(
+              ACTION_COLLAPSE,
+              "Collapse",
+              "Performs ACTION_COLLAPSE on the targeted node via SemanticsActions.Collapse.",
+            ),
+            supportedEvent(
+              ACTION_DISMISS,
+              "Dismiss",
+              "Performs ACTION_DISMISS on the targeted node via SemanticsActions.Dismiss.",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_FORWARD,
+              "Scroll forward",
+              "Scrolls the targeted scrollable forward by one viewport-height via " +
+                "SemanticsActions.ScrollBy(0, +height). Vertical-axis primary; for horizontal " +
+                "scrollers use scrollLeft/scrollRight directly.",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_BACKWARD,
+              "Scroll backward",
+              "Scrolls the targeted scrollable backward by one viewport-height via " +
+                "SemanticsActions.ScrollBy(0, -height). Vertical-axis primary.",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_UP,
+              "Scroll up",
+              "Scrolls the targeted scrollable up by one viewport-height via SemanticsActions.ScrollBy(0, -height).",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_DOWN,
+              "Scroll down",
+              "Scrolls the targeted scrollable down by one viewport-height via SemanticsActions.ScrollBy(0, +height).",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_LEFT,
+              "Scroll left",
+              "Scrolls the targeted scrollable left by one viewport-width via SemanticsActions.ScrollBy(-width, 0).",
+            ),
+            supportedEvent(
+              ACTION_SCROLL_RIGHT,
+              "Scroll right",
+              "Scrolls the targeted scrollable right by one viewport-width via SemanticsActions.ScrollBy(+width, 0).",
+            ),
           ),
       )
     )
 
   /**
-   * Roadmap a11y action descriptors — `supported = false`. Each one ships individually as a
-   * `RobolectricHost.performSemanticsActionByContentDescription` arm + a registry entry in
-   * `AndroidRecordingSession`. When that lands, move the matching `RecordingScriptEventDescriptor`
-   * into the `supportedDescriptors` `a11y` extension above.
+   * Roadmap a11y action descriptors — `supported = false`. These don't have a clean
+   * `SemanticsActions` equivalent in Compose:
+   *
+   * - `clearFocus` — Compose doesn't expose a `ClearFocus` semantic (focus is owned by the
+   *   FocusManager; releasing focus is internal).
+   * - `accessibilityFocus` / `clearAccessibilityFocus` — TalkBack-internal screen-reader focus,
+   *   not a user-invokable action on Compose nodes.
+   * - `select` / `clearSelection` — Compose's `Selected` semantic is state, not action; toggling
+   *   typically happens through `OnClick`. No `SetSelected` semantic action exists.
+   * - `nextAtGranularity` / `previousAtGranularity` — text-cursor navigation needs a granularity
+   *   argument and ties into `SetSelection`; sketching the right wire shape is its own design
+   *   pass.
+   *
+   * `record_preview` rejects these up front via `validateRecordingScriptKinds`. Each lands when
+   * Compose grows the matching semantic action OR we wire a direct `AccessibilityNodeInfo`
+   * fallback path for the ones it never will.
    */
   val roadmapDescriptors: List<DataExtensionDescriptor> =
     listOf(
@@ -94,76 +165,43 @@ object AccessibilityRecordingScriptEvents {
         recordingScriptEvents =
           listOf(
             event(
-              ACTION_LONG_CLICK,
-              "Long click",
-              "Performs ACTION_LONG_CLICK on the targeted accessibility node.",
-            ),
-            event(ACTION_FOCUS, "Focus", "Performs ACTION_FOCUS on the targeted node."),
-            event(
               ACTION_CLEAR_FOCUS,
               "Clear focus",
-              "Performs ACTION_CLEAR_FOCUS on the targeted node.",
+              "Releases focus from the targeted node. No SemanticsActions equivalent today; " +
+                "tracked as roadmap.",
             ),
             event(
               ACTION_ACCESSIBILITY_FOCUS,
               "Accessibility focus",
-              "Performs ACTION_ACCESSIBILITY_FOCUS — the action a screen reader emits when the " +
-                "user swipes onto a node.",
+              "TalkBack-internal screen-reader focus action; not a user-invokable Compose " +
+                "semantic. Tracked as roadmap.",
             ),
             event(
               ACTION_CLEAR_ACCESSIBILITY_FOCUS,
               "Clear accessibility focus",
-              "Performs ACTION_CLEAR_ACCESSIBILITY_FOCUS, the screen-reader counterpart to " +
-                "swiping off a node.",
+              "TalkBack-internal counterpart to accessibilityFocus. Tracked as roadmap.",
             ),
-            event(ACTION_SELECT, "Select", "Performs ACTION_SELECT on the targeted node."),
+            event(
+              ACTION_SELECT,
+              "Select",
+              "Marks the targeted node as selected. Compose's `Selected` semantic is state, " +
+                "not an action; tracked as roadmap until a `SetSelected` semantic ships.",
+            ),
             event(
               ACTION_CLEAR_SELECTION,
               "Clear selection",
-              "Performs ACTION_CLEAR_SELECTION on the targeted node.",
+              "Counterpart to select; tracked as roadmap.",
             ),
-            event(
-              ACTION_SCROLL_FORWARD,
-              "Scroll forward",
-              "Performs ACTION_SCROLL_FORWARD on the targeted scrollable node.",
-            ),
-            event(
-              ACTION_SCROLL_BACKWARD,
-              "Scroll backward",
-              "Performs ACTION_SCROLL_BACKWARD on the targeted scrollable node.",
-            ),
-            event(
-              ACTION_SCROLL_UP,
-              "Scroll up",
-              "Performs ACTION_SCROLL_UP on the targeted scrollable node.",
-            ),
-            event(
-              ACTION_SCROLL_DOWN,
-              "Scroll down",
-              "Performs ACTION_SCROLL_DOWN on the targeted scrollable node.",
-            ),
-            event(
-              ACTION_SCROLL_LEFT,
-              "Scroll left",
-              "Performs ACTION_SCROLL_LEFT on the targeted scrollable node.",
-            ),
-            event(
-              ACTION_SCROLL_RIGHT,
-              "Scroll right",
-              "Performs ACTION_SCROLL_RIGHT on the targeted scrollable node.",
-            ),
-            event(ACTION_EXPAND, "Expand", "Performs ACTION_EXPAND on the targeted node."),
-            event(ACTION_COLLAPSE, "Collapse", "Performs ACTION_COLLAPSE on the targeted node."),
-            event(ACTION_DISMISS, "Dismiss", "Performs ACTION_DISMISS on the targeted node."),
             event(
               ACTION_NEXT_AT_GRANULARITY,
               "Next at movement granularity",
-              "Performs ACTION_NEXT_AT_MOVEMENT_GRANULARITY on the targeted text node.",
+              "Text-cursor navigation by character/word/paragraph. Needs a granularity " +
+                "argument; wire shape TBD. Tracked as roadmap.",
             ),
             event(
               ACTION_PREVIOUS_AT_GRANULARITY,
               "Previous at movement granularity",
-              "Performs ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY on the targeted text node.",
+              "Counterpart to nextAtGranularity; tracked as roadmap.",
             ),
           ),
       )
@@ -177,6 +215,7 @@ object AccessibilityRecordingScriptEvents {
    */
   val descriptors: List<DataExtensionDescriptor> = supportedDescriptors + roadmapDescriptors
 
+  /** Roadmap descriptor — `supported = false`. */
   private fun event(
     id: String,
     displayName: String,
@@ -186,8 +225,19 @@ object AccessibilityRecordingScriptEvents {
       id = id,
       displayName = displayName,
       summary = summary,
-      // Dispatch lands with the recording-script handler registry refactor; until then the
-      // descriptor advertises the surface area as roadmap and `record_preview` rejects up front.
       supported = false,
+    )
+
+  /** Wired descriptor — `supported = true`; matches an entry in `AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS`. */
+  private fun supportedEvent(
+    id: String,
+    displayName: String,
+    summary: String,
+  ): RecordingScriptEventDescriptor =
+    RecordingScriptEventDescriptor(
+      id = id,
+      displayName = displayName,
+      summary = summary,
+      supported = true,
     )
 }

@@ -1763,9 +1763,16 @@ open class RobolectricHost(
      * the most-specific match. Note: a future iteration could surface "ambiguous match" as a
      * distinct evidence message rather than silently picking one.
      *
-     * Today only `actionKind = "click"` is wired; other action kinds return `false` so the
-     * registry handler reports unsupported. New action kinds extend the `when` here without
-     * changing the bridge shape.
+     * Each `actionKind` arm maps to one [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)
+     * entry. Lambda-only actions (`OnClick`, `OnLongClick`, `RequestFocus`, `Expand`, `Collapse`,
+     * `Dismiss`) just `invoke()` the action's lambda. Scroll arms ride on `ScrollBy(dx, dy)` —
+     * the node's `boundsInRoot.size` is one "page worth" of scroll, mirroring what
+     * `AccessibilityNodeInfo.ACTION_SCROLL_FORWARD` does in the Compose accessibility delegate.
+     * `scrollForward` is "advance the dominant scroll axis" (today: vertical; horizontal-only
+     * scrollers should use `scrollLeft` / `scrollRight` directly until we read the node's scroll
+     * axis ranges). Action kinds without a clean SemanticsActions equivalent
+     * (`accessibilityFocus`, `clearFocus`, `select`, granularity navigation) stay in
+     * `AccessibilityRecordingScriptEvents.roadmapDescriptors` and are rejected by MCP up front.
      */
     private fun performSemanticsActionByContentDescription(
       rule:
@@ -1782,13 +1789,63 @@ open class RobolectricHost(
       val target =
         nodes.minByOrNull { node -> node.boundsInRoot.width * node.boundsInRoot.height } ?: nodes[0]
       return when (cmd.actionKind) {
-        "click" -> {
-          val onClick = target.config.getOrNull(SemanticsActions.OnClick) ?: return false
-          rule.runOnUiThread { onClick.action?.invoke() }
-          true
-        }
+        "click" -> invokeLambdaAction(rule, target, SemanticsActions.OnClick)
+        "longClick" -> invokeLambdaAction(rule, target, SemanticsActions.OnLongClick)
+        "focus" -> invokeLambdaAction(rule, target, SemanticsActions.RequestFocus)
+        "expand" -> invokeLambdaAction(rule, target, SemanticsActions.Expand)
+        "collapse" -> invokeLambdaAction(rule, target, SemanticsActions.Collapse)
+        "dismiss" -> invokeLambdaAction(rule, target, SemanticsActions.Dismiss)
+        "scrollForward",
+        "scrollDown" -> invokeScrollBy(rule, target, dx = 0f, dy = target.size.height.toFloat())
+        "scrollBackward",
+        "scrollUp" -> invokeScrollBy(rule, target, dx = 0f, dy = -target.size.height.toFloat())
+        "scrollLeft" -> invokeScrollBy(rule, target, dx = -target.size.width.toFloat(), dy = 0f)
+        "scrollRight" -> invokeScrollBy(rule, target, dx = target.size.width.toFloat(), dy = 0f)
         else -> false
       }
+    }
+
+    /**
+     * Lambda-only `SemanticsActions` invocation — `OnClick`, `OnLongClick`, `RequestFocus`,
+     * `Expand`, `Collapse`, `Dismiss` all share this shape. Returns `false` when the matched node
+     * doesn't carry the action so the caller can emit a precise unsupported reason.
+     */
+    private fun invokeLambdaAction(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      target: androidx.compose.ui.semantics.SemanticsNode,
+      key:
+        androidx.compose.ui.semantics.SemanticsPropertyKey<
+          androidx.compose.ui.semantics.AccessibilityAction<() -> Boolean>
+        >,
+    ): Boolean {
+      val accessibilityAction = target.config.getOrNull(key) ?: return false
+      val lambda = accessibilityAction.action ?: return false
+      rule.runOnUiThread { lambda.invoke() }
+      return true
+    }
+
+    /**
+     * `SemanticsActions.ScrollBy(dx, dy)` invocation. Returns `false` when the matched node has no
+     * `ScrollBy` semantic. Mirrors the call shape `data/scroll/ScrollDriver` already relies on.
+     */
+    private fun invokeScrollBy(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      target: androidx.compose.ui.semantics.SemanticsNode,
+      dx: Float,
+      dy: Float,
+    ): Boolean {
+      val accessibilityAction = target.config.getOrNull(SemanticsActions.ScrollBy) ?: return false
+      val lambda = accessibilityAction.action ?: return false
+      rule.runOnUiThread { lambda.invoke(dx, dy) }
+      return true
     }
 
     private fun performRequestFocusAt(
