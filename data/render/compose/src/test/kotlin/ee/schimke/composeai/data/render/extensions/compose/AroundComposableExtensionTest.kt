@@ -6,6 +6,8 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AroundComposableExtensionTest {
@@ -76,6 +78,29 @@ class AroundComposableExtensionTest {
     assertEquals(DataExtensionPhase.PostProcess, extension.constraints.phase)
     assertEquals(true, extension.hasImageFrameTransformHook)
     assertEquals("frame@0.5", transformed)
+  }
+
+  @Test
+  fun extensionContextExposesTypedExtractionDataAndSlotTables() {
+    val scrollAxisKey = ExtensionContextKey("scroll-axis", String::class.java)
+    val extraction =
+      ExtensionExtractionContext(
+        slotTables = ExtensionSlotTables.Empty,
+        data = ExtensionContextData.of(scrollAxisKey provides "vertical"),
+      )
+    val context =
+      ExtensionComposeContext(
+        extensionId = DataExtensionId("scroll"),
+        previewId = "preview",
+        renderMode = "gif",
+        extraction = extraction,
+      )
+
+    assertEquals(emptyList<Any>(), context.slotTables.snapshot())
+    assertEquals("vertical", context.get(scrollAxisKey))
+    assertEquals("vertical", context.require(scrollAxisKey))
+    assertTrue(extraction.data.contains(scrollAxisKey))
+    assertNull(context.get(ExtensionContextKey("missing", String::class.java)))
   }
 
   private class SimpleBackgroundExtension :

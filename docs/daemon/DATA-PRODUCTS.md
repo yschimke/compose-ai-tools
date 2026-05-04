@@ -47,10 +47,11 @@ kinds are silently ignored both ways.
      everywhere" cases (cheap, always-relevant data like `a11y/atf`
      findings that drive diagnostic squigglies). Most clients leave it
      empty.
-4. Layering ([LAYERING.md](LAYERING.md)) preserved: data products are a
-   Layer 2 (daemon) surface. Renderer-side production sits in
-   `renderer-{android,desktop}` and is reused by the CLI; the daemon is
-   thin glue that surfaces what the renderer already produces.
+4. Layering ([LAYERING.md](LAYERING.md)) preserved: data products are
+   reusable extension functionality first, daemon protocol surface second.
+   Renderer-side production sits in reusable modules and is reused by the
+   CLI, embedded engines, and the daemon; the daemon is thin glue that
+   surfaces what an extension engine already knows how to produce.
 5. **No `protocolVersion` bump.** Adding a kind, adding a field to a
    payload, adding a new method in the `data/*` family — all additive
    per PROTOCOL.md § 7. Both sides ignore unknowns.
@@ -68,6 +69,58 @@ kinds are silently ignored both ways.
    surface — `data/fetch` re-render, `data/subscribe` priming, kind
    discovery — live in the daemon protocol and its MCP front-end, not
    the CLI.
+
+## Direction: embeddable data-extension engine
+
+The data-product implementation should not grow into a daemon-only feature
+set. The daemon is one host for data extensions, not the architecture
+boundary. Future refactors should head toward an embeddable extension engine
+that can be used as a library inside another Compose tooling surface.
+
+The target module split for each product is:
+
+- **`core`** — the clean product implementation, based on AndroidX Compose,
+  Compose Multiplatform, platform SDKs, or other public APIs. This is where
+  typed facades live when a product needs lower-level runtime access. A
+  `core` module does not have to exist when the product truly cannot be
+  expressed cleanly outside a specific host.
+- **connector** — binds the product implementation to the data-extension API:
+  declares ids, capabilities, constraints, hooks, lifecycle, transports, and
+  schema metadata.
+- **host integration** — daemon, CLI, tests, playgrounds, or other tooling
+  choose a set of extensions and wire them into an engine. Host integration
+  should not contain product-specific composition wrappers, extractor rules,
+  frame drivers, or image overlay logic except as glue to platform services.
+
+This keeps the same extensions usable in several contexts:
+
+- the compose-preview daemon, with rich JSON-RPC fetch/subscribe behavior;
+- Gradle/CLI rendering, with on-disk artifacts;
+- an embedded engine in another IDE, test harness, or build tool;
+- a future web playground that compiles/loads Kotlin code, renders it, and
+  enables a selected subset of extensions for insight into the running UI;
+- a future web-based player for interactive UI simulation, where frame
+  driving, animation state, and overlays are extension-provided rather than
+  daemon-special-cased.
+
+Concrete rules for future PRs:
+
+- Prefer Compose Multiplatform and AndroidX public APIs when they can also
+  support Android. Platform-specific code is fine at the edge, but the
+  extension-facing API should stay Compose-shaped.
+- Favor Compose abstractions and implementations: `AroundComposable`,
+  composable extractors, lifecycle/effect hooks, normalized frame drivers,
+  and typed image transforms. Avoid daemon-specific hooks in product code.
+- Put reflection or runtime internals behind typed facades owned by the
+  product. Calling code should look like normal Compose or domain code.
+- Avoid hardcoded assumptions about which features combine. Extensions should
+  declare constraints, capabilities, lifecycle, and ordering; hosts should
+  plan a requested set instead of branching on concrete product names.
+- Keep connector modules thin. If a connector starts knowing how to inspect
+  slot tables, drive scroll, render overlays, or parse product payloads, move
+  that behavior into `core` or a typed facade.
+- Keep hosts replaceable. An embedded engine should be able to run a chosen
+  set of data extensions without starting the external daemon process.
 
 Gradle-side selection is preview-extension-scoped:
 

@@ -1,6 +1,8 @@
 package ee.schimke.composeai.data.render.extensions.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.tooling.CompositionData
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
@@ -21,7 +23,76 @@ data class ExtensionComposeContext(
   val previewId: String?,
   val renderMode: String?,
   val attributes: Map<String, Any?> = emptyMap(),
-)
+  val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
+) {
+  val slotTables: ExtensionSlotTables
+    get() = extraction.slotTables
+
+  fun <T : Any> get(key: ExtensionContextKey<T>): T? = extraction.get(key)
+
+  fun <T : Any> require(key: ExtensionContextKey<T>): T = extraction.require(key)
+}
+
+data class ExtensionContextKey<T : Any>(val name: String, val type: Class<T>) {
+  init {
+    require(name.isNotBlank()) { "Extension context key name must not be blank." }
+  }
+}
+
+data class ExtensionContextValue<T : Any>(val key: ExtensionContextKey<T>, val value: T)
+
+infix fun <T : Any> ExtensionContextKey<T>.provides(value: T): ExtensionContextValue<T> =
+  ExtensionContextValue(this, value)
+
+class ExtensionContextData
+private constructor(private val values: Map<ExtensionContextKey<*>, Any>) {
+  fun <T : Any> get(key: ExtensionContextKey<T>): T? {
+    val value = values[key] ?: return null
+    return key.type.cast(value)
+  }
+
+  fun <T : Any> require(key: ExtensionContextKey<T>): T =
+    get(key) ?: error("Extension context value '${key.name}' is not available.")
+
+  fun contains(key: ExtensionContextKey<*>): Boolean = key in values
+
+  companion object {
+    val Empty: ExtensionContextData = ExtensionContextData(emptyMap())
+
+    fun of(vararg values: ExtensionContextValue<*>): ExtensionContextData =
+      ExtensionContextData(values.associate { it.key to it.value })
+  }
+}
+
+fun interface ExtensionSlotTables {
+  fun snapshot(): List<CompositionData>
+
+  companion object {
+    val Empty: ExtensionSlotTables = ExtensionSlotTables { emptyList() }
+
+    fun of(tables: List<CompositionData>): ExtensionSlotTables = ExtensionSlotTables {
+      tables.toList()
+    }
+  }
+}
+
+data class ExtensionExtractionContext(
+  val slotTables: ExtensionSlotTables = ExtensionSlotTables.Empty,
+  val data: ExtensionContextData = ExtensionContextData.Empty,
+) {
+  fun <T : Any> get(key: ExtensionContextKey<T>): T? = data.get(key)
+
+  fun <T : Any> require(key: ExtensionContextKey<T>): T = data.require(key)
+
+  companion object {
+    val Empty: ExtensionExtractionContext = ExtensionExtractionContext()
+  }
+}
+
+object CommonExtensionContextKeys {
+  val RenderPreviewContext: ExtensionContextKey<PreviewContext> =
+    ExtensionContextKey("preview-context", PreviewContext::class.java)
+}
 
 interface ExtensionCompositionSink {
   fun put(extensionId: DataExtensionId, key: String, value: Any?)
@@ -139,6 +210,7 @@ data class ExtensionFrameContext(
   val previewId: String?,
   val renderMode: String?,
   val attributes: Map<String, Any?> = emptyMap(),
+  val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
 )
 
 data class ExtensionFrame(
@@ -225,6 +297,7 @@ object ComposeDataExtensionPipeline {
     renderMode: String?,
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
+    extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
     content: @Composable () -> Unit,
   ) {
     Observe(
@@ -233,6 +306,7 @@ object ComposeDataExtensionPipeline {
       renderMode = renderMode,
       sink = sink,
       attributes = attributes,
+      extraction = extraction,
     )
     Extract(
       extensions = extensions,
@@ -240,6 +314,7 @@ object ComposeDataExtensionPipeline {
       renderMode = renderMode,
       sink = sink,
       attributes = attributes,
+      extraction = extraction,
     )
     Around(
       hooks = extensions.filterIsInstance<AroundComposableHook>(),
@@ -247,6 +322,7 @@ object ComposeDataExtensionPipeline {
       previewId = previewId,
       renderMode = renderMode,
       attributes = attributes,
+      extraction = extraction,
       content = content,
     )
   }
@@ -258,6 +334,7 @@ object ComposeDataExtensionPipeline {
     renderMode: String?,
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
+    extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
   ) {
     for (hook in extensions.filterIsInstance<ComposableExtractorHook>()) {
       hook.Extract(
@@ -267,6 +344,7 @@ object ComposeDataExtensionPipeline {
             previewId = previewId,
             renderMode = renderMode,
             attributes = attributes,
+            extraction = extraction,
           ),
         sink = sink,
       )
@@ -280,6 +358,7 @@ object ComposeDataExtensionPipeline {
     renderMode: String?,
     sink: ExtensionCompositionSink,
     attributes: Map<String, Any?> = emptyMap(),
+    extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
   ) {
     for (hook in extensions.filterIsInstance<CompositionObserverHook>()) {
       hook.Observe(
@@ -289,6 +368,7 @@ object ComposeDataExtensionPipeline {
             previewId = previewId,
             renderMode = renderMode,
             attributes = attributes,
+            extraction = extraction,
           ),
         sink = sink,
       )
@@ -302,6 +382,7 @@ object ComposeDataExtensionPipeline {
     previewId: String?,
     renderMode: String?,
     attributes: Map<String, Any?>,
+    extraction: ExtensionExtractionContext,
     content: @Composable () -> Unit,
   ) {
     val hook = hooks.getOrNull(index)
@@ -317,6 +398,7 @@ object ComposeDataExtensionPipeline {
           previewId = previewId,
           renderMode = renderMode,
           attributes = attributes,
+          extraction = extraction,
         )
     ) {
       Around(
@@ -325,6 +407,7 @@ object ComposeDataExtensionPipeline {
         previewId = previewId,
         renderMode = renderMode,
         attributes = attributes,
+        extraction = extraction,
         content = content,
       )
     }
