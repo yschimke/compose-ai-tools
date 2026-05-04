@@ -569,21 +569,21 @@ Check:
   `supported: true`, extend this audit to assert `applied` status on the
   matching markers in the same `tMs` group.
 
-### Accessibility-driven interaction audit (planned)
+### Accessibility-driven interaction audit
 
-> **Capability gap.** Roadmap. The a11y connector module advertises an `a11y` data extension
-> with `recordingScriptEvents` for each `AccessibilityNodeInfo` action — `a11y.action.click`,
-> `a11y.action.longClick`, `a11y.action.scrollForward`, `a11y.action.focus`,
-> `a11y.action.accessibilityFocus`, etc. Today they all carry `supported = false` and
-> `record_preview` rejects them up front (compose-ai-tools#714 follow-up). This stub describes
-> the audit pattern so the next pass drops in the dispatch and updates the example.
+> **Capability split.** `a11y.action.click` is wired end-to-end on the Android backend (resolves
+> the target node by content description, invokes `SemanticsActions.OnClick` — same path
+> `AccessibilityNodeInfo.performAction(ACTION_CLICK)` walks). The other `a11y.action.*` ids
+> (`longClick`, `focus`, `scrollForward`, `expand`, `dismiss`, …) appear in `list_data_products`
+> as `supported = false` roadmap entries and are rejected up front by `record_preview`; they
+> land one-by-one as their handler factory ships.
 
 Use this when a PR changes a screen reader–facing flow: clickable nodes, `Modifier.semantics`
 handlers, scrollable containers consumed by a screen reader, or anything that should be reachable
 without a pointer event. The intent is to drive the preview the way assistive technology does
 rather than by pixel coordinates.
 
-Planned MCP shape (subject to revision when dispatch lands):
+Driving sequence:
 
 ```json
 {
@@ -591,27 +591,29 @@ Planned MCP shape (subject to revision when dispatch lands):
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.SettingsRowPreview",
     "events": [
-      { "tMs": 0,   "kind": "a11y.action.accessibilityFocus", "params": { "nodeId": "row-mute" } },
-      { "tMs": 100, "kind": "a11y.action.click", "params": { "nodeId": "row-mute" } },
-      { "tMs": 250, "kind": "recording.probe", "label": "after-a11y-click" }
+      { "tMs": 0,   "kind": "a11y.action.click", "nodeContentDescription": "Mute notifications" },
+      { "tMs": 250, "kind": "recording.probe",   "label": "after-a11y-click" }
     ]
   }
 }
 ```
 
-`params.nodeId` references a node from the preview's most recent `a11y/hierarchy` payload —
-fetch via `get_preview_data uri=<…> kind=a11y/hierarchy` and pick the node by content
-description, role, or semantics tag. Content-description / semantics-tag matching parameters
-will land alongside the dispatch.
+`nodeContentDescription` is matched exactly against the node's `SemanticsProperties.ContentDescription`
+(useUnmergedTree = true) — fetch a fresh `a11y/hierarchy` to look up the canonical strings.
+When multiple nodes share the same description, the smallest by area wins. If no node matches,
+`scriptEvents[*].status = "unsupported"` with a specific reason.
 
-Check (once dispatch lands):
+Check:
 
-- `list_data_products` advertises the relevant `a11y.action.*` ids with `supported: true`.
+- `list_data_products` advertises `a11y.action.click` with `supported: true` on the daemon under
+  test (Android with the a11y preview extension enabled).
 - `recording.probe` evidence at the verification tick reports `applied`.
-- `a11y/hierarchy` after the click reflects the expected state mutation (selected, expanded,
-  focused).
+- The post-click frame's `a11y/hierarchy` reflects the expected state mutation (selected,
+  expanded, focused).
 - The screen-reader-driven sequence produces the same UI changes a pointer-driven sequence
   would, modulo intentional differences (e.g. focus-only flows that bypass the click).
+- Roadmap actions (`a11y.action.longClick`, etc.) come back as MCP-level rejections rather than
+  daemon evidence — that's a tooling gap, not an app regression.
 
 ### Failure triage audit
 

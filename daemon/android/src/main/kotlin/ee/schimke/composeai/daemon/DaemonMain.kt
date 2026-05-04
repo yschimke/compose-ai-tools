@@ -337,15 +337,23 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       dataProducts = dataProducts,
-      // dataExtensions = host's supported descriptors + renderer-agnostic roadmap +
-      // (when the a11y preview extension is enabled) the Android-only a11y action roadmap. The
-      // host method tracks what `RobolectricHost`'s recording sessions actually dispatch
-      // (`recording.probe` today). The two roadmap lists carry `supported = false` until the
-      // handlers ship; `record_preview` rejects them up front via `validateRecordingScriptKinds`.
+      // dataExtensions composition (per-extension halves):
+      //   - host.recordingScriptEventDescriptors()  → supported, renderer-agnostic (probe)
+      //   - AccessibilityRecordingScriptEvents.supportedDescriptors  → supported, a11y-only
+      //     (today: a11y.action.click). Wired only when the a11y preview extension is enabled
+      //     so a non-a11y daemon doesn't advertise an action it can't dispatch.
+      //   - RecordingScriptDataExtensions.roadmapDescriptors  → roadmap, renderer-agnostic
+      //     (state.save / state.restore / lifecycle.event / preview.reload, all supported = false)
+      //   - AccessibilityRecordingScriptEvents.roadmapDescriptors  → roadmap, a11y-only
+      //     (the other 18 a11y.action.* ids, supported = false)
+      // `record_preview` rejects roadmap kinds up front via `validateRecordingScriptKinds`.
       dataExtensions =
         host.recordingScriptEventDescriptors() +
+          (if (a11yPreviewExtensionEnabled)
+            AccessibilityRecordingScriptEvents.supportedDescriptors
+          else emptyList()) +
           RecordingScriptDataExtensions.roadmapDescriptors +
-          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.descriptors
+          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.roadmapDescriptors
           else emptyList()),
       previewExtensions = previewExtensions,
     )

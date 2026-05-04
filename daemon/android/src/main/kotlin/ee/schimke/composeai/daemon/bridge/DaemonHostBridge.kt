@@ -441,4 +441,32 @@ sealed interface InteractiveCommand {
    */
   data class Close(override val streamId: String, val replyLatch: CountDownLatch) :
     InteractiveCommand
+
+  /**
+   * Accessibility-driven dispatch: invoke a `SemanticsActions` action against the node whose
+   * content description matches [nodeContentDescription]. The sandbox-side handler resolves the
+   * node via `rule.onAllNodes(hasContentDescription(...), useUnmergedTree = true)` and invokes the
+   * matching action — same path a screen reader would walk in `AccessibilityNodeInfo.performAction`.
+   *
+   * [actionKind] is a short wire name (`"click"`, `"longClick"`, …); the sandbox maps it to the
+   * corresponding `SemanticsActions` constant. New actions extend this list; the bridge shape
+   * doesn't need to change per action.
+   *
+   * [replyMatched] is set by the sandbox before [replyLatch] counts down: `true` when a node
+   * matched and the action fired, `false` when no node matched (caller surfaces unsupported
+   * evidence). Throwables from the action body land in [replyError]; the host's
+   * `dispatchSemanticsAction` rethrows on the caller thread so the recording session sees the
+   * failure rather than a silently-truncated playback.
+   *
+   * Strings travel as `java.lang.String` (do-not-acquire). No Compose types cross the bridge —
+   * the sandbox does the matcher resolution itself.
+   */
+  data class DispatchSemanticsAction(
+    override val streamId: String,
+    val actionKind: String,
+    val nodeContentDescription: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyMatched: AtomicBoolean,
+  ) : InteractiveCommand
 }

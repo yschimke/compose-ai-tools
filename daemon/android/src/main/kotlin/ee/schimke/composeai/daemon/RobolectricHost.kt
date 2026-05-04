@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasRequestFocusAction
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
@@ -1613,6 +1614,22 @@ open class RobolectricHost(
                     .computeIfAbsent(cmd.requestId) { LinkedBlockingQueue() }
                     .put(resultOrError)
                 }
+                is InteractiveCommand.DispatchSemanticsAction -> {
+                  try {
+                    val matched = performSemanticsActionByContentDescription(rule, cmd)
+                    cmd.replyMatched.set(matched)
+                    if (matched) {
+                      // Match the input-dispatch settle pattern so a screen-reader-driven click
+                      // observes the same recomposition window a pixel click does.
+                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      rule.waitForIdle()
+                    }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.Close -> {
                   cmd.replyLatch.countDown()
                   return
@@ -1729,6 +1746,49 @@ open class RobolectricHost(
       rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
       rule.waitForIdle()
       return true
+    }
+
+    /**
+     * Resolve a node by its `SemanticsProperties.ContentDescription` and invoke the named
+     * `SemanticsActions` action against it — the screen-reader path. Used by
+     * [InteractiveCommand.DispatchSemanticsAction] for `record_preview`'s `a11y.action.*` script
+     * events. Returns `true` when a node matched the description AND the matched node exposed the
+     * requested action; `false` otherwise (caller surfaces unsupported evidence with a specific
+     * reason).
+     *
+     * Matching uses `useUnmergedTree = true` so a node merged into a parent (the inner `Icon` of
+     * an `IconButton` carrying the contentDescription) remains reachable. When multiple nodes
+     * match (e.g. two buttons with the same contentDescription), we pick the smallest by area —
+     * same heuristic as [performClickActionAt] uses for overlapping pixel hits — to bias toward
+     * the most-specific match. Note: a future iteration could surface "ambiguous match" as a
+     * distinct evidence message rather than silently picking one.
+     *
+     * Today only `actionKind = "click"` is wired; other action kinds return `false` so the
+     * registry handler reports unsupported. New action kinds extend the `when` here without
+     * changing the bridge shape.
+     */
+    private fun performSemanticsActionByContentDescription(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.DispatchSemanticsAction,
+    ): Boolean {
+      val matchers =
+        rule.onAllNodes(hasContentDescription(cmd.nodeContentDescription), useUnmergedTree = true)
+      val nodes = matchers.fetchSemanticsNodes(atLeastOneRootRequired = false)
+      if (nodes.isEmpty()) return false
+      val target =
+        nodes.minByOrNull { node -> node.boundsInRoot.width * node.boundsInRoot.height } ?: nodes[0]
+      return when (cmd.actionKind) {
+        "click" -> {
+          val onClick = target.config.getOrNull(SemanticsActions.OnClick) ?: return false
+          rule.runOnUiThread { onClick.action?.invoke() }
+          true
+        }
+        else -> false
+      }
     }
 
     private fun performRequestFocusAt(

@@ -256,6 +256,11 @@ class AndroidRecordingSession(
         put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
           appliedEvidence(e, "probe marker reached")
         })
+        // Accessibility-driven dispatch — wire `a11y.action.click` end-to-end. Other
+        // `a11y.action.*` ids stay roadmap (`supported = false`) until their handler lands; each
+        // is a tiny extension to this registry plus a `when` arm in
+        // [RobolectricHost.performSemanticsActionByContentDescription].
+        put("a11y.action.click", a11ySemanticsClickHandler())
       }
     )
 
@@ -282,6 +287,40 @@ class AndroidRecordingSession(
   private fun androidUnsupported(label: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
       unsupportedEvidence(event, "$label dispatch is not implemented for Android recording")
+    }
+
+  /**
+   * Handler for `a11y.action.click` — resolves a node by its visible content description and
+   * invokes `SemanticsActions.OnClick` against it. Same semantic path a screen reader would walk
+   * via `AccessibilityNodeInfo.performAction(ACTION_CLICK)`. The match is exact + uses the
+   * unmerged tree, so a clickable parent's merged children remain reachable.
+   *
+   * Reports `unsupported` (with a specific reason) when the agent didn't supply
+   * `nodeContentDescription`, when no node matched, or when the matched node didn't expose an
+   * `OnClick` semantic. Throws (propagating into stop()) only when the action body itself fails
+   * — same shape as a regular `click` handler under a Compose runtime error.
+   */
+  private fun a11ySemanticsClickHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val description = event.nodeContentDescription
+      if (description.isNullOrBlank()) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-blank 'nodeContentDescription' to resolve the target node",
+        )
+      }
+      val matched = interactive.dispatchSemanticsAction("click", description)
+      if (matched) {
+        appliedEvidence(
+          event,
+          "a11y action 'click' fired against contentDescription='$description'",
+        )
+      } else {
+        unsupportedEvidence(
+          event,
+          "no node with contentDescription='$description' exposes an OnClick semantic",
+        )
+      }
     }
 
   private fun runLiveTickLoop() {

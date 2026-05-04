@@ -1027,6 +1027,16 @@ data class RecordingScriptEvent(
   val lifecycleEvent: String? = null,
   /** Optional free-form tags copied into script evidence. */
   val tags: List<String> = emptyList(),
+  /**
+   * Accessibility-node identifier for `kind = a11y.action.*` events: the visible content
+   * description of the target node (`Modifier.semantics { contentDescription = "Save" }` /
+   * `Icon(contentDescription = "Save")`). The handler resolves this against the held composition's
+   * semantics tree and dispatches the corresponding `SemanticsActions` action — same lookup a
+   * screen reader would perform. Ignored for input/probe/state/lifecycle events. Future a11y
+   * matchers (visible text, role, tag) will land as sibling fields rather than a generic params
+   * map so per-action validation stays typed end-to-end.
+   */
+  val nodeContentDescription: String? = null,
 )
 
 @Serializable

@@ -50,6 +50,30 @@ interface InteractiveSession : AutoCloseable {
   fun dispatch(input: InteractiveInputParams)
 
   /**
+   * Accessibility-driven dispatch: resolve a node by its visible content description and invoke
+   * the named [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)
+   * action against it — same path a screen reader would walk. Used by `record_preview`'s
+   * `a11y.action.*` script events.
+   *
+   * Returns `true` when a node matched [nodeContentDescription] and the action fired; `false` when
+   * no node matched or the matched node didn't expose [actionKind] (caller surfaces unsupported
+   * evidence). Throws when the action ran but failed mid-flight (Compose runtime error,
+   * cross-classloader marshalling failure) — same semantics as [dispatch].
+   *
+   * Default returns `false` so hosts without semantics-driven dispatch (DesktopHost today) cleanly
+   * surface "no a11y dispatch available" via [false] without blowing up the session.
+   *
+   * @param actionKind short name of the semantics action — `"click"`, `"longClick"`, `"focus"`,
+   *   `"scrollForward"`, etc. The implementation maps each name to the matching
+   *   [`androidx.compose.ui.semantics.SemanticsActions`] constant.
+   * @param nodeContentDescription content-description string the agent already saw in the latest
+   *   `a11y/hierarchy` payload (or that they know from the source). Matched against the node's
+   *   `SemanticsProperties.ContentDescription` — exact match, useUnmergedTree = true so merged
+   *   children remain reachable.
+   */
+  fun dispatchSemanticsAction(actionKind: String, nodeContentDescription: String): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via

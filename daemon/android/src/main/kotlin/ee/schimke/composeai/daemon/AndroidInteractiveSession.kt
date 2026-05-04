@@ -10,6 +10,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -228,6 +229,46 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
+  }
+
+  /**
+   * Override of [InteractiveSession.dispatchSemanticsAction]. Enqueues a
+   * [InteractiveCommand.DispatchSemanticsAction] envelope through the bridge; the sandbox-side
+   * loop in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the matching node
+   * by `hasContentDescription(...)` and invokes the corresponding `SemanticsActions` action.
+   *
+   * Returns `true` when the action fired against a matched node; `false` when no node matched
+   * (caller surfaces unsupported evidence). Throws when the action body itself failed — same
+   * propagation path as [dispatch].
+   */
+  override fun dispatchSemanticsAction(
+    actionKind: String,
+    nodeContentDescription: String,
+  ): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyMatched = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchSemanticsAction(
+        streamId = streamId,
+        actionKind = actionKind,
+        nodeContentDescription = nodeContentDescription,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyMatched = replyMatched,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchSemanticsAction timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (action=$actionKind, " +
+          "contentDescription='$nodeContentDescription'). Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyMatched.get()
   }
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
