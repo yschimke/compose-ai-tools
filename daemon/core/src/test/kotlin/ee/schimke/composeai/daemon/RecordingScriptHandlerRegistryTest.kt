@@ -101,8 +101,7 @@ class RecordingScriptHandlerRegistryTest {
 
   @Test
   fun `knownKinds reflects the registered handler set`() {
-    val sentinel =
-      RecordingScriptEventHandler { event, _ -> appliedEvidence(event, "noop") }
+    val sentinel = RecordingScriptEventHandler { event, _ -> appliedEvidence(event, "noop") }
     val registry =
       RecordingScriptHandlerRegistry(mapOf("click" to sentinel, "recording.probe" to sentinel))
 

@@ -282,9 +282,10 @@ class DesktopRecordingSession(
         put("rotaryScroll", desktopUnsupported("rotary scroll"))
         put("keyDown", desktopUnsupported("keyDown"))
         put("keyUp", desktopUnsupported("keyUp"))
-        put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
-          appliedEvidence(e, "probe marker reached")
-        })
+        put(
+          RecordingScriptDataExtensions.PROBE_EVENT,
+          RecordingScriptEventHandler { e, _ -> appliedEvidence(e, "probe marker reached") },
+        )
       }
     )
 
@@ -318,10 +319,10 @@ class DesktopRecordingSession(
     }
 
   /**
-   * Single-event pointer dispatch. `Press` carries the primary-button-pressed buttons mask;
-   * `Move` keeps the primary button held (a drag); `Release` clears the mask. Matches the
-   * pattern [DesktopInteractiveSession] uses so `Modifier.clickable {}` and other tap-gesture
-   * detectors see consistent down→up sequences regardless of mode.
+   * Single-event pointer dispatch. `Press` carries the primary-button-pressed buttons mask; `Move`
+   * keeps the primary button held (a drag); `Release` clears the mask. Matches the pattern
+   * [DesktopInteractiveSession] uses so `Modifier.clickable {}` and other tap-gesture detectors see
+   * consistent down→up sequences regardless of mode.
    */
   private fun pointerHandler(eventType: PointerEventType): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
