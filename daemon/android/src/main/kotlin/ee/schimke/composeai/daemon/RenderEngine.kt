@@ -35,7 +35,13 @@ import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionP
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
-import ee.schimke.composeai.renderer.AccessibilityChecker
+import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
+import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
+import ee.schimke.composeai.data.render.extensions.provides
+import ee.schimke.composeai.renderer.AccessibilityDataProducts
+import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
+import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import java.io.File
 import java.util.Base64
 import kotlinx.serialization.decodeFromString
@@ -393,12 +399,33 @@ class RenderEngine(
               try {
                 trace.section("a11y:dataProducts") {
                   val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
-                  val a11yResult = AccessibilityChecker.analyze(spec.outputBaseName, view)
+                  // Hierarchy + ATF come from a typed extension instead of a direct
+                  // AccessibilityChecker.analyze call. The extension owns the platform-specific
+                  // ATF walk; downstream consumers (TouchTargets, Overlay) read declared inputs
+                  // without re-walking the View. A future :data-a11y-hierarchy-desktop (CMP
+                  // semantics walk) would target {Desktop} and emit the same product keys; the
+                  // planner's target filter selects exactly one provider per platform.
+                  val hierarchyExtension = AccessibilityHierarchyExtension()
+                  val store = RecordingDataProductStore()
+                  hierarchyExtension.process(
+                    ExtensionPostCaptureContext(
+                      extensionId = hierarchyExtension.id,
+                      previewId = spec.outputBaseName,
+                      renderMode = spec.renderMode,
+                      products = store.scopedFor(hierarchyExtension),
+                      data =
+                        ExtensionContextData.of(
+                          AccessibilityHierarchyContextKeys.ViewRoot provides view
+                        ),
+                    )
+                  )
+                  val hierarchy = store.require(AccessibilityDataProducts.Hierarchy)
+                  val findings = store.require(AccessibilityDataProducts.Atf)
                   AccessibilityDataProducer.writeArtifacts(
                     rootDir = dataDir,
                     previewId = spec.outputBaseName,
-                    findings = a11yResult.findings,
-                    nodes = a11yResult.nodes,
+                    findings = findings.findings,
+                    nodes = hierarchy.nodes,
                     density = spec.density,
                     pngFile = outputFile,
                     isRound = isRound,

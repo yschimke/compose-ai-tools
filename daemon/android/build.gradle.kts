@@ -73,6 +73,12 @@ dependencies {
   // `AccessibilityFinding` / `AccessibilityNode` without adding their own project dep.
   api(project(":data-a11y-connector"))
 
+  // Android-platform-specific hierarchy producer — `RenderEngine.kt` installs
+  // `AccessibilityHierarchyExtension` and runs the typed extension contract instead of calling
+  // `AccessibilityChecker.analyze` directly. Pairs with `:data-a11y-core`'s consumers
+  // (TouchTargetsExtension, OverlayExtension) and any future `:data-a11y-hierarchy-desktop`.
+  implementation(project(":data-a11y-hierarchy-android"))
+
   // The daemon process holds a Robolectric sandbox open via a dummy @Test
   // (DESIGN.md § 9), so JUnit + Robolectric must be on the *main* classpath,
   // not just test. DaemonHost in src/main runs the JUnit core programmatically.

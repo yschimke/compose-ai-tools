@@ -28,6 +28,11 @@ dependencies {
   // `ee.schimke.composeai.renderer.AccessibilityChecker` etc. still resolve and downstream
   // consumers (`RobolectricRenderTest`) compile unchanged.
   api(project(":data-a11y-core"))
+  // Android-platform-specific hierarchy producer — RobolectricRenderTest installs
+  // AccessibilityHierarchyExtension and runs the typed extension contract for the per-preview
+  // ATF + hierarchy walk, mirroring `:daemon:android`'s RenderEngine. Pairs with
+  // `:data-a11y-core`'s consumers (TouchTargetsExtension, OverlayExtension).
+  implementation(project(":data-a11y-hierarchy-android"))
   implementation(project(":data-render-core"))
   implementation(project(":data-scroll-core"))
 
