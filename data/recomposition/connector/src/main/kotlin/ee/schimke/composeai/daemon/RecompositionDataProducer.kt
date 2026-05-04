@@ -22,10 +22,10 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.compose.CompositionObserverHook
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
-import ee.schimke.composeai.data.render.extensions.compose.ExtensionContextKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json

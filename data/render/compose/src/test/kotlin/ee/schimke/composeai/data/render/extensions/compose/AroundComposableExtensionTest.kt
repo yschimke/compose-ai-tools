@@ -6,6 +6,9 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataProductSink
+import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
+import ee.schimke.composeai.data.render.extensions.provides
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
