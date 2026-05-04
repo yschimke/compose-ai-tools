@@ -337,24 +337,22 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       dataProducts = dataProducts,
-      // dataExtensions composition (per-extension halves):
-      //   - host.recordingScriptEventDescriptors()  → supported, renderer-agnostic (probe)
-      //   - AccessibilityRecordingScriptEvents.supportedDescriptors  → supported, a11y-only
-      //     (today: a11y.action.click). Wired only when the a11y preview extension is enabled
-      //     so a non-a11y daemon doesn't advertise an action it can't dispatch.
-      //   - RecordingScriptDataExtensions.roadmapDescriptors  → roadmap, renderer-agnostic
-      //     (state.save / state.restore / lifecycle.event / preview.reload, all supported = false)
-      //   - AccessibilityRecordingScriptEvents.roadmapDescriptors  → roadmap, a11y-only
-      //     (the other 18 a11y.action.* ids, supported = false)
-      // `record_preview` rejects roadmap kinds up front via `validateRecordingScriptKinds`.
+      // dataExtensions composition:
+      //   - host.recordingScriptEventDescriptors()  → host-wired extensions
+      //     (recording.probe + lifecycle + preview.reload + state.{recreate,save,restore})
+      //   - AccessibilityRecordingScriptEvents.descriptor  → the `a11y` extension. Single
+      //     descriptor carrying all 19 actions; 12 are supported = true, 7 are supported = false.
+      //     Wired only when the a11y preview extension is enabled so a non-a11y daemon doesn't
+      //     advertise actions it can't dispatch.
+      //   - RecordingScriptDataExtensions.roadmapDescriptors  → renderer-agnostic roadmap
+      //     (currently empty; new entries land here when an event has a renderer-agnostic
+      //     dispatch story but no host has wired it yet).
+      // `record_preview`'s validateRecordingScriptKinds filters by per-event `supported` flag.
       dataExtensions =
         host.recordingScriptEventDescriptors() +
-          (if (a11yPreviewExtensionEnabled)
-            AccessibilityRecordingScriptEvents.supportedDescriptors
+          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.descriptors
           else emptyList()) +
-          RecordingScriptDataExtensions.roadmapDescriptors +
-          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.roadmapDescriptors
-          else emptyList()),
+          RecordingScriptDataExtensions.roadmapDescriptors,
       previewExtensions = previewExtensions,
     )
   server.run()

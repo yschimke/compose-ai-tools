@@ -1,24 +1,49 @@
 package ee.schimke.composeai.daemon
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the supported/roadmap split of [AccessibilityRecordingScriptEvents] — Android `DaemonMain`
- * composes the daemon's `dataExtensions` capability from these two halves, and `record_preview`'s
- * `validateRecordingScriptKinds` filters by the `supported` flag. The split must stay honest:
- * supported descriptors carry the kinds wired to a real `RobolectricHost.performSemanticsAction*`
- * arm, roadmap descriptors are everything else.
+ * Pins the single `a11y` descriptor's shape — `record_preview`'s `validateRecordingScriptKinds`
+ * filters by per-event `supported` flag, so the wired/unwired split is event-level rather than
+ * descriptor-level.
  */
 class AccessibilityRecordingScriptEventsTest {
 
   @Test
-  fun `supportedDescriptors carry the wired a11y action ids`() {
-    val supported = AccessibilityRecordingScriptEvents.supportedDescriptors
-    val supportedIds = supported.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
-    val expectedSupportedIds =
+  fun `descriptor advertises a11y as one extension with all 19 actions`() {
+    val descriptor = AccessibilityRecordingScriptEvents.descriptor
+    assertEquals("a11y", descriptor.id.value)
+    val ids = descriptor.recordingScriptEvents.map { it.id }.toSet()
+    val expectedIds =
+      setOf(
+        AccessibilityRecordingScriptEvents.ACTION_CLICK,
+        AccessibilityRecordingScriptEvents.ACTION_LONG_CLICK,
+        AccessibilityRecordingScriptEvents.ACTION_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_EXPAND,
+        AccessibilityRecordingScriptEvents.ACTION_COLLAPSE,
+        AccessibilityRecordingScriptEvents.ACTION_DISMISS,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_FORWARD,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_BACKWARD,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_UP,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_DOWN,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
+        AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_ACCESSIBILITY_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_ACCESSIBILITY_FOCUS,
+        AccessibilityRecordingScriptEvents.ACTION_SELECT,
+        AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
+        AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
+        AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
+      )
+    assertEquals(expectedIds, ids)
+  }
+
+  @Test
+  fun `wired actions advertise supported = true`() {
+    val expectedSupported =
       setOf(
         AccessibilityRecordingScriptEvents.ACTION_CLICK,
         AccessibilityRecordingScriptEvents.ACTION_LONG_CLICK,
@@ -33,19 +58,21 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
       )
-    assertEquals(expectedSupportedIds, supportedIds)
-    val allSupported = supported.flatMap { it.recordingScriptEvents }.all { it.supported }
-    assertTrue(
-      "every entry in supportedDescriptors must be supported = true so record_preview accepts it",
-      allSupported,
-    )
+    val actuallySupported =
+      AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents
+        .filter { it.supported }
+        .map { it.id }
+        .toSet()
+    assertEquals(expectedSupported, actuallySupported)
   }
 
   @Test
-  fun `roadmapDescriptors carry the actions without a clean SemanticsActions equivalent`() {
-    val roadmap = AccessibilityRecordingScriptEvents.roadmapDescriptors
-    val roadmapIds = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
-    val expectedRoadmapIds =
+  fun `unwired actions advertise supported = false alongside the wired ones`() {
+    // Roadmap actions appear in the same descriptor with `supported = false` so agents calling
+    // `list_data_products` see the full a11y action surface in one extension entry. The wired /
+    // unwired distinction is per-event, not per-descriptor — there's no separate `a11y.roadmap`
+    // extension.
+    val expectedRoadmap =
       setOf(
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_FOCUS,
         AccessibilityRecordingScriptEvents.ACTION_ACCESSIBILITY_FOCUS,
@@ -55,21 +82,23 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
         AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
       )
-    assertEquals(expectedRoadmapIds, roadmapIds)
-    val anySupported = roadmap.flatMap { it.recordingScriptEvents }.any { it.supported }
-    assertFalse(
-      "roadmap descriptors must all be supported = false; flip them into the supportedDescriptors " +
-        "list when a real handler arm lands",
-      anySupported,
-    )
+    val actuallyUnsupported =
+      AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents
+        .filterNot { it.supported }
+        .map { it.id }
+        .toSet()
+    assertEquals(expectedRoadmap, actuallyUnsupported)
   }
 
   @Test
-  fun `legacy descriptors aggregate is supportedDescriptors plus roadmap`() {
+  fun `descriptors convenience list wraps the single descriptor`() {
     assertEquals(
-      AccessibilityRecordingScriptEvents.supportedDescriptors +
-        AccessibilityRecordingScriptEvents.roadmapDescriptors,
+      listOf(AccessibilityRecordingScriptEvents.descriptor),
       AccessibilityRecordingScriptEvents.descriptors,
+    )
+    assertTrue(
+      "descriptors list must contain exactly the one a11y descriptor",
+      AccessibilityRecordingScriptEvents.descriptors.size == 1,
     )
   }
 }
