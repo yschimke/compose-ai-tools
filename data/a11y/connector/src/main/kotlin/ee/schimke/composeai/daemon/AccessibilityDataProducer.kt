@@ -9,9 +9,10 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding
+import ee.schimke.composeai.renderer.AccessibilityFindingsPayload
+import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
 import ee.schimke.composeai.renderer.AccessibilityNode
 import ee.schimke.composeai.renderer.AccessibilityTouchTargetsPayload
-import ee.schimke.composeai.renderer.buildTouchTargets
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -98,14 +99,23 @@ object AccessibilityDataProducer {
     previewDir
       .resolve(FILE_HIERARCHY)
       .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
-    previewDir
-      .resolve(FILE_TOUCH_TARGETS)
-      .writeText(
-        json.encodeToString(
-          AccessibilityTouchTargetsPayload.serializer(),
-          AccessibilityTouchTargetsPayload(buildTouchTargets(nodes, density)),
-        )
+
+    // Touch targets ride through the typed extension graph so the consumer side stays exercised
+    // on real production data. JSON shape is byte-identical to the previous inline call —
+    // TouchTargetsExtension wraps the same buildTouchTargets math.
+    val store =
+      runAccessibilityPostCapturePipeline(
+        previewId = previewId,
+        hierarchy = AccessibilityHierarchyPayload(nodes),
+        findings = AccessibilityFindingsPayload(findings),
+        density = density,
       )
+    store.get(AccessibilityDataProducts.TouchTargets)?.let { touchTargets ->
+      previewDir
+        .resolve(FILE_TOUCH_TARGETS)
+        .writeText(json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets))
+    }
+
     if (pngFile == null || imageProcessors.isEmpty()) return
     val input =
       ImageProcessorInput(
