@@ -13,6 +13,8 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
+import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
@@ -187,6 +189,18 @@ open class RobolectricHost(
             add("webm")
           }
         }
+
+  /**
+   * `recording.probe` is the only extension event [AndroidRecordingSession] dispatches today. The
+   * a11y action descriptors live in `:data-a11y-connector` and are concatenated into
+   * `dataExtensions` by `DaemonMain` only when the a11y preview extension is enabled, so this host
+   * method stays scoped to the renderer-agnostic probe extension. Empty when the host can't
+   * actually allocate a session ([supportsRecording] = false) so agents don't see supported = true
+   * on a daemon that would reject `recording/start` anyway.
+   */
+  override fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> =
+    if (supportsRecording) listOf(RecordingScriptDataExtensions.recordingDescriptor)
+    else emptyList()
 
   /**
    * Identifier of the currently-held interactive session, or `null` when no session is active.

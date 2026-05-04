@@ -263,7 +263,12 @@ fun main(args: Array<String>) {
       // path as a future Compose API rename. Wiring is intentionally global — kinds advertised
       // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
       dataProducts = dataProducts,
-      dataExtensions = RecordingScriptDataExtensions.descriptors,
+      // dataExtensions = host's supported recording-script extensions + renderer-agnostic roadmap
+      // descriptors. The host's contribution flips supported flags as new handlers land in its
+      // session registry; the roadmap list is the global "advertised but not yet implemented" set
+      // (state.save / state.restore / lifecycle.event / preview.reload).
+      dataExtensions =
+        host.recordingScriptEventDescriptors() + RecordingScriptDataExtensions.roadmapDescriptors,
       previewExtensions =
         buildList {
           add(RenderPreviewExtension.deviceClipDescriptor)

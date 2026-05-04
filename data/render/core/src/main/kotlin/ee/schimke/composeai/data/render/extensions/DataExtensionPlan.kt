@@ -232,6 +232,22 @@ data class RecordingScriptEventDescriptor(
   }
 }
 
+/**
+ * Built-in recording-script descriptor namespace. Splits cleanly between two halves:
+ *
+ * - [recordingDescriptor] — the `recording` extension, advertising `recording.probe` as
+ *   `supported = true`. Each [ee.schimke.composeai.daemon.RenderHost] returns this from its
+ *   `recordingScriptEventDescriptors()` override, alongside any host-specific extensions, so the
+ *   daemon's `dataExtensions` capability set tracks what the host actually dispatches.
+ * - [roadmapDescriptors] — `state` / `lifecycle` / `preview`, all `supported = false`. Advertised
+ *   by `DaemonMain` regardless of host so agents can see what's planned via `list_data_products`.
+ *   `record_preview` rejects them up front (see compose-ai-tools#714); the descriptors flip to
+ *   `supported = true` only when a real handler lands in the host's session registry, at which
+ *   point the descriptor moves out of `roadmapDescriptors` and into the host's own contribution.
+ *
+ * The legacy aggregate [descriptors] (probe + roadmap) is retained for callers that haven't
+ * migrated yet — see the deprecation note.
+ */
 object RecordingScriptDataExtensions {
   const val PROBE_EVENT: String = "recording.probe"
   const val STATE_SAVE_EVENT: String = "state.save"
@@ -239,21 +255,34 @@ object RecordingScriptDataExtensions {
   const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
   const val LIFECYCLE_EVENT: String = "lifecycle.event"
 
-  val descriptors: List<DataExtensionDescriptor> =
+  /**
+   * `recording.probe` descriptor with `supported = true`. Returned from each
+   * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
+   * recording-session registry (today: both desktop and android backends).
+   */
+  val recordingDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("recording"),
+      displayName = "Recording script markers",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = PROBE_EVENT,
+            displayName = "Probe marker",
+            summary = "Records a named point in the recording timeline.",
+            supported = true,
+          )
+        ),
+    )
+
+  /**
+   * Renderer-agnostic roadmap descriptors. Advertised by every daemon so `list_data_products`
+   * surfaces the planned surface area, but `supported = false` everywhere — `record_preview`
+   * rejects up front. When a host wires real dispatch for one of these, advertise the upgraded
+   * descriptor from the host's `recordingScriptEventDescriptors()` and remove it from this list.
+   */
+  val roadmapDescriptors: List<DataExtensionDescriptor> =
     listOf(
-      DataExtensionDescriptor(
-        id = DataExtensionId("recording"),
-        displayName = "Recording script markers",
-        recordingScriptEvents =
-          listOf(
-            RecordingScriptEventDescriptor(
-              id = PROBE_EVENT,
-              displayName = "Probe marker",
-              summary = "Records a named point in the recording timeline.",
-              supported = true,
-            )
-          ),
-      ),
       DataExtensionDescriptor(
         id = DataExtensionId("state"),
         displayName = "State restoration script markers",
@@ -296,6 +325,14 @@ object RecordingScriptDataExtensions {
           ),
       ),
     )
+
+  /**
+   * Combined list of [recordingDescriptor] + [roadmapDescriptors]. Retained for callers that build
+   * their `dataExtensions` from a single source; new code should prefer
+   * `host.recordingScriptEventDescriptors() + roadmapDescriptors` so the host can opt in / out of
+   * the supported half independently.
+   */
+  val descriptors: List<DataExtensionDescriptor> = listOf(recordingDescriptor) + roadmapDescriptors
 }
 
 data class SimplePlannedDataExtension(

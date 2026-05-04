@@ -94,4 +94,33 @@ class DesktopHostTest {
 
     assertEquals(RenderEngine.supportsLocaleTagOverride(), "localeTag" in supported)
   }
+
+  /**
+   * `recordingScriptEventDescriptors()` is the seam DaemonMain reads to assemble the daemon's
+   * `dataExtensions` capability. Without a resolver the host can't allocate a recording session,
+   * so it must NOT advertise `recording.probe` as `supported = true` — otherwise an agent
+   * trusting `list_data_products` would see a green probe and watch its `record_preview` calls
+   * fail with `MethodNotFound`.
+   */
+  @Test
+  fun recordingScriptEventDescriptorsAreEmptyWithoutResolver() {
+    assertEquals(emptyList<Any>(), DesktopHost().recordingScriptEventDescriptors())
+  }
+
+  /**
+   * With a resolver wired, `recordingScriptEventDescriptors()` advertises only
+   * `recording.probe` (supported = true). Roadmap descriptors stay out of the host contribution —
+   * they're appended separately by DaemonMain.
+   */
+  @Test
+  fun recordingScriptEventDescriptorsAdvertiseProbeWhenResolverPresent() {
+    val descriptors = DesktopHost(previewSpecResolver = { null }).recordingScriptEventDescriptors()
+    assertEquals(1, descriptors.size)
+    val recording = descriptors.single()
+    assertEquals("recording", recording.id.value)
+    assertEquals(1, recording.recordingScriptEvents.size)
+    val probe = recording.recordingScriptEvents.single()
+    assertEquals("recording.probe", probe.id)
+    assertTrue("desktop must advertise recording.probe as supported", probe.supported)
+  }
 }
