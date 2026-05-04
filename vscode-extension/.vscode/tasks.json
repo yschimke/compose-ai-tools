@@ -26,8 +26,8 @@
             "command": "../gradlew",
             "args": [
                 "-p",
-                "../gradle-plugin",
-                "publishToMavenLocal"
+                "..",
+                ":gradle-plugin:publishToMavenLocal"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -47,6 +47,27 @@
                 "-p",
                 "..",
                 "publishToMavenLocal"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "gradle: F5 publish + install",
+            "type": "shell",
+            "command": "../gradlew",
+            "args": [
+                "-p",
+                "..",
+                "publishToMavenLocal",
+                ":gradle-plugin:publishToMavenLocal",
+                ":cli:installDist"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -108,10 +129,8 @@
             "dependsOrder": "sequence",
             "dependsOn": [
                 "npm: compile",
-                "gradle: publish plugin to mavenLocal",
-                "gradle: publish runtime artifacts to mavenLocal",
+                "gradle: F5 publish + install",
                 "extension: prepare artifact folder",
-                "gradle: install CLI dist",
                 "meshcore: install CLI"
             ],
             "group": {
