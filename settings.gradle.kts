@@ -62,6 +62,10 @@ include(":data-a11y-core")
 
 project(":data-a11y-core").projectDir = file("data/a11y/core")
 
+include(":data-a11y-hierarchy-android")
+
+project(":data-a11y-hierarchy-android").projectDir = file("data/a11y/hierarchy-android")
+
 include(":data-a11y-connector")
 
 project(":data-a11y-connector").projectDir = file("data/a11y/connector")
