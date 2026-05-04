@@ -1,7 +1,6 @@
 package ee.schimke.composeai.data.render.extensions
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,27 +28,12 @@ class RecordingScriptDataExtensionsTest {
   }
 
   @Test
-  fun `roadmapDescriptors carry only the still-unwired script events`() {
-    val roadmap = RecordingScriptDataExtensions.roadmapDescriptors
-    val ids = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
-    // `lifecycle.event` and `preview.reload` left this list once the Android backend wired their
-    // dispatch — `RobolectricHost.recordingScriptEventDescriptors()` now advertises
-    // `LifecycleRecordingScriptEvents.descriptor` and
-    // `PreviewReloadRecordingScriptEvents.descriptor`
-    // directly. The only remaining unwired pair is state save/restore.
-    assertEquals(
-      setOf(
-        RecordingScriptDataExtensions.STATE_SAVE_EVENT,
-        RecordingScriptDataExtensions.STATE_RESTORE_EVENT,
-      ),
-      ids,
-    )
-    val anySupported = roadmap.flatMap { it.recordingScriptEvents }.any { it.supported }
-    assertFalse(
-      "roadmap descriptors must all be supported = false; flip them in the host's contribution " +
-        "when real dispatch lands",
-      anySupported,
-    )
+  fun `roadmapDescriptors is empty once every renderer-agnostic event has a host`() {
+    // `state.save` / `state.restore` were the last entries here; they joined `state.recreate`
+    // in `StateRecordingScriptEvents` once the Android `SaveableStateRegistry` bridge was wired.
+    // Renderer-agnostic roadmap stays empty until another event wants to advertise itself
+    // pre-dispatch.
+    assertEquals(emptyList<Any>(), RecordingScriptDataExtensions.roadmapDescriptors)
   }
 
   @Test

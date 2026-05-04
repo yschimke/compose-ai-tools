@@ -534,4 +534,32 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     val replyApplied: AtomicBoolean,
   ) : InteractiveCommand
+
+  /**
+   * Capture the current `SaveableStateRegistry` snapshot into a named bundle keyed by
+   * [checkpointId]. Used by `record_preview`'s `state.save` script event. Sandbox-side handler
+   * stores the bundle in a per-stream map; later `DispatchStateRestore` with the same id reads
+   * it. `replyApplied` is `true` on successful capture.
+   */
+  data class DispatchStateSave(
+    override val streamId: String,
+    val checkpointId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
+
+  /**
+   * Look up the bundle stashed by `DispatchStateSave` with matching [checkpointId] and rebuild
+   * the held composition with it restored. Used by `record_preview`'s `state.restore` script
+   * event. `replyApplied` is `true` on successful restore, `false` when no checkpoint with that
+   * id has been saved (the caller surfaces a precise unsupported reason).
+   */
+  data class DispatchStateRestore(
+    override val streamId: String,
+    val checkpointId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
 }

@@ -276,37 +276,21 @@ object RecordingScriptDataExtensions {
     )
 
   /**
-   * Renderer-agnostic roadmap descriptors. Advertised by every daemon so `list_data_products`
-   * surfaces the planned surface area, but `supported = false` everywhere — `record_preview`
-   * rejects up front. When a host wires real dispatch for one of these, advertise the upgraded
-   * descriptor from the host's `recordingScriptEventDescriptors()` and remove it from this list.
+   * Renderer-agnostic roadmap descriptors. New entries land here when an event has a
+   * renderer-agnostic dispatch story but no host has wired it yet. Advertised by every daemon so
+   * `list_data_products` surfaces the planned surface area, but `supported = false` everywhere —
+   * `record_preview` rejects up front. When a host wires real dispatch, advertise the upgraded
+   * descriptor from the host's `recordingScriptEventDescriptors()`.
+   *
+   * Empty as of the state.save / state.restore wiring (compose-ai-tools#749). All previously
+   * roadmapped events have a host today: `state.{recreate,save,restore}` →
+   * [`StateRecordingScriptEvents`][ee.schimke.composeai.daemon.StateRecordingScriptEvents],
+   * `preview.reload` →
+   * [`PreviewReloadRecordingScriptEvents`][ee.schimke.composeai.daemon.PreviewReloadRecordingScriptEvents],
+   * `lifecycle.event` →
+   * [`LifecycleRecordingScriptEvents`][ee.schimke.composeai.daemon.LifecycleRecordingScriptEvents].
    */
-  val roadmapDescriptors: List<DataExtensionDescriptor> =
-    listOf(
-      DataExtensionDescriptor(
-        id = DataExtensionId("state"),
-        displayName = "State restoration script markers",
-        recordingScriptEvents =
-          listOf(
-            RecordingScriptEventDescriptor(
-              id = STATE_SAVE_EVENT,
-              displayName = "Save state checkpoint",
-              summary = "Requests a saved-state checkpoint in a recording script.",
-            ),
-            RecordingScriptEventDescriptor(
-              id = STATE_RESTORE_EVENT,
-              displayName = "Restore state checkpoint",
-              summary = "Requests restoration from a saved-state checkpoint.",
-            ),
-          ),
-      )
-      // `preview.reload` and `lifecycle.event` both moved out of this list — the Android backend
-      // wires them via `PreviewReloadRecordingScriptEvents.descriptor` and
-      // `LifecycleRecordingScriptEvents.descriptor` respectively, advertised through
-      // `RobolectricHost.recordingScriptEventDescriptors()`. Renderer-agnostic descriptors only
-      // carry roadmap entries that no host has wired yet (today: just `state.save` /
-      // `state.restore`).
-    )
+  val roadmapDescriptors: List<DataExtensionDescriptor> = emptyList()
 
   /**
    * Combined list of [recordingDescriptor] + [roadmapDescriptors]. Retained for callers that build
