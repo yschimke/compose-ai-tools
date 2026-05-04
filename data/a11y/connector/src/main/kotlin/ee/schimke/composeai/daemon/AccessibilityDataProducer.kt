@@ -10,6 +10,8 @@ import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
+import ee.schimke.composeai.renderer.AccessibilityTouchTargetsPayload
+import ee.schimke.composeai.renderer.buildTouchTargets
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -68,18 +70,6 @@ object AccessibilityDataProducer {
 
   @Serializable internal data class HierarchyPayload(val nodes: List<AccessibilityNode>)
 
-  @Serializable internal data class TouchTargetsPayload(val targets: List<TouchTarget>)
-
-  @Serializable
-  internal data class TouchTarget(
-    val nodeId: String,
-    val boundsInScreen: String,
-    val widthDp: Float,
-    val heightDp: Float,
-    val findings: List<String>,
-    val overlappingNodeIds: List<String>? = null,
-  )
-
   /**
    * Writes both JSON files to `<rootDir>/<previewId>/` (creating the directory tree if needed).
    * Idempotent — overwrites prior files. Called from [RenderEngine.render]'s a11y branch with
@@ -112,8 +102,8 @@ object AccessibilityDataProducer {
       .resolve(FILE_TOUCH_TARGETS)
       .writeText(
         json.encodeToString(
-          TouchTargetsPayload.serializer(),
-          TouchTargetsPayload(buildTouchTargets(nodes, density)),
+          AccessibilityTouchTargetsPayload.serializer(),
+          AccessibilityTouchTargetsPayload(buildTouchTargets(nodes, density)),
         )
       )
     if (pngFile == null || imageProcessors.isEmpty()) return
@@ -136,80 +126,6 @@ object AccessibilityDataProducer {
       }
     }
   }
-
-  private fun buildTouchTargets(nodes: List<AccessibilityNode>, density: Float): List<TouchTarget> {
-    val scale = density.takeIf { it > 0f } ?: 1f
-    val candidates =
-      nodes.mapIndexedNotNull { index, node ->
-        if (!node.states.any { it == "clickable" || it == "long-clickable" }) return@mapIndexedNotNull null
-        val rect = parseBounds(node.boundsInScreen) ?: return@mapIndexedNotNull null
-        Candidate(
-          nodeId = "node-$index",
-          boundsInScreen = node.boundsInScreen,
-          rect = rect,
-          widthDp = rect.widthPx / scale,
-          heightDp = rect.heightPx / scale,
-        )
-      }
-
-    for (i in candidates.indices) {
-      for (j in i + 1 until candidates.size) {
-        val a = candidates[i]
-        val b = candidates[j]
-        if (a.rect.overlaps(b.rect) && !a.rect.contains(b.rect) && !b.rect.contains(a.rect)) {
-          a.overlappingNodeIds += b.nodeId
-          b.overlappingNodeIds += a.nodeId
-        }
-      }
-    }
-
-    return candidates.map { candidate ->
-      val findings = mutableListOf<String>()
-      if (candidate.widthDp < MIN_TOUCH_TARGET_DP || candidate.heightDp < MIN_TOUCH_TARGET_DP) {
-        findings += FINDING_BELOW_MINIMUM
-      }
-      if (candidate.overlappingNodeIds.isNotEmpty()) findings += FINDING_OVERLAPPING
-      TouchTarget(
-        nodeId = candidate.nodeId,
-        boundsInScreen = candidate.boundsInScreen,
-        widthDp = candidate.widthDp,
-        heightDp = candidate.heightDp,
-        findings = findings,
-        overlappingNodeIds = candidate.overlappingNodeIds.takeIf { it.isNotEmpty() },
-      )
-    }
-  }
-
-  private data class Candidate(
-    val nodeId: String,
-    val boundsInScreen: String,
-    val rect: BoundsRect,
-    val widthDp: Float,
-    val heightDp: Float,
-    val overlappingNodeIds: MutableList<String> = mutableListOf(),
-  )
-
-  private data class BoundsRect(val left: Int, val top: Int, val right: Int, val bottom: Int) {
-    val widthPx: Int = (right - left).coerceAtLeast(0)
-    val heightPx: Int = (bottom - top).coerceAtLeast(0)
-
-    fun overlaps(other: BoundsRect): Boolean =
-      left < other.right && right > other.left && top < other.bottom && bottom > other.top
-
-    fun contains(other: BoundsRect): Boolean =
-      left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
-  }
-
-  private fun parseBounds(bounds: String): BoundsRect? {
-    val parts = bounds.split(',')
-    if (parts.size != 4) return null
-    val values = parts.map { it.trim().toIntOrNull() ?: return null }
-    return BoundsRect(values[0], values[1], values[2], values[3])
-  }
-
-  private const val MIN_TOUCH_TARGET_DP = 48f
-  private const val FINDING_BELOW_MINIMUM = "belowMinimum"
-  private const val FINDING_OVERLAPPING = "overlapping"
 }
 
 /**

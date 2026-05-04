@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityNode
+import ee.schimke.composeai.renderer.AccessibilityTouchTargetsPayload
 import java.io.File
 import java.nio.file.Files
 import kotlinx.serialization.json.Json
@@ -141,7 +142,7 @@ class AccessibilityDataProductRegistryTest {
     val touchFile = File(rootDir, "$previewId/${AccessibilityDataProducer.FILE_TOUCH_TARGETS}")
     val payload =
       Json.decodeFromString(
-        AccessibilityDataProducer.TouchTargetsPayload.serializer(),
+        AccessibilityTouchTargetsPayload.serializer(),
         touchFile.readText(),
       )
     assertEquals(3, payload.targets.size)
