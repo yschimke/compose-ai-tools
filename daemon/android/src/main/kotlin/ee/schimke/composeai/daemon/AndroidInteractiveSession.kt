@@ -367,6 +367,69 @@ internal constructor(
     return replyApplied.get()
   }
 
+  /**
+   * Override of [InteractiveSession.dispatchStateSave]. Enqueues a
+   * [InteractiveCommand.DispatchStateSave] envelope; the sandbox-side loop snapshots the
+   * `SaveableStateRegistry` and stores the bundle in a per-stream checkpoint map.
+   */
+  override fun dispatchStateSave(checkpointId: String): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchStateSave(
+        streamId = streamId,
+        checkpointId = checkpointId,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchStateSave timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (checkpointId='$checkpointId'). " +
+          "Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyApplied.get()
+  }
+
+  /**
+   * Override of [InteractiveSession.dispatchStateRestore]. Enqueues a
+   * [InteractiveCommand.DispatchStateRestore] envelope; the sandbox-side loop looks up the
+   * stashed bundle by [checkpointId] and rebuilds the composition with it restored. Returns
+   * `false` when no matching checkpoint has been saved.
+   */
+  override fun dispatchStateRestore(checkpointId: String): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchStateRestore(
+        streamId = streamId,
+        checkpointId = checkpointId,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchStateRestore timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (checkpointId='$checkpointId'). " +
+          "Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyApplied.get()
+  }
+
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
     lastUsedAtMs.set(System.currentTimeMillis())

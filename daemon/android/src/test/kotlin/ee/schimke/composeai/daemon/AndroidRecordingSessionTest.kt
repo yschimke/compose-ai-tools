@@ -836,6 +836,205 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun stateSaveRoutesThroughDispatchStateSave() {
+    val framesDir = tempFolder.newFolder("state-save-frames")
+    val encodedDir = tempFolder.newFolder("state-save-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-save-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { stateSaveResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-save",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = StateRecordingScriptEvents.STATE_SAVE_EVENT,
+            checkpointId = "before",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(listOf("before"), interactive.stateSaveCalls)
+      assertEquals(0, interactive.stateRecreateCount)
+      assertTrue(interactive.stateRestoreCalls.isEmpty())
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "evidence must name the checkpointId; got '$message'",
+        message.contains("'before'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun stateSaveRequiresNonBlankCheckpointId() {
+    val framesDir = tempFolder.newFolder("state-save-blank-frames")
+    val encodedDir = tempFolder.newFolder("state-save-blank-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-save-blank-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-save-blank",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(RecordingScriptEvent(tMs = 0L, kind = StateRecordingScriptEvents.STATE_SAVE_EVENT))
+      )
+      val result = session.stop()
+
+      assertTrue(
+        "blank checkpointId must short-circuit before dispatchStateSave",
+        interactive.stateSaveCalls.isEmpty(),
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "diagnostic must mention the missing checkpointId; got '$message'",
+        message.contains("checkpointId"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun stateRestoreRoutesThroughDispatchStateRestore() {
+    val framesDir = tempFolder.newFolder("state-restore-frames")
+    val encodedDir = tempFolder.newFolder("state-restore-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-restore-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { stateRestoreResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-restore",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = StateRecordingScriptEvents.STATE_RESTORE_EVENT,
+            checkpointId = "before",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(listOf("before"), interactive.stateRestoreCalls)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "evidence must name the checkpointId; got '$message'",
+        message.contains("'before'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun stateRestoreReportsUnsupportedForUnknownCheckpoint() {
+    val framesDir = tempFolder.newFolder("state-restore-unknown-frames")
+    val encodedDir = tempFolder.newFolder("state-restore-unknown-encoded")
+    val sourcePng = File(tempFolder.newFolder("state-restore-unknown-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { stateRestoreResult = false }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-state-restore-unknown",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = StateRecordingScriptEvents.STATE_RESTORE_EVENT,
+            checkpointId = "never-saved",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(listOf("never-saved"), interactive.stateRestoreCalls)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "diagnostic must reference the missing checkpointId; got '$message'",
+        message.contains("'never-saved'"),
+      )
+      assertTrue(
+        "diagnostic must point the agent at the save side; got '$message'",
+        message.contains("state.save"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun stateRecreateRoutesThroughDispatchStateRecreate() {
     // Happy path for the new `state.recreate` registry entry: handler calls
     // `interactive.dispatchStateRecreate()` and reports `applied` evidence with a message
@@ -1252,6 +1451,26 @@ class AndroidRecordingSessionTest {
       stateRecreateCount++
       val override = stateRecreateResult
       return override ?: super.dispatchStateRecreate()
+    }
+
+    val stateSaveCalls = mutableListOf<String>()
+    val stateRestoreCalls = mutableListOf<String>()
+
+    /** When non-null, [dispatchStateSave] returns this value and records the checkpointId. */
+    var stateSaveResult: Boolean? = null
+    /** When non-null, [dispatchStateRestore] returns this value and records the checkpointId. */
+    var stateRestoreResult: Boolean? = null
+
+    override fun dispatchStateSave(checkpointId: String): Boolean {
+      stateSaveCalls += checkpointId
+      val override = stateSaveResult
+      return override ?: super.dispatchStateSave(checkpointId)
+    }
+
+    override fun dispatchStateRestore(checkpointId: String): Boolean {
+      stateRestoreCalls += checkpointId
+      val override = stateRestoreResult
+      return override ?: super.dispatchStateRestore(checkpointId)
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

@@ -151,6 +151,56 @@ class InteractiveCommandTest {
   }
 
   @Test
+  fun dispatchStateSaveRoundTripsThroughTheBridge() {
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchStateSave(
+        streamId = "stream-A",
+        checkpointId = "before",
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asSave = drained as InteractiveCommand.DispatchStateSave
+    assertEquals("before", asSave.checkpointId)
+    assertSame(replyLatch, asSave.replyLatch)
+    assertSame(replyApplied, asSave.replyApplied)
+  }
+
+  @Test
+  fun dispatchStateRestoreRoundTripsThroughTheBridge() {
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchStateRestore(
+        streamId = "stream-A",
+        checkpointId = "before",
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asRestore = drained as InteractiveCommand.DispatchStateRestore
+    assertEquals("before", asRestore.checkpointId)
+    assertSame(replyLatch, asRestore.replyLatch)
+    assertSame(replyApplied, asRestore.replyApplied)
+  }
+
+  @Test
   fun dispatchStateRecreateRoundTripsThroughTheBridge() {
     // Pin the cross-classloader contract for the new variant: only `java.*` types in the
     // payload, round-trips through `interactiveCommands` by reference. Parameterless — the

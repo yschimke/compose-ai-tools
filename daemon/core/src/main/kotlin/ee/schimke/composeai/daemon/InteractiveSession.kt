@@ -132,6 +132,24 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchStateRecreate(): Boolean = false
 
   /**
+   * Capture the current `SaveableStateRegistry` snapshot into a named bundle keyed by
+   * [checkpointId]. Doesn't rebuild the composition — pair with a later [dispatchStateRestore]
+   * carrying the same id to apply the saved bundle.
+   *
+   * Returns `true` when the snapshot was stored; `false` when the host doesn't have the bridge
+   * wired (DesktopHost today). Multiple saves to the same id overwrite the previous bundle.
+   */
+  fun dispatchStateSave(checkpointId: String): Boolean = false
+
+  /**
+   * Look up the bundle stashed by an earlier [dispatchStateSave] with matching [checkpointId]
+   * and rebuild the held composition with it restored. Returns `true` when the restore fired,
+   * `false` when no checkpoint with that id has been saved (caller surfaces unsupported
+   * evidence). Throws when the rebuild itself failed.
+   */
+  fun dispatchStateRestore(checkpointId: String): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via

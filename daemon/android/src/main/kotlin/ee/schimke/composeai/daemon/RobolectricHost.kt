@@ -216,7 +216,7 @@ open class RobolectricHost(
         RecordingScriptDataExtensions.recordingDescriptor,
         LifecycleRecordingScriptEvents.descriptor,
         PreviewReloadRecordingScriptEvents.descriptor,
-        StateRecreateRecordingScriptEvents.descriptor,
+        StateRecordingScriptEvents.descriptor,
       )
     else emptyList()
 
@@ -1568,6 +1568,11 @@ open class RobolectricHost(
               java.util.concurrent.atomic.AtomicReference<
                 androidx.compose.runtime.saveable.SaveableStateRegistry?
               >(null)
+            // `state.save` / `state.restore` named-checkpoint store. One bundle per
+            // agent-supplied `checkpointId`; same lifetime as the held composition. `state.save`
+            // snapshots the live registry into this map; `state.restore` reads it back.
+            val stateCheckpoints =
+              java.util.concurrent.ConcurrentHashMap<String, Map<String, List<Any?>>>()
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
@@ -1736,6 +1741,50 @@ open class RobolectricHost(
                     rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
                     rule.waitForIdle()
                     cmd.replyApplied.set(true)
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.DispatchStateSave -> {
+                  try {
+                    // Snapshot the live registry into the named checkpoint map. No rebuild —
+                    // the composition keeps running with its current state intact. Multiple
+                    // saves to the same id overwrite the prior bundle.
+                    val saved =
+                      java.util.concurrent.atomic.AtomicReference<Map<String, List<Any?>>>(
+                        emptyMap()
+                      )
+                    rule.runOnUiThread {
+                      val current = recreateRegistryRef.get()
+                      saved.set(current?.performSave().orEmpty())
+                    }
+                    stateCheckpoints[cmd.checkpointId] = saved.get()
+                    cmd.replyApplied.set(true)
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.DispatchStateRestore -> {
+                  try {
+                    val stash = stateCheckpoints[cmd.checkpointId]
+                    if (stash == null) {
+                      // No matching save — surface unsupported back to the caller. Same wire
+                      // shape as a missing semantics-action node: the registry-side handler
+                      // builds a precise diagnostic from the false reply.
+                      cmd.replyApplied.set(false)
+                    } else {
+                      rule.runOnUiThread {
+                        recreateSavedState.value = stash
+                        recreateGeneration.intValue++
+                      }
+                      rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                      rule.waitForIdle()
+                      cmd.replyApplied.set(true)
+                    }
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {

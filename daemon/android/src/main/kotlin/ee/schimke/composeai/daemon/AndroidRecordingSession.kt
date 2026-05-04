@@ -275,10 +275,12 @@ class AndroidRecordingSession(
         // Preview reload — `preview.reload` forces a fresh composition via the held rule's
         // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
         put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
-        // State recreate — Compose-level save+restore round-trip. Distinct from preview.reload:
-        // `rememberSaveable` is preserved via the SaveableStateRegistry snapshot/restore.
-        // See [StateRecreateRecordingScriptEvents].
-        put(StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
+        // State events — `state.recreate` (single-event round-trip), `state.save`
+        // (named-checkpoint capture), `state.restore` (named-checkpoint apply). All ride on the
+        // host's SaveableStateRegistry bridge. See [StateRecordingScriptEvents].
+        put(StateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
+        put(StateRecordingScriptEvents.STATE_SAVE_EVENT, stateSaveHandler())
+        put(StateRecordingScriptEvents.STATE_RESTORE_EVENT, stateRestoreHandler())
       }
     )
 
@@ -386,6 +388,72 @@ class AndroidRecordingSession(
           event,
           "host did not apply state recreate; held composition may be missing the " +
             "SaveableStateRegistry bridge",
+        )
+      }
+    }
+
+  /**
+   * Handler for `state.save` — captures the current `SaveableStateRegistry` into a named bundle
+   * keyed by `event.checkpointId`. Doesn't rebuild the composition; pair with a later
+   * `state.restore` carrying the same id to apply the saved bundle.
+   *
+   * Reports `unsupported` when `checkpointId` is missing (the wire shape requires a non-blank
+   * id) or when the host can't dispatch save (interactive returned `false`).
+   */
+  private fun stateSaveHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val checkpointId = event.checkpointId
+      if (checkpointId.isNullOrBlank()) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-blank 'checkpointId' to name the saved bundle",
+        )
+      }
+      val applied = interactive.dispatchStateSave(checkpointId)
+      if (applied) {
+        appliedEvidence(
+          event,
+          "rememberSaveable state captured under checkpointId='$checkpointId'",
+        )
+      } else {
+        unsupportedEvidence(
+          event,
+          "host did not apply state save for checkpointId='$checkpointId'; held composition " +
+            "may be missing the SaveableStateRegistry bridge",
+        )
+      }
+    }
+
+  /**
+   * Handler for `state.restore` — looks up the bundle stashed by an earlier `state.save` with
+   * matching `checkpointId` and rebuilds the held composition with that bundle restored.
+   *
+   * Reports `unsupported` when `checkpointId` is missing, when no checkpoint with that id has
+   * been saved (the host returned `false` because the lookup missed), or when the host can't
+   * dispatch restore at all. Specific reason in each case so the agent can tell apart "I didn't
+   * provide an id" from "I provided an id no one saved" from "this host doesn't do restore".
+   */
+  private fun stateRestoreHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val checkpointId = event.checkpointId
+      if (checkpointId.isNullOrBlank()) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-blank 'checkpointId' to identify the saved bundle",
+        )
+      }
+      val applied = interactive.dispatchStateRestore(checkpointId)
+      if (applied) {
+        appliedEvidence(
+          event,
+          "rememberSaveable state restored from checkpointId='$checkpointId'",
+        )
+      } else {
+        unsupportedEvidence(
+          event,
+          "no checkpoint with checkpointId='$checkpointId' has been saved (or the host's " +
+            "SaveableStateRegistry bridge is unwired); pair with an earlier `state.save` " +
+            "carrying the same id",
         )
       }
     }

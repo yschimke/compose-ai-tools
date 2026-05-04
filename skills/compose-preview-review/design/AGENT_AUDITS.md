@@ -516,24 +516,23 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-> **Capability split.** `recording.probe`, `lifecycle.event`, `preview.reload`, and
-> `state.recreate` (all Android-only) are wired and `record_preview` accepts them.
-> `lifecycle.event` drives `ActivityScenario.moveToState(...)` against the held rule's activity
-> (accepts `pause` / `resume` / `stop` — `destroy` is rejected). `preview.reload` forces a fresh
-> composition by tearing down under a `key(...)` boundary (`remember` and `rememberSaveable`
-> both reset). `state.recreate` is the middle ground — a Compose-level save+restore via the
-> `SaveableStateRegistry` (`rememberSaveable` survives, `remember` resets). The named-checkpoint
-> pair `state.save` / `state.restore` is still advertised as `supported = false` roadmap and
-> rejected up front.
+> **Capability split.** `recording.probe`, `lifecycle.event`, `preview.reload`, `state.recreate`,
+> `state.save`, and `state.restore` (all Android-only) are wired and `record_preview` accepts
+> them.
 >
-> **Choose `lifecycle.event` vs `state.recreate` vs `preview.reload`:**
+> **Choose between the state-shaped events:**
 >
 > - `lifecycle.event:pause` then `:resume` — verifies state survives an Android configuration
 >   change. The activity is intact across the round-trip; `remember` and `rememberSaveable`
 >   both survive.
-> - `state.recreate` — verifies state survives a recreate. The composition is torn down and
->   rebuilt; `rememberSaveable` is restored from a snapshot, `remember` resets. Same audit
->   signal as a real `ActivityScenario.recreate()` but Compose-level only.
+> - `state.recreate` — single-event round-trip. The composition is torn down and rebuilt;
+>   `rememberSaveable` is restored from a snapshot, `remember` resets. Same audit signal as a
+>   real `ActivityScenario.recreate()` but Compose-level only.
+> - `state.save` / `state.restore` (paired with `checkpointId`) — named checkpoints. `save`
+>   captures the current `rememberSaveable` state under an agent-supplied id without rebuilding;
+>   `restore` looks up an earlier save by id and rebuilds with that bundle restored. Multiple
+>   checkpoints can coexist; useful when an audit needs to compare two saved states or restore
+>   to an earlier checkpoint after intermediate edits.
 > - `preview.reload` — verifies the screen handles a cold composition. Both `remember` and
 >   `rememberSaveable` reset.
 
@@ -601,6 +600,32 @@ is the kind of thing this variant catches:
   }
 }
 ```
+
+**Named-checkpoint variant.** Use `state.save` + `state.restore` when the audit needs to
+compare specific points in the flow — capture state at A, do work, capture state at B, restore
+A, verify return-trip behaves correctly:
+
+```json
+{
+  "tool": "record_preview",
+  "arguments": {
+    "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
+    "events": [
+      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 100, "kind": "state.save", "checkpointId": "after-first-click" },
+      { "tMs": 200, "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 300, "kind": "state.save", "checkpointId": "after-second-click" },
+      { "tMs": 400, "kind": "state.restore", "checkpointId": "after-first-click" },
+      { "tMs": 400, "kind": "recording.probe", "label": "after-restore-to-first" }
+    ]
+  }
+}
+```
+
+`state.save` doesn't rebuild the composition — it just snapshots `rememberSaveable` state under
+the named id. `state.restore` does the rebuild. Multiple saves to the same id overwrite the
+prior bundle. A `state.restore` for a `checkpointId` that was never saved comes back as
+`unsupported` with a diagnostic that names the missing id.
 
 **Recreate variant.** Use `state.recreate` to exercise the `rememberSaveable` save+restore
 path without depending on the activity lifecycle — verifies the saved-state side of state
