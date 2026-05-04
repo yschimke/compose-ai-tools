@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 
 /**
@@ -132,6 +134,89 @@ abstract class CompositionObserverExtension(
   @Composable abstract fun Observe(sink: ExtensionCompositionSink)
 }
 
+data class ExtensionFrameContext(
+  val extensionId: DataExtensionId,
+  val previewId: String?,
+  val renderMode: String?,
+  val attributes: Map<String, Any?> = emptyMap(),
+)
+
+data class ExtensionFrame(
+  val index: Int,
+  val fraction: Float,
+  val timeMillis: Long,
+  val delayMillis: Int,
+) {
+  init {
+    require(index >= 0) { "Frame index must be non-negative." }
+    require(fraction in 0f..1f) { "Frame fraction must be in the 0..1 range." }
+    require(timeMillis >= 0L) { "Frame time must be non-negative." }
+    require(delayMillis >= 0) { "Frame delay must be non-negative." }
+  }
+}
+
+fun interface ExtensionFrameCurve {
+  fun transform(fraction: Float): Float
+
+  companion object {
+    val Linear: ExtensionFrameCurve = ExtensionFrameCurve { fraction -> fraction }
+  }
+}
+
+data class ExtensionFrameSequence(
+  val frames: List<ExtensionFrame>,
+  val curve: ExtensionFrameCurve = ExtensionFrameCurve.Linear,
+  val extras: Map<String, Any?> = emptyMap(),
+)
+
+interface FrameDriverHook : PlannedDataExtension {
+  fun frames(context: ExtensionFrameContext): ExtensionFrameSequence
+}
+
+/**
+ * Convenience base for extensions that own a normalized multi-frame walk.
+ *
+ * Use this for live scroll or animation capture: one hook plans frame fractions from `0..1`, with
+ * optional extras describing the curve or discovered animation metadata. The renderer decides how
+ * to render those frames efficiently.
+ */
+abstract class NormalizedFrameDriverExtension(
+  override val id: DataExtensionId,
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.Scenario,
+      lifecycle = DataExtensionLifecycle.MultiFrame,
+    ),
+) : FrameDriverHook {
+  final override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.ScenarioDriver)
+}
+
+data class ImageFrameTransformInput<ImageT>(
+  val image: ImageT,
+  val frame: ExtensionFrame,
+  val sequence: ExtensionFrameSequence,
+  val extras: Map<String, Any?> = emptyMap(),
+)
+
+interface ImageFrameTransformHook<ImageT> : PlannedDataExtension {
+  fun transform(input: ImageFrameTransformInput<ImageT>): ImageT
+}
+
+/**
+ * Convenience base for efficient per-frame image overlays.
+ *
+ * A concrete integration can bind [ImageT] to `ImageBitmap`, `BufferedImage`, Skia `Image`, or a
+ * platform-native image. Extension code receives the captured frame plus typed frame metadata and
+ * returns the transformed image without re-entering the Compose pipeline.
+ */
+abstract class ImageFrameTransformExtension<ImageT>(
+  override val id: DataExtensionId,
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(phase = DataExtensionPhase.PostProcess),
+) : ImageFrameTransformHook<ImageT> {
+  final override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AfterCapture)
+}
+
 object ComposeDataExtensionPipeline {
   @Composable
   fun Apply(
@@ -254,3 +339,9 @@ val PlannedDataExtension.hasComposableExtractorHook: Boolean
 
 val PlannedDataExtension.hasCompositionObserverHook: Boolean
   get() = DataExtensionHookKind.CompositionObserver in hooks && this is CompositionObserverHook
+
+val PlannedDataExtension.hasFrameDriverHook: Boolean
+  get() = DataExtensionHookKind.ScenarioDriver in hooks && this is FrameDriverHook
+
+val PlannedDataExtension.hasImageFrameTransformHook: Boolean
+  get() = DataExtensionHookKind.AfterCapture in hooks && this is ImageFrameTransformHook<*>
