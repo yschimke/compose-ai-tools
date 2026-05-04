@@ -249,15 +249,7 @@ fun themePayloadFromMaterialTheme(
   typography: Typography,
   shapes: Shapes,
 ): ThemePayload =
-  ThemePayload(
-    resolvedTokens =
-      ResolvedThemeTokens(
-        colorScheme = colorTokens(colorScheme),
-        typography = typographyTokens(typography),
-        shapes = shapeTokens(shapes),
-      ),
-    consumers = emptyList(),
-  )
+  MaterialThemeTokenCapture.fromMaterialTheme(colorScheme, typography, shapes).payload()
 
 fun themePayloadFromThemeObjects(
   colorSource: Any,
@@ -266,20 +258,14 @@ fun themePayloadFromThemeObjects(
   fallbackTypography: Typography?,
   fallbackShapes: Shapes?,
 ): ThemePayload? {
-  val colorScheme = colorTokens(colorSource).takeIf { it.isNotEmpty() } ?: return null
-  val typography =
-    typographyTokens(typographySource).takeIf { it.isNotEmpty() }
-      ?: fallbackTypography?.let(::typographyTokens)
-      ?: emptyMap()
-  val shapes =
-    shapeTokens(shapesSource).takeIf { it.isNotEmpty() }
-      ?: fallbackShapes?.let(::shapeTokens)
-      ?: emptyMap()
-  return ThemePayload(
-    resolvedTokens =
-      ResolvedThemeTokens(colorScheme = colorScheme, typography = typography, shapes = shapes),
-    consumers = emptyList(),
-  )
+  return MaterialThemeTokenCapture.fromInspectionSources(
+      colorSource = colorSource,
+      typographySource = typographySource,
+      shapesSource = shapesSource,
+      fallbackTypography = fallbackTypography,
+      fallbackShapes = fallbackShapes,
+    )
+    ?.payload()
 }
 
 fun themePayloadFromPreviewContext(
@@ -301,21 +287,72 @@ fun themePayloadFromPreviewContext(
 fun themePayloadFromPreviewContext(context: PreviewContext): ThemePayload? =
   themePayloadFromPreviewContext(context, fallbackTypography = null, fallbackShapes = null)
 
-fun colorTokens(source: Any?): Map<String, String> = MaterialThemeTokens.colorScheme(source)
-
-fun typographyTokens(source: Any?): Map<String, TypographyToken> =
-  MaterialThemeTokens.typography(source)
-
-fun shapeTokens(source: Any?): Map<String, String> = MaterialThemeTokens.shapes(source)
-
 /**
  * Domain API for reading Material theme tokens from either public Material3 objects or backend
  * token objects captured from Compose inspection.
  *
  * The API intentionally returns stable token maps. If a backend object needs reflective access,
- * that implementation detail stays behind [TokenObjectAccess].
+ * that implementation detail stays behind this facade.
  */
-internal object MaterialThemeTokens {
+internal data class MaterialThemeTokenCapture(
+  val colorScheme: Map<String, String>,
+  val typography: Map<String, TypographyToken>,
+  val shapes: Map<String, String>,
+) {
+  fun payload(): ThemePayload =
+    ThemePayload(
+      resolvedTokens =
+        ResolvedThemeTokens(colorScheme = colorScheme, typography = typography, shapes = shapes),
+      consumers = emptyList(),
+    )
+
+  companion object {
+    fun fromMaterialTheme(
+      colorScheme: ColorScheme,
+      typography: Typography,
+      shapes: Shapes,
+    ): MaterialThemeTokenCapture =
+      MaterialThemeTokenCapture(
+        colorScheme = MaterialThemeTokenReader.colorScheme(colorScheme),
+        typography = MaterialThemeTokenReader.typography(typography),
+        shapes = MaterialThemeTokenReader.shapes(shapes),
+      )
+
+    fun fromInspectionSources(
+      colorSource: Any,
+      typographySource: Any?,
+      shapesSource: Any?,
+      fallbackTypography: Typography?,
+      fallbackShapes: Shapes?,
+    ): MaterialThemeTokenCapture? {
+      val colorScheme =
+        MaterialThemeTokenReader.colorScheme(colorSource).takeIf { it.isNotEmpty() } ?: return null
+      val typography =
+        MaterialThemeTokenReader.typography(typographySource).takeIf { it.isNotEmpty() }
+          ?: fallbackTypography?.let(MaterialThemeTokenReader::typography)
+          ?: emptyMap()
+      val shapes =
+        MaterialThemeTokenReader.shapes(shapesSource).takeIf { it.isNotEmpty() }
+          ?: fallbackShapes?.let(MaterialThemeTokenReader::shapes)
+          ?: emptyMap()
+      return MaterialThemeTokenCapture(
+        colorScheme = colorScheme,
+        typography = typography,
+        shapes = shapes,
+      )
+    }
+
+    fun hasColorScheme(source: Any?): Boolean =
+      MaterialThemeTokenReader.colorScheme(source).isNotEmpty()
+
+    fun hasTypography(source: Any?): Boolean =
+      MaterialThemeTokenReader.typography(source).isNotEmpty()
+
+    fun hasShapes(source: Any?): Boolean = MaterialThemeTokenReader.shapes(source).isNotEmpty()
+  }
+}
+
+private object MaterialThemeTokenReader {
   fun colorScheme(source: Any?): Map<String, String> =
     when (source) {
       null -> emptyMap()
@@ -399,55 +436,55 @@ internal object MaterialThemeTokens {
         )
       else -> TokenObjectAccess.shapeProperties(source).mapValues { (_, value) -> value.toString() }
     }
+}
 
-  private object TokenObjectAccess {
-    fun colorProperties(source: Any): Map<String, Any> =
-      linkedMapOf<String, Any>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val name = method.propertyName()
-          val value = method.invokeOrNull(source)
-          when (value) {
-            is Color -> tokens[name] = value
-            is Long -> if (method.returnType == java.lang.Long.TYPE) tokens[name] = value
-          }
+private object TokenObjectAccess {
+  fun colorProperties(source: Any): Map<String, Any> =
+    linkedMapOf<String, Any>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val name = method.propertyName()
+        val value = method.invokeOrNull(source)
+        when (value) {
+          is Color -> tokens[name] = value
+          is Long -> if (method.returnType == java.lang.Long.TYPE) tokens[name] = value
         }
       }
-
-    fun textStyleProperties(source: Any): Map<String, TextStyle> =
-      linkedMapOf<String, TextStyle>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source)
-          if (value is TextStyle) tokens[method.propertyName()] = value
-        }
-      }
-
-    fun shapeProperties(source: Any): Map<String, Any> =
-      linkedMapOf<String, Any>().also { tokens ->
-        for (method in source.javaClass.readableNoArgMethods()) {
-          val value = method.invokeOrNull(source) ?: continue
-          if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
-            tokens[method.propertyName()] = value
-          }
-        }
-      }
-
-    private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
-      method.parameterCount == 0 &&
-        method.name.startsWith("get") &&
-        method.name != "getClass" &&
-        method.returnType != java.lang.Void.TYPE
     }
 
-    private fun Method.invokeOrNull(receiver: Any): Any? =
-      runCatching {
-          isAccessible = true
-          invoke(receiver)
-        }
-        .getOrNull()
+  fun textStyleProperties(source: Any): Map<String, TextStyle> =
+    linkedMapOf<String, TextStyle>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val value = method.invokeOrNull(source)
+        if (value is TextStyle) tokens[method.propertyName()] = value
+      }
+    }
 
-    private fun Method.propertyName(): String =
-      name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
+  fun shapeProperties(source: Any): Map<String, Any> =
+    linkedMapOf<String, Any>().also { tokens ->
+      for (method in source.javaClass.readableNoArgMethods()) {
+        val value = method.invokeOrNull(source) ?: continue
+        if (value.javaClass.name.contains("Shape", ignoreCase = true)) {
+          tokens[method.propertyName()] = value
+        }
+      }
+    }
+
+  private fun Class<*>.readableNoArgMethods(): List<Method> = methods.filter { method ->
+    method.parameterCount == 0 &&
+      method.name.startsWith("get") &&
+      method.name != "getClass" &&
+      method.returnType != java.lang.Void.TYPE
   }
+
+  private fun Method.invokeOrNull(receiver: Any): Any? =
+    runCatching {
+        isAccessible = true
+        invoke(receiver)
+      }
+      .getOrNull()
+
+  private fun Method.propertyName(): String =
+    name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }
 }
 
 /**
@@ -492,16 +529,17 @@ internal object MaterialThemeInspectionSnapshot {
   ): ThemePayload? {
     for (group in groups.asReversed()) {
       val values = group.data.toList()
-      val colorSource = values.lastOrNull { colorTokens(it).isNotEmpty() } ?: continue
-      val typographySource = values.lastOrNull { typographyTokens(it).isNotEmpty() }
-      val shapesSource = values.lastOrNull { shapeTokens(it).isNotEmpty() }
-      return themePayloadFromThemeObjects(
-        colorSource = colorSource,
-        typographySource = typographySource,
-        shapesSource = shapesSource,
-        fallbackTypography = fallbackTypography,
-        fallbackShapes = fallbackShapes,
-      )
+      val colorSource = values.lastOrNull(MaterialThemeTokenCapture::hasColorScheme) ?: continue
+      val typographySource = values.lastOrNull(MaterialThemeTokenCapture::hasTypography)
+      val shapesSource = values.lastOrNull(MaterialThemeTokenCapture::hasShapes)
+      return MaterialThemeTokenCapture.fromInspectionSources(
+          colorSource = colorSource,
+          typographySource = typographySource,
+          shapesSource = shapesSource,
+          fallbackTypography = fallbackTypography,
+          fallbackShapes = fallbackShapes,
+        )
+        ?.payload()
     }
     return null
   }
