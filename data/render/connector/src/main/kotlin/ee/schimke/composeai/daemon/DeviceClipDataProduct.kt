@@ -1,5 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
@@ -9,6 +14,11 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
+import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
@@ -103,6 +113,37 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
     const val KIND: String = "render/deviceClip"
     const val SCHEMA_VERSION: Int = 1
   }
+}
+
+/**
+ * Clean Compose-facing connector for applying the selected device-frame clip.
+ *
+ * The metadata product still owns device discovery and payload shape. Hosts that want the clip
+ * applied in composition can plan this extension instead of hardcoding a renderer-side round-device
+ * wrapper.
+ */
+class DeviceClipExtension(private val shape: DeviceClipShape?) :
+  AroundComposableExtension(
+    id = DataExtensionId(DeviceClipDataProductRegistry.KIND),
+    constraints =
+      DataExtensionConstraints(
+        phase = DataExtensionPhase.OuterEnvironment,
+        before = setOf(DataExtensionId(DeviceBackgroundDataProductRegistry.KIND)),
+        provides = setOf(DataExtensionCapability(DeviceClipDataProductRegistry.KIND)),
+      ),
+  ) {
+  @Composable
+  override fun AroundComposable(content: @Composable () -> Unit) {
+    when (shape) {
+      is DeviceClipShape.Circle -> Box(modifier = Modifier.clip(CircleShape)) { content() }
+      null -> content()
+    }
+  }
+}
+
+sealed interface DeviceClipShape {
+  data class Circle(val centerXDp: Double, val centerYDp: Double, val radiusDp: Double) :
+    DeviceClipShape
 }
 
 private fun PreviewInfoDto.previewDeviceContext(): PreviewDeviceContext {
