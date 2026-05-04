@@ -74,7 +74,8 @@ class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProd
     result.previewContext?.let { context ->
       val current = backgrounds[previewId]
       if (current?.previewExplicit == true) return
-      backgrounds[previewId] = context.material3Background() ?: current ?: fallbackBackground()
+      backgrounds[previewId] =
+        DeviceBackgroundThemeCapture.from(context)?.background() ?: current ?: fallbackBackground()
     }
   }
 
@@ -127,7 +128,7 @@ class DeviceBackgroundExtension(private val color: String) :
   }
 }
 
-private data class DeviceBackground(
+internal data class DeviceBackground(
   val color: String,
   val source: String,
   val previewExplicit: Boolean = false,
@@ -153,45 +154,47 @@ private fun PreviewInfoDto.background(): DeviceBackground {
   }
 }
 
-private fun PreviewContext.material3Background(): DeviceBackground? {
-  val colorScheme = material3ColorScheme() ?: return null
-  val background =
-    colorScheme["background"]?.takeUnless(::isTransparentColor)
-      ?: colorScheme["surface"]?.takeUnless(::isTransparentColor)
-      ?: return null
-  val source =
-    if (colorScheme["background"]?.equals(background, ignoreCase = true) == true) {
-      "material3.background"
-    } else {
-      "material3.surface"
-    }
-  return DeviceBackground(background.uppercase(), source)
-}
-
-@Suppress("UNCHECKED_CAST")
-private fun PreviewContext.material3ColorScheme(): Map<String, String>? {
-  val payload = inspection.values["compose.material3.themePayload"] ?: return null
-  return MaterialThemePayloadSnapshot.colorScheme(payload)
-}
-
 /**
- * Domain API for reading theme payloads without coupling this render product to the theme
- * connector's concrete model classes.
+ * Domain API for the captured theme colors that device background understands.
  *
- * Prefer a typed/composable payload path when the data-extension pipeline owns this handoff. Until
- * then, keep the compatibility bridge isolated here.
+ * Device background callers should ask this facade for the background candidate they need. The
+ * current preview-context adapter understands the theme connector payload shape internally, but no
+ * caller needs to know that shape or any reflective access details.
  */
-internal object MaterialThemePayloadSnapshot {
-  @Suppress("UNCHECKED_CAST")
-  fun colorScheme(payload: Any): Map<String, String>? {
-    val resolvedTokens =
-      runCatching { payload.javaClass.getMethod("getResolvedTokens").invoke(payload) }.getOrNull()
+internal data class DeviceBackgroundThemeCapture(private val colorScheme: Map<String, String>) {
+  fun background(): DeviceBackground? {
+    val background =
+      colorScheme["background"]?.takeUnless(::isTransparentColor)
+        ?: colorScheme["surface"]?.takeUnless(::isTransparentColor)
         ?: return null
-    return runCatching {
-        resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
-          as? Map<String, String>
+    val source =
+      if (colorScheme["background"]?.equals(background, ignoreCase = true) == true) {
+        "material3.background"
+      } else {
+        "material3.surface"
       }
-      .getOrNull()
+    return DeviceBackground(background.uppercase(), source)
+  }
+
+  companion object {
+    private const val THEME_PAYLOAD_KEY: String = "compose.material3.themePayload"
+
+    fun from(context: PreviewContext): DeviceBackgroundThemeCapture? {
+      val payload = context.inspection.values[THEME_PAYLOAD_KEY] ?: return null
+      return colorSchemeFromThemePayload(payload)?.let(::DeviceBackgroundThemeCapture)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun colorSchemeFromThemePayload(payload: Any): Map<String, String>? {
+      val resolvedTokens =
+        runCatching { payload.javaClass.getMethod("getResolvedTokens").invoke(payload) }.getOrNull()
+          ?: return null
+      return runCatching {
+          resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
+            as? Map<String, String>
+        }
+        .getOrNull()
+    }
   }
 }
 
