@@ -263,8 +263,9 @@ class AndroidRecordingSession(
         // evidence with a specific reason. The action arm in
         // [RobolectricHost.performSemanticsActionByContentDescription] does the actual lookup +
         // invoke. Action ids without a clean equivalent (`accessibilityFocus`, `clearFocus`,
-        // `select`, granularity navigation) stay in
-        // `AccessibilityRecordingScriptEvents.roadmapDescriptors` and are rejected at MCP.
+        // `select`, granularity navigation) appear alongside the wired ones in
+        // `AccessibilityRecordingScriptEvents.descriptor` with `supported = false` and are
+        // rejected at MCP.
         for (action in A11Y_SEMANTIC_ACTIONS) {
           put("a11y.action.$action", a11ySemanticsActionHandler(action))
         }
@@ -696,8 +697,9 @@ class AndroidRecordingSession(
 
   companion object {
     /**
-     * `actionKind` strings advertised under `AccessibilityRecordingScriptEvents.supportedDescriptors`
-     * — each registers in [scriptHandlers] as `a11y.action.<kind>` and fans out to a `when` arm in
+     * `actionKind` strings advertised as `supported = true` under
+     * `AccessibilityRecordingScriptEvents.descriptor` — each registers in [scriptHandlers] as
+     * `a11y.action.<kind>` and fans out to a `when` arm in
      * [RobolectricHost.performSemanticsActionByContentDescription]. Adding a new entry requires
      * three coordinated edits: (a) the descriptor in [AccessibilityRecordingScriptEvents], (b)
      * this list, (c) the matching arm in `performSemanticsActionByContentDescription`. Test

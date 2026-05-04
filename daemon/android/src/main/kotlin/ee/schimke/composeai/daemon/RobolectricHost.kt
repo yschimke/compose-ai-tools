@@ -1932,8 +1932,9 @@ open class RobolectricHost(
      * `scrollForward` is "advance the dominant scroll axis" (today: vertical; horizontal-only
      * scrollers should use `scrollLeft` / `scrollRight` directly until we read the node's scroll
      * axis ranges). Action kinds without a clean SemanticsActions equivalent
-     * (`accessibilityFocus`, `clearFocus`, `select`, granularity navigation) stay in
-     * `AccessibilityRecordingScriptEvents.roadmapDescriptors` and are rejected by MCP up front.
+     * (`accessibilityFocus`, `clearFocus`, `select`, granularity navigation) appear in
+     * `AccessibilityRecordingScriptEvents.descriptor` with `supported = false` and are rejected
+     * by MCP up front.
      */
     private fun performSemanticsActionByContentDescription(
       rule:
