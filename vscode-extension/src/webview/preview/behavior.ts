@@ -23,7 +23,12 @@ export function setupPreviewBehavior(
 
     const grid = document.getElementById("preview-grid");
     const focusInspector = document.getElementById("focus-inspector");
-    const message = document.getElementById("message");
+    // `<message-banner>` owns the status strip; we use a typed-ish handle
+    // to call setMessage / read its current owner from the few cases that
+    // still need to drive it (filter narrowing, ensureNotBlank fallback,
+    // clearAll). showMessage messages from the extension reach the
+    // component directly without going through this code.
+    const messageBanner = document.querySelector("message-banner");
     const filterFunction = document.getElementById("filter-function");
     const filterGroup = document.getElementById("filter-group");
     const layoutMode = document.getElementById("layout-mode");
@@ -107,9 +112,7 @@ export function setupPreviewBehavior(
     // Seed a placeholder so the view isn't blank during the ~1s boot
     // window before the extension posts its first message. Any real
     // message (Building…, empty-state notice, cards) will replace it.
-    message.textContent = "Loading Compose previews…";
-    message.style.display = "block";
-    message.dataset.owner = "fallback";
+    messageBanner.setMessage("Loading Compose previews…", "fallback");
 
     layoutMode.addEventListener("change", () => {
         if (layoutMode.value === "focus" && state.layout !== "focus") {
@@ -745,7 +748,7 @@ export function setupPreviewBehavior(
         // it here was how the view went blank after a refresh.
         if (allPreviews.length > 0 && visibleCount === 0) {
             setMessage("No previews match the current filters", "filter");
-        } else if (message.dataset.owner === "filter") {
+        } else if (messageBanner.getOwner() === "filter") {
             // We set this earlier; clear it now that it no longer applies.
             setMessage("", "filter");
         }
@@ -754,18 +757,12 @@ export function setupPreviewBehavior(
         applyLayout();
     }
 
-    // Central setter so applyFilters and incoming messages don't fight
-    // over who owns the current text. The owner tag is used only to let
-    // applyFilters clear its own message without touching extension-set
-    // text (empty-file notice, build errors, etc.).
+    // Thin shim around `<message-banner>.setMessage` that keeps the
+    // ensureNotBlank() backstop wired in. The owner tag is used only to
+    // let applyFilters clear its own message without touching extension-
+    // set text (empty-file notice, build errors, etc.).
     function setMessage(text, owner) {
-        message.textContent = text;
-        message.style.display = text ? "block" : "none";
-        if (text) {
-            message.dataset.owner = owner || "extension";
-        } else {
-            delete message.dataset.owner;
-        }
+        messageBanner.setMessage(text, owner || "extension");
         ensureNotBlank();
     }
 
@@ -776,12 +773,8 @@ export function setupPreviewBehavior(
     // original complaint, so this catches any future regressions.
     function ensureNotBlank() {
         const hasCards = grid.querySelector(".preview-card") !== null;
-        const hasMessage =
-            message.style.display !== "none" && message.textContent;
-        if (!hasCards && !hasMessage) {
-            message.textContent = "Preparing previews…";
-            message.style.display = "block";
-            message.dataset.owner = "fallback";
+        if (!hasCards && !messageBanner.isVisible()) {
+            messageBanner.setMessage("Preparing previews…", "fallback");
         }
     }
 
@@ -2278,8 +2271,9 @@ export function setupPreviewBehavior(
         // Must run *after* cards are inserted: setMessage('', …) calls
         // ensureNotBlank, which would re-set "Preparing previews…" if
         // the grid still looked empty when the message was cleared.
-        if (message.dataset.owner && message.dataset.owner !== "extension") {
-            setMessage("", message.dataset.owner);
+        const owner = messageBanner.getOwner();
+        if (owner && owner !== "extension") {
+            setMessage("", owner);
         }
     }
 
@@ -3020,9 +3014,7 @@ export function setupPreviewBehavior(
                 break;
             }
 
-            case "showMessage":
-                setMessage(msg.text, "extension");
-                break;
+            // showMessage is handled by <message-banner>.
 
             case "previewDiffReady": {
                 if (!earlyFeaturesEnabled) break;

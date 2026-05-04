@@ -12,6 +12,7 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { setupPreviewBehavior } from "./behavior";
 import "./components/CompileErrorsBanner";
+import "./components/MessageBanner";
 import "./components/ProgressBar";
 
 @customElement("preview-app")
@@ -76,12 +77,7 @@ export class PreviewApp extends LitElement {
                 </div>
             </div>
 
-            <div
-                id="message"
-                class="message"
-                role="status"
-                aria-live="polite"
-            ></div>
+            <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
                 <button
                     class="icon-button"
