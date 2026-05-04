@@ -491,4 +491,24 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     val replyApplied: AtomicBoolean,
   ) : InteractiveCommand
+
+  /**
+   * Force a fresh composition by tearing down the held content under its current `key(...)`
+   * boundary and rebuilding. Used by `record_preview`'s `preview.reload` script event to verify
+   * a screen recovers from a recompose-from-zero. The sandbox-side handler increments a
+   * `mutableIntStateOf` reload counter that the wrapping `key(...)` block reads, which Compose
+   * detects as a key change and rebuilds the slot table fresh.
+   *
+   * No payload — the reload target is implicit (the held composition this stream is driving).
+   * `replyApplied` is set by the sandbox before [replyLatch] counts down: `true` on success,
+   * `false` if the host doesn't carry a reload counter (defensive — the production held-rule
+   * loop always wires one). Throwables from the rebuild ride [replyError] for the host's
+   * dispatch path to rethrow.
+   */
+  data class DispatchPreviewReload(
+    override val streamId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
 }

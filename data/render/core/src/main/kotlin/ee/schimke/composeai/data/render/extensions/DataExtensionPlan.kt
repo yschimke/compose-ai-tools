@@ -300,22 +300,12 @@ object RecordingScriptDataExtensions {
             ),
           ),
       ),
-      DataExtensionDescriptor(
-        id = DataExtensionId("preview"),
-        displayName = "Preview script controls",
-        recordingScriptEvents =
-          listOf(
-            RecordingScriptEventDescriptor(
-              id = PREVIEW_RELOAD_EVENT,
-              displayName = "Reload preview",
-              summary = "Requests preview reload during a recording script.",
-            )
-          ),
-      ),
-      // `lifecycle.event` moved out — the Android backend wires `ActivityScenario.moveToState` via
-      // `LifecycleRecordingScriptEvents.descriptor` (advertised by `RobolectricHost`'s
-      // `recordingScriptEventDescriptors()`). Renderer-agnostic descriptors only carry roadmap
-      // entries that no host has wired yet.
+      // `preview.reload` and `lifecycle.event` both moved out of this list — the Android backend
+      // wires them via `PreviewReloadRecordingScriptEvents.descriptor` and
+      // `LifecycleRecordingScriptEvents.descriptor` respectively, advertised through
+      // `RobolectricHost.recordingScriptEventDescriptors()`. Renderer-agnostic descriptors only
+      // carry roadmap entries that no host has wired yet (today: just `state.save` /
+      // `state.restore`).
     )
 
   /**

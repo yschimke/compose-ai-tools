@@ -306,6 +306,37 @@ internal constructor(
     return replyApplied.get()
   }
 
+  /**
+   * Override of [InteractiveSession.dispatchPreviewReload]. Enqueues a
+   * [InteractiveCommand.DispatchPreviewReload] envelope through the bridge; the sandbox-side
+   * loop in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] increments the held
+   * `key(...)` reload counter, which Compose detects as a key change and rebuilds the
+   * composition slot table from scratch.
+   */
+  override fun dispatchPreviewReload(): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchPreviewReload(
+        streamId = streamId,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchPreviewReload timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId'. Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyApplied.get()
+  }
+
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
     lastUsedAtMs.set(System.currentTimeMillis())

@@ -272,6 +272,9 @@ class AndroidRecordingSession(
         // through `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`.
         // See [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
         put(LifecycleRecordingScriptEvents.LIFECYCLE_EVENT, lifecycleEventHandler())
+        // Preview reload — `preview.reload` forces a fresh composition via the held rule's
+        // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
+        put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
       }
     )
 
@@ -331,6 +334,28 @@ class AndroidRecordingSession(
         unsupportedEvidence(
           event,
           "no node with contentDescription='$description' exposes the '$actionKind' semantic",
+        )
+      }
+    }
+
+  /**
+   * Handler for `preview.reload` — forces a fresh composition by routing through
+   * `interactive.dispatchPreviewReload()`. The Robolectric sandbox increments a `key(...)` reload
+   * counter, which Compose detects as a key change and rebuilds the slot table from scratch.
+   *
+   * Reports `unsupported` when the host can't dispatch reload (interactive returned `false`,
+   * e.g. on a backend without a held rule). No payload validation needed — the kind alone is
+   * sufficient.
+   */
+  private fun previewReloadHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val applied = interactive.dispatchPreviewReload()
+      if (applied) {
+        appliedEvidence(event, "composition rebuilt from a fresh `key(...)` boundary")
+      } else {
+        unsupportedEvidence(
+          event,
+          "host did not apply preview reload; held composition may be missing a reload counter",
         )
       }
     }

@@ -96,6 +96,22 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchLifecycle(lifecycleEvent: String): Boolean = false
 
   /**
+   * Force a fresh composition: tear down the current composition slot and rebuild from scratch
+   * against the same composable function. Used by `record_preview`'s `preview.reload` script
+   * event to verify a screen recovers cleanly from a recompose-from-zero (`remember`,
+   * `rememberSaveable`, and `LaunchedEffect`-keyed work all reset).
+   *
+   * Returns `true` when the composition was rebuilt; `false` when the host doesn't support
+   * forced reloads (DesktopHost today). Throws when the rebuild itself failed.
+   *
+   * Note: this is a Compose-level reset, not an Android lifecycle round-trip. State preserved by
+   * `rememberSaveable` (bundle-backed) is also lost because the `key(...)` boundary that drives
+   * the rebuild invalidates the saveable-state call sites. For "state survives a config-change"
+   * audits use [dispatchLifecycle] (`pause` / `resume`) instead.
+   */
+  fun dispatchPreviewReload(): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via

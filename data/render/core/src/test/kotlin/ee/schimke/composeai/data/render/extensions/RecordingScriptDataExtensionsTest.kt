@@ -32,15 +32,14 @@ class RecordingScriptDataExtensionsTest {
   fun `roadmapDescriptors carry only the still-unwired script events`() {
     val roadmap = RecordingScriptDataExtensions.roadmapDescriptors
     val ids = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
-    // `lifecycle.event` left this list when the Android backend wired
-    // `ActivityScenario.moveToState` — `RobolectricHost.recordingScriptEventDescriptors()` now
-    // advertises `LifecycleRecordingScriptEvents.descriptor` directly. The remaining entries
-    // (state save/restore, preview reload) wait for their dispatch.
+    // `lifecycle.event` and `preview.reload` left this list once the Android backend wired their
+    // dispatch — `RobolectricHost.recordingScriptEventDescriptors()` now advertises
+    // `LifecycleRecordingScriptEvents.descriptor` and `PreviewReloadRecordingScriptEvents.descriptor`
+    // directly. The only remaining unwired pair is state save/restore.
     assertEquals(
       setOf(
         RecordingScriptDataExtensions.STATE_SAVE_EVENT,
         RecordingScriptDataExtensions.STATE_RESTORE_EVENT,
-        RecordingScriptDataExtensions.PREVIEW_RELOAD_EVENT,
       ),
       ids,
     )

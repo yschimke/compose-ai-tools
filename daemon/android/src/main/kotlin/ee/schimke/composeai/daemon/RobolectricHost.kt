@@ -198,6 +198,8 @@ open class RobolectricHost(
    * - `recording.probe` (renderer-agnostic) — the in-script timeline marker.
    * - `lifecycle.event` (Android-only) — drives `ActivityScenario.moveToState(...)` against the
    *   held rule's activity.
+   * - `preview.reload` (Android-only today) — forces a fresh composition via the held rule's
+   *   `key(...)` reload counter.
    *
    * The a11y action descriptors live in `:data-a11y-connector` and are concatenated into
    * `dataExtensions` by `DaemonMain` only when the a11y preview extension is enabled, so they
@@ -210,6 +212,7 @@ open class RobolectricHost(
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
         LifecycleRecordingScriptEvents.descriptor,
+        PreviewReloadRecordingScriptEvents.descriptor,
       )
     else emptyList()
 
@@ -1538,16 +1541,24 @@ open class RobolectricHost(
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(backgroundArgb) }
             val setupTrace =
               PerfettoTraceDataProducer.recorder(start.outputBaseName, backend = "android-live")
+            // `preview.reload` reload counter — wrapping `key(...)` reads `intValue`, so
+            // incrementing it from the command handler tears down the slot table inside the
+            // boundary and rebuilds against a fresh `remember` / `rememberSaveable` slot map.
+            // Lives here (not as a class-level field) because the held composition is local to
+            // this `evaluate()` invocation; one reload counter per stream.
+            val reloadCounter = androidx.compose.runtime.mutableIntStateOf(0)
             setupTrace.section("compose:setContent") {
               rule.setContent {
-                androidx.compose.runtime.CompositionLocalProvider(
-                  androidx.compose.ui.platform.LocalInspectionMode provides
-                    (start.inspectionMode ?: false)
-                ) {
-                  androidx.compose.foundation.layout.Box(
-                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                androidx.compose.runtime.key(reloadCounter.intValue) {
+                  androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalInspectionMode provides
+                      (start.inspectionMode ?: false)
                   ) {
-                    InvokeHeldComposable(composableMethod)
+                    androidx.compose.foundation.layout.Box(
+                      modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                    ) {
+                      InvokeHeldComposable(composableMethod)
+                    }
                   }
                 }
               }
@@ -1652,6 +1663,21 @@ open class RobolectricHost(
                       rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
                       rule.waitForIdle()
                     }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.DispatchPreviewReload -> {
+                  try {
+                    rule.runOnUiThread { reloadCounter.intValue++ }
+                    // Settle window — Compose has to detect the key change, dispose the old
+                    // slot table, and run the new composition's first frame before subsequent
+                    // inputs / renders observe the rebuilt state.
+                    rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                    rule.waitForIdle()
+                    cmd.replyApplied.set(true)
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {
