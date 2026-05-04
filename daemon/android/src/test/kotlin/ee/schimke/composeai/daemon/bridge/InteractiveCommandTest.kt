@@ -151,6 +151,37 @@ class InteractiveCommandTest {
   }
 
   @Test
+  fun dispatchLifecycleRoundTripsThroughTheBridge() {
+    // Pin the cross-classloader contract for the new variant: only `java.*` types in the
+    // payload, round-trips through `interactiveCommands` by reference (so the host's latch /
+    // atomic refs come back out unchanged for the await pattern). Mirrors
+    // `dispatchSemanticsActionRoundTripsThroughTheBridge` for the lifecycle variant.
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchLifecycle(
+        streamId = "stream-A",
+        lifecycleEvent = "pause",
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asLifecycle = drained as InteractiveCommand.DispatchLifecycle
+    assertSame(replyLatch, asLifecycle.replyLatch)
+    assertSame(replyError, asLifecycle.replyError)
+    assertSame(replyApplied, asLifecycle.replyApplied)
+    assertNull("replyError defaults to null", asLifecycle.replyError.get())
+    assertFalse("replyApplied defaults to false", asLifecycle.replyApplied.get())
+  }
+
+  @Test
   fun dispatchSemanticsActionRoundTripsThroughTheBridge() {
     // Pin the cross-classloader contract for the new variant: only `java.*` types in the payload,
     // round-trips through `interactiveCommands` by reference (so the host's latch / atomic refs

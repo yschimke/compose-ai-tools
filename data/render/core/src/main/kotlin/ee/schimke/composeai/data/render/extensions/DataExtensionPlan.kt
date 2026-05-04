@@ -312,18 +312,10 @@ object RecordingScriptDataExtensions {
             )
           ),
       ),
-      DataExtensionDescriptor(
-        id = DataExtensionId("lifecycle"),
-        displayName = "Lifecycle script controls",
-        recordingScriptEvents =
-          listOf(
-            RecordingScriptEventDescriptor(
-              id = LIFECYCLE_EVENT,
-              displayName = "Lifecycle event",
-              summary = "Requests a lifecycle transition during a recording script.",
-            )
-          ),
-      ),
+      // `lifecycle.event` moved out — the Android backend wires `ActivityScenario.moveToState` via
+      // `LifecycleRecordingScriptEvents.descriptor` (advertised by `RobolectricHost`'s
+      // `recordingScriptEventDescriptors()`). Renderer-agnostic descriptors only carry roadmap
+      // entries that no host has wired yet.
     )
 
   /**

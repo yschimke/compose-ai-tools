@@ -469,4 +469,26 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     val replyMatched: AtomicBoolean,
   ) : InteractiveCommand
+
+  /**
+   * Lifecycle dispatch: move the held activity to the named lifecycle state via
+   * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
+   * events to drive `onPause` / `onResume` / `onStop` on the held composition.
+   *
+   * [lifecycleEvent] is a wire-level string the sandbox maps to the matching
+   * `Lifecycle.State` value (`"pause"` → STARTED, `"resume"` → RESUMED, `"stop"` → CREATED).
+   * Unknown names set [replyApplied] to `false` so the caller can emit a precise unsupported
+   * reason. `"destroy"` is intentionally rejected — moving to DESTROYED mid-recording would tear
+   * down the scenario and break subsequent renders.
+   *
+   * Strings travel as `java.lang.String` (do-not-acquire). No `Lifecycle.State` types cross the
+   * bridge — the sandbox owns the mapping internally.
+   */
+  data class DispatchLifecycle(
+    override val streamId: String,
+    val lifecycleEvent: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
 }

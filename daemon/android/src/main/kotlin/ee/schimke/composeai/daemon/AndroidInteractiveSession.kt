@@ -271,6 +271,41 @@ internal constructor(
     return replyMatched.get()
   }
 
+  /**
+   * Override of [InteractiveSession.dispatchLifecycle]. Enqueues a
+   * [InteractiveCommand.DispatchLifecycle] envelope through the bridge; the sandbox-side loop in
+   * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to a
+   * `Lifecycle.State` and calls `ActivityScenario.moveToState(...)`.
+   *
+   * Returns `true` when the lifecycle transition fired; `false` when the named event isn't
+   * recognised. Throws when the transition itself failed — same propagation path as [dispatch].
+   */
+  override fun dispatchLifecycle(lifecycleEvent: String): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchLifecycle(
+        streamId = streamId,
+        lifecycleEvent = lifecycleEvent,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchLifecycle timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (lifecycleEvent=$lifecycleEvent). " +
+          "Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyApplied.get()
+  }
+
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
     lastUsedAtMs.set(System.currentTimeMillis())
