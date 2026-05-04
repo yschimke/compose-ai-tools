@@ -71,6 +71,7 @@ jobs:
             :data-history-connector:publishToMavenLocal \
             :data-layoutinspector-core:publishToMavenLocal \
             :data-layoutinspector-connector:publishToMavenLocal \
+            :data-render-compose:publishToMavenLocal \
             :data-render-core:publishToMavenLocal \
             :data-render-connector:publishToMavenLocal \
             :data-resources-core:publishToMavenLocal \
