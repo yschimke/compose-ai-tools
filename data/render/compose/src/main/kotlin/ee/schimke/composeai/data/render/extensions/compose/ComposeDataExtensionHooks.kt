@@ -10,7 +10,10 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.DataProductSink
+import ee.schimke.composeai.data.render.extensions.DataProductStore
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
+import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 
 /**
  * Compose-facing data-extension hook surface.
@@ -27,6 +30,7 @@ data class ExtensionComposeContext(
   val attributes: Map<String, Any?> = emptyMap(),
   val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
   val states: ExtensionStateRegistry = RecordingExtensionStateRegistry(),
+  val products: DataProductStore = RecordingDataProductStore(),
 ) {
   val slotTables: ExtensionSlotTables
     get() = extraction.slotTables
@@ -228,10 +232,10 @@ abstract class ComposableExtractorExtension(
 
   @Composable
   final override fun Extract(context: ExtensionComposeContext, sink: ExtensionCompositionSink) {
-    Extract(sink)
+    Extract(sink, context.products)
   }
 
-  @Composable abstract fun Extract(sink: ExtensionCompositionSink)
+  @Composable abstract fun Extract(sink: ExtensionCompositionSink, products: DataProductSink)
 }
 
 interface CompositionObserverHook : PlannedDataExtension {
@@ -253,10 +257,10 @@ abstract class CompositionObserverExtension(
 
   @Composable
   final override fun Observe(context: ExtensionComposeContext, sink: ExtensionCompositionSink) {
-    Observe(sink)
+    Observe(sink, context.products)
   }
 
-  @Composable abstract fun Observe(sink: ExtensionCompositionSink)
+  @Composable abstract fun Observe(sink: ExtensionCompositionSink, products: DataProductSink)
 }
 
 data class ExtensionFrameContext(
@@ -266,6 +270,7 @@ data class ExtensionFrameContext(
   val attributes: Map<String, Any?> = emptyMap(),
   val extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
   val states: ExtensionStateRegistry = RecordingExtensionStateRegistry(),
+  val products: DataProductStore = RecordingDataProductStore(),
 ) {
   fun <T : Any> exportState(key: ExtensionStateKey<T>, state: State<T>) {
     states.export(key, state)
@@ -362,9 +367,11 @@ object ComposeDataExtensionPipeline {
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
     states: ExtensionStateRegistry? = null,
+    products: DataProductStore? = null,
     content: @Composable () -> Unit,
   ) {
     val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
+    val extensionProducts = products ?: remember { RecordingDataProductStore() }
     Observe(
       extensions = extensions,
       previewId = previewId,
@@ -373,6 +380,7 @@ object ComposeDataExtensionPipeline {
       attributes = attributes,
       extraction = extraction,
       states = extensionStates,
+      products = extensionProducts,
     )
     Extract(
       extensions = extensions,
@@ -382,6 +390,7 @@ object ComposeDataExtensionPipeline {
       attributes = attributes,
       extraction = extraction,
       states = extensionStates,
+      products = extensionProducts,
     )
     Around(
       hooks = extensions.filterIsInstance<AroundComposableHook>(),
@@ -391,6 +400,7 @@ object ComposeDataExtensionPipeline {
       attributes = attributes,
       extraction = extraction,
       states = extensionStates,
+      products = extensionProducts,
       content = content,
     )
   }
@@ -404,8 +414,10 @@ object ComposeDataExtensionPipeline {
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
     states: ExtensionStateRegistry? = null,
+    products: DataProductStore? = null,
   ) {
     val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
+    val extensionProducts = products ?: remember { RecordingDataProductStore() }
     for (hook in extensions.filterIsInstance<ComposableExtractorHook>()) {
       hook.Extract(
         context =
@@ -416,6 +428,7 @@ object ComposeDataExtensionPipeline {
             attributes = attributes,
             extraction = extraction,
             states = extensionStates,
+            products = extensionProducts.scopedFor(hook),
           ),
         sink = sink,
       )
@@ -431,8 +444,10 @@ object ComposeDataExtensionPipeline {
     attributes: Map<String, Any?> = emptyMap(),
     extraction: ExtensionExtractionContext = ExtensionExtractionContext.Empty,
     states: ExtensionStateRegistry? = null,
+    products: DataProductStore? = null,
   ) {
     val extensionStates = states ?: remember { RecordingExtensionStateRegistry() }
+    val extensionProducts = products ?: remember { RecordingDataProductStore() }
     for (hook in extensions.filterIsInstance<CompositionObserverHook>()) {
       hook.Observe(
         context =
@@ -443,6 +458,7 @@ object ComposeDataExtensionPipeline {
             attributes = attributes,
             extraction = extraction,
             states = extensionStates,
+            products = extensionProducts.scopedFor(hook),
           ),
         sink = sink,
       )
@@ -458,6 +474,7 @@ object ComposeDataExtensionPipeline {
     attributes: Map<String, Any?>,
     extraction: ExtensionExtractionContext,
     states: ExtensionStateRegistry,
+    products: DataProductStore,
     content: @Composable () -> Unit,
   ) {
     val hook = hooks.getOrNull(index)
@@ -475,6 +492,7 @@ object ComposeDataExtensionPipeline {
           attributes = attributes,
           extraction = extraction,
           states = states,
+          products = products.scopedFor(hook),
         )
     ) {
       Around(
@@ -485,6 +503,7 @@ object ComposeDataExtensionPipeline {
         attributes = attributes,
         extraction = extraction,
         states = states,
+        products = products,
         content = content,
       )
     }

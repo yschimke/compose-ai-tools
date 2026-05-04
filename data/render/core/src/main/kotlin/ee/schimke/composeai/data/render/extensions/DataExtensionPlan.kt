@@ -23,14 +23,29 @@ data class DataProductKey<T : Any>(val kind: String, val schemaVersion: Int, val
   override fun toString(): String = "$kind@v$schemaVersion"
 }
 
-/** A small in-process product store used by downstream extensions to consume declared inputs. */
-interface DataProductStore {
+/** Read-only view of declared inputs for an extension. */
+interface DataProductSource {
   fun <T : Any> get(key: DataProductKey<T>): T?
 
   fun <T : Any> require(key: DataProductKey<T>): T =
     get(key) ?: error("Data product '$key' is not available.")
+}
 
+/** Write-only view for emitting an extension's declared outputs. */
+interface DataProductSink {
   fun <T : Any> put(key: DataProductKey<T>, value: T)
+}
+
+/** A small in-process product store used by downstream extensions to consume declared inputs. */
+interface DataProductStore : DataProductSource, DataProductSink {
+  /**
+   * Returns a per-extension view that enforces the declared `inputs`/`outputs` contract: `get` only
+   * succeeds for keys in [PlannedDataExtension.inputs] (or already produced), `put` only for keys
+   * in [PlannedDataExtension.outputs]. Use this to wrap the shared store before handing it to a
+   * hook so contract drift is caught at runtime, not days later in a downstream consumer.
+   */
+  fun scopedFor(extension: PlannedDataExtension): DataProductStore =
+    ScopedDataProductStore(this, extension)
 }
 
 class RecordingDataProductStore : DataProductStore {
@@ -43,6 +58,26 @@ class RecordingDataProductStore : DataProductStore {
 
   override fun <T : Any> put(key: DataProductKey<T>, value: T) {
     values[key] = key.type.cast(value)
+  }
+}
+
+private class ScopedDataProductStore(
+  private val delegate: DataProductStore,
+  private val extension: PlannedDataExtension,
+) : DataProductStore {
+  override fun <T : Any> get(key: DataProductKey<T>): T? {
+    require(key in extension.inputs) {
+      "Data extension '${extension.id}' read undeclared product '$key'; " + "declare it in inputs."
+    }
+    return delegate.get(key)
+  }
+
+  override fun <T : Any> put(key: DataProductKey<T>, value: T) {
+    require(key in extension.outputs) {
+      "Data extension '${extension.id}' wrote undeclared product '$key'; " +
+        "declare it in outputs."
+    }
+    delegate.put(key, value)
   }
 }
 

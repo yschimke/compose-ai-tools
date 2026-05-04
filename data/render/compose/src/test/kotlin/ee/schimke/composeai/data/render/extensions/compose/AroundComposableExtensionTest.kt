@@ -5,6 +5,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.DataProductSink
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -137,7 +138,7 @@ class AroundComposableExtensionTest {
   private class SimpleThemeExtractorExtension :
     ComposableExtractorExtension(DataExtensionId("compose-theme")) {
     @Composable
-    override fun Extract(sink: ExtensionCompositionSink) {
+    override fun Extract(sink: ExtensionCompositionSink, products: DataProductSink) {
       sink.put(id, "theme", "material")
     }
   }
@@ -145,7 +146,7 @@ class AroundComposableExtensionTest {
   private class SimpleRecompositionObserverExtension :
     CompositionObserverExtension(DataExtensionId("compose-recomposition")) {
     @Composable
-    override fun Observe(sink: ExtensionCompositionSink) {
+    override fun Observe(sink: ExtensionCompositionSink, products: DataProductSink) {
       sink.put(id, "observer", "installed")
     }
   }
