@@ -14,7 +14,7 @@ import { PreviewCodeLensProvider } from "./previewCodeLensProvider";
 import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvider";
 import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
-import { packageQualifiedSourcePath } from "./sourcePath";
+import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
 import {
     AccessibilityFinding,
     AccessibilityNode,
@@ -913,7 +913,14 @@ export async function activate(
             // still visible in a split, keep the panel as-is; otherwise the
             // sticky got covered/closed and we need to re-resolve (which may
             // blank the panel) — issue #145.
-            if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+            if (
+                currentScopeFile &&
+                !isFileVisibleInEditor(currentScopeFile) &&
+                !(
+                    isAntigravityHost() &&
+                    isFileOpenInTextDocument(currentScopeFile)
+                )
+            ) {
                 // The sticky scope file is no longer on screen — same UX flush as the
                 // different-Kotlin-file branch above. The user can't see the source code
                 // backing the live preview; stop the stream so the daemon doesn't keep
@@ -934,7 +941,14 @@ export async function activate(
     // the active editor didn't change.
     context.subscriptions.push(
         vscode.window.onDidChangeVisibleTextEditors(() => {
-            if (currentScopeFile && !isFileVisibleInEditor(currentScopeFile)) {
+            if (
+                currentScopeFile &&
+                !isFileVisibleInEditor(currentScopeFile) &&
+                !(
+                    isAntigravityHost() &&
+                    isFileOpenInTextDocument(currentScopeFile)
+                )
+            ) {
                 clearHeavyRefreshOptIns();
                 refresh(false);
             }
@@ -1223,7 +1237,8 @@ function resolveScopeFile(forFilePath?: string): {
     if (
         currentScopeFile &&
         isPreviewSourceFile(currentScopeFile) &&
-        isFileVisibleInEditor(currentScopeFile)
+        (isFileVisibleInEditor(currentScopeFile) ||
+            (isAntigravityHost() && isFileOpenInTextDocument(currentScopeFile)))
     ) {
         return { file: currentScopeFile, source: "sticky" };
     }
@@ -1235,6 +1250,17 @@ function resolveScopeFile(forFilePath?: string): {
             isPreviewSourceFile(doc.uri.fsPath)
         ) {
             return { file: doc.uri.fsPath, source: "visible" };
+        }
+    }
+
+    if (isAntigravityHost()) {
+        const openKotlin = vscode.workspace.textDocuments.find(
+            (doc) =>
+                doc.languageId === "kotlin" &&
+                isPreviewSourceFile(doc.uri.fsPath),
+        );
+        if (openKotlin) {
+            return { file: openKotlin.uri.fsPath, source: "open" };
         }
     }
 
@@ -1250,6 +1276,20 @@ function resolveScopeFile(forFilePath?: string): {
 function isFileVisibleInEditor(filePath: string): boolean {
     return vscode.window.visibleTextEditors.some(
         (editor) => editor.document.uri.fsPath === filePath,
+    );
+}
+
+function isFileOpenInTextDocument(filePath: string): boolean {
+    return vscode.workspace.textDocuments.some(
+        (document) => document.uri.fsPath === filePath,
+    );
+}
+
+function isAntigravityHost(): boolean {
+    const bundleId = process.env.__CFBundleIdentifier?.toLowerCase() ?? "";
+    return (
+        bundleId.includes("antigravity") ||
+        process.env.ANTIGRAVITY_CLI_ALIAS !== undefined
     );
 }
 
@@ -1376,9 +1416,8 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // own; the caller just shouldn't escalate to a Gradle render in that
     // case (the panel will repopulate via discover + the daemon's
     // discoveryUpdated push).
-    const filterFile = packageQualifiedSourcePath(filePath);
     const manifest = moduleManifestCache.get(module) ?? [];
-    let filePreviews = manifest.filter((p) => p.sourceFile === filterFile);
+    let filePreviews = previewsForFile(manifest, module, filePath);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
         logLine(
             `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
@@ -1389,8 +1428,9 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
                 ? currentScopeFile
                 : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
-        filePreviews =
-            fresh?.filter((p) => p.sourceFile === filterFile) ?? filePreviews;
+        filePreviews = fresh
+            ? previewsForFile(fresh, module, filePath)
+            : filePreviews;
     }
     const ids = filePreviews.map((p) => p.id);
     if (ids.length === 0) {
@@ -1464,9 +1504,10 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
         return false;
     }
 
-    const filterFile = packageQualifiedSourcePath(filePath);
-    const visiblePreviews = manifest.previews.filter(
-        (p) => p.sourceFile === filterFile,
+    const visiblePreviews = previewsForFile(
+        manifest.previews,
+        module,
+        filePath,
     );
     if (visiblePreviews.length === 0) {
         return false;
@@ -1794,8 +1835,25 @@ function finishDaemonStartupProgress(
 
 function visiblePreviewCount(module: string, filePath: string): number {
     const previews = moduleManifestCache.get(module) ?? [];
-    const filterFile = packageQualifiedSourcePath(filePath);
-    return previews.filter((p) => p.sourceFile === filterFile).length;
+    return previewsForFile(previews, module, filePath).length;
+}
+
+function previewsForFile(
+    previews: PreviewInfo[],
+    module: string,
+    filePath: string,
+): PreviewInfo[] {
+    if (!gradleService) {
+        return [];
+    }
+    return previews.filter((preview) =>
+        previewSourceMatches(
+            preview.sourceFile,
+            filePath,
+            gradleService!.workspaceRoot,
+            module,
+        ),
+    );
 }
 
 async function reconcilePreviewManifest(
@@ -1838,8 +1896,7 @@ async function reconcilePreviewManifest(
         return fresh;
     }
 
-    const filterFile = packageQualifiedSourcePath(repaintFilePath);
-    const visiblePreviews = fresh.filter((p) => p.sourceFile === filterFile);
+    const visiblePreviews = previewsForFile(fresh, module, repaintFilePath);
     const heavyStaleIds = fastTierModules.has(module)
         ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
         : [];
@@ -1931,10 +1988,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
         moduleManifestCache.set(module, fresh);
         registry.replaceModule(module, fresh);
 
-        const filterFile = packageQualifiedSourcePath(filePath);
-        const visiblePreviews = fresh.filter(
-            (p) => p.sourceFile === filterFile,
-        );
+        const visiblePreviews = previewsForFile(fresh, module, filePath);
         if (visiblePreviews.length === 0) {
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
@@ -1983,14 +2037,25 @@ async function warmShownPreviewsForFile(
         return;
     }
 
-    const filterFile = packageQualifiedSourcePath(filePath);
+    const filterFile = moduleRelativeSourcePath(
+        filePath,
+        gradleService.workspaceRoot,
+        module,
+    );
     const scopeKey = `${module}::${filterFile}`;
     if (daemonShownPreviewWarmScopes.has(scopeKey)) {
         return;
     }
 
     const ids = (moduleManifestCache.get(module) ?? [])
-        .filter((p) => p.sourceFile === filterFile)
+        .filter((p) =>
+            previewSourceMatches(
+                p.sourceFile,
+                filePath,
+                gradleService!.workspaceRoot,
+                module,
+            ),
+        )
         .map((p) => p.id);
     if (ids.length === 0) {
         return;
@@ -2607,10 +2672,6 @@ async function refresh(
         : { moduleId: module, projectDir };
     historyScopeRef.current = newScope;
     const modules = [module];
-    // Package-qualified path (e.g. `com/example/samplewear/Previews.kt`) so
-    // files with the same basename in different packages don't collide.
-    // Must match what DiscoverPreviewsTask emits into manifest.sourceFile.
-    const filterFile = packageQualifiedSourcePath(activeFile);
 
     // When the module scope changes (user switched files to a different
     // module, or went from "all modules" to a single one) the old cards are
@@ -2680,8 +2741,10 @@ async function refresh(
                 ? gradleService.readManifest(mod)
                 : null;
             if (manifest) {
-                const manifestVisiblePreviews = manifest.previews.filter(
-                    (p) => p.sourceFile === filterFile,
+                const manifestVisiblePreviews = previewsForFile(
+                    manifest.previews,
+                    mod,
+                    activeFile,
                 );
                 const fresh =
                     manifestVisiblePreviews.length > 0 &&
@@ -2762,8 +2825,10 @@ async function refresh(
 
         // Scope strictly to the active file. If the file has no @Preview
         // functions, the panel shows an empty state — never the whole module.
-        const visiblePreviews = allPreviews.filter(
-            (p) => p.sourceFile === filterFile,
+        const visiblePreviews = previewsForFile(
+            allPreviews,
+            module,
+            activeFile,
         );
 
         if (visiblePreviews.length === 0) {
