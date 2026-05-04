@@ -372,6 +372,31 @@ data class PreviewOverrides(
    * without allocating a held interactive session.
    */
   val inspectionMode: Boolean? = null,
+  /**
+   * Optional Material 3 theme token overrides applied by the renderer as a normal
+   * `MaterialTheme(...) { preview() }` wrapper around the invoked preview. This lets callers test
+   * components under alternate color, shape, or typography tokens without editing source previews.
+   */
+  val material3Theme: Material3ThemeOverrides? = null,
+)
+
+@Serializable
+data class Material3ThemeOverrides(
+  /** Material 3 color role -> `#RRGGBB` or `#AARRGGBB`. */
+  val colorScheme: Map<String, String> = emptyMap(),
+  /** Material 3 text style name -> partial text-style override. */
+  val typography: Map<String, Material3TypographyOverride> = emptyMap(),
+  /** Material 3 shape token name -> rounded corner size in dp. */
+  val shapes: Map<String, Float> = emptyMap(),
+)
+
+@Serializable
+data class Material3TypographyOverride(
+  val fontSizeSp: Float? = null,
+  val lineHeightSp: Float? = null,
+  val letterSpacingSp: Float? = null,
+  val fontWeight: Int? = null,
+  val italic: Boolean? = null,
 )
 
 @Serializable

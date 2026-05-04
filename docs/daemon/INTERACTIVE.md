@@ -298,8 +298,8 @@ multiple concurrent streams coexist. The dispatch flow inside `JsonRpcServer`:
 ## 8a. Display overrides
 
 Per-render display properties — **size**, **density**, **locale**,
-**fontScale**, **uiMode** (light/dark), **orientation**, **device** — ride
-on the existing `renderNow` request via the optional `overrides` field
+**fontScale**, **uiMode** (light/dark), **orientation**, **device**, and
+**Material 3 theme tokens** — ride on the existing `renderNow` request via the optional `overrides` field
 documented in [PROTOCOL.md § 5](PROTOCOL.md#renderNow). They are not
 interactive-only: any caller (panel, MCP, future RPC) can attach overrides
 to a single `renderNow` to get a one-off render with a different qualifier
@@ -317,6 +317,23 @@ widthPx: 600` to force a wider window on the Pixel 5's density, or
 device frame (the Android backend's `isRoundDevice` round-detection picks
 up the override). Unknown ids fall back to the daemon's default
 (400×800dp at xxhdpi).
+
+**Material 3 theme override.** `material3Theme` lets callers test components
+against alternate Material 3 color, typography, and shape tokens without
+editing the preview. The renderer applies the override through the normal
+composition path as `MaterialTheme(...) { InvokeComposable(...) }`, so regular
+Material components and `MaterialTheme.colorScheme` / `typography` / `shapes`
+reads see the supplied values. Example:
+
+```json
+{
+  "material3Theme": {
+    "colorScheme": { "primary": "#FF336699", "onPrimary": "#FFFFFFFF" },
+    "typography": { "bodyLarge": { "fontSizeSp": 18.0, "fontWeight": 700 } },
+    "shapes": { "medium": 16.0 }
+  }
+}
+```
 
 **Why not interactive-only.** Size/density/locale/fontScale/uiMode/orientation
 are all the same Robolectric qualifier knob (`setQualifiers` +

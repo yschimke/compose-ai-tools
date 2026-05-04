@@ -3,6 +3,7 @@ package ee.schimke.composeai.mcp
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
@@ -36,6 +37,7 @@ import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -713,7 +715,16 @@ class DaemonMcpServer(
                     "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."},
                     "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or full 'spec:width=400dp,height=800dp,dpi=320'. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."},
                     "captureAdvanceMs":{"type":"integer","description":"Paused-clock advance before capture. Android-only today."},
-                    "inspectionMode":{"type":"boolean","description":"Override LocalInspectionMode for this one-shot render. Null/default keeps preview semantics."}
+                    "inspectionMode":{"type":"boolean","description":"Override LocalInspectionMode for this one-shot render. Null/default keeps preview semantics."},
+                    "material3Theme":{
+                      "type":"object",
+                      "description":"Material 3 theme token overrides applied as a normal MaterialTheme wrapper around the preview.",
+                      "properties":{
+                        "colorScheme":{"type":"object","additionalProperties":{"type":"string"},"description":"Color role names to #RRGGBB or #AARRGGBB, e.g. primary, onPrimary, surface."},
+                        "typography":{"type":"object","additionalProperties":{"type":"object","properties":{"fontSizeSp":{"type":"number"},"lineHeightSp":{"type":"number"},"letterSpacingSp":{"type":"number"},"fontWeight":{"type":"integer"},"italic":{"type":"boolean"}}},"description":"Text style names to partial overrides, e.g. bodyLarge, titleMedium, labelSmall."},
+                        "shapes":{"type":"object","additionalProperties":{"type":"number"},"description":"Shape token names to rounded corner size in dp, e.g. small, medium, extraLarge."}
+                      }
+                    }
                   }
                 }
               },
@@ -1393,6 +1404,7 @@ class DaemonMcpServer(
       check("device", overrides.device != null)
       check("captureAdvanceMs", overrides.captureAdvanceMs != null)
       check("inspectionMode", overrides.inspectionMode != null)
+      check("material3Theme", overrides.material3Theme != null)
     }
     val deviceOverride = overrides.device
     val knownIds = daemon.knownDeviceIds
@@ -1468,6 +1480,10 @@ class DaemonMcpServer(
       device = str("device"),
       captureAdvanceMs = int("captureAdvanceMs")?.toLong(),
       inspectionMode = bool("inspectionMode"),
+      material3Theme =
+        obj["material3Theme"]
+          ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+          ?.let { json.decodeFromJsonElement(Material3ThemeOverrides.serializer(), it) },
     )
   }
 

@@ -242,6 +242,7 @@ open class RobolectricHost(
       "device",
       "captureAdvanceMs",
       "inspectionMode",
+      "material3Theme",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
@@ -914,6 +915,7 @@ open class RobolectricHost(
                 null -> null
               },
             inspectionMode = base.inspectionMode,
+            material3Theme = base.material3Theme,
           ),
         overrides = overrides,
       )
@@ -939,6 +941,7 @@ open class RobolectricHost(
           null -> null
         },
       inspectionMode = merged.inspectionMode,
+      material3Theme = merged.material3Theme,
       outputBaseName = "recording-$recordingId",
     )
   }

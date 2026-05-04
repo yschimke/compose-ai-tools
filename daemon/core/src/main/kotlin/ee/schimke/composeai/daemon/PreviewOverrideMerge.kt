@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -22,6 +23,7 @@ data class PreviewOverrideBaseSpec(
   val uiMode: UiMode?,
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
+  val material3Theme: Material3ThemeOverrides? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -34,6 +36,7 @@ data class MergedPreviewOverrides(
   val uiMode: UiMode?,
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
+  val material3Theme: Material3ThemeOverrides?,
 )
 
 /**
@@ -59,6 +62,7 @@ fun mergePreviewOverrides(
       uiMode = base.uiMode,
       orientation = base.orientation,
       inspectionMode = base.inspectionMode,
+      material3Theme = base.material3Theme,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -80,5 +84,6 @@ fun mergePreviewOverrides(
     uiMode = overrides.uiMode ?: base.uiMode,
     orientation = overrides.orientation ?: base.orientation,
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
+    material3Theme = overrides.material3Theme ?: base.material3Theme,
   )
 }
