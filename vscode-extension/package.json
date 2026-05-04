@@ -98,14 +98,15 @@
                 "command": "composePreview.launchOnDevice",
                 "title": "Launch on Device",
                 "category": "Compose Preview",
-                "icon": "$(device-mobile)"
+                "icon": "$(device-mobile)",
+                "enablement": "config.composePreview.earlyFeatures.enabled"
             }
         ],
         "menus": {
             "view/title": [
                 {
                     "command": "composePreview.launchOnDevice",
-                    "when": "view == composePreview.panel",
+                    "when": "view == composePreview.panel && config.composePreview.earlyFeatures.enabled",
                     "group": "navigation@1"
                 },
                 {
@@ -152,10 +153,13 @@
         }
     },
     "scripts": {
-        "compile": "tsc -p ./",
+        "compile": "npm run compile:host && npm run compile:webview",
+        "compile:host": "tsc -p ./",
+        "compile:webview": "tsc -p tsconfig.webview.json && node esbuild.webview.mjs",
         "watch": "tsc -watch -p ./",
-        "format": "prettier --write --tab-width 4 package.json package-lock.json tsconfig.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
-        "format:check": "prettier --check --tab-width 4 package.json package-lock.json tsconfig.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
+        "watch:webview": "node esbuild.webview.mjs --watch",
+        "format": "prettier --write --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
+        "format:check": "prettier --check --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
         "test": "npm run compile && mocha --exit 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "test:e2e": "npm run compile && COMPOSE_PREVIEW_E2E=1 node ./out/test/electron/runTest.js",
@@ -169,7 +173,9 @@
         "@vscode/codicons": "^0.0.45",
         "@vscode/test-electron": "^2.5.2",
         "@vscode/vsce": "^3.0.0",
+        "esbuild": "^0.24.0",
         "glob": "^13.0.0",
+        "lit": "^3.2.0",
         "mocha": "^11.0.0",
         "prettier": "^3.8.3",
         "typescript": "^6.0.0"
