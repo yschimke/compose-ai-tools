@@ -21,6 +21,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionSlotTables
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.io.File
 import java.lang.reflect.Method
@@ -185,17 +186,29 @@ object LayoutInspectorDataProducer {
     previewId: String,
     previewContext: PreviewContext,
   ) {
-    val root = previewContext.inspection.rootForTest as? RootForTest ?: return
-    val layoutRoot =
-      ComposeLayoutInspector.inspect(
-        rootSemanticsNode = root.semanticsOwner.unmergedRootSemanticsNode,
-        slotTables = previewContext.inspection.slotTables,
-      ) ?: return
+    val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return
+    val layoutRoot = ComposeLayoutInspector.inspect(capture) ?: return
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = LayoutInspectorPayload(root = layoutRoot)
     previewDir.resolve(FILE).writeText(
       json.encodeToString(LayoutInspectorPayload.serializer(), payload)
     )
+  }
+}
+
+internal data class LayoutInspectorCaptureContext(
+  val rootSemanticsNode: Any,
+  val slotTables: ExtensionSlotTables = ExtensionSlotTables.Empty,
+) {
+  companion object {
+    fun from(previewContext: PreviewContext): LayoutInspectorCaptureContext? {
+      val root = previewContext.inspection.rootForTest as? RootForTest ?: return null
+      return LayoutInspectorCaptureContext(
+        rootSemanticsNode = root.semanticsOwner.unmergedRootSemanticsNode,
+        slotTables =
+          ExtensionSlotTables.of(previewContext.inspection.slotTables.filterIsInstance<CompositionData>()),
+      )
+    }
   }
 }
 
@@ -208,9 +221,9 @@ object LayoutInspectorDataProducer {
  * context, get a [LayoutInspectorNode].
  */
 internal object ComposeLayoutInspector {
-  fun inspect(rootSemanticsNode: Any, slotTables: List<Any>): LayoutInspectorNode? {
-    val root = LayoutTreeAccess.rootLayoutNode(rootSemanticsNode) ?: return null
-    val sources = LayoutSourceIndex(slotTables)
+  fun inspect(context: LayoutInspectorCaptureContext): LayoutInspectorNode? {
+    val root = LayoutTreeAccess.rootLayoutNode(context.rootSemanticsNode) ?: return null
+    val sources = LayoutSourceIndex(context.slotTables)
     return root.toWireNode(rootCoordinates = null, sources = sources)
   }
 
@@ -290,13 +303,13 @@ internal object ComposeLayoutInspector {
     val sourceInfo: String?,
   )
 
-  private class LayoutSourceIndex(slotTables: List<Any>) {
+  private class LayoutSourceIndex(slotTables: ExtensionSlotTables) {
     private val byNode = java.util.IdentityHashMap<Any, LayoutSource>()
 
     init {
       slotTables
+        .snapshot()
         .asSequence()
-        .filterIsInstance<CompositionData>()
         .flatMap { it.compositionGroups.asSequence() }
         .flatMap { it.flattenGroups().asSequence() }
         .forEach { group ->
