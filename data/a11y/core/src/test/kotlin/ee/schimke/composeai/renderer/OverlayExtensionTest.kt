@@ -31,7 +31,7 @@ class OverlayExtensionTest {
   }
 
   @Test
-  fun failsLoudlyWhenOutputDirectoryAttributeMissing() {
+  fun failsLoudlyWhenOutputDirectoryContextValueMissing() {
     val store = RecordingDataProductStore()
     store.put(AccessibilityDataProducts.Hierarchy, AccessibilityHierarchyPayload(emptyList()))
     store.put(AccessibilityDataProducts.Atf, AccessibilityFindingsPayload(emptyList()))
@@ -50,7 +50,7 @@ class OverlayExtensionTest {
       }
     assertTrue(
       ex.message!!,
-      ex.message!!.contains(OverlayExtension.OUTPUT_DIRECTORY_ATTRIBUTE),
+      ex.message!!.contains(OverlayContextKeys.OutputDirectory.name),
     )
   }
 

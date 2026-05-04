@@ -5,15 +5,19 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionPlanner
 import ee.schimke.composeai.data.render.extensions.DataExtensionTarget
 import ee.schimke.composeai.data.render.extensions.DataProductKey
 import ee.schimke.composeai.data.render.extensions.DataProductStore
+import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionContextValue
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.RenderDensity
 import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
+import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFindingsPayload
 import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
+import ee.schimke.composeai.renderer.OverlayContextKeys
 import ee.schimke.composeai.renderer.OverlayExtension
 import ee.schimke.composeai.renderer.TouchTargetsExtension
 import java.io.File
@@ -39,7 +43,6 @@ fun runAccessibilityPostCapturePipeline(
   imageArtifact: RenderImageArtifact? = null,
   outputDirectory: File? = null,
   isRound: Boolean = false,
-  attributes: Map<String, Any?> = emptyMap(),
   extensions: List<PlannedDataExtension> = AccessibilityPostCaptureExtensions.defaults,
   target: DataExtensionTarget? = DataExtensionTarget.Android,
 ): DataProductStore {
@@ -49,14 +52,11 @@ fun runAccessibilityPostCapturePipeline(
   store.put(CommonDataProducts.Density, RenderDensity(density))
   imageArtifact?.let { store.put(CommonDataProducts.ImageArtifact, it) }
 
-  // Merge caller attributes with the OverlayExtension contract slots — caller wins on conflict so
-  // tests can override. Folding outputDirectory + isRound into a typed product later (see
-  // RenderDataDirectory / RenderDeviceShape follow-up) lets us drop these named slots.
-  val mergedAttributes = buildMap<String, Any?> {
-    if (outputDirectory != null) put(OverlayExtension.OUTPUT_DIRECTORY_ATTRIBUTE, outputDirectory)
-    put(OverlayExtension.IS_ROUND_ATTRIBUTE, isRound)
-    putAll(attributes)
+  val contextValues = buildList<ExtensionContextValue<*>> {
+    if (outputDirectory != null) add(OverlayContextKeys.OutputDirectory provides outputDirectory)
+    add(OverlayContextKeys.IsRound provides isRound)
   }
+  val contextData = ExtensionContextData.of(*contextValues.toTypedArray())
 
   val initialProducts =
     buildSet<DataProductKey<*>> {
@@ -101,7 +101,7 @@ fun runAccessibilityPostCapturePipeline(
           previewId = previewId,
           renderMode = null,
           products = store.scopedFor(ext),
-          attributes = mergedAttributes,
+          data = contextData,
         )
       )
     } catch (t: Throwable) {

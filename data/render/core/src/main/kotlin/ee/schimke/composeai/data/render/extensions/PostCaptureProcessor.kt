@@ -6,10 +6,8 @@ package ee.schimke.composeai.data.render.extensions
  * write declared outputs through [products], which the executor scopes to the extension's
  * `inputs`/`outputs` set so contract violations fail loudly at runtime.
  *
- * Non-product context inputs the host hands to extensions go through [data] (typed
- * [ExtensionContextKey] entries) for new extensions. The legacy [attributes] map is kept for
- * back-compat with extensions that haven't migrated to typed keys yet (overlay attribute slots in
- * particular); prefer [data] in new code.
+ * Non-product context inputs the host hands to extensions go through [data] as typed
+ * [ExtensionContextKey] entries.
  */
 data class ExtensionPostCaptureContext(
   val extensionId: DataExtensionId,
@@ -17,7 +15,6 @@ data class ExtensionPostCaptureContext(
   val renderMode: String?,
   val products: DataProductStore,
   val data: ExtensionContextData = ExtensionContextData.Empty,
-  val attributes: Map<String, Any?> = emptyMap(),
 ) {
   fun <T : Any> get(key: ExtensionContextKey<T>): T? = data.get(key)
 
