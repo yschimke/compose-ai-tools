@@ -28,6 +28,8 @@ import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
 import ee.schimke.composeai.data.render.PreviewAnimationContext
+import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
+import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.scroll.FLING_DECAY
 import ee.schimke.composeai.scroll.FLING_MAX_DISTANCE_VIEWPORTS
 import ee.schimke.composeai.scroll.FLING_MIN_STEP_DP
@@ -847,10 +849,27 @@ abstract class RobolectricRenderTestBase(
                         // produces populated AccessibilityNodeInfo. DecorView
                         // here returns all NOT_RUN.
                         val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
-                        // analyze() runs ATF and walks the hierarchy in one
-                        // pass — the overlay needs both findings (red badge
-                        // layer) and ANI nodes (the colour-swatched legend).
-                        val result = AccessibilityChecker.analyze(preview.id, view)
+                        // Hierarchy + ATF now come from a typed extension instead of a direct
+                        // AccessibilityChecker.analyze call. Symmetric with `:daemon:android`'s
+                        // RenderEngine (#730). The extension owns the platform-specific walk;
+                        // downstream consumers in `:data-a11y-core` (TouchTargets, Overlay)
+                        // read declared inputs without re-walking the View. A future
+                        // `:data-a11y-hierarchy-desktop` (CMP semantics walk) can drop in with
+                        // `targets = {Desktop}` and the same product keys.
+                        val hierarchyExtension = AccessibilityHierarchyExtension()
+                        val store = RecordingDataProductStore()
+                        hierarchyExtension.process(
+                            ExtensionPostCaptureContext(
+                                extensionId = hierarchyExtension.id,
+                                previewId = preview.id,
+                                renderMode = null,
+                                products = store.scopedFor(hierarchyExtension),
+                                attributes =
+                                    mapOf(AccessibilityHierarchyExtension.VIEW_ROOT_ATTRIBUTE to view),
+                            ),
+                        )
+                        val hierarchy = store.require(AccessibilityDataProducts.Hierarchy)
+                        val findings = store.require(AccessibilityDataProducts.Atf)
                         val a11yDir = File(
                             System.getProperty("composeai.a11y.outputDir")
                                 ?: "build/compose-previews/accessibility-per-preview",
@@ -858,8 +877,8 @@ abstract class RobolectricRenderTestBase(
                         AccessibilityChecker.writePerPreviewReport(
                             outputDir = a11yDir,
                             previewId = preview.id,
-                            findings = result.findings,
-                            nodes = result.nodes,
+                            findings = findings.findings,
+                            nodes = hierarchy.nodes,
                             screenshot = outputFile.takeIf { annotate },
                             isRound = isRoundDevice(preview.params.device) &&
                                 (preview.params.showSystemUi ||
