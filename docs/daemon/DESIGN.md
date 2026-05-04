@@ -1,39 +1,26 @@
 # Persistent preview server — design
 
-> **Status:** v1 implemented and enabled by default for editor integrations through `composePreview.daemon`. Render loop, classloader split, classpath fingerprint, incremental discovery, history, and the renderer-agnostic surface have landed across `:daemon:core` / `:daemon:android` / `:daemon:desktop`. Sandbox recycle, warm spare, and active leak detection (§ 9 + § 10 below) remain designed-but-not-implemented — wire-format surface is reserved in PROTOCOL.md but the daemon does not yet emit those notifications. The Gradle `renderPreviews` task remains the CI-canonical render path.
-
 ## 1. Goals & non-goals
 
 **Goals**
 
-- Sub-second preview refresh for a single focused preview after a no-classpath-change file save in VS Code.
-- Eliminate Gradle configuration, JVM fork startup, and Robolectric sandbox bootstrap from the per-save hot path.
-- Keep the existing `renderPreviews` Gradle task path untouched and always available.
+- Sub-second preview refresh for a single focused preview after a
+  no-classpath-change file save in VS Code.
+- Eliminate Gradle configuration, JVM fork startup, and Robolectric
+  sandbox bootstrap from the per-save hot path.
+- Keep the existing `renderPreviews` Gradle task path untouched and
+  always available.
 
 **Non-goals (v1)**
 
-- Per-project (cross-module) sandbox sharing — each consumer module gets its own daemon JVM.
-- The `compose-preview` CLI binary keeps using the Gradle task. (MCP daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
+- Per-project (cross-module) sandbox sharing — each consumer module
+  gets its own daemon JVM.
+- The `compose-preview` CLI binary keeps using the Gradle task. (MCP
+  daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
 - Replacing `renderPreviews` — daemon fronts it for the editor loop only.
-- Hot kotlinc / compile-daemon integration — out of scope; we still let Gradle drive Kotlin compilation.
-- Tier-3 dependency-graph reachability index — v1 uses a conservative "module-changed = all previews stale, filtered by visibility" rule.
-
-## 2. Verdict on feasibility
-
-The current pipeline is ~80% ready. The Robolectric/Compose render code is **not structurally tied to JUnit's lifecycle** — it leans on `ParameterizedRobolectricTestRunner` for sandbox bootstrap and on `createAndroidComposeRule<ComponentActivity>()` for activity setup, but neither is load-bearing. The `mainClock.autoAdvance=false` + `advanceTimeBy(...)` pattern, the per-preview `RuntimeEnvironment.setQualifiers()`, and the `setContent { ... }` capture loop are all composition-scoped, not test-scoped.
-
-The two actual blockers are:
-
-1. **Classpath immutability.** Robolectric's `InstrumentingClassLoader` is created once per sandbox config and caches shadow installations and native libs. Any classpath mutation (a new dependency, a Compose version bump, an AAR change) requires tearing down the sandbox. The daemon must detect this and recycle cleanly.
-2. **Discovery is currently a full ClassGraph re-scan.** `DiscoverPreviewsTask` has no per-file mapping — `PreviewInfo` carries `className` but not the source `.kt` path. The daemon needs that mapping (cheap to add) plus a scoped scan path.
-
-`System.exit`, JVM-wide hooks, and global statics that would prevent reuse are not present. `PixelSystemFontAliases.seedSystemFontMap()` is idempotent and process-cached. `ShadowPackageManager` registrations persist across previews but are additive.
-
-## 3. Why not Robolectric Simulator
-
-`org.robolectric.simulator.Simulator` (Robolectric 4.15+) is explicitly "highly experimental, proof-of-concept stage" and exposes only `start()` — it launches an interactive preview window of your app's main `Activity`. It's meant for human debugging of a single Activity, not headless batch rendering of `@Composable` functions to PNG. There's no documented way to drive it from `main()`, no API to swap compositions or capture frames programmatically.
-
-We do **not** want Simulator. What we want is a long-lived process that bootstraps a Robolectric sandbox once, exposes a render entry point that reuses that sandbox, and talks to VS Code over IPC. The Roborazzi capture path (`captureRoboImage` → `HardwareRenderingScreenshot`) stays — that's the part that actually works correctly under Robolectric.
+- Hot kotlinc / compile-daemon integration.
+- Tier-3 dependency-graph reachability index — v1 uses a conservative
+  "module-changed = all previews stale, filtered by visibility" rule.
 
 ## 4. Architecture
 
@@ -50,54 +37,44 @@ preview-daemon (one JVM per consumer module)
    ├── RenderQueue           — coalesces, prioritises focused previews first
    └── RenderHost            — renderer-specific sandbox holder + warm spare
             │
-            ├── (android) RobolectricHost — Compose-test-rule + ComponentActivity, recycled per preview
-            └── (desktop) DesktopHost     — Recomposer + Skiko surface, recycled per preview
+            ├── (android) RobolectricHost — Compose-test-rule + ComponentActivity
+            └── (desktop) DesktopHost     — Recomposer + Skiko surface
 ```
 
-**Per-module, not per-project.** Robolectric sandbox config is a function of the consumer module's classpath + AndroidX versions + `compileSdk`. Two modules in the same project can legitimately have incompatible Compose versions (renderer-vs-consumer alignment is documented in [docs/RENDERER_COMPATIBILITY.md](../RENDERER_COMPATIBILITY.md)). One sandbox per module sidesteps this. A future per-project mode is possible if we share the renderer JAR plus isolate per-module classloaders under a parent — out of scope for v1.
+**Per-module, not per-project.** Robolectric sandbox config is a
+function of the consumer module's classpath + AndroidX versions +
+`compileSdk`. One sandbox per module sidesteps version skew.
 
-The daemon is **launched by VS Code** (replacing the `GradleApi.runTask("renderPreviews")` call in `gradleService.ts`) but **bootstrapped by Gradle** — we still need Gradle once at startup to compute the test classpath, JVM args, and `robolectric.properties` (Android) or the Skiko classpath (desktop) exactly the way `AndroidPreviewSupport.kt` / the desktop renderer plumbing does today. New Gradle task `composePreviewDaemonStart` emits a JSON descriptor (classpath, JVM args, system props, java launcher path); VS Code execs `java` with those args.
+The daemon is **launched by VS Code** but **bootstrapped by Gradle** —
+Gradle is invoked once at startup to compute the test classpath, JVM
+args, and `robolectric.properties` (Android) or the Skiko classpath
+(desktop). New Gradle task `composePreviewDaemonStart` emits a JSON
+descriptor (classpath, JVM args, system props, java launcher path); VS
+Code execs `java` with those args.
 
-A manual `./gradlew composePreviewDaemonStart --foreground` mode is also available, for debugging the daemon without VS Code in the loop.
+A manual `./gradlew composePreviewDaemonStart --foreground` mode is
+also available for debugging without VS Code in the loop.
 
 ### Renderer-agnostic surface
 
-The protocol, the JSON-RPC server, and everything in the VS Code extension are **deliberately agnostic to which renderer is on the other end of the wire**. None of the message shapes in [PROTOCOL.md](PROTOCOL.md) mention Android, Robolectric, Skiko, or Compose Desktop; they trade in `previewId`, `pngPath`, `metrics.tookMs`. The only renderer-specific code is the Kotlin `RenderHost` implementation inside the per-target daemon module.
+The protocol, the JSON-RPC server, and everything in the VS Code
+extension are **deliberately agnostic to which renderer is on the
+other end of the wire**. None of the message shapes in
+[PROTOCOL.md](PROTOCOL.md) mention Android, Robolectric, Skiko, or
+Compose Desktop; they trade in `previewId`, `pngPath`, `metrics.tookMs`.
+The only renderer-specific code is the Kotlin `RenderHost`
+implementation inside the per-target daemon module.
 
-This gives us two backends that share everything except the host:
+| Module                     | Host                  | What it sandboxes                                                  |
+|----------------------------|-----------------------|--------------------------------------------------------------------|
+| `:daemon:android` | `RobolectricHost`     | Robolectric `InstrumentingClassLoader`, `ComponentActivity`        |
+| `:daemon:desktop` | `DesktopHost`         | Plain JVM classloader, `Recomposer`, Skiko `Surface`               |
 
-| Module                     | Host                  | What it sandboxes                                                  | Backend strengths                                   |
-|----------------------------|-----------------------|--------------------------------------------------------------------|-----------------------------------------------------|
-| `:daemon:android` | `RobolectricHost`     | Robolectric `InstrumentingClassLoader`, `ComponentActivity`        | Real Android resources, AAR support, Wear, Tiles    |
-| `:daemon:desktop` | `DesktopHost`         | Plain JVM classloader, `Recomposer`, Skiko `Surface`               | Light init, fewer leak shapes, faster iteration     |
+A `:daemon:core` shared module holds the protocol types
+(`Messages.kt`), the JSON-RPC server (`JsonRpcServer.kt`), and the
+abstract `RenderHost` interface; both per-target modules depend on it.
 
-A `:daemon:core` shared module holds the protocol types (`Messages.kt`), the JSON-RPC server (`JsonRpcServer.kt`), and the abstract `RenderHost` interface; both per-target modules depend on it. Stream B's existing `:daemon:android` keeps its `DaemonHost` (renamed to `RobolectricHost` once the core extraction lands); the desktop module is a fresh implementation against the same `RenderHost` interface.
-
-**Why desktop first for new features.** Desktop is the simpler implementation surface — no Robolectric `InstrumentingClassLoader`, no `bridge` package classloader workaround, no `HardwareRenderer`/`Bitmap` native-buffer leak shapes, sub-second cold init. UX-facing features (predictive prefetch, the cost model in [PREDICTIVE.md § 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model), `MetricsSink` observability, the multi-tier render queue) get a shorter feedback loop on desktop. Once a feature is proven on desktop, the Android backend picks it up via the shared `:daemon:core` module without code duplication. Android continues in parallel — it's still the larger user surface and exercises the harder leak-defense path that informs everything.
-
-## 5. IPC contract (sketch)
-
-JSON-RPC over stdio.
-
-**VS Code → daemon (notifications):**
-
-- `setVisible({ ids })` — currently visible preview cards in the panel; updates on scroll/resize.
-- `setFocus({ ids })` — active preview (click, file scope change). Subset of visible. Rendered first.
-- `fileChanged({ path, kind: "source" | "resource" | "classpath" })` — saved file event.
-- `renderNow({ previews, tier: "fast" | "full" })` — explicit user action.
-- `shutdown()`.
-
-**Daemon → VS Code (notifications):**
-
-- `discoveryUpdated({ added, removed, changed })`
-- `renderStarted({ id })`, `renderFinished({ id, pngPath, tookMs, metrics })`, `renderFailed({ id, error })`
-- `classpathDirty({ reason })` — daemon will exit; VS Code re-bootstraps.
-- `sandboxRecycle({ reason, ageMs, renderCount })` — informational; expected periodically.
-- `daemonWarming({ etaMs })` — recycle in progress, no spare ready.
-
-The protocol is locked in [PROTOCOL.md](PROTOCOL.md). Daemon and client protocol changes must land in lockstep with fixture updates.
-
-## 6. Module layout
+### Module layout
 
 ```
 renderer-android/                    UNCHANGED — RobolectricRenderTest.kt etc.
@@ -119,396 +96,270 @@ daemon/core/                NEW — pure JVM, renderer-agnostic
 daemon/android/             NEW — depends on renderer-android + core
   src/main/kotlin/.../daemon/
     DaemonMain.kt                    Wires RobolectricHost + JsonRpcServer
-    RobolectricHost.kt               Holds Robolectric sandbox open (was DaemonHost)
+    RobolectricHost.kt               Holds Robolectric sandbox open
     SandboxHoldingRunner.kt          Robolectric runner that exposes the bridge package
-    bridge/DaemonHostBridge.kt       Cross-classloader handoff (java.util.concurrent.* only)
-    RenderEngine.kt                  Per-preview render body (initially duplicated)
+    bridge/DaemonHostBridge.kt       Cross-classloader handoff
+    RenderEngine.kt                  Per-preview render body
 
 daemon/desktop/             NEW — depends on renderer-desktop + core
   src/main/kotlin/.../daemon/
     DaemonMain.kt                    Wires DesktopHost + JsonRpcServer
     DesktopHost.kt                   Holds Recomposer + Skiko surface open
-    RenderEngine.kt                  Per-preview render body (initially duplicated)
+    RenderEngine.kt                  Per-preview render body
 
 gradle-plugin/                       ADDITIVE ONLY (one helper extraction)
   src/main/kotlin/.../plugin/daemon/
     DaemonBootstrapTask.kt           Emits launch-descriptor JSON
     DaemonExtension.kt               composePreview.daemon { … }
     DaemonClasspathDescriptor.kt     Serialises the JVM launch spec
-                                     (target-aware: picks android-daemon vs
-                                     desktop-daemon classpath based on the
-                                     consumer plugin)
 
 vscode-extension/                    ADDITIVE ONLY (one router shim)
   src/daemon/
-    daemonClient.ts                  JSON-RPC over stdio (renderer-agnostic)
-    daemonProcess.ts                 Spawn/respawn/health (renderer-agnostic)
+    daemonClient.ts                  JSON-RPC over stdio
+    daemonProcess.ts                 Spawn/respawn/health
     daemonProtocol.ts                Types mirroring Messages.kt
     daemonGate.ts                    Feature-flag check + fallback to gradleService
 
 samples/
-  android-daemon-bench/              NEW — Android latency harness, diff against existing PNGs
-  desktop-daemon-bench/              NEW — desktop latency harness (D2-desktop)
+  android-daemon-bench/              Android latency harness
+  desktop-daemon-bench/              Desktop latency harness (D2-desktop)
 ```
 
-`:daemon:core` is the seam that lets desktop and Android share everything except the `RenderHost` implementation. Stream B's existing code (already shipped on `agent/preview-daemon-streamB`) gets refactored once: `JsonRpcServer.kt` and `Messages.kt` move into core; `DaemonHost.kt` is renamed to `RobolectricHost.kt` and stays in `:daemon:android`. After that, both backends evolve in parallel against a single protocol surface.
-
-## 7. Sharing strategy — what crosses the boundary
-
-**`daemon/android` depends on `renderer-android`** for already-extracted helpers that have no test-runner coupling: `AccessibilityChecker`, `GoogleFontInterceptor`, `AnimationInspector`, `ScrollDriver`, `PixelSystemFontAliases`, `RenderManifest`, `PreviewRenderStrategy`. These are already separate files and safe to import.
-
-**`RobolectricRenderTest.kt` itself is NOT a dependency.** The per-preview render body (qualifiers + `setContent` + `advanceTimeBy` + `captureRoboImage`) is **duplicated** into `RenderEngine.kt` for v1, because:
-
-- The daemon path is experimental; if it diverges, the JUnit path is untouched.
-- Extracting the render body from a 1500-line test class into a shared helper is a real refactor that risks the working path. Not worth it before the daemon proves itself.
-- Reconciliation is a v2 task: once the daemon is stable for a release or two, extract the shared body into `renderer-android` and have the test class call into it. CI gate: byte-identical PNGs from both paths against `samples/android`.
-
-**Drift detection:** `samples/android-daemon-bench` renders the full `samples/android` set via the daemon and pixel-diffs against the PNGs from `samples:android:renderAllPreviews`. Runs on every PR. First diff = either a real bug or a missed port.
-
-**One shared-helper extraction in `gradle-plugin`.** The daemon needs the same classpath, JVM args, and system properties that `AndroidPreviewSupport` builds today. Hoist `buildTestClasspath(variant)` and `buildJvmArgs(variant)` into a package-private `AndroidPreviewClasspath.kt`; existing `registerAndroidTasks` calls the helpers instead of inlining. Behaviour byte-identical, callers unchanged otherwise. Existing functional tests catch any regression.
-
-## 8. Staleness cascade — when do we actually re-render?
-
-A four-tier cascade. Each tier is cheaper than the next; stop at the cheapest "no work" answer.
-
-> **Implementation note:** Tier 2's "preview source changed" trigger is necessary but not sufficient on its own. Once discovery has identified a stale preview, the daemon still needs to load fresh bytecode for that preview class. The parent/child classloader split in [CLASSLOADER.md](CLASSLOADER.md) is the source of truth for that save loop.
-
-### Tier 1 — project fundamentally changed
-
-**Trigger:** classpath JAR list, Compose/AndroidX versions, `compileSdk`, Robolectric config, or `robolectric.properties` content changed.
-
-**Cheap signal:** SHA-256 over a small fixed set: `libs.versions.toml`, all `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `local.properties`. Recompute only on file save in those paths.
-
-**Authoritative signal:** SHA over the resolved test runtime classpath JAR list (paths + mtimes), computed at daemon start and re-checked on cheap-signal hit.
-
-**Action:** emit `classpathDirty`, exit cleanly. VS Code re-runs `composePreviewDaemonStart` and the new daemon comes up with the new classpath. Do **not** swap classloaders in-place — that's where leaks and version-skew bugs live.
-
-### Tier 2 — preview list possibly changed
-
-**Trigger:** edit to a `.kt` file that either currently contributes previews or might newly contribute one.
-
-**"Currently contributes" set is free** once we add `sourceFile: String?` to `PreviewInfo` (kotlinc writes the `SourceFile` bytecode attribute; ClassGraph exposes it). Save to a file in this set → re-run discovery scoped to just that file's compiled classes.
-
-**"Might newly contribute" via cheap pre-filter:** regex-grep the saved file's text for `@Preview` (or any registered multi-preview annotation name we already know). Match → escalate to discovery. No match → Tier 2 clean. ~1ms per save, no false negatives unless the user defines a brand-new multi-preview meta-annotation in the same save (rare; recovered by the next save touching anything).
-
-**Incremental discovery scope:** ClassGraph filtered to a single classpath element / package. After kotlinc rebuilds, re-scan only `build/.../classes/` paths whose mtime moved. Diff against cached `previews.json`, emit `discoveryUpdated`.
-
-### Tier 3 — a preview's render output may have changed
-
-This is the hard tier. `FooPreview()` calls `BarComposable()` defined in another file; `BarKt` changed; `FooPreview` is now stale even though `FooKt` wasn't touched.
-
-**v1 conservative:** any `.kt` change inside the module's source set marks **every preview in the module** as stale. Combined with Tier 4 (focus filter), the waste is bounded — we only re-render what the user is looking at.
-
-**v2 precise (deferred):** per-preview reachable-class set built via ASM walk at discovery time. Reverse index `class → previews that transitively reference it`. Map class → sourceFile via the `SourceFile` attribute. Stale set = union of reverse-index lookups for changed classes. Cost: one ASM walk per preview at discovery, ~ms per class.
-
-**Resources:** treat any `res/**` change as "all previews in module stale" for v1. Resource edits are infrequent enough that brute-force + visibility filter is fine.
-
-### Tier 4 — is the user looking at this?
-
-> See also [PREDICTIVE.md](PREDICTIVE.md) for a proposed extension that adds speculative-prefetch tiers on top of the reactive `setVisible` / `setFocus` signals described here.
-
-**State from VS Code:**
-
-- `setVisible({ ids })` — preview cards currently visible in the panel webview (not just the file scope; the actual visible cards).
-- `setFocus({ ids })` — active selection (click, hover, file scope change). Rendered first.
-
-**Render policy:**
-
-- Stale ∩ visible → render now, in priority order (focus first).
-- Stale ∩ not-visible → mark stale, render lazily on scroll-into-view, or background after the visible queue drains.
-- Not stale → no-op.
-
-**Coalescing:** rapid saves produce overlapping stale sets. The render queue dedupes by preview ID. If a render is in-flight when its preview is re-marked stale, mark "needs another pass after this one finishes" rather than cancelling — Robolectric mid-render cancellation is a leak source.
-
-### Cost shape
-
-| Tier | Per-save cost when clean | Per-save cost when dirty |
-|------|--------------------------|--------------------------|
-| 1    | 4 file SHAs              | daemon restart (~5s)     |
-| 2    | regex grep of one file   | scoped ClassGraph + diff (~50–200ms) |
-| 3    | reverse-index lookup (μs) | N × per-preview render (visible only) |
-| 4    | set intersection          | render                   |
-
-Clean save (file in module, no previews depend on it, user not looking) → ~5ms total. That's the floor.
-
-## 9. Sandbox lifecycle
+## 5. Daemon lifecycle
 
 ### Bootstrap
 
-The daemon runs a single dummy `@Test` whose body blocks on a `LinkedBlockingQueue<RenderRequest>` until shutdown. This holds a Robolectric sandbox open without re-implementing sandbox setup — we inherit all the `robolectric.properties` plumbing for free. The "test" never returns; the JVM exits when the daemon stops.
+The daemon runs a single dummy `@Test` whose body blocks on a
+`LinkedBlockingQueue<RenderRequest>` until shutdown. This holds a
+Robolectric sandbox open without re-implementing sandbox setup — we
+inherit all the `robolectric.properties` plumbing for free. The "test"
+never returns; the JVM exits when the daemon stops.
 
-**In-JVM sandbox pool (SANDBOX-POOL.md).** With `composeai.daemon.sandboxCount > 1` the daemon launches that many worker threads, each running an independent JUnit invocation against the same `SandboxRunner`; Robolectric builds a distinct sandbox per worker (the `SandboxHoldingRunner` injects a per-instance discriminator on the `InstrumentationConfiguration` to defeat `SandboxManager`'s cache key). Concurrent `renderNow` requests dispatch across slots via `Math.floorMod(id, sandboxCount)`. The supervisor sets this sysprop to `1 + replicasPerDaemon` (default 4 sandboxes per daemon — see [CONFIG.md](CONFIG.md#mcp-only--replicasperdaemon)). All other lifecycle invariants below apply per sandbox.
+**In-JVM sandbox pool (SANDBOX-POOL.md).** With
+`composeai.daemon.sandboxCount > 1` the daemon launches that many
+worker threads, each running an independent JUnit invocation against
+the same `SandboxRunner`. Concurrent `renderNow` requests dispatch
+across slots via `Math.floorMod(id, sandboxCount)`. Default 4 sandboxes
+per daemon.
 
 ### Per-preview render loop
 
 Prologue:
 
-1. Drain ShadowPackageManager records added by the previous preview (see § 11).
-2. Reset `RuntimeEnvironment.setQualifiers/setFontScale` for the new preview.
-3. Re-create `ComponentActivity` (cheaper than risking unknown reuse leaks).
+1. Drain ShadowPackageManager records added by the previous preview.
+2. Reset `RuntimeEnvironment.setQualifiers/setFontScale` for the new
+   preview.
+3. Re-create `ComponentActivity`.
 
-Render body: same as `RobolectricRenderTest` — `setContent { ... }`, `mainClock.autoAdvance = false`, `advanceTimeBy(CAPTURE_ADVANCE_MS)`, `captureRoboImage(...)`.
+Render body: same as `RobolectricRenderTest` — `setContent { ... }`,
+`mainClock.autoAdvance = false`, `advanceTimeBy(CAPTURE_ADVANCE_MS)`,
+`captureRoboImage(...)`.
 
 Epilogue:
 
-1. `setContent { }` (empty) to give Compose a frame to dispose `LaunchedEffect` / `DisposableEffect`.
+1. `setContent { }` (empty) to give Compose a frame to dispose
+   `LaunchedEffect` / `DisposableEffect`.
 2. Encode bitmap, then `bitmap.recycle()`.
-3. Close any `HardwareRenderer` / `ImageReader` opened by the capture path.
+3. Close any `HardwareRenderer` / `ImageReader` opened by the capture
+   path.
 
-### No mid-render cancellation — invariant + enforcement
+### Shutdown
 
-Once a render has started, it runs to completion. This is load-bearing for memory safety: aborting between any prologue / body / epilogue step leaves the sandbox holding a half-disposed Compose graph, an unrecycled `Bitmap` whose native `GraphicBuffer` is still owned by the `HardwareRenderer`, or `ShadowPackageManager` / `ActivityScenario` state the next preview will trip over. The worst failure shape is silent visual drift — colour-bleed across previews when a buffer is reused — which surfaces as a CI pixel-diff failure with no obvious memory leak to chase. See [PREDICTIVE.md § 9](PREDICTIVE.md#9-decisions-made) for the full leak-shape rationale.
+`JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue
+before resolving the response. JVM SIGTERM handler waits for the drain
+before exit.
 
-Enforced in code (so accidental cancellation can't sneak in):
+## 8. Staleness cascade — when do we re-render
 
-- Render thread does **not** poll `Thread.interrupted()`; the daemon's own code never calls `interrupt()` on it.
-- Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread abort. The in-flight render finishes before the sandbox tears down.
-- `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue before resolving the response.
-- JVM SIGTERM handler waits for the drain before exit. SIGKILL is the only way to force termination mid-render — it leaks the sandbox classloader, but nothing we can defend against at that point.
-- A regression test submits a render, immediately invokes shutdown, and asserts the render still completes and the result is observable.
-- End-to-end coverage: scenario S2 in [TEST-HARNESS.md § 3](TEST-HARNESS.md#3-scenarios-catalogue) regression-tests this invariant against a real daemon subprocess.
+A four-tier cascade. Each tier is cheaper than the next; stop at the
+cheapest "no work" answer.
 
-### Recycle policy
+> **Implementation note:** Tier 2's "preview source changed" trigger is
+> necessary but not sufficient on its own. Once discovery has identified
+> a stale preview, the daemon still needs to load fresh bytecode for
+> that preview class. The parent/child classloader split in
+> [CLASSLOADER.md](CLASSLOADER.md) is the source of truth for that save
+> loop.
 
-> **Not yet implemented (TODO B2.4 / B2.5 / B2.6).** The wire-format
-> surface (`sandboxRecycle`, `daemonWarming`, `daemonReady`,
-> `LeakDetectionMode`) is reserved in PROTOCOL.md but never emitted by
-> the daemon today. Sandbox age counters keep growing for the host's
-> lifetime. Designed shape below; implementation lands when the work
-> ships.
+### Tier 1 — project fundamentally changed
 
-Trigger on any:
+**Trigger:** classpath JAR list, Compose/AndroidX versions,
+`compileSdk`, Robolectric config, or `robolectric.properties` content
+changed.
 
-- **Heap (post-GC) >** `daemon.maxHeapMb` (default 1024). Hard ceiling.
-- **Heap drift > 30% over rolling window of 50 renders.** Catches slow leaks before the ceiling.
-- **Render time drift > 50% over rolling window.** Catches GC-pressure leaks.
-- **Class histogram delta > Y for any tracked class over rolling window.** Catches known leak shapes early.
-- **Render count >** `daemon.maxRendersPerSandbox` (default 1000). Belt-and-braces.
-- **`leakSuspected` event from active detection (§ 10).** Immediate.
+**Cheap signal:** SHA-256 over a small fixed set: `libs.versions.toml`,
+all `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`,
+`local.properties`. Recompute only on file save in those paths.
 
-Each trigger emits `sandboxRecycle({ reason, ageMs, renderCount })`.
+**Authoritative signal:** SHA over the resolved test runtime classpath
+JAR list (paths + mtimes), computed at daemon start and re-checked on
+cheap-signal hit.
 
-> **In-JVM sandbox pool interaction.** With `sandboxCount > 1` the heap-based triggers fire on
-> JVM-global heap, not per-sandbox — there's no straightforward way to attribute a specific
-> sandbox classloader's contribution. v1 recycles the whole pool when any heap signal fires;
-> render-count and per-sandbox render-time stay sandbox-local. Per-slot recycle is tracked in
-> [SANDBOX-POOL.md](SANDBOX-POOL.md) as a follow-up.
+**Action:** emit `classpathDirty`, exit cleanly. VS Code re-runs
+`composePreviewDaemonStart` and the new daemon comes up with the new
+classpath. Do **not** swap classloaders in-place.
 
-### Warm spare
+### Tier 2 — preview list possibly changed
 
-The naive recycle is "drop sandbox, GC, build new one" — a 3–6s user-visible pause. Avoid that:
+**Trigger:** edit to a `.kt` file that either currently contributes
+previews or might newly contribute one.
 
-- Daemon keeps two sandbox slots: `active` and `spare`.
-- Background thread builds a new `spare` after every recycle and at startup.
-- Recycle = atomically swap `spare → active`, schedule old `active` for teardown, kick off building a new `spare`. User-visible cost on recycle: zero, assuming spare is ready.
-- Spare not ready → block the next render, surface `daemonWarming` to VS Code so the panel shows a spinner. If this happens twice in a row, bump recycle thresholds.
+**"Currently contributes" set is free** once `sourceFile: String?` is
+on `PreviewInfo`. Save to a file in this set → re-run discovery scoped
+to just that file's compiled classes.
 
-Spare cost: doubles daemon idle memory. Configurable via `daemon.warmSpare=false` for memory-constrained dev machines.
+**"Might newly contribute" via cheap pre-filter:** regex-grep the saved
+file's text for `@Preview`. Match → escalate to discovery. No match →
+Tier 2 clean. ~1ms per save.
 
-### Sandbox teardown verification
+**Incremental discovery scope:** ClassGraph filtered to a single
+classpath element / package. After kotlinc rebuilds, re-scan only
+`build/.../classes/` paths whose mtime moved. Diff against cached
+`previews.json`, emit `discoveryUpdated`.
 
-Drop the strong sandbox reference, force GC, then check the WeakReference to the sandbox classloader. If it doesn't clear within 2 GCs → log `sandboxLeaked`. After 3 `sandboxLeaked` events, exit cleanly; VS Code re-bootstraps. This is the ultimate safety valve — the JVM permanently leaks per leaked sandbox, so we cap accumulation.
+### Tier 3 — a preview's render output may have changed
 
-## 10. Memory leak defense in depth
+**v1 conservative:** any `.kt` change inside the module's source set
+marks **every preview in the module** as stale. Combined with Tier 4
+(focus filter), the waste is bounded.
 
-Three layers, plus warm-spare to hide cost, plus proactive fixes for known leak shapes.
+**v2 precise (deferred):** per-preview reachable-class set built via
+ASM walk at discovery time. Reverse index `class → previews that
+transitively reference it`.
 
-### Layer 1 — measure on every render (always on)
+**Resources:** treat any `res/**` change as "all previews in module
+stale" for v1.
 
-Cheap (<5ms), in-band, emitted on `renderFinished`:
+### Tier 4 — is the user looking at this?
 
-- Heap after GC: `MemoryMXBean.getHeapMemoryUsage().used` post-GC.
-- Native/off-heap: `BufferPoolMXBean` for direct buffers; `Debug.getNativeHeapAllocatedSize()` inside the sandbox for HardwareRenderer + Bitmaps.
-- Class instance counts: programmatic `jcmd GC.class_histogram` via `DiagnosticCommandMBean.invoke("gcClassHistogram")`. Track `Composition`, `Recomposer`, `ComposeView`, `ComponentActivity`, `Bitmap`, `HardwareRenderer`, `ImageReader`.
-- Render time (already measured).
-- Sandbox age: render count + wall-clock since sandbox start.
+> See also [PREDICTIVE.md](PREDICTIVE.md) for the speculative-prefetch
+> tiers on top of the reactive `setVisible` / `setFocus` signals.
 
-Bench harness consumes this as CSV; CI soak test asserts bounded growth.
+**State from VS Code:**
 
-### Layer 2 — active leak detection (periodic, opt-in)
+- `setVisible({ ids })` — preview cards currently visible.
+- `setFocus({ ids })` — active selection. Rendered first.
 
-> **Not yet implemented (TODO B2.4).** `ServerCapabilities.leakDetection`
-> on the wire is always `[]`. Designed shape below.
+**Render policy:**
 
-Every Nth render (default 50) or via `--detect-leaks` daemon flag:
+- Stale ∩ visible → render now, in priority order (focus first).
+- Stale ∩ not-visible → mark stale, render lazily on scroll-into-view.
+- Not stale → no-op.
 
-- **Weak-reference probe.** Hold `WeakReference` to activity, composition, root `View`. After the next preview's `setContent` swap, force GC twice with 50ms sleep; check if previous refs cleared. Anything reachable → emit `leakSuspected` with class name and last-render context.
-- **LeakCanary JVM (`leakcanary-jvm-test`).** On-demand via `--detect-leaks=heavy`. Heavy (seconds), runs Shark on a heap dump for reference chains. Worth wiring up because reference-chain output is exactly what we'd ask for in a bug report.
-- **JFR.** Always enabled with a 5MB in-memory ring buffer. On `leakSuspected` or recycle, dump JFR to the daemon-owned state directory. Negligible cost.
+**Coalescing:** rapid saves produce overlapping stale sets. The render
+queue dedupes by preview ID. If a render is in-flight when its preview
+is re-marked stale, mark "needs another pass after this one finishes"
+rather than cancelling — Robolectric mid-render cancellation is a leak
+source.
 
-### Layer 3 — recycle (see § 9)
+## 9. No mid-render cancellation — invariant + enforcement
 
-### Layer 4 — known leak shapes, fix proactively
+Once a render has started, it runs to completion. This is load-bearing
+for memory safety: aborting between any prologue / body / epilogue step
+leaves the sandbox holding a half-disposed Compose graph, an
+unrecycled `Bitmap` whose native `GraphicBuffer` is still owned by the
+`HardwareRenderer`, or `ShadowPackageManager` / `ActivityScenario`
+state the next preview will trip over. The worst failure shape is
+silent visual drift — colour-bleed across previews when a buffer is
+reused.
 
-Render loop's per-preview prologue/epilogue handles these without waiting for detection:
+Enforced in code:
 
-- **Compose disposal.** Empty `setContent { }` flush before teardown, so `LaunchedEffect`/`DisposableEffect` cleanup runs.
-- **Activity recreate per preview** (v1 default; reuse only if bench shows it's necessary).
-- **Bitmap recycle** after encoding.
-- **HardwareRenderer/ImageReader** closed in `finally`.
-- **ShadowPackageManager adds** tracked and reversed (see § 11).
+- Render thread does **not** poll `Thread.interrupted()`; the daemon's
+  own code never calls `interrupt()` on it.
+- Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread
+  abort. The in-flight render finishes before the sandbox tears down.
+- `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue
+  before resolving the response.
+- JVM SIGTERM handler waits for the drain before exit.
+- A regression test submits a render, immediately invokes shutdown, and
+  asserts the render still completes and the result is observable.
+- End-to-end coverage: scenario S2 in
+  [TEST-HARNESS.md § 3](TEST-HARNESS.md#3-scenarios-catalogue).
 
-## 11. Scope discipline — `SandboxScope` and `ProcessCache`
+## 10. Memory leak defense
 
-The invariant: **sandbox death wipes everything written by our helpers.** Helpers needing cross-render state declare a scope; recycle path doesn't need bespoke per-helper cleanup.
+Three layers, plus warm-spare to hide cost, plus proactive fixes for
+known leak shapes.
 
-### Two storage tiers
+**Layer 1 — measure on every render (always on).** Cheap (<5ms),
+emitted on `renderFinished`: heap after GC, native/off-heap, class
+instance counts (Composition, Recomposer, ComposeView,
+ComponentActivity, Bitmap, HardwareRenderer, ImageReader), render time,
+sandbox age.
 
-**`ProcessCache`** — JVM-process-level, survives sandbox recycle. **Only pure data**: bytes, strings, primitives, paths. Anything that could hold a transitive reference to a class loaded by the Robolectric classloader is banned.
+**Layer 2 — active leak detection (periodic, opt-in).** Every Nth
+render or via `--detect-leaks`: weak-reference probe, LeakCanary JVM
+on-demand, JFR ring buffer.
 
-Examples that fit: downloaded GoogleFont bytes (`Map<String, ByteArray>`), the disk cache directory, parsed manifest config.
+**Layer 3 — recycle.** Triggers: heap > `daemon.maxHeapMb`, heap drift,
+render time drift, render count > `daemon.maxRendersPerSandbox`,
+`leakSuspected`. Each trigger emits `sandboxRecycle({ reason, ageMs,
+renderCount })`.
 
-**`SandboxScope`** — keyed off the current sandbox's classloader via `WeakHashMap<ClassLoader, MutableMap<String, Any>>`. Holds anything referencing sandbox-loaded classes: `Typeface` registrations, the GoogleFont interceptor instance with its Compose hook, `ShadowPackageManager` add-records, cached `Class<?>`, `Recomposer` instances, mid-render `Bitmap` refs.
+**Layer 4 — known leak shapes, fixed proactively.** Empty `setContent
+{ }` flush before teardown, Activity recreate per preview, Bitmap
+recycle, HardwareRenderer/ImageReader closed in `finally`,
+ShadowPackageManager adds tracked and reversed.
 
-When the sandbox is dropped and the classloader becomes unreachable, the WeakHashMap entry collects automatically. The "recycle" mechanic is just "drop active sandbox reference and GC."
+**Warm spare.** Daemon keeps two sandbox slots: `active` and `spare`.
+Background thread builds a new `spare` after every recycle. Recycle =
+atomically swap `spare → active`, schedule old `active` for teardown.
 
-### Helper
-
-```kotlin
-object SandboxScope {
-  private val store = WeakHashMap<ClassLoader, MutableMap<String, Any>>()
-
-  @Suppress("UNCHECKED_CAST")
-  fun <T : Any> get(key: String, init: () -> T): T {
-    val cl = Thread.currentThread().contextClassLoader  // Robolectric sets this
-    val map = synchronized(store) { store.getOrPut(cl) { mutableMapOf() } }
-    return synchronized(map) { map.getOrPut(key) { init() } } as T
-  }
-
-  fun activeSandboxCount(): Int = synchronized(store) {
-    System.gc(); store.size  // diagnostic; not hot path
-  }
-}
-```
-
-`activeSandboxCount()` is the leak canary — after a recycle and 2 GCs it should drop by one. If it doesn't, something on the process-level path is pinning a sandbox classloader.
-
-### Helper audit
-
-| Helper | Today | Daemon-safe? | Action |
-|--------|-------|--------------|--------|
-| `GoogleFontInterceptor` (disk cache) | Disk files keyed by URL hash | yes (ProcessCache shape) | leave |
-| `GoogleFontInterceptor` (Compose hook + `Typeface` cache) | Hook into sandbox-loaded Compose runtime, holds `Typeface` refs | currently a singleton | wrap behind `SandboxScope.get("googleFontInterceptor") { … }` in daemon path; JUnit path unchanged |
-| `PixelSystemFontAliases.seedSystemFontMap()` | `Map<String, String>` of name → path | yes (pure strings) | verify; if it secretly holds a `Typeface`, move to SandboxScope |
-| `ShadowFontsContractCompat` | Robolectric `@Implements` shadow | yes (sandbox-bound by definition) | leave |
-| `ShadowPackageManager` adds | No record of what *we* added | no — leaks across previews within a sandbox (correctness, not memory) | `SandboxScope.get("pmAdds") { … }`; reverse adds in per-preview epilogue |
-| `AccessibilityChecker` | Per-render ATF state | yes | leave |
-| `AnimationInspector` | Hooks into Compose recomposer | sandbox-loaded refs | SandboxScope it |
-| `RuntimeEnvironment.setQualifiers/setFontScale` | Robolectric internal static | yes (lives inside sandbox classloader) | leave |
-| Manifest / config parsing | Pure data | yes | leave |
-
-The two real fixes are GoogleFont interceptor wrapping and ShadowPackageManager add-tracking.
-
-### JUnit path unchanged
-
-The original `RobolectricRenderTest` runs one sandbox per Gradle test fork JVM, then exits. Process-level statics in helpers don't cause leaks there because the JVM dies. So the `SandboxScope` discipline is **daemon-module-only** — existing helpers in `renderer-android` keep working unchanged.
-
-### Lint to keep the discipline
-
-A small static check in the daemon module's build: scan for `companion object` / `object` declarations holding any field whose declared type comes from Compose, AndroidX, or Android framework packages. If found → fail with "use SandboxScope." Cheap, catches the regression class that's easiest to introduce by accident.
-
-## 12. VS Code extension routing
-
-One shim, one place. In `extension.ts` where `gradleService.renderPreviews(...)` is called today:
-
-```ts
-const renderer = daemonGate.isEnabled(config)
-  ? daemonClient
-  : gradleService;
-await renderer.renderPreviews(module, tier);
-```
-
-`daemonGate` checks `composePreview.daemon.enabled` and launches the daemon. On daemon failure while enabled, the extension surfaces an error instead of silently falling back to Gradle. Users can explicitly disable the daemon setting as a temporary Gradle escape hatch.
+**Sandbox teardown verification.** Drop the strong sandbox reference,
+force GC, check the WeakReference. If it doesn't clear within 2 GCs →
+log `sandboxLeaked`. After 3 events, exit cleanly.
 
 ## 13. Latency budget
 
-Estimates below; **measured baseline captured by P0.1 — see [`baseline-latency.csv`](baseline-latency.csv)** + [methodology sidecar](baseline-latency.md). The bench module is `:samples:android-daemon-bench`. Re-run with `./gradlew :samples:android-daemon-bench:benchPreviewLatency`.
+**Daemon-warm floor for a single focused preview:** kotlinc (1–2s) + 1
+render (0.3–1s) ≈ 1.5–3s. Sub-second is achievable when no kotlinc
+work is needed. v1 target: **< 1s for a single focused preview when no
+kotlinc work is needed; < 3s with kotlinc.** Measured baseline captured
+by P0.1 — see [`baseline-latency.csv`](baseline-latency.csv) +
+[methodology sidecar](baseline-latency.md).
 
-| Phase | Cold | Warm (Gradle daemon hot, no code change) | Daemon warm |
-|-------|------|------------------------------------------|-------------|
-| Gradle config + up-to-date checks | 3–8s | 1–3s | 0 |
-| `compileKotlin` (single file) | — | 1–4s | 1–4s |
-| `discoverPreviews` ClassGraph scan | 1–3s | 1–3s | 10–100ms (incremental) |
-| Test JVM fork + Robolectric sandbox init | 3–6s | 3–6s | 0 |
-| Render N previews | 0.3–1s each | 0.3–1s each | 0.3–1s each |
+## 17. Module split (renderer-agnostic surface)
 
-Daemon-warm floor for a single focused preview: **kotlinc (1–2s) + 1 render (0.3–1s) ≈ 1.5–3s**. Sub-second is achievable when the user pre-saves a class-only file with a non-source change, or with a v2 kotlinc-daemon path. v1 target: **< 1s for a single focused preview when no kotlinc work is needed; < 3s with kotlinc.**
+The seam at `:daemon:core` lets desktop and Android share everything
+except the `RenderHost` implementation. `JsonRpcServer.kt` and
+`Messages.kt` live in core; `RobolectricHost.kt` stays in
+`:daemon:android`; `DesktopHost.kt` stays in `:daemon:desktop`. Both
+backends evolve in parallel against a single protocol surface.
 
-### Measured baseline (Ryzen 9 3900X, JDK 21, Gradle 9.4.1, AGP 9.2.0, 5 trivial previews)
+**Why desktop first for new features.** Desktop is the simpler
+implementation surface — no Robolectric `InstrumentingClassLoader`, no
+`bridge` package classloader workaround, no `HardwareRenderer`/`Bitmap`
+native-buffer leak shapes, sub-second cold init. UX-facing features
+(predictive prefetch, the cost model in [PREDICTIVE.md
+§ 6a](PREDICTIVE.md#6a-ux-response--predicted-vs-measured-cost-model),
+`MetricsSink` observability, the multi-tier render queue) get a shorter
+feedback loop on desktop. Once a feature is proven on desktop, the
+Android backend picks it up via the shared `:daemon:core` module
+without code duplication.
 
-Median per (phase, scenario) from the bench, rounded:
+**Roborazzi as `compileOnly`.** When the daemon ships as a Maven
+artifact, Roborazzi stays runtime-supplied — the consumer's existing
+Compose + Roborazzi pair is what gets loaded. Same pattern the daemon
+already uses for `compose-ui-test-junit4`, `activity-compose`, etc.
+Public Roborazzi surface used by `RenderEngine` is small
+(`captureRoboImage`, `RoborazziOptions`,
+`RoborazziOptions.RecordOptions(applyDeviceCrop = …)`). Fallback if
+Roborazzi's API ever breaks: § 19.
 
-| Phase         | Cold (median) | Warm-no-edit | Warm-after-1-line-edit |
-| ------------- | ------------- | ------------ | ---------------------- |
-| `config`      | 1.3s          | 0.55s        | 0.53s                  |
-| `compile`     | 1.7s (incl. config) | 0.5s (UP-TO-DATE) | 0.9s (incl. config) |
-| `discovery`   | 1.2s (incl. config) | 0.55s (UP-TO-DATE) | 0.7s (incl. config) |
-| `forkAndInit` | 2.9s          | 0.6s (renderPreviews UP-TO-DATE) | 1.7s |
-| `render`      | 5.5s for 5 previews ≈ 1.1s each | 0 (UP-TO-DATE) | 5.5s for 5 ≈ 1.1s each |
+## 19. captureToImage fallback path
 
-Surprises versus the estimated table:
+If a future Roborazzi release breaks public-API binary stability — by
+removing `RoborazziOptions.RecordOptions(applyDeviceCrop)`, changing
+`captureRoboImage`'s signature, or moving classes between packages —
+the daemon has a documented migration path that does not require
+shipping multiple JARs.
 
-- **Cold Gradle config is ~1.3s, not 3–8s.** The estimate was conservative; on this machine config is consistently sub-1.5s once toolchains are downloaded. Likely much higher on first-ever run where toolchain provisioning dominates — the bench skips that.
-- **`forkAndInit` warm-after-edit is ~1.7s, not 3–6s.** Test JVM fork + Robolectric init was estimated as a fixed ~5s cost; in practice the JVM fork itself is < 1s on a warm OS page cache and Robolectric sandbox init for 5 previews is closer to ~1s. The estimate was sized for `:samples:android` (heavier classpath, more shadows). The daemon's value-add here is closer to ~2s amortised, not ~5s — still a meaningful win, especially compounded across many edits.
-- **Render is at the high end of 0.3–1s/preview.** 1.1s/preview on this trivial workload sets the floor — the daemon path can't beat this without changes to the per-preview render body itself (out of v1 scope).
-- **Pure-comment edits leave `renderPreviews` UP-TO-DATE.** Because kotlinc emits identical bytecode for comment-only changes, the downstream input snapshots don't budge. The bench therefore uses a **string-literal swap** to force a full pipeline run; comment-only edits in the wild will measure as `warm-no-edit` performance (i.e., near-instant).
-
-The headline takeaway: **the cold→warm-after-edit delta on this machine is ~12s → ~9s** (`config + compile + discovery + forkAndInit + render`), with the daemon's addressable surface being the **~2.5s of `config + forkAndInit`** in the warm-edit case. Hitting the v1 sub-second target requires both eliminating that 2.5s and short-circuiting the per-preview render to a single focused preview (saving ~4.4s of the 5.5s render row). Both are designed for; the bench is now in place to verify.
-
-## 14. Validation strategy
-
-Three checkpoints, each a buildable artifact:
-
-1. **Bench harness** (week 1, before any rewrite). `:samples:android-daemon-bench:benchPreviewLatency` times: cold render, warm render with no edit, warm render after a 1-line edit. Captures baseline. Re-run after each phase.
-2. **Headless prototype** (week 1). One-off `main()` that uses the dummy-`@Test`-holds-sandbox pattern, renders 10 previews from `samples/android` in a loop, reading manifest entries from stdin. If sandbox reuse + composition replacement works for 10 iterations without leaks or visual drift vs. baseline PNGs → architecture validated. If not, we know early.
-3. **End-to-end with VS Code** (week 2). Daemon + extension behind the flag. Compare render-after-save latency against bench numbers. Acceptance: ≥5× speedup on warm path for a single focused preview, no visual regressions in `samples/android` PNG diffs.
-
-## 15. CI gates before un-flagging
-
-1. `samples:android-daemon-bench:renderAll` produces PNGs that pixel-diff identical to `samples:android:renderAllPreviews`.
-2. 1000-render soak test in a single sandbox completes without OOM, with bounded heap growth (< 50MB drift over the run).
-3. Tier-1 dirty detection correctly recycles the daemon on a `libs.versions.toml` bump in a synthetic functional test.
-4. End-to-end save→render latency < 1s for a single focused preview on `samples/android`, on the reference dev machine. Baseline captured before any of this work starts.
-5. Zero `sandboxLeaked` events and ≤ 2 `sandboxRecycle` events over the 1000-render soak.
-
-## 16. Risks
-
-- **Robolectric sandbox memory leak over many renders.** Mitigated by the multi-layer detection in § 10 and the soak gate in § 15.
-- **Hidden global state in renderer.** `ShadowPackageManager` adds, GoogleFont interceptor caches, font alias seeding. Mitigated by the helper audit in § 11 and the `SandboxScope` discipline.
-- **Classpath drift undetected.** Daemon misses a `libs.versions.toml` bump and silently renders against stale code. Mitigated by Tier-1 fingerprint over both file SHAs and the resolved classpath JAR list.
-- **AGP/Robolectric version churn.** Pipeline is already pinned to Robolectric SDK 35 with known-fragile combinations. Daemon doesn't change that surface but extends "things that can break." Mitigated by pinned versions + samples in CI on bumps.
-- **VS Code lifecycle.** Daemon must shut down on extension deactivate / window close, not leak JVMs. Mitigated by parent-PID watchdog + idle timeout.
-- **Concurrency.** Two saves arriving 100ms apart racing. Mitigated by single-threaded render queue + dedup-by-preview-ID + "needs another pass" flag.
-- **Drift between duplicated render body in `RenderEngine.kt` vs `RobolectricRenderTest.kt`.** Mitigated by per-PR pixel-diff gate. Reconciled in v2 by extracting shared body.
-
-## 17. Decisions log
-
-Resolved during design discussion:
-
-- **Per-module vs per-project sandbox:** per-module. Robolectric sandbox semantics + renderer-vs-consumer version alignment risk make per-project not worth it for v1.
-- **Daemon process lifecycle:** spawn-on-demand from VS Code by default; manual `gradle composePreviewDaemonStart --foreground` mode also available for debugging.
-- **CLI daemon mode:** no, v1 is VS Code-only. CLI keeps using the Gradle task. CLI's primary use case (CI, agent rendering) doesn't benefit from a hot sandbox.
-- **Keep Gradle `renderPreviews` task indefinitely:** yes, for now. It's the always-available fallback and the CI-canonical path. Daemon never replaces it.
-- **Render body sharing:** duplicated into daemon module for v1; reconciled in v2 once daemon stable. Drift caught by pixel-diff CI gate.
-- **Plugin helper extraction:** `buildTestClasspath` and `buildJvmArgs` hoisted into package-private helpers so daemon and existing test task share the same logic. Behaviour byte-identical, callers unchanged.
-- **Tier-3 dependency index:** deferred to v2. v1 uses conservative module-stale + visibility filter.
-- **kotlinc / compile-daemon integration:** out of scope. We let Gradle drive Kotlin compilation as today.
-- **Roborazzi as `compileOnly`, not bundled in a published `daemon-android`:** when the daemon ships as a Maven artifact (planning track), it stays runtime-supplied — the consumer's existing Compose + Roborazzi pair is what gets loaded. Same pattern the daemon already uses for `compose-ui-test-junit4`, `activity-compose`, etc. (`daemon/android/build.gradle.kts:90-100`). Avoids the per-Compose-BOM artifact matrix Architecture C would have required. Public Roborazzi surface used by `RenderEngine` is small (`captureRoboImage`, `RoborazziOptions`, `RoborazziOptions.RecordOptions(applyDeviceCrop = …)`) and has been binary-stable across the Roborazzi 1.x line. Documented version-compatibility range goes in `docs/RENDERER_COMPATIBILITY.md` when publishing lands. Fallback if Roborazzi's API ever does break: § 19.
-
-## 18. Future work (v2+)
-
-- Extract shared render body from daemon back into `renderer-android`; `RobolectricRenderTest` becomes a thin wrapper.
-- Per-preview ASM-walk reachability index for precise Tier-3 invalidation.
-- Per-project sandbox sharing (parent classloader + per-module child loaders).
-- CLI / MCP daemon mode for batch rendering without Gradle.
-- Direct kotlinc-daemon integration to skip the Gradle compile step.
-- Resource-edit precision: parse changed XML, cross-reference Compose's resolved-resource cache.
-
-## 19. Roborazzi compatibility & captureToImage fallback
-
-The decision in § 17 to keep Roborazzi as a `compileOnly` dep rather than bundling per-Compose-BOM `daemon-android` variants rests on Roborazzi's public-API binary stability across the Roborazzi 1.x line. If a future Roborazzi release breaks that — by removing `RoborazziOptions.RecordOptions(applyDeviceCrop)`, changing `captureRoboImage`'s signature, or moving classes between packages — the daemon has a documented migration path that does not require shipping multiple JARs.
-
-**Replacement: `androidx.compose.ui.test.captureToImage()`.** This is the upstream Compose UI Test API. It walks the same `HardwareRenderer` path Roborazzi does under `@GraphicsMode(NATIVE)` (already required by `RobolectricHost.SandboxRunner`, see KDoc on the `@GraphicsMode` annotation), so the Robolectric prerequisite is unchanged. The replacement is local to `RenderEngine.render()`:
+**Replacement: `androidx.compose.ui.test.captureToImage()`.** This is
+the upstream Compose UI Test API. It walks the same `HardwareRenderer`
+path Roborazzi does under `@GraphicsMode(NATIVE)` (already required by
+`RobolectricHost.SandboxRunner`), so the Robolectric prerequisite is
+unchanged. The replacement is local to `RenderEngine.render()`:
 
 ```kotlin
 // Before (Roborazzi):
@@ -521,8 +372,13 @@ val final = if (isRound) applyCircularCrop(captured) else captured
 FileOutputStream(outputFile).use { final.compress(Bitmap.CompressFormat.PNG, 100, it) }
 ```
 
-`applyCircularCrop` is a ~20-line Bitmap+Canvas+BitmapShader helper replacing Roborazzi's `applyDeviceCrop`. (Wear-round handling tracked separately.)
+`applyCircularCrop` is a ~20-line Bitmap+Canvas+BitmapShader helper
+replacing Roborazzi's `applyDeviceCrop`.
 
-**What this fallback does NOT cover.** Roborazzi's richer features used by `:renderer-android`'s `RobolectricRenderTest` — `RoborazziComposeOptions` builders, animated/scroll/GIF stitching, accessibility tree extraction, `roborazzi-accessibility-check` — are out of scope for the daemon (per `RenderEngine.kt`'s class KDoc: "single static previews"). If `:renderer-android` needs to migrate too, that's a much larger project; this fallback only addresses the daemon's Roborazzi surface.
-
-**Status.** Investigated, not implemented. A 50-line spike replacing the three Roborazzi imports with the captureToImage path was prepared but reverted in favour of the `compileOnly` plan. Re-running that spike is the first step if Roborazzi compatibility ever forces our hand.
+**What this fallback does NOT cover.** Roborazzi's richer features used
+by `:renderer-android`'s `RobolectricRenderTest` —
+`RoborazziComposeOptions` builders, animated/scroll/GIF stitching,
+accessibility tree extraction, `roborazzi-accessibility-check` — are
+out of scope for the daemon. If `:renderer-android` needs to migrate
+too, that's a much larger project; this fallback only addresses the
+daemon's Roborazzi surface.

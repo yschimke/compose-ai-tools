@@ -65,6 +65,5 @@ not as separate captures. Tooling (CodeLens, doc generators, the VS Code
 resource grid) links the manifest line to the same PNG that resource
 discovery already rendered — no double rendering.
 
-The contributor-facing data model and rendering plan live in
-[`docs/ANDROID_RESOURCE_PREVIEWS.md`](../../../docs/ANDROID_RESOURCE_PREVIEWS.md)
-in the repo.
+The contributor-facing data model is in `gradle-plugin/.../PreviewData.kt`
+(`ResourceManifest`, `ResourcePreview`, `ResourceCapture`, `ResourceVariant`).

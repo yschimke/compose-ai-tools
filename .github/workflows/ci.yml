@@ -81,9 +81,8 @@ jobs:
         run: ./gradlew :samples:wear:testDebugUnitTest
       # Exercise the Android XML resource preview pipeline against
       # samples/android. Discovery + renderer together; the rendered set
-      # (6 vector PNGs + 8 adaptive-icon PNGs + 1 AVD GIF, see
-      # docs/ANDROID_RESOURCE_PREVIEWS.md) and the AndroidManifest
-      # icon-reference index land under
+      # (6 vector PNGs + 8 adaptive-icon PNGs + 1 AVD GIF) and the
+      # AndroidManifest icon-reference index land under
       # `build/compose-previews/{resources.json,renders/resources/}`.
       - name: Render Android resource previews
         run: ./gradlew :samples:android:renderAndroidResources

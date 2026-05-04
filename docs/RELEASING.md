@@ -192,19 +192,6 @@ code --install-extension yuri-schimke.compose-preview
 
 The `.vsix` is also attached to each GitHub Release as a fallback.
 
-## Future: publishing to public registries
-
-The Gradle plugin is now on Maven Central. The other artifacts could
-similarly move to their public registries without breaking existing
-consumers:
-
-| Artifact | Current | Public registry | Migration |
-|----------|---------|-----------------|-----------|
-| Gradle plugin | **Maven Central** (+ GH Packages mirror) | Gradle Plugin Portal | Apply `com.gradle.plugin-publish` plugin; add `publishPlugins` task to the workflow with `GRADLE_PUBLISH_KEY`/`GRADLE_PUBLISH_SECRET` secrets |
-| CLI | Release .zip/.tar | Homebrew tap | Add a `dispatches` step that updates a separate `homebrew-tap` repo |
-
-Existing GitHub Release artifacts remain as a fallback and don't need to go away.
-
 ## Versioning
 
 The single source of truth for the **release version** is [`.release-please-manifest.json`](../.release-please-manifest.json) at the repo root (maintained by release-please). The build scripts resolve `version` in this order:

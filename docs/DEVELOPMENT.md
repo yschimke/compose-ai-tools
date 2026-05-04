@@ -201,21 +201,6 @@ cd vscode-extension && npm test   # extension unit tests (mocha)
 
 ## Troubleshooting
 
-### Android renders fail with `planes[0] is null` after bumping Robolectric
-
-The Android renderer captures via
-[`HardwareRenderingScreenshot.takeScreenshot`](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt),
-which goes through `ImageReader` + `HardwareRenderer.syncAndDraw`. In Robolectric
-4.16.1, `ShadowNativeImageReaderSurfaceImage.nativeCreatePlanes` is gated
-`maxSdk = UPSIDE_DOWN_CAKE` (API 34). Running against API 35+ leaves the native
-method un-shadowed, so `acquireNextImage().getPlanes()[0]` comes back null.
-
-The renderer pins itself to SDK 34 via `@Config(sdk = [34])` on
-`RobolectricRenderTest`. When upgrading Robolectric, re-run
-`./gradlew :samples:android:renderPreviews` with the pin removed (or bumped); if
-it passes, drop the pin. Tracking issues: robolectric/robolectric#9595, #9745,
-#9971.
-
 ### `IllegalAccessException: … DirectByteBuffer … modifiers "public"`
 
 Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer` reflects into
@@ -254,39 +239,9 @@ exist.
 
 ## Testing a downstream project against a `-SNAPSHOT`
 
-Every push to `main` publishes a `-SNAPSHOT` build to the Central
-snapshots repository. To test a PR before it merges, run the **Publish
-snapshot** workflow manually from that branch; it publishes the same
-Maven artifacts with a branch-qualified snapshot version so it does not
-collide with the `main` snapshot. Add the snapshots repo to
-`pluginManagement` and bump the plugin version to the version printed in
-the workflow summary:
-
-```kotlin
-// settings.gradle.kts
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-        maven("https://central.sonatype.com/repository/maven-snapshots/") {
-            mavenContent { snapshotsOnly() }
-        }
-    }
-}
-```
-
-```kotlin
-// <module>/build.gradle.kts
-plugins {
-    id("ee.schimke.composeai.preview") version "0.8.13-feature-layout-data-abc1234-SNAPSHOT"
-}
-```
-
-For pushes to `main`, the snapshot version remains the next patch ahead
-of the latest release (e.g. last tag `v0.8.12` →
-`0.8.13-SNAPSHOT`). Manual branch runs default to
-`<next-patch>-<branch-name>-<short-sha>-SNAPSHOT`; the workflow also
-accepts a shorter `suffix` input if you want a stable test coordinate
-such as `0.8.13-issue-612-SNAPSHOT`. Snapshots are unsigned. See
-[RELEASING.md](RELEASING.md) for more detail.
+Every push to `main` publishes `<next-patch>-SNAPSHOT` to Central
+snapshots. For PR testing, run the **Publish snapshot** workflow
+manually from the branch — it produces a branch-qualified version
+(`<next-patch>-<branch-name>-<short-sha>-SNAPSHOT`) that won't collide
+with `main`. See [RELEASING.md § Snapshots](RELEASING.md#snapshots) for
+the full recipe and consumer-side `pluginManagement` block.

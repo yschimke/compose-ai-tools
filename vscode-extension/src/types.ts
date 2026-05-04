@@ -222,7 +222,6 @@ export interface PreviewRenderErrorTopFrame {
 // -------------------------------------------------------------------------
 // Android XML resource previews — mirrors of the Kotlin types in
 // `gradle-plugin/.../PreviewData.kt` / `renderer-android/.../RenderResourceManifest.kt`.
-// See `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model.
 // -------------------------------------------------------------------------
 
 export type ResourceType =

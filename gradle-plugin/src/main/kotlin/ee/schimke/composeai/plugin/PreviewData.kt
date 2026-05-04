@@ -295,7 +295,7 @@ data class PreviewManifest(
 )
 
 // ---------------------------------------------------------------------------
-// Android XML resource previews — see docs/ANDROID_RESOURCE_PREVIEWS.md
+// Android XML resource previews — vector, animated-vector, adaptive-icon
 // ---------------------------------------------------------------------------
 
 /** Cost catalogue extension for resource previews; same scale as the composable cost figures. */
