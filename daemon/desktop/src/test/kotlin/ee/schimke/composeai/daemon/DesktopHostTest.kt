@@ -97,10 +97,10 @@ class DesktopHostTest {
 
   /**
    * `recordingScriptEventDescriptors()` is the seam DaemonMain reads to assemble the daemon's
-   * `dataExtensions` capability. Without a resolver the host can't allocate a recording session,
-   * so it must NOT advertise `recording.probe` as `supported = true` — otherwise an agent
-   * trusting `list_data_products` would see a green probe and watch its `record_preview` calls
-   * fail with `MethodNotFound`.
+   * `dataExtensions` capability. Without a resolver the host can't allocate a recording session, so
+   * it must NOT advertise `recording.probe` as `supported = true` — otherwise an agent trusting
+   * `list_data_products` would see a green probe and watch its `record_preview` calls fail with
+   * `MethodNotFound`.
    */
   @Test
   fun recordingScriptEventDescriptorsAreEmptyWithoutResolver() {
@@ -108,9 +108,9 @@ class DesktopHostTest {
   }
 
   /**
-   * With a resolver wired, `recordingScriptEventDescriptors()` advertises only
-   * `recording.probe` (supported = true). Roadmap descriptors stay out of the host contribution —
-   * they're appended separately by DaemonMain.
+   * With a resolver wired, `recordingScriptEventDescriptors()` advertises only `recording.probe`
+   * (supported = true). Roadmap descriptors stay out of the host contribution — they're appended
+   * separately by DaemonMain.
    */
   @Test
   fun recordingScriptEventDescriptorsAdvertiseProbeWhenResolverPresent() {

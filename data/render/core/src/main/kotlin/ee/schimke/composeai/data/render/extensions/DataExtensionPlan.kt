@@ -235,8 +235,8 @@ data class RecordingScriptEventDescriptor(
 /**
  * Built-in recording-script descriptor namespace. Splits cleanly between two halves:
  *
- * - [recordingDescriptor] — the `recording` extension, advertising `recording.probe` as
- *   `supported = true`. Each [ee.schimke.composeai.daemon.RenderHost] returns this from its
+ * - [recordingDescriptor] — the `recording` extension, advertising `recording.probe` as `supported
+ *   = true`. Each [ee.schimke.composeai.daemon.RenderHost] returns this from its
  *   `recordingScriptEventDescriptors()` override, alongside any host-specific extensions, so the
  *   daemon's `dataExtensions` capability set tracks what the host actually dispatches.
  * - [roadmapDescriptors] — `state` / `lifecycle` / `preview`, all `supported = false`. Advertised
