@@ -9,31 +9,43 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * [`compose-preview-review/design/AGENT_AUDITS.md`](../../../../../../skills/compose-preview-review/design/AGENT_AUDITS.md)
  * § "State restoration and lifecycle audit".
  *
- * One descriptor — `lifecycle.event` — that drives `ActivityScenario.moveToState(...)` on the
- * held rule's activity. The wire payload's `lifecycleEvent` field selects the target state:
- * `"pause"` → STARTED, `"resume"` → RESUMED, `"stop"` → CREATED. `"destroy"` is intentionally
- * not part of v1 — moving to DESTROYED mid-recording would tear down the scenario and break
- * subsequent renders.
+ * Three event ids — `lifecycle.pause`, `lifecycle.resume`, `lifecycle.stop` — each driving
+ * `ActivityScenario.moveToState(...)` on the held rule's activity:
+ *
+ * - `lifecycle.pause` → `Lifecycle.State.STARTED` (activity goes through onPause)
+ * - `lifecycle.resume` → `Lifecycle.State.RESUMED` (activity goes through onResume)
+ * - `lifecycle.stop` → `Lifecycle.State.CREATED` (activity goes through onPause + onStop)
+ *
+ * **Why three ids instead of one `lifecycle.event` with a `lifecycleEvent` payload.** Per-state
+ * ids let the MCP validator reject unknown transitions at the kind level (no special payload
+ * check needed), make the surface self-documenting in `list_data_products`, and align with
+ * `a11y.action.*` / `state.*` / `preview.*` shapes — every other extension uses kind-level
+ * discrimination.
+ *
+ * `"destroy"` is intentionally NOT one of the ids — moving to DESTROYED mid-recording would tear
+ * down the scenario and break subsequent renders. If we wire it in a future PR it would land as
+ * `lifecycle.destroy`.
  *
  * Why this lives in `:daemon:android` and not in a `:data-lifecycle-connector` module like the
  * a11y descriptors do: lifecycle has no data products (no per-render JSON / overlay PNG), so
  * there's no separate Android-only data module to colocate with. The dispatch end is in
  * [RobolectricHost.SandboxRunner.performLifecycleTransition]; the descriptor end lives next to
  * it.
- *
- * **Status:** the single descriptor ships with `supported = true`. Hosts that can dispatch
- * lifecycle (today: only [RobolectricHost]) advertise it from `recordingScriptEventDescriptors()`;
- * hosts without an Android lifecycle owner (DesktopHost) skip it entirely. The roadmap entries
- * (`state.save` / `state.restore` / `preview.reload`) stay in
- * `RecordingScriptDataExtensions.roadmapDescriptors` until their dispatch lands.
  */
 object LifecycleRecordingScriptEvents {
 
-  /** Wire-name id matching `RecordingScriptDataExtensions.LIFECYCLE_EVENT`. */
-  const val LIFECYCLE_EVENT: String = "lifecycle.event"
+  /** `lifecycle.pause` → `Lifecycle.State.STARTED`. Drives `onPause`. */
+  const val LIFECYCLE_PAUSE_EVENT: String = "lifecycle.pause"
 
-  /** Recognised values for [RecordingScriptEvent.lifecycleEvent]. `"destroy"` deliberately not in v1. */
-  val SUPPORTED_LIFECYCLE_EVENTS: Set<String> = setOf("pause", "resume", "stop")
+  /** `lifecycle.resume` → `Lifecycle.State.RESUMED`. Drives `onResume`. */
+  const val LIFECYCLE_RESUME_EVENT: String = "lifecycle.resume"
+
+  /** `lifecycle.stop` → `Lifecycle.State.CREATED`. Drives `onPause` + `onStop`. */
+  const val LIFECYCLE_STOP_EVENT: String = "lifecycle.stop"
+
+  /** All wired lifecycle event ids. */
+  val WIRED_EVENTS: Set<String> =
+    setOf(LIFECYCLE_PAUSE_EVENT, LIFECYCLE_RESUME_EVENT, LIFECYCLE_STOP_EVENT)
 
   val descriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
@@ -42,15 +54,29 @@ object LifecycleRecordingScriptEvents {
       recordingScriptEvents =
         listOf(
           RecordingScriptEventDescriptor(
-            id = LIFECYCLE_EVENT,
-            displayName = "Lifecycle event",
+            id = LIFECYCLE_PAUSE_EVENT,
+            displayName = "Pause",
             summary =
-              "Drives the held activity through the named lifecycle transition via " +
-                "ActivityScenario.moveToState. `lifecycleEvent` payload selects the target: " +
-                "'pause' → STARTED, 'resume' → RESUMED, 'stop' → CREATED. " +
-                "'destroy' is rejected (would break subsequent renders).",
+              "Moves the held activity to Lifecycle.State.STARTED via " +
+                "ActivityScenario.moveToState. Drives `onPause` on the way.",
             supported = true,
-          )
+          ),
+          RecordingScriptEventDescriptor(
+            id = LIFECYCLE_RESUME_EVENT,
+            displayName = "Resume",
+            summary =
+              "Moves the held activity to Lifecycle.State.RESUMED via " +
+                "ActivityScenario.moveToState. Drives `onResume` on the way.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = LIFECYCLE_STOP_EVENT,
+            displayName = "Stop",
+            summary =
+              "Moves the held activity to Lifecycle.State.CREATED via " +
+                "ActivityScenario.moveToState. Drives `onPause` + `onStop` on the way.",
+            supported = true,
+          ),
         ),
     )
 

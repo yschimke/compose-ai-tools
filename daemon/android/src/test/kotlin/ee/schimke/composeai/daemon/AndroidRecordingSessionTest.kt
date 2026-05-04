@@ -555,12 +555,10 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  fun lifecycleEventRoutesThroughDispatchLifecycle() {
-    // Happy path for the new `lifecycle.event` registry entry: the handler reads
-    // `event.lifecycleEvent`, calls `interactive.dispatchLifecycle(...)`, and reports `applied`
-    // evidence with a message naming the transition. Pin every supported transition in one go so
-    // adding a new entry to `LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS` without
-    // updating the handler short-circuit is caught here.
+  fun lifecycleEventsRouteThroughDispatchLifecycle() {
+    // Pin every wired lifecycle id (`lifecycle.pause` / `lifecycle.resume` / `lifecycle.stop`):
+    // each registry entry pre-binds its target at registration time, so dispatch routes through
+    // `interactive.dispatchLifecycle("pause"|"resume"|"stop")` regardless of the event payload.
     val framesDir = tempFolder.newFolder("lifecycle-frames")
     val encodedDir = tempFolder.newFolder("lifecycle-encoded")
     val sourcePng = File(tempFolder.newFolder("lifecycle-source"), "source.png")
@@ -582,38 +580,32 @@ class AndroidRecordingSessionTest {
       )
 
     try {
+      val ids =
+        listOf(
+          LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT to "pause",
+          LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT to "resume",
+          LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT to "stop",
+        )
       session.postScript(
-        LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted().map { transition ->
-          RecordingScriptEvent(
-            tMs = 0L,
-            kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT,
-            lifecycleEvent = transition,
-          )
-        }
+        ids.map { (kind, _) -> RecordingScriptEvent(tMs = 0L, kind = kind) }
       )
       val result = session.stop()
 
-      // Every transition in the supported set routed through dispatchLifecycle in order.
-      assertEquals(
-        LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted(),
-        interactive.lifecycleCalls,
-      )
-      // None went through pointer or semantics dispatch.
+      // Each id routed through dispatchLifecycle with the matching pre-bound target string.
+      assertEquals(ids.map { it.second }, interactive.lifecycleCalls)
       assertEquals(0, interactive.dispatchCount)
       assertTrue(interactive.semanticsActionCalls.isEmpty())
-      // Every event reported applied with the transition named in the message.
-      val supported = LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()
-      supported.forEachIndexed { index, transition ->
+      ids.forEachIndexed { index, (kind, target) ->
         val evidence = result.scriptEvents[index]
         assertEquals(
-          "evidence for lifecycle.event '$transition' must be applied",
+          "evidence for $kind must be applied",
           ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
           evidence.status,
         )
         val message = evidence.message ?: ""
         assertTrue(
-          "evidence message must name the lifecycle transition '$transition'; got '$message'",
-          message.contains("'$transition'"),
+          "evidence message must name the lifecycle target '$target'; got '$message'",
+          message.contains("'$target'"),
         )
       }
     } finally {
@@ -622,23 +614,24 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  fun lifecycleEventReportsUnsupportedForBlankPayload() {
-    // `kind = "lifecycle.event"` without a `lifecycleEvent` payload short-circuits BEFORE
-    // touching `interactive.dispatchLifecycle` — we know the agent has nothing meaningful for the
-    // host to do, so we surface a precise unsupported reason naming the supported set.
-    val framesDir = tempFolder.newFolder("lifecycle-blank-frames")
-    val encodedDir = tempFolder.newFolder("lifecycle-blank-encoded")
-    val sourcePng = File(tempFolder.newFolder("lifecycle-blank-source"), "source.png")
+  fun lifecycleEventReportsUnsupportedWhenHostCannotDispatch() {
+    // When `dispatchLifecycle` returns false (e.g. host has no ActivityScenario), the handler
+    // surfaces a specific unsupported reason naming the target. There's no kind-level
+    // misconfiguration to check anymore — the registry only carries the three wired ids; unknown
+    // `lifecycle.*` kinds are rejected at MCP via the descriptor closed set.
+    val framesDir = tempFolder.newFolder("lifecycle-miss-frames")
+    val encodedDir = tempFolder.newFolder("lifecycle-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("lifecycle-miss-source"), "source.png")
     ImageIO.write(
       java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
       "png",
       sourcePng,
     )
-    val interactive = RecordingDeltaSession(sourcePng)
+    val interactive = RecordingDeltaSession(sourcePng).apply { lifecycleResult = false }
     val session =
       AndroidRecordingSession(
         previewId = INTERACTIVE_PREVIEW_ID,
-        recordingId = "test-rec-lifecycle-blank",
+        recordingId = "test-rec-lifecycle-miss",
         fps = FPS,
         scale = 1.0f,
         interactive = interactive,
@@ -649,78 +642,24 @@ class AndroidRecordingSessionTest {
     try {
       session.postScript(
         listOf(
-          RecordingScriptEvent(tMs = 0L, kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT)
+          RecordingScriptEvent(tMs = 0L, kind = LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT)
         )
       )
       val result = session.stop()
 
-      assertTrue(
-        "blank payload must short-circuit before dispatchLifecycle",
-        interactive.lifecycleCalls.isEmpty(),
-      )
+      assertEquals(listOf("pause"), interactive.lifecycleCalls)
       assertEquals(
         ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
         result.scriptEvents[0].status,
       )
       val message = result.scriptEvents[0].message ?: ""
       assertTrue(
-        "diagnostic must list the supported transitions; got '$message'",
-        message.contains("pause") && message.contains("resume") && message.contains("stop"),
+        "miss diagnostic must mention the target transition; got '$message'",
+        message.contains("'pause'"),
       )
-    } finally {
-      session.close()
-    }
-  }
-
-  @Test
-  fun lifecycleEventReportsUnsupportedForUnknownTransition() {
-    // `lifecycleEvent: "destroy"` (and any other string outside the supported set) is rejected up
-    // front — destroy specifically is documented as v2 because it would tear down the scenario
-    // and break subsequent renders.
-    val framesDir = tempFolder.newFolder("lifecycle-destroy-frames")
-    val encodedDir = tempFolder.newFolder("lifecycle-destroy-encoded")
-    val sourcePng = File(tempFolder.newFolder("lifecycle-destroy-source"), "source.png")
-    ImageIO.write(
-      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
-      "png",
-      sourcePng,
-    )
-    val interactive = RecordingDeltaSession(sourcePng)
-    val session =
-      AndroidRecordingSession(
-        previewId = INTERACTIVE_PREVIEW_ID,
-        recordingId = "test-rec-lifecycle-destroy",
-        fps = FPS,
-        scale = 1.0f,
-        interactive = interactive,
-        framesDir = framesDir,
-        encodedDir = encodedDir,
-      )
-
-    try {
-      session.postScript(
-        listOf(
-          RecordingScriptEvent(
-            tMs = 0L,
-            kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT,
-            lifecycleEvent = "destroy",
-          )
-        )
-      )
-      val result = session.stop()
-
       assertTrue(
-        "unsupported transition must short-circuit before dispatchLifecycle",
-        interactive.lifecycleCalls.isEmpty(),
-      )
-      assertEquals(
-        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
-        result.scriptEvents[0].status,
-      )
-      val message = result.scriptEvents[0].message ?: ""
-      assertTrue(
-        "diagnostic must mention the rejected transition name; got '$message'",
-        message.contains("'destroy'"),
+        "miss diagnostic must point at the missing ActivityScenario; got '$message'",
+        message.contains("ActivityScenario"),
       )
     } finally {
       session.close()
