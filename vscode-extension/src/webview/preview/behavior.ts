@@ -169,6 +169,7 @@ export function setupPreviewBehavior(
     function applyEarlyFeatureVisibility() {
         btnDiffHead.hidden = !earlyFeatures();
         btnDiffMain.hidden = !earlyFeatures();
+        btnLaunchDevice.hidden = !earlyFeatures();
         btnA11yOverlay.hidden =
             !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
         btnRecording.hidden =
@@ -1277,6 +1278,7 @@ export function setupPreviewBehavior(
     // -- the extension uses the focused previewId to pick the owning
     // module before falling back to a quick-pick.
     function requestLaunchOnDevice() {
+        if (!earlyFeatures()) return;
         if (filterToolbar.getLayoutValue() !== "focus") return;
         const visible = getVisibleCards();
         const card = visible[focusIndex];
@@ -1757,9 +1759,10 @@ export function setupPreviewBehavior(
         // ATF legend + overlay layer — rendered in the webview (not
         // baked into the PNG) so rows stay interactive: hovering a
         // finding highlights its bounds on the clean image. Populated
-        // only when findings exist; the overlay layer's boxes get
-        // computed lazily once the image is loaded (see buildA11yOverlay).
-        if (p.a11yFindings && p.a11yFindings.length > 0) {
+        // only when findings exist AND `composePreview.earlyFeatures`
+        // is on; the overlay layer's boxes get computed lazily once
+        // the image is loaded (see buildA11yOverlay).
+        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
             const overlay = document.createElement("div");
             overlay.className = "a11y-overlay";
             overlay.setAttribute("aria-hidden", "true");
@@ -2055,7 +2058,7 @@ export function setupPreviewBehavior(
         const existingOverlay = card.querySelector(".a11y-overlay");
         if (existingLegend) existingLegend.remove();
         if (existingOverlay) existingOverlay.innerHTML = "";
-        if (p.a11yFindings && p.a11yFindings.length > 0) {
+        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
             const container = card.querySelector(".image-container");
             if (container && !container.querySelector(".a11y-overlay")) {
                 const overlay = document.createElement("div");
@@ -2073,6 +2076,9 @@ export function setupPreviewBehavior(
                 buildA11yOverlay(card, p.a11yFindings, img);
             }
         } else if (existingOverlay) {
+            // No findings or feature off — drop any leftover overlay
+            // div so cards stay clean when the user toggles
+            // earlyFeatures off mid-session.
             existingOverlay.remove();
         }
     }
@@ -2549,10 +2555,15 @@ export function setupPreviewBehavior(
         // are known. Data-URL srcs may resolve synchronously; in that
         // case img.complete is true and load will not fire, so we
         // check both. Findings are stashed at setPreviews time via the
-        // renderPreviews pipeline.
+        // renderPreviews pipeline. Gated on earlyFeatures so the
+        // overlay only paints when the user has opted into the
+        // accessibility-overlay feature surface.
         const findings = cardA11yFindings.get(previewId);
         const nodes = cardA11yNodes.get(previewId);
-        if ((findings && findings.length > 0) || (nodes && nodes.length > 0)) {
+        if (
+            earlyFeatures() &&
+            ((findings && findings.length > 0) || (nodes && nodes.length > 0))
+        ) {
             const apply = () => {
                 if (findings && findings.length > 0)
                     buildA11yOverlay(card, findings, img);
@@ -2582,7 +2593,10 @@ export function setupPreviewBehavior(
     // Updates the per-preview caches and re-applies whichever overlays are now relevant
     // without rebuilding the whole card. Findings -> legend + finding overlay; nodes ->
     // hierarchy overlay. Either argument may be omitted to leave that side untouched.
+    // Gated on earlyFeatures so daemon-attached a11y data is dropped silently when the
+    // user has not opted into the accessibility-overlay feature surface.
     function applyA11yUpdate(previewId, findings, nodes) {
+        if (!earlyFeatures()) return;
         const card = document.getElementById(
             "preview-" + sanitizeId(previewId),
         );
@@ -3147,6 +3161,18 @@ export function setupPreviewBehavior(
                     document
                         .querySelectorAll(".preview-diff-overlay")
                         .forEach((overlay) => overlay.remove());
+                    // Tear down every a11y rendering surface — finding
+                    // legends, finding-overlay boxes, and the daemon-
+                    // attached hierarchy overlay — and drop the cached
+                    // findings/nodes so re-enabling the feature picks
+                    // up fresh data from the next setPreviews / updateA11y.
+                    document
+                        .querySelectorAll(
+                            ".a11y-legend, .a11y-overlay, .a11y-hierarchy-overlay",
+                        )
+                        .forEach((el) => el.remove());
+                    cardA11yFindings.clear();
+                    cardA11yNodes.clear();
                     enabledFocusProducts.clear();
                     if (a11yOverlay()) {
                         vscode.postMessage({

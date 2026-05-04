@@ -98,14 +98,15 @@
                 "command": "composePreview.launchOnDevice",
                 "title": "Launch on Device",
                 "category": "Compose Preview",
-                "icon": "$(device-mobile)"
+                "icon": "$(device-mobile)",
+                "enablement": "config.composePreview.earlyFeatures.enabled"
             }
         ],
         "menus": {
             "view/title": [
                 {
                     "command": "composePreview.launchOnDevice",
-                    "when": "view == composePreview.panel",
+                    "when": "view == composePreview.panel && config.composePreview.earlyFeatures.enabled",
                     "group": "navigation@1"
                 },
                 {
