@@ -34,7 +34,8 @@ class RecordingScriptDataExtensionsTest {
     val ids = roadmap.flatMap { it.recordingScriptEvents }.map { it.id }.toSet()
     // `lifecycle.event` and `preview.reload` left this list once the Android backend wired their
     // dispatch — `RobolectricHost.recordingScriptEventDescriptors()` now advertises
-    // `LifecycleRecordingScriptEvents.descriptor` and `PreviewReloadRecordingScriptEvents.descriptor`
+    // `LifecycleRecordingScriptEvents.descriptor` and
+    // `PreviewReloadRecordingScriptEvents.descriptor`
     // directly. The only remaining unwired pair is state save/restore.
     assertEquals(
       setOf(

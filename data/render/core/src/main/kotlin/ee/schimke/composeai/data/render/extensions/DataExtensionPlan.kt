@@ -299,7 +299,7 @@ object RecordingScriptDataExtensions {
               summary = "Requests restoration from a saved-state checkpoint.",
             ),
           ),
-      ),
+      )
       // `preview.reload` and `lifecycle.event` both moved out of this list — the Android backend
       // wires them via `PreviewReloadRecordingScriptEvents.descriptor` and
       // `LifecycleRecordingScriptEvents.descriptor` respectively, advertised through
