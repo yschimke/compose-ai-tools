@@ -91,9 +91,8 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * Android XML resource previews — `vector`, `animated-vector`, `adaptive-icon` drawables and
    * mipmaps, plus an `AndroidManifest.xml` icon-attribute reference index. On by default; the tasks
    * self-no-op when the consumer's `res/` tree has no matching XML, so the cost of being
-   * always-registered is a single empty `resources.json` write. See
-   * `docs/ANDROID_RESOURCE_PREVIEWS.md` for the data model and [ResourcePreviewsExtension] for the
-   * per-axis tuning knobs.
+   * always-registered is a single empty `resources.json` write. See [ResourcePreviewsExtension] for
+   * the per-axis tuning knobs.
    */
   val resourcePreviews: ResourcePreviewsExtension =
     objects.newInstance(ResourcePreviewsExtension::class.java)

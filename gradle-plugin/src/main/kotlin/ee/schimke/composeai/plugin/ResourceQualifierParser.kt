@@ -6,8 +6,8 @@ package ee.schimke.composeai.plugin
  * into the dimensions the renderer cares about.
  *
  * Intentionally narrow surface — discovery uses these helpers to decide which capture-fan-out
- * dimensions to expand for a given resource (see `docs/ANDROID_RESOURCE_PREVIEWS.md`); the renderer
- * feeds [ParsedResourceDirectory.qualifierSuffix] back into Robolectric verbatim via
+ * dimensions to expand for a given resource; the renderer feeds
+ * [ParsedResourceDirectory.qualifierSuffix] back into Robolectric verbatim via
  * `RuntimeEnvironment.setQualifiers(...)`. We don't try to canonicalise qualifier ordering — AAPT's
  * resolver is forgiving enough that preserving the consumer's original order keeps filenames stable
  * when consumers add a qualifier mid-stream.
