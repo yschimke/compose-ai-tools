@@ -95,59 +95,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
+          # See the comment in snapshot.yml's publish step: root-level abbreviation fans out
+          # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
+          # includeBuild and needs an explicit address.
           ./gradlew \
             :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
-            :data-a11y-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-a11y-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-fonts-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-fonts-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-history-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-layoutinspector-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-layoutinspector-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-recomposition-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-render-compose:publishAllPublicationsToGitHubPackagesRepository \
-            :data-render-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-render-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-resources-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-resources-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-scroll-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-strings-core:publishAllPublicationsToGitHubPackagesRepository \
-            :data-strings-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :data-theme-connector:publishAllPublicationsToGitHubPackagesRepository \
-            :renderer-android:publishAllPublicationsToGitHubPackagesRepository \
-            :preview-annotations:publishAllPublicationsToGitHubPackagesRepository \
-            :daemon:core:publishAllPublicationsToGitHubPackagesRepository \
-            :daemon:desktop:publishAllPublicationsToGitHubPackagesRepository \
-            :daemon:android:publishAllPublicationsToGitHubPackagesRepository
+            publishAllPublicationsToGitHubPackagesRepository
       - name: Publish plugin, renderer-android, data-*, preview-annotations, daemon-* to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
+          # See the comment in snapshot.yml's publish step: root-level abbreviation fans out
+          # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
+          # includeBuild and needs an explicit address.
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
-            :data-a11y-core:publishAndReleaseToMavenCentral \
-            :data-a11y-connector:publishAndReleaseToMavenCentral \
-            :data-fonts-core:publishAndReleaseToMavenCentral \
-            :data-fonts-connector:publishAndReleaseToMavenCentral \
-            :data-history-connector:publishAndReleaseToMavenCentral \
-            :data-layoutinspector-core:publishAndReleaseToMavenCentral \
-            :data-layoutinspector-connector:publishAndReleaseToMavenCentral \
-            :data-recomposition-connector:publishAndReleaseToMavenCentral \
-            :data-render-compose:publishAndReleaseToMavenCentral \
-            :data-render-core:publishAndReleaseToMavenCentral \
-            :data-render-connector:publishAndReleaseToMavenCentral \
-            :data-resources-core:publishAndReleaseToMavenCentral \
-            :data-resources-connector:publishAndReleaseToMavenCentral \
-            :data-scroll-core:publishAndReleaseToMavenCentral \
-            :data-strings-core:publishAndReleaseToMavenCentral \
-            :data-strings-connector:publishAndReleaseToMavenCentral \
-            :data-theme-connector:publishAndReleaseToMavenCentral \
-            :renderer-android:publishAndReleaseToMavenCentral \
-            :preview-annotations:publishAndReleaseToMavenCentral \
-            :daemon:core:publishAndReleaseToMavenCentral \
-            :daemon:desktop:publishAndReleaseToMavenCentral \
-            :daemon:android:publishAndReleaseToMavenCentral
+            publishAndReleaseToMavenCentral
 
   build-cli:
     runs-on: ubuntu-latest

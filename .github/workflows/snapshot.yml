@@ -85,30 +85,14 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
-          ./gradlew \
-            :gradle-plugin:publishToMavenCentral \
-            :data-a11y-core:publishToMavenCentral \
-            :data-a11y-connector:publishToMavenCentral \
-            :data-fonts-core:publishToMavenCentral \
-            :data-fonts-connector:publishToMavenCentral \
-            :data-history-connector:publishToMavenCentral \
-            :data-layoutinspector-core:publishToMavenCentral \
-            :data-layoutinspector-connector:publishToMavenCentral \
-            :data-recomposition-connector:publishToMavenCentral \
-            :data-render-compose:publishToMavenCentral \
-            :data-render-core:publishToMavenCentral \
-            :data-render-connector:publishToMavenCentral \
-            :data-resources-core:publishToMavenCentral \
-            :data-resources-connector:publishToMavenCentral \
-            :data-scroll-core:publishToMavenCentral \
-            :data-strings-core:publishToMavenCentral \
-            :data-strings-connector:publishToMavenCentral \
-            :data-theme-connector:publishToMavenCentral \
-            :renderer-android:publishToMavenCentral \
-            :preview-annotations:publishToMavenCentral \
-            :daemon:core:publishToMavenCentral \
-            :daemon:desktop:publishToMavenCentral \
-            :daemon:android:publishToMavenCentral
+          # Root-level `publishToMavenCentral` (no `:` prefix) fans out to every subproject that
+          # registered the task — i.e. every module applying the `composeai.maven-publishing`
+          # convention plugin. `:gradle-plugin` is an `includeBuild` (composite build), so root
+          # abbreviation doesn't reach it; address it explicitly. This avoids the hand-curated
+          # publish list that previously drifted out of sync (PR #724 added
+          # `:data-a11y-hierarchy-android` here but missed adding it to this list, leaving
+          # consumers' `renderer-android` POM resolution broken at snapshot time).
+          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral
           # Note: `--no-configuration-cache` is incompatible with
           # `org.gradle.unsafe.isolated-projects=true` set in gradle.properties
           # (Gradle fails with "Configuration Cache cannot be disabled when
