@@ -158,6 +158,7 @@
         "format:check": "prettier --check --tab-width 4 package.json package-lock.json tsconfig.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
         "test": "npm run compile && mocha --exit 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
+        "test:e2e": "npm run compile && COMPOSE_PREVIEW_E2E=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies"
     },

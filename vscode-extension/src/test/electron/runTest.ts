@@ -26,7 +26,16 @@ async function main(): Promise<void> {
         __dirname,
         "../../../src/test/electron/fixtures",
     );
-    const workspacePath = path.join(fixturesRoot, "workspace");
+    // E2E mode (COMPOSE_PREVIEW_E2E=1, set by `npm run test:e2e` and the
+    // daily/manual GitHub Actions workflow) opens the *repo root* as the
+    // workspace. That gives the test a working `:samples:cmp` module wired
+    // into the local plugin via `includeBuild("gradle-plugin")`, without
+    // duplicating fixture build files. The fast suite keeps its tiny
+    // pre-baked workspace.
+    const e2eMode = process.env.COMPOSE_PREVIEW_E2E === "1";
+    const workspacePath = e2eMode
+        ? path.resolve(extensionDevelopmentPath, "..")
+        : path.join(fixturesRoot, "workspace");
     const fakeGradleExtensionPath = path.join(
         fixturesRoot,
         "fake-vscode-gradle",
@@ -75,6 +84,7 @@ async function main(): Promise<void> {
         ],
         extensionTestsEnv: {
             COMPOSE_PREVIEW_TEST_MODE: "1",
+            ...(e2eMode ? { COMPOSE_PREVIEW_E2E: "1" } : {}),
         },
     });
     console.log(`[runTest] tests complete`);
