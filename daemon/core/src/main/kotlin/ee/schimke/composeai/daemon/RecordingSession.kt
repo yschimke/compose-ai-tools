@@ -160,6 +160,7 @@ val INTERACTIVE_INPUT_KIND_WIRE_NAMES: Set<String> = INTERACTIVE_INPUT_KIND_BY_W
 private val INTERACTIVE_INPUT_KIND_TO_WIRE_NAME: Map<InteractiveInputKind, String> =
   INTERACTIVE_INPUT_KIND_BY_WIRE_NAME.entries.associate { (wire, kind) -> kind to wire }
 
-/** Wire-name string for an [InteractiveInputKind] (the reverse of [toInteractiveInputKindOrNull]). */
-fun InteractiveInputKind.wireName(): String =
-  INTERACTIVE_INPUT_KIND_TO_WIRE_NAME.getValue(this)
+/**
+ * Wire-name string for an [InteractiveInputKind] (the reverse of [toInteractiveInputKindOrNull]).
+ */
+fun InteractiveInputKind.wireName(): String = INTERACTIVE_INPUT_KIND_TO_WIRE_NAME.getValue(this)

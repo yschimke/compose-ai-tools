@@ -50,8 +50,9 @@ interface InteractiveSession : AutoCloseable {
   fun dispatch(input: InteractiveInputParams)
 
   /**
-   * Accessibility-driven dispatch: resolve a node by its visible content description and invoke
-   * the named [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)
+   * Accessibility-driven dispatch: resolve a node by its visible content description and invoke the
+   * named
+   * [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)
    * action against it — same path a screen reader would walk. Used by `record_preview`'s
    * `a11y.action.*` script events.
    *
@@ -84,8 +85,8 @@ interface InteractiveSession : AutoCloseable {
    * event isn't one the host recognises (caller surfaces unsupported evidence with a specific
    * reason). Throws when the transition itself failed — same propagation shape as [dispatch].
    *
-   * Default returns `false` so hosts without an Android lifecycle owner cleanly surface
-   * "no lifecycle dispatch available" without blowing up the session.
+   * Default returns `false` so hosts without an Android lifecycle owner cleanly surface "no
+   * lifecycle dispatch available" without blowing up the session.
    *
    * @param lifecycleEvent transition name on the wire — `"pause"`, `"resume"`, `"stop"`. The
    *   implementation maps each to the matching `Lifecycle.State` and calls
@@ -97,17 +98,17 @@ interface InteractiveSession : AutoCloseable {
 
   /**
    * Force a fresh composition: tear down the current composition slot and rebuild from scratch
-   * against the same composable function. Used by `record_preview`'s `preview.reload` script
-   * event to verify a screen recovers cleanly from a recompose-from-zero (`remember`,
-   * `rememberSaveable`, and `LaunchedEffect`-keyed work all reset).
+   * against the same composable function. Used by `record_preview`'s `preview.reload` script event
+   * to verify a screen recovers cleanly from a recompose-from-zero (`remember`, `rememberSaveable`,
+   * and `LaunchedEffect`-keyed work all reset).
    *
-   * Returns `true` when the composition was rebuilt; `false` when the host doesn't support
-   * forced reloads (DesktopHost today). Throws when the rebuild itself failed.
+   * Returns `true` when the composition was rebuilt; `false` when the host doesn't support forced
+   * reloads (DesktopHost today). Throws when the rebuild itself failed.
    *
    * Note: this is a Compose-level reset, not an Android lifecycle round-trip. State preserved by
-   * `rememberSaveable` (bundle-backed) is also lost because the `key(...)` boundary that drives
-   * the rebuild invalidates the saveable-state call sites. For "state survives a config-change"
-   * audits use [dispatchLifecycle] (`pause` / `resume`) instead.
+   * `rememberSaveable` (bundle-backed) is also lost because the `key(...)` boundary that drives the
+   * rebuild invalidates the saveable-state call sites. For "state survives a config-change" audits
+   * use [dispatchLifecycle] (`pause` / `resume`) instead.
    */
   fun dispatchPreviewReload(): Boolean = false
 
@@ -123,10 +124,10 @@ interface InteractiveSession : AutoCloseable {
    * failed.
    *
    * Note: `remember` state is lost across the boundary (same as a real recreate);
-   * `rememberSaveable` survives via the snapshot/restore. Use [dispatchPreviewReload] when you
-   * want a true cold composition (both `remember` and `rememberSaveable` reset). Use
-   * [dispatchLifecycle] (`pause` / `resume`) when you want a real Android lifecycle round-trip
-   * with the activity intact.
+   * `rememberSaveable` survives via the snapshot/restore. Use [dispatchPreviewReload] when you want
+   * a true cold composition (both `remember` and `rememberSaveable` reset). Use [dispatchLifecycle]
+   * (`pause` / `resume`) when you want a real Android lifecycle round-trip with the activity
+   * intact.
    */
   fun dispatchStateRecreate(): Boolean = false
 
