@@ -252,6 +252,8 @@ fun main(args: Array<String>) {
     buildList {
         System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
         add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
+        System.err.println("compose-ai-tools daemon: DeviceBackgroundDataProductRegistry active")
+        add(DeviceBackgroundDataProductRegistry(previewIndex = previewIndex))
         System.err.println("compose-ai-tools daemon: RenderTraceDataProductRegistry active")
         add(RenderTraceDataProductRegistry())
         System.err.println("compose-ai-tools daemon: TestFailureDataProductRegistry active")
@@ -310,6 +312,7 @@ fun main(args: Array<String>) {
   val previewExtensions =
     buildList {
       add(RenderPreviewExtension.deviceClipDescriptor)
+      add(RenderPreviewExtension.deviceBackgroundDescriptor)
       add(RenderPreviewExtension.renderTraceDescriptor)
       if (composeTraceEnabled) {
         add(RenderPreviewExtension.composeTraceDescriptor)

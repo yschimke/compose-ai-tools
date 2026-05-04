@@ -14,6 +14,7 @@ object PreviewExtensionCommandCatalog {
   val extensions: List<PreviewExtensionDescriptor> =
     listOf(
       RenderPreviewExtension.deviceClipDescriptor,
+      RenderPreviewExtension.deviceBackgroundDescriptor,
       RenderPreviewExtension.renderTraceDescriptor,
       RenderPreviewExtension.composeTraceDescriptor,
       RenderPreviewExtension.overlayLegendDescriptor,

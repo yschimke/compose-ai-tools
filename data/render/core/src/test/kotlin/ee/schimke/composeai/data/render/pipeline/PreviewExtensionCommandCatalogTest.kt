@@ -18,4 +18,18 @@ class PreviewExtensionCommandCatalogTest {
     assertEquals(listOf("a11y/overlay"), command.productKinds)
     assertEquals(command, PreviewExtensionCommandCatalog.commandById("a11y-overlay.get"))
   }
+
+  @Test
+  fun deviceBackgroundCommandIsCataloged() {
+    val descriptor =
+      PreviewExtensionCommandCatalog.extensions.single { it.id == "render-device-background" }
+
+    val command = descriptor.cliCommands.single()
+    assertEquals("render-device-background.get", command.id)
+    assertEquals(listOf("render/deviceBackground"), command.productKinds)
+    assertEquals(
+      command,
+      PreviewExtensionCommandCatalog.commandById("render-device-background.get"),
+    )
+  }
 }

@@ -11,6 +11,7 @@ import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 object RenderPreviewExtension {
   const val ID: String = "render"
   const val KIND_DEVICE_CLIP: String = "render/deviceClip"
+  const val KIND_DEVICE_BACKGROUND: String = "render/deviceBackground"
   const val KIND_TRACE: String = "render/trace"
   const val KIND_COMPOSE_AI_TRACE: String = "render/composeAiTrace"
   const val KIND_TEST_FAILURE: String = "test/failure"
@@ -23,6 +24,16 @@ object RenderPreviewExtension {
       traits = setOf(PipelineStepTrait.FrameProcessor),
       requires = setOf(PipelineCapability.DeviceGeometry, PipelineCapability.ImageArtifact),
       provides = setOf(PipelineCapability.DeviceClip, PipelineCapability.ImageArtifact),
+    )
+
+  val deviceBackgroundProcessor: PreviewPipelineStep =
+    PreviewPipelineStep(
+      id = "render.deviceBackground",
+      displayName = "Device background",
+      productKinds = listOf(KIND_DEVICE_BACKGROUND),
+      traits = setOf(PipelineStepTrait.FrameProcessor),
+      requires = setOf(PipelineCapability.ImageArtifact),
+      provides = setOf(PipelineCapability.DeviceBackground, PipelineCapability.ImageArtifact),
     )
 
   val renderTraceProfiler: PreviewPipelineStep =
@@ -79,6 +90,33 @@ object RenderPreviewExtension {
           )
         ),
       steps = listOf(deviceClipProcessor),
+    )
+
+  val deviceBackgroundDescriptor: PreviewExtensionDescriptor =
+    PreviewExtensionDescriptor(
+      id = "render-device-background",
+      displayName = "Device background",
+      cliCommands =
+        listOf(
+          PreviewExtensionCliCommand(
+            id = "render-device-background.get",
+            displayName = "Fetch device background",
+            summary = "Reads the background color that should be applied behind one preview.",
+            command =
+              listOf(
+                "compose-preview",
+                "extensions",
+                "run",
+                "render-device-background.get",
+                "--id",
+                "<preview-id>",
+                "--json",
+              ),
+            requiresDaemon = true,
+            productKinds = listOf(KIND_DEVICE_BACKGROUND),
+          )
+        ),
+      steps = listOf(deviceBackgroundProcessor),
     )
 
   val renderTraceDescriptor: PreviewExtensionDescriptor =

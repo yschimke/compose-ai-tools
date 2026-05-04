@@ -1903,6 +1903,7 @@ class DaemonMcpServer(
     }
     return when (commandId) {
       "render-device-clip.get" -> data("render/deviceClip")
+      "render-device-background.get" -> data("render/deviceBackground")
       "render-trace.get" -> data("render/trace")
       "compose-trace.get" -> data("render/composeAiTrace")
       "a11y.hierarchy.get" -> data("a11y/hierarchy")
