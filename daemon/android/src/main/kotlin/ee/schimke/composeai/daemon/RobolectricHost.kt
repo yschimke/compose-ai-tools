@@ -192,15 +192,25 @@ open class RobolectricHost(
         }
 
   /**
-   * `recording.probe` is the only extension event [AndroidRecordingSession] dispatches today. The
-   * a11y action descriptors live in `:data-a11y-connector` and are concatenated into
-   * `dataExtensions` by `DaemonMain` only when the a11y preview extension is enabled, so this host
-   * method stays scoped to the renderer-agnostic probe extension. Empty when the host can't
-   * actually allocate a session ([supportsRecording] = false) so agents don't see supported = true
-   * on a daemon that would reject `recording/start` anyway.
+   * Recording-script extension descriptors this host's [AndroidRecordingSession]s actually
+   * dispatch:
+   *
+   * - `recording.probe` (renderer-agnostic) — the in-script timeline marker.
+   * - `lifecycle.event` (Android-only) — drives `ActivityScenario.moveToState(...)` against the
+   *   held rule's activity.
+   *
+   * The a11y action descriptors live in `:data-a11y-connector` and are concatenated into
+   * `dataExtensions` by `DaemonMain` only when the a11y preview extension is enabled, so they
+   * stay out of this host method. Empty when the host can't actually allocate a session
+   * ([supportsRecording] = false) so agents don't see supported = true on a daemon that would
+   * reject `recording/start` anyway.
    */
   override fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> =
-    if (supportsRecording) listOf(RecordingScriptDataExtensions.recordingDescriptor)
+    if (supportsRecording)
+      listOf(
+        RecordingScriptDataExtensions.recordingDescriptor,
+        LifecycleRecordingScriptEvents.descriptor,
+      )
     else emptyList()
 
   /**
@@ -1630,6 +1640,24 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.DispatchLifecycle -> {
+                  try {
+                    val applied = performLifecycleTransition(rule, cmd)
+                    cmd.replyApplied.set(applied)
+                    if (applied) {
+                      // Settle window — onPause / onResume / onStop run as part of the
+                      // moveToState call, but composition recompositions triggered by lifecycle
+                      // observers (e.g. `LocalLifecycleOwner` watchers) need a clock tick to
+                      // flush before subsequent inputs / renders observe the new state.
+                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      rule.waitForIdle()
+                    }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.Close -> {
                   cmd.replyLatch.countDown()
                   return
@@ -1825,6 +1853,42 @@ open class RobolectricHost(
       val accessibilityAction = target.config.getOrNull(key) ?: return false
       val lambda = accessibilityAction.action ?: return false
       rule.runOnUiThread { lambda.invoke() }
+      return true
+    }
+
+    /**
+     * Dispatch a `lifecycle.event` script event by mapping the wire-name string to a
+     * `Lifecycle.State` and calling `ActivityScenario.moveToState(...)` on the held rule's
+     * activity scenario. Returns `true` when the transition fired, `false` when [cmd.lifecycleEvent]
+     * isn't a recognised name (caller surfaces unsupported evidence with a specific reason).
+     *
+     * `"destroy"` is intentionally rejected — moving to `DESTROYED` mid-recording would tear
+     * down the scenario and break subsequent renders. Document as a follow-up if a use case for
+     * post-destroy recording surfaces.
+     */
+    private fun performLifecycleTransition(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.DispatchLifecycle,
+    ): Boolean {
+      val target =
+        when (cmd.lifecycleEvent) {
+          "pause" -> androidx.lifecycle.Lifecycle.State.STARTED
+          "resume" -> androidx.lifecycle.Lifecycle.State.RESUMED
+          "stop" -> androidx.lifecycle.Lifecycle.State.CREATED
+          else -> return false
+        }
+      // `createAndroidComposeRule<A>()` always produces a rule whose activityRule is an
+      // ActivityScenarioRule<A>; the Compose API just types it as `R : TestRule` to support a
+      // hypothetical custom scaffolder. The cast is safe under Robolectric's runtime.
+      @Suppress("UNCHECKED_CAST")
+      val activityRule =
+        rule.activityRule
+          as androidx.test.ext.junit.rules.ActivityScenarioRule<androidx.activity.ComponentActivity>
+      activityRule.scenario.moveToState(target)
       return true
     }
 

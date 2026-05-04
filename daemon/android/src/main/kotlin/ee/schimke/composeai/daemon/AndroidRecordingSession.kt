@@ -268,6 +268,10 @@ class AndroidRecordingSession(
         for (action in A11Y_SEMANTIC_ACTIONS) {
           put("a11y.action.$action", a11ySemanticsActionHandler(action))
         }
+        // Lifecycle dispatch — `lifecycle.event` reads `lifecycleEvent` payload and routes
+        // through `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`.
+        // See [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
+        put(LifecycleRecordingScriptEvents.LIFECYCLE_EVENT, lifecycleEventHandler())
       }
     )
 
@@ -327,6 +331,45 @@ class AndroidRecordingSession(
         unsupportedEvidence(
           event,
           "no node with contentDescription='$description' exposes the '$actionKind' semantic",
+        )
+      }
+    }
+
+  /**
+   * Handler for `lifecycle.event` — reads `event.lifecycleEvent` (the wire-name string) and
+   * forwards to `interactive.dispatchLifecycle(...)`. The Robolectric sandbox maps the string to
+   * a `Lifecycle.State` and calls `ActivityScenario.moveToState(...)`.
+   *
+   * Reports `unsupported` (with a specific reason) when the event payload omits the
+   * `lifecycleEvent` field, when the named transition isn't in the v1 supported set
+   * ([LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS]), or when the host can't
+   * dispatch lifecycle (interactive returned `false`).
+   */
+  private fun lifecycleEventHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val lifecycleEvent = event.lifecycleEvent
+      if (lifecycleEvent.isNullOrBlank()) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-blank 'lifecycleEvent' (one of " +
+            "${LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()})",
+        )
+      }
+      if (lifecycleEvent !in LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "lifecycleEvent '$lifecycleEvent' is not supported (one of " +
+            "${LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()})",
+        )
+      }
+      val applied = interactive.dispatchLifecycle(lifecycleEvent)
+      if (applied) {
+        appliedEvidence(event, "lifecycle transition '$lifecycleEvent' fired on the held activity")
+      } else {
+        unsupportedEvidence(
+          event,
+          "host did not apply lifecycle transition '$lifecycleEvent'; held composition may be " +
+            "missing an ActivityScenario",
         )
       }
     }

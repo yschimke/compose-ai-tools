@@ -516,14 +516,12 @@ payload evidence and the state/parameter path you found in code.
 
 ### State restoration and lifecycle audit
 
-> **Capability gap.** As of 0.9.x the only `dataExtensions[].recordingScriptEvents`
-> entry the daemon dispatches is `recording.probe`. `state.save`, `state.restore`,
-> `lifecycle.event`, and `preview.reload` are advertised as `supported = false` —
-> they appear in `list_data_products` so agents can see what's planned, but
-> `record_preview` rejects them up front (see compose-ai-tools#714). Until that
-> lands, the audit below uses only `recording.probe` to mark the verification
-> tick; do not synthesise lifecycle/state markers in the script — they will be
-> rejected before any recording is started.
+> **Capability split.** `recording.probe` and `lifecycle.event` (Android-only — drives
+> `ActivityScenario.moveToState(...)` against the held rule's activity) are wired and
+> `record_preview` accepts them. `state.save` / `state.restore` and `preview.reload` are still
+> advertised as `supported = false` roadmap and rejected up front. The lifecycle event accepts
+> `pause` / `resume` / `stop` in v1 — `destroy` is rejected because moving the scenario to
+> DESTROYED would break subsequent renders.
 
 First check the daemon's advertised extension events:
 
@@ -531,13 +529,13 @@ First check the daemon's advertised extension events:
 { "tool": "list_data_products", "arguments": { "workspaceId": "<workspace>" } }
 ```
 
-Inspect `dataExtensions[].recordingScriptEvents[]`: only entries with
-`supported: true` may appear in a `record_preview` script. If the audit needs an
-event that's still `supported: false`, name the gap in the review and stop —
-this is a tooling roadmap item, not a PR-level finding.
+Inspect `dataExtensions[].recordingScriptEvents[]`: only entries with `supported: true` may
+appear in a `record_preview` script. If the audit needs an event that's still
+`supported: false`, name the gap in the review and stop — this is a tooling roadmap item, not a
+PR-level finding.
 
-Then drive the click flow that should change state, with a probe tick to
-ground the verification:
+Then drive the click flow plus a pause-resume cycle to verify state survives an Android
+lifecycle round-trip:
 
 ```json
 {
@@ -545,29 +543,31 @@ ground the verification:
   "arguments": {
     "uri": "compose-preview://workspace/_app/com.example.StatefulPreview",
     "events": [
-      { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 40 },
-      { "tMs": 200, "kind": "recording.probe", "label": "after-click" }
+      { "tMs": 0,   "kind": "click", "pixelX": 120, "pixelY": 40 },
+      { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "pause" },
+      { "tMs": 200, "kind": "lifecycle.event", "lifecycleEvent": "resume" },
+      { "tMs": 200, "kind": "recording.probe", "label": "after-resume" }
     ]
   }
 }
 ```
 
-Events with the same `tMs` are one script step: any control markers at the
-probe's tick are applied before the frame for that tick is captured. Do not
-add fake delays around the probe; that would test timing luck instead of
-restored-state semantics.
+Events with the same `tMs` are one script step — the `pause` + `resume` + verification probe at
+`tMs: 200` happen before the frame for that tick is captured, so the rendered frame at 200ms
+already reflects the post-resume composition. Do not add fake delays around the lifecycle
+events; that tests timing luck instead of state-survival semantics.
 
 Check:
 
-- `list_data_products` advertises `recording.probe` with `supported: true` —
-  otherwise the daemon doesn't ship probe markers and this audit can't be run.
-- The recording metadata includes `scriptEvents` for the probe with
-  `status: "applied"`.
-- Input events that should change state produce changed frames
-  (`changedFromPrevious: true` on the post-click frame).
-- Once `state.save` / `state.restore` / `lifecycle.event` ship as
-  `supported: true`, extend this audit to assert `applied` status on the
-  matching markers in the same `tMs` group.
+- `list_data_products` advertises `recording.probe` and `lifecycle.event` with `supported: true`
+  on the daemon under test.
+- The recording metadata's `scriptEvents` for both lifecycle events report `status: "applied"`
+  (each handler emits a message naming the transition).
+- Input events that should change state produce changed frames before the lifecycle round-trip
+  AND survive the round-trip (`changedFromPrevious: false` on the post-resume frame would mean
+  the click state was lost across pause-resume).
+- Once `state.save` / `state.restore` ship as `supported: true`, extend this audit with named
+  checkpoint pairs for explicit save/restore verification.
 
 ### Accessibility-driven interaction audit
 

@@ -555,6 +555,179 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun lifecycleEventRoutesThroughDispatchLifecycle() {
+    // Happy path for the new `lifecycle.event` registry entry: the handler reads
+    // `event.lifecycleEvent`, calls `interactive.dispatchLifecycle(...)`, and reports `applied`
+    // evidence with a message naming the transition. Pin every supported transition in one go so
+    // adding a new entry to `LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS` without
+    // updating the handler short-circuit is caught here.
+    val framesDir = tempFolder.newFolder("lifecycle-frames")
+    val encodedDir = tempFolder.newFolder("lifecycle-encoded")
+    val sourcePng = File(tempFolder.newFolder("lifecycle-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { lifecycleResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-lifecycle",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted().map { transition ->
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT,
+            lifecycleEvent = transition,
+          )
+        }
+      )
+      val result = session.stop()
+
+      // Every transition in the supported set routed through dispatchLifecycle in order.
+      assertEquals(
+        LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted(),
+        interactive.lifecycleCalls,
+      )
+      // None went through pointer or semantics dispatch.
+      assertEquals(0, interactive.dispatchCount)
+      assertTrue(interactive.semanticsActionCalls.isEmpty())
+      // Every event reported applied with the transition named in the message.
+      val supported = LifecycleRecordingScriptEvents.SUPPORTED_LIFECYCLE_EVENTS.sorted()
+      supported.forEachIndexed { index, transition ->
+        val evidence = result.scriptEvents[index]
+        assertEquals(
+          "evidence for lifecycle.event '$transition' must be applied",
+          ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+          evidence.status,
+        )
+        val message = evidence.message ?: ""
+        assertTrue(
+          "evidence message must name the lifecycle transition '$transition'; got '$message'",
+          message.contains("'$transition'"),
+        )
+      }
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun lifecycleEventReportsUnsupportedForBlankPayload() {
+    // `kind = "lifecycle.event"` without a `lifecycleEvent` payload short-circuits BEFORE
+    // touching `interactive.dispatchLifecycle` — we know the agent has nothing meaningful for the
+    // host to do, so we surface a precise unsupported reason naming the supported set.
+    val framesDir = tempFolder.newFolder("lifecycle-blank-frames")
+    val encodedDir = tempFolder.newFolder("lifecycle-blank-encoded")
+    val sourcePng = File(tempFolder.newFolder("lifecycle-blank-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-lifecycle-blank",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(tMs = 0L, kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT)
+        )
+      )
+      val result = session.stop()
+
+      assertTrue(
+        "blank payload must short-circuit before dispatchLifecycle",
+        interactive.lifecycleCalls.isEmpty(),
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "diagnostic must list the supported transitions; got '$message'",
+        message.contains("pause") && message.contains("resume") && message.contains("stop"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun lifecycleEventReportsUnsupportedForUnknownTransition() {
+    // `lifecycleEvent: "destroy"` (and any other string outside the supported set) is rejected up
+    // front — destroy specifically is documented as v2 because it would tear down the scenario
+    // and break subsequent renders.
+    val framesDir = tempFolder.newFolder("lifecycle-destroy-frames")
+    val encodedDir = tempFolder.newFolder("lifecycle-destroy-encoded")
+    val sourcePng = File(tempFolder.newFolder("lifecycle-destroy-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-lifecycle-destroy",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = LifecycleRecordingScriptEvents.LIFECYCLE_EVENT,
+            lifecycleEvent = "destroy",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertTrue(
+        "unsupported transition must short-circuit before dispatchLifecycle",
+        interactive.lifecycleCalls.isEmpty(),
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "diagnostic must mention the rejected transition name; got '$message'",
+        message.contains("'destroy'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -800,6 +973,7 @@ class AndroidRecordingSessionTest {
     var dispatchCount = 0
     var closed = false
     val semanticsActionCalls = mutableListOf<Pair<String, String>>()
+    val lifecycleCalls = mutableListOf<String>()
 
     /**
      * When non-null, [dispatchSemanticsAction] returns this value verbatim and records the call
@@ -807,6 +981,13 @@ class AndroidRecordingSessionTest {
      * (`return false`) is used so existing tests don't have to opt in.
      */
     var semanticsActionResult: Boolean? = null
+
+    /**
+     * When non-null, [dispatchLifecycle] returns this value verbatim and records the call into
+     * [lifecycleCalls]. When null (the default), the inherited interface-level default (`return
+     * false`) is used so existing tests don't have to opt in.
+     */
+    var lifecycleResult: Boolean? = null
 
     override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {
       dispatchCount++
@@ -819,6 +1000,12 @@ class AndroidRecordingSessionTest {
       semanticsActionCalls += actionKind to nodeContentDescription
       val override = semanticsActionResult
       return override ?: super.dispatchSemanticsAction(actionKind, nodeContentDescription)
+    }
+
+    override fun dispatchLifecycle(lifecycleEvent: String): Boolean {
+      lifecycleCalls += lifecycleEvent
+      val override = lifecycleResult
+      return override ?: super.dispatchLifecycle(lifecycleEvent)
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

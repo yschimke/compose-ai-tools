@@ -74,6 +74,28 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchSemanticsAction(actionKind: String, nodeContentDescription: String): Boolean = false
 
   /**
+   * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
+   * state, exercising `onPause` / `onResume` / `onStop` etc. on the way. Used by `record_preview`'s
+   * `lifecycle.event` script events to verify that a preview survives a pause-resume cycle or a
+   * stop-restart.
+   *
+   * Returns `true` when the lifecycle transition fired; `false` when the host doesn't support
+   * lifecycle dispatch (e.g. desktop's `ImageComposeScene` has no Android lifecycle) or the named
+   * event isn't one the host recognises (caller surfaces unsupported evidence with a specific
+   * reason). Throws when the transition itself failed — same propagation shape as [dispatch].
+   *
+   * Default returns `false` so hosts without an Android lifecycle owner cleanly surface
+   * "no lifecycle dispatch available" without blowing up the session.
+   *
+   * @param lifecycleEvent transition name on the wire — `"pause"`, `"resume"`, `"stop"`. The
+   *   implementation maps each to the matching `Lifecycle.State` and calls
+   *   `ActivityScenario.moveToState(...)`. Unknown names yield `false`. `"destroy"` is
+   *   intentionally not part of v1 — moving to `DESTROYED` mid-recording would tear down the
+   *   scenario and break subsequent renders; document it as a follow-up if a use case lands.
+   */
+  fun dispatchLifecycle(lifecycleEvent: String): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via
