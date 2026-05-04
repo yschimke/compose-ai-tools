@@ -289,6 +289,15 @@ body {
     font-size: inherit;
 }
 
+/* `.icon-button` and the UA `[hidden]` rule both have specificity 0,1,0,
+   and the author rule wins by cascade order — so setting `.hidden = true`
+   alone leaves the button visible. Bump specificity here so the focus-mode
+   toolbar's gated buttons (diff HEAD/main, launch on device, a11y overlay,
+   recording, stop-interactive when no live target) actually hide. */
+.icon-button[hidden] {
+    display: none;
+}
+
 .icon-button:hover:not(:disabled) {
     background: var(--toolbar-hover);
 }
