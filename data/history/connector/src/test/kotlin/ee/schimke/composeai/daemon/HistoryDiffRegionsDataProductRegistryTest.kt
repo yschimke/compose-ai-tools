@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.history.HistoryDiffPayload
+import ee.schimke.composeai.data.history.HistoryDiffRegionsProduct
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -45,7 +47,7 @@ class HistoryDiffRegionsDataProductRegistryTest {
     val registry = HistoryDiffRegionsDataProductRegistry(historyManager)
     val cap = registry.capabilities.single()
 
-    assertEquals(HistoryDiffRegionsDataProductRegistry.KIND, cap.kind)
+    assertEquals(HistoryDiffRegionsProduct.KIND, cap.kind)
     assertEquals(1, cap.schemaVersion)
     assertEquals(DataProductTransport.INLINE, cap.transport)
     assertTrue(cap.attachable)
@@ -82,7 +84,7 @@ class HistoryDiffRegionsDataProductRegistryTest {
       HistoryDiffRegionsDataProductRegistry(historyManager)
         .fetch(
           previewId = "com.example.Preview",
-          kind = HistoryDiffRegionsDataProductRegistry.KIND,
+          kind = HistoryDiffRegionsProduct.KIND,
           params = params(baseline.id),
           inline = false,
         )
@@ -91,11 +93,7 @@ class HistoryDiffRegionsDataProductRegistryTest {
     val result = (outcome as DataProductRegistry.Outcome.Ok).result
     assertNotNull(result.payload)
     assertNull(result.path)
-    val payload =
-      Json.decodeFromJsonElement(
-        HistoryDiffRegionsDataProductRegistry.DiffPayload.serializer(),
-        result.payload!!,
-      )
+    val payload = Json.decodeFromJsonElement(HistoryDiffPayload.serializer(), result.payload!!)
 
     assertEquals(baseline.id, payload.baselineHistoryId)
     assertEquals(5, payload.totalPixelsChanged)
@@ -126,12 +124,11 @@ class HistoryDiffRegionsDataProductRegistryTest {
     )
     val registry = HistoryDiffRegionsDataProductRegistry(historyManager)
 
-    registry.onSubscribe("preview", HistoryDiffRegionsDataProductRegistry.KIND, params(baseline.id))
-    val attachments =
-      registry.attachmentsFor("preview", setOf(HistoryDiffRegionsDataProductRegistry.KIND))
+    registry.onSubscribe("preview", HistoryDiffRegionsProduct.KIND, params(baseline.id))
+    val attachments = registry.attachmentsFor("preview", setOf(HistoryDiffRegionsProduct.KIND))
 
     assertEquals(1, attachments.size)
-    assertEquals(HistoryDiffRegionsDataProductRegistry.KIND, attachments.single().kind)
+    assertEquals(HistoryDiffRegionsProduct.KIND, attachments.single().kind)
     assertNotNull(attachments.single().payload)
   }
 
@@ -148,7 +145,7 @@ class HistoryDiffRegionsDataProductRegistryTest {
     val outcome =
       registry.fetch(
         previewId = "preview",
-        kind = HistoryDiffRegionsDataProductRegistry.KIND,
+        kind = HistoryDiffRegionsProduct.KIND,
         params = params("missing"),
         inline = false,
       )

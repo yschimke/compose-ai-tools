@@ -94,6 +94,10 @@ include(":data-scroll-core")
 
 project(":data-scroll-core").projectDir = file("data/scroll/core")
 
+include(":data-history-core")
+
+project(":data-history-core").projectDir = file("data/history/core")
+
 include(":data-history-connector")
 
 project(":data-history-connector").projectDir = file("data/history/connector")
