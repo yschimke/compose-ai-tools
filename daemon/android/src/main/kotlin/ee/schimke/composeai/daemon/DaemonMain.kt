@@ -19,30 +19,27 @@ import java.nio.file.Path
 /**
  * Entry point for the preview daemon JVM — see docs/daemon/DESIGN.md § 4.
  *
- * The Gradle plugin's `composePreviewDaemonStart` task points its launch
- * descriptor at `ee.schimke.composeai.daemon.DaemonMain` (see
+ * The Gradle plugin's `composePreviewDaemonStart` task points its launch descriptor at
+ * `ee.schimke.composeai.daemon.DaemonMain` (see
  * [`AndroidPreviewSupport.kt:974`](../../../../../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt#L974)),
  * which the JVM resolves via the file-level [JvmName] annotation above.
  *
  * Lifecycle:
  *
  * 1. Print a hello banner to stderr (free-form log per PROTOCOL.md § 1).
- * 2. Build a [RobolectricHost] (B1.3 — holds the Robolectric sandbox open
- *    across renders). Implements the renderer-agnostic [RenderHost] from
- *    `:daemon:core`. **D-harness.v2:** when
- *    `composeai.harness.previewsManifest=<path>` is set, wrap with
- *    [PreviewManifestRouter] so the harness's `previewId=<id>` payload
- *    resolves to a parseable [RenderSpec]. Mirrors
- *    `:daemon:desktop`'s wireup. Production launches don't pass the
- *    sysprop, so production behaviour is unchanged.
- * 3. Build a [JsonRpcServer] (B1.5 — JSON-RPC 2.0 over stdio with LSP-style
- *    Content-Length framing). Lives in `:daemon:core`; binds to any
- *    [RenderHost] implementation.
- * 4. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit`
- *    or stdin closes; it calls `System.exit` itself.
+ * 2. Build a [RobolectricHost] (B1.3 — holds the Robolectric sandbox open across renders).
+ *    Implements the renderer-agnostic [RenderHost] from `:daemon:core`. **D-harness.v2:** when
+ *    `composeai.harness.previewsManifest=<path>` is set, wrap with [PreviewManifestRouter] so the
+ *    harness's `previewId=<id>` payload resolves to a parseable [RenderSpec]. Mirrors
+ *    `:daemon:desktop`'s wireup. Production launches don't pass the sysprop, so production
+ *    behaviour is unchanged.
+ * 3. Build a [JsonRpcServer] (B1.5 — JSON-RPC 2.0 over stdio with LSP-style Content-Length
+ *    framing). Lives in `:daemon:core`; binds to any [RenderHost] implementation.
+ * 4. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit` or stdin closes; it
+ *    calls `System.exit` itself.
  *
- * `args` is currently unused; future flags (e.g. `--detect-leaks=heavy`,
- * `--foreground`) will be parsed here.
+ * `args` is currently unused; future flags (e.g. `--detect-leaks=heavy`, `--foreground`) will be
+ * parsed here.
  */
 fun main(args: Array<String>) {
   // D-harness.v2 — capture the real stdout *before* swapping. Robolectric (and Roborazzi) write
@@ -80,7 +77,8 @@ fun main(args: Array<String>) {
   // descriptor was introduced, but the Android daemon previously ignored it and came up with a
   // single sandbox unless the experimental sandbox-count property was set manually. Held
   // interactive sessions need slot 1 pinned while slot 0 continues normal renders, so default the
-  // pool to two sandboxes when warmSpare is on. Explicit `composeai.daemon.sandboxCount` still wins.
+  // pool to two sandboxes when warmSpare is on. Explicit `composeai.daemon.sandboxCount` still
+  // wins.
   val warmSpareEnabled = System.getProperty(WARM_SPARE_PROP)?.toBooleanStrictOrNull() ?: true
   val defaultSandboxCount = if (warmSpareEnabled) 2 else 1
 
@@ -88,8 +86,7 @@ fun main(args: Array<String>) {
   // the warm-spare-derived default above so production Android daemons have the second sandbox
   // required for held interactive sessions.
   val sandboxCount =
-    (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: defaultSandboxCount)
-      .coerceAtLeast(1)
+    (System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() ?: defaultSandboxCount).coerceAtLeast(1)
 
   // Per-slot child loaders. The factory closes over the URL list and constructs one holder per
   // slot, parented to the slot's own sandbox classloader. The
@@ -139,19 +136,21 @@ fun main(args: Array<String>) {
       val productionManifestRoute = previewIndex.size > 0 || hasUserClasses
       val routerSandboxCount = if (productionManifestRoute) sandboxCount else 1
       val singletonHolder: UserClassLoaderHolder? =
-        if (routerSandboxCount == 1) userClassloaderHolderFactory?.let { factory ->
-          UserClassLoaderHolder(
-            urls = userClassUrls,
-            parentSupplier = {
-              DaemonHostBridge.currentSandboxClassLoader()
-                ?: error(
-                  "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run. " +
-                    "Did SandboxHoldingRunner.holdSandboxOpen execute setSandboxClassLoader before " +
-                    "the host called publishChildLoader?"
-                )
-            },
-          )
-        } else null
+        if (routerSandboxCount == 1)
+          userClassloaderHolderFactory?.let { factory ->
+            UserClassLoaderHolder(
+              urls = userClassUrls,
+              parentSupplier = {
+                DaemonHostBridge.currentSandboxClassLoader()
+                  ?: error(
+                    "DaemonHostBridge.sandboxClassLoaderRef is null — sandbox prologue didn't run. " +
+                      "Did SandboxHoldingRunner.holdSandboxOpen execute setSandboxClassLoader before " +
+                      "the host called publishChildLoader?"
+                  )
+              },
+            )
+          }
+        else null
       if (routerSandboxCount > 1) {
         System.err.println(
           "compose-ai-tools daemon: sandbox pool active (sandboxCount=$routerSandboxCount)"
@@ -182,18 +181,20 @@ fun main(args: Array<String>) {
   // construction shape — cheap-signal set from `composeai.daemon.cheapSignalFiles`, authoritative
   // hash from this JVM's `java.class.path`. Sysprop unset → null fingerprint → pre-B2.1 no-op.
   val classpathFingerprint: ClasspathFingerprint? =
-    ClasspathFingerprint.parseCheapSignalFilesSysprop().takeIf { it.isNotEmpty() }?.let { cheap ->
-      val classpath =
-        (System.getProperty("java.class.path") ?: "")
-          .split(File.pathSeparator)
-          .filter { it.isNotBlank() }
-          .map { File(it) }
-      System.err.println(
-        "compose-ai-tools daemon: ClasspathFingerprint active " +
-          "(cheap=${cheap.size}, classpath=${classpath.size})"
-      )
-      ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
-    }
+    ClasspathFingerprint.parseCheapSignalFilesSysprop()
+      .takeIf { it.isNotEmpty() }
+      ?.let { cheap ->
+        val classpath =
+          (System.getProperty("java.class.path") ?: "")
+            .split(File.pathSeparator)
+            .filter { it.isNotBlank() }
+            .map { File(it) }
+        System.err.println(
+          "compose-ai-tools daemon: ClasspathFingerprint active " +
+            "(cheap=${cheap.size}, classpath=${classpath.size})"
+        )
+        ClasspathFingerprint(cheapSignalFiles = cheap, classpathEntries = classpath)
+      }
 
   // B2.2 phase 2 — wire the incremental rescan path. Mirrors `:daemon:desktop`'s wireup; the
   // ClassGraph scan happens against this JVM's `java.class.path` and is scoped to the smallest
@@ -226,21 +227,20 @@ fun main(args: Array<String>) {
   val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
   // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
   val pruneConfig = HistoryPruneConfig.fromSysprops()
-  val historyManager: HistoryManager? =
-    historyDirProp?.let { dir ->
-      System.err.println(
-        "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
-          "pruneConfig=$pruneConfig)"
-      )
-      HistoryManager.forLocalFsAndGitRefs(
-        historyDir = Path.of(dir),
-        module = System.getProperty(MODULE_ID_PROP) ?: "",
-        gitProvenance = gitProvenance,
-        gitRefs = gitRefHistoryRefs,
-        repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-        pruneConfig = pruneConfig,
-      )
-    }
+  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
+    System.err.println(
+      "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
+        "pruneConfig=$pruneConfig)"
+    )
+    HistoryManager.forLocalFsAndGitRefs(
+      historyDir = Path.of(dir),
+      module = System.getProperty(MODULE_ID_PROP) ?: "",
+      gitProvenance = gitProvenance,
+      gitRefs = gitRefHistoryRefs,
+      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+      pruneConfig = pruneConfig,
+    )
+  }
 
   // D2 — wire data-product registries. `compose/semantics` is default-mode data emitted by the
   // Android render loop whenever a render output dir exists. A11y is selected through the generic
@@ -262,7 +262,9 @@ fun main(args: Array<String>) {
         System.err.println("compose-ai-tools daemon: ThemeDataProductRegistry active")
         add(ThemeDataProductRegistry())
         if (historyManager != null) {
-          System.err.println("compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active")
+          System.err.println(
+            "compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active"
+          )
           add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
         }
         if (renderOutputDir != null) {
@@ -303,35 +305,33 @@ fun main(args: Array<String>) {
             )
             add(AccessibilityDataProductRegistry(rootDir = dataRoot))
           } else {
-            System.err.println(
-              "compose-ai-tools daemon: a11y data product plugin disabled"
-            )
+            System.err.println("compose-ai-tools daemon: a11y data product plugin disabled")
           }
         }
       }
       .let(::CompositeDataProductRegistry)
-  val previewExtensions =
-    buildList {
-      add(RenderPreviewExtension.deviceClipDescriptor)
-      add(RenderPreviewExtension.deviceBackgroundDescriptor)
-      add(RenderPreviewExtension.renderTraceDescriptor)
-      if (composeTraceEnabled) {
-        add(RenderPreviewExtension.composeTraceDescriptor)
-      }
-      add(RenderPreviewExtension.overlayLegendDescriptor)
-      if (a11yPreviewExtensionEnabled) {
-        add(AccessibilitySemanticsPreviewExtension.descriptor)
-        add(AtfChecksPreviewExtension.descriptor)
-        add(AccessibilityOverlayPreviewExtension.descriptor)
-        add(AccessibilityAnnotatedPreviewExtension.descriptor)
-      }
+  val previewExtensions = buildList {
+    add(RenderPreviewExtension.deviceClipDescriptor)
+    add(RenderPreviewExtension.deviceBackgroundDescriptor)
+    add(RenderPreviewExtension.renderTraceDescriptor)
+    if (composeTraceEnabled) {
+      add(RenderPreviewExtension.composeTraceDescriptor)
     }
+    add(RenderPreviewExtension.overlayLegendDescriptor)
+    if (a11yPreviewExtensionEnabled) {
+      add(AccessibilitySemanticsPreviewExtension.descriptor)
+      add(AtfChecksPreviewExtension.descriptor)
+      add(AccessibilityOverlayPreviewExtension.descriptor)
+      add(AccessibilityAnnotatedPreviewExtension.descriptor)
+    }
+  }
 
   val server =
     JsonRpcServer(
       input = System.`in`,
       output = realOut,
       host = host,
+      daemonVersion = DaemonVersion.value,
       classpathFingerprint = classpathFingerprint,
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
@@ -408,9 +408,9 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
 }
 
 /**
- * SANDBOX-POOL.md (Layer 3) — sandbox-pool size knob. Set by [DaemonSupervisor] from
- * `1 + replicasPerDaemon`. Default 1 preserves the pre-pool single-sandbox behaviour. Values < 1
- * are coerced to 1.
+ * SANDBOX-POOL.md (Layer 3) — sandbox-pool size knob. Set by [DaemonSupervisor] from `1 +
+ * replicasPerDaemon`. Default 1 preserves the pre-pool single-sandbox behaviour. Values < 1 are
+ * coerced to 1.
  */
 private const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"
 

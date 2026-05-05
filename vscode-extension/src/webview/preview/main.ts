@@ -11,6 +11,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { setupPreviewBehavior } from "./behavior";
+import { getVsCodeApi } from "../shared/vscode";
 import "./components/CompileErrorsBanner";
 import "./components/FilterToolbar";
 import "./components/MessageBanner";
@@ -173,5 +174,12 @@ export class PreviewApp extends LitElement {
     protected firstUpdated(): void {
         const initialEarlyFeatures = this.dataset.earlyFeatures === "true";
         setupPreviewBehavior(initialEarlyFeatures);
+        // Tell the extension we exist. The host posts `setPreviews` /
+        // `setModules` / etc. as soon as it has data — but `postMessage`
+        // silently drops messages while the webview view is unresolved
+        // (panel hidden when the extension activated on `onLanguage:kotlin`).
+        // Replying to this signal is the host's cue to republish the latest
+        // stateful messages so the grid isn't permanently empty.
+        getVsCodeApi().postMessage({ command: "webviewReady" });
     }
 }
