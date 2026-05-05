@@ -651,3 +651,82 @@ export type WebviewToExtension =
      * both sides.
      */
     | { command: "setA11yOverlay"; previewId: string; enabled: boolean };
+
+/**
+ * Narrow shape the History panel reads off each sidecar JSON entry. The
+ * underlying file format is open-ended (see HISTORY.md § "Sidecar metadata
+ * schema") and the daemon returns `unknown[]`; this is the slice the webview
+ * actually uses. Optional throughout because older sidecars may pre-date a
+ * given field, and synthetic `currentRenders` entries are sparse.
+ */
+export interface HistoryEntry {
+    id?: string;
+    previewId?: string;
+    timestamp?: string;
+    pngHash?: string;
+    pngPath?: string;
+    trigger?: string;
+    source?: { kind?: string; id?: string };
+    git?: { branch?: string | null; commit?: string };
+    deltaFromPrevious?: { pngHashChanged?: boolean };
+    previewMetadata?: { sourceFile?: string; [k: string]: unknown };
+    [k: string]: unknown;
+}
+
+/** Metadata + diff stats the History panel renders for a Side / Overlay /
+ *  Onion comparison between two entries. Mirrors the daemon's
+ *  `HistoryDiffResult` shape; null is sent on failure. */
+export interface HistoryDiffSummary {
+    pngHashChanged: boolean;
+    fromMetadata?: unknown;
+    toMetadata?: unknown;
+    diffPx?: number;
+    ssim?: number;
+    diffPngPath?: string;
+}
+
+/** Messages from extension to the History webview panel. */
+export type HistoryToWebview =
+    | {
+          command: "setEntries";
+          result: { entries: HistoryEntry[]; totalCount?: number };
+      }
+    | { command: "entryAdded"; entry: HistoryEntry }
+    | { command: "setScopeLabel"; label: string }
+    | { command: "showMessage"; text: string }
+    | {
+          command: "imageReady";
+          id: string;
+          imageData: string;
+          entry?: HistoryEntry;
+      }
+    | { command: "imageError"; id: string; message: string }
+    | {
+          command: "thumbReady";
+          id: string;
+          imageData: string;
+          entry?: HistoryEntry;
+      }
+    | { command: "thumbError"; id: string; message: string }
+    | {
+          command: "diffReady";
+          id: string;
+          against: "previous" | "current";
+          leftLabel: string;
+          leftImage: string;
+          rightLabel: string;
+          rightImage: string;
+      }
+    | {
+          command: "diffPairError";
+          id: string;
+          against: "previous" | "current";
+          message: string;
+      }
+    | {
+          command: "diffResult";
+          fromId: string;
+          toId: string;
+          result: HistoryDiffSummary | null;
+      }
+    | { command: "diffError"; fromId: string; toId: string; message: string };
