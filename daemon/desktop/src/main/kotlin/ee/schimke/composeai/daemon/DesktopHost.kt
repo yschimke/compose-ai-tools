@@ -456,8 +456,8 @@ open class DesktopHost(
                 null -> null
               },
             inspectionMode = base.inspectionMode,
-            material3Theme = base.material3Theme,
-            wallpaper = base.wallpaper,
+            material3Theme = base.overrides?.material3Theme,
+            wallpaper = base.overrides?.wallpaper,
           ),
         overrides = overrides,
       )
@@ -485,8 +485,7 @@ open class DesktopHost(
       uiMode = uiMode,
       orientation = orientation,
       inspectionMode = merged.inspectionMode,
-      material3Theme = merged.material3Theme,
-      wallpaper = merged.wallpaper,
+      overrides = merged.toExtensionOverrides(),
       outputBaseName = "recording-$recordingId",
     )
   }

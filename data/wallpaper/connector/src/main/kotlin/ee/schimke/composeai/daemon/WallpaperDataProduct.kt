@@ -7,12 +7,15 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
+import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
 import java.util.concurrent.ConcurrentHashMap
@@ -32,7 +35,7 @@ const val WALLPAPER_PAYLOAD_CONTEXT_KEY: String = "compose.wallpaper.payload"
  */
 class WallpaperOverrideExtension(private val override: WallpaperOverride?) :
   AroundComposableExtension(
-    id = DataExtensionId(WallpaperDataProductRegistry.KIND),
+    id = ID,
     constraints =
       DataExtensionConstraints(
         phase = DataExtensionPhase.UserEnvironment,
@@ -67,6 +70,24 @@ class WallpaperOverrideExtension(private val override: WallpaperOverride?) :
     val luminance = (surface.red + surface.green + surface.blue) / 3f
     return luminance < 0.5f
   }
+
+  companion object {
+    val ID: DataExtensionId = DataExtensionId(WallpaperDataProductRegistry.KIND)
+  }
+}
+
+/**
+ * Planner that maps `renderNow.overrides.wallpaper` to a [WallpaperOverrideExtension].
+ *
+ * Registered in [PreviewOverrideExtensions]; the renderer doesn't need to know about the
+ * `wallpaper` override field directly — it hands every merged [PreviewOverrides] to every planner
+ * and threads the resulting list through the Compose data-extension pipeline.
+ */
+class WallpaperPreviewOverrideExtension : DataExtension<PreviewOverrides> {
+  override val id: DataExtensionId = WallpaperOverrideExtension.ID
+
+  override fun plan(request: PreviewOverrides): PlannedDataExtension? =
+    request.wallpaper?.let(::WallpaperOverrideExtension)
 }
 
 /**

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -123,20 +124,28 @@ class OverrideIntegrationTest {
             )
           )
       )
-    val host = PreviewManifestRouter(manifest = manifest)
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(WallpaperPreviewOverrideExtension()))
+          ),
+      )
     host.start()
     try {
       val baseline = renderAndDecode(host, "previewId=wallpaper-aware", "wallpaper-baseline")
       val red =
         renderAndDecode(
           host,
-          "previewId=wallpaper-aware;wallpaper=${encodeWallpaper("#FFFF0000")}",
+          "previewId=wallpaper-aware;overrides=${encodeWallpaperBag("#FFFF0000")}",
           "wallpaper-red",
         )
       val blue =
         renderAndDecode(
           host,
-          "previewId=wallpaper-aware;wallpaper=${encodeWallpaper("#FF0000FF")}",
+          "previewId=wallpaper-aware;overrides=${encodeWallpaperBag("#FF0000FF")}",
           "wallpaper-blue",
         )
 
@@ -225,14 +234,13 @@ class OverrideIntegrationTest {
    * the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
    * `PixelDiff` to avoid the same circular dep that [RenderEngineTest]'s helper sidesteps.
    */
-  private fun encodeWallpaper(seedColor: String): String {
+  private fun encodeWallpaperBag(seedColor: String): String {
     val json = Json { encodeDefaults = false }
+    val bag = PreviewOverrides(wallpaper = WallpaperOverride(seedColor = seedColor))
     return Base64.getUrlEncoder()
       .withoutPadding()
       .encodeToString(
-        json
-          .encodeToString(WallpaperOverride.serializer(), WallpaperOverride(seedColor = seedColor))
-          .toByteArray(Charsets.UTF_8)
+        json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
       )
   }
 

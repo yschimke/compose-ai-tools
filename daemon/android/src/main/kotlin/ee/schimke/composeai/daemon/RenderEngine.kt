@@ -34,8 +34,7 @@ import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
-import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
-import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
@@ -120,6 +119,14 @@ class RenderEngine(
    * `AccessibilityImageProcessor`.
    */
   private val imageProcessors: List<ImageProcessor> = emptyList(),
+  /**
+   * Registered [PreviewOverrideExtension]s the renderer queries on every render. The renderer
+   * doesn't read individual override fields like `wallpaper` or `material3Theme` directly — each
+   * registered planner inspects the merged [PreviewOverrides] and contributes its own
+   * `AroundComposable` (or other) hook when its override applies.
+   */
+  private val previewOverrideExtensions: PreviewOverrideExtensions =
+    PreviewOverrideExtensions.Empty,
 ) {
 
   /**
@@ -268,11 +275,7 @@ class RenderEngine(
                   }
                   val content: @Composable () -> Unit = {
                     ComposeDataExtensionPipeline.Apply(
-                      extensions =
-                        listOfNotNull(
-                          spec.wallpaper?.let(::WallpaperOverrideExtension),
-                          spec.material3Theme?.let(::Material3ThemeOverrideExtension),
-                        ),
+                      extensions = previewOverrideExtensions.plan(spec.overrides),
                       previewId = spec.previewId,
                       renderMode = spec.renderMode,
                       sink = RecordingExtensionCompositionSink(),
@@ -777,14 +780,14 @@ data class RenderSpec(
    * semantics (`true`); a11y mode still forces `false` so accessibility semantics are populated.
    */
   val inspectionMode: Boolean? = null,
-  /** Optional Material 3 token overrides applied as a `MaterialTheme` composable wrapper. */
-  val material3Theme: Material3ThemeOverrides? = null,
   /**
-   * Optional wallpaper seed-color override; the renderer derives a Material 3 color scheme from
-   * the seed and wraps the preview in a `MaterialTheme(colorScheme = …)`. Applied before
-   * [material3Theme] so any role the caller pinned through `material3Theme` still wins.
+   * Per-call overrides bag, threaded through every registered [PreviewOverrideExtension]. The
+   * renderer doesn't read individual fields directly — registered planners decide what to apply.
+   * Direct-applied overrides like size, density, and locale stay on this spec's typed fields above
+   * because the renderer applies them itself; theme/wallpaper-style overrides ride along here so
+   * adding a new override-driven feature is purely a connector concern.
    */
-  val wallpaper: WallpaperOverride? = null,
+  val overrides: PreviewOverrides? = null,
 ) {
 
   enum class SpecUiMode {
@@ -850,8 +853,7 @@ data class RenderSpec(
           },
         captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
-        material3Theme = map["material3Theme"]?.decodeMaterial3ThemeOverrides(),
-        wallpaper = map["wallpaper"]?.decodeWallpaperOverride(),
+        overrides = map["overrides"]?.decodePreviewOverrides(),
       )
     }
 
@@ -860,17 +862,10 @@ data class RenderSpec(
       encodeDefaults = false
     }
 
-    private fun String.decodeMaterial3ThemeOverrides(): Material3ThemeOverrides? =
+    private fun String.decodePreviewOverrides(): PreviewOverrides? =
       runCatching {
           val bytes = Base64.getUrlDecoder().decode(this)
-          json.decodeFromString(Material3ThemeOverrides.serializer(), bytes.toString(Charsets.UTF_8))
-        }
-        .getOrNull()
-
-    private fun String.decodeWallpaperOverride(): WallpaperOverride? =
-      runCatching {
-          val bytes = Base64.getUrlDecoder().decode(this)
-          json.decodeFromString(WallpaperOverride.serializer(), bytes.toString(Charsets.UTF_8))
+          json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
         }
         .getOrNull()
   }

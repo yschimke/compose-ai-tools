@@ -953,8 +953,8 @@ open class RobolectricHost(
                 null -> null
               },
             inspectionMode = base.inspectionMode,
-            material3Theme = base.material3Theme,
-            wallpaper = base.wallpaper,
+            material3Theme = base.overrides?.material3Theme,
+            wallpaper = base.overrides?.wallpaper,
           ),
         overrides = overrides,
       )
@@ -980,8 +980,7 @@ open class RobolectricHost(
           null -> null
         },
       inspectionMode = merged.inspectionMode,
-      material3Theme = merged.material3Theme,
-      wallpaper = merged.wallpaper,
+      overrides = merged.toExtensionOverrides(),
       outputBaseName = "recording-$recordingId",
     )
   }
@@ -1140,8 +1139,19 @@ open class RobolectricHost(
      * default `outputDir` (which reads `composeai.render.outputDir`) resolves against the
      * sandbox JVM, not the test thread's. One engine per sandbox per host lifetime; no
      * per-render reconstruction.
+     *
+     * The `PreviewOverrideExtensions` registry is built inside the sandbox too — the connector
+     * classes load via the sandbox classloader so referencing them here keeps the
+     * cross-classloader contract clean.
      */
-    private val engine: RenderEngine by lazy { RenderEngine() }
+    private val engine: RenderEngine by lazy {
+      RenderEngine(
+        previewOverrideExtensions =
+          PreviewOverrideExtensions(
+            listOf(WallpaperPreviewOverrideExtension(), Material3ThemePreviewOverrideExtension())
+          )
+      )
+    }
 
     /**
      * B2.3 — per-sandbox lifecycle counters, instantiated inside the sandbox so `sandboxAgeMs`

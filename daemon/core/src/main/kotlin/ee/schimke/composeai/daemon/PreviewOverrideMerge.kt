@@ -40,7 +40,18 @@ data class MergedPreviewOverrides(
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides?,
   val wallpaper: WallpaperOverride?,
-)
+) {
+  /**
+   * Project the merged overrides down to a [PreviewOverrides] bag that only carries
+   * extension-driven fields (no size / density / locale, since those are applied directly by the
+   * renderer). Returns `null` when no extension-driven override is set so the renderer can skip the
+   * data-extension pipeline entirely.
+   */
+  fun toExtensionOverrides(): PreviewOverrides? {
+    if (material3Theme == null && wallpaper == null) return null
+    return PreviewOverrides(material3Theme = material3Theme, wallpaper = wallpaper)
+  }
+}
 
 /**
  * Merge per-call [PreviewOverrides] over a discovery-time spec.

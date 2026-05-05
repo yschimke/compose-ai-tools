@@ -37,7 +37,6 @@ import ee.schimke.composeai.daemon.protocol.JsonRpcResponse
 import ee.schimke.composeai.daemon.protocol.KnownDevice
 import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
-import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.PruneReasonWire
@@ -51,7 +50,6 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import ee.schimke.composeai.daemon.protocol.UiMode
-import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.io.ByteArrayOutputStream
@@ -913,27 +911,21 @@ class JsonRpcServer(
         if (isNotEmpty()) append(';')
         append("inspectionMode=").append(it)
       }
-      overrides.material3Theme?.let {
+      // Extension-driven overrides ride along as a single base64-encoded `PreviewOverrides`
+      // bag — the renderer's [PreviewOverrideExtensions] hands the bag to every registered
+      // planner. New override-driven fields don't need a new wire token; they ride this bag.
+      val extensionBag =
+        PreviewOverrides(material3Theme = overrides.material3Theme, wallpaper = overrides.wallpaper)
+      if (extensionBag.material3Theme != null || extensionBag.wallpaper != null) {
         if (isNotEmpty()) append(';')
-        append("material3Theme=")
+        append("overrides=")
         append(
           Base64.getUrlEncoder()
             .withoutPadding()
             .encodeToString(
               json
-                .encodeToString(Material3ThemeOverrides.serializer(), it)
+                .encodeToString(PreviewOverrides.serializer(), extensionBag)
                 .toByteArray(Charsets.UTF_8)
-            )
-        )
-      }
-      overrides.wallpaper?.let {
-        if (isNotEmpty()) append(';')
-        append("wallpaper=")
-        append(
-          Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(
-              json.encodeToString(WallpaperOverride.serializer(), it).toByteArray(Charsets.UTF_8)
             )
         )
       }

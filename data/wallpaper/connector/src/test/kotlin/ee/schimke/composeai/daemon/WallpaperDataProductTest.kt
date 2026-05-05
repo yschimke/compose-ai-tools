@@ -32,6 +32,22 @@ class WallpaperDataProductTest {
   }
 
   @Test
+  fun wallpaper_planner_returns_around_composable_when_seed_present() {
+    val planner = WallpaperPreviewOverrideExtension()
+    val planned =
+      planner.plan(PreviewOverrides(wallpaper = WallpaperOverride(seedColor = "#FF3366")))
+    assertTrue("expected planner to produce a hook", planned is AroundComposableHook)
+    assertEquals(DataExtensionId("compose/wallpaper"), planned!!.id)
+  }
+
+  @Test
+  fun wallpaper_planner_abstains_when_seed_absent() {
+    val planner = WallpaperPreviewOverrideExtension()
+    assertEquals(null, planner.plan(PreviewOverrides()))
+    assertEquals(null, planner.plan(PreviewOverrides(widthPx = 64)))
+  }
+
+  @Test
   fun capabilities_advertise_compose_wallpaper_as_inline_no_rerender_product() {
     val registry = WallpaperDataProductRegistry()
     val cap = registry.capabilities.single()
