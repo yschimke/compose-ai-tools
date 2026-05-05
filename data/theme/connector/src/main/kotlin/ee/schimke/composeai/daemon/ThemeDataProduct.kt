@@ -64,7 +64,7 @@ fun Material3ThemeOverride(overrides: Material3ThemeOverrides?, content: @Compos
  */
 class Material3ThemeOverrideExtension(private val overrides: Material3ThemeOverrides?) :
   AroundComposableExtension(
-    id = DataExtensionId("compose/material3ThemeOverride"),
+    id = Material3ThemeOverrideExtension.ID,
     constraints =
       DataExtensionConstraints(
         phase = DataExtensionPhase.UserEnvironment,
@@ -75,6 +75,29 @@ class Material3ThemeOverrideExtension(private val overrides: Material3ThemeOverr
   override fun AroundComposable(content: @Composable () -> Unit) {
     Material3ThemeOverride(overrides, content)
   }
+
+  companion object {
+    val ID: DataExtensionId = DataExtensionId("compose/material3ThemeOverride")
+  }
+}
+
+/**
+ * Planner that maps `renderNow.overrides.material3Theme` to a [Material3ThemeOverrideExtension].
+ *
+ * Registered in [PreviewOverrideExtensions]; the renderer does not need to know about the
+ * `material3Theme` override field directly — it hands every merged [PreviewOverrides] to every
+ * planner and threads the resulting list through the Compose data-extension pipeline.
+ */
+class Material3ThemePreviewOverrideExtension :
+  ee.schimke.composeai.data.render.extensions.DataExtension<
+    ee.schimke.composeai.daemon.protocol.PreviewOverrides
+  > {
+  override val id: DataExtensionId = Material3ThemeOverrideExtension.ID
+
+  override fun plan(
+    request: ee.schimke.composeai.daemon.protocol.PreviewOverrides
+  ): ee.schimke.composeai.data.render.extensions.PlannedDataExtension? =
+    request.material3Theme?.let(::Material3ThemeOverrideExtension)
 }
 
 /**

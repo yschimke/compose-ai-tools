@@ -1,10 +1,15 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.Base64
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -101,6 +106,73 @@ class OverrideIntegrationTest {
   }
 
   @Test
+  fun wallpaperOverrideDrivesAmbientPrimaryColor() {
+    val outputDir = tempFolder.newFolder("renders-wallpaper")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wallpaper-aware",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "WallpaperAwareSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "wallpaper-aware",
+            )
+          )
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(WallpaperPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      val baseline = renderAndDecode(host, "previewId=wallpaper-aware", "wallpaper-baseline")
+      val red =
+        renderAndDecode(
+          host,
+          "previewId=wallpaper-aware;overrides=${encodeWallpaperBag("#FFFF0000")}",
+          "wallpaper-red",
+        )
+      val blue =
+        renderAndDecode(
+          host,
+          "previewId=wallpaper-aware;overrides=${encodeWallpaperBag("#FF0000FF")}",
+          "wallpaper-blue",
+        )
+
+      // The ambient primary should differ from the seedless baseline AND between two distinct
+      // seeds. The exact derived primary depends on `WallpaperColorScheme`; sampling a single
+      // pixel is enough — the fixture paints a solid fill.
+      val basePrimary = baseline.getRGB(baseline.width / 2, baseline.height / 2) and 0xFFFFFF
+      val redPrimary = red.getRGB(red.width / 2, red.height / 2) and 0xFFFFFF
+      val bluePrimary = blue.getRGB(blue.width / 2, blue.height / 2) and 0xFFFFFF
+      assertNotEquals(
+        "wallpaper override should change primary vs the seedless baseline",
+        basePrimary,
+        redPrimary,
+      )
+      assertNotEquals("different seeds should yield different primaries", redPrimary, bluePrimary)
+      // The derived primary for a pure-red seed should still be predominantly red.
+      assertTrue(
+        "red-seed primary expected red-dominant, got 0x%06X".format(redPrimary),
+        ((redPrimary shr 16) and 0xFF) > ((redPrimary shr 8) and 0xFF) &&
+          ((redPrimary shr 16) and 0xFF) > (redPrimary and 0xFF),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun fontScaleOverrideReachesLocalDensity() {
     val outputDir = tempFolder.newFolder("renders-fontscale")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
@@ -162,6 +234,16 @@ class OverrideIntegrationTest {
    * the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
    * `PixelDiff` to avoid the same circular dep that [RenderEngineTest]'s helper sidesteps.
    */
+  private fun encodeWallpaperBag(seedColor: String): String {
+    val json = Json { encodeDefaults = false }
+    val bag = PreviewOverrides(wallpaper = WallpaperOverride(seedColor = seedColor))
+    return Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+      )
+  }
+
   private fun pixelMatchPct(
     img: java.awt.image.BufferedImage,
     expectedRgb: Int,

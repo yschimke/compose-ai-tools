@@ -100,13 +100,25 @@ fun main(args: Array<String>) {
   // panel that doesn't subscribe pays nothing.
   val recompositionRegistry = RecompositionDataProductRegistry()
   val themeRegistry = ThemeDataProductRegistry()
+  val wallpaperRegistry = WallpaperDataProductRegistry()
   val renderEngine =
     RenderEngine(
       previewContextCapture =
         object : RenderEngine.PreviewContextCapture {
           override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
             themeRegistry.shouldCapture(previewId, renderMode)
-        }
+        },
+      previewOverrideExtensions =
+        PreviewOverrideExtensions(
+          listOf(
+            // Both planners run for every render — each abstains (returns null) when its own
+            // override field on PreviewOverrides is not set. Order in the list controls
+            // around-composable wrapping order: wallpaper applies first so an explicit
+            // material3Theme override still wins for any role the caller pinned.
+            WallpaperPreviewOverrideExtension(),
+            Material3ThemePreviewOverrideExtension(),
+          )
+        ),
     )
 
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
@@ -227,6 +239,7 @@ fun main(args: Array<String>) {
         add(RenderTraceDataProductRegistry())
         add(TestFailureDataProductRegistry())
         add(themeRegistry)
+        add(wallpaperRegistry)
         add(recompositionRegistry)
         if (composeTraceEnabled) {
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->

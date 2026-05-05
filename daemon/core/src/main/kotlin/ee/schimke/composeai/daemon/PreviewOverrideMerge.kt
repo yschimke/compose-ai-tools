@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 
 /**
  * Backend-neutral subset of a render spec that [PreviewOverrides] can mutate.
@@ -24,6 +25,7 @@ data class PreviewOverrideBaseSpec(
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides? = null,
+  val wallpaper: WallpaperOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -37,7 +39,19 @@ data class MergedPreviewOverrides(
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides?,
-)
+  val wallpaper: WallpaperOverride?,
+) {
+  /**
+   * Project the merged overrides down to a [PreviewOverrides] bag that only carries
+   * extension-driven fields (no size / density / locale, since those are applied directly by the
+   * renderer). Returns `null` when no extension-driven override is set so the renderer can skip the
+   * data-extension pipeline entirely.
+   */
+  fun toExtensionOverrides(): PreviewOverrides? {
+    if (material3Theme == null && wallpaper == null) return null
+    return PreviewOverrides(material3Theme = material3Theme, wallpaper = wallpaper)
+  }
+}
 
 /**
  * Merge per-call [PreviewOverrides] over a discovery-time spec.
@@ -63,6 +77,7 @@ fun mergePreviewOverrides(
       orientation = base.orientation,
       inspectionMode = base.inspectionMode,
       material3Theme = base.material3Theme,
+      wallpaper = base.wallpaper,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -85,5 +100,6 @@ fun mergePreviewOverrides(
     orientation = overrides.orientation ?: base.orientation,
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
     material3Theme = overrides.material3Theme ?: base.material3Theme,
+    wallpaper = overrides.wallpaper ?: base.wallpaper,
   )
 }

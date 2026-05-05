@@ -261,6 +261,8 @@ fun main(args: Array<String>) {
         add(TestFailureDataProductRegistry())
         System.err.println("compose-ai-tools daemon: ThemeDataProductRegistry active")
         add(ThemeDataProductRegistry())
+        System.err.println("compose-ai-tools daemon: WallpaperDataProductRegistry active")
+        add(WallpaperDataProductRegistry())
         if (historyManager != null) {
           System.err.println(
             "compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active"

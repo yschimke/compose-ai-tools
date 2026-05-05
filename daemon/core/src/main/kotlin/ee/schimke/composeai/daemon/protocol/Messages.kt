@@ -381,6 +381,30 @@ data class PreviewOverrides(
    * components under alternate color, shape, or typography tokens without editing source previews.
    */
   val material3Theme: Material3ThemeOverrides? = null,
+  /**
+   * Optional wallpaper seed-color override. The renderer derives a Material 3 color scheme from the
+   * seed and wraps the preview in a `MaterialTheme(colorScheme = …)`; an explicit `material3Theme`
+   * override on the same call still wins for any role the caller pinned. Sending a fresh
+   * `wallpaper` on a subsequent `renderNow` re-renders the held preview with the new scheme — the
+   * "live update" path the wallpaper data product covers.
+   */
+  val wallpaper: WallpaperOverride? = null,
+)
+
+/**
+ * Single-color seed for the wallpaper data extension.
+ *
+ * The renderer treats this like a tiny dynamic-color scheme: derive primary/secondary/tertiary
+ * tonal palettes from [seedColor], pick the brightness from [isDark] (when null, inherits the host
+ * theme's surface luminance), and apply the resulting [androidx.compose.material3.ColorScheme] as a
+ * `MaterialTheme` wrapper around the preview.
+ */
+@Serializable
+data class WallpaperOverride(
+  /** Seed color as `#RRGGBB` or `#AARRGGBB`. */
+  val seedColor: String,
+  /** When non-null, forces the dark variant of the derived scheme. */
+  val isDark: Boolean? = null,
 )
 
 @Serializable

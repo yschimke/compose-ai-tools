@@ -59,6 +59,7 @@ dependencies {
   implementation(project(":data-resources-connector"))
   implementation(project(":data-strings-connector"))
   implementation(project(":data-theme-connector"))
+  implementation(project(":data-wallpaper-connector"))
 
   // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,
