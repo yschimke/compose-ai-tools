@@ -19,8 +19,9 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
+import ee.schimke.composeai.data.wallpaper.Material3WallpaperProduct
+import ee.schimke.composeai.data.wallpaper.WallpaperPayload
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
@@ -253,8 +254,8 @@ class WallpaperDataProductRegistry : DataProductRegistry {
     else parsed.toHexArgb()
 
   companion object {
-    const val KIND: String = "compose/wallpaper"
-    const val SCHEMA_VERSION: Int = 1
+    const val KIND: String = Material3WallpaperProduct.KIND
+    const val SCHEMA_VERSION: Int = Material3WallpaperProduct.SCHEMA_VERSION
 
     /**
      * Inspection-context key the theme connector publishes its payload under. Hard-coded here to
@@ -272,18 +273,3 @@ class WallpaperDataProductRegistry : DataProductRegistry {
     }
   }
 }
-
-/** Wire-shape returned by `data/fetch?kind=compose/wallpaper`. */
-@Serializable
-data class WallpaperPayload(
-  /** Canonical seed color hex string (`#AARRGGBB`). */
-  val seedColor: String,
-  /** Whether the derived scheme is the dark variant. */
-  val isDark: Boolean,
-  /** Palette algorithm the connector applied. */
-  val paletteStyle: WallpaperPaletteStyle = WallpaperPaletteStyle.TONAL_SPOT,
-  /** Effective contrast level in `[-1.0, 1.0]`. */
-  val contrastLevel: Double = 0.0,
-  /** Material 3 color roles derived from [seedColor]; matches the schema of `compose/theme`. */
-  val derivedColorScheme: Map<String, String>,
-)
