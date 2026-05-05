@@ -31,6 +31,7 @@ import {
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import { buildErrorPanel } from "./errorPanel";
+import { FrameCarouselController } from "./frameCarousel";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
@@ -167,6 +168,18 @@ export function setupPreviewBehavior(
 
     const staleBadge = new StaleBadgeController(vscode);
     const loadingOverlay = new LoadingOverlay();
+
+    // Per-preview carousel runtime state — imageData / errorMessage per
+    // capture. Populated from updateImage / setImageError messages so
+    // prev/next navigation can swap the visible <img> without a fresh
+    // extension round-trip.
+    // Map<previewId, CapturePresentation[]>
+    const cardCaptures = new Map();
+    const frameCarousel = new FrameCarouselController({
+        vscode,
+        cardCaptures,
+        interactiveInputConfig,
+    });
 
     // Restore layout preference
     if (
@@ -1128,13 +1141,6 @@ export function setupPreviewBehavior(
     // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
     // when only `fnOptions` / `grpOptions` change.
 
-    // Per-preview carousel runtime state — imageData / errorMessage per
-    // capture. Populated from updateImage / setImageError messages so
-    // prev/next navigation can swap the visible <img> without a fresh
-    // extension round-trip.
-    // Map<previewId, [{ label, imageData, errorMessage }]>
-    const cardCaptures = new Map();
-
     function createCard(p) {
         const animated = isAnimatedPreview(p);
         const captures = p.captures;
@@ -1281,149 +1287,11 @@ export function setupPreviewBehavior(
         }
 
         if (animated) {
-            card.appendChild(buildFrameControls(card));
+            card.appendChild(frameCarousel.buildControls(card));
         }
 
         observeCardForViewport(card);
         return card;
-    }
-
-    function buildFrameControls(card) {
-        const bar = document.createElement("div");
-        bar.className = "frame-controls";
-
-        const prev = document.createElement("button");
-        prev.className = "icon-button frame-prev";
-        prev.setAttribute("aria-label", "Previous capture");
-        prev.title = "Previous capture";
-        prev.innerHTML =
-            '<i class="codicon codicon-chevron-left" aria-hidden="true"></i>';
-        prev.addEventListener("click", () => stepFrame(card, -1));
-
-        const indicator = document.createElement("span");
-        indicator.className = "frame-indicator";
-        indicator.setAttribute("aria-live", "polite");
-
-        const next = document.createElement("button");
-        next.className = "icon-button frame-next";
-        next.setAttribute("aria-label", "Next capture");
-        next.title = "Next capture";
-        next.innerHTML =
-            '<i class="codicon codicon-chevron-right" aria-hidden="true"></i>';
-        next.addEventListener("click", () => stepFrame(card, 1));
-
-        bar.appendChild(prev);
-        bar.appendChild(indicator);
-        bar.appendChild(next);
-
-        // Arrow keys when the carousel has focus. Stop propagation so
-        // the document-level focus-mode nav doesn't also advance the card.
-        bar.tabIndex = 0;
-        bar.addEventListener("keydown", (e) => {
-            if (e.key === "ArrowLeft") {
-                stepFrame(card, -1);
-                e.preventDefault();
-                e.stopPropagation();
-            } else if (e.key === "ArrowRight") {
-                stepFrame(card, 1);
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        });
-
-        // Seed indicator text so it's not blank before any image arrives.
-        requestAnimationFrame(() => updateFrameIndicator(card));
-        return bar;
-    }
-
-    function stepFrame(card, delta) {
-        const caps = cardCaptures.get(card.dataset.previewId);
-        if (!caps) return;
-        const cur = parseInt(card.dataset.currentIndex || "0", 10);
-        const next = Math.max(0, Math.min(caps.length - 1, cur + delta));
-        if (next === cur) return;
-        card.dataset.currentIndex = String(next);
-        showFrame(card, next);
-    }
-
-    function showFrame(card, index) {
-        const caps = cardCaptures.get(card.dataset.previewId);
-        if (!caps) return;
-        const capture = caps[index];
-        if (!capture) return;
-        const container = card.querySelector(".image-container");
-        if (!container) return;
-
-        if (capture.imageData) {
-            const skeleton = container.querySelector(".skeleton");
-            const errorMsg = container.querySelector(".error-message");
-            if (skeleton) skeleton.remove();
-            if (errorMsg) errorMsg.remove();
-            let img = container.querySelector("img");
-            if (!img) {
-                img = document.createElement("img");
-                img.alt = card.dataset.function + " preview";
-                container.appendChild(img);
-            }
-            img.src =
-                "data:" +
-                mimeFor(capture.renderOutput) +
-                ";base64," +
-                capture.imageData;
-            img.className = "fade-in";
-            attachInteractiveInputHandlers(card, img, interactiveInputConfig);
-            if (capture.errorMessage || capture.renderError) {
-                container.appendChild(
-                    buildErrorPanel(
-                        vscode,
-                        capture.errorMessage,
-                        capture.renderError,
-                        card.dataset.className,
-                    ),
-                );
-                card.classList.add("has-error");
-            } else {
-                card.classList.remove("has-error");
-            }
-        } else if (capture.errorMessage || capture.renderError) {
-            const existingErr = container.querySelector(".error-message");
-            if (existingErr) existingErr.remove();
-            container.appendChild(
-                buildErrorPanel(
-                    capture.errorMessage,
-                    capture.renderError,
-                    card.dataset.className,
-                ),
-            );
-            card.classList.add("has-error");
-        } else {
-            // No data for this capture yet — render will fill it in later.
-            const existing = container.querySelector("img");
-            if (existing) existing.remove();
-            if (!container.querySelector(".skeleton")) {
-                const s = document.createElement("div");
-                s.className = "skeleton";
-                s.setAttribute("aria-label", "Loading capture");
-                container.appendChild(s);
-            }
-        }
-        updateFrameIndicator(card);
-    }
-
-    function updateFrameIndicator(card) {
-        const indicator = card.querySelector(".frame-indicator");
-        const prevBtn = card.querySelector(".frame-prev");
-        const nextBtn = card.querySelector(".frame-next");
-        if (!indicator) return;
-        const caps = cardCaptures.get(card.dataset.previewId);
-        if (!caps) return;
-        const idx = parseInt(card.dataset.currentIndex || "0", 10);
-        const capture = caps[idx];
-        const label = capture && capture.label ? capture.label : "\u2014";
-        indicator.textContent =
-            idx + 1 + " / " + caps.length + " \u00B7 " + label;
-        if (prevBtn) prevBtn.disabled = idx === 0;
-        if (nextBtn) nextBtn.disabled = idx === caps.length - 1;
     }
 
     function updateCardMetadata(card, p) {
@@ -1461,7 +1329,7 @@ export function setupPreviewBehavior(
                 Math.max(0, mergedCaps.length - 1),
             );
         }
-        if (isAnimatedPreview(p)) updateFrameIndicator(card);
+        if (isAnimatedPreview(p)) frameCarousel.updateIndicator(card);
         const variantLabel = buildVariantLabel(p);
         let badge = card.querySelector(".variant-badge");
         if (variantLabel) {
@@ -1640,7 +1508,7 @@ export function setupPreviewBehavior(
         // prev/next.
         const cur = parseInt(card.dataset.currentIndex || "0", 10);
         if (cur !== captureIndex) {
-            if (caps) updateFrameIndicator(card);
+            if (caps) frameCarousel.updateIndicator(card);
             return;
         }
 
@@ -1675,7 +1543,7 @@ export function setupPreviewBehavior(
         img.className = isLive ? "live-frame" : "fade-in";
         attachInteractiveInputHandlers(card, img, interactiveInputConfig);
 
-        if (caps) updateFrameIndicator(card);
+        if (caps) frameCarousel.updateIndicator(card);
 
         // If a diff overlay is open on this card and uses the live render
         // as its left anchor (head / main / current), the bytes the
