@@ -31,6 +31,7 @@ import {
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import { buildErrorPanel } from "./errorPanel";
+import { FocusInspectorController } from "./focusInspector";
 import {
     FocusToolbarController,
     isFocusedInteractiveSupported,
@@ -111,9 +112,15 @@ export function setupPreviewBehavior(
     const setA11yOverlay = (id: string | null): void => {
         previewStore.setState({ a11yOverlayPreviewId: id });
     };
-    const enabledFocusProducts = new Set();
-    let focusProductPickerOpen = false;
-    let focusHistoryOpen = false;
+    // previewId -> findings. Populated from setPreviews so updateImage can
+    // re-read the list on every image (re)load without re-querying the
+    // DOM for data attributes.
+    const cardA11yFindings = new Map();
+    // D2 — previewId -> nodes for the daemon-attached a11y/hierarchy payload. Drives
+    // the local hierarchy overlay (translucent rectangles + label/role/states tooltip
+    // on hover) drawn on top of the existing finding overlay. Populated by
+    // applyA11yUpdate and re-read on each image (re)load via applyHierarchyOverlay.
+    const cardA11yNodes = new Map();
     const focusPosition = document.getElementById("focus-position");
     // Progress bar is owned by `<progress-bar>` — see
     // `components/ProgressBar.ts`. It listens for `setProgress` /
@@ -159,6 +166,27 @@ export function setupPreviewBehavior(
     const moduleInteractiveSupported = new Map();
     const interactivePreviewIds = new Set();
     const recordingPreviewIds = new Set();
+
+    const inspector = new FocusInspectorController({
+        el: focusInspector,
+        earlyFeatures,
+        getPreview: (id) => allPreviews.find((p) => p.id === id),
+        getA11yFindings: (id) =>
+            cardA11yFindings.get(id) ||
+            allPreviews.find((p) => p.id === id)?.a11yFindings ||
+            [],
+        getA11yNodes: (id) =>
+            cardA11yNodes.get(id) ||
+            allPreviews.find((p) => p.id === id)?.a11yNodes ||
+            [],
+        getA11yOverlayId: a11yOverlay,
+        isLive: (id) => interactivePreviewIds.has(id),
+        onToggleA11yOverlay: () => toggleA11yOverlay(),
+        onToggleInteractive: (shift) => toggleInteractive(shift),
+        onToggleRecording: () => toggleRecording(),
+        onRequestFocusedDiff: (against) => requestFocusedDiff(against),
+        onRequestLaunchOnDevice: () => requestLaunchOnDevice(),
+    });
 
     // Config for the interactive-input pointer machine. The predicate
     // unifies live/recording state — both forward pointer/wheel input
@@ -323,7 +351,7 @@ export function setupPreviewBehavior(
             enabled: turningOn,
         });
         applyA11yOverlayButtonState();
-        renderFocusInspector(card);
+        inspector.render(card);
     }
 
     function applyLiveBadge() {
@@ -449,7 +477,7 @@ export function setupPreviewBehavior(
         });
         applyLiveBadge();
         applyInteractiveButtonState();
-        renderFocusInspector(card);
+        inspector.render(card);
     }
 
     function toggleRecording() {
@@ -488,7 +516,7 @@ export function setupPreviewBehavior(
             format: recordingFormat.value,
         });
         applyRecordingButtonState();
-        renderFocusInspector(card);
+        inspector.render(card);
     }
 
     /**
@@ -597,7 +625,7 @@ export function setupPreviewBehavior(
             const visible = getVisibleCards();
             if (visible.length === 0) {
                 focusPosition.textContent = "0 / 0";
-                renderFocusInspector(null);
+                inspector.render(null);
                 publishScopedPreview();
                 return;
             }
@@ -607,10 +635,10 @@ export function setupPreviewBehavior(
             focusPosition.textContent = focusIndex + 1 + " / " + visible.length;
             btnPrev.disabled = focusIndex === 0;
             btnNext.disabled = focusIndex === visible.length - 1;
-            renderFocusInspector(visible[focusIndex]);
+            inspector.render(visible[focusIndex]);
         } else {
             grid.applyFocusVisibility(null);
-            renderFocusInspector(null);
+            inspector.render(null);
         }
         document
             .querySelectorAll(".image-container")
@@ -721,311 +749,6 @@ export function setupPreviewBehavior(
         state.layout = previousLayout;
         vscode.setState(state);
         applyLayout();
-    }
-
-    function renderFocusInspector(card) {
-        focusInspector.innerHTML = "";
-        focusInspector.hidden = !earlyFeatures() || !card;
-        if (!earlyFeatures() || !card) return;
-        const previewId = card.dataset.previewId;
-        const p = allPreviews.find((pp) => pp.id === previewId);
-        if (!previewId || !p) return;
-
-        const inspect = document.createElement("section");
-        inspect.className = "focus-panel focus-inspect-panel";
-        inspect.appendChild(sectionHeader("search", "Inspect"));
-        const findings =
-            cardA11yFindings.get(previewId) || p.a11yFindings || [];
-        const nodes = cardA11yNodes.get(previewId) || p.a11yNodes || [];
-        inspect.appendChild(
-            productPicker([
-                {
-                    icon: "eye",
-                    label: "Accessibility",
-                    value:
-                        findings.length > 0
-                            ? findings.length +
-                              " finding" +
-                              (findings.length === 1 ? "" : "s")
-                            : "Overlay",
-                    enabled: previewId === a11yOverlay(),
-                    state: findings.length > 0 ? "warn" : "idle",
-                    onToggle: () => toggleA11yOverlay(),
-                },
-                {
-                    icon: "list-tree",
-                    label: "Layout",
-                    value:
-                        nodes.length > 0
-                            ? nodes.length +
-                              " node" +
-                              (nodes.length === 1 ? "" : "s")
-                            : "Placeholder",
-                    enabled: enabledFocusProducts.has("layout"),
-                    state: nodes.length > 0 ? "ok" : "idle",
-                    onToggle: () => toggleFocusProduct("layout"),
-                },
-                productSpec("symbol-string", "Strings", "strings"),
-                productSpec("file-code", "Resources", "resources"),
-                productSpec("text-size", "Fonts", "fonts"),
-                productSpec("pulse", "Render", "render"),
-                productSpec("symbol-color", "Theme", "theme"),
-                {
-                    icon: "sync",
-                    label: "Recomposition",
-                    value: interactivePreviewIds.has(previewId)
-                        ? "Live"
-                        : "Placeholder",
-                    enabled:
-                        enabledFocusProducts.has("recomposition") ||
-                        interactivePreviewIds.has(previewId),
-                    state: interactivePreviewIds.has(previewId) ? "ok" : "idle",
-                    onToggle: () => toggleFocusProduct("recomposition"),
-                },
-            ]),
-        );
-        const controls = document.createElement("section");
-        controls.className = "focus-panel focus-controls-panel";
-        controls.appendChild(sectionHeader("settings-gear", "Tools"));
-        const toolActions = document.createElement("div");
-        toolActions.className = "focus-actions";
-        toolActions.appendChild(
-            actionButton("eye", "A11y", "Toggle accessibility overlay", () => {
-                toggleA11yOverlay();
-            }),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "device-mobile",
-                "Device",
-                "Launch on connected Android device",
-                () => {
-                    requestLaunchOnDevice();
-                },
-            ),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "circle-large-outline",
-                "Live",
-                "Toggle live preview",
-                () => {
-                    toggleInteractive(false);
-                },
-            ),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "record-keys",
-                "Record",
-                "Record focused preview",
-                () => {
-                    toggleRecording();
-                },
-            ),
-        );
-        controls.appendChild(toolActions);
-        focusInspector.appendChild(inspect);
-        focusInspector.appendChild(historyPanel());
-        focusInspector.appendChild(controls);
-        const placeholders = buildFocusPlaceholders();
-        if (placeholders) inspect.appendChild(placeholders);
-    }
-
-    function sectionHeader(icon, label) {
-        const header = document.createElement("div");
-        header.className = "focus-panel-header";
-        header.innerHTML =
-            '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
-        const span = document.createElement("span");
-        span.textContent = label;
-        header.appendChild(span);
-        return header;
-    }
-
-    function actionButton(icon, label, title, onClick) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "focus-action";
-        btn.title = title;
-        btn.innerHTML =
-            '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
-        const span = document.createElement("span");
-        span.textContent = label;
-        btn.appendChild(span);
-        btn.addEventListener("click", onClick);
-        return btn;
-    }
-
-    function historyPanel() {
-        const history = document.createElement("details");
-        history.className = "focus-panel focus-history-panel";
-        history.open = focusHistoryOpen;
-        history.addEventListener("toggle", () => {
-            focusHistoryOpen = history.open;
-        });
-        const summary = document.createElement("summary");
-        summary.className = "focus-panel-header focus-history-summary";
-        summary.innerHTML =
-            '<i class="codicon codicon-history" aria-hidden="true"></i>';
-        const label = document.createElement("span");
-        label.textContent = "History";
-        summary.appendChild(label);
-        const chevron = document.createElement("i");
-        chevron.className =
-            "codicon codicon-chevron-down focus-summary-chevron";
-        chevron.setAttribute("aria-hidden", "true");
-        summary.appendChild(chevron);
-        history.appendChild(summary);
-        const historyActions = document.createElement("div");
-        historyActions.className = "focus-actions";
-        historyActions.appendChild(
-            actionButton(
-                "git-compare",
-                "HEAD",
-                "Diff vs last archived render",
-                () => {
-                    requestFocusedDiff("head");
-                },
-            ),
-        );
-        historyActions.appendChild(
-            actionButton(
-                "source-control",
-                "main",
-                "Diff vs latest archived main render",
-                () => {
-                    requestFocusedDiff("main");
-                },
-            ),
-        );
-        history.appendChild(historyActions);
-        return history;
-    }
-
-    function productSpec(icon, label, id) {
-        return {
-            icon,
-            label,
-            value: "Placeholder",
-            enabled: enabledFocusProducts.has(id),
-            state: "idle",
-            onToggle: () => toggleFocusProduct(id),
-        };
-    }
-
-    function productPicker(products) {
-        const picker = document.createElement("details");
-        picker.className = "focus-product-picker";
-        picker.open = focusProductPickerOpen;
-        picker.addEventListener("toggle", () => {
-            focusProductPickerOpen = picker.open;
-        });
-        const summary = document.createElement("summary");
-        summary.className = "focus-product-summary";
-        const selected = products.filter((product) => product.enabled);
-        const summaryText = document.createElement("span");
-        summaryText.textContent =
-            selected.length === 0
-                ? "Choose inspection layers"
-                : selected.length === 1
-                  ? selected[0].label
-                  : selected.length + " layers selected";
-        summary.appendChild(summaryText);
-        const chevron = document.createElement("i");
-        chevron.className =
-            "codicon codicon-chevron-down focus-summary-chevron";
-        chevron.setAttribute("aria-hidden", "true");
-        summary.appendChild(chevron);
-        picker.appendChild(summary);
-
-        const menu = document.createElement("div");
-        menu.className = "focus-product-menu";
-        products.forEach((product) => {
-            menu.appendChild(productOption(product));
-        });
-        picker.appendChild(menu);
-        return picker;
-    }
-
-    function productOption(product) {
-        const option = document.createElement("label");
-        option.className = "focus-product-option";
-        option.dataset.state = product.state || "idle";
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.checked = product.enabled;
-        input.addEventListener("change", product.onToggle);
-        option.appendChild(input);
-        const icon = document.createElement("i");
-        icon.className = "codicon codicon-" + product.icon;
-        icon.setAttribute("aria-hidden", "true");
-        option.appendChild(icon);
-        const text = document.createElement("div");
-        text.className = "focus-product-text";
-        const name = document.createElement("span");
-        name.className = "focus-product-name";
-        name.textContent = product.label;
-        const val = document.createElement("span");
-        val.className = "focus-product-value";
-        val.textContent = product.value;
-        text.appendChild(name);
-        text.appendChild(val);
-        option.appendChild(text);
-        return option;
-    }
-
-    function toggleFocusProduct(id) {
-        if (enabledFocusProducts.has(id)) {
-            enabledFocusProducts.delete(id);
-        } else {
-            enabledFocusProducts.add(id);
-        }
-        const card = getVisibleCards()[focusIndex];
-        if (filterToolbar.getLayoutValue() === "focus" && card)
-            renderFocusInspector(card);
-    }
-
-    function buildFocusPlaceholders() {
-        const defs = [
-            ["layout", "Layout", "layout tree and bounds"],
-            ["strings", "Strings", "text/strings and i18n/translations"],
-            ["resources", "Resources", "resources/used"],
-            ["fonts", "Fonts", "fonts/used"],
-            ["render", "Render", "render/trace and render/composeAiTrace"],
-            ["theme", "Theme", "compose/theme"],
-            ["recomposition", "Recomposition", "compose/recomposition"],
-        ].filter(([id]) => enabledFocusProducts.has(id));
-        if (defs.length === 0) return null;
-        const wrapper = document.createElement("div");
-        wrapper.className = "focus-placeholder-list";
-        defs.forEach(([id, label, kind]) => {
-            const details = document.createElement("details");
-            details.className = "focus-placeholder";
-            details.dataset.product = id;
-            const summary = document.createElement("summary");
-            summary.textContent = label;
-            details.appendChild(summary);
-            const body = document.createElement("div");
-            body.className = "focus-placeholder-body";
-            body.textContent = kind;
-            details.appendChild(body);
-            wrapper.appendChild(details);
-        });
-        return wrapper;
-    }
-
-    function renderSummary(p) {
-        const captures = p.captures ? p.captures.length : 0;
-        if (captures > 1) return captures + " captures";
-        const c = p.captures && p.captures[0];
-        if (c && c.label) return c.label;
-        return "Static";
-    }
-
-    function themeSummary(p) {
-        if (p.params.backgroundColor) return "Background";
-        return p.params.showSystemUi ? "System UI" : "Preview";
     }
 
     // Live-panel diff: only meaningful when one preview is focused. Pulls
@@ -1520,17 +1243,6 @@ export function setupPreviewBehavior(
         }
     }
 
-    // previewId -> findings. Populated from setPreviews so updateImage can
-    // re-read the list on every image (re)load without re-querying the
-    // DOM for data attributes.
-    const cardA11yFindings = new Map();
-
-    // D2 — previewId -> nodes for the daemon-attached a11y/hierarchy payload. Drives
-    // the local hierarchy overlay (translucent rectangles + label/role/states tooltip
-    // on hover) drawn on top of the existing finding overlay. Populated by
-    // applyA11yUpdate and re-read on each image (re)load via applyHierarchyOverlay.
-    const cardA11yNodes = new Map();
-
     // D2 — handles updateA11y from the extension (daemon-attached a11y data products).
     // Updates the per-preview caches and re-applies whichever overlays are now relevant
     // without rebuilding the whole card. Findings -> legend + finding overlay; nodes ->
@@ -1587,7 +1299,7 @@ export function setupPreviewBehavior(
         }
         if (filterToolbar.getLayoutValue() === "focus") {
             const focused = getVisibleCards()[focusIndex];
-            if (focused === card) renderFocusInspector(card);
+            if (focused === card) inspector.render(card);
         }
     }
 
@@ -1980,7 +1692,7 @@ export function setupPreviewBehavior(
                         .forEach((el) => el.remove());
                     cardA11yFindings.clear();
                     cardA11yNodes.clear();
-                    enabledFocusProducts.clear();
+                    inspector.clearProducts();
                     if (a11yOverlay()) {
                         vscode.postMessage({
                             command: "setA11yOverlay",
