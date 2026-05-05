@@ -515,6 +515,17 @@ export type WebviewToExtension =
      * webviewView is resolved.
      */
     | { command: "webviewReady" }
+    /**
+     * Webview reports it has finished applying a `setPreviews` payload to the
+     * grid — sent from `behavior.ts` after `renderPreviews` and the filter-
+     * toolbar/option update. `count` is the number of cards now in the grid.
+     *
+     * Drives the e2e test's "the host posted AND the webview consumed" check:
+     * `postedMessageLog` only proves the host called `postMessage`, not that a
+     * resolved webview ever received it. This signal closes that gap so the
+     * full host→webview→DOM loop is regression-locked.
+     */
+    | { command: "webviewPreviewsRendered"; count: number }
     | { command: "openFile"; className: string; functionName: string }
     | { command: "selectModule"; value: string }
     /**
