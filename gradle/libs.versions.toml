@@ -56,7 +56,7 @@ wear-tooling-preview = "1.0.0"
 #    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
 #    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
 #    inside `RemoteButtonImpl` at preview render time.
-compose-remote = "1.0.0-alpha09"
+compose-remote = "1.0.0-alpha08"
 wear-compose-remote = "1.0.0-alpha02"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
