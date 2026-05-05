@@ -37,31 +37,34 @@ in [`docs/daemon/MCP-KOTLIN.md`](../docs/daemon/MCP-KOTLIN.md).
 
 ## Quick start
 
-The CLI bundles `:mcp` so the consumer-facing path is two commands —
-`compose-preview mcp install` then `claude mcp add`. The standalone
-`:mcp:installDist` launcher is the alternative path for embedders that
-don't ship the CLI.
+The CLI bundles `:mcp` so the consumer-facing path is one command —
+`compose-preview mcp install` registers the server with every locally
+installed agent host it detects (Claude Code, Codex, Antigravity). The
+standalone `:mcp:installDist` launcher is the alternative path for embedders
+that don't ship the CLI.
 
 ### Path A: via the bundled CLI (recommended)
 
 ```bash
-# Run from the project root. Bootstrap descriptors + previews.json for every
-# plugin-applied module. When run inside Antigravity, this also installs the
-# MCP server into Antigravity's config. Outside Antigravity, pass --antigravity.
+# Run from the project root. Bootstraps descriptors + previews.json for every
+# plugin-applied module, then registers compose-preview-mcp with every locally
+# installed agent host. Idempotent — re-running upserts each registration.
 compose-preview mcp install
 
 # Verify per-module state.
 compose-preview mcp doctor
-
-# `mcp install` printed the exact `claude mcp add` line; copy/paste it.
-claude mcp add compose-preview-mcp -- compose-preview mcp serve \
-  --project=/abs/path/to/your-repo
 ```
+
+Per-host opt-in/out flags: `--claude` / `--no-claude`, `--codex` /
+`--no-codex` / `--codex-config <path>`, `--antigravity` / `--no-antigravity`
+/ `--antigravity-config <path>`. Defaults to "on if detected" for each host;
+detection rules are documented in
+[`skills/compose-preview/design/MCP.md`](../skills/compose-preview/design/MCP.md#setup).
 
 `compose-preview mcp serve` runs the MCP server in-process; status goes
 to stderr and stdout is reserved for JSON-RPC framing. If no `--project` is
-passed, it defaults to the current Gradle root. Generated Antigravity config
-still includes an absolute `--project=...` because Antigravity's launch
+passed, it defaults to the current Gradle root. Generated host config files
+still include an absolute `--project=...` because each host's launch
 directory is not project-scoped.
 
 The consumer-facing skill doc is

@@ -29,27 +29,35 @@ hand.
 
 ```bash
 # Run from the project root. Bootstraps descriptors + previews.json for every
-# plugin-applied module. When run inside Antigravity, also installs the MCP
-# server into Antigravity's config.
+# plugin-applied module, then registers the MCP server with every locally
+# installed agent host it detects (Claude Code, Codex, Antigravity).
 compose-preview mcp install
 
-# Outside Antigravity, force the same config write explicitly.
-compose-preview mcp install --antigravity
+# Force a specific host even if it's not auto-detected, or opt out.
+compose-preview mcp install --antigravity        # force Antigravity write
+compose-preview mcp install --no-claude          # skip claude mcp add
+compose-preview mcp install --codex              # force Codex write
+compose-preview mcp install --codex-config /path/to/config.toml
 
 # Verify per-module state (descriptor present, enabled=true).
 compose-preview mcp doctor
-
-# For Claude Code, copy/paste the command that `mcp install` printed:
-claude mcp add compose-preview-mcp -- compose-preview mcp serve \
-  --project=/abs/path/to/your-repo
 ```
 
-`compose-preview mcp serve` also defaults `--project` to the current Gradle
-root when run from a project checkout. Antigravity auto-detection uses
-`__CFBundleIdentifier=com.google.antigravity` or `ANTIGRAVITY_CLI_ALIAS`. When
-Antigravity config is written, it still uses absolute paths because
-Antigravity may launch the server from a different working directory. `mcp
-install` does three things behind the scenes:
+`compose-preview mcp serve` defaults `--project` to the current Gradle root
+when run from a project checkout. Detection per host:
+
+- **Claude Code**: `claude` on PATH, or `~/.claude/` exists. Registered via
+  `claude mcp add --scope user` (idempotent — the install upserts).
+- **Codex**: `codex` on PATH, or `~/.codex/` exists. The
+  `[mcp_servers.compose-preview-mcp]` table is replaced in place (or appended)
+  in `~/.codex/config.toml`.
+- **Antigravity**: `__CFBundleIdentifier=com.google.antigravity`,
+  `ANTIGRAVITY_CLI_ALIAS`, or `~/.gemini/antigravity/` exists. The MCP server
+  entry is merged into `~/.gemini/antigravity/mcp_config.json`.
+
+All three host writers store the absolute launcher path because the host may
+launch the server from a different working directory than the Gradle root.
+Beyond host registration, `mcp install` does three things behind the scenes:
 
 1. Runs `composePreviewDaemonStart` for every module that applies the plugin,
    so each `<module>/build/compose-previews/daemon-launch.json` exists.

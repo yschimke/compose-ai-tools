@@ -70,10 +70,25 @@ internal class McpCommand(args: List<String>) {
         --project <path>     Project root containing settings.gradle[.kts] (default: cwd)
         --module <gradlePath> Limit to one or more module paths (repeatable)
         --json               Emit a structured envelope on stdout (install, doctor)
-        --antigravity        install: write Antigravity's mcp_config.json
-                             (auto-enabled when running inside Antigravity)
+
+      install: agent host registration (each defaults to "on" when the host is detected
+      locally; opt out with --no-<host>):
+        --claude / --no-claude
+                             Run `claude mcp add --scope user` for compose-preview-mcp
+                             (idempotent: re-runs `mcp remove` first). Detected when
+                             `claude` is on PATH or ~/.claude/ exists.
+        --codex / --no-codex
+                             Merge a [mcp_servers.compose-preview-mcp] table into Codex's
+                             config.toml. Detected when `codex` is on PATH or ~/.codex/
+                             exists.
+        --codex-config <path>
+                             Override the Codex config path (default ~/.codex/config.toml).
+        --antigravity / --no-antigravity
+                             Merge into Antigravity's mcp_config.json. Detected via
+                             __CFBundleIdentifier=com.google.antigravity, ANTIGRAVITY_CLI_ALIAS,
+                             or ~/.gemini/antigravity/.
         --antigravity-config <path>
-                             install: override Antigravity config path
+                             Override the Antigravity config path.
 
       See skills/compose-preview/design/MCP.md for the full agent flow.
       """
@@ -94,8 +109,17 @@ internal class McpCommand(args: List<String>) {
 
   private fun install(args: List<String>) {
     val emitJson = "--json" in args
+
     val antigravityDetected = isAntigravityEnvironment()
-    val installAntigravity = "--antigravity" in args || antigravityDetected
+    val claudeDetected = isClaudeEnvironment()
+    val codexDetected = isCodexEnvironment()
+
+    // Per-host: default to "on if detected", opt-in via --<host>, opt-out via --no-<host>.
+    val installAntigravity =
+      "--no-antigravity" !in args && ("--antigravity" in args || antigravityDetected)
+    val installClaude = "--no-claude" !in args && ("--claude" in args || claudeDetected)
+    val installCodex = "--no-codex" !in args && ("--codex" in args || codexDetected)
+
     val projectDir = resolveProjectDir(args)
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
@@ -159,33 +183,86 @@ internal class McpCommand(args: List<String>) {
 
       // CLAUDE_CLOUD users need an absolute path because `~/.claude/skills/.../bin/compose-preview`
       // is the canonical launcher; we don't know how `compose-preview` is on the consumer's PATH.
+      val needAbsoluteLauncher = installAntigravity || installCodex || installClaude
       val launcher =
         locateHostLauncher()
-          ?: if (installAntigravity) {
+          ?: if (needAbsoluteLauncher) {
             System.err.println(
               "compose-preview mcp install: cannot locate an absolute compose-preview launcher " +
-                "for Antigravity config"
+                "for agent host config"
             )
             exitProcess(1)
           } else {
             "compose-preview"
           }
+      val projectAbs = projectDir.absolutePath
       val claudeMcpAdd =
-        "claude mcp add compose-preview-mcp -- $launcher mcp serve --project=${projectDir.absolutePath}"
+        "claude mcp add --scope user ${AgentMcpConfig.SERVER_NAME} -- " +
+          "$launcher mcp serve --project=$projectAbs"
+
       val antigravityConfig =
         args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
+      val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
+
+      val results = mutableListOf<HostResult>()
+
       if (installAntigravity) {
-        writeAntigravityConfig(antigravityConfig, launcher, projectDir)
+        results +=
+          runCatching {
+              writeAntigravityConfig(antigravityConfig, launcher, projectDir)
+              HostResult("antigravity", true, antigravityConfig.absolutePath, null)
+            }
+            .getOrElse { e ->
+              HostResult("antigravity", false, antigravityConfig.absolutePath, e.message)
+            }
+      }
+      if (installCodex) {
+        results +=
+          runCatching {
+              writeCodexConfig(codexConfig, launcher, projectDir)
+              HostResult("codex", true, codexConfig.absolutePath, null)
+            }
+            .getOrElse { e -> HostResult("codex", false, codexConfig.absolutePath, e.message) }
+      }
+      if (installClaude) {
+        val claudeOnPath = locateOnPath("claude") != null
+        if (!claudeOnPath) {
+          results +=
+            HostResult(
+              "claude",
+              false,
+              null,
+              "`claude` not on PATH; copy/paste the printed command instead",
+            )
+        } else {
+          results += runClaudeMcpAdd(launcher, projectDir)
+        }
       }
 
       if (emitJson) {
         val payload = buildJsonObject {
           put("schema", JsonPrimitive("compose-preview-mcp-install/v1"))
-          put("projectRoot", JsonPrimitive(projectDir.absolutePath))
+          put("projectRoot", JsonPrimitive(projectAbs))
           put("launcher", JsonPrimitive(launcher))
           put("claudeMcpAdd", JsonPrimitive(claudeMcpAdd))
           put("antigravityConfig", JsonPrimitive(antigravityConfig.absolutePath))
           put("antigravityInstalled", JsonPrimitive(installAntigravity))
+          put("codexConfig", JsonPrimitive(codexConfig.absolutePath))
+          put("codexInstalled", JsonPrimitive(installCodex))
+          put("claudeInstalled", JsonPrimitive(installClaude))
+          put(
+            "hosts",
+            kotlinx.serialization.json.JsonArray(
+              results.map {
+                buildJsonObject {
+                  put("name", JsonPrimitive(it.name))
+                  put("ok", JsonPrimitive(it.ok))
+                  it.path?.let { p -> put("path", JsonPrimitive(p)) }
+                  it.error?.let { e -> put("error", JsonPrimitive(e)) }
+                }
+              }
+            ),
+          )
           put(
             "modules",
             kotlinx.serialization.json.JsonArray(
@@ -207,25 +284,55 @@ internal class McpCommand(args: List<String>) {
           System.err.println("    :${d.gradlePath}  ${d.descriptor}  (enabled=true)")
         }
         System.err.println()
-        System.err.println("Attach an MCP-aware agent host with:")
-        println(claudeMcpAdd)
-        if (installAntigravity) {
-          System.err.println()
-          System.err.println(
-            if (antigravityDetected) "Antigravity detected; MCP config updated:"
-            else "Antigravity MCP config updated:"
-          )
-          System.err.println("    ${antigravityConfig.absolutePath}")
+        if (results.isEmpty()) {
+          System.err.println("No agent host detected. To attach one manually, copy/paste:")
+          println(claudeMcpAdd)
         } else {
-          System.err.println()
-          System.err.println(
-            "For Antigravity, re-run with `--antigravity` to update " +
-              antigravityConfig.absolutePath
-          )
+          System.err.println("Agent hosts configured:")
+          results.forEach { r ->
+            val tag = if (r.ok) "ok" else "failed"
+            val where = r.path?.let { "  (${it})" } ?: ""
+            System.err.println("    [$tag] ${r.name}$where")
+            if (!r.ok && r.error != null) System.err.println("           ${r.error}")
+          }
+          if (results.none { it.name == "claude" && it.ok }) {
+            System.err.println()
+            System.err.println("To attach Claude Code manually, run:")
+            println(claudeMcpAdd)
+          }
         }
       }
     }
   }
+
+  private data class HostResult(
+    val name: String,
+    val ok: Boolean,
+    val path: String?,
+    val error: String?,
+  )
+
+  private fun runClaudeMcpAdd(launcher: String, projectDir: File): HostResult {
+    // Upsert: `claude mcp add` errors if the name already exists, so remove first (suppressing
+    // failure when it's not present) and add fresh. Both invocations stream to stderr so the
+    // user sees Claude's own messaging.
+    runProcess(AgentMcpConfig.claudeMcpRemoveCommand())
+    val add = AgentMcpConfig.claudeMcpAddCommand(launcher, projectDir.absolutePath)
+    val exit = runProcess(add)
+    return if (exit == 0) {
+      HostResult("claude", true, "${System.getProperty("user.home")}/.claude.json", null)
+    } else {
+      HostResult("claude", false, null, "claude mcp add exited with status $exit")
+    }
+  }
+
+  private fun runProcess(argv: List<String>): Int =
+    try {
+      ProcessBuilder(argv).inheritIO().start().waitFor()
+    } catch (e: Exception) {
+      System.err.println("compose-preview mcp install: ${argv.first()} failed: ${e.message}")
+      127
+    }
 
   // -- doctor ------------------------------------------------------------------------------------
 
@@ -339,46 +446,55 @@ internal class McpCommand(args: List<String>) {
   private fun defaultAntigravityConfig(): File =
     File(System.getProperty("user.home"), ".gemini/antigravity/mcp_config.json")
 
+  private fun defaultCodexConfig(): File =
+    File(System.getProperty("user.home"), ".codex/config.toml")
+
   private fun isAntigravityEnvironment(): Boolean =
     System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
-      !System.getenv("ANTIGRAVITY_CLI_ALIAS").isNullOrBlank()
+      !System.getenv("ANTIGRAVITY_CLI_ALIAS").isNullOrBlank() ||
+      File(System.getProperty("user.home"), ".gemini/antigravity").isDirectory
+
+  private fun isClaudeEnvironment(): Boolean =
+    locateOnPath("claude") != null || File(System.getProperty("user.home"), ".claude").isDirectory
+
+  private fun isCodexEnvironment(): Boolean =
+    locateOnPath("codex") != null || File(System.getProperty("user.home"), ".codex").isDirectory
 
   private fun writeAntigravityConfig(file: File, launcher: String, projectDir: File) {
     val existing =
       if (file.isFile) {
         try {
-          JSON.parseToJsonElement(file.readText()).jsonObject
+          file.readText()
         } catch (e: Exception) {
-          System.err.println(
-            "compose-preview mcp install: Antigravity MCP config is not valid JSON: " +
-              "${file.absolutePath}: ${e.message}"
+          throw IllegalStateException(
+            "Antigravity MCP config unreadable: ${file.absolutePath}: ${e.message}"
           )
-          exitProcess(1)
         }
-      } else {
-        JsonObject(emptyMap())
+      } else null
+    val merged =
+      try {
+        AgentMcpConfig.mergeAntigravityConfig(existing, launcher, projectDir.absolutePath)
+      } catch (e: Exception) {
+        throw IllegalStateException(
+          "Antigravity MCP config is not valid JSON: ${file.absolutePath}: ${e.message}"
+        )
       }
-
-    val existingServers = existing["mcpServers"]?.jsonObject ?: JsonObject(emptyMap())
-    val composePreviewServer = buildJsonObject {
-      put("command", JsonPrimitive(launcher))
-      put(
-        "args",
-        kotlinx.serialization.json.JsonArray(
-          listOf(
-            JsonPrimitive("mcp"),
-            JsonPrimitive("serve"),
-            JsonPrimitive("--project=${projectDir.absolutePath}"),
-          )
-        ),
-      )
-    }
-
-    val mergedServers =
-      JsonObject(existingServers + ("compose-preview-mcp" to composePreviewServer))
-    val merged = JsonObject(existing + ("mcpServers" to mergedServers))
     file.parentFile?.mkdirs()
-    file.writeText(JSON.encodeToString(JsonObject.serializer(), merged) + "\n")
+    file.writeText(merged)
+  }
+
+  private fun writeCodexConfig(file: File, launcher: String, projectDir: File) {
+    val existing =
+      if (file.isFile) {
+        try {
+          file.readText()
+        } catch (e: Exception) {
+          throw IllegalStateException("Codex config unreadable: ${file.absolutePath}: ${e.message}")
+        }
+      } else null
+    val merged = AgentMcpConfig.mergeCodexConfig(existing, launcher, projectDir.absolutePath)
+    file.parentFile?.mkdirs()
+    file.writeText(merged)
   }
 
   /**
@@ -422,7 +538,13 @@ internal class McpCommand(args: List<String>) {
     val JSON: Json = Json { prettyPrint = true }
 
     private val VALUE_FLAGS =
-      setOf("--project", "--module", "--replicas-per-daemon", "--antigravity-config")
+      setOf(
+        "--project",
+        "--module",
+        "--replicas-per-daemon",
+        "--antigravity-config",
+        "--codex-config",
+      )
 
     private fun parseSubcommand(args: List<String>): Pair<String, List<String>> {
       var i = 0
