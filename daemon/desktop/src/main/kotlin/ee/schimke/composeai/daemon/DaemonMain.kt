@@ -100,6 +100,7 @@ fun main(args: Array<String>) {
   // panel that doesn't subscribe pays nothing.
   val recompositionRegistry = RecompositionDataProductRegistry()
   val themeRegistry = ThemeDataProductRegistry()
+  val wallpaperRegistry = WallpaperDataProductRegistry()
   val renderEngine =
     RenderEngine(
       previewContextCapture =
@@ -227,6 +228,7 @@ fun main(args: Array<String>) {
         add(RenderTraceDataProductRegistry())
         add(TestFailureDataProductRegistry())
         add(themeRegistry)
+        add(wallpaperRegistry)
         add(recompositionRegistry)
         if (composeTraceEnabled) {
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->

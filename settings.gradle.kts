@@ -126,6 +126,10 @@ include(":data-theme-connector")
 
 project(":data-theme-connector").projectDir = file("data/theme/connector")
 
+include(":data-wallpaper-connector")
+
+project(":data-wallpaper-connector").projectDir = file("data/wallpaper/connector")
+
 include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")

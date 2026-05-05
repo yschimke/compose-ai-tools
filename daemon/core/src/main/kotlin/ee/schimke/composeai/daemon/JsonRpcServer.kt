@@ -51,6 +51,7 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.io.ByteArrayOutputStream
@@ -922,6 +923,17 @@ class JsonRpcServer(
               json
                 .encodeToString(Material3ThemeOverrides.serializer(), it)
                 .toByteArray(Charsets.UTF_8)
+            )
+        )
+      }
+      overrides.wallpaper?.let {
+        if (isNotEmpty()) append(';')
+        append("wallpaper=")
+        append(
+          Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+              json.encodeToString(WallpaperOverride.serializer(), it).toByteArray(Charsets.UTF_8)
             )
         )
       }

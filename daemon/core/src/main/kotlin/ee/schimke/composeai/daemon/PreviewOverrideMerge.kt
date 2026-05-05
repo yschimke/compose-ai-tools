@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 
 /**
  * Backend-neutral subset of a render spec that [PreviewOverrides] can mutate.
@@ -24,6 +25,7 @@ data class PreviewOverrideBaseSpec(
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides? = null,
+  val wallpaper: WallpaperOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -37,6 +39,7 @@ data class MergedPreviewOverrides(
   val orientation: Orientation?,
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides?,
+  val wallpaper: WallpaperOverride?,
 )
 
 /**
@@ -63,6 +66,7 @@ fun mergePreviewOverrides(
       orientation = base.orientation,
       inspectionMode = base.inspectionMode,
       material3Theme = base.material3Theme,
+      wallpaper = base.wallpaper,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -85,5 +89,6 @@ fun mergePreviewOverrides(
     orientation = overrides.orientation ?: base.orientation,
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
     material3Theme = overrides.material3Theme ?: base.material3Theme,
+    wallpaper = overrides.wallpaper ?: base.wallpaper,
   )
 }

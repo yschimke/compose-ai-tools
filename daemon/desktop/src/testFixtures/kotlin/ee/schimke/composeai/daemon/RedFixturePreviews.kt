@@ -258,3 +258,13 @@ fun FontScaleAwareSquare() {
   val bg = if (fontScale >= 1.5f) Color.White else Color.Black
   Box(modifier = Modifier.fillMaxSize().background(bg))
 }
+
+/**
+ * Reads the *ambient* `MaterialTheme.colorScheme.primary` (no inner [MaterialTheme] wrap) so a
+ * `WallpaperOverrideExtension` applied at the outer `AroundComposable` phase visibly drives the
+ * background colour. Used by the wallpaper override integration tests.
+ */
+@Composable
+fun WallpaperAwareSquare() {
+  Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary))
+}

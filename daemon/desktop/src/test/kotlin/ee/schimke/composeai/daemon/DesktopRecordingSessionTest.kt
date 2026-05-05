@@ -526,8 +526,8 @@ class DesktopRecordingSessionTest {
       try {
         val thrown =
           runCatching {
-            session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "input.click")))
-          }
+              session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "input.click")))
+            }
             .exceptionOrNull()
         assertTrue(
           "postScript on a live session must throw IllegalStateException; got ${thrown?.javaClass}",

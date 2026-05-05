@@ -3,6 +3,7 @@ package com.example.samplecmp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,4 +35,20 @@ fun BlueBoxPreview() {
 @Composable
 fun AppPreview() {
   App()
+}
+
+/**
+ * Paints `MaterialTheme.colorScheme.primary` directly. Useful as a manual smoke check for the
+ * wallpaper data extension: drive `renderNow.overrides.wallpaper` with a seed and watch this
+ * preview's primary track the derived scheme.
+ */
+@Preview(name = "Wallpaper Demo")
+@Composable
+fun WallpaperDemoPreview() {
+  Box(
+    modifier = Modifier.size(120.dp).background(MaterialTheme.colorScheme.primary),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text("Primary", color = MaterialTheme.colorScheme.onPrimary)
+  }
 }

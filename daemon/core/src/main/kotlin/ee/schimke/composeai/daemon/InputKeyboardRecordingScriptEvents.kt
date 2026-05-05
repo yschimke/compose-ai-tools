@@ -7,10 +7,9 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
 /**
  * Keyboard `record_preview` script events. One descriptor — `input.keyboard` — advertising
  * `input.keyDown` and `input.keyUp` as **roadmap** (`supported = false`) on every host today.
- * Desktop's `ImageComposeScene.sendKeyEvent` and Android's held-rule
- * `KeyEvent.dispatchKeyEvent` are both wirable but neither is implemented yet — the existing
- * input handlers register these as unsupported so the wire shape is documented while the
- * dispatch side remains a follow-up.
+ * Desktop's `ImageComposeScene.sendKeyEvent` and Android's held-rule `KeyEvent.dispatchKeyEvent`
+ * are both wirable but neither is implemented yet — the existing input handlers register these as
+ * unsupported so the wire shape is documented while the dispatch side remains a follow-up.
  *
  * Lives in `:daemon:core` because the descriptor is renderer-agnostic — both backends will
  * eventually advertise it from `recordingScriptEventDescriptors()` with `supported = true` once

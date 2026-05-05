@@ -35,6 +35,7 @@ import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionP
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
@@ -268,7 +269,10 @@ class RenderEngine(
                   val content: @Composable () -> Unit = {
                     ComposeDataExtensionPipeline.Apply(
                       extensions =
-                        listOfNotNull(spec.material3Theme?.let(::Material3ThemeOverrideExtension)),
+                        listOfNotNull(
+                          spec.wallpaper?.let(::WallpaperOverrideExtension),
+                          spec.material3Theme?.let(::Material3ThemeOverrideExtension),
+                        ),
                       previewId = spec.previewId,
                       renderMode = spec.renderMode,
                       sink = RecordingExtensionCompositionSink(),
@@ -775,6 +779,12 @@ data class RenderSpec(
   val inspectionMode: Boolean? = null,
   /** Optional Material 3 token overrides applied as a `MaterialTheme` composable wrapper. */
   val material3Theme: Material3ThemeOverrides? = null,
+  /**
+   * Optional wallpaper seed-color override; the renderer derives a Material 3 color scheme from
+   * the seed and wraps the preview in a `MaterialTheme(colorScheme = …)`. Applied before
+   * [material3Theme] so any role the caller pinned through `material3Theme` still wins.
+   */
+  val wallpaper: WallpaperOverride? = null,
 ) {
 
   enum class SpecUiMode {
@@ -841,6 +851,7 @@ data class RenderSpec(
         captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         material3Theme = map["material3Theme"]?.decodeMaterial3ThemeOverrides(),
+        wallpaper = map["wallpaper"]?.decodeWallpaperOverride(),
       )
     }
 
@@ -853,6 +864,13 @@ data class RenderSpec(
       runCatching {
           val bytes = Base64.getUrlDecoder().decode(this)
           json.decodeFromString(Material3ThemeOverrides.serializer(), bytes.toString(Charsets.UTF_8))
+        }
+        .getOrNull()
+
+    private fun String.decodeWallpaperOverride(): WallpaperOverride? =
+      runCatching {
+          val bytes = Base64.getUrlDecoder().decode(this)
+          json.decodeFromString(WallpaperOverride.serializer(), bytes.toString(Charsets.UTF_8))
         }
         .getOrNull()
   }
