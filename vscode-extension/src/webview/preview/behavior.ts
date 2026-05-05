@@ -39,6 +39,7 @@ import {
 } from "./focusToolbar";
 import { FrameCarouselController } from "./frameCarousel";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
+import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
@@ -147,25 +148,20 @@ export function setupPreviewBehavior(
         state.layout && state.layout !== "focus" ? state.layout : "grid";
 
     // Interactive (live-stream) mode state. Declared up here — *before*
-    // the first applyLayout() call below — because applyLayout reads
-    // interactivePreviewIds via the early-exit-on-focus-change path.
+    // the first applyLayout() call below — because applyLayout reaches
+    // through `liveState` on the early-exit-on-focus-change path.
     // moduleDaemonReady tracks per-module daemon readiness pushed by the
     // extension via setInteractiveAvailability; the button enables only
     // when the focused card's owning module is ready. moduleInteractiveSupported
     // distinguishes full v2 live mode from the Android/v1 fallback where
     // renders refresh but pointer input doesn't mutate held composition state.
     //
-    // interactivePreviewIds is a Set so Shift+click on the LIVE toggle
-    // can add/remove a preview without disturbing others (multi-stream
-    // UI). The wire and daemon already support concurrent streams
-    // (INTERACTIVE.md § 8); the panel just exposes it under a modifier
-    // key. Default un-modified click stays single-target — clearing the
-    // set before adding the new one — so casual users don't accidentally
-    // pile up live streams.
+    // The live + recording sets and their state machine live in
+    // `./liveState.ts` — see `LiveStateController`. Constructed below,
+    // after `interactiveInputConfig` so the controller can hand the
+    // config to `attachInteractiveInputHandlers`.
     const moduleDaemonReady = new Map();
     const moduleInteractiveSupported = new Map();
-    const interactivePreviewIds = new Set();
-    const recordingPreviewIds = new Set();
 
     const inspector = new FocusInspectorController({
         el: focusInspector,
@@ -180,10 +176,10 @@ export function setupPreviewBehavior(
             allPreviews.find((p) => p.id === id)?.a11yNodes ||
             [],
         getA11yOverlayId: a11yOverlay,
-        isLive: (id) => interactivePreviewIds.has(id),
+        isLive: (id) => liveState.isLive(id),
         onToggleA11yOverlay: () => toggleA11yOverlay(),
-        onToggleInteractive: (shift) => toggleInteractive(shift),
-        onToggleRecording: () => toggleRecording(),
+        onToggleInteractive: (shift) => liveState.toggleInteractive(shift),
+        onToggleRecording: () => liveState.toggleRecording(),
         onRequestFocusedDiff: (against) => requestFocusedDiff(against),
         onRequestLaunchOnDevice: () => requestLaunchOnDevice(),
     });
@@ -191,12 +187,29 @@ export function setupPreviewBehavior(
     // Config for the interactive-input pointer machine. The predicate
     // unifies live/recording state — both forward pointer/wheel input
     // to the daemon — so the module doesn't need direct access to
-    // either Set.
+    // either Set. `liveState` is initialised right below and only read
+    // when a real pointer event fires, so the closure access can never
+    // hit before the controller is bound.
+    let liveState!: LiveStateController;
     const interactiveInputConfig = {
-        isLive: (id) =>
-            interactivePreviewIds.has(id) || recordingPreviewIds.has(id),
+        isLive: (id) => liveState.isLive(id) || liveState.isRecording(id),
         vscode,
     };
+
+    liveState = new LiveStateController({
+        vscode,
+        recordingFormat,
+        interactiveInputConfig,
+        earlyFeatures,
+        inFocus: () => filterToolbar.getLayoutValue() === "focus",
+        focusedCard: () =>
+            filterToolbar.getLayoutValue() === "focus"
+                ? (getVisibleCards()[focusIndex] ?? null)
+                : null,
+        applyInteractiveButtonState: () => applyInteractiveButtonState(),
+        applyRecordingButtonState: () => applyRecordingButtonState(),
+        renderInspector: (card) => inspector.render(card),
+    });
 
     // Config for `showDiffOverlay` — reads/writes the persisted Side/
     // Overlay/Onion mode through the same `state` object that holds the
@@ -264,17 +277,13 @@ export function setupPreviewBehavior(
     // remove just this one. Plain click keeps the single-target single-card UX casual users
     // expect.
     btnInteractive.addEventListener("click", (e) =>
-        toggleInteractive(e.shiftKey),
+        liveState.toggleInteractive(e.shiftKey),
     );
-    btnStopInteractive.addEventListener("click", () => stopAllInteractive());
-    btnRecording.addEventListener("click", () => toggleRecording());
+    btnStopInteractive.addEventListener("click", () =>
+        liveState.stopAllInteractive(),
+    );
+    btnRecording.addEventListener("click", () => liveState.toggleRecording());
     btnExitFocus.addEventListener("click", () => exitFocus());
-
-    // ----- Interactive (live-stream) mode helpers -----
-    // State (moduleDaemonReady, interactivePreviewIds) is declared
-    // earlier so the first applyLayout() can reach it. The function
-    // declarations below are hoisted, so call sites above this block
-    // resolve fine.
 
     function applyEarlyFeatureVisibility() {
         focusToolbar.applyEarlyFeatureVisibility({
@@ -287,13 +296,13 @@ export function setupPreviewBehavior(
         const inFocus = filterToolbar.getLayoutValue() === "focus";
         const card = inFocus ? getVisibleCards()[focusIndex] : null;
         const previewId = card?.dataset.previewId ?? null;
-        const isLive = !!previewId && interactivePreviewIds.has(previewId);
+        const isLive = !!previewId && liveState.isLive(previewId);
         focusToolbar.applyInteractiveButtonState({
             inFocus,
             focusedPreviewId: previewId,
             isLive,
-            otherLiveCount: interactivePreviewIds.size - (isLive ? 1 : 0),
-            hasLive: interactivePreviewIds.size > 0,
+            otherLiveCount: liveState.liveCount - (isLive ? 1 : 0),
+            hasLive: liveState.liveCount > 0,
             daemonReady: isFocusedModuleReady(moduleDaemonReady),
             interactiveSupported: isFocusedInteractiveSupported(
                 moduleDaemonReady,
@@ -311,7 +320,7 @@ export function setupPreviewBehavior(
             earlyFeatures: earlyFeatures(),
             focusedPreviewId: previewId,
             daemonReady: isFocusedModuleReady(moduleDaemonReady),
-            isRecording: !!previewId && recordingPreviewIds.has(previewId),
+            isRecording: !!previewId && liveState.isRecording(previewId),
         });
     }
 
@@ -354,185 +363,10 @@ export function setupPreviewBehavior(
         inspector.render(card);
     }
 
-    function applyLiveBadge() {
-        // Tear down every prior live decoration first — a removal from interactivePreviewIds
-        // (Shift+click off, set-cleared on daemon-not-ready, etc.) needs the badge to come
-        // off the now-not-live card. Then re-stamp every still-live preview.
-        document.querySelectorAll(".preview-card.live").forEach((c) => {
-            c.classList.remove("live");
-            c.querySelector(".card-live-stop-btn")?.remove();
-        });
-        if (interactivePreviewIds.size === 0) return;
-        interactivePreviewIds.forEach((previewId) => {
-            const card = document.getElementById(
-                "preview-" + sanitizeId(previewId),
-            );
-            if (!card) return;
-            card.classList.add("live");
-            ensureLiveCardControls(card);
-        });
-    }
-
-    function ensureLiveCardControls(card) {
-        const container = card.querySelector(".image-container");
-        if (!container) return;
-        if (!container.querySelector(".card-live-stop-btn")) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "icon-button card-live-stop-btn";
-            btn.title = "Stop live preview";
-            btn.setAttribute("aria-label", "Stop live preview");
-            btn.innerHTML =
-                '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>';
-            btn.addEventListener("click", (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                stopInteractiveForCard(card);
-            });
-            container.appendChild(btn);
-        }
-        const img = container.querySelector("img");
-        if (img)
-            attachInteractiveInputHandlers(card, img, interactiveInputConfig);
-    }
-
-    function stopAllInteractive() {
-        if (interactivePreviewIds.size === 0) return;
-        const ids = Array.from(interactivePreviewIds);
-        interactivePreviewIds.clear();
-        ids.forEach((previewId) => {
-            vscode.postMessage({
-                command: "setInteractive",
-                previewId,
-                enabled: false,
-            });
-        });
-        applyLiveBadge();
-        applyInteractiveButtonState();
-    }
-
-    function stopInteractiveForCard(card) {
-        const previewId = card.dataset.previewId;
-        if (!previewId || !interactivePreviewIds.has(previewId)) return;
-        interactivePreviewIds.delete(previewId);
-        vscode.postMessage({
-            command: "setInteractive",
-            previewId,
-            enabled: false,
-        });
-        applyLiveBadge();
-        applyInteractiveButtonState();
-    }
-
-    function toggleInteractive(shift) {
-        // Drives the LIVE button in the focus-mode toolbar — operates on the currently
-        // focused card. Body factored into setInteractiveForCard so the in-card click handler
-        // (any layout) can reuse the same plain-vs-Shift logic.
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) return;
-        setInteractiveForCard(card, shift);
-    }
-
-    /**
-     * Toggle interactive mode for [card] honouring plain/Shift semantics:
-     *  - Plain: single-target. Drop every prior live target before adding (or re-removing)
-     *    this one — keeps the casual UX matching v1's "one card live at a time" mental model.
-     *  - Shift: multi-target. Toggle just this preview in/out of the live set without
-     *    touching the others.
-     */
-    function setInteractiveForCard(card, shift) {
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        const wasLive = interactivePreviewIds.has(previewId);
-        if (!shift) {
-            interactivePreviewIds.forEach((prior) => {
-                if (prior === previewId) return;
-                vscode.postMessage({
-                    command: "setInteractive",
-                    previewId: prior,
-                    enabled: false,
-                });
-            });
-            interactivePreviewIds.clear();
-        }
-        const turnOn = !wasLive;
-        if (turnOn) {
-            interactivePreviewIds.add(previewId);
-            const img = card.querySelector(".image-container img");
-            if (img)
-                attachInteractiveInputHandlers(
-                    card,
-                    img,
-                    interactiveInputConfig,
-                );
-        } else {
-            interactivePreviewIds.delete(previewId);
-        }
-        vscode.postMessage({
-            command: "setInteractive",
-            previewId,
-            enabled: turnOn,
-        });
-        applyLiveBadge();
-        applyInteractiveButtonState();
-        inspector.render(card);
-    }
-
-    function toggleRecording() {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const card = getVisibleCards()[focusIndex];
-        const previewId = card ? card.dataset.previewId : null;
-        if (!card || !previewId) return;
-        const turnOn = !recordingPreviewIds.has(previewId);
-        if (turnOn) {
-            recordingPreviewIds.forEach((prior) => {
-                if (prior === previewId) return;
-                vscode.postMessage({
-                    command: "setRecording",
-                    previewId: prior,
-                    enabled: false,
-                    format: recordingFormat.value,
-                });
-            });
-            recordingPreviewIds.clear();
-            recordingPreviewIds.add(previewId);
-            const img = card.querySelector(".image-container img");
-            if (img)
-                attachInteractiveInputHandlers(
-                    card,
-                    img,
-                    interactiveInputConfig,
-                );
-        } else {
-            recordingPreviewIds.delete(previewId);
-        }
-        vscode.postMessage({
-            command: "setRecording",
-            previewId,
-            enabled: turnOn,
-            format: recordingFormat.value,
-        });
-        applyRecordingButtonState();
-        inspector.render(card);
-    }
-
-    /**
-     * Single-click-to-LIVE entry point from the in-card image click handler. Ensures
-     * image clicks land here in any layout (focus, grid, flow, column) — the focus-mode
-     * LIVE button is a redundant affordance for the focus-mode user, this lets every layout
-     * reach interactive mode in one click. Subsequent clicks while LIVE forward to the
-     * daemon via the per-image handler in updateImage; that is a separate code path and
-     * the click here short-circuits.
-     */
-    function enterInteractiveOnCard(card, shift) {
-        setInteractiveForCard(card, shift);
-    }
-
-    // Pointer + wheel state machine for live previews lives in
-    // `./interactiveInput.ts` — see `attachInteractiveInputHandlers`.
+    // Live + recording state (toolbar/per-card buttons, badge re-stamping,
+    // single-target follow-focus, viewport auto-stop) lives in
+    // `./liveState.ts` — see `LiveStateController`. The pointer + wheel
+    // state machine the live cards use lives in `./interactiveInput.ts`.
 
     // Document-level Left/Right in focus mode steps between cards. The
     // animated-carousel frame-controls handler stops propagation so
@@ -644,25 +478,11 @@ export function setupPreviewBehavior(
             .querySelectorAll(".image-container")
             .forEach((c) => c.removeAttribute("title"));
         publishScopedPreview();
-        // Single-target follow-focus: when there's exactly one live stream and the user
-        // navigates off it, drop the stream so the LIVE chip follows the focused card.
-        // Multi-target (size > 1) is treated as an explicit opt-in via Shift+click — those
-        // streams persist across focus navigation until the user explicitly toggles them off
-        // (or daemon dies, or the webview disposes).
-        if (interactivePreviewIds.size === 1) {
-            const visible = getVisibleCards();
-            const card = mode === "focus" ? visible[focusIndex] : null;
-            const lone = interactivePreviewIds.values().next().value;
-            if (!card || card.dataset.previewId !== lone) {
-                vscode.postMessage({
-                    command: "setInteractive",
-                    previewId: lone,
-                    enabled: false,
-                });
-                interactivePreviewIds.clear();
-                applyLiveBadge();
-            }
-        }
+        // Single-target follow-focus teardown — see
+        // `LiveStateController.enforceSingleTargetFollowFocus`.
+        liveState.enforceSingleTargetFollowFocus(
+            mode === "focus" ? (getVisibleCards()[focusIndex] ?? null) : null,
+        );
         // D2 — same teardown for the a11y overlay: navigating off the previewed card
         // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
         // user isn't looking at.
@@ -907,14 +727,14 @@ export function setupPreviewBehavior(
             // handler routes to recordInteractiveInput. Check before the
             // stale-card branch so interactive clicks do not also queue a
             // heavyweight refresh for stale captures.
-            if (interactivePreviewIds.has(previewId)) return;
+            if (liveState.isLive(previewId)) return;
             if (card.classList.contains("is-stale")) {
                 evt.preventDefault();
                 evt.stopPropagation();
                 staleBadge.requestHeavyRefresh(card);
                 return;
             }
-            enterInteractiveOnCard(card, evt.shiftKey);
+            liveState.enterInteractiveOnCard(card, evt.shiftKey);
         });
 
         // ATF legend + overlay layer — rendered in the webview (not
@@ -1192,7 +1012,7 @@ export function setupPreviewBehavior(
         // In live mode the new bytes are a frame, not a card reload —
         // skip the fade-in so successive frames read as a stream rather
         // than a sequence of independent renders. See INTERACTIVE.md § 3.
-        const isLive = interactivePreviewIds.has(previewId);
+        const isLive = liveState.isLive(previewId);
         img.className = isLive ? "live-frame" : "fade-in";
         attachInteractiveInputHandlers(card, img, interactiveInputConfig);
 
@@ -1305,21 +1125,11 @@ export function setupPreviewBehavior(
 
     // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
     // The actual machinery lives in `./viewportTracker.ts`. The auto-stop-
-    // interactive-on-scroll-out rule stays here because the live set lives
-    // here; the tracker just notifies us via `onCardLeftViewport`.
+    // interactive-on-scroll-out rule lives in `liveState`; the tracker
+    // forwards the leave event via `onCardLeftViewport`.
     const viewport = new ViewportTracker({
         vscode,
-        onCardLeftViewport: (id) => {
-            if (!interactivePreviewIds.has(id)) return;
-            interactivePreviewIds.delete(id);
-            vscode.postMessage({
-                command: "setInteractive",
-                previewId: id,
-                enabled: false,
-            });
-            applyLiveBadge();
-            applyInteractiveButtonState();
-        },
+        onCardLeftViewport: (id) => liveState.onCardLeftViewport(id),
     });
 
     function observeCardForViewport(card) {
@@ -1363,10 +1173,8 @@ export function setupPreviewBehavior(
                 // bother sending interactive/stop because the preview no
                 // longer exists for the daemon to dispatch into anyway.
                 const newIds = new Set(msg.previews.map((p) => p.id));
-                interactivePreviewIds.forEach((id) => {
-                    if (!newIds.has(id)) interactivePreviewIds.delete(id);
-                });
-                applyLiveBadge();
+                liveState.pruneLive((id) => newIds.has(id));
+                liveState.applyLiveBadge();
                 applyInteractiveButtonState();
                 // Tell the extension the cards reached the grid. Powers the
                 // e2e test's "real webview consumed setPreviews" assertion —
@@ -1609,40 +1417,21 @@ export function setupPreviewBehavior(
                 // to every live preview; if the panel ever shows multi-
                 // module previews simultaneously, this needs scoping by
                 // each preview's owning module.
-                if (!msg.ready && interactivePreviewIds.size > 0) {
-                    interactivePreviewIds.clear();
-                    applyLiveBadge();
+                if (!msg.ready) liveState.handleDaemonLost();
+                else {
+                    applyInteractiveButtonState();
+                    applyRecordingButtonState();
                 }
-                if (!msg.ready && recordingPreviewIds.size > 0) {
-                    recordingPreviewIds.clear();
-                }
-                applyInteractiveButtonState();
-                applyRecordingButtonState();
                 break;
             }
             case "clearInteractive": {
-                // Extension flushed daemon-side streams (e.g. user moved focus to a
-                // different editor). Drop our UI-side bookkeeping in lockstep — the
-                // extension already stopped the streams server-side, so we MUST NOT post
-                // setInteractive messages back; that would race the flush.
-                if (msg.previewId) {
-                    interactivePreviewIds.delete(msg.previewId);
-                    applyLiveBadge();
-                    applyInteractiveButtonState();
-                } else if (interactivePreviewIds.size > 0) {
-                    interactivePreviewIds.clear();
-                    applyLiveBadge();
-                    applyInteractiveButtonState();
-                }
+                liveState.handleExtensionClearInteractive(
+                    msg.previewId ?? null,
+                );
                 break;
             }
             case "clearRecording": {
-                if (msg.previewId) {
-                    recordingPreviewIds.delete(msg.previewId);
-                } else if (recordingPreviewIds.size > 0) {
-                    recordingPreviewIds.clear();
-                }
-                applyRecordingButtonState();
+                liveState.handleExtensionClearRecording(msg.previewId ?? null);
                 break;
             }
             case "previewMainRefChanged": {
@@ -1701,17 +1490,7 @@ export function setupPreviewBehavior(
                         });
                         setA11yOverlay(null);
                     }
-                    if (recordingPreviewIds.size > 0) {
-                        recordingPreviewIds.forEach((previewId) => {
-                            vscode.postMessage({
-                                command: "setRecording",
-                                previewId,
-                                enabled: false,
-                                format: recordingFormat.value,
-                            });
-                        });
-                        recordingPreviewIds.clear();
-                    }
+                    liveState.handleEarlyFeaturesDisabled();
                 }
                 applyLayout();
                 break;
