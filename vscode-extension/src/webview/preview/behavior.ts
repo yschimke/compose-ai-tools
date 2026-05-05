@@ -13,6 +13,8 @@
 // queries below resolve.
 
 import { getVsCodeApi } from "../shared/vscode";
+import { PreviewGrid } from "./components/PreviewGrid";
+import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { previewStore } from "./previewStore";
 
 export function setupPreviewBehavior(
@@ -30,7 +32,7 @@ export function setupPreviewBehavior(
     const earlyFeatures = (): boolean =>
         previewStore.getState().earlyFeaturesEnabled;
 
-    const grid = document.getElementById("preview-grid");
+    const grid = document.getElementById("preview-grid") as PreviewGrid;
     const focusInspector = document.getElementById("focus-inspector");
     // `<message-banner>` owns the status strip; we use a typed-ish handle
     // to call setMessage / read its current owner from the few cases that
@@ -117,6 +119,16 @@ export function setupPreviewBehavior(
     const moduleInteractiveSupported = new Map();
     const interactivePreviewIds = new Set();
     const recordingPreviewIds = new Set();
+
+    // Config for the interactive-input pointer machine. The predicate
+    // unifies live/recording state — both forward pointer/wheel input
+    // to the daemon — so the module doesn't need direct access to
+    // either Set.
+    const interactiveInputConfig = {
+        isLive: (id) =>
+            interactivePreviewIds.has(id) || recordingPreviewIds.has(id),
+        vscode,
+    };
 
     // Restore layout preference
     if (
@@ -371,7 +383,8 @@ export function setupPreviewBehavior(
             container.appendChild(btn);
         }
         const img = container.querySelector("img");
-        if (img) ensureInteractiveInputHandlers(card, img);
+        if (img)
+            attachInteractiveInputHandlers(card, img, interactiveInputConfig);
     }
 
     function stopAllInteractive() {
@@ -439,7 +452,12 @@ export function setupPreviewBehavior(
         if (turnOn) {
             interactivePreviewIds.add(previewId);
             const img = card.querySelector(".image-container img");
-            if (img) ensureInteractiveInputHandlers(card, img);
+            if (img)
+                attachInteractiveInputHandlers(
+                    card,
+                    img,
+                    interactiveInputConfig,
+                );
         } else {
             interactivePreviewIds.delete(previewId);
         }
@@ -473,7 +491,12 @@ export function setupPreviewBehavior(
             recordingPreviewIds.clear();
             recordingPreviewIds.add(previewId);
             const img = card.querySelector(".image-container img");
-            if (img) ensureInteractiveInputHandlers(card, img);
+            if (img)
+                attachInteractiveInputHandlers(
+                    card,
+                    img,
+                    interactiveInputConfig,
+                );
         } else {
             recordingPreviewIds.delete(previewId);
         }
@@ -499,215 +522,8 @@ export function setupPreviewBehavior(
         setInteractiveForCard(card, shift);
     }
 
-    // Idempotent attach. Adds pointer listeners to the live card's image and a capture-phase
-    // wheel listener to the whole card exactly once; flagged via dataset so a second
-    // updateImage on the same element doesn't stack listeners. The handlers go inert the
-    // moment live mode exits, so non-live cards never consume input.
-    function ensureInteractiveInputHandlers(card, img) {
-        const previewId = card.dataset.previewId;
-        const shouldHandle =
-            !!previewId &&
-            (interactivePreviewIds.has(previewId) ||
-                recordingPreviewIds.has(previewId));
-        if (shouldHandle && card.dataset.interactiveWheelBound !== "1") {
-            card.dataset.interactiveWheelBound = "1";
-            card.addEventListener(
-                "wheel",
-                (evt) => {
-                    const id = card.dataset.previewId;
-                    if (
-                        !id ||
-                        (!interactivePreviewIds.has(id) &&
-                            !recordingPreviewIds.has(id))
-                    )
-                        return;
-                    // Live previews own wheel input while the cursor is inside the card. If the
-                    // wheel lands on preview pixels, forward it as rotary scroll; if it lands on
-                    // the card chrome, still consume it so enthusiastic scrolling cannot bubble to
-                    // the list and push the live preview out of view.
-                    const currentImg = card.querySelector(
-                        "img.preview-image, img.preview-gif, img",
-                    );
-                    const point =
-                        currentImg && eventInsideElement(currentImg, evt)
-                            ? imagePoint(currentImg, evt)
-                            : null;
-                    if (currentImg && point) {
-                        postInteractiveInput(
-                            id,
-                            currentImg,
-                            "rotaryScroll",
-                            point,
-                            evt.deltaY,
-                        );
-                    }
-                    evt.preventDefault();
-                    evt.stopImmediatePropagation();
-                },
-                { passive: false, capture: true },
-            );
-        }
-        if (shouldHandle && img.dataset.interactiveBound !== "1") {
-            img.dataset.interactiveBound = "1";
-            const state = {
-                pointerId: null,
-                start: null,
-                last: null,
-                dragging: false,
-                sentDown: false,
-            };
-            img.addEventListener("pointerdown", (evt) => {
-                const id = card.dataset.previewId;
-                if (
-                    !id ||
-                    (!interactivePreviewIds.has(id) &&
-                        !recordingPreviewIds.has(id))
-                )
-                    return;
-                if (evt.button !== 0 && evt.button !== 2) return;
-                state.pointerId = evt.pointerId;
-                state.start = imagePoint(img, evt);
-                state.last = state.start;
-                state.dragging = false;
-                state.sentDown = false;
-                img.setPointerCapture?.(evt.pointerId);
-                evt.preventDefault();
-                evt.stopPropagation();
-            });
-            img.addEventListener("pointermove", (evt) => {
-                const id = card.dataset.previewId;
-                if (
-                    !id ||
-                    (!interactivePreviewIds.has(id) &&
-                        !recordingPreviewIds.has(id))
-                )
-                    return;
-                if (state.pointerId !== evt.pointerId || !state.start) return;
-                const next = imagePoint(img, evt);
-                if (!next) return;
-                const dx = next.clientX - state.start.clientX;
-                const dy = next.clientY - state.start.clientY;
-                if (!state.dragging && Math.hypot(dx, dy) >= 4) {
-                    state.dragging = true;
-                }
-                if (state.dragging) {
-                    if (!state.sentDown) {
-                        postInteractiveInput(
-                            id,
-                            img,
-                            "pointerDown",
-                            state.start,
-                        );
-                        state.sentDown = true;
-                    }
-                    postInteractiveInput(id, img, "pointerMove", next);
-                    state.last = next;
-                    evt.preventDefault();
-                    evt.stopPropagation();
-                }
-            });
-            img.addEventListener("pointerup", (evt) => {
-                const id = card.dataset.previewId;
-                if (
-                    !id ||
-                    (!interactivePreviewIds.has(id) &&
-                        !recordingPreviewIds.has(id))
-                )
-                    return;
-                if (state.pointerId !== evt.pointerId || !state.start) return;
-                const point = imagePoint(img, evt) || state.last || state.start;
-                if (state.dragging) {
-                    if (!state.sentDown) {
-                        postInteractiveInput(
-                            id,
-                            img,
-                            "pointerDown",
-                            state.start,
-                        );
-                    }
-                    postInteractiveInput(id, img, "pointerUp", point);
-                } else {
-                    postInteractiveInput(id, img, "click", point);
-                }
-                img.releasePointerCapture?.(evt.pointerId);
-                state.pointerId = null;
-                state.start = null;
-                state.last = null;
-                state.dragging = false;
-                state.sentDown = false;
-                evt.preventDefault();
-                evt.stopPropagation();
-            });
-            img.addEventListener("pointercancel", (evt) => {
-                if (state.pointerId !== evt.pointerId) return;
-                img.releasePointerCapture?.(evt.pointerId);
-                state.pointerId = null;
-                state.start = null;
-                state.last = null;
-                state.dragging = false;
-                state.sentDown = false;
-            });
-            img.addEventListener("contextmenu", (evt) => {
-                const id = card.dataset.previewId;
-                if (
-                    !id ||
-                    (!interactivePreviewIds.has(id) &&
-                        !recordingPreviewIds.has(id))
-                )
-                    return;
-                evt.preventDefault();
-                evt.stopPropagation();
-            });
-        }
-    }
-
-    function imagePoint(img, evt) {
-        // Image-natural pixel coords — same space the daemon's renderer
-        // works in. The webview's offsetX/Y is in CSS pixels of the
-        // displayed image; scale by the displayed/natural ratio to
-        // recover the pixel the user actually clicked.
-        const natW = img.naturalWidth || 0;
-        const natH = img.naturalHeight || 0;
-        const rect = img.getBoundingClientRect();
-        if (!natW || !natH || rect.width === 0 || rect.height === 0)
-            return null;
-        const clientX = evt.clientX - rect.left;
-        const clientY = evt.clientY - rect.top;
-        const pixelX = Math.round(clientX * (natW / rect.width));
-        const pixelY = Math.round(clientY * (natH / rect.height));
-        return {
-            clientX,
-            clientY,
-            pixelX: Math.max(0, Math.min(natW - 1, pixelX)),
-            pixelY: Math.max(0, Math.min(natH - 1, pixelY)),
-        };
-    }
-
-    function eventInsideElement(el, evt) {
-        const rect = el.getBoundingClientRect();
-        return (
-            evt.clientX >= rect.left &&
-            evt.clientX <= rect.right &&
-            evt.clientY >= rect.top &&
-            evt.clientY <= rect.bottom
-        );
-    }
-
-    function postInteractiveInput(previewId, img, kind, point, scrollDeltaY) {
-        const natW = img.naturalWidth || 0;
-        const natH = img.naturalHeight || 0;
-        if (!point || !natW || !natH) return;
-        vscode.postMessage({
-            command: "recordInteractiveInput",
-            previewId,
-            kind,
-            pixelX: point.pixelX,
-            pixelY: point.pixelY,
-            imageWidth: natW,
-            imageHeight: natH,
-            scrollDeltaY,
-        });
-    }
+    // Pointer + wheel state machine for live previews lives in
+    // `./interactiveInput.ts` — see `attachInteractiveInputHandlers`.
 
     // Document-level Left/Right in focus mode steps between cards. The
     // animated-carousel frame-controls handler stops propagation so
@@ -746,16 +562,9 @@ export function setupPreviewBehavior(
     }
 
     function applyFilters() {
-        const fnVal = filterToolbar.getFunctionValue();
-        const grpVal = filterToolbar.getGroupValue();
-
-        let visibleCount = 0;
-        document.querySelectorAll(".preview-card").forEach((card) => {
-            const show =
-                (fnVal === "all" || card.dataset.function === fnVal) &&
-                (grpVal === "all" || card.dataset.group === grpVal);
-            card.classList.toggle("filtered-out", !show);
-            if (show) visibleCount++;
+        const visibleCount = grid.applyFilters({
+            fn: filterToolbar.getFunctionValue(),
+            group: filterToolbar.getGroupValue(),
         });
 
         // Only own the message when we have a filter-specific thing to
@@ -795,14 +604,12 @@ export function setupPreviewBehavior(
     }
 
     function getVisibleCards() {
-        return Array.from(document.querySelectorAll(".preview-card")).filter(
-            (c) => !c.classList.contains("filtered-out"),
-        );
+        return grid.getVisibleCards();
     }
 
     function applyLayout() {
         const mode = filterToolbar.getLayoutValue();
-        grid.className = "preview-grid layout-" + mode;
+        grid.setLayoutMode(mode);
         focusControls.hidden = mode !== "focus";
 
         if (mode === "focus") {
@@ -815,25 +622,13 @@ export function setupPreviewBehavior(
             }
             if (focusIndex >= visible.length) focusIndex = visible.length - 1;
             if (focusIndex < 0) focusIndex = 0;
-            // Hide all non-focused cards
-            document.querySelectorAll(".preview-card").forEach((card) => {
-                card.classList.remove("focused");
-            });
-            visible.forEach((card, i) => {
-                card.classList.toggle("hidden-by-focus", i !== focusIndex);
-            });
-            if (visible[focusIndex]) {
-                visible[focusIndex].classList.add("focused");
-            }
+            grid.applyFocusVisibility(visible[focusIndex]);
             focusPosition.textContent = focusIndex + 1 + " / " + visible.length;
             btnPrev.disabled = focusIndex === 0;
             btnNext.disabled = focusIndex === visible.length - 1;
             renderFocusInspector(visible[focusIndex]);
         } else {
-            // Clear focus classes for other layouts
-            document.querySelectorAll(".preview-card").forEach((card) => {
-                card.classList.remove("focused", "hidden-by-focus");
-            });
+            grid.applyFocusVisibility(null);
             renderFocusInspector(null);
         }
         document
@@ -1734,7 +1529,7 @@ export function setupPreviewBehavior(
         // Single-click on the image enters LIVE for this preview (in any
         // layout — focus, grid, flow, column). The first click toggles
         // interactive on; subsequent clicks while LIVE forward as pointer
-        // events to the daemon (handled by ensureInteractiveInputHandlers
+        // events to the daemon (handled by attachInteractiveInputHandlers
         // attached via updateImage). The handler is on the container, not
         // the <img>, so clicks land before the image renders too. Modifier-
         // aware: Shift+click follows the multi-stream semantics from
@@ -1946,7 +1741,7 @@ export function setupPreviewBehavior(
                 ";base64," +
                 capture.imageData;
             img.className = "fade-in";
-            ensureInteractiveInputHandlers(card, img);
+            attachInteractiveInputHandlers(card, img, interactiveInputConfig);
             if (capture.errorMessage || capture.renderError) {
                 container.appendChild(
                     buildErrorPanel(
@@ -2529,7 +2324,7 @@ export function setupPreviewBehavior(
         // than a sequence of independent renders. See INTERACTIVE.md § 3.
         const isLive = interactivePreviewIds.has(previewId);
         img.className = isLive ? "live-frame" : "fade-in";
-        ensureInteractiveInputHandlers(card, img);
+        attachInteractiveInputHandlers(card, img, interactiveInputConfig);
 
         if (caps) updateFrameIndicator(card);
 
