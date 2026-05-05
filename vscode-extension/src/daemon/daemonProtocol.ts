@@ -788,3 +788,61 @@ export interface DaemonLaunchDescriptor {
 }
 
 export const DAEMON_DESCRIPTOR_SCHEMA_VERSION = 1;
+
+// =====================================================================
+// Live-frame streaming (`composestream/1`) — buttery follow-up to
+// `interactive/*`. See docs/daemon/STREAMING.md for the rationale.
+//
+// The data plane lives on `streamFrame` notifications carrying the bytes
+// inline, eliminating the `<img src=…>` swap blink and the on-disk PNG
+// race that the legacy renderFinished path suffers from.
+// =====================================================================
+
+export type StreamCodec = "png" | "webp";
+
+export interface StreamStartParams {
+    previewId: string;
+    codec?: StreamCodec;
+    /** Cap on emit cadence (frames per second). `undefined` = renderer-natural. */
+    maxFps?: number;
+    hidpi?: boolean;
+    inspectionMode?: boolean;
+}
+
+export interface StreamStartResult {
+    frameStreamId: string;
+    /** Codec the daemon will actually emit — may be downgraded from the request. */
+    codec: StreamCodec;
+    heldSession: boolean;
+    fallbackReason?: string;
+}
+
+export interface StreamStopParams {
+    frameStreamId: string;
+}
+
+export interface StreamVisibilityParams {
+    frameStreamId: string;
+    visible: boolean;
+    /** Override the throttled fps when `visible` is false. Defaults to 1. */
+    fps?: number;
+}
+
+/**
+ * `streamFrame` notification — one frame on a live stream.
+ *
+ * `codec === undefined` and `payloadBase64 === undefined` together signal an
+ * `unchanged` heartbeat: bytes-identical to the prior frame on this stream.
+ * The newest-wins client should treat this as a no-op tick.
+ */
+export interface StreamFrameParams {
+    frameStreamId: string;
+    seq: number;
+    ptsMillis: number;
+    widthPx: number;
+    heightPx: number;
+    codec?: StreamCodec;
+    keyframe?: boolean;
+    final?: boolean;
+    payloadBase64?: string;
+}
