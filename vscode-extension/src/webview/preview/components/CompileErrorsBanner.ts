@@ -16,6 +16,7 @@ import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { CompileError } from "../../shared/types";
 import { getVsCodeApi } from "../../shared/vscode";
+import { PreviewGrid } from "./PreviewGrid";
 
 interface SetCompileErrorsMessage {
     command: "setCompileErrors";
@@ -65,12 +66,15 @@ export class CompileErrorsBanner extends LitElement {
 
     protected updated(): void {
         // Cross-component side effect: dim the preview grid while the
-        // banner is showing. Mirrors the imperative `grid.classList.add(
-        // 'compile-stale')` / `grid.classList.remove('compile-stale')`
-        // calls in the previous `setCompileErrors` / `clearCompileErrors`.
-        const grid = document.getElementById("preview-grid");
-        if (!grid) return;
-        grid.classList.toggle("compile-stale", this.errors.length > 0);
+        // banner is showing. The grid owns its own class list (incl. the
+        // layout-X modifier), so we hand it the desired flag rather than
+        // toggling the class directly — matches the imperative
+        // `setCompileErrors` / `clearCompileErrors` behaviour but goes
+        // through the typed component API.
+        const grid = document.querySelector("preview-grid");
+        if (grid instanceof PreviewGrid) {
+            grid.setCompileStale(this.errors.length > 0);
+        }
     }
 
     protected render(): TemplateResult {

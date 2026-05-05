@@ -14,6 +14,7 @@ import { setupPreviewBehavior } from "./behavior";
 import "./components/CompileErrorsBanner";
 import "./components/FilterToolbar";
 import "./components/MessageBanner";
+import "./components/PreviewGrid";
 import "./components/ProgressBar";
 
 @customElement("preview-app")
@@ -155,12 +156,11 @@ export class PreviewApp extends LitElement {
                     <i class="codicon codicon-close" aria-hidden="true"></i>
                 </button>
             </div>
-            <div
+            <preview-grid
                 id="preview-grid"
-                class="preview-grid"
                 role="list"
                 aria-label="Preview cards"
-            ></div>
+            ></preview-grid>
             <div
                 id="focus-inspector"
                 class="focus-inspector"
