@@ -356,6 +356,13 @@
     "sha256": "81d9a143e67f54f9c191b33ba16f2db863e2a02008e024ec853949ef384b2bc5",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
   },
+  "samples:cmp/com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo": {
+    "captureLabel": "",
+    "functionName": "WallpaperDemoPreview",
+    "renderBasename": "PreviewsKt.WallpaperDemoPreview_Wallpaper_Demo.png",
+    "sha256": "ab868686741c27a0025eb51fe1f221b74b778509745c94584fc8a59deeeccf8d",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
+  },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
     "captureLabel": "",
     "functionName": "BlueLabelPreview",

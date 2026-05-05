@@ -75,6 +75,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `AppPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewsKt.AppPreview.png" width="150" /> |
 | `BlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewsKt.BlueBoxPreview_Blue_Box.png" width="150" /> |
 | `RedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewsKt.RedBoxPreview_Red_Box.png" width="150" /> |
+| `WallpaperDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewsKt.WallpaperDemoPreview_Wallpaper_Demo.png" width="150" /> |
 
 ## samples:cmp-shared
 
