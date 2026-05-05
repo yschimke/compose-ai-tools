@@ -16,6 +16,7 @@ import { getVsCodeApi } from "../shared/vscode";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { previewStore } from "./previewStore";
+import { ViewportTracker } from "./viewportTracker";
 
 export function setupPreviewBehavior(
     initialEarlyFeaturesEnabled: boolean,
@@ -2028,8 +2029,7 @@ export function setupPreviewBehavior(
         for (const [id, card] of existingCards) {
             if (!newIds.has(id)) {
                 cardCaptures.delete(id);
-                intersecting.delete(id);
-                if (intersectionObserver) intersectionObserver.unobserve(card);
+                viewport.forget(id, card);
                 card.remove();
             }
         }
@@ -2488,141 +2488,26 @@ export function setupPreviewBehavior(
     }
 
     // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
-    // Webview owns the geometry. Extension's daemon scheduler consumes
-    // the published snapshot; when the daemon path is off the extension
-    // simply ignores these messages.
-    const intersecting = new Set();
-    let lastScrollTop = 0;
-    let lastScrollAt = 0;
-    let scrollVelocity = 0; // px/ms, +ve = scrolling down
-    let viewportDebounce = null;
-
-    const intersectionObserver =
-        "IntersectionObserver" in window
-            ? new IntersectionObserver(
-                  (entries) => {
-                      for (const entry of entries) {
-                          const id = entry.target.dataset.previewId;
-                          if (!id) continue;
-                          if (entry.isIntersecting) {
-                              intersecting.add(id);
-                          } else {
-                              intersecting.delete(id);
-                              // Auto-stop interactive mode when a live preview scrolls out of view —
-                              // keeps the daemon from accumulating warm scenes the user can't see and
-                              // matches the "follow what the user is looking at" UX. Re-entering view
-                              // doesn't auto-resume; the user re-clicks if they want it back.
-                              if (interactivePreviewIds.has(id)) {
-                                  interactivePreviewIds.delete(id);
-                                  vscode.postMessage({
-                                      command: "setInteractive",
-                                      previewId: id,
-                                      enabled: false,
-                                  });
-                                  applyLiveBadge();
-                                  applyInteractiveButtonState();
-                              }
-                          }
-                      }
-                      scheduleViewportPublish();
-                  },
-                  { root: null, rootMargin: "0px", threshold: 0.1 },
-              )
-            : null;
+    // The actual machinery lives in `./viewportTracker.ts`. The auto-stop-
+    // interactive-on-scroll-out rule stays here because the live set lives
+    // here; the tracker just notifies us via `onCardLeftViewport`.
+    const viewport = new ViewportTracker({
+        vscode,
+        onCardLeftViewport: (id) => {
+            if (!interactivePreviewIds.has(id)) return;
+            interactivePreviewIds.delete(id);
+            vscode.postMessage({
+                command: "setInteractive",
+                previewId: id,
+                enabled: false,
+            });
+            applyLiveBadge();
+            applyInteractiveButtonState();
+        },
+    });
 
     function observeCardForViewport(card) {
-        if (intersectionObserver) intersectionObserver.observe(card);
-    }
-
-    function unobserveAllCards() {
-        if (!intersectionObserver) return;
-        intersecting.clear();
-        document
-            .querySelectorAll(".preview-card")
-            .forEach((c) => intersectionObserver.unobserve(c));
-    }
-
-    // Coalesce viewport publishes — IntersectionObserver fires per-card
-    // during a scroll burst; don't drown the daemon in setVisible spam.
-    function scheduleViewportPublish() {
-        if (viewportDebounce) return;
-        viewportDebounce = setTimeout(() => {
-            viewportDebounce = null;
-            publishViewport();
-        }, 120);
-    }
-
-    document.addEventListener(
-        "scroll",
-        () => {
-            const now = performance.now();
-            const top =
-                window.scrollY || document.documentElement.scrollTop || 0;
-            const dt = Math.max(1, now - lastScrollAt);
-            const dy = top - lastScrollTop;
-            // Light EMA so a single jittery frame doesn't flip the predicted set.
-            scrollVelocity = scrollVelocity * 0.4 + (dy / dt) * 0.6;
-            lastScrollAt = now;
-            lastScrollTop = top;
-            scheduleViewportPublish();
-        },
-        { passive: true },
-    );
-
-    // Project the next-page IDs based on scroll direction. Velocity is
-    // signed (px/ms): positive = scrolling down → predict cards below
-    // the lowest currently-visible card; negative = predict above.
-    function predictNextIds() {
-        if (Math.abs(scrollVelocity) < 0.05) return [];
-        const visibleCards = Array.from(
-            document.querySelectorAll(".preview-card"),
-        ).filter(
-            (c) =>
-                intersecting.has(c.dataset.previewId) &&
-                !c.classList.contains("filtered-out"),
-        );
-        if (visibleCards.length === 0) return [];
-        const allCards = Array.from(
-            document.querySelectorAll(".preview-card"),
-        ).filter((c) => !c.classList.contains("filtered-out"));
-        // Cards are in DOM order; pick the ones immediately ahead of the
-        // last visible (or before the first) up to a bounded count.
-        const PREDICT_AHEAD = 4;
-        const ids = [];
-        if (scrollVelocity > 0) {
-            const lastVisibleIdx = allCards.indexOf(
-                visibleCards[visibleCards.length - 1],
-            );
-            for (
-                let i = lastVisibleIdx + 1;
-                i < allCards.length && ids.length < PREDICT_AHEAD;
-                i++
-            ) {
-                const id = allCards[i].dataset.previewId;
-                if (id && !intersecting.has(id)) ids.push(id);
-            }
-        } else {
-            const firstVisibleIdx = allCards.indexOf(visibleCards[0]);
-            for (
-                let i = firstVisibleIdx - 1;
-                i >= 0 && ids.length < PREDICT_AHEAD;
-                i--
-            ) {
-                const id = allCards[i].dataset.previewId;
-                if (id && !intersecting.has(id)) ids.push(id);
-            }
-        }
-        return ids;
-    }
-
-    function publishViewport() {
-        const visible = Array.from(intersecting);
-        const predicted = predictNextIds();
-        vscode.postMessage({
-            command: "viewportUpdated",
-            visible,
-            predicted,
-        });
+        viewport.observe(card);
     }
 
     window.addEventListener("message", (event) => {
