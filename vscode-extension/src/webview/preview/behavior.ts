@@ -20,6 +20,7 @@ import {
     ensureHierarchyOverlay,
 } from "./a11yOverlay";
 import { PreviewGrid } from "./components/PreviewGrid";
+import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { previewStore } from "./previewStore";
 import { ViewportTracker } from "./viewportTracker";
@@ -135,6 +136,21 @@ export function setupPreviewBehavior(
         isLive: (id) =>
             interactivePreviewIds.has(id) || recordingPreviewIds.has(id),
         vscode,
+    };
+
+    // Config for `showDiffOverlay` — reads/writes the persisted Side/
+    // Overlay/Onion mode through the same `state` object that holds the
+    // layout / filter preferences.
+    const diffOverlayConfig = {
+        vscode,
+        getDiffMode: (): DiffMode =>
+            state.diffMode === "overlay" || state.diffMode === "onion"
+                ? state.diffMode
+                : "side",
+        setDiffMode: (mode: DiffMode): void => {
+            state.diffMode = mode;
+            vscode.setState(state);
+        },
     };
 
     // Restore layout preference
@@ -1066,7 +1082,7 @@ export function setupPreviewBehavior(
         if (!card) return;
         const previewId = card.dataset.previewId;
         if (!previewId) return;
-        showDiffOverlay(card, against, null, null);
+        showDiffOverlay(card, against, null, null, diffOverlayConfig);
         vscode.postMessage({
             command: "requestPreviewDiff",
             previewId,
@@ -1088,308 +1104,6 @@ export function setupPreviewBehavior(
         const previewId = card.dataset.previewId;
         if (!previewId) return;
         vscode.postMessage({ command: "requestLaunchOnDevice", previewId });
-    }
-
-    function showDiffOverlay(card, against, payload, errorMessage) {
-        const container = card.querySelector(".image-container");
-        if (!container) return;
-        const existing = container.querySelector(".preview-diff-overlay");
-        if (existing) existing.remove();
-        const overlay = document.createElement("div");
-        overlay.className = "preview-diff-overlay";
-        overlay.dataset.against = against;
-        const close = document.createElement("button");
-        close.className = "icon-button preview-diff-close";
-        close.title = "Exit diff";
-        close.setAttribute("aria-label", "Exit diff");
-        close.innerHTML =
-            '<i class="codicon codicon-close" aria-hidden="true"></i>';
-        close.addEventListener("click", () => overlay.remove());
-        overlay.appendChild(close);
-        if (errorMessage) {
-            const err = document.createElement("div");
-            err.className = "preview-diff-error";
-            err.textContent = errorMessage;
-            overlay.appendChild(err);
-            container.appendChild(overlay);
-            return;
-        }
-        if (!payload) {
-            const loading = document.createElement("div");
-            loading.className = "preview-diff-loading";
-            loading.textContent = "Loading diff…";
-            overlay.appendChild(loading);
-            container.appendChild(overlay);
-            return;
-        }
-        // Persist the user's last-picked mode so it sticks across diff
-        // requests within the same session.
-        const initialMode =
-            state.diffMode === "overlay" || state.diffMode === "onion"
-                ? state.diffMode
-                : "side";
-        const header = document.createElement("div");
-        header.className = "diff-header";
-        const body = document.createElement("div");
-        body.className = "preview-diff-body";
-        const modeBar = buildDiffModeBar(initialMode, (mode) => {
-            state.diffMode = mode;
-            vscode.setState(state);
-            renderPreviewDiffMode(body, mode, payload);
-        });
-        const stats = document.createElement("div");
-        stats.className = "diff-stats";
-        stats.textContent = "computing…";
-        header.appendChild(modeBar);
-        header.appendChild(stats);
-        overlay.appendChild(header);
-        overlay.appendChild(body);
-        container.appendChild(overlay);
-        renderPreviewDiffMode(body, initialMode, payload);
-        computeDiffStats(payload.leftImage, payload.rightImage).then((s) => {
-            applyDiffStats(stats, s);
-        });
-    }
-
-    function buildDiffModeBar(initialMode, onChange) {
-        const bar = document.createElement("div");
-        bar.className = "diff-mode-bar";
-        bar.setAttribute("role", "tablist");
-        const modes = [
-            { id: "side", label: "Side" },
-            { id: "overlay", label: "Overlay" },
-            { id: "onion", label: "Onion" },
-        ];
-        for (const m of modes) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.textContent = m.label;
-            btn.dataset.mode = m.id;
-            btn.setAttribute("role", "tab");
-            btn.setAttribute(
-                "aria-selected",
-                m.id === initialMode ? "true" : "false",
-            );
-            if (m.id === initialMode) btn.classList.add("active");
-            btn.addEventListener("click", () => {
-                bar.querySelectorAll("button").forEach((b) => {
-                    b.classList.toggle("active", b.dataset.mode === m.id);
-                    b.setAttribute(
-                        "aria-selected",
-                        b.dataset.mode === m.id ? "true" : "false",
-                    );
-                });
-                onChange(m.id);
-            });
-            bar.appendChild(btn);
-        }
-        return bar;
-    }
-
-    function renderPreviewDiffMode(body, mode, payload) {
-        body.innerHTML = "";
-        if (mode === "side") {
-            const grid = document.createElement("div");
-            grid.className = "preview-diff-grid";
-            grid.appendChild(
-                buildPreviewDiffPane(payload.leftLabel, payload.leftImage),
-            );
-            grid.appendChild(
-                buildPreviewDiffPane(payload.rightLabel, payload.rightImage),
-            );
-            body.appendChild(grid);
-            return;
-        }
-        const stack = buildDiffStack(mode, payload);
-        body.appendChild(stack);
-    }
-
-    function buildDiffStack(mode, payload) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "preview-diff-stack-wrapper";
-        const stack = document.createElement("div");
-        stack.className = "diff-stack";
-        stack.dataset.mode = mode;
-        const base = document.createElement("img");
-        base.className = "diff-stack-base";
-        base.alt = payload.leftLabel;
-        base.src = "data:image/png;base64," + payload.leftImage;
-        const top = document.createElement("img");
-        top.className = "diff-stack-top";
-        top.alt = payload.rightLabel;
-        top.src = "data:image/png;base64," + payload.rightImage;
-        stack.appendChild(base);
-        stack.appendChild(top);
-        wrapper.appendChild(stack);
-        if (mode === "onion") {
-            const slider = document.createElement("input");
-            slider.type = "range";
-            slider.min = "0";
-            slider.max = "100";
-            slider.value = "50";
-            slider.className = "diff-stack-onion-slider";
-            slider.setAttribute(
-                "aria-label",
-                "Onion-skin mix between " +
-                    payload.leftLabel +
-                    " and " +
-                    payload.rightLabel,
-            );
-            stack.style.setProperty("--diff-onion-mix", "0.5");
-            slider.addEventListener("input", () => {
-                stack.style.setProperty(
-                    "--diff-onion-mix",
-                    (slider.value / 100).toString(),
-                );
-            });
-            wrapper.appendChild(slider);
-        }
-        const cap = document.createElement("div");
-        cap.className = "diff-stack-caption";
-        cap.textContent = payload.leftLabel + "  ◄  " + payload.rightLabel;
-        wrapper.appendChild(cap);
-        return wrapper;
-    }
-
-    function buildPreviewDiffPane(label, imageData) {
-        const pane = document.createElement("div");
-        pane.className = "preview-diff-pane";
-        const cap = document.createElement("div");
-        cap.className = "preview-diff-pane-label";
-        cap.textContent = label;
-        pane.appendChild(cap);
-        if (imageData) {
-            const img = document.createElement("img");
-            img.src = "data:image/png;base64," + imageData;
-            img.alt = label;
-            pane.appendChild(img);
-        } else {
-            const empty = document.createElement("div");
-            empty.className = "preview-diff-pane-empty";
-            empty.textContent = "(no image)";
-            pane.appendChild(empty);
-        }
-        return pane;
-    }
-
-    // Client-side pixel diff: load both base64 PNGs, draw to canvas,
-    // walk the ImageData buffers in parallel. Cheap on the typical
-    // preview size (< 0.5 megapixel); GIFs / very large captures will
-    // be slower but still bounded. Daemon-side pixel mode (with SSIM)
-    // can plug in here later via a different code path.
-    function computeDiffStats(leftBase64, rightBase64) {
-        return new Promise((resolve) => {
-            const left = new Image();
-            const right = new Image();
-            let loaded = 0;
-            const onErr = () => resolve({ error: "image failed to load" });
-            const onOk = () => {
-                if (++loaded < 2) return;
-                try {
-                    if (
-                        left.naturalWidth !== right.naturalWidth ||
-                        left.naturalHeight !== right.naturalHeight
-                    ) {
-                        resolve({
-                            sameSize: false,
-                            leftW: left.naturalWidth,
-                            leftH: left.naturalHeight,
-                            rightW: right.naturalWidth,
-                            rightH: right.naturalHeight,
-                        });
-                        return;
-                    }
-                    const w = left.naturalWidth,
-                        h = left.naturalHeight;
-                    const c1 = document.createElement("canvas");
-                    c1.width = w;
-                    c1.height = h;
-                    c1.getContext("2d").drawImage(left, 0, 0);
-                    const d1 = c1
-                        .getContext("2d")
-                        .getImageData(0, 0, w, h).data;
-                    const c2 = document.createElement("canvas");
-                    c2.width = w;
-                    c2.height = h;
-                    c2.getContext("2d").drawImage(right, 0, 0);
-                    const d2 = c2
-                        .getContext("2d")
-                        .getImageData(0, 0, w, h).data;
-                    let diff = 0;
-                    const len = d1.length;
-                    for (let i = 0; i < len; i += 4) {
-                        if (
-                            d1[i] !== d2[i] ||
-                            d1[i + 1] !== d2[i + 1] ||
-                            d1[i + 2] !== d2[i + 2] ||
-                            d1[i + 3] !== d2[i + 3]
-                        )
-                            diff++;
-                    }
-                    const total = w * h;
-                    resolve({
-                        sameSize: true,
-                        w,
-                        h,
-                        diffPx: diff,
-                        total,
-                        percent: total > 0 ? diff / total : 0,
-                    });
-                } catch (err) {
-                    resolve({
-                        error: (err && err.message) || "stats unavailable",
-                    });
-                }
-            };
-            left.onload = onOk;
-            left.onerror = onErr;
-            right.onload = onOk;
-            right.onerror = onErr;
-            left.src = "data:image/png;base64," + leftBase64;
-            right.src = "data:image/png;base64," + rightBase64;
-        });
-    }
-
-    function applyDiffStats(el, s) {
-        if (!s) {
-            el.textContent = "";
-            el.removeAttribute("data-state");
-            return;
-        }
-        if (s.error) {
-            el.textContent = s.error;
-            el.removeAttribute("data-state");
-            return;
-        }
-        if (!s.sameSize) {
-            el.textContent =
-                "sizes differ — " +
-                s.leftW +
-                "×" +
-                s.leftH +
-                " vs " +
-                s.rightW +
-                "×" +
-                s.rightH;
-            el.dataset.state = "size-mismatch";
-            return;
-        }
-        if (s.diffPx === 0) {
-            el.textContent = "identical · " + s.w + "×" + s.h;
-            el.dataset.state = "identical";
-            return;
-        }
-        const p = s.percent * 100;
-        const pct = p < 0.01 ? p.toFixed(3) : p.toFixed(2);
-        el.textContent =
-            s.diffPx.toLocaleString() +
-            " px (" +
-            pct +
-            "%) · " +
-            s.w +
-            "×" +
-            s.h;
-        el.dataset.state = "changed";
     }
 
     // populateFilter / hasOption are gone — `<filter-toolbar>` owns the
@@ -2229,7 +1943,7 @@ export function setupPreviewBehavior(
         if (earlyFeatures() && openDiff) {
             const against = openDiff.dataset.against;
             if (against === "head" || against === "main") {
-                showDiffOverlay(card, against, null, null);
+                showDiffOverlay(card, against, null, null, diffOverlayConfig);
                 vscode.postMessage({
                     command: "requestPreviewDiff",
                     previewId,
@@ -2580,6 +2294,7 @@ export function setupPreviewBehavior(
                         rightImage: msg.rightImage,
                     },
                     null,
+                    diffOverlayConfig,
                 );
                 break;
             }
@@ -2594,6 +2309,7 @@ export function setupPreviewBehavior(
                     msg.against,
                     null,
                     msg.message || "Diff unavailable.",
+                    diffOverlayConfig,
                 );
                 break;
             }
@@ -2604,7 +2320,13 @@ export function setupPreviewBehavior(
                 );
                 if (!card) break;
                 focusOnCard(card);
-                showDiffOverlay(card, msg.against, null, null);
+                showDiffOverlay(
+                    card,
+                    msg.against,
+                    null,
+                    null,
+                    diffOverlayConfig,
+                );
                 vscode.postMessage({
                     command: "requestPreviewDiff",
                     previewId: msg.previewId,
@@ -2675,7 +2397,13 @@ export function setupPreviewBehavior(
                         const card = overlay.closest(".preview-card");
                         const previewId = card && card.dataset.previewId;
                         if (!card || !previewId) return;
-                        showDiffOverlay(card, "main", null, null);
+                        showDiffOverlay(
+                            card,
+                            "main",
+                            null,
+                            null,
+                            diffOverlayConfig,
+                        );
                         vscode.postMessage({
                             command: "requestPreviewDiff",
                             previewId,
