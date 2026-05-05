@@ -9,6 +9,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.daemon.protocol.WallpaperPaletteStyle
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
@@ -50,7 +51,13 @@ class WallpaperOverrideExtension(private val override: WallpaperOverride?) :
     }
     val seed = ComposeColorSpec.resolve(override.seedColor)
     val isDark = override.isDark ?: isMaterialThemeDark()
-    val scheme = WallpaperColorScheme.from(seed, isDark)
+    val scheme =
+      WallpaperColorScheme.from(
+        seed = seed,
+        isDark = isDark,
+        style = override.paletteStyle ?: WallpaperPaletteStyle.TONAL_SPOT,
+        contrastLevel = override.contrastLevel ?: 0.0,
+      )
     MaterialTheme(
       colorScheme = scheme,
       typography = MaterialTheme.typography,
@@ -167,7 +174,7 @@ class WallpaperDataProductRegistry : DataProductRegistry {
       val seed = runCatching { ComposeColorSpec.resolve(applied.seedColor) }.getOrNull()
       if (seed != null) {
         val isDark = applied.isDark ?: previewContextIsDark(previewContext)
-        capture(previewId, payloadFor(seed, applied.seedColor, isDark))
+        capture(previewId, payloadFor(seed, applied, isDark))
         return
       }
     }
@@ -179,11 +186,25 @@ class WallpaperDataProductRegistry : DataProductRegistry {
     }
   }
 
-  private fun payloadFor(seed: Color, rawSeed: String, isDark: Boolean): WallpaperPayload {
-    val scheme = WallpaperColorScheme.from(seed, isDark)
+  private fun payloadFor(
+    seed: Color,
+    applied: WallpaperOverride,
+    isDark: Boolean,
+  ): WallpaperPayload {
+    val style = applied.paletteStyle ?: WallpaperPaletteStyle.TONAL_SPOT
+    val contrast = applied.contrastLevel ?: 0.0
+    val scheme =
+      WallpaperColorScheme.from(
+        seed = seed,
+        isDark = isDark,
+        style = style,
+        contrastLevel = contrast,
+      )
     return WallpaperPayload(
-      seedColor = canonicalSeedColor(rawSeed, seed),
+      seedColor = canonicalSeedColor(applied.seedColor, seed),
       isDark = isDark,
+      paletteStyle = style,
+      contrastLevel = contrast,
       derivedColorScheme =
         linkedMapOf(
           "primary" to scheme.primary.toHexArgb(),
@@ -259,6 +280,10 @@ data class WallpaperPayload(
   val seedColor: String,
   /** Whether the derived scheme is the dark variant. */
   val isDark: Boolean,
+  /** Palette algorithm the connector applied. */
+  val paletteStyle: WallpaperPaletteStyle = WallpaperPaletteStyle.TONAL_SPOT,
+  /** Effective contrast level in `[-1.0, 1.0]`. */
+  val contrastLevel: Double = 0.0,
   /** Material 3 color roles derived from [seedColor]; matches the schema of `compose/theme`. */
   val derivedColorScheme: Map<String, String>,
 )

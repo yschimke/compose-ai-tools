@@ -87,6 +87,11 @@ android-compose-screenshot = "0.0.1-alpha14"
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
 checker-qual = "4.0.0"
+# KMP port of Google's Material Color Utilities. Powers the wallpaper data
+# extension's seed → ColorScheme derivation (HCT tonal palettes, palette
+# styles, contrast level) so the result matches what Android's wallpaper-
+# derived dynamic theming actually produces.
+material-kolor = "4.1.1"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -139,6 +144,7 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # files the test can't differentiate "stale" from "fresh".
 asm = { module = "org.ow2.asm:asm", version = "9.7" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.7" }
+material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
