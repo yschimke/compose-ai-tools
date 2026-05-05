@@ -129,7 +129,7 @@ export function handleExtensionMessage(
         case "updateImage":
             ctx.updateImage(
                 msg.previewId,
-                msg.captureIndex || 0,
+                safeArrayIndex(msg.captureIndex),
                 msg.imageData,
             );
             return;
@@ -291,8 +291,9 @@ function handleErrorMessage(
     // when the user returns to that specific capture. setError is preview-
     // wide (captureIndex defaulted to 0) — applies to the representative
     // image container only.
-    const captureIndex =
-        msg.command === "setImageError" ? msg.captureIndex || 0 : 0;
+    const rawCaptureIndex =
+        msg.command === "setImageError" ? msg.captureIndex : 0;
+    const captureIndex = safeArrayIndex(rawCaptureIndex);
     const renderError =
         msg.command === "setImageError" ? (msg.renderError ?? null) : null;
     const caps = ctx.cardCaptures.get(msg.previewId);
@@ -301,15 +302,19 @@ function handleErrorMessage(
     const container = errCard.querySelector<HTMLElement>(".image-container");
     if (!container) return;
     const existingImg = container.querySelector("img");
-    const existingImageData =
-        caps && caps[captureIndex] ? caps[captureIndex].imageData : null;
+    // Bounds-check the array access before reading or writing — CodeQL flags
+    // unconstrained indexed writes off a wire-supplied number as a prototype-
+    // pollution vector even when TypeScript narrows the type to `number`.
+    const capture =
+        caps && captureIndex < caps.length ? caps[captureIndex] : null;
+    const existingImageData = capture ? capture.imageData : null;
     const keepExistingImage =
         !replaceExisting && (existingImageData || existingImg);
-    if (caps && caps[captureIndex]) {
-        caps[captureIndex].errorMessage = msg.message;
-        caps[captureIndex].renderError = renderError;
+    if (capture) {
+        capture.errorMessage = msg.message;
+        capture.renderError = renderError;
         if (!keepExistingImage) {
-            caps[captureIndex].imageData = null;
+            capture.imageData = null;
         }
     }
     const cur = parseInt(errCard.dataset.currentIndex || "0", 10);
@@ -482,4 +487,16 @@ function assertNever(value: never): never {
     throw new Error(
         `Unhandled ExtensionToWebview variant: ${JSON.stringify(value)}`,
     );
+}
+
+/** Coerce a wire-supplied capture index into a safe non-negative integer.
+ *  TypeScript types `captureIndex` as `number`, but the value crosses the
+ *  webview boundary so a defensive runtime check is warranted: anything
+ *  non-integer / negative / non-finite collapses to 0 (the representative
+ *  capture). Eliminates the prototype-pollution flow CodeQL flags when an
+ *  unconstrained index is used to write into an array. */
+function safeArrayIndex(value: unknown): number {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0
+        ? value
+        : 0;
 }
