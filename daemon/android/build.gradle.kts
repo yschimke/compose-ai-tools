@@ -16,6 +16,8 @@
 // § 19 for the captureToImage fallback if Roborazzi's API ever does break).
 // Pre-1.0; expect API breakage across minor versions.
 
+import java.util.concurrent.Callable
+
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
@@ -203,8 +205,16 @@ afterEvaluate {
   if (testRuntimeCfg == null || mainBundleTask == null || tfBundleTask == null) {
     return@afterEvaluate
   }
-  val testRuntimeJars =
+  // Wrap the artifactView's lazy `FileCollection` in a `Callable`-backed `project.files(...)` so
+  // resolution of `debugUnitTestRuntimeClasspath` is deferred until task execution rather than
+  // happening during task-graph build. Mirrors the pattern in
+  // `gradle-plugin/.../AndroidPreviewSupport.kt`'s rendererJars wireup. Without this, Gradle
+  // queries the artifactView while computing `writeDaemonClasspath`'s task dependencies, which
+  // races with concurrent variant resolution under `org.gradle.parallel=true` and throws
+  // `ConcurrentModificationException` from inside AGP's variant attribute machinery.
+  val testRuntimeJarsView =
     testRuntimeCfg.incoming.artifactView { attributes { attribute(artifactTypeAttr, "jar") } }.files
+  val testRuntimeJars = project.files(Callable { testRuntimeJarsView })
   val mainBundleFiles = mainBundleTask.outputs.files
   val tfBundleFiles = tfBundleTask.outputs.files
   // AGP-generated R.jar containing the transitive AAR's R.id classes (e.g.
