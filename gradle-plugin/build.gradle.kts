@@ -33,6 +33,9 @@ gradlePlugin {
 dependencies {
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
+  // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
+  // surfaces annotations + signatures, not method-body invocations. Used by PreviewTargetInference.
+  implementation(libs.asm)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
   testImplementation(libs.junit)

@@ -67,6 +67,55 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `manifest serialization round-trips PreviewTarget`() {
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "screenshotTest",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.PreviewsKt.HomeScreenPreview",
+              functionName = "HomeScreenPreview",
+              className = "com.example.PreviewsKt",
+              sourceFile = "src/screenshotTest/kotlin/com/example/Previews.kt",
+              targets =
+                listOf(
+                  PreviewTarget(
+                    className = "com.example.HomeScreenKt",
+                    functionName = "HomeScreen",
+                    sourceFile = "src/main/kotlin/com/example/HomeScreen.kt",
+                    confidence = TargetConfidence.HIGH,
+                    signals =
+                      listOf(
+                        TargetSignal.SINGLE_PROJECT_COMPOSABLE_CALL,
+                        TargetSignal.NAME_MATCH,
+                        TargetSignal.CROSS_FILE,
+                        TargetSignal.NON_SHIPPING_SOURCE_SET,
+                      ),
+                  )
+                ),
+            )
+          ),
+      )
+
+    val serialized = json.encodeToString(manifest)
+    val deserialized = json.decodeFromString<PreviewManifest>(serialized)
+
+    assertThat(deserialized).isEqualTo(manifest)
+    val target = deserialized.previews.single().targets.single()
+    assertThat(target.className).isEqualTo("com.example.HomeScreenKt")
+    assertThat(target.confidence).isEqualTo(TargetConfidence.HIGH)
+    assertThat(target.signals).contains(TargetSignal.CROSS_FILE)
+  }
+
+  @Test
+  fun `targets defaults to empty list`() {
+    val info = PreviewInfo(id = "x", functionName = "x", className = "x")
+    assertThat(info.targets).isEmpty()
+  }
+
+  @Test
   fun `default params have sensible values`() {
     val params = PreviewParams()
     assertThat(params.widthDp).isNull()
