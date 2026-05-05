@@ -5,6 +5,39 @@ SDK, custom hosts) instead of from a shell. Companion to the
 [contributor README](https://github.com/yschimke/compose-ai-tools/blob/main/mcp/README.md);
 this file covers what the consumer of the published skill bundle needs.
 
+## Troubleshooting first — when NOT to act
+
+Before reaching for `mcp install`, killing a daemon, or restarting the host,
+run:
+
+```bash
+compose-preview mcp doctor
+```
+
+The doctor names the corrective action (or "no action needed") for every
+common stale state. Treat its output as authoritative; do not run
+`mcp install` to "refresh" without a doctor finding that asks for it.
+
+In particular:
+
+- **Do not re-run `mcp install`** to recover from a perceived hang, a stale
+  render, or a dependency bump. `install` is a one-time bootstrap; the only
+  conditions that warrant re-running it are the ones `mcp doctor` flags as
+  `run-mcp-install` (descriptor missing, schema mismatch, launcher path
+  broken, host config drifted).
+- **Do not kill or restart the daemon JVM.** When the classpath changes
+  (dependency bump, plugin upgrade, build script edit) the daemon detects it
+  via fingerprint, emits `classpathDirty`, and exits within
+  `daemon.classpathDirtyGraceMs` (default 2 s). The MCP supervisor respawns
+  it automatically and clients see `notifications/resources/list_changed`.
+  Manual restarts race the supervisor and produce duplicate spawns.
+- **Do not kill the MCP server.** On stdin EOF it tears down every
+  supervised daemon cleanly. If you killed it mid-session, the host will
+  reconnect on the next tool call; you do not need to re-`install`.
+- **Source edits don't need a restart either.** Call the `notify_file_changed`
+  MCP tool (or just trigger a render) — the daemon's classloader-swap fast
+  path picks up bytecode changes without rebooting.
+
 ## When to read this
 
 You want any of:

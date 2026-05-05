@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -355,24 +356,14 @@ internal class McpCommand(args: List<String>) {
 
       val states = modules.map { module ->
         val descriptor = File(module.projectDir, "build/compose-previews/daemon-launch.json")
-        if (!descriptor.isFile) {
-          DoctorState(module.gradlePath, descriptor, status = "missing", enabled = false)
-        } else {
-          val obj = parseDescriptor(descriptor)
-          val enabled = obj?.get("enabled")?.jsonPrimitive?.boolean == true
-          DoctorState(
-            module.gradlePath,
-            descriptor,
-            status = if (enabled) "ok" else "disabled",
-            enabled = enabled,
-          )
-        }
+        inspectDescriptor(module.gradlePath, descriptor)
       }
 
       if (emitJson) {
         val payload = buildJsonObject {
           put("schema", JsonPrimitive("compose-preview-mcp-doctor/v1"))
           put("projectRoot", JsonPrimitive(projectDir.absolutePath))
+          put("verdict", JsonPrimitive(aggregateVerdict(states)))
           put(
             "modules",
             kotlinx.serialization.json.JsonArray(
@@ -382,6 +373,19 @@ internal class McpCommand(args: List<String>) {
                   put("descriptor", JsonPrimitive(it.descriptor.absolutePath))
                   put("status", JsonPrimitive(it.status))
                   put("enabled", JsonPrimitive(it.enabled))
+                  put("verdict", JsonPrimitive(it.verdict))
+                  put(
+                    "findings",
+                    kotlinx.serialization.json.JsonArray(
+                      it.findings.map { f ->
+                        buildJsonObject {
+                          put("id", JsonPrimitive(f.id))
+                          put("level", JsonPrimitive(f.level))
+                          put("message", JsonPrimitive(f.message))
+                        }
+                      }
+                    ),
+                  )
                 }
               }
             ),
@@ -390,21 +394,34 @@ internal class McpCommand(args: List<String>) {
         println(JSON.encodeToString(JsonObject.serializer(), payload))
       } else {
         states.forEach { s ->
-          val marker =
-            when (s.status) {
-              "ok" -> "ok"
-              "disabled" -> "disabled (run `compose-preview mcp install` to flip enabled=true)"
-              "missing" -> "missing (run `compose-preview mcp install`)"
-              else -> s.status
-            }
-          println(":${s.gradlePath}  $marker  (${s.descriptor})")
+          val tail = verdictHint(s.verdict)
+          println(":${s.gradlePath}  ${s.status}${if (tail.isNotEmpty()) " — $tail" else ""}")
+          s.findings
+            .filter { it.level != "ok" }
+            .forEach { println("    [${it.level}] ${it.id}: ${it.message}") }
+          println("    descriptor: ${s.descriptor}")
+        }
+        val verdict = aggregateVerdict(states)
+        if (verdict == "ok") {
+          println()
+          println(
+            "All checks passed. The supervisor handles classpath drift automatically " +
+              "(`classpathDirty` respawn) — do not re-run `mcp install` or kill daemons."
+          )
         }
       }
 
-      val anyMissing = states.any { it.status != "ok" }
-      if (anyMissing) exitProcess(1)
+      val anyProblem = states.any { it.verdict != "ok" }
+      if (anyProblem) exitProcess(1)
     }
   }
+
+  private fun verdictHint(verdict: String): String =
+    when (verdict) {
+      "ok" -> ""
+      "run-mcp-install" -> "run `compose-preview mcp install`"
+      else -> verdict
+    }
 
   // -- helpers -----------------------------------------------------------------------------------
 
@@ -527,13 +544,6 @@ internal class McpCommand(args: List<String>) {
     val enabled: Boolean,
   )
 
-  private data class DoctorState(
-    val gradlePath: String,
-    val descriptor: File,
-    val status: String,
-    val enabled: Boolean,
-  )
-
   private companion object {
     val JSON: Json = Json { prettyPrint = true }
 
@@ -565,3 +575,120 @@ internal class McpCommand(args: List<String>) {
     }
   }
 }
+
+// Pinned to DAEMON_DESCRIPTOR_SCHEMA_VERSION in
+// gradle-plugin/.../daemon/DaemonClasspathDescriptor.kt. Keep in sync — bump together.
+internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 1
+
+internal data class DoctorState(
+  val gradlePath: String,
+  val descriptor: File,
+  val status: String,
+  val enabled: Boolean,
+  val verdict: String = "ok",
+  val findings: List<DoctorFinding> = emptyList(),
+)
+
+internal data class DoctorFinding(val id: String, val level: String, val message: String)
+
+/**
+ * Validate the on-disk daemon descriptor and return findings + a verdict telling the agent what (if
+ * anything) to do. Lifted out of [McpCommand] so it's unit-testable without spinning up Gradle.
+ */
+internal fun inspectDescriptor(gradlePath: String, descriptor: File): DoctorState {
+  val findings = mutableListOf<DoctorFinding>()
+
+  if (!descriptor.isFile) {
+    findings += DoctorFinding("descriptor.present", "error", "descriptor file is missing")
+    return DoctorState(
+      gradlePath,
+      descriptor,
+      status = "missing",
+      enabled = false,
+      verdict = "run-mcp-install",
+      findings = findings,
+    )
+  }
+
+  val obj =
+    try {
+      Json.parseToJsonElement(descriptor.readText()).jsonObject
+    } catch (_: Exception) {
+      null
+    }
+  if (obj == null) {
+    findings += DoctorFinding("descriptor.parse", "error", "descriptor is not valid JSON")
+    return DoctorState(
+      gradlePath,
+      descriptor,
+      status = "corrupt",
+      enabled = false,
+      verdict = "run-mcp-install",
+      findings = findings,
+    )
+  }
+
+  val enabled = obj["enabled"]?.jsonPrimitive?.boolean == true
+  if (!enabled) {
+    findings +=
+      DoctorFinding("descriptor.enabled", "error", "enabled=false; install would flip to true")
+  }
+
+  val schemaVersion = obj["schemaVersion"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+  if (schemaVersion != null && schemaVersion != EXPECTED_DESCRIPTOR_SCHEMA_VERSION) {
+    findings +=
+      DoctorFinding(
+        "descriptor.schema",
+        "error",
+        "schemaVersion=$schemaVersion, expected $EXPECTED_DESCRIPTOR_SCHEMA_VERSION " +
+          "(plugin upgraded — re-run `mcp install`)",
+      )
+  }
+
+  val launcherPath = obj["javaLauncher"]?.jsonPrimitive?.contentOrNull
+  if (!launcherPath.isNullOrBlank()) {
+    val launcher = File(launcherPath)
+    if (!launcher.isFile || !launcher.canExecute()) {
+      findings +=
+        DoctorFinding(
+          "descriptor.launcher",
+          "error",
+          "javaLauncher missing or not executable: $launcherPath",
+        )
+    }
+  }
+
+  val manifestPath = obj["manifestPath"]?.jsonPrimitive?.contentOrNull
+  if (!manifestPath.isNullOrBlank() && !File(manifestPath).isFile) {
+    findings +=
+      DoctorFinding(
+        "descriptor.manifest",
+        "warning",
+        "previews.json missing at $manifestPath; will be regenerated on next render",
+      )
+  }
+
+  val errorCount = findings.count { it.level == "error" }
+  val verdict = if (errorCount > 0) "run-mcp-install" else "ok"
+  val status =
+    when {
+      !enabled -> "disabled"
+      errorCount > 0 -> "stale"
+      else -> "ok"
+    }
+  return DoctorState(
+    gradlePath,
+    descriptor,
+    status = status,
+    enabled = enabled,
+    verdict = verdict,
+    findings = findings,
+  )
+}
+
+internal fun aggregateVerdict(states: List<DoctorState>): String =
+  when {
+    states.all { it.verdict == "ok" } -> "ok"
+    states.any { it.verdict == "run-mcp-install" } -> "run-mcp-install"
+    else -> "warning"
+  }
