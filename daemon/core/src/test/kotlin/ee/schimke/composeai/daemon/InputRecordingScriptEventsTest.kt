@@ -73,9 +73,7 @@ class InputRecordingScriptEventsTest {
     // through to the unsupported branch.
     val advertisedTouchIds = InputTouchRecordingScriptEvents.WIRED_EVENTS
     val advertisedKeyboardIds =
-      InputKeyboardRecordingScriptEvents.descriptor.recordingScriptEvents
-        .map { it.id }
-        .toSet()
+      InputKeyboardRecordingScriptEvents.descriptor.recordingScriptEvents.map { it.id }.toSet()
     // input.rotaryScroll is advertised by the Android-only `input.rsb` extension; check it via
     // the wire-name table without depending on the Android module here.
     val rotaryWireName = "input.rotaryScroll"

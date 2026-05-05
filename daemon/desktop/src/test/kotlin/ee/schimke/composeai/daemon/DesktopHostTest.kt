@@ -110,8 +110,8 @@ class DesktopHostTest {
   /**
    * With a resolver wired, `recordingScriptEventDescriptors()` advertises three extensions:
    * `recording` (probe, supported), `input.touch` (4 pointer events, supported), and
-   * `input.keyboard` (2 key events, roadmap). The Wear-only `input.rsb` lives on the Android
-   * host; desktop daemons skip it.
+   * `input.keyboard` (2 key events, roadmap). The Wear-only `input.rsb` lives on the Android host;
+   * desktop daemons skip it.
    */
   @Test
   fun recordingScriptEventDescriptorsAdvertiseSupportedExtensions() {

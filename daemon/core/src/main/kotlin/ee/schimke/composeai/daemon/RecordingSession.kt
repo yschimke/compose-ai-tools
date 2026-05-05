@@ -138,8 +138,8 @@ fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
  * Naming follows the per-extension `<extension>.<event>` convention: `input.click`,
  * `input.pointerDown`, etc. Three input extensions advertise these ids — see
  * `InputTouchRecordingScriptEvents`, `InputKeyboardRecordingScriptEvents`, and
- * `InputRsbRecordingScriptEvents`. The MCP `validateRecordingScriptKinds` checks every kind
- * against the daemon's advertised set — no special-case branch for input kinds anymore.
+ * `InputRsbRecordingScriptEvents`. The MCP `validateRecordingScriptKinds` checks every kind against
+ * the daemon's advertised set — no special-case branch for input kinds anymore.
  */
 val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
   mapOf(
