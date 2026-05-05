@@ -1,45 +1,61 @@
-// @ts-nocheck
-//
 // Imperative behaviour for the read-only Preview History panel.
 //
 // Verbatim port of the previously-inline IIFE script in
 // `src/historyPanel.ts` (the `<script nonce="...">` block in `getHtml()`).
-// Kept untyped for now so the lift-into-bundle change stays mechanical;
-// future commits can incrementally type-tighten and split this into
-// reactive Lit components.
+// Now type-checked end-to-end against `HistoryToWebview` (from
+// `shared/types`). Pieces still imperative — `renderTimeline` (~85 lines
+// of `document.createElement`), the diff stack builder, the per-row event
+// handlers — are slated to fold into Lit components in a follow-up.
 //
 // Runs once per webview load. Assumes `<history-app>` has already
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
 // queries below resolve.
 
+import type {
+    HistoryDiffSummary,
+    HistoryEntry,
+    HistoryToWebview,
+} from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
+
+/** Look up a known-present DOM element. Used for the static ids that
+ *  `<history-app>` has already rendered into the light DOM. Throws so a
+ *  missing template surfaces early. */
+function requireElementById<T extends HTMLElement>(id: string): T {
+    const el = document.getElementById(id);
+    if (!el) throw new Error(`Required element #${id} not found`);
+    return el as T;
+}
 
 export function setupHistoryBehavior(): void {
     const vscode = getVsCodeApi();
-    const messageEl = document.getElementById("message");
-    const timelineEl = document.getElementById("timeline");
-    const filterSourceEl = document.getElementById("filter-source");
-    const filterBranchEl = document.getElementById("filter-branch");
-    const btnRefreshEl = document.getElementById("btn-refresh");
-    const btnDiffEl = document.getElementById("btn-diff");
+    const messageEl = requireElementById<HTMLElement>("message");
+    const timelineEl = requireElementById<HTMLElement>("timeline");
+    const filterSourceEl =
+        requireElementById<HTMLSelectElement>("filter-source");
+    const filterBranchEl =
+        requireElementById<HTMLSelectElement>("filter-branch");
+    const btnRefreshEl = requireElementById<HTMLButtonElement>("btn-refresh");
+    const btnDiffEl = requireElementById<HTMLButtonElement>("btn-diff");
     // Scope chip is owned by `<scope-chip>` — see
     // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
-    let entries = [];
-    let selectedIds = new Set();
-    let expandedId = null;
+    let entries: HistoryEntry[] = [];
+    const selectedIds = new Set<string>();
+    let expandedId: string | null = null;
     // Thumbnail cache + dedup so each entry's PNG is fetched at most once
     // per panel session even if scrolling brings the same row back into
     // view repeatedly.
-    const thumbCache = new Map();
-    const thumbRequested = new Set();
-    const thumbObserver =
+    const thumbCache = new Map<string, string>();
+    const thumbRequested = new Set<string>();
+    const thumbObserver: IntersectionObserver | null =
         "IntersectionObserver" in window
             ? new IntersectionObserver(
                   (items) => {
                       for (const item of items) {
                           if (!item.isIntersecting) continue;
                           const el = item.target;
+                          if (!(el instanceof HTMLElement)) continue;
                           const id = el.dataset.id;
                           if (!id || thumbRequested.has(id)) continue;
                           thumbRequested.add(id);
@@ -66,7 +82,7 @@ export function setupHistoryBehavior(): void {
     filterSourceEl.addEventListener("change", applyFilters);
     filterBranchEl.addEventListener("change", applyFilters);
 
-    function setMessage(text) {
+    function setMessage(text: string): void {
         if (text) {
             messageEl.textContent = text;
             messageEl.style.display = "block";
@@ -76,10 +92,10 @@ export function setupHistoryBehavior(): void {
         }
     }
 
-    function applyFilters() {
+    function applyFilters(): void {
         const sourceVal = filterSourceEl.value;
         const branchVal = filterBranchEl.value;
-        timelineEl.querySelectorAll(".row").forEach((row) => {
+        timelineEl.querySelectorAll<HTMLElement>(".row").forEach((row) => {
             const matchSource =
                 sourceVal === "all" || row.dataset.sourceKind === sourceVal;
             const matchBranch =
@@ -88,8 +104,8 @@ export function setupHistoryBehavior(): void {
         });
     }
 
-    function populateBranchFilter(es) {
-        const branches = new Set();
+    function populateBranchFilter(es: readonly HistoryEntry[]): void {
+        const branches = new Set<string>();
         for (const e of es) {
             const b = e.git && e.git.branch;
             if (b) branches.add(b);
@@ -111,7 +127,7 @@ export function setupHistoryBehavior(): void {
         }
     }
 
-    function renderTimeline() {
+    function renderTimeline(): void {
         // Thumbnails not yet loaded for the new entry set should retry —
         // disconnect the old observer and rebuild against the new rows.
         if (thumbObserver) thumbObserver.disconnect();
@@ -122,18 +138,20 @@ export function setupHistoryBehavior(): void {
         // "vs main" indicator dot below.
         const mainHash = findLatestMainHash(entries);
         for (const entry of entries) {
+            const entryId = entry.id ?? "";
             const row = document.createElement("div");
             row.className = "row";
             row.setAttribute("role", "listitem");
-            row.dataset.id = entry.id || "";
+            row.dataset.id = entryId;
             row.dataset.sourceKind = (entry.source && entry.source.kind) || "";
             row.dataset.branch = (entry.git && entry.git.branch) || "";
 
             const thumb = document.createElement("div");
             thumb.className = "thumb";
-            thumb.dataset.id = entry.id || "";
-            if (thumbCache.has(entry.id)) {
-                populateThumb(thumb, thumbCache.get(entry.id));
+            thumb.dataset.id = entryId;
+            const cached = thumbCache.get(entryId);
+            if (cached !== undefined) {
+                populateThumb(thumb, cached);
             } else if (thumbObserver) {
                 thumbObserver.observe(thumb);
             }
@@ -185,7 +203,7 @@ export function setupHistoryBehavior(): void {
                 '<i class="codicon codicon-arrow-up" aria-hidden="true"></i>';
             diffPrevBtn.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                requestRowDiff(entry.id, row, "previous");
+                requestRowDiff(entryId, row, "previous");
             });
             actions.appendChild(diffPrevBtn);
             const diffCurrentBtn = document.createElement("button");
@@ -197,20 +215,20 @@ export function setupHistoryBehavior(): void {
                 '<i class="codicon codicon-git-compare" aria-hidden="true"></i>';
             diffCurrentBtn.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                requestRowDiff(entry.id, row, "current");
+                requestRowDiff(entryId, row, "current");
             });
             actions.appendChild(diffCurrentBtn);
             row.appendChild(actions);
 
             row.addEventListener("click", (ev) => {
-                if (ev.shiftKey) toggleSelected(entry.id, row);
-                else expandRow(entry.id, row);
+                if (ev.shiftKey) toggleSelected(entryId, row);
+                else expandRow(entryId, row);
             });
             timelineEl.appendChild(row);
         }
     }
 
-    function toggleSelected(id, row) {
+    function toggleSelected(id: string, row: HTMLElement): void {
         if (selectedIds.has(id)) {
             selectedIds.delete(id);
             row.classList.remove("selected");
@@ -230,7 +248,7 @@ export function setupHistoryBehavior(): void {
         btnDiffEl.disabled = selectedIds.size !== 2;
     }
 
-    function expandRow(id, row) {
+    function expandRow(id: string, row: HTMLElement): void {
         // Collapse any previous expansion.
         const prev = timelineEl.querySelector(".expanded");
         if (prev) prev.remove();
@@ -244,11 +262,15 @@ export function setupHistoryBehavior(): void {
         expansion.className = "expanded";
         expansion.dataset.id = id;
         expansion.innerHTML = "<div>Loading…</div>";
-        row.parentNode.insertBefore(expansion, row.nextSibling);
+        row.parentNode?.insertBefore(expansion, row.nextSibling);
         vscode.postMessage({ command: "loadImage", id });
     }
 
-    function requestRowDiff(id, row, against) {
+    function requestRowDiff(
+        id: string,
+        row: HTMLElement,
+        against: "previous" | "current",
+    ): void {
         const prev = timelineEl.querySelector(".expanded");
         if (prev) prev.remove();
         expandedId = id;
@@ -257,11 +279,15 @@ export function setupHistoryBehavior(): void {
         expansion.dataset.id = id;
         expansion.dataset.against = against;
         expansion.innerHTML = "<div>Loading diff…</div>";
-        row.parentNode.insertBefore(expansion, row.nextSibling);
+        row.parentNode?.insertBefore(expansion, row.nextSibling);
         vscode.postMessage({ command: "requestDiff", id, against });
     }
 
-    function fillExpansion(id, imageData, entry) {
+    function fillExpansion(
+        id: string,
+        imageData: string,
+        entry: HistoryEntry | undefined,
+    ): void {
         const expansion = timelineEl.querySelector(
             '.expanded[data-id="' + cssEscape(id) + '"]',
         );
@@ -287,7 +313,7 @@ export function setupHistoryBehavior(): void {
         expansion.appendChild(actions);
     }
 
-    function populateThumb(thumbEl, imageData) {
+    function populateThumb(thumbEl: HTMLElement, imageData: string): void {
         thumbEl.innerHTML = "";
         const img = document.createElement("img");
         img.src = "data:image/png;base64," + imageData;
@@ -295,15 +321,28 @@ export function setupHistoryBehavior(): void {
         thumbEl.appendChild(img);
     }
 
+    interface DiffPayload {
+        leftLabel: string;
+        leftImage: string;
+        rightLabel: string;
+        rightImage: string;
+    }
+
+    type DiffMode = "side" | "overlay" | "onion";
+
+    interface PersistedHistoryState {
+        diffMode?: DiffMode;
+    }
+
     function fillDiff(
-        id,
-        against,
-        leftLabel,
-        leftImage,
-        rightLabel,
-        rightImage,
-    ) {
-        const expansion = timelineEl.querySelector(
+        id: string,
+        against: "previous" | "current",
+        leftLabel: string,
+        leftImage: string,
+        rightLabel: string,
+        rightImage: string,
+    ): void {
+        const expansion = timelineEl.querySelector<HTMLElement>(
             '.expanded[data-id="' +
                 cssEscape(id) +
                 '"][data-against="' +
@@ -312,9 +351,15 @@ export function setupHistoryBehavior(): void {
         );
         if (!expansion) return;
         expansion.innerHTML = "";
-        const payload = { leftLabel, leftImage, rightLabel, rightImage };
-        const stored = vscode.getState() || {};
-        const initialMode =
+        const payload: DiffPayload = {
+            leftLabel,
+            leftImage,
+            rightLabel,
+            rightImage,
+        };
+        const stored: PersistedHistoryState =
+            (vscode.getState() as PersistedHistoryState | undefined) ?? {};
+        const initialMode: DiffMode =
             stored.diffMode === "overlay" || stored.diffMode === "onion"
                 ? stored.diffMode
                 : "side";
@@ -323,7 +368,8 @@ export function setupHistoryBehavior(): void {
         const body = document.createElement("div");
         body.className = "diff-body";
         const modeBar = buildHistoryDiffModeBar(initialMode, (mode) => {
-            const cur = vscode.getState() || {};
+            const cur: PersistedHistoryState =
+                (vscode.getState() as PersistedHistoryState | undefined) ?? {};
             cur.diffMode = mode;
             vscode.setState(cur);
             renderHistoryDiffMode(body, mode, payload);
@@ -341,15 +387,37 @@ export function setupHistoryBehavior(): void {
         });
     }
 
+    type DiffStats =
+        | { error: string }
+        | {
+              sameSize: false;
+              leftW: number;
+              leftH: number;
+              rightW: number;
+              rightH: number;
+          }
+        | {
+              sameSize: true;
+              w: number;
+              h: number;
+              diffPx: number;
+              total: number;
+              percent: number;
+          };
+
     // Client-side pixel diff helpers — duplicated from the live panel
     // so the History panel webview is self-contained. Same algorithm.
-    function computeDiffStats(leftBase64, rightBase64) {
-        return new Promise((resolve) => {
+    function computeDiffStats(
+        leftBase64: string,
+        rightBase64: string,
+    ): Promise<DiffStats> {
+        return new Promise<DiffStats>((resolve) => {
             const left = new Image();
             const right = new Image();
             let loaded = 0;
-            const onErr = () => resolve({ error: "image failed to load" });
-            const onOk = () => {
+            const onErr = (): void =>
+                resolve({ error: "image failed to load" });
+            const onOk = (): void => {
                 if (++loaded < 2) return;
                 try {
                     if (
@@ -365,22 +433,28 @@ export function setupHistoryBehavior(): void {
                         });
                         return;
                     }
-                    const w = left.naturalWidth,
-                        h = left.naturalHeight;
+                    const w = left.naturalWidth;
+                    const h = left.naturalHeight;
                     const c1 = document.createElement("canvas");
                     c1.width = w;
                     c1.height = h;
-                    c1.getContext("2d").drawImage(left, 0, 0);
-                    const d1 = c1
-                        .getContext("2d")
-                        .getImageData(0, 0, w, h).data;
+                    const ctx1 = c1.getContext("2d");
+                    if (!ctx1) {
+                        resolve({ error: "canvas 2d context unavailable" });
+                        return;
+                    }
+                    ctx1.drawImage(left, 0, 0);
+                    const d1 = ctx1.getImageData(0, 0, w, h).data;
                     const c2 = document.createElement("canvas");
                     c2.width = w;
                     c2.height = h;
-                    c2.getContext("2d").drawImage(right, 0, 0);
-                    const d2 = c2
-                        .getContext("2d")
-                        .getImageData(0, 0, w, h).data;
+                    const ctx2 = c2.getContext("2d");
+                    if (!ctx2) {
+                        resolve({ error: "canvas 2d context unavailable" });
+                        return;
+                    }
+                    ctx2.drawImage(right, 0, 0);
+                    const d2 = ctx2.getImageData(0, 0, w, h).data;
                     let diff = 0;
                     const len = d1.length;
                     for (let i = 0; i < len; i += 4) {
@@ -403,7 +477,10 @@ export function setupHistoryBehavior(): void {
                     });
                 } catch (err) {
                     resolve({
-                        error: (err && err.message) || "stats unavailable",
+                        error:
+                            err instanceof Error
+                                ? err.message
+                                : "stats unavailable",
                     });
                 }
             };
@@ -416,9 +493,9 @@ export function setupHistoryBehavior(): void {
         });
     }
 
-    function findLatestMainHash(es) {
+    function findLatestMainHash(es: readonly HistoryEntry[]): string | null {
         let bestTs = "";
-        let bestHash = null;
+        let bestHash: string | null = null;
         for (const e of es) {
             if (!e || (e.git && e.git.branch) !== "main") continue;
             if (!e.pngHash) continue;
@@ -431,13 +508,13 @@ export function setupHistoryBehavior(): void {
         return bestHash;
     }
 
-    function applyDiffStats(el, s) {
+    function applyDiffStats(el: HTMLElement, s: DiffStats | null): void {
         if (!s) {
             el.textContent = "";
             el.removeAttribute("data-state");
             return;
         }
-        if (s.error) {
+        if ("error" in s) {
             el.textContent = s.error;
             el.removeAttribute("data-state");
             return;
@@ -473,11 +550,14 @@ export function setupHistoryBehavior(): void {
         el.dataset.state = "changed";
     }
 
-    function buildHistoryDiffModeBar(initialMode, onChange) {
+    function buildHistoryDiffModeBar(
+        initialMode: DiffMode,
+        onChange: (mode: DiffMode) => void,
+    ): HTMLElement {
         const bar = document.createElement("div");
         bar.className = "diff-mode-bar";
         bar.setAttribute("role", "tablist");
-        const modes = [
+        const modes: { id: DiffMode; label: string }[] = [
             { id: "side", label: "Side" },
             { id: "overlay", label: "Overlay" },
             { id: "onion", label: "Onion" },
@@ -508,7 +588,11 @@ export function setupHistoryBehavior(): void {
         return bar;
     }
 
-    function renderHistoryDiffMode(body, mode, payload) {
+    function renderHistoryDiffMode(
+        body: HTMLElement,
+        mode: DiffMode,
+        payload: DiffPayload,
+    ): void {
         body.innerHTML = "";
         if (mode === "side") {
             const grid = document.createElement("div");
@@ -525,7 +609,10 @@ export function setupHistoryBehavior(): void {
         body.appendChild(buildHistoryDiffStack(mode, payload));
     }
 
-    function buildHistoryDiffStack(mode, payload) {
+    function buildHistoryDiffStack(
+        mode: DiffMode,
+        payload: DiffPayload,
+    ): HTMLElement {
         const wrapper = document.createElement("div");
         wrapper.className = "diff-stack-wrapper";
         const stack = document.createElement("div");
@@ -558,9 +645,10 @@ export function setupHistoryBehavior(): void {
             );
             stack.style.setProperty("--diff-onion-mix", "0.5");
             slider.addEventListener("input", () => {
+                const v = Number(slider.value);
                 stack.style.setProperty(
                     "--diff-onion-mix",
-                    (slider.value / 100).toString(),
+                    (Number.isFinite(v) ? v / 100 : 0.5).toString(),
                 );
             });
             wrapper.appendChild(slider);
@@ -572,7 +660,7 @@ export function setupHistoryBehavior(): void {
         return wrapper;
     }
 
-    function buildDiffPane(label, imageData) {
+    function buildDiffPane(label: string, imageData: string): HTMLElement {
         const pane = document.createElement("div");
         pane.className = "diff-pane";
         const cap = document.createElement("div");
@@ -593,7 +681,11 @@ export function setupHistoryBehavior(): void {
         return pane;
     }
 
-    function showDiff(fromId, toId, result) {
+    function showDiff(
+        fromId: string,
+        toId: string,
+        result: HistoryDiffSummary | null,
+    ): void {
         const block = document.createElement("div");
         block.className = "diff-inline";
         if (!result) {
@@ -615,16 +707,16 @@ export function setupHistoryBehavior(): void {
         setTimeout(() => block.remove(), 12_000);
     }
 
-    function escapeHtml(text) {
+    function escapeHtml(text: unknown): string {
         const div = document.createElement("div");
         div.textContent = String(text ?? "");
         return div.innerHTML;
     }
-    function cssEscape(s) {
+    function cssEscape(s: string): string {
         return String(s).replace(/[\\"']/g, "\\$&");
     }
 
-    function formatRelative(iso) {
+    function formatRelative(iso: string | undefined): string {
         if (!iso) return "(no timestamp)";
         const t = Date.parse(iso);
         if (isNaN(t)) return iso;
@@ -642,7 +734,7 @@ export function setupHistoryBehavior(): void {
         return Math.round(mo / 12) + "y ago";
     }
 
-    function formatAbsolute(iso) {
+    function formatAbsolute(iso: string | undefined): string {
         if (!iso) return "";
         const t = Date.parse(iso);
         if (isNaN(t)) return "";
@@ -658,8 +750,8 @@ export function setupHistoryBehavior(): void {
         }
     }
 
-    window.addEventListener("message", (event) => {
-        const msg = event.data;
+    window.addEventListener("message", (event: MessageEvent) => {
+        const msg = event.data as HistoryToWebview;
         switch (msg.command) {
             case "setEntries":
                 entries = msg.result.entries || [];
@@ -683,12 +775,16 @@ export function setupHistoryBehavior(): void {
             case "showMessage":
                 setMessage(msg.text || "");
                 break;
-            // setScopeLabel is handled by <scope-chip>.
+            case "setScopeLabel":
+                // Handled directly by `<scope-chip>` — it listens on `window`
+                // for this command. Listed here so the discriminated-union
+                // exhaustiveness check holds.
+                break;
             case "imageReady":
                 fillExpansion(msg.id, msg.imageData, msg.entry);
                 break;
             case "imageError": {
-                const expansion = timelineEl.querySelector(
+                const expansion = timelineEl.querySelector<HTMLElement>(
                     '.expanded[data-id="' + cssEscape(msg.id) + '"]',
                 );
                 if (expansion)
@@ -699,7 +795,7 @@ export function setupHistoryBehavior(): void {
             }
             case "thumbReady": {
                 thumbCache.set(msg.id, msg.imageData);
-                const thumbEl = timelineEl.querySelector(
+                const thumbEl = timelineEl.querySelector<HTMLElement>(
                     '.thumb[data-id="' + cssEscape(msg.id) + '"]',
                 );
                 if (thumbEl) populateThumb(thumbEl, msg.imageData);
