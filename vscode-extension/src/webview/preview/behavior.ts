@@ -13,6 +13,12 @@
 // queries below resolve.
 
 import { getVsCodeApi } from "../shared/vscode";
+import {
+    applyHierarchyOverlay,
+    buildA11yLegend,
+    buildA11yOverlay,
+    ensureHierarchyOverlay,
+} from "./a11yOverlay";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { previewStore } from "./previewStore";
@@ -1563,7 +1569,7 @@ export function setupPreviewBehavior(
             overlay.className = "a11y-overlay";
             overlay.setAttribute("aria-hidden", "true");
             imgContainer.appendChild(overlay);
-            card.appendChild(buildA11yLegend(p));
+            card.appendChild(buildA11yLegend(card, p));
         }
 
         const variantLabel = buildVariantLabel(p);
@@ -1862,7 +1868,7 @@ export function setupPreviewBehavior(
                 overlay.setAttribute("aria-hidden", "true");
                 container.appendChild(overlay);
             }
-            const legend = buildA11yLegend(p);
+            const legend = buildA11yLegend(card, p);
             card.appendChild(legend);
             // Repopulate box geometry if the image is already loaded —
             // otherwise updateImage's load handler will pick it up on
@@ -1877,54 +1883,6 @@ export function setupPreviewBehavior(
             // earlyFeatures off mid-session.
             existingOverlay.remove();
         }
-    }
-
-    /** Shared between createCard (new card) and updateCardMetadata (existing card). */
-    function buildA11yLegend(p) {
-        const legend = document.createElement("div");
-        legend.className = "a11y-legend";
-        const header = document.createElement("div");
-        header.className = "a11y-legend-header";
-        header.textContent = "Accessibility (" + p.a11yFindings.length + ")";
-        legend.appendChild(header);
-        p.a11yFindings.forEach((f, idx) => {
-            const row = document.createElement("div");
-            row.className =
-                "a11y-row a11y-level-" + (f.level || "info").toLowerCase();
-            row.dataset.previewId = p.id;
-            row.dataset.findingIdx = String(idx);
-
-            const badge = document.createElement("span");
-            badge.className = "a11y-badge";
-            badge.textContent = String(idx + 1);
-            row.appendChild(badge);
-
-            const text = document.createElement("div");
-            text.className = "a11y-text";
-            const title = document.createElement("div");
-            title.className = "a11y-title";
-            title.textContent = f.level + " · " + f.type;
-            const msg = document.createElement("div");
-            msg.className = "a11y-msg";
-            msg.textContent = f.message;
-            text.appendChild(title);
-            text.appendChild(msg);
-            if (f.viewDescription) {
-                const elt = document.createElement("div");
-                elt.className = "a11y-elt";
-                elt.textContent = f.viewDescription;
-                text.appendChild(elt);
-            }
-            row.appendChild(text);
-            row.addEventListener("mouseenter", () =>
-                highlightA11yFinding(p.id, idx),
-            );
-            row.addEventListener("mouseleave", () =>
-                highlightA11yFinding(p.id, null),
-            );
-            legend.appendChild(row);
-        });
-        return legend;
     }
 
     // Compact single-line variant summary rendered in a persistent badge
@@ -2205,72 +2163,6 @@ export function setupPreviewBehavior(
         }
     }
 
-    /**
-     * Builds the absolutely-positioned overlay boxes on top of the
-     * rendered preview image. Runs once per image load — boundsInScreen
-     * is in the image pixel coordinates, so we translate to % of the
-     * image natural dimensions. The overlay layer scales with the image
-     * (position absolute, inset 0 inside image-container which sizes to
-     * the img), so % bounds stay correct across layout changes without
-     * a resize handler.
-     */
-    function buildA11yOverlay(card, findings, img) {
-        const overlay = card.querySelector(".a11y-overlay");
-        if (!overlay) return;
-        overlay.innerHTML = "";
-        const natW = img.naturalWidth;
-        const natH = img.naturalHeight;
-        if (!natW || !natH) return;
-        findings.forEach((f, idx) => {
-            const bounds = parseBounds(f.boundsInScreen);
-            if (!bounds) return;
-            const box = document.createElement("div");
-            box.className =
-                "a11y-box a11y-level-" + (f.level || "info").toLowerCase();
-            box.dataset.findingIdx = String(idx);
-            box.style.left = (bounds.left / natW) * 100 + "%";
-            box.style.top = (bounds.top / natH) * 100 + "%";
-            box.style.width = ((bounds.right - bounds.left) / natW) * 100 + "%";
-            box.style.height =
-                ((bounds.bottom - bounds.top) / natH) * 100 + "%";
-            const badge = document.createElement("span");
-            badge.className = "a11y-badge";
-            badge.textContent = String(idx + 1);
-            box.appendChild(badge);
-            overlay.appendChild(box);
-        });
-    }
-
-    function parseBounds(s) {
-        if (!s) return null;
-        const parts = s.split(",").map((x) => parseInt(x.trim(), 10));
-        if (parts.length !== 4 || parts.some(isNaN)) return null;
-        return {
-            left: parts[0],
-            top: parts[1],
-            right: parts[2],
-            bottom: parts[3],
-        };
-    }
-
-    /** Adds/removes .a11y-active on matching legend row + overlay box. */
-    function highlightA11yFinding(previewId, idx) {
-        const card = document.getElementById(
-            "preview-" + sanitizeId(previewId),
-        );
-        if (!card) return;
-        card.querySelectorAll(
-            ".a11y-row.a11y-active, .a11y-box.a11y-active",
-        ).forEach((el) => {
-            el.classList.remove("a11y-active");
-        });
-        if (idx === null || idx === undefined) return;
-        const sel = '[data-finding-idx="' + idx + '"]';
-        card.querySelectorAll(sel).forEach((el) =>
-            el.classList.add("a11y-active"),
-        );
-    }
-
     function updateImage(previewId, captureIndex, imageData) {
         const card = document.getElementById(
             "preview-" + sanitizeId(previewId),
@@ -2412,7 +2304,7 @@ export function setupPreviewBehavior(
                 const p = allPreviews.find((pp) => pp.id === previewId);
                 if (p) {
                     p.a11yFindings = findings;
-                    card.appendChild(buildA11yLegend(p));
+                    card.appendChild(buildA11yLegend(card, p));
                 }
                 if (img && img.complete && img.naturalWidth > 0) {
                     buildA11yOverlay(card, findings, img);
@@ -2442,49 +2334,6 @@ export function setupPreviewBehavior(
             const focused = getVisibleCards()[focusIndex];
             if (focused === card) renderFocusInspector(card);
         }
-    }
-
-    function ensureHierarchyOverlay(container) {
-        if (!container) return;
-        if (container.querySelector(".a11y-hierarchy-overlay")) return;
-        const layer = document.createElement("div");
-        layer.className = "a11y-hierarchy-overlay";
-        layer.setAttribute("aria-hidden", "true");
-        container.appendChild(layer);
-    }
-
-    // D2 — draws one translucent rectangle per accessibility-relevant node. Uses the
-    // same boundsInScreen parsing as the finding overlay so the math stays trivial.
-    // Each box gets a title attribute summarising label / role / states so a hover
-    // yields the same data TalkBack would announce, without baking any of it into
-    // the PNG.
-    function applyHierarchyOverlay(card, nodes, img) {
-        const overlay = card.querySelector(".a11y-hierarchy-overlay");
-        if (!overlay) return;
-        overlay.innerHTML = "";
-        const natW = img.naturalWidth;
-        const natH = img.naturalHeight;
-        if (!natW || !natH) return;
-        nodes.forEach((n) => {
-            const bounds = parseBounds(n.boundsInScreen);
-            if (!bounds) return;
-            const box = document.createElement("div");
-            box.className =
-                "a11y-hierarchy-box" +
-                (n.merged ? "" : " a11y-hierarchy-unmerged");
-            box.style.left = (bounds.left / natW) * 100 + "%";
-            box.style.top = (bounds.top / natH) * 100 + "%";
-            box.style.width = ((bounds.right - bounds.left) / natW) * 100 + "%";
-            box.style.height =
-                ((bounds.bottom - bounds.top) / natH) * 100 + "%";
-            const tooltipParts = [];
-            if (n.label) tooltipParts.push(n.label);
-            if (n.role) tooltipParts.push(n.role);
-            if (n.states && n.states.length)
-                tooltipParts.push(n.states.join(", "));
-            if (tooltipParts.length) box.title = tooltipParts.join(" · ");
-            overlay.appendChild(box);
-        });
     }
 
     // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
