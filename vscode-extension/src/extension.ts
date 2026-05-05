@@ -3091,6 +3091,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
     // webview's untyped postMessage could deliver a structurally-broken
     // payload (e.g. arrays that aren't actually arrays).
     switch (msg.command) {
+        case "webviewReady":
+            // Webview just loaded — extension may have already tried to post
+            // `setPreviews` / `setModules` while the view was unresolved (panel
+            // hidden when `onLanguage:kotlin` activated us). Replay the
+            // stateful messages from current state so the grid populates even
+            // when the user opens the panel after the first refresh ran.
+            sendModuleList();
+            if (currentScopeFile) {
+                void refresh(false, currentScopeFile);
+            }
+            break;
         case "openFile":
             openPreviewSource(msg.className, msg.functionName);
             break;

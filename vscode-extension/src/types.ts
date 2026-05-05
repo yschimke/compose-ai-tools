@@ -501,6 +501,20 @@ export type ExtensionToWebview =
 
 /** Messages from webview to extension */
 export type WebviewToExtension =
+    /**
+     * Webview signals it has loaded and is ready to receive state messages.
+     * Sent once per webview lifecycle from `<preview-app>`'s `firstUpdated`,
+     * after the message listener in `behavior.ts` is installed. The extension
+     * responds by republishing the current session's stateful messages
+     * (`setPreviews`, `setModules`, `setEarlyFeatures`, daemon availability,
+     * etc.) so a panel that resolved after the initial refresh — e.g. user
+     * activated the extension by opening a `.kt` file before clicking the
+     * Compose Preview activity-bar icon — doesn't end up with an empty grid
+     * because the only `setPreviews` was sent before the webview existed.
+     * `view?.webview.postMessage` silently drops messages until the
+     * webviewView is resolved.
+     */
+    | { command: "webviewReady" }
     | { command: "openFile"; className: string; functionName: string }
     | { command: "selectModule"; value: string }
     /**
