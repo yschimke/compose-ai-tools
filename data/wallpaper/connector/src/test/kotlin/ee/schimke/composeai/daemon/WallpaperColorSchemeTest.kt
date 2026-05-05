@@ -1,11 +1,18 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.graphics.Color
+import com.materialkolor.PaletteStyle
+import ee.schimke.composeai.daemon.protocol.WallpaperPaletteStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Smoke tests for the wallpaper-seed → ColorScheme derivation. The heavy lifting (HCT, tonal
+ * palettes) lives in `com.materialkolor:material-kolor`; these tests pin our connector's
+ * style/contrast plumbing and the `WallpaperPaletteStyle` ↔ upstream-enum mapping rather than
+ * re-asserting Google's algorithm.
+ */
 class WallpaperColorSchemeTest {
 
   @Test
@@ -14,51 +21,67 @@ class WallpaperColorSchemeTest {
     val light = WallpaperColorScheme.from(seed, isDark = false)
     val dark = WallpaperColorScheme.from(seed, isDark = true)
     assertNotEquals(light.primary, dark.primary)
-    // Light primary is darker than dark primary in luminance.
-    val lightL = light.primary.toHsl().luminance
-    val darkL = dark.primary.toHsl().luminance
-    assertTrue("light L=$lightL dark L=$darkL", lightL < darkL)
+    assertNotEquals(light.background, dark.background)
   }
 
   @Test
-  fun seed_drives_primary_hue() {
-    val red = WallpaperColorScheme.from(Color(0xFFFF0000), isDark = false).primary.toHsl()
-    val blue = WallpaperColorScheme.from(Color(0xFF0000FF), isDark = false).primary.toHsl()
-    // A red seed should produce a primary near 0°/360°; blue near 240°.
-    assertTrue("red hue=${red.hue}", red.hue < 30f || red.hue > 330f)
-    assertTrue("blue hue=${blue.hue}", blue.hue in 200f..280f)
+  fun different_palette_styles_produce_different_schemes() {
+    val seed = Color(0xFF3366FF)
+    val tonal =
+      WallpaperColorScheme.from(seed, isDark = false, style = WallpaperPaletteStyle.TONAL_SPOT)
+    val vibrant =
+      WallpaperColorScheme.from(seed, isDark = false, style = WallpaperPaletteStyle.VIBRANT)
+    val mono =
+      WallpaperColorScheme.from(seed, isDark = false, style = WallpaperPaletteStyle.MONOCHROME)
+    assertNotEquals(
+      "tonalSpot vs vibrant should differ on at least one role",
+      tonal.primary,
+      vibrant.primary,
+    )
+    assertNotEquals(
+      "tonalSpot vs monochrome should differ on at least one role",
+      tonal.primary,
+      mono.primary,
+    )
   }
 
   @Test
-  fun secondary_and_tertiary_rotate_off_primary() {
-    val scheme = WallpaperColorScheme.from(Color(0xFF3366FF), isDark = false)
-    val primary = scheme.primary.toHsl().hue
-    val secondary = scheme.secondary.toHsl().hue
-    val tertiary = scheme.tertiary.toHsl().hue
-    fun rotation(a: Float, b: Float): Float {
-      val d = ((b - a) % 360f + 360f) % 360f
-      return d
-    }
-    assertEquals(30f, rotation(primary, secondary), 5f)
-    assertEquals(60f, rotation(primary, tertiary), 5f)
+  fun high_contrast_changes_role_luminance() {
+    val seed = Color(0xFF3366FF)
+    val standard = WallpaperColorScheme.from(seed, isDark = false, contrastLevel = 0.0)
+    val high = WallpaperColorScheme.from(seed, isDark = false, contrastLevel = 1.0)
+    val standardRoles =
+      listOf(
+        standard.primary,
+        standard.onSurface,
+        standard.onSurfaceVariant,
+        standard.outline,
+        standard.surfaceVariant,
+      )
+    val highRoles =
+      listOf(high.primary, high.onSurface, high.onSurfaceVariant, high.outline, high.surfaceVariant)
+    assertNotEquals(
+      "high-contrast scheme should differ from the default on at least one role",
+      standardRoles,
+      highRoles,
+    )
   }
 
   @Test
-  fun achromatic_seed_still_produces_visible_chroma() {
-    val grey = WallpaperColorScheme.from(Color(0xFF808080), isDark = false).primary.toHsl()
-    // Grey would normally collapse to saturation 0. The algorithm clamps the chroma floor so the
-    // derived primary is still visibly tinted.
-    assertTrue("primary saturation=${grey.saturation}", grey.saturation > 0.2f)
-  }
-
-  @Test
-  fun hsl_round_trips_through_color_constructor() {
-    val original = Color(0xFF80C040)
-    val (h, s, l) = original.toHsl()
-    val rebuilt = hsl(h, s, l)
-    fun close(a: Float, b: Float): Boolean = kotlin.math.abs(a - b) < 0.01f
-    assertTrue(close(rebuilt.red, original.red))
-    assertTrue(close(rebuilt.green, original.green))
-    assertTrue(close(rebuilt.blue, original.blue))
+  fun palette_style_enum_maps_to_upstream_one_to_one() {
+    assertEquals(PaletteStyle.TonalSpot, WallpaperPaletteStyle.TONAL_SPOT.toMaterialKolor())
+    assertEquals(PaletteStyle.Neutral, WallpaperPaletteStyle.NEUTRAL.toMaterialKolor())
+    assertEquals(PaletteStyle.Vibrant, WallpaperPaletteStyle.VIBRANT.toMaterialKolor())
+    assertEquals(PaletteStyle.Expressive, WallpaperPaletteStyle.EXPRESSIVE.toMaterialKolor())
+    assertEquals(PaletteStyle.Rainbow, WallpaperPaletteStyle.RAINBOW.toMaterialKolor())
+    assertEquals(PaletteStyle.FruitSalad, WallpaperPaletteStyle.FRUIT_SALAD.toMaterialKolor())
+    assertEquals(PaletteStyle.Monochrome, WallpaperPaletteStyle.MONOCHROME.toMaterialKolor())
+    assertEquals(PaletteStyle.Fidelity, WallpaperPaletteStyle.FIDELITY.toMaterialKolor())
+    assertEquals(PaletteStyle.Content, WallpaperPaletteStyle.CONTENT.toMaterialKolor())
+    assertEquals(
+      "every protocol enum entry must map to an upstream value",
+      WallpaperPaletteStyle.entries.size,
+      PaletteStyle.entries.size,
+    )
   }
 }

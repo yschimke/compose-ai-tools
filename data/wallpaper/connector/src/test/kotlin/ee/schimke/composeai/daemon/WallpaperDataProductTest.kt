@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.daemon.protocol.WallpaperPaletteStyle
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -86,9 +88,67 @@ class WallpaperDataProductTest {
     val payload = (outcome as DataProductRegistry.Outcome.Ok).result.payload!!.jsonObject
     assertEquals("#FF3366FF", payload["seedColor"]!!.jsonPrimitive.content)
     assertEquals(false, payload["isDark"]!!.jsonPrimitive.boolean)
+    assertEquals("tonalSpot", payload["paletteStyle"]!!.jsonPrimitive.content)
+    assertEquals(0.0, payload["contrastLevel"]!!.jsonPrimitive.content.toDouble(), 0.0001)
     val derived = payload["derivedColorScheme"]!!.jsonObject
     assertNotNull(derived["primary"])
     assertTrue(derived["primary"]!!.jsonPrimitive.content.matches(Regex("#[0-9A-F]{8}")))
+  }
+
+  @Test
+  fun on_render_propagates_palette_style_and_contrast_into_payload() {
+    val registry = WallpaperDataProductRegistry()
+    val tonalResult = stubRenderResult()
+    val vibrantResult = stubRenderResult()
+
+    registry.onRender(
+      "preview-1",
+      tonalResult,
+      PreviewOverrides(
+        wallpaper =
+          WallpaperOverride(
+            seedColor = "#FF3366FF",
+            paletteStyle = WallpaperPaletteStyle.TONAL_SPOT,
+            contrastLevel = 0.0,
+          )
+      ),
+      previewContext = null,
+    )
+    val tonalPrimary =
+      ((registry.fetch("preview-1", "compose/wallpaper", null, true)
+          as DataProductRegistry.Outcome.Ok)
+        .result
+        .payload!!
+        .jsonObject["derivedColorScheme"]!!
+        .jsonObject["primary"]!!
+        .jsonPrimitive
+        .content)
+
+    registry.onRender(
+      "preview-1",
+      vibrantResult,
+      PreviewOverrides(
+        wallpaper =
+          WallpaperOverride(
+            seedColor = "#FF3366FF",
+            paletteStyle = WallpaperPaletteStyle.VIBRANT,
+            contrastLevel = 1.0,
+          )
+      ),
+      previewContext = null,
+    )
+    val vibrantOutcome =
+      registry.fetch("preview-1", "compose/wallpaper", null, true) as DataProductRegistry.Outcome.Ok
+    val vibrantPayload = vibrantOutcome.result.payload!!.jsonObject
+    assertEquals("vibrant", vibrantPayload["paletteStyle"]!!.jsonPrimitive.content)
+    assertEquals(1.0, vibrantPayload["contrastLevel"]!!.jsonPrimitive.content.toDouble(), 0.0001)
+    val vibrantPrimary =
+      vibrantPayload["derivedColorScheme"]!!.jsonObject["primary"]!!.jsonPrimitive.content
+    assertNotEquals(
+      "vibrant + high contrast should produce a different primary than tonalSpot/default",
+      tonalPrimary,
+      vibrantPrimary,
+    )
   }
 
   @Test

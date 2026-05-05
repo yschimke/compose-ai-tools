@@ -394,10 +394,12 @@ data class PreviewOverrides(
 /**
  * Single-color seed for the wallpaper data extension.
  *
- * The renderer treats this like a tiny dynamic-color scheme: derive primary/secondary/tertiary
- * tonal palettes from [seedColor], pick the brightness from [isDark] (when null, inherits the host
- * theme's surface luminance), and apply the resulting [androidx.compose.material3.ColorScheme] as a
- * `MaterialTheme` wrapper around the preview.
+ * The renderer derives a Material 3 [androidx.compose.material3.ColorScheme] from [seedColor] via
+ * Google's Material Color Utilities (HCT tonal palettes), picks the brightness from [isDark] (when
+ * null, inherits the host theme's surface luminance), and wraps the preview in a
+ * `MaterialTheme(colorScheme = …)`. [paletteStyle] selects the algorithm variant the wallpaper
+ * picker exposes (Tonal Spot / Vibrant / Expressive / etc.) and [contrastLevel] threads through the
+ * accessibility contrast control (`-1.0` → reduced, `0.0` → default, `0.5` → medium, `1.0` → high).
  */
 @Serializable
 data class WallpaperOverride(
@@ -405,7 +407,36 @@ data class WallpaperOverride(
   val seedColor: String,
   /** When non-null, forces the dark variant of the derived scheme. */
   val isDark: Boolean? = null,
+  /**
+   * Algorithm variant. Mirrors the styles the Android wallpaper picker exposes; null falls back to
+   * the connector's default (`TONAL_SPOT`).
+   */
+  val paletteStyle: WallpaperPaletteStyle? = null,
+  /**
+   * Material 3 contrast level in `[-1.0, 1.0]` — `0.0` is the default, `0.5` is medium, `1.0` is
+   * high contrast. Null falls back to `0.0`.
+   */
+  val contrastLevel: Double? = null,
 )
+
+/**
+ * Style of palette derivation for [WallpaperOverride].
+ *
+ * Mirrors `com.materialkolor.PaletteStyle` so the protocol stays free of an external dependency;
+ * the wallpaper connector maps each value to the upstream enum.
+ */
+@Serializable
+enum class WallpaperPaletteStyle {
+  @SerialName("tonalSpot") TONAL_SPOT,
+  @SerialName("neutral") NEUTRAL,
+  @SerialName("vibrant") VIBRANT,
+  @SerialName("expressive") EXPRESSIVE,
+  @SerialName("rainbow") RAINBOW,
+  @SerialName("fruitSalad") FRUIT_SALAD,
+  @SerialName("monochrome") MONOCHROME,
+  @SerialName("fidelity") FIDELITY,
+  @SerialName("content") CONTENT,
+}
 
 @Serializable
 data class Material3ThemeOverrides(
