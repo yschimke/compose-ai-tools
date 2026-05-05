@@ -116,6 +116,73 @@ sha256_of() {
 require curl
 require tar
 
+# ---- Skill-bundle symlinks for detected agent hosts ----------------------
+#
+# The skill bundles are extracted once into $SKILL_DIR / $REVIEW_SKILL_DIR
+# (defaults under ~/.claude/skills/). For every other agent host detected on
+# this machine, drop a symlink from that host's user-scope skills directory
+# pointing at the canonical bundle, so updates flow through automatically and
+# disk content isn't duplicated. Detection mirrors `compose-preview mcp install`.
+#
+# Skill dirs (override via env):
+#   - Codex:       ${CODEX_HOME:-$HOME/.codex}/skills
+#                  https://developers.openai.com/codex/skills
+#   - Antigravity: ${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}
+#                  https://antigravity.google/docs/skills
+#
+# Idempotent: a symlink already pointing at the canonical bundle is left alone;
+# a stale symlink is repointed; a regular directory or file is left untouched
+# with a warning (so we never clobber user-managed content).
+
+have_codex() {
+  [[ -d "${CODEX_HOME:-$HOME/.codex}" ]] || command -v codex >/dev/null 2>&1
+}
+
+have_antigravity() {
+  [[ -d "$HOME/.gemini/antigravity" ]] \
+    || [[ "${__CFBundleIdentifier:-}" == "com.google.antigravity" ]] \
+    || [[ -n "${ANTIGRAVITY_CLI_ALIAS:-}" ]] \
+    || command -v antigravity >/dev/null 2>&1
+}
+
+link_skill_into_dir() {
+  local host="$1" dir="$2" src="$3"
+  local name; name="$(basename "$src")"
+  local dst="$dir/$name"
+  if [[ -L "$dst" ]]; then
+    local current; current="$(readlink "$dst" 2>/dev/null || true)"
+    if [[ "$current" == "$src" ]]; then
+      return 0
+    fi
+    log "updating $host skill link: $dst -> $src (was $current)"
+    ln -sfn "$src" "$dst"
+    return 0
+  fi
+  if [[ -e "$dst" ]]; then
+    log "warning: $host skills dir contains a non-symlink at $dst; leaving it alone"
+    return 0
+  fi
+  log "linking $host skill: $dst -> $src"
+  ln -s "$src" "$dst"
+}
+
+link_skills_for_detected_hosts() {
+  # Run after the canonical bundles exist; otherwise the symlinks would dangle.
+  [[ -d "$SKILL_DIR" ]] || return 0
+  if have_codex; then
+    local codex_dir="${CODEX_HOME:-$HOME/.codex}/skills"
+    mkdir -p "$codex_dir"
+    link_skill_into_dir "codex" "$codex_dir" "$SKILL_DIR"
+    [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "codex" "$codex_dir" "$REVIEW_SKILL_DIR"
+  fi
+  if have_antigravity; then
+    local ag_dir="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}"
+    mkdir -p "$ag_dir"
+    link_skill_into_dir "antigravity" "$ag_dir" "$SKILL_DIR"
+    [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "antigravity" "$ag_dir" "$REVIEW_SKILL_DIR"
+  fi
+}
+
 # ---- Cloud: ensure Java 17+ is available ---------------------------------
 #
 # Claude Cloud images currently pre-install JDK 21, which already satisfies
@@ -354,6 +421,7 @@ if [[ -x "$LAUNCHER" \
    && "$(cat "$REVIEW_SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
   log "compose-preview $VERSION already installed and linked"
   "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
+  link_skills_for_detected_hosts
   maybe_write_env_file
   exit 0
 fi
@@ -450,6 +518,8 @@ EOF
     fi
     ;;
 esac
+
+link_skills_for_detected_hosts
 
 log "installed compose-preview $VERSION"
 log "skill bundle: $SKILL_DIR"
