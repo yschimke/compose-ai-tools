@@ -130,11 +130,11 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
-roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.59.0" }
-roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.59.0" }
-roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version = "1.59.0" }
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.60.0" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.60.0" }
+roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version = "1.60.0" }
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
-roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version = "1.59.0" }
+roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version = "1.60.0" }
 junit = { module = "junit:junit", version.ref = "junit" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # ASM — used by `:daemon:harness`'s `S3_5RecompileSaveLoopRealModeTest` to mint two
@@ -142,8 +142,8 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # bytecode at test time. The B2.0 disposable user-classloader test asserts that the daemon
 # actually re-reads bytecode after a `fileChanged` notification; without two distinct `.class`
 # files the test can't differentiate "stale" from "fresh".
-asm = { module = "org.ow2.asm:asm", version = "9.7" }
-asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.7" }
+asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.9.1" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 
 [plugins]
