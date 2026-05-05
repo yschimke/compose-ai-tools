@@ -47,6 +47,9 @@ import ee.schimke.composeai.scroll.ScrollGifEncoder
 import ee.schimke.composeai.scroll.SliceCapture
 import ee.schimke.composeai.scroll.applyWearPillClip
 import ee.schimke.composeai.scroll.driveScrollBy
+import ee.schimke.composeai.scroll.ScrollLongFrameDriverExtension
+import ee.schimke.composeai.scroll.ScrollLongFramePlan
+import ee.schimke.composeai.scroll.ScrollPreviewExtension
 import ee.schimke.composeai.scroll.driveScrollByViewport
 import ee.schimke.composeai.scroll.driveScrollToEnd
 import ee.schimke.composeai.scroll.driveScrollToStart
@@ -1056,10 +1059,13 @@ private fun cropPngTopLeft(
 }
 
 /**
- * Handles `@ScrollingPreview(modes = [LONG])` captures. Drives the first
- * scrollable on [ScrollCapture.axis] by one viewport-height per step via
- * [driveScrollByViewport], captures each slice to a temp PNG with per-slice
- * round crop DISABLED, and Java2D-stitches them via [stitchSlices].
+ * Handles `@ScrollingPreview(modes = [LONG])` captures. Plans the projected slice walk through the
+ * typed [ScrollLongFrameDriverExtension] (uniform 80%-of-viewport stride from `0..1`, exported via
+ * `ScrollLongExtensionStateKeys.Frames` for downstream consumers), then drives the first scrollable
+ * on [ScrollCapture.axis] adaptively via [driveScrollByViewport] using the planner's stride —
+ * adaptive driving is required because LazyList's `maxValue` materialises progressively, so the
+ * upfront extent hint can underestimate. Captures each slice to a temp PNG with per-slice round
+ * crop DISABLED and Java2D-stitches them via [stitchSlices].
  *
  * For round Wear devices ([isRound] = true), the stitched output gets a
  * `capsule` clip — half-circle at the very top, rectangular middle,
@@ -1102,14 +1108,41 @@ private fun handleLongCapture(
         // remaining ≈ 0, yielding a single "stitched" slice. See #154.
         driveScrollToStart(rule, scroll.axis.toProductAxis())
 
-        // Drive at 80% of the viewport so each consecutive slice pair has a
-        // ~20% physical overlap for the content-aware stitcher to lock onto.
-        // The stitcher uses scrolledPx only as a hint — the actual vertical
-        // placement is decided by pixel matching.
+        // Plan slice positions through the typed long-scroll driver. The
+        // planned frames are exported through ScrollLongExtensionStateKeys.Frames
+        // for downstream consumers (the typed-graph contract); the renderer
+        // itself drives the scrollable via [driveScrollByViewport] below,
+        // which re-reads live remaining each iteration. That matters for
+        // LazyList content where `maxValue` grows as more items materialize
+        // mid-walk — a planner-only loop sized from one upfront snapshot
+        // would truncate the stitched output before the real end of content.
+        val liveRemaining = remainingScrollPx(rule, scroll.axis.toProductAxis())
+        val cap =
+            if (scroll.maxScrollPx > 0) scroll.maxScrollPx.toFloat()
+            else Float.POSITIVE_INFINITY
+        val extentHint = minOf(liveRemaining, cap)
+        val plan = ScrollLongFramePlan(
+            contentExtentPxHint = extentHint,
+            viewportPx = viewportLayoutPx.toFloat(),
+            density = density,
+        )
+        ScrollLongFrameDriverExtension(plan).scrollFrames(
+            ExtensionFrameContext(
+                extensionId = DataExtensionId(ScrollPreviewExtension.KIND_LONG),
+                previewId = previewId,
+                renderMode = "scroll-long",
+            ),
+        )
+
+        // Drive at the planner's stride (80% of the viewport so each
+        // consecutive slice pair has a ~20% physical overlap for the
+        // content-aware stitcher to lock onto). The stitcher uses
+        // scrolledPx only as a hint — actual vertical placement is decided
+        // by pixel matching.
         val result = driveScrollByViewport(
             rule = rule,
             axis = scroll.axis.toProductAxis(),
-            stepPx = viewportLayoutPx * 0.8f,
+            stepPx = plan.stepPx,
             maxScrollPx = scroll.maxScrollPx,
         ) { scrolledPx ->
             val sliceFile = File(slicesDir, "slice_${slices.size}.png")
