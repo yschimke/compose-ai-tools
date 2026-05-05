@@ -16,6 +16,9 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.recomposition.RecompositionNode
+import ee.schimke.composeai.data.recomposition.RecompositionPayload
+import ee.schimke.composeai.data.recomposition.RecompositionProduct
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
@@ -27,7 +30,6 @@ import ee.schimke.composeai.data.render.extensions.compose.CompositionObserverHo
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -444,16 +446,16 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
 
   companion object {
     /** The single kind this producer surfaces. */
-    const val KIND: String = "compose/recomposition"
+    const val KIND: String = RecompositionProduct.KIND
 
     /** Wire-format schema version pinned alongside [RecompositionPayload]. */
-    const val SCHEMA_VERSION: Int = 1
+    const val SCHEMA_VERSION: Int = RecompositionProduct.SCHEMA_VERSION
 
     /** Subscribe-time mode value: per-input deltas, requires a live interactive session. */
-    const val MODE_DELTA: String = "delta"
+    const val MODE_DELTA: String = RecompositionProduct.MODE_DELTA
 
     /** Subscribe-time mode value: one-shot snapshot of initial-composition counts. */
-    const val MODE_SNAPSHOT: String = "snapshot"
+    const val MODE_SNAPSHOT: String = RecompositionProduct.MODE_SNAPSHOT
 
     /**
      * Render mode tag the dispatcher forwards to the renderer-agnostic seam when this producer
@@ -565,32 +567,3 @@ internal object DesktopSceneRecomposer {
     throw NoSuchFieldException("$name not found on $start or any superclass")
   }
 }
-
-/**
- * Wire shape for `compose/recomposition` payloads (schemaVersion=1). Mirrors the JSON the VS Code
- * panel's heat-map overlay decodes. See
- * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) §
- * "Recomposition + interactive mode".
- *
- * [sinceFrameStreamId] / [inputSeq] are populated only in delta mode — the snapshot mode is a
- * one-shot answer to "what recomposed during the initial composition" with no temporal baseline to
- * track.
- */
-@Serializable
-data class RecompositionPayload(
-  val mode: String,
-  val sinceFrameStreamId: String? = null,
-  val inputSeq: Long? = null,
-  val nodes: List<RecompositionNode> = emptyList(),
-)
-
-@Serializable
-data class RecompositionNode(
-  /**
-   * Identity-hashcode-of-RecomposeScope encoded as base-16 — stable for the duration of one
-   * interactive session. NOT stable across sessions. See [RecompositionDataProductRegistry] KDoc
-   * for the v2 followup (slot-table-derived `(file:line:column)` keys).
-   */
-  val nodeId: String,
-  val count: Int,
-)
