@@ -265,13 +265,24 @@ export interface ComposePreviewTestApi {
     ): Promise<void>;
     /** Snapshot of every panel message posted since [resetMessages]. */
     getPostedMessages(): unknown[];
-    /** Drop the captured-messages buffer. */
+    /**
+     * Snapshot of every webview→extension message received since
+     * [resetMessages]. Lets e2e tests assert that the webview actually
+     * consumed a host post (`postedMessageLog` only proves the host called
+     * `postMessage`, not that a resolved webview ever received it).
+     */
+    getReceivedMessages(): unknown[];
+    /** Drop both message buffers (posted + received). */
     resetMessages(): void;
 }
 
 /** Captured messages for [ComposePreviewTestApi.getPostedMessages]. Only
  *  populated when running under `COMPOSE_PREVIEW_TEST_MODE=1`. */
 const postedMessageLog: unknown[] = [];
+
+/** Captured messages for [ComposePreviewTestApi.getReceivedMessages]. Only
+ *  populated when running under `COMPOSE_PREVIEW_TEST_MODE=1`. */
+const receivedMessageLog: unknown[] = [];
 
 /**
  * D2 — routes daemon-attached `a11y/atf` + `a11y/hierarchy` data products into the
@@ -579,7 +590,17 @@ export async function activate(
     interactiveStatusItem.command = "workbench.action.output.toggleOutput";
     context.subscriptions.push(interactiveStatusItem);
 
-    panel = new PreviewPanel(context.extensionUri, handleWebviewMessage, () =>
+    // In test mode we wrap the webview-message handler so the test API can
+    // also assert on inbound traffic (e.g. `webviewPreviewsRendered`, which
+    // proves the resolved webview actually consumed a `setPreviews` post —
+    // postedMessageLog alone only captures the host's *attempt* to send).
+    const onMessage = isTestMode
+        ? (msg: WebviewToExtension) => {
+              receivedMessageLog.push(msg);
+              handleWebviewMessage(msg);
+          }
+        : handleWebviewMessage;
+    panel = new PreviewPanel(context.extensionUri, onMessage, () =>
         earlyFeaturesEnabled(),
     );
     if (isTestMode) {
@@ -1053,8 +1074,12 @@ export async function activate(
             getPostedMessages(): unknown[] {
                 return [...postedMessageLog];
             },
+            getReceivedMessages(): unknown[] {
+                return [...receivedMessageLog];
+            },
             resetMessages(): void {
                 postedMessageLog.length = 0;
+                receivedMessageLog.length = 0;
             },
         };
         return testApi;
@@ -3101,6 +3126,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             if (currentScopeFile) {
                 void refresh(false, currentScopeFile);
             }
+            break;
+        case "webviewPreviewsRendered":
+            // No production action — this message is a test-only signal that
+            // proves the webview consumed a `setPreviews` post and populated
+            // the grid. The test API's `getReceivedMessages()` snapshots it.
             break;
         case "openFile":
             openPreviewSource(msg.className, msg.functionName);

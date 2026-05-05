@@ -10,87 +10,32 @@ name: VS Code Extension E2E
 # and the prototype is more flake-prone than the stub-driven path.
 #
 # Triggers:
-#   workflow_dispatch — manual one-off runs (any branch).
-#   workflow_run      — fires after CI or Integration finish on `main`. Each
-#                       completion fires this workflow once, so the `gate`
-#                       job below short-circuits unless the *other* upstream
-#                       has also already succeeded on the same head_sha.
-#                       Net effect: e2e runs once per main push, after both
-#                       gating workflows are green.
+#   push (main)       — runs in parallel with CI / Integration so e2e
+#                       results land on the commit alongside everything
+#                       else. The previous workflow_run + gate setup
+#                       silently gated *every* run to a 1-14s skip
+#                       (workflow_run conclusion races, see git history)
+#                       and CMP went unverified for ~60 commits.
+#   workflow_dispatch — manual one-off runs (any branch), e.g. to
+#                       reproduce a regression on a feature branch.
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["CI", "Integration"]
-    types: [completed]
+  push:
     branches: [main]
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
-  # Group on the head SHA so the CI-completion run and the
-  # Integration-completion run for the same commit dedupe to a single
-  # attempt. Manual dispatches get their own slot via run_id.
-  group: vscode-extension-e2e-${{ github.event.workflow_run.head_sha || github.run_id }}
+  # One in-flight e2e per commit; manual dispatches get their own slot
+  # via run_id.
+  group: vscode-extension-e2e-${{ github.sha }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  gate:
-    name: Gate on upstream workflows
-    runs-on: ubuntu-latest
-    # workflow_run can fire after a *failed* upstream too; `if` weeds those
-    # out so the gate job itself only runs in the proceed-eligible cases.
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success')
-    outputs:
-      proceed: ${{ steps.check.outputs.proceed }}
-    steps:
-      - id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          TRIGGERING_WORKFLOW: ${{ github.event.workflow_run.name }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "Manual dispatch — proceeding."
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Sibling gating workflows beyond the one that triggered us.
-          REQUIRED=(CI Integration)
-          for wf in "${REQUIRED[@]}"; do
-            if [ "$wf" = "$TRIGGERING_WORKFLOW" ]; then
-              continue
-            fi
-            echo "Checking '$wf' status for $HEAD_SHA"
-            STATE=$(gh run list \
-              --workflow "$wf" \
-              --commit "$HEAD_SHA" \
-              --limit 1 \
-              --json conclusion,status \
-              --jq '.[0] | "\(.status):\(.conclusion // "")"' \
-              || true)
-            echo "  $wf -> ${STATE:-(no run found)}"
-            if [ "$STATE" != "completed:success" ]; then
-              echo "::notice::Skipping e2e — '$wf' is '${STATE:-missing}' on $HEAD_SHA. Re-runs once it goes green."
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "All required upstream workflows are green for $HEAD_SHA."
-          echo "proceed=true" >> "$GITHUB_OUTPUT"
-
   e2e:
     name: VS Code Extension E2E (real Gradle)
-    needs: gate
-    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     # 60 minutes ceiling — local cold runs land closer to 5-10 min, but a
     # CI runner with no Gradle/Compose caches warm and a fresh
@@ -100,10 +45,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-          # workflow_run sets github.sha to the workflow file's own commit,
-          # not the head_sha that fired it. Pin to head_sha so we test the
-          # same tree CI / Integration just verified.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: ./.github/actions/setup
 

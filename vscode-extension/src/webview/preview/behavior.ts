@@ -1858,6 +1858,14 @@ export function setupPreviewBehavior(
                 });
                 applyLiveBadge();
                 applyInteractiveButtonState();
+                // Tell the extension the cards reached the grid. Powers the
+                // e2e test's "real webview consumed setPreviews" assertion —
+                // postedMessageLog alone only proves the host posted the
+                // message, not that a resolved webview ever received it.
+                vscode.postMessage({
+                    command: "webviewPreviewsRendered",
+                    count: grid.querySelectorAll(".preview-card").length,
+                });
                 break;
             }
 

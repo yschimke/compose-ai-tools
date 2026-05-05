@@ -171,5 +171,32 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
             pngs.length >= 2,
             `expected at least 2 rendered PNGs in ${renderDir}, found ${pngs.length}`,
         );
+
+        // `postedMessageLog` only proves the host *attempted* to post. Wait
+        // for `webviewPreviewsRendered` from the resolved webview to confirm
+        // the message landed and `renderPreviews` actually painted cards.
+        // Regression-locks the empty-grid bug where a host post into an
+        // unresolved view was silently dropped — assertions on
+        // `postedMessageLog` alone passed cleanly while users saw an empty
+        // panel.
+        const renderedSignal = await waitFor(
+            "webviewPreviewsRendered from the live webview",
+            this.timeout(),
+            500,
+            () => {
+                const inbound = api.getReceivedMessages();
+                const m = inbound.find(
+                    (raw) =>
+                        (raw as PostedMessage).command ===
+                        "webviewPreviewsRendered",
+                ) as { command: string; count: number } | undefined;
+                if (!m || m.count <= 0) return undefined;
+                return m;
+            },
+        );
+        assert.ok(
+            renderedSignal.count >= previews.length,
+            `webview rendered ${renderedSignal.count} cards but ${previews.length} previews were sent`,
+        );
     });
 });
