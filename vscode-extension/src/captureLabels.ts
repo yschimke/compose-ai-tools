@@ -1,4 +1,4 @@
-import { Capture, PreviewInfo } from "./types";
+import { Capture, PreviewDataProduct, PreviewInfo } from "./types";
 
 /**
  * Human-readable label for one capture of a preview, used in the carousel
@@ -51,4 +51,38 @@ export function isAnimatedPreview(p: PreviewInfo): boolean {
         return c.advanceTimeMillis != null || c.scroll != null;
     }
     return false;
+}
+
+/** Image-bearing data product? `render/scroll/long` lands at .png and
+ *  `render/scroll/gif` at .gif; non-image kinds (a11y/atf, a11y/hierarchy)
+ *  carry JSON paths and are filtered out. */
+function isImageDataProduct(p: PreviewDataProduct): boolean {
+    if (!p.output) return false;
+    const lower = p.output.toLowerCase();
+    return lower.endsWith(".png") || lower.endsWith(".gif");
+}
+
+function dataProductToCapture(p: PreviewDataProduct): Capture {
+    const cap: Capture = {
+        advanceTimeMillis: p.advanceTimeMillis,
+        scroll: p.scroll,
+        renderOutput: p.output,
+    };
+    if (p.cost != null) cap.cost = p.cost;
+    cap.label = captureLabel(cap);
+    return cap;
+}
+
+/** Returns a copy of [preview] with image-bearing data products folded into
+ *  the captures list as additional carousel frames. The webview only renders
+ *  `captures`; surfacing `@ScrollingPreview(LONG/GIF)` requires moving those
+ *  entries across the boundary so the panel actually paints them. Order:
+ *  base captures first, then data products in declaration order. */
+export function withDataProductCaptures(preview: PreviewInfo): PreviewInfo {
+    const products = (preview.dataProducts ?? []).filter(isImageDataProduct);
+    if (products.length === 0) return preview;
+    return {
+        ...preview,
+        captures: [...preview.captures, ...products.map(dataProductToCapture)],
+    };
 }

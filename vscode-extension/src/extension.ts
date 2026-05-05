@@ -23,7 +23,7 @@ import {
     WebviewToExtension,
 } from "./types";
 import { formatRenderErrorMessage } from "./renderError";
-import { captureLabel } from "./captureLabels";
+import { captureLabel, withDataProductCaptures } from "./captureLabels";
 import { DaemonGate } from "./daemon/daemonGate";
 import { DataProductAttachment } from "./daemon/daemonProtocol";
 import {
@@ -1539,15 +1539,17 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
         previewModuleMap.set(p.id, module);
     }
 
+    const displayPreviews = visiblePreviews.map(withDataProductCaptures);
+
     panel.postMessage({
         command: "setPreviews",
-        previews: visiblePreviews,
+        previews: displayPreviews,
         moduleDir: module,
         heavyStaleIds: [],
     });
 
     const imageJobs: Promise<void>[] = [];
-    for (const preview of visiblePreviews) {
+    for (const preview of displayPreviews) {
         for (let idx = 0; idx < preview.captures.length; idx++) {
             const capture = preview.captures[idx];
             if (!capture.renderOutput) {
@@ -1921,7 +1923,7 @@ async function reconcilePreviewManifest(
         : [];
     panel.postMessage({
         command: "setPreviews",
-        previews: visiblePreviews,
+        previews: visiblePreviews.map(withDataProductCaptures),
         moduleDir: module,
         heavyStaleIds,
     });
@@ -2027,7 +2029,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
             : [];
         panel.postMessage({
             command: "setPreviews",
-            previews: visiblePreviews,
+            previews: visiblePreviews.map(withDataProductCaptures),
             moduleDir: module,
             heavyStaleIds,
         });
@@ -2880,9 +2882,11 @@ async function refresh(
             ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
             : [];
 
+        const displayPreviews = visiblePreviews.map(withDataProductCaptures);
+
         panel.postMessage({
             command: "setPreviews",
-            previews: visiblePreviews,
+            previews: displayPreviews,
             moduleDir: modules.join(","),
             heavyStaleIds,
         });
@@ -2937,7 +2941,7 @@ async function refresh(
             ));
         if (!sourceIsStale) {
             const imageJobs: Promise<void>[] = [];
-            for (const preview of visiblePreviews) {
+            for (const preview of displayPreviews) {
                 const captures = preview.captures;
                 if (captures.length === 0) {
                     continue;
