@@ -66,29 +66,19 @@ jobs:
         # so the new daemon round-trip step (further down the matrix) can
         # spawn a daemon JVM for an external-consumer module without falling
         # back to remote (where the SNAPSHOT version doesn't exist).
+        #
+        # Root-level abbreviation fans out to every subproject applying
+        # `composeai.maven-publishing` (same pattern as snapshot.yml /
+        # release.yml — see #766). `:gradle-plugin` is an `includeBuild` and
+        # needs an explicit address. Without the abbreviation each new
+        # publishable module (e.g. `:data-a11y-hierarchy-android`,
+        # `:data-recomposition-connector`) had to be added by hand and the
+        # render step silently fell through to the SNAPSHOT version on remote
+        # when one was missed.
         run: |
           ./gradlew \
             :gradle-plugin:publishToMavenLocal \
-            :data-a11y-core:publishToMavenLocal \
-            :data-a11y-connector:publishToMavenLocal \
-            :data-fonts-core:publishToMavenLocal \
-            :data-fonts-connector:publishToMavenLocal \
-            :data-history-connector:publishToMavenLocal \
-            :data-layoutinspector-core:publishToMavenLocal \
-            :data-layoutinspector-connector:publishToMavenLocal \
-            :data-render-compose:publishToMavenLocal \
-            :data-render-core:publishToMavenLocal \
-            :data-render-connector:publishToMavenLocal \
-            :data-resources-core:publishToMavenLocal \
-            :data-resources-connector:publishToMavenLocal \
-            :data-scroll-core:publishToMavenLocal \
-            :data-strings-core:publishToMavenLocal \
-            :data-strings-connector:publishToMavenLocal \
-            :data-theme-connector:publishToMavenLocal \
-            :renderer-android:publishToMavenLocal \
-            :daemon:core:publishToMavenLocal \
-            :daemon:desktop:publishToMavenLocal \
-            :daemon:android:publishToMavenLocal \
+            publishToMavenLocal \
             --stacktrace
 
       - name: Install CLI
