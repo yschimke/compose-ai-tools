@@ -19,8 +19,18 @@ import {
     buildA11yOverlay,
     ensureHierarchyOverlay,
 } from "./a11yOverlay";
+import {
+    buildTooltip,
+    buildVariantLabel,
+    isAnimatedPreview,
+    isWearPreview,
+    mimeFor,
+    parseBounds,
+    sanitizeId,
+} from "./cardData";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
+import { buildErrorPanel } from "./errorPanel";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
@@ -1118,41 +1128,12 @@ export function setupPreviewBehavior(
     // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
     // when only `fnOptions` / `grpOptions` change.
 
-    function sanitizeId(id) {
-        return id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    }
-
-    // Data-URL MIME for a preview image, derived from its renderOutput
-    // extension. @ScrollingPreview(GIF) captures land at .gif; all
-    // other captures are PNG. Browsers sniff magic bytes and would
-    // actually render a GIF served as image/png — but declaring the
-    // right type matters for the webview's img fallback/accessibility
-    // paths and avoids a console warning when saving the preview.
-    function mimeFor(renderOutput) {
-        return typeof renderOutput === "string" &&
-            renderOutput.toLowerCase().endsWith(".gif")
-            ? "image/gif"
-            : "image/png";
-    }
-
     // Per-preview carousel runtime state — imageData / errorMessage per
     // capture. Populated from updateImage / setImageError messages so
     // prev/next navigation can swap the visible <img> without a fresh
     // extension round-trip.
     // Map<previewId, [{ label, imageData, errorMessage }]>
     const cardCaptures = new Map();
-
-    // Preview is shown with a carousel when it has >1 capture or a single
-    // capture with a non-null dimension (e.g. an explicit 500ms snapshot).
-    function isAnimatedPreview(p) {
-        const caps = p.captures;
-        if (caps.length > 1) return true;
-        if (caps.length === 1) {
-            const c = caps[0];
-            return c.advanceTimeMillis != null || c.scroll != null;
-        }
-        return false;
-    }
 
     function createCard(p) {
         const animated = isAnimatedPreview(p);
@@ -1365,83 +1346,6 @@ export function setupPreviewBehavior(
         showFrame(card, next);
     }
 
-    /**
-     * Build the error overlay DOM for a failing capture. When
-     * renderError is non-null the panel has structured detail:
-     * exception class, message, a clickable file:line frame, and a
-     * collapsible stack trace. Otherwise it falls back to the plain
-     * one-line message (the case for renderers that don't yet
-     * produce a sidecar, or when the sidecar was unreadable).
-     *
-     * Click on the frame button posts an openSourceFile message;
-     * the extension resolves the stack-trace basename to an
-     * absolute path via workspace.findFiles. The disclosure for
-     * the full trace is a native details element -- no JS state
-     * to manage, browser handles the toggle.
-     */
-    function buildErrorPanel(message, renderError, className) {
-        const panel = document.createElement("div");
-        panel.className = "error-message render-error";
-        panel.setAttribute("role", "alert");
-        if (!renderError) {
-            panel.textContent = message || "";
-            return panel;
-        }
-        const cls =
-            (renderError.exception || "").split(".").pop() ||
-            renderError.exception ||
-            "Error";
-        const head = document.createElement("div");
-        head.className = "render-error-class";
-        head.textContent = cls;
-        panel.appendChild(head);
-
-        if (renderError.message) {
-            const msg = document.createElement("div");
-            msg.className = "render-error-msg";
-            msg.textContent = renderError.message;
-            panel.appendChild(msg);
-        }
-
-        const frame = renderError.topAppFrame;
-        if (frame && frame.file) {
-            const link = document.createElement("button");
-            link.className = "render-error-frame";
-            link.type = "button";
-            const fnSuffix = frame.function ? " in " + frame.function : "";
-            const lineSuffix = frame.line > 0 ? ":" + frame.line : "";
-            link.textContent = frame.file + lineSuffix + fnSuffix;
-            link.title = "Open " + frame.file + lineSuffix;
-            link.addEventListener("click", () => {
-                vscode.postMessage({
-                    command: "openSourceFile",
-                    fileName: frame.file,
-                    line: frame.line,
-                    // className lets the extension disambiguate same-
-                    // named files across modules — when the throw is
-                    // in this preview's own file, the class-derived
-                    // path matches and we pick the right one without
-                    // a workspace-wide first-hit guess.
-                    className: className || undefined,
-                });
-            });
-            panel.appendChild(link);
-        }
-
-        if (renderError.stackTrace) {
-            const details = document.createElement("details");
-            details.className = "render-error-stack";
-            const summary = document.createElement("summary");
-            summary.textContent = "Stack trace";
-            details.appendChild(summary);
-            const pre = document.createElement("pre");
-            pre.textContent = renderError.stackTrace;
-            details.appendChild(pre);
-            panel.appendChild(details);
-        }
-        return panel;
-    }
-
     function showFrame(card, index) {
         const caps = cardCaptures.get(card.dataset.previewId);
         if (!caps) return;
@@ -1471,6 +1375,7 @@ export function setupPreviewBehavior(
             if (capture.errorMessage || capture.renderError) {
                 container.appendChild(
                     buildErrorPanel(
+                        vscode,
                         capture.errorMessage,
                         capture.renderError,
                         card.dataset.className,
@@ -1602,57 +1507,6 @@ export function setupPreviewBehavior(
             // earlyFeatures off mid-session.
             existingOverlay.remove();
         }
-    }
-
-    // Compact single-line variant summary rendered in a persistent badge
-    // on each card. Longer-form info still lives in the hover tooltip
-    // (buildTooltip) — here we only surface what distinguishes siblings:
-    // name/group/device first, then dimensions, non-default fontScale,
-    // uiMode. Skips redundant bits (e.g. no "1.0×" for default font).
-    function buildVariantLabel(p) {
-        const parts = [];
-        const primary =
-            p.params.name || p.params.group || shortDevice(p.params.device);
-        if (primary) parts.push(primary);
-        if (p.params.widthDp && p.params.heightDp) {
-            parts.push(p.params.widthDp + "\u00D7" + p.params.heightDp);
-        }
-        if (p.params.fontScale && p.params.fontScale !== 1.0) {
-            parts.push(p.params.fontScale + "\u00D7");
-        }
-        if (p.params.uiMode) parts.push("uiMode " + p.params.uiMode);
-        if (p.params.locale) parts.push(p.params.locale);
-        return parts.join(" \u00B7 ");
-    }
-
-    function shortDevice(d) {
-        if (!d) return "";
-        return d.replace(/^id:/, "").replace(/_/g, " ");
-    }
-
-    function isWearPreview(p) {
-        const device = (p.params.device || "").toLowerCase();
-        if (device.includes("wear")) return true;
-        const w = p.params.widthDp || 0;
-        const h = p.params.heightDp || 0;
-        return w > 0 && h > 0 && w === h && w <= 260;
-    }
-
-    function buildTooltip(p) {
-        const base = "Open source: " + p.className + "." + p.functionName;
-        const parts = [];
-        if (p.params.name) parts.push(p.params.name);
-        if (p.params.device) parts.push(p.params.device);
-        if (p.params.widthDp && p.params.heightDp) {
-            parts.push(p.params.widthDp + "\u00D7" + p.params.heightDp + "dp");
-        }
-        if (p.params.fontScale && p.params.fontScale !== 1.0) {
-            parts.push("font " + p.params.fontScale + "\u00D7");
-        }
-        if (p.params.uiMode) parts.push("uiMode=" + p.params.uiMode);
-        if (p.params.locale) parts.push(p.params.locale);
-        if (p.params.group) parts.push("group: " + p.params.group);
-        return parts.length ? base + "\\n" + parts.join(" \u00B7 ") : base;
     }
 
     // Scale image containers so preview variants at different device sizes
@@ -2156,6 +2010,7 @@ export function setupPreviewBehavior(
                     }
                     container.appendChild(
                         buildErrorPanel(
+                            vscode,
                             msg.message,
                             renderError,
                             errCard.dataset.className,
