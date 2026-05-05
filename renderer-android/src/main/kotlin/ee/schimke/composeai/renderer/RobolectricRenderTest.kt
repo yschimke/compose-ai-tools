@@ -47,7 +47,9 @@ import ee.schimke.composeai.scroll.ScrollGifEncoder
 import ee.schimke.composeai.scroll.SliceCapture
 import ee.schimke.composeai.scroll.applyWearPillClip
 import ee.schimke.composeai.scroll.driveScrollBy
-import ee.schimke.composeai.scroll.driveScrollByViewport
+import ee.schimke.composeai.scroll.ScrollLongFrameDriverExtension
+import ee.schimke.composeai.scroll.ScrollLongFramePlan
+import ee.schimke.composeai.scroll.ScrollPreviewExtension
 import ee.schimke.composeai.scroll.driveScrollToEnd
 import ee.schimke.composeai.scroll.driveScrollToStart
 import ee.schimke.composeai.scroll.remainingScrollPx
@@ -1056,10 +1058,10 @@ private fun cropPngTopLeft(
 }
 
 /**
- * Handles `@ScrollingPreview(modes = [LONG])` captures. Drives the first
- * scrollable on [ScrollCapture.axis] by one viewport-height per step via
- * [driveScrollByViewport], captures each slice to a temp PNG with per-slice
- * round crop DISABLED, and Java2D-stitches them via [stitchSlices].
+ * Handles `@ScrollingPreview(modes = [LONG])` captures. Plans slice positions through the typed
+ * [ScrollLongFrameDriverExtension] (uniform 80%-of-viewport stride from `0..1`), drives the first
+ * scrollable on [ScrollCapture.axis] one step at a time via [driveScrollBy], captures each slice
+ * to a temp PNG with per-slice round crop DISABLED, and Java2D-stitches them via [stitchSlices].
  *
  * For round Wear devices ([isRound] = true), the stitched output gets a
  * `capsule` clip — half-circle at the very top, rectangular middle,
@@ -1097,39 +1099,72 @@ private fun handleLongCapture(
         // Multi-mode annotations (e.g. END + LONG) run captures in enum
         // ordinal order against the same composition, so an earlier END
         // leaves the scrollable at content end. Reset to the top before
-        // slicing — otherwise the first slice is the end state and
-        // `driveScrollByViewport`'s first iteration bails with
-        // remaining ≈ 0, yielding a single "stitched" slice. See #154.
-        driveScrollToStart(rule, scroll.axis.toProductAxis())
-
-        // Drive at 80% of the viewport so each consecutive slice pair has a
-        // ~20% physical overlap for the content-aware stitcher to lock onto.
-        // The stitcher uses scrolledPx only as a hint — the actual vertical
-        // placement is decided by pixel matching.
-        val result = driveScrollByViewport(
-            rule = rule,
-            axis = scroll.axis.toProductAxis(),
-            stepPx = viewportLayoutPx * 0.8f,
-            maxScrollPx = scroll.maxScrollPx,
-        ) { scrolledPx ->
-            val sliceFile = File(slicesDir, "slice_${slices.size}.png")
-            rule.onRoot().captureRoboImage(file = sliceFile, roborazziOptions = sliceRoborazziOptions)
-            slices += SliceCapture(scrolledPx, sliceFile)
-        }
-        if (result is ScrollDriveResult.NoScrollable) {
+        // slicing — otherwise the first slice is the end state and the
+        // planned walk bails with remaining ≈ 0, yielding a single
+        // "stitched" slice. See #154.
+        val resetResult = driveScrollToStart(rule, scroll.axis.toProductAxis())
+        if (resetResult is ScrollDriveResult.NoScrollable) {
             System.err.println(
                 "@ScrollingPreview(LONG) on '$previewId': no scrollable composable — falling through.",
             )
             return false
+        }
+
+        // First slice captures the initial (unscrolled) frame, mirroring
+        // the typed long-driver's frame[0].
+        val firstSliceFile = File(slicesDir, "slice_0.png")
+        rule.onRoot().captureRoboImage(file = firstSliceFile, roborazziOptions = sliceRoborazziOptions)
+        slices += SliceCapture(0f, firstSliceFile)
+
+        val liveRemaining = remainingScrollPx(rule, scroll.axis.toProductAxis())
+        val cap =
+            if (scroll.maxScrollPx > 0) scroll.maxScrollPx.toFloat()
+            else Float.POSITIVE_INFINITY
+        val extentHint = minOf(liveRemaining, cap)
+
+        // Plan slice positions through the typed long-scroll driver. The
+        // driver produces uniform-stride deltas at 80% of the viewport so
+        // consecutive slice pairs have ~20% physical overlap for the
+        // content-aware stitcher to lock onto. Runtime still clips each
+        // step to live remaining via [driveScrollBy], so a LazyList that
+        // materialises fewer items than the hint suggested doesn't
+        // over-scroll.
+        val longFrames =
+            ScrollLongFrameDriverExtension(
+                    ScrollLongFramePlan(
+                        contentExtentPxHint = extentHint,
+                        viewportPx = viewportLayoutPx.toFloat(),
+                        density = density,
+                    ),
+                )
+                .scrollFrames(
+                    ExtensionFrameContext(
+                        extensionId = DataExtensionId(ScrollPreviewExtension.KIND_LONG),
+                        previewId = previewId,
+                        renderMode = "scroll-long",
+                    ),
+                )
+
+        var scrolledPx = 0f
+        for (longFrame in longFrames.frames.drop(1)) {
+            if (longFrame.scrollDeltaPx <= 0f) continue
+            val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+            val target = minOf(longFrame.scrollDeltaPx, headroom)
+            if (target <= 0f) break
+            val actual = driveScrollBy(rule, scroll.axis.toProductAxis(), target)
+            if (actual <= 0f) break
+            scrolledPx += actual
+            val sliceFile = File(slicesDir, "slice_${slices.size}.png")
+            rule.onRoot().captureRoboImage(file = sliceFile, roborazziOptions = sliceRoborazziOptions)
+            slices += SliceCapture(scrolledPx, sliceFile)
         }
         if (slices.isEmpty()) return false
 
         // Settle post-scroll animations (Wear `EdgeButton` reveal, spring
         // snaps, AnimatedVisibility fade-ins that only start once the list
         // has landed) before capturing the final frame. The per-step 250ms
-        // advance inside `driveScrollByViewport` is tuned for scroll
-        // settling, not for animations that START when the scroll reaches
-        // its end.
+        // advance inside `driveScrollBy` is tuned for scroll settling, not
+        // for animations that START when the scroll reaches its end.
         //
         // Tick one frame at a time so any withFrameNanos-driven animation
         // gets each cycle it's waiting on. Bounded (POST_SCROLL_SETTLE_MS
