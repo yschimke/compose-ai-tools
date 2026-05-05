@@ -11,6 +11,7 @@
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
 // queries below resolve.
 
+import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
 import type {
     HistoryDiffSummary,
     HistoryEntry,
@@ -328,8 +329,6 @@ export function setupHistoryBehavior(): void {
         rightImage: string;
     }
 
-    type DiffMode = "side" | "overlay" | "onion";
-
     interface PersistedHistoryState {
         diffMode?: DiffMode;
     }
@@ -367,7 +366,7 @@ export function setupHistoryBehavior(): void {
         header.className = "diff-header";
         const body = document.createElement("div");
         body.className = "diff-body";
-        const modeBar = buildHistoryDiffModeBar(initialMode, (mode) => {
+        const modeBar = buildDiffModeBar(initialMode, (mode) => {
             const cur: PersistedHistoryState =
                 (vscode.getState() as PersistedHistoryState | undefined) ?? {};
             cur.diffMode = mode;
@@ -548,44 +547,6 @@ export function setupHistoryBehavior(): void {
             "×" +
             s.h;
         el.dataset.state = "changed";
-    }
-
-    function buildHistoryDiffModeBar(
-        initialMode: DiffMode,
-        onChange: (mode: DiffMode) => void,
-    ): HTMLElement {
-        const bar = document.createElement("div");
-        bar.className = "diff-mode-bar";
-        bar.setAttribute("role", "tablist");
-        const modes: { id: DiffMode; label: string }[] = [
-            { id: "side", label: "Side" },
-            { id: "overlay", label: "Overlay" },
-            { id: "onion", label: "Onion" },
-        ];
-        for (const m of modes) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.textContent = m.label;
-            btn.dataset.mode = m.id;
-            btn.setAttribute("role", "tab");
-            btn.setAttribute(
-                "aria-selected",
-                m.id === initialMode ? "true" : "false",
-            );
-            if (m.id === initialMode) btn.classList.add("active");
-            btn.addEventListener("click", () => {
-                bar.querySelectorAll("button").forEach((b) => {
-                    b.classList.toggle("active", b.dataset.mode === m.id);
-                    b.setAttribute(
-                        "aria-selected",
-                        b.dataset.mode === m.id ? "true" : "false",
-                    );
-                });
-                onChange(m.id);
-            });
-            bar.appendChild(btn);
-        }
-        return bar;
     }
 
     function renderHistoryDiffMode(

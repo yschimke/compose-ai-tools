@@ -21,9 +21,10 @@
 // daemon-side pixel mode (with SSIM, etc.) can plug in here later via
 // a different code path.
 
+import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
 import type { VsCodeApi } from "../shared/vscode";
 
-export type DiffMode = "side" | "overlay" | "onion";
+export type { DiffMode };
 
 export interface DiffPayload {
     leftLabel: string;
@@ -113,44 +114,6 @@ export function showDiffOverlay(
     computeDiffStats(payload.leftImage, payload.rightImage).then((s) => {
         applyDiffStats(stats, s);
     });
-}
-
-function buildDiffModeBar(
-    initialMode: DiffMode,
-    onChange: (mode: DiffMode) => void,
-): HTMLElement {
-    const bar = document.createElement("div");
-    bar.className = "diff-mode-bar";
-    bar.setAttribute("role", "tablist");
-    const modes: { id: DiffMode; label: string }[] = [
-        { id: "side", label: "Side" },
-        { id: "overlay", label: "Overlay" },
-        { id: "onion", label: "Onion" },
-    ];
-    for (const m of modes) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = m.label;
-        btn.dataset.mode = m.id;
-        btn.setAttribute("role", "tab");
-        btn.setAttribute(
-            "aria-selected",
-            m.id === initialMode ? "true" : "false",
-        );
-        if (m.id === initialMode) btn.classList.add("active");
-        btn.addEventListener("click", () => {
-            for (const b of bar.querySelectorAll<HTMLButtonElement>("button")) {
-                b.classList.toggle("active", b.dataset.mode === m.id);
-                b.setAttribute(
-                    "aria-selected",
-                    b.dataset.mode === m.id ? "true" : "false",
-                );
-            }
-            onChange(m.id);
-        });
-        bar.appendChild(btn);
-    }
-    return bar;
 }
 
 function renderPreviewDiffMode(
