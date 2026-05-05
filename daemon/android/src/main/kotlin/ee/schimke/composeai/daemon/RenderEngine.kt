@@ -19,10 +19,9 @@ import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalFontFamilyResolver
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -37,7 +36,9 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionContextValue
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
+import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
@@ -128,6 +129,16 @@ class RenderEngine(
    */
   private val previewOverrideExtensions: PreviewOverrideExtensions =
     PreviewOverrideExtensions.Empty,
+  /**
+   * Always-on data extensions (fonts, resources, i18n) that own their recorder + post-capture
+   * artefact write. Distinct from [previewOverrideExtensions]: every factory here runs on every
+   * render rather than gating on a `renderNow.overrides` field. Each factory is invoked per
+   * render with the per-render Android [Context] so the extension can install recording
+   * `CompositionLocal`s before composition starts; the same instance is then asked to write its
+   * typed artefact during the post-capture pass.
+   */
+  private val dataArtifactExtensions: RenderDataArtifactExtensions =
+    RenderDataArtifactExtensions.Empty,
 ) {
 
   /**
@@ -252,8 +263,11 @@ class RenderEngine(
 
             val bgArgb = resolveBackgroundColor(spec).toArgb()
             rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bgArgb) }
-            val resourceRecorder = ResourcesUsedDataProducer.recorder(rule.activity)
-            val fontRecorder = FontResolverRecorder(rule.activity)
+            // Always-on data extensions (fonts, resources, i18n recorders + post-capture
+            // writers) — built per render so each extension owns its own recorder lifecycle.
+            // Threaded through the same Compose pipeline as `previewOverrideExtensions` and
+            // re-used during the post-capture pass below to write the artefacts.
+            val builtDataArtifactExtensions = dataArtifactExtensions.build(rule.activity)
 
             trace.section("compose:setContent") {
               rule.setContent {
@@ -263,20 +277,16 @@ class RenderEngine(
                 // through rather than parking under the paused clock — same trade
                 // `RobolectricRenderTest.renderWithA11y` already pays.
                 val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
-                val baseFontResolver = LocalFontFamilyResolver.current
-                CompositionLocalProvider(
-                  LocalInspectionMode provides inspectionMode,
-                  LocalContext provides ResourcesUsedDataProducer.context(rule.activity, resourceRecorder),
-                  LocalFontFamilyResolver provides
-                    recordingFontFamilyResolver(baseFontResolver, fontRecorder),
-                ) {
+                CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
                     themeFallbackCapture.capture(typography, shapes)
                     themeFallbackCapture.capture(payload)
                   }
                   val content: @Composable () -> Unit = {
                     ComposeDataExtensionPipeline.Apply(
-                      extensions = previewOverrideExtensions.plan(spec.overrides),
+                      extensions =
+                        previewOverrideExtensions.plan(spec.overrides) +
+                          builtDataArtifactExtensions,
                       previewId = spec.previewId,
                       renderMode = spec.renderMode,
                       sink = RecordingExtensionCompositionSink(),
@@ -313,47 +323,16 @@ class RenderEngine(
                 }
               }
 
-            if (dataDir != null) {
-              try {
-                trace.section("compose:fontsUsedDataProduct") {
-                  FontsUsedDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.previewId ?: spec.outputBaseName,
-                    payload = fontRecorder.payload(),
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: fonts/used data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            if (dataDir != null) {
-              try {
-                trace.section("android:resourcesUsedDataProduct") {
-                  ResourcesUsedDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    recorder = resourceRecorder,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: resources/used data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            // compose/semantics and i18n/translations data products. Both are default-mode data,
-            // independent of the accessibility checker: clients get inspector text bounds and
-            // locale coverage without paying ATF costs.
+            // compose/semantics + layoutinspector data products. Default-mode data, independent
+            // of the accessibility checker: clients get inspector text bounds without paying ATF
+            // costs. The captured semantics root is also fed into the always-on data-artifact
+            // post-capture pass below (i18n).
+            var capturedSemanticsRoot: SemanticsNode? = null
             if (dataDir != null) {
               try {
                 trace.section("compose:defaultDataProducts") {
                   val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+                  capturedSemanticsRoot = semanticsRoot
                   ComposeSemanticsDataProducer.writeArtifacts(
                     rootDir = dataDir,
                     previewId = spec.outputBaseName,
@@ -382,18 +361,59 @@ class RenderEngine(
                     previewId = spec.outputBaseName,
                     previewContext = layoutInspectionContext,
                   )
-                  I18nTranslationsDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    root = semanticsRoot,
-                    renderedLocale = spec.localeTag,
-                  )
                 }
               } catch (t: Throwable) {
                 System.err.println(
                   "RenderEngine: default data write failed for ${spec.outputBaseName}: " +
                     "${t.javaClass.simpleName}: ${t.message}"
                 )
+              }
+            }
+
+            // Always-on data-artifact extensions (fonts, resources, i18n). Each extension owns
+            // its own recorder lifecycle (installed during composition via
+            // [AroundComposableHook]) and writes its typed artefact through
+            // [PostCaptureProcessor.process]. The render engine just hands them the typed
+            // post-capture context (rootDir, previewId, semantics root, locale) and lets each
+            // extension decide what to write.
+            if (dataDir != null && builtDataArtifactExtensions.isNotEmpty()) {
+              val resolvedSemanticsRoot =
+                capturedSemanticsRoot
+                  ?: runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
+                    .getOrNull()
+              val artifactContextData = buildList<ExtensionContextValue<*>> {
+                add(RenderDataArtifactContextKeys.RootDir provides dataDir)
+                add(RenderDataArtifactContextKeys.OutputBaseName provides spec.outputBaseName)
+                spec.previewId?.let { add(RenderDataArtifactContextKeys.PreviewId provides it) }
+                spec.localeTag?.takeIf { it.isNotBlank() }?.let {
+                  add(RenderDataArtifactContextKeys.RenderedLocale provides it)
+                }
+                resolvedSemanticsRoot?.let {
+                  add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
+                }
+              }
+              val extensionContextData = ExtensionContextData.of(*artifactContextData.toTypedArray())
+              val productStore = RecordingDataProductStore()
+              for (ext in builtDataArtifactExtensions) {
+                if (ext !is PostCaptureProcessor) continue
+                try {
+                  trace.section("dataArtifact:${ext.id}") {
+                    ext.process(
+                      ExtensionPostCaptureContext(
+                        extensionId = ext.id,
+                        previewId = spec.previewId,
+                        renderMode = spec.renderMode,
+                        products = productStore.scopedFor(ext),
+                        data = extensionContextData,
+                      )
+                    )
+                  }
+                } catch (t: Throwable) {
+                  System.err.println(
+                    "RenderEngine: ${ext.id} data write failed for ${spec.outputBaseName}: " +
+                      "${t.javaClass.simpleName}: ${t.message}"
+                  )
+                }
               }
             }
 
