@@ -252,6 +252,7 @@ fun main(args: Array<String>) {
       input = System.`in`,
       output = realOut,
       host = host,
+      daemonVersion = DaemonVersion.value,
       classpathFingerprint = classpathFingerprint,
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
