@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.3](https://github.com/yschimke/compose-ai-tools/compare/v0.9.2...v0.9.3) (2026-05-05)
+
+
+### Features
+
+* **data/wallpaper:** use material-kolor for seed → ColorScheme derivation ([#788](https://github.com/yschimke/compose-ai-tools/issues/788)) ([8af237a](https://github.com/yschimke/compose-ai-tools/commit/8af237ae3b12650f3a9fedc6d7e6438d9b76f1aa))
+* **data:** add wallpaper data extension that drives Material3 dynamic theme from a seed color ([#780](https://github.com/yschimke/compose-ai-tools/issues/780)) ([0157a53](https://github.com/yschimke/compose-ai-tools/commit/0157a537f085d68aa55192b09da5a2771231e427))
+* **install:** symlink skill bundles into Codex / Antigravity skill dirs ([#782](https://github.com/yschimke/compose-ai-tools/issues/782)) ([0a2cadc](https://github.com/yschimke/compose-ai-tools/commit/0a2cadcb3b3f600c178eb6b1a3b27be4c6f815c2))
+* **mcp:** register compose-preview-mcp with every detected agent host ([#775](https://github.com/yschimke/compose-ai-tools/issues/775)) ([23bb7b7](https://github.com/yschimke/compose-ai-tools/commit/23bb7b7272563aa968b5bc6e5ee3fe0f967b3c3f))
+
+
+### Bug Fixes
+
+* **vscode:** republish state on webviewReady so the panel populates after late resolution ([#778](https://github.com/yschimke/compose-ai-tools/issues/778)) ([2019807](https://github.com/yschimke/compose-ai-tools/commit/2019807b7b9ced7733fd0212728ff76ae0c27242))
+* **vscode:** surface @ScrollingPreview LONG/GIF data products in the panel ([#789](https://github.com/yschimke/compose-ai-tools/issues/789)) ([9930707](https://github.com/yschimke/compose-ai-tools/commit/99307070993a167dde1101918e6ed91e7286f68c))
+
 ## [0.9.2](https://github.com/yschimke/compose-ai-tools/compare/v0.9.1...v0.9.2) (2026-05-04)
 
 
