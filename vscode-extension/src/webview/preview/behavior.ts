@@ -22,7 +22,9 @@ import {
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
+import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
+import { StaleBadgeController } from "./staleBadge";
 import { ViewportTracker } from "./viewportTracker";
 
 export function setupPreviewBehavior(
@@ -152,6 +154,9 @@ export function setupPreviewBehavior(
             vscode.setState(state);
         },
     };
+
+    const staleBadge = new StaleBadgeController(vscode);
+    const loadingOverlay = new LoadingOverlay();
 
     // Restore layout preference
     if (
@@ -1234,7 +1239,7 @@ export function setupPreviewBehavior(
         // already known to be stale at setPreviews time. updateStaleBadges
         // also adds/removes it on subsequent renders. Placed before the
         // header is appended so its DOM order stays predictable.
-        applyStaleBadge(card, false);
+        staleBadge.apply(card, false);
 
         header.appendChild(titleRow);
         card.appendChild(header);
@@ -1266,7 +1271,7 @@ export function setupPreviewBehavior(
             if (card.classList.contains("is-stale")) {
                 evt.preventDefault();
                 evt.stopPropagation();
-                requestHeavyRefresh(card);
+                staleBadge.requestHeavyRefresh(card);
                 return;
             }
             enterInteractiveOnCard(card, evt.shiftKey);
@@ -1761,122 +1766,6 @@ export function setupPreviewBehavior(
         }
     }
 
-    /**
-     * Toggles the "stale render — click to refresh" affordance on a card.
-     *
-     * Called both at card creation time (so cards born stale have the
-     * badge from the start) and from updateStaleBadges after each
-     * setPreviews (state can flip when the user toggles between fast
-     * and full saves). Idempotent: skips if the desired state already
-     * matches the DOM, so re-running on an unchanged card is cheap.
-     *
-     * Why a button rather than a static badge: clicking it is the only
-     * way the user can recover a fresh GIF/long-scroll image without
-     * editing source. Keeping it inside the title row puts it in the
-     * same affordance band as the open-source buttons.
-     */
-    function requestHeavyRefresh(card) {
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        vscode.postMessage({
-            command: "refreshHeavy",
-            previewId,
-        });
-    }
-
-    function applyStaleBadge(card, isStale) {
-        const titleRow = card.querySelector(".card-title-row");
-        if (!titleRow) return;
-        const existing = card.querySelector(".card-stale-btn");
-        if (isStale && !existing) {
-            const btn = document.createElement("button");
-            btn.className = "icon-button card-stale-btn";
-            btn.title =
-                "Stale heavy capture — click to keep fresh while focused";
-            btn.setAttribute("aria-label", "Keep stale capture fresh");
-            btn.innerHTML =
-                '<i class="codicon codicon-warning" aria-hidden="true"></i>';
-            btn.addEventListener("click", (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                requestHeavyRefresh(card);
-            });
-            titleRow.appendChild(btn);
-            card.classList.add("is-stale");
-        } else if (!isStale && existing) {
-            existing.remove();
-            card.classList.remove("is-stale");
-        }
-    }
-
-    /**
-     * Apply the heavy-stale badge state across all cards after
-     * setPreviews fires. The extension passes a list of preview IDs
-     * whose heavy captures weren't refreshed this run; everything else
-     * gets its badge cleared.
-     */
-    function updateStaleBadges(heavyStaleIds) {
-        const stale = new Set(heavyStaleIds || []);
-        grid.querySelectorAll(".preview-card").forEach((card) => {
-            applyStaleBadge(card, stale.has(card.dataset.previewId));
-        });
-    }
-
-    // Two-stage overlay during stealth refresh:
-    //   stage 1 (0–500ms): tiny corner spinner, no dim, no blur. Most
-    //     daemon hits land in this window — image swap reads as a clean
-    //     update, no "dim → undim" flicker.
-    //   stage 2 (>500ms):  classic subtle (dim + blur + corner spinner).
-    //     The build is taking real time, escalate so the user sees the
-    //     panel is actually working.
-    // Cards whose updateImage arrives during stage 1 never see stage 2.
-    const OVERLAY_ESCALATE_MS = 500;
-    let overlayEscalationTimer = null;
-
-    function markAllLoading() {
-        document.querySelectorAll(".preview-card").forEach((card) => {
-            const container = card.querySelector(".image-container");
-            if (!container) return;
-            // Skip if already has an overlay (e.g. previous refresh still running)
-            if (container.querySelector(".loading-overlay")) return;
-            // Don't add overlay if there's just a skeleton (nothing useful to cover)
-            if (
-                container.querySelector(".skeleton") &&
-                !container.querySelector("img")
-            )
-                return;
-            const overlay = document.createElement("div");
-            overlay.className = "loading-overlay minimal";
-            overlay.innerHTML =
-                '<div class="spinner" aria-label="Refreshing"></div>';
-            container.appendChild(overlay);
-        });
-        scheduleOverlayEscalation();
-    }
-
-    function scheduleOverlayEscalation() {
-        if (overlayEscalationTimer) clearTimeout(overlayEscalationTimer);
-        overlayEscalationTimer = setTimeout(() => {
-            overlayEscalationTimer = null;
-            // Promote every still-present minimal overlay to subtle.
-            // Cards whose images already arrived have removed their
-            // overlays, so this only touches cards still waiting.
-            document
-                .querySelectorAll(".loading-overlay.minimal")
-                .forEach((o) => {
-                    o.classList.remove("minimal");
-                    o.classList.add("subtle");
-                });
-        }, OVERLAY_ESCALATE_MS);
-    }
-
-    function cancelOverlayEscalation() {
-        if (overlayEscalationTimer) {
-            clearTimeout(overlayEscalationTimer);
-            overlayEscalationTimer = null;
-        }
-    }
-
     function updateImage(previewId, captureIndex, imageData) {
         const card = document.getElementById(
             "preview-" + sanitizeId(previewId),
@@ -2086,7 +1975,7 @@ export function setupPreviewBehavior(
                 // *after* renderPreviews so the badge attaches to cards
                 // that were just inserted, not stripped by a stale-state
                 // diff from the previous setPreviews.
-                updateStaleBadges(msg.heavyStaleIds);
+                staleBadge.updateAll(grid, msg.heavyStaleIds);
 
                 const fns = [
                     ...new Set(msg.previews.map((p) => p.functionName)),
@@ -2119,7 +2008,7 @@ export function setupPreviewBehavior(
             }
 
             case "markAllLoading":
-                markAllLoading();
+                loadingOverlay.markAll();
                 break;
 
             case "clearAll":
@@ -2134,7 +2023,7 @@ export function setupPreviewBehavior(
                 // Cards are gone — escalation timer has nothing left to
                 // promote. Avoids a stray timer firing after the next
                 // refresh has installed fresh minimal overlays.
-                cancelOverlayEscalation();
+                loadingOverlay.cancel();
                 // Don't clear the message here — if it came with a
                 // follow-up showMessage (the usual pattern) it'll be
                 // replaced; if not, ensureNotBlank will backstop a
