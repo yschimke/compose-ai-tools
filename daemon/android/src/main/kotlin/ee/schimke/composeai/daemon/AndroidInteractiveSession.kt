@@ -118,6 +118,15 @@ internal constructor(
   private val lastUsedAtMs: AtomicLong = AtomicLong(System.currentTimeMillis())
 
   /**
+   * Wall-clock millis at the most recent [render] call, or `-1L` until the first render lands.
+   * Drives the wall-clock-accurate auto-advance in [render]: when the caller passes
+   * `advanceTimeMs = null`, the held composition's clock advances by the wall-clock delta since
+   * this timestamp (clamped — see [render]). Single-writer (`render` is serialised by
+   * `JsonRpcServer`) but `AtomicLong` for memory-visibility symmetry with [lastUsedAtMs].
+   */
+  private val lastRenderAtMs: AtomicLong = AtomicLong(-1L)
+
+  /**
    * Set to a non-null human-readable string when the watchdog auto-closes. Surfaced via
    * [autoClosedReason] so PR C's panel-side handler can distinguish "host force-closed because
    * idle" from "client hit interactive/stop".
@@ -432,12 +441,32 @@ internal constructor(
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
-    lastUsedAtMs.set(System.currentTimeMillis())
+    val nowMs = System.currentTimeMillis()
+    lastUsedAtMs.set(nowMs)
+    // Wall-clock-accurate mode for live preview. JsonRpcServer.submitInteractiveRenderAsync calls
+    // render(hostId) without an explicit advance, in which case RobolectricHost defaults to a
+    // fixed 32ms per render — so a 200ms-per-render Robolectric capture only walks 32ms of
+    // animation per iteration and animations appear ~6× slower than wall-clock. Substitute the
+    // wall-clock delta since the previous render so the held composition's clock tracks real
+    // time; if the daemon falls behind, the next render covers the missed interval in one tick
+    // (i.e. animation skips frames forward to the correct wall-clock target). Floored at the
+    // existing settle window so first-render and back-to-back renders still get the recompose
+    // tick they need; capped at MAX_AUTO_ADVANCE_MS so a paused session doesn't lurch animations
+    // forward by minutes when the user returns. Recording callers pass an explicit delta and
+    // bypass this substitution entirely.
+    val previousRenderAtMs = lastRenderAtMs.getAndSet(nowMs)
+    val resolvedAdvance =
+      advanceTimeMs
+        ?: if (previousRenderAtMs < 0L) {
+          AUTO_ADVANCE_FLOOR_MS
+        } else {
+          (nowMs - previousRenderAtMs).coerceIn(AUTO_ADVANCE_FLOOR_MS, MAX_AUTO_ADVANCE_MS)
+        }
     slot.interactiveCommands.put(
       InteractiveCommand.Render(
         streamId = streamId,
         requestId = requestId,
-        advanceTimeMs = advanceTimeMs,
+        advanceTimeMs = resolvedAdvance,
       )
     )
     val resultQueue =
@@ -550,5 +579,38 @@ internal constructor(
      * `JsonRpcServer.onChannelClosed`.
      */
     const val DEFAULT_IDLE_LEASE_MS: Long = 60_000L
+
+    /**
+     * Floor for the wall-clock-derived advance applied in [render] when the caller leaves
+     * `advanceTimeMs` null. Matches `RobolectricHost.HELD_CAPTURE_ADVANCE_MS` — the same
+     * fixed-delta the held loop used unconditionally before the wall-clock substitution landed.
+     * Two reasons to floor at this value:
+     * - **First render** has no previous timestamp to subtract from, so `previousRenderAtMs <
+     *   0L`; the floor preserves the existing settle window the held loop relies on to flush
+     *   the initial composition.
+     * - **Back-to-back renders** (delta < 32ms — possible when the daemon batches a dispatch +
+     *   render arriving within a few ms of each other) still want at least one full recompose
+     *   tick before capture, otherwise effects scheduled by the dispatch may not have applied
+     *   yet.
+     */
+    private const val AUTO_ADVANCE_FLOOR_MS: Long = 32L
+
+    /**
+     * Cap on the wall-clock-derived advance applied in [render] when the caller leaves
+     * `advanceTimeMs` null. A session that's been idle for many seconds (user switched
+     * windows, network lag, etc.) shouldn't lurch animations forward by that whole gap on the
+     * next render — `rememberInfiniteTransition`-style animations would jump phase, and any
+     * `LaunchedEffect(Unit) { delay(...); ... }` that happens to straddle the gap could fire
+     * far past its intended trigger point.
+     *
+     * 1000ms picks the largest jump a user might plausibly tolerate as "the animation just
+     * caught up": one second of skipped wall-clock applied in a single tick lands the
+     * composition at a sensible mid-animation frame for typical Material / Wear motion
+     * (durations ≤ 600ms), without the multi-second phase jumps that frustrate diagnosis.
+     * Beyond that the held clock simply lags real time — animations resume from where they
+     * left off, accepting that the live preview is showing "the animation 2s ago" rather
+     * than skipping ahead unpredictably.
+     */
+    private const val MAX_AUTO_ADVANCE_MS: Long = 1_000L
   }
 }
