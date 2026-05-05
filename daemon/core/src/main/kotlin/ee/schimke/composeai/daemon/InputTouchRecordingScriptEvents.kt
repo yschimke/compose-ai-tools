@@ -14,16 +14,16 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * - `input.pointerMove` — `PointerEventType.Move` with the primary button held.
  * - `input.pointerUp` — `PointerEventType.Release`.
  *
- * Lives in `:daemon:core` because both `DesktopHost` and `RobolectricHost` dispatch this
- * extension. Each host advertises the same descriptor from `recordingScriptEventDescriptors()`;
- * the dispatch end is host-specific (Skiko `sendPointerEvent` on desktop, the held-rule's
- * pointer pipeline on Android), but the descriptor advertisement is uniform.
+ * Lives in `:daemon:core` because both `DesktopHost` and `RobolectricHost` dispatch this extension.
+ * Each host advertises the same descriptor from `recordingScriptEventDescriptors()`; the dispatch
+ * end is host-specific (Skiko `sendPointerEvent` on desktop, the held-rule's pointer pipeline on
+ * Android), but the descriptor advertisement is uniform.
  *
- * **Why split from `input.keyboard` and `input.rsb`.** Per-axis splits let each host advertise
- * the exact subset it dispatches: desktop carries `input.touch` + `input.keyboard` (latter as
- * roadmap); RobolectricHost carries `input.touch` + `input.keyboard` + `input.rsb`. One blanket
- * `input` extension would force per-host descriptor variants with different `supported` flags
- * — the per-axis split keeps the descriptors uniform across hosts and the per-host advertisement
+ * **Why split from `input.keyboard` and `input.rsb`.** Per-axis splits let each host advertise the
+ * exact subset it dispatches: desktop carries `input.touch` + `input.keyboard` (latter as roadmap);
+ * RobolectricHost carries `input.touch` + `input.keyboard` + `input.rsb`. One blanket `input`
+ * extension would force per-host descriptor variants with different `supported` flags — the
+ * per-axis split keeps the descriptors uniform across hosts and the per-host advertisement
  * trivially additive.
  */
 object InputTouchRecordingScriptEvents {
