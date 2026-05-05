@@ -140,6 +140,12 @@ class TextStringsDataProductRegistry(
           boundsInScreen = node.boundsInRoot,
           localeTag = localeTag,
           fontScale = fontScale,
+          truncated = node.layoutTruncated,
+          lineCount = node.layoutLineCount,
+          maxLines = node.layoutMaxLines,
+          overflow = node.layoutOverflow?.takeIf { it.isNotBlank() },
+          didOverflowWidth = node.layoutDidOverflowWidth,
+          didOverflowHeight = node.layoutDidOverflowHeight,
         )
       )
     }
