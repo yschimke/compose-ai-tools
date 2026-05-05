@@ -2639,8 +2639,8 @@ class DaemonMcpServer(
    * - **`supported = true`** — accepted; the daemon will dispatch.
    * - **`supported = false`** — rejected with a precise diagnostic that points at
    *   `list_data_products` so the agent sees the roadmap shape rather than a quiet `unsupported`
-   *   evidence trail. (The daemon-side fallback that emits `unsupported` evidence stays in
-   *   place as defense-in-depth for older MCP servers + direct daemon clients.)
+   *   evidence trail. (The daemon-side fallback that emits `unsupported` evidence stays in place as
+   *   defense-in-depth for older MCP servers + direct daemon clients.)
    * - **Not advertised** — rejected with "not advertised by this daemon".
    *
    * Input kinds (`input.click`, `input.pointerDown`, …) are advertised through
