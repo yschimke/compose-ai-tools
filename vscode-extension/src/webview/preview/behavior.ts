@@ -31,6 +31,11 @@ import {
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import { buildErrorPanel } from "./errorPanel";
+import {
+    FocusToolbarController,
+    isFocusedInteractiveSupported,
+    isFocusedModuleReady,
+} from "./focusToolbar";
 import { FrameCarouselController } from "./frameCarousel";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { LoadingOverlay } from "./loadingOverlay";
@@ -79,6 +84,20 @@ export function setupPreviewBehavior(
     const btnRecording = document.getElementById("btn-recording");
     const recordingFormat = document.getElementById("recording-format");
     const btnExitFocus = document.getElementById("btn-exit-focus");
+    const focusToolbar = new FocusToolbarController({
+        btnPrev,
+        btnNext,
+        btnDiffHead,
+        btnDiffMain,
+        btnLaunchDevice,
+        btnA11yOverlay,
+        btnInteractive,
+        btnStopInteractive,
+        btnRecording,
+        btnExitFocus,
+        recordingFormat,
+        focusInspector,
+    });
     // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
     // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
     // Also gates the panel-side hierarchy overlay so the existing finding overlay (which
@@ -230,142 +249,53 @@ export function setupPreviewBehavior(
     // resolve fine.
 
     function applyEarlyFeatureVisibility() {
-        btnDiffHead.hidden = !earlyFeatures();
-        btnDiffMain.hidden = !earlyFeatures();
-        btnLaunchDevice.hidden = !earlyFeatures();
-        btnA11yOverlay.hidden =
-            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
-        btnRecording.hidden =
-            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
-        recordingFormat.hidden =
-            !earlyFeatures() || filterToolbar.getLayoutValue() !== "focus";
-        if (!earlyFeatures()) {
-            focusInspector.hidden = true;
-        }
-    }
-
-    function isFocusedDaemonReady() {
-        // The webview doesn't know moduleId per preview today. We fall
-        // back to "any module ready" because the extension-side panel
-        // is single-module-scoped (it only ever holds one module's
-        // previews at a time) — so the readiness of the sole module is
-        // also the readiness for whatever's focused. If the panel ever
-        // shows multiple modules at once, swap this to lookup by the
-        // focused card's data-module-id.
-        for (const ready of moduleDaemonReady.values()) {
-            if (ready) return true;
-        }
-        return false;
-    }
-
-    function isFocusedInteractiveSupported() {
-        for (const [moduleId, ready] of moduleDaemonReady.entries()) {
-            if (ready && moduleInteractiveSupported.get(moduleId) === true)
-                return true;
-        }
-        return false;
+        focusToolbar.applyEarlyFeatureVisibility({
+            earlyFeatures: earlyFeatures(),
+            inFocus: filterToolbar.getLayoutValue() === "focus",
+        });
     }
 
     function applyInteractiveButtonState() {
         const inFocus = filterToolbar.getLayoutValue() === "focus";
-        // Hide outright when not in focus mode — the toolbar already
-        // hides itself, but this keeps aria-pressed correct for tests
-        // that snapshot the button in either layout.
-        btnInteractive.hidden = !inFocus;
-        const hasLive = interactivePreviewIds.size > 0;
-        btnStopInteractive.hidden = !inFocus || !hasLive;
-        btnStopInteractive.disabled = !hasLive;
-        if (!inFocus) {
-            // Cheap fast-path: applyLayout fires this on every layout
-            // change (filter tweaks, focus nav, every setPreviews). In
-            // non-focus modes the focus-controls strip is hidden by CSS,
-            // so nothing visible would change — skip the getVisibleCards
-            // DOM walk and the per-attribute writes. State on re-entry to
-            // focus mode is rebuilt fresh by the full path below.
-            btnInteractive.setAttribute("aria-pressed", "false");
-            btnInteractive.classList.remove("live-on");
-            return;
-        }
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) {
-            btnInteractive.disabled = true;
-            btnInteractive.setAttribute("aria-pressed", "false");
-            btnInteractive.title = "Daemon not ready — live mode unavailable";
-            btnInteractive.innerHTML =
-                '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
-            return;
-        }
-        const previewId = card.dataset.previewId;
-        const ready = isFocusedDaemonReady();
-        const supported = isFocusedInteractiveSupported();
-        const live = !!previewId && interactivePreviewIds.has(previewId);
-        const otherLiveCount = interactivePreviewIds.size - (live ? 1 : 0);
-        btnInteractive.disabled = !ready && !live;
-        btnInteractive.setAttribute("aria-pressed", live ? "true" : "false");
-        btnInteractive.classList.toggle("live-on", live);
-        btnInteractive.title = !ready
-            ? "Daemon not ready — live mode unavailable"
-            : live
-              ? "Live · click to exit · Shift+click to leave others on"
-              : !supported
-                ? "Live v1 fallback — renders refresh, but clicks do not preserve Compose state"
-                : otherLiveCount > 0
-                  ? otherLiveCount +
-                    " other live · click to make this one live too · " +
-                    "Shift+click to add without unsubscribing the rest"
-                  : "Enter live mode (stream renders) · Shift+click to add to multi-stream";
-        btnInteractive.innerHTML = live
-            ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
-            : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+        const card = inFocus ? getVisibleCards()[focusIndex] : null;
+        const previewId = card?.dataset.previewId ?? null;
+        const isLive = !!previewId && interactivePreviewIds.has(previewId);
+        focusToolbar.applyInteractiveButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            isLive,
+            otherLiveCount: interactivePreviewIds.size - (isLive ? 1 : 0),
+            hasLive: interactivePreviewIds.size > 0,
+            daemonReady: isFocusedModuleReady(moduleDaemonReady),
+            interactiveSupported: isFocusedInteractiveSupported(
+                moduleDaemonReady,
+                moduleInteractiveSupported,
+            ),
+        });
     }
 
     function applyRecordingButtonState() {
         const inFocus = filterToolbar.getLayoutValue() === "focus";
-        btnRecording.hidden = !earlyFeatures() || !inFocus;
-        recordingFormat.hidden = !earlyFeatures() || !inFocus;
-        if (!earlyFeatures() || !inFocus) {
-            btnRecording.setAttribute("aria-pressed", "false");
-            btnRecording.classList.remove("recording-on");
-            recordingFormat.disabled = true;
-            return;
-        }
-        const card = getVisibleCards()[focusIndex];
-        const previewId = card ? card.dataset.previewId : null;
-        const ready = isFocusedDaemonReady();
-        const recording = !!previewId && recordingPreviewIds.has(previewId);
-        btnRecording.disabled = !ready && !recording;
-        recordingFormat.disabled = recording || (!ready && !recording);
-        btnRecording.setAttribute("aria-pressed", recording ? "true" : "false");
-        btnRecording.classList.toggle("recording-on", recording);
-        btnRecording.title = !ready
-            ? "Daemon not ready — recording unavailable"
-            : recording
-              ? "Stop recording focused preview"
-              : "Record focused preview";
-        btnRecording.innerHTML = recording
-            ? '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>'
-            : '<i class="codicon codicon-record-keys" aria-hidden="true"></i>';
+        const card = inFocus ? getVisibleCards()[focusIndex] : null;
+        const previewId = card?.dataset.previewId ?? null;
+        focusToolbar.applyRecordingButtonState({
+            inFocus,
+            earlyFeatures: earlyFeatures(),
+            focusedPreviewId: previewId,
+            daemonReady: isFocusedModuleReady(moduleDaemonReady),
+            isRecording: !!previewId && recordingPreviewIds.has(previewId),
+        });
     }
 
-    // D2 — keep the a11y-overlay toggle in lockstep with focus-mode + the focused card
-    // identity. Outside focus mode the button hides; inside focus mode aria-pressed
-    // tracks whether the currently focused preview has the overlay subscription on.
     function applyA11yOverlayButtonState() {
         const inFocus = filterToolbar.getLayoutValue() === "focus";
-        btnA11yOverlay.hidden = !earlyFeatures() || !inFocus;
-        if (!earlyFeatures() || !inFocus) {
-            btnA11yOverlay.setAttribute("aria-pressed", "false");
-            return;
-        }
-        const card = getVisibleCards()[focusIndex];
-        const previewId = card ? card.dataset.previewId : null;
-        const on = previewId !== null && previewId === a11yOverlay();
-        btnA11yOverlay.setAttribute("aria-pressed", on ? "true" : "false");
-        btnA11yOverlay.title = on
-            ? "Hide accessibility overlay"
-            : "Show accessibility overlay";
-        btnA11yOverlay.classList.toggle("a11y-overlay-on", on);
+        const card = inFocus ? getVisibleCards()[focusIndex] : null;
+        focusToolbar.applyA11yOverlayButtonState({
+            inFocus,
+            earlyFeatures: earlyFeatures(),
+            focusedPreviewId: card?.dataset.previewId ?? null,
+            a11yOverlayId: a11yOverlay(),
+        });
     }
 
     // D2 — clicking the a11y toggle subscribes/unsubscribes via the extension. When
