@@ -518,10 +518,18 @@ install_skill_bundle() {
 
 # ---- Same-version short-circuit ------------------------------------------
 # Runs after all helper functions are defined. Refreshes any symlinks the
-# caller might have blown away (cheap, no network) but never re-downloads.
+# caller might have blown away and repairs a missing sibling skill bundle
+# (cheap, install_skill_bundle is itself a no-op when the per-bundle marker
+# matches), but never re-downloads the CLI tarball or the main skill.
+#
+# Same-version repair doesn't trigger the consent gate above: the user
+# already accepted this version when they first installed it. The gate
+# exists to stop *new* downloads going through silently, not to block
+# topping up a previously-accepted install.
 
 if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
   log "compose-preview $VERSION already installed"
+  install_skill_bundle "compose-preview-review" "$REVIEW_SKILL_DIR" || true
   mkdir -p "$SKILL_DIR/bin" "$BIN_DIR"
   ln -sfn "../cli/compose-preview-${VERSION}/bin/compose-preview" "$SKILL_LAUNCHER"
   ln -sfn "$LAUNCHER" "$BIN_DIR/compose-preview"
