@@ -20,12 +20,17 @@ import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
 import ee.schimke.composeai.data.wallpaper.Material3WallpaperProduct
-import ee.schimke.composeai.data.wallpaper.WallpaperPayload
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 const val WALLPAPER_PAYLOAD_CONTEXT_KEY: String = "compose.wallpaper.payload"
+
+// Source/binary-compat shim. WallpaperPayload moved to :data-wallpaper-core in the
+// ee.schimke.composeai.data.wallpaper package; downstream consumers that imported it under the
+// old ee.schimke.composeai.daemon name continue to resolve via this alias. Mirrors the same
+// pattern used in :data-fonts-connector.
+typealias WallpaperPayload = ee.schimke.composeai.data.wallpaper.WallpaperPayload
 
 /**
  * Compose-side connector that wraps preview content in a Material 3 [MaterialTheme] whose color
