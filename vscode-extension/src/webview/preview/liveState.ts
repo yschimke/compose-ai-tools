@@ -35,9 +35,9 @@ import {
 } from "../../daemon/liveCommand";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
+import { stampLiveBadgesOnGrid } from "./liveBadge";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import type { VsCodeApi } from "../shared/vscode";
-import { sanitizeId } from "./cardData";
 
 export interface LiveStateConfig {
     vscode: VsCodeApi<unknown>;
@@ -115,21 +115,16 @@ export class LiveStateController {
 
     /** Re-stamp every `.preview-card.live` decoration from the current set.
      *  Tear-down first so removals (Shift+click off, daemon-not-ready,
-     *  setPreviews dropping a previewId) cleanly wipe the prior decoration. */
+     *  setPreviews dropping a previewId) cleanly wipe the prior decoration.
+     *
+     *  The DOM mutation lives in `./liveBadge.ts` so it's testable under
+     *  happy-dom without dragging this controller's wider transitive
+     *  imports into the host tsconfig; we delegate, passing
+     *  `ensureLiveCardControls` as the per-card overlay hook. */
     applyLiveBadge(): void {
-        document.querySelectorAll(".preview-card.live").forEach((c) => {
-            c.classList.remove("live");
-            c.querySelector(".card-live-stop-btn")?.remove();
-        });
-        if (this.interactivePreviewIds.size === 0) return;
-        this.interactivePreviewIds.forEach((previewId) => {
-            const card = document.getElementById(
-                "preview-" + sanitizeId(previewId),
-            );
-            if (!card) return;
-            card.classList.add("live");
-            this.ensureLiveCardControls(card);
-        });
+        stampLiveBadgesOnGrid(this.interactivePreviewIds, (card) =>
+            this.ensureLiveCardControls(card),
+        );
     }
 
     /** Toolbar `<i class="codicon codicon-debug-stop">` button — stop every
