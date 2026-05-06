@@ -6,9 +6,17 @@
 // per-row markup into the `<history-row>` Lit component
 // (`./components/HistoryRow.ts`) and routed thumb bytes through
 // `historyStore`. Step 2 moved selection state into the row itself —
-// this module now just listens for `history-row-selection-change` to
-// keep a (max-2) queue for the diff button. Expansion / diff overlays
-// still flow through closure-state callbacks pending step 3 of #858.
+// this module just listens for `history-row-selection-change` to
+// keep a (max-2) queue for the diff button.
+//
+// Step 3 of #858: inline expansion state is now also row-owned. The
+// row dispatches `history-row-expand` (bubbling) on plain-click /
+// diff-button-click; the listener below collapses any other open row
+// and posts the matching `loadImage` / `requestDiff`. Extension
+// responses (`imageReady` / `imageError` / `diffReady` /
+// `diffPairError`) route to the targeted row via `setImage` /
+// `setImageError` / `setDiff` / `setDiffError`. The host no longer
+// holds an `expandedId` scalar.
 //
 // Runs once per webview load. Assumes `<history-app>` has already
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
@@ -20,13 +28,11 @@ import { getVsCodeApi } from "../shared/vscode";
 import type { HistoryRow } from "./components/HistoryRow";
 import { cssEscape } from "./historyData";
 import {
-    fillDiff as fillDiffDom,
     type HistoryDiffViewConfig,
     showDiff as showDiffDom,
 } from "./historyDiffView";
 import { setThumb } from "./historyStore";
 import {
-    fillExpansion as fillExpansionDom,
     type HistoryRowConfig,
     renderTimeline as renderTimelineDom,
 } from "./historyTimeline";
@@ -52,7 +58,6 @@ export function setupHistoryBehavior(): void {
     // gate the diff button and to evict the oldest pick when a third
     // row is shift-clicked.
     const selectedOrder: string[] = [];
-    let expandedId: string | null = null;
     // Thumbnail bytes live in `historyStore` so `<history-row>` can
     // subscribe and re-render reactively. `thumbRequested` here just
     // dedupes the per-session fetch — the IntersectionObserver fires
@@ -115,6 +120,30 @@ export function setupHistoryBehavior(): void {
             btnDiffEl.disabled = selectedOrder.length !== 2;
         },
     );
+    timelineEl.addEventListener(
+        "history-row-expand",
+        (
+            event: CustomEvent<{
+                id: string;
+                kind: "image" | "diff";
+                against?: "previous" | "current";
+            }>,
+        ) => {
+            const { id, kind, against } = event.detail;
+            // Only one expansion at a time. Walk all rows and collapse
+            // the others; the dispatching row has already flipped its
+            // own `_expandedKind` so we leave it alone.
+            const rows = timelineEl.querySelectorAll<HistoryRow>("history-row");
+            for (const row of rows) {
+                if (row.dataset.id !== id) row.collapse();
+            }
+            if (kind === "image") {
+                vscode.postMessage({ command: "loadImage", id });
+            } else if (kind === "diff" && against) {
+                vscode.postMessage({ command: "requestDiff", id, against });
+            }
+        },
+    );
     filterSourceEl.addEventListener("change", applyFilters);
     filterBranchEl.addEventListener("change", applyFilters);
 
@@ -163,31 +192,36 @@ export function setupHistoryBehavior(): void {
         }
     }
 
-    // Timeline row markup lives in the `<history-row>` Lit component
-    // (`./components/HistoryRow.ts`); selection state lives there too
-    // and bubbles up via the `history-row-selection-change` listener
-    // wired above. Expansion DOM and diff requests still flow through
-    // `./historyTimeline.ts`. The config exposes the static DOM
-    // handles plus thin getter/setter pairs over `expandedId` so the
-    // lifted module doesn't need closure access to this scope.
-    const rowConfig: HistoryRowConfig = {
-        vscode,
-        timelineEl,
-        btnDiffEl,
-        getExpandedId: () => expandedId,
-        setExpandedId: (next) => {
-            expandedId = next;
-        },
-        thumbRequested,
-        thumbObserver,
-    };
-    function renderTimeline(): void {
-        renderTimelineDom(entries, rowConfig);
+    /** Look up the `<history-row>` for [id] in the timeline. Returns
+     *  null when the row was removed (entry filtered out, panel
+     *  re-rendered between request and response). */
+    function findRow(id: string): HistoryRow | null {
+        return timelineEl.querySelector<HistoryRow>(
+            'history-row[data-id="' + cssEscape(id) + '"]',
+        );
     }
 
     // Diff sub-views (per-row diff expansion + inline two-way banner)
     // live in `./historyDiffView.ts`.
     const diffViewConfig: HistoryDiffViewConfig = { vscode, timelineEl };
+
+    // Timeline row markup lives in the `<history-row>` Lit component
+    // (`./components/HistoryRow.ts`); selection + expansion state live
+    // there too and bubble up via the `history-row-selection-change`
+    // and `history-row-expand` listeners wired above. The config now
+    // exposes only the static DOM handles plus the lazy-load observer
+    // and the diff-view config the row hands to `fillDiff`.
+    const rowConfig: HistoryRowConfig = {
+        vscode,
+        timelineEl,
+        btnDiffEl,
+        thumbRequested,
+        thumbObserver,
+        diffViewConfig,
+    };
+    function renderTimeline(): void {
+        renderTimelineDom(entries, rowConfig);
+    }
 
     window.addEventListener("message", (event: MessageEvent) => {
         const msg = event.data as HistoryToWebview;
@@ -219,17 +253,14 @@ export function setupHistoryBehavior(): void {
                 // for this command. Listed here so the discriminated-union
                 // exhaustiveness check holds.
                 break;
-            case "imageReady":
-                fillExpansionDom(msg.id, msg.imageData, msg.entry, rowConfig);
+            case "imageReady": {
+                const row = findRow(msg.id);
+                if (row) row.setImage(msg.imageData, msg.entry);
                 break;
+            }
             case "imageError": {
-                const expansion = timelineEl.querySelector<HTMLElement>(
-                    '.expanded[data-id="' + cssEscape(msg.id) + '"]',
-                );
-                if (expansion)
-                    expansion.textContent =
-                        "Failed to load image: " +
-                        (msg.message || "(no detail)");
+                const row = findRow(msg.id);
+                if (row) row.setImageError(msg.message || "(no detail)");
                 break;
             }
             case "thumbReady":
@@ -250,28 +281,22 @@ export function setupHistoryBehavior(): void {
             case "diffError":
                 showDiffDom(msg.fromId, msg.toId, null, diffViewConfig);
                 break;
-            case "diffReady":
-                fillDiffDom(
-                    msg.id,
-                    msg.against,
-                    msg.leftLabel,
-                    msg.leftImage,
-                    msg.rightLabel,
-                    msg.rightImage,
-                    diffViewConfig,
-                );
+            case "diffReady": {
+                const row = findRow(msg.id);
+                if (row)
+                    row.setDiff(
+                        msg.against,
+                        msg.leftLabel,
+                        msg.leftImage,
+                        msg.rightLabel,
+                        msg.rightImage,
+                    );
                 break;
+            }
             case "diffPairError": {
-                const expansion = timelineEl.querySelector(
-                    '.expanded[data-id="' +
-                        cssEscape(msg.id) +
-                        '"][data-against="' +
-                        cssEscape(msg.against) +
-                        '"]',
-                );
-                if (expansion)
-                    expansion.textContent =
-                        "Diff unavailable: " + (msg.message || "(no detail)");
+                const row = findRow(msg.id);
+                if (row)
+                    row.setDiffError(msg.against, msg.message || "(no detail)");
                 break;
             }
         }

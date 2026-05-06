@@ -6,17 +6,23 @@
 // Step 2 of #858: selection state moved into the row. The row owns
 // `selected` and dispatches `history-row-selection-change` on
 // shift-click; the host listens on `timelineEl` to maintain the
-// (max-2) queue and toggle the diff button. This module no longer
-// holds a `selectedIds` set or a `toggleSelected` helper.
+// (max-2) queue and toggle the diff button.
+//
+// Step 3 of #858: the row also owns inline expansion state (image /
+// diff). Plain click + action-button click now dispatch
+// `history-row-expand` (bubbling) — the host listens once on
+// `timelineEl`, collapses any other open row, and posts the matching
+// `loadImage` / `requestDiff` vscode message. Extension responses
+// (`imageReady` / `imageError` / `diffReady` / `diffPairError`) flow
+// through `setImage` / `setImageError` / `setDiff` / `setDiffError`
+// on the targeted row. The imperative `expandRow` / `requestRowDiff`
+// / `fillExpansion` helpers and the `getExpandedId` / `setExpandedId`
+// scalars are gone.
 //
 // What's left here:
 //
 //  - `renderTimeline`: declarative iteration over `entries`, swapping
 //    out `<history-row>` children on the timeline container.
-//  - `expandRow` / `requestRowDiff` / `fillExpansion`: still
-//    imperative because the inline `.expanded` sibling div is a
-//    separate concern from row rendering and gets its own component
-//    later in the issue.
 //
 // Thumb byte cache: deleted from the config in favour of
 // `historyStore` (`./historyStore.ts`). Rows subscribe directly via
@@ -27,7 +33,8 @@ import "./components/HistoryRow";
 import type { HistoryEntry } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 import { HistoryRow, type HistoryRowCallbacks } from "./components/HistoryRow";
-import { cssEscape, findLatestMainHash } from "./historyData";
+import { findLatestMainHash } from "./historyData";
+import type { HistoryDiffViewConfig } from "./historyDiffView";
 
 export interface HistoryRowConfig {
     vscode: VsCodeApi<unknown>;
@@ -36,16 +43,18 @@ export interface HistoryRowConfig {
     /** Toolbar diff button — disabled state tracks the host-managed
      *  selection queue length (must be exactly 2 to enable). */
     btnDiffEl: HTMLButtonElement;
-    /** Currently expanded row's id, or `null` when nothing is expanded.
-     *  Mutated by `expandRow` (toggle) and `requestRowDiff` (replace). */
-    getExpandedId(): string | null;
-    setExpandedId(id: string | null): void;
     /** Dedup set: ids we've already asked the extension to load.
      *  Cleared per `renderTimeline` so a fresh entry set retries. */
     thumbRequested: Set<string>;
     /** Lazy-load observer for the thumb column — `null` on environments
      *  without `IntersectionObserver`. Disconnected per render. */
     thumbObserver: IntersectionObserver | null;
+    /** Diff-view config the row hands to `historyDiffView.ts.fillDiff`
+     *  once a `diffReady` payload lands. The diff body still flows
+     *  through that module's persisted-mode-bar + async pixel-diff
+     *  machinery; the row provides the empty `.expanded.diff-expanded`
+     *  shell and calls `fillDiff` from its `updated()` hook. */
+    diffViewConfig: HistoryDiffViewConfig;
 }
 
 export function renderTimeline(
@@ -64,10 +73,6 @@ export function renderTimeline(
     const mainHash = findLatestMainHash(entries);
 
     const callbacks: HistoryRowCallbacks = {
-        onExpand: (id, row) => expandRow(id, row, config),
-        onDiffPrevious: (id, row) =>
-            requestRowDiff(id, row, "previous", config),
-        onDiffCurrent: (id, row) => requestRowDiff(id, row, "current", config),
         onThumbConnected: (thumbEl) => {
             // Defer the byte fetch to the host's IntersectionObserver
             // so off-screen rows don't hammer the daemon. The store
@@ -81,86 +86,7 @@ export function renderTimeline(
         row.entry = entry;
         row.mainHash = mainHash;
         row.callbacks = callbacks;
+        row.diffViewConfig = config.diffViewConfig;
         config.timelineEl.appendChild(row);
     }
-}
-
-/** Toggle the inline expansion (full-size image + actions) for [id].
- *  Collapses any other open expansion first. Posts `loadImage` so the
- *  extension streams the PNG bytes back asynchronously. */
-export function expandRow(
-    id: string,
-    row: HistoryRow,
-    config: HistoryRowConfig,
-): void {
-    const prev = config.timelineEl.querySelector(".expanded");
-    if (prev) prev.remove();
-    if (config.getExpandedId() === id) {
-        config.setExpandedId(null);
-        return;
-    }
-    config.setExpandedId(id);
-
-    const expansion = document.createElement("div");
-    expansion.className = "expanded";
-    expansion.dataset.id = id;
-    expansion.innerHTML = "<div>Loading…</div>";
-    row.parentNode?.insertBefore(expansion, row.nextSibling);
-    config.vscode.postMessage({ command: "loadImage", id });
-}
-
-/** Open an inline diff expansion against the previous / current entry.
- *  Replaces any open expansion (image OR diff) and asks the extension
- *  to compute the comparison. */
-export function requestRowDiff(
-    id: string,
-    row: HistoryRow,
-    against: "previous" | "current",
-    config: HistoryRowConfig,
-): void {
-    const prev = config.timelineEl.querySelector(".expanded");
-    if (prev) prev.remove();
-    config.setExpandedId(id);
-    const expansion = document.createElement("div");
-    expansion.className = "expanded diff-expanded";
-    expansion.dataset.id = id;
-    expansion.dataset.against = against;
-    expansion.innerHTML = "<div>Loading diff…</div>";
-    row.parentNode?.insertBefore(expansion, row.nextSibling);
-    config.vscode.postMessage({ command: "requestDiff", id, against });
-}
-
-/** Populate an open expansion with the streamed full-size image plus
- *  an "Open in Editor" action when the entry's previewMetadata
- *  surfaces a sourceFile. No-op when the matching `.expanded` is gone
- *  (user collapsed before the bytes arrived). */
-export function fillExpansion(
-    id: string,
-    imageData: string,
-    entry: HistoryEntry | undefined,
-    config: HistoryRowConfig,
-): void {
-    const expansion = config.timelineEl.querySelector(
-        '.expanded[data-id="' + cssEscape(id) + '"]',
-    );
-    if (!expansion) return;
-    expansion.innerHTML = "";
-    const img = document.createElement("img");
-    img.src = "data:image/png;base64," + imageData;
-    img.alt = (entry && entry.previewId) || id;
-    expansion.appendChild(img);
-
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    const sourceFile =
-        entry && entry.previewMetadata && entry.previewMetadata.sourceFile;
-    if (sourceFile) {
-        const open = document.createElement("button");
-        open.textContent = "Open in Editor";
-        open.addEventListener("click", () =>
-            config.vscode.postMessage({ command: "openSource", sourceFile }),
-        );
-        actions.appendChild(open);
-    }
-    expansion.appendChild(actions);
 }
