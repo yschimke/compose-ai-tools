@@ -18,6 +18,13 @@ import type {
     HistoryToWebview,
 } from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
+import {
+    cssEscape,
+    escapeHtml,
+    findLatestMainHash,
+    formatAbsolute,
+    formatRelative,
+} from "./historyData";
 
 /** Look up a known-present DOM element. Used for the static ids that
  *  `<history-app>` has already rendered into the light DOM. Throws so a
@@ -492,21 +499,6 @@ export function setupHistoryBehavior(): void {
         });
     }
 
-    function findLatestMainHash(es: readonly HistoryEntry[]): string | null {
-        let bestTs = "";
-        let bestHash: string | null = null;
-        for (const e of es) {
-            if (!e || (e.git && e.git.branch) !== "main") continue;
-            if (!e.pngHash) continue;
-            const ts = e.timestamp || "";
-            if (ts > bestTs) {
-                bestTs = ts;
-                bestHash = e.pngHash;
-            }
-        }
-        return bestHash;
-    }
-
     function applyDiffStats(el: HTMLElement, s: DiffStats | null): void {
         if (!s) {
             el.textContent = "";
@@ -666,49 +658,6 @@ export function setupHistoryBehavior(): void {
         timelineEl.insertBefore(block, timelineEl.firstChild);
         // Auto-clear after 12s so the panel doesn't accumulate stale diffs.
         setTimeout(() => block.remove(), 12_000);
-    }
-
-    function escapeHtml(text: unknown): string {
-        const div = document.createElement("div");
-        div.textContent = String(text ?? "");
-        return div.innerHTML;
-    }
-    function cssEscape(s: string): string {
-        return String(s).replace(/[\\"']/g, "\\$&");
-    }
-
-    function formatRelative(iso: string | undefined): string {
-        if (!iso) return "(no timestamp)";
-        const t = Date.parse(iso);
-        if (isNaN(t)) return iso;
-        const s = Math.round((Date.now() - t) / 1000);
-        if (s < 5) return "just now";
-        if (s < 60) return s + "s ago";
-        const m = Math.round(s / 60);
-        if (m < 60) return m + "m ago";
-        const h = Math.round(m / 60);
-        if (h < 24) return h + "h ago";
-        const d = Math.round(h / 24);
-        if (d < 30) return d + "d ago";
-        const mo = Math.round(d / 30);
-        if (mo < 12) return mo + "mo ago";
-        return Math.round(mo / 12) + "y ago";
-    }
-
-    function formatAbsolute(iso: string | undefined): string {
-        if (!iso) return "";
-        const t = Date.parse(iso);
-        if (isNaN(t)) return "";
-        try {
-            return new Date(t).toLocaleString(undefined, {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            });
-        } catch (_) {
-            return "";
-        }
     }
 
     window.addEventListener("message", (event: MessageEvent) => {
