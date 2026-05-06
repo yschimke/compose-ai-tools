@@ -171,7 +171,6 @@ export class FrameCarouselController {
             img.className = "fade-in";
             attachInteractiveInputHandlers(
                 card,
-                img,
                 this.config.interactiveInputConfig,
             );
             if (capture.errorMessage || capture.renderError) {
