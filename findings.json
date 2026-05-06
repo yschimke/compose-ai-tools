@@ -7,7 +7,7 @@
       "functionName": "ActivityListFontScalesPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
     },
     {
@@ -17,7 +17,7 @@
       "functionName": "ActivityListGifPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
     {
@@ -27,7 +27,7 @@
       "functionName": "ActivityListLongPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
     {
@@ -37,7 +37,27 @@
       "functionName": "ActivityListPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
+      "cleanBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+      "findings": [],
+      "functionName": "AmbientStatusAmbientPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
+      "cleanBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
+      "findings": [],
+      "functionName": "AmbientStatusInteractivePreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient body \u2014 interactive",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
       "variant": "wearos_large_round"
     },
     {
@@ -55,7 +75,7 @@
       "functionName": "BadWearButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
     },
     {
@@ -65,7 +85,7 @@
       "functionName": "ButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
     {
@@ -75,7 +95,7 @@
       "functionName": "CircularProgressIndicatorPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
-      "sourceFile": "com/example/samplewear/Previews.kt",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     }
   ]
