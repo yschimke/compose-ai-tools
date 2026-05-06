@@ -3,6 +3,14 @@ package ee.schimke.composeai.renderer.uiautomator
 import android.os.Bundle
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.text.AnnotatedString
 import java.util.regex.Pattern
 
 /**
@@ -103,99 +111,323 @@ public object UiAutomator {
    * machinery does the same: traversal goes through `ViewGroup.getChildAt(i)`, predicates
    * evaluate against each view's lazily-created ANI.
    *
-   * **Compose caveat (not covered in this prototype).** Compose hosts everything inside one
+   * **Compose support — same DSL, different traversal.** Compose hosts everything inside one
    * `androidx.compose.ui.platform.AndroidComposeView`, which exposes child semantics through an
-   * `AccessibilityNodeProvider` rather than as actual `View` children. Reaching Compose
-   * widgets requires walking the `SemanticsOwner` tree (or going through the compose-test
-   * `SemanticsNodeInteraction` machinery the host already uses). A follow-on `ViewBacking` /
-   * `SemanticsBacking` adapter can keep the [Selector] surface identical for both — the
-   * predicate set is the same, only the traversal differs.
+   * `AccessibilityNodeProvider` rather than as actual `View` children. Walking the `View` tree
+   * therefore stops at the Compose host. The Compose overload below
+   * (`findObject(rule, selector)`) walks the `SemanticsOwner` tree instead and dispatches
+   * actions through `SemanticsActions` lambdas — the same path `:daemon:android`'s
+   * `performSemanticsActionByContentDescription` uses. Both overloads share the same [Selector]
+   * predicate set; only traversal and action dispatch differ.
    */
-  public fun findObject(root: View, selector: Selector): UiObject? {
-    walk(root) { v ->
-      if (selector.matches(v)) {
-        val info = v.createAccessibilityNodeInfo() ?: return@walk
-        return UiObject(v, info)
+  public fun findObject(root: View, selector: Selector): ViewUiObject? {
+    walkBacking(ViewBacking(root)) { backing ->
+      if (selector.matches(backing) && backing is ViewBacking) {
+        val info = backing.view.createAccessibilityNodeInfo() ?: return@walkBacking
+        return ViewUiObject(backing.view, info)
       }
     }
     return null
   }
 
   /** Pre-order walk; all matches in document order. */
-  public fun findObjects(root: View, selector: Selector): List<UiObject> {
-    val out = mutableListOf<UiObject>()
-    walk(root) { v ->
-      if (selector.matches(v)) {
-        val info = v.createAccessibilityNodeInfo() ?: return@walk
-        out += UiObject(v, info)
+  public fun findObjects(root: View, selector: Selector): List<ViewUiObject> {
+    val out = mutableListOf<ViewUiObject>()
+    walkBacking(ViewBacking(root)) { backing ->
+      if (selector.matches(backing) && backing is ViewBacking) {
+        val info = backing.view.createAccessibilityNodeInfo() ?: return@walkBacking
+        out += ViewUiObject(backing.view, info)
       }
     }
     return out
   }
 
-  internal inline fun walk(view: View, visit: (View) -> Unit) {
-    val stack = ArrayDeque<View>()
-    stack.addLast(view)
+  /**
+   * Compose-side overload. Walks the [rule]'s `SemanticsOwner` tree pre-order and returns the
+   * first node matching [selector] as a [SemanticsUiObject] (which dispatches actions through
+   * `SemanticsActions` lambdas the same way `:daemon:android`'s
+   * `performSemanticsActionByContentDescription` does).
+   *
+   * **Tree variant** ([useUnmergedTree], default `false`):
+   *  - **Merged** (default) — same view Compose's accessibility delegate exposes to the
+   *    platform, and what real on-device UIAutomator selectors match against.
+   *    `By.text("Submit")` matches a `Button { Text("Submit") }` as a single node carrying
+   *    both the text and the `OnClick`.
+   *  - **Unmerged** — every Compose node visible to the test framework. Use when you need to
+   *    target a specific inner node (e.g. the inner `Text` of a `Button` for its raw label,
+   *    or distinct child rows that the merged Button collapses into one announcement). Note
+   *    that selectors composed across "this node has the text AND has OnClick" will fail in
+   *    unmerged mode because text and click action live on separate nodes.
+   */
+  public fun findObject(
+    rule: ComposeContentTestRule,
+    selector: Selector,
+    useUnmergedTree: Boolean = false,
+  ): SemanticsUiObject? {
+    val root = rule.onRoot(useUnmergedTree = useUnmergedTree).fetchSemanticsNode()
+    walkBacking(SemanticsBacking(root)) { backing ->
+      if (selector.matches(backing) && backing is SemanticsBacking) {
+        return SemanticsUiObject(rule, backing.node)
+      }
+    }
+    return null
+  }
+
+  /** Pre-order walk; all matches in document order. See [findObject] for the [useUnmergedTree] semantics. */
+  public fun findObjects(
+    rule: ComposeContentTestRule,
+    selector: Selector,
+    useUnmergedTree: Boolean = false,
+  ): List<SemanticsUiObject> {
+    val root = rule.onRoot(useUnmergedTree = useUnmergedTree).fetchSemanticsNode()
+    val out = mutableListOf<SemanticsUiObject>()
+    walkBacking(SemanticsBacking(root)) { backing ->
+      if (selector.matches(backing) && backing is SemanticsBacking) {
+        out += SemanticsUiObject(rule, backing.node)
+      }
+    }
+    return out
+  }
+
+  internal inline fun walkBacking(root: NodeBacking, visit: (NodeBacking) -> Unit) {
+    val stack = ArrayDeque<NodeBacking>()
+    stack.addLast(root)
     while (stack.isNotEmpty()) {
-      val v = stack.removeLast()
-      visit(v)
-      if (v is android.view.ViewGroup) {
-        // Iterate in reverse so pop order matches document order.
-        for (i in v.childCount - 1 downTo 0) {
-          stack.addLast(v.getChildAt(i))
-        }
+      val n = stack.removeLast()
+      visit(n)
+      val children = n.children()
+      // Iterate in reverse so pop order matches document order.
+      for (i in children.indices.reversed()) {
+        stack.addLast(children[i])
       }
     }
   }
 }
 
 /**
- * One matched node. Loosely shaped after `androidx.test.uiautomator.UiObject2`, but actions
- * dispatch through `View.performAccessibilityAction` rather than `UiAutomation` (see the file
- * KDoc § "Actions").
+ * Internal tree-shaped projection of "the bits of a node a selector cares about". One impl
+ * per backing — [ViewBacking] reads from `View.createAccessibilityNodeInfo()`, [SemanticsBacking]
+ * reads from `SemanticsNode.config`. Letting the matcher work against a single interface keeps
+ * [Selector.matches] backing-agnostic; `findObject(View)` and `findObject(ComposeContentTestRule)`
+ * differ only in which root they wrap before walking.
  *
- * `info` is a snapshot at find time — read-only properties (`text`, `contentDescription`,
- * `isClickable`, etc.) are stable for the life of the object. Actions go through `view`
- * directly, so a click on a [UiObject] takes effect immediately on the host view.
+ * Properties return `null` when the backing genuinely has no equivalent (e.g. SemanticsNode
+ * has no notion of `clazz` — the matcher treats `null` as "selector field doesn't apply").
+ * Booleans are nullable for the same reason: a Compose node that doesn't expose
+ * `SemanticsActions.OnClick` reports `isClickable = null`, and a selector that didn't ask
+ * about clickability passes regardless.
  */
-public class UiObject internal constructor(public val view: View, public val info: AccessibilityNodeInfo) {
+internal interface NodeBacking {
+  val text: CharSequence?
+  val desc: CharSequence?
+  val clazz: CharSequence?
+  val res: String?
+  val isEnabled: Boolean?
+  val isClickable: Boolean?
+  val isLongClickable: Boolean?
+  val isCheckable: Boolean?
+  val isChecked: Boolean?
+  val isSelected: Boolean?
+  val isFocused: Boolean?
+  val isScrollable: Boolean?
 
-  public val text: CharSequence?
+  fun children(): List<NodeBacking>
+}
+
+internal class ViewBacking(val view: View) : NodeBacking {
+  private val ani: AccessibilityNodeInfo? by lazy { view.createAccessibilityNodeInfo() }
+
+  override val text: CharSequence?
+    get() = ani?.text
+
+  override val desc: CharSequence?
+    get() = ani?.contentDescription
+
+  override val clazz: CharSequence?
+    get() = ani?.className
+
+  override val res: String?
+    get() = ani?.viewIdResourceName
+
+  override val isEnabled: Boolean?
+    get() = ani?.isEnabled
+
+  override val isClickable: Boolean?
+    get() = ani?.isClickable
+
+  override val isLongClickable: Boolean?
+    get() = ani?.isLongClickable
+
+  override val isCheckable: Boolean?
+    get() = ani?.isCheckable
+
+  override val isChecked: Boolean?
+    get() = ani?.isChecked
+
+  override val isSelected: Boolean?
+    get() = ani?.isSelected
+
+  override val isFocused: Boolean?
+    get() = ani?.isFocused
+
+  override val isScrollable: Boolean?
+    get() = ani?.isScrollable
+
+  override fun children(): List<NodeBacking> {
+    val group = view as? android.view.ViewGroup ?: return emptyList()
+    return List(group.childCount) { i -> ViewBacking(group.getChildAt(i)) }
+  }
+}
+
+/**
+ * Compose-side projection. Maps `BySelector` chains onto the closest `SemanticsProperties` /
+ * `SemanticsActions` analogue:
+ *
+ *  - `text` — `EditableText` (preferred, since selectors are usually targeting input fields)
+ *    falls back to joined `Text`. Compose stores text as `AnnotatedString`; we surface it as a
+ *    `CharSequence` for the matcher.
+ *  - `desc` — `ContentDescription` (joined when a node carries multiple).
+ *  - `res` — `TestTag` (the closest stable per-node id; Compose has no resource id).
+ *  - `clazz` — no analogue (no JVM class on a SemanticsNode); always `null` — selector field
+ *    doesn't filter Compose nodes.
+ *  - `clickable` / `longClickable` / `scrollable` — presence of `OnClick` / `OnLongClick` /
+ *    `ScrollBy` in the action set.
+ *  - `enabled` — `!Disabled` (`Disabled` is a unit property; missing means enabled).
+ *  - `checkable` / `checked` — derived from `ToggleableState`.
+ *  - `selected` — `Selected`.
+ *  - `focused` — `Focused`.
+ */
+internal class SemanticsBacking(val node: SemanticsNode) : NodeBacking {
+  private val config = node.config
+
+  override val text: CharSequence?
+    get() {
+      config.getOrNull(SemanticsProperties.EditableText)?.let { return it.text }
+      return config.getOrNull(SemanticsProperties.Text)?.joinToString(separator = " ") { it.text }
+    }
+
+  override val desc: CharSequence?
+    get() = config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ")
+
+  override val clazz: CharSequence?
+    get() = null
+
+  override val res: String?
+    get() = config.getOrNull(SemanticsProperties.TestTag)
+
+  override val isEnabled: Boolean?
+    get() = config.getOrNull(SemanticsProperties.Disabled)?.let { false } ?: true
+
+  override val isClickable: Boolean?
+    get() = config.getOrNull(SemanticsActions.OnClick) != null
+
+  override val isLongClickable: Boolean?
+    get() = config.getOrNull(SemanticsActions.OnLongClick) != null
+
+  override val isCheckable: Boolean?
+    get() = config.getOrNull(SemanticsProperties.ToggleableState) != null
+
+  override val isChecked: Boolean?
+    get() =
+      when (config.getOrNull(SemanticsProperties.ToggleableState)) {
+        ToggleableState.On -> true
+        ToggleableState.Off,
+        ToggleableState.Indeterminate -> false
+        null -> null
+      }
+
+  override val isSelected: Boolean?
+    get() = config.getOrNull(SemanticsProperties.Selected)
+
+  override val isFocused: Boolean?
+    get() = config.getOrNull(SemanticsProperties.Focused)
+
+  override val isScrollable: Boolean?
+    get() = config.getOrNull(SemanticsActions.ScrollBy) != null
+
+  override fun children(): List<NodeBacking> = node.children.map { SemanticsBacking(it) }
+}
+
+/**
+ * One matched node. Loosely shaped after `androidx.test.uiautomator.UiObject2`. Two impls:
+ *
+ *  - [ViewUiObject] — actions dispatch through `View.performAccessibilityAction` (since
+ *    `AccessibilityNodeInfo.performAction` is a silent no-op in Robolectric — see the file KDoc).
+ *  - [SemanticsUiObject] — actions invoke `SemanticsActions` lambdas directly inside
+ *    `rule.runOnUiThread { ... }`, the same path `:daemon:android`'s
+ *    `performSemanticsActionByContentDescription` uses. The rule is needed both to schedule the
+ *    invocation on the UI thread and to drive `waitForIdle()` after the action so subsequent
+ *    matches see the post-action state.
+ *
+ * Action methods return `true` when the action was accepted, `false` when the node didn't
+ * expose it. The host can convert `false` to a typed `unsupported(reason="...")` evidence
+ * message.
+ */
+public sealed class UiObject {
+  public abstract val text: CharSequence?
+  public abstract val contentDescription: CharSequence?
+  public abstract val className: CharSequence?
+  public abstract val resourceName: String?
+
+  public abstract fun click(): Boolean
+
+  public abstract fun longClick(): Boolean
+
+  public abstract fun scrollForward(): Boolean
+
+  public abstract fun scrollBackward(): Boolean
+
+  public abstract fun requestFocus(): Boolean
+
+  public abstract fun expand(): Boolean
+
+  public abstract fun collapse(): Boolean
+
+  public abstract fun dismiss(): Boolean
+
+  public abstract fun inputText(value: CharSequence): Boolean
+}
+
+public class ViewUiObject
+internal constructor(public val view: View, public val info: AccessibilityNodeInfo) : UiObject() {
+
+  override val text: CharSequence?
     get() = info.text
 
-  public val contentDescription: CharSequence?
+  override val contentDescription: CharSequence?
     get() = info.contentDescription
 
-  public val className: CharSequence?
+  override val className: CharSequence?
     get() = info.className
 
-  public val resourceName: String?
+  override val resourceName: String?
     get() = info.viewIdResourceName
 
-  public fun click(): Boolean = view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, null)
+  override fun click(): Boolean =
+    view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, null)
 
-  public fun longClick(): Boolean =
+  override fun longClick(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, null)
 
-  public fun scrollForward(): Boolean =
+  override fun scrollForward(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null)
 
-  public fun scrollBackward(): Boolean =
+  override fun scrollBackward(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null)
 
-  public fun requestFocus(): Boolean =
+  override fun requestFocus(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_FOCUS, null)
 
   public fun clearFocus(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLEAR_FOCUS, null)
 
-  public fun expand(): Boolean =
+  override fun expand(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_EXPAND, null)
 
-  public fun collapse(): Boolean =
+  override fun collapse(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_COLLAPSE, null)
 
-  public fun dismiss(): Boolean =
+  override fun dismiss(): Boolean =
     view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_DISMISS, null)
 
   /**
@@ -203,12 +435,98 @@ public class UiObject internal constructor(public val view: View, public val inf
    * `SemanticsActions.SetText`; on plain `EditText`, the platform's `View` impl rewrites the
    * `Editable` directly.
    */
-  public fun inputText(value: CharSequence): Boolean {
+  override fun inputText(value: CharSequence): Boolean {
     val args =
       Bundle().apply {
         putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
       }
     return view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+  }
+}
+
+/**
+ * Compose-backed [UiObject]. Holds a [SemanticsNode] reference and the test rule used to
+ * dispatch actions on the UI thread. After every successful action the rule's `waitForIdle()`
+ * is called so the node's post-action state is visible to subsequent finds.
+ *
+ * Scroll actions need a non-zero step. We use the node's bounds height/width as one "page" —
+ * same heuristic `:daemon:android`'s `performSemanticsActionByContentDescription` uses for its
+ * `scrollForward`/`scrollBackward` arms.
+ */
+public class SemanticsUiObject
+internal constructor(
+  internal val rule: ComposeContentTestRule,
+  public val node: SemanticsNode,
+) : UiObject() {
+
+  private val config = node.config
+
+  override val text: CharSequence?
+    get() {
+      config.getOrNull(SemanticsProperties.EditableText)?.let { return it.text }
+      return config.getOrNull(SemanticsProperties.Text)?.joinToString(separator = " ") { it.text }
+    }
+
+  override val contentDescription: CharSequence?
+    get() = config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ")
+
+  /** Compose has no JVM-class concept on a node — always `null`. */
+  override val className: CharSequence?
+    get() = null
+
+  /** Best stable per-node id Compose offers. */
+  override val resourceName: String?
+    get() = config.getOrNull(SemanticsProperties.TestTag)
+
+  override fun click(): Boolean = invokeLambda(SemanticsActions.OnClick)
+
+  override fun longClick(): Boolean = invokeLambda(SemanticsActions.OnLongClick)
+
+  override fun requestFocus(): Boolean = invokeLambda(SemanticsActions.RequestFocus)
+
+  override fun expand(): Boolean = invokeLambda(SemanticsActions.Expand)
+
+  override fun collapse(): Boolean = invokeLambda(SemanticsActions.Collapse)
+
+  override fun dismiss(): Boolean = invokeLambda(SemanticsActions.Dismiss)
+
+  override fun scrollForward(): Boolean =
+    invokeScrollBy(dx = 0f, dy = node.size.height.toFloat())
+
+  override fun scrollBackward(): Boolean =
+    invokeScrollBy(dx = 0f, dy = -node.size.height.toFloat())
+
+  /** Routes through `SemanticsActions.SetText` (the same path Compose's a11y delegate uses). */
+  override fun inputText(value: CharSequence): Boolean {
+    val action = config.getOrNull(SemanticsActions.SetText) ?: return false
+    val lambda = action.action ?: return false
+    var accepted = false
+    rule.runOnUiThread { accepted = lambda.invoke(AnnotatedString(value.toString())) }
+    rule.waitForIdle()
+    return accepted
+  }
+
+  private fun invokeLambda(
+    key:
+      androidx.compose.ui.semantics.SemanticsPropertyKey<
+        androidx.compose.ui.semantics.AccessibilityAction<() -> Boolean>
+      >
+  ): Boolean {
+    val action = config.getOrNull(key) ?: return false
+    val lambda = action.action ?: return false
+    var accepted = false
+    rule.runOnUiThread { accepted = lambda.invoke() }
+    rule.waitForIdle()
+    return accepted
+  }
+
+  private fun invokeScrollBy(dx: Float, dy: Float): Boolean {
+    val action = config.getOrNull(SemanticsActions.ScrollBy) ?: return false
+    val lambda = action.action ?: return false
+    var accepted = false
+    rule.runOnUiThread { accepted = lambda.invoke(dx, dy) }
+    rule.waitForIdle()
+    return accepted
   }
 }
 
@@ -245,14 +563,13 @@ internal constructor(
 ) {
   public fun text(value: String): Selector = copy(text = TextMatch.Exact(value))
 
-  public fun text(pattern: Pattern): Selector = copy(text = TextMatch.Regex(pattern))
+  public fun text(pattern: Pattern): Selector = copy(text = TextMatch.Regex(pattern.pattern()))
 
-  public fun textMatches(regex: String): Selector =
-    copy(text = TextMatch.Regex(Pattern.compile(regex)))
+  public fun textMatches(regex: String): Selector = copy(text = TextMatch.Regex(regex))
 
   public fun desc(value: String): Selector = copy(desc = TextMatch.Exact(value))
 
-  public fun desc(pattern: Pattern): Selector = copy(desc = TextMatch.Regex(pattern))
+  public fun desc(pattern: Pattern): Selector = copy(desc = TextMatch.Regex(pattern.pattern()))
 
   public fun clazz(value: String): Selector = copy(clazz = TextMatch.Exact(value))
 
@@ -279,46 +596,44 @@ internal constructor(
   public fun hasDescendant(selector: Selector): Selector =
     copy(descendants = descendants + selector)
 
-  internal fun matches(view: View): Boolean {
-    val ani = view.createAccessibilityNodeInfo() ?: return false
-    if (text != null && !text.matches(ani.text)) return false
-    if (desc != null && !desc.matches(ani.contentDescription)) return false
-    if (clazz != null && !clazz.matches(ani.className)) return false
-    if (res != null && !res.matches(ani.viewIdResourceName)) return false
-    if (enabled != null && enabled != ani.isEnabled) return false
-    if (clickable != null && clickable != ani.isClickable) return false
-    if (longClickable != null && longClickable != ani.isLongClickable) return false
-    if (checkable != null && checkable != ani.isCheckable) return false
-    if (checked != null && checked != ani.isChecked) return false
-    if (selected != null && selected != ani.isSelected) return false
-    if (focused != null && focused != ani.isFocused) return false
-    if (scrollable != null && scrollable != ani.isScrollable) return false
-    if (children.isNotEmpty() && view is android.view.ViewGroup) {
-      for (childSel in children) {
-        var matched = false
-        for (i in 0 until view.childCount) {
-          if (childSel.matches(view.getChildAt(i))) {
-            matched = true
-            break
-          }
-        }
-        if (!matched) return false
-      }
-    } else if (children.isNotEmpty()) {
+  internal fun matches(backing: NodeBacking): Boolean {
+    if (text != null && !text.matches(backing.text)) return false
+    if (desc != null && !desc.matches(backing.desc)) return false
+    if (clazz != null && !clazz.matches(backing.clazz)) return false
+    if (res != null && !res.matches(backing.res)) return false
+    if (enabled != null && backing.isEnabled != null && enabled != backing.isEnabled) return false
+    if (clickable != null && backing.isClickable != null && clickable != backing.isClickable)
       return false
+    if (
+      longClickable != null &&
+        backing.isLongClickable != null &&
+        longClickable != backing.isLongClickable
+    )
+      return false
+    if (checkable != null && backing.isCheckable != null && checkable != backing.isCheckable)
+      return false
+    if (checked != null && backing.isChecked != null && checked != backing.isChecked) return false
+    if (selected != null && backing.isSelected != null && selected != backing.isSelected)
+      return false
+    if (focused != null && backing.isFocused != null && focused != backing.isFocused) return false
+    if (scrollable != null && backing.isScrollable != null && scrollable != backing.isScrollable)
+      return false
+    if (children.isNotEmpty()) {
+      val direct = backing.children()
+      for (childSel in children) {
+        if (direct.none { childSel.matches(it) }) return false
+      }
     }
     if (descendants.isNotEmpty()) {
       for (descSel in descendants) {
-        if (!hasDescendantMatching(view, descSel)) return false
+        if (!hasDescendantMatching(backing, descSel)) return false
       }
     }
     return true
   }
 
-  private fun hasDescendantMatching(view: View, selector: Selector): Boolean {
-    if (view !is android.view.ViewGroup) return false
-    for (i in 0 until view.childCount) {
-      val child = view.getChildAt(i)
+  private fun hasDescendantMatching(backing: NodeBacking, selector: Selector): Boolean {
+    for (child in backing.children()) {
       if (selector.matches(child)) return true
       if (hasDescendantMatching(child, selector)) return true
     }
@@ -333,9 +648,17 @@ internal sealed class TextMatch {
     override fun matches(value: CharSequence?): Boolean = value?.toString() == expected
   }
 
-  data class Regex(val pattern: Pattern) : TextMatch() {
+  /**
+   * Regex matcher. The regex source is stored as a `String` (rather than a compiled `Pattern`)
+   * so that `equals` / `hashCode` round-trip cleanly through the JSON wire format —
+   * `Pattern.equals` is reference identity, which would break selector round-trips even when
+   * two patterns have identical sources.
+   */
+  data class Regex(val regex: String) : TextMatch() {
+    @Transient private val compiled: Pattern = Pattern.compile(regex)
+
     override fun matches(value: CharSequence?): Boolean =
-      value != null && pattern.matcher(value).matches()
+      value != null && compiled.matcher(value).matches()
   }
 }
 
