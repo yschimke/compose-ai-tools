@@ -10,7 +10,9 @@
         "esModuleInterop": true,
         "sourceMap": true,
         "skipLibCheck": true,
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "src/webview/**"],
@@ -21,7 +23,9 @@
         "src/webview/preview/moduleReadiness.ts",
         "src/webview/preview/pointerGeometry.ts",
         "src/webview/preview/relativeSizing.ts",
+        "src/webview/history/components/HistoryRow.ts",
         "src/webview/history/historyData.ts",
+        "src/webview/history/historyStore.ts",
         "src/webview/shared/diffStatsLabel.ts",
         "src/webview/shared/safeIndex.ts",
         "src/webview/shared/store.ts",

@@ -5,9 +5,10 @@
 // `HistoryToWebview` (from `shared/types`). Step 1 of #858 lifted the
 // per-row markup into the `<history-row>` Lit component
 // (`./components/HistoryRow.ts`) and routed thumb bytes through
-// `historyStore`; selection / expansion / diff overlays still flow
-// through closure-state callbacks in this file pending the later
-// steps of the issue.
+// `historyStore`. Step 2 moved selection state into the row itself —
+// this module now just listens for `history-row-selection-change` to
+// keep a (max-2) queue for the diff button. Expansion / diff overlays
+// still flow through closure-state callbacks pending step 3 of #858.
 //
 // Runs once per webview load. Assumes `<history-app>` has already
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
@@ -16,6 +17,7 @@
 import { requireElementById } from "../shared/domRefs";
 import type { HistoryEntry, HistoryToWebview } from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
+import type { HistoryRow } from "./components/HistoryRow";
 import { cssEscape } from "./historyData";
 import {
     fillDiff as fillDiffDom,
@@ -43,7 +45,13 @@ export function setupHistoryBehavior(): void {
     // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
     let entries: HistoryEntry[] = [];
-    const selectedIds = new Set<string>();
+    // (max-2) selection queue (oldest first). Each `<history-row>` owns
+    // its own `selected` state and dispatches
+    // `history-row-selection-change` on shift-click; this list is the
+    // host's aggregate view of which rows are currently picked, used to
+    // gate the diff button and to evict the oldest pick when a third
+    // row is shift-clicked.
+    const selectedOrder: string[] = [];
     let expandedId: string | null = null;
     // Thumbnail bytes live in `historyStore` so `<history-row>` can
     // subscribe and re-render reactively. `thumbRequested` here just
@@ -73,15 +81,40 @@ export function setupHistoryBehavior(): void {
         vscode.postMessage({ command: "refresh" });
     });
     btnDiffEl.addEventListener("click", () => {
-        const ids = [...selectedIds];
-        if (ids.length === 2) {
+        if (selectedOrder.length === 2) {
             vscode.postMessage({
                 command: "diff",
-                fromId: ids[0],
-                toId: ids[1],
+                fromId: selectedOrder[0],
+                toId: selectedOrder[1],
             });
         }
     });
+    timelineEl.addEventListener(
+        "history-row-selection-change",
+        (event: CustomEvent<{ id: string; selected: boolean }>) => {
+            const { id, selected } = event.detail;
+            if (selected) {
+                // Evict the oldest pick when a third row joins so we
+                // never exceed two selections. The row dispatched this
+                // event already, so its `.selected` is true; we only
+                // need to flip the evictee back.
+                if (selectedOrder.length >= 2) {
+                    const drop = selectedOrder.shift();
+                    if (drop !== undefined) {
+                        const prev = timelineEl.querySelector<HistoryRow>(
+                            'history-row[data-id="' + cssEscape(drop) + '"]',
+                        );
+                        if (prev) prev.selected = false;
+                    }
+                }
+                selectedOrder.push(id);
+            } else {
+                const idx = selectedOrder.indexOf(id);
+                if (idx !== -1) selectedOrder.splice(idx, 1);
+            }
+            btnDiffEl.disabled = selectedOrder.length !== 2;
+        },
+    );
     filterSourceEl.addEventListener("change", applyFilters);
     filterBranchEl.addEventListener("change", applyFilters);
 
@@ -131,8 +164,9 @@ export function setupHistoryBehavior(): void {
     }
 
     // Timeline row markup lives in the `<history-row>` Lit component
-    // (`./components/HistoryRow.ts`); orchestration around it —
-    // selection set, expansion DOM, diff requests — stays in
+    // (`./components/HistoryRow.ts`); selection state lives there too
+    // and bubbles up via the `history-row-selection-change` listener
+    // wired above. Expansion DOM and diff requests still flow through
     // `./historyTimeline.ts`. The config exposes the static DOM
     // handles plus thin getter/setter pairs over `expandedId` so the
     // lifted module doesn't need closure access to this scope.
@@ -140,7 +174,6 @@ export function setupHistoryBehavior(): void {
         vscode,
         timelineEl,
         btnDiffEl,
-        selectedIds,
         getExpandedId: () => expandedId,
         setExpandedId: (next) => {
             expandedId = next;

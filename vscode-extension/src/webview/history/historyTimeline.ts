@@ -1,13 +1,18 @@
 // Timeline + row construction for the History panel.
 //
 // Step 1 of #858: row markup now lives in the `<history-row>` Lit
-// component (`./components/HistoryRow.ts`). This module shrank to:
+// component (`./components/HistoryRow.ts`).
+//
+// Step 2 of #858: selection state moved into the row. The row owns
+// `selected` and dispatches `history-row-selection-change` on
+// shift-click; the host listens on `timelineEl` to maintain the
+// (max-2) queue and toggle the diff button. This module no longer
+// holds a `selectedIds` set or a `toggleSelected` helper.
+//
+// What's left here:
 //
 //  - `renderTimeline`: declarative iteration over `entries`, swapping
 //    out `<history-row>` children on the timeline container.
-//  - `toggleSelected`: still owns the (max-2) selection set since
-//    that state lives in the host's `behavior.ts` closure for now.
-//    Step 2 of #858 moves selection state into the row's `@state`.
 //  - `expandRow` / `requestRowDiff` / `fillExpansion`: still
 //    imperative because the inline `.expanded` sibling div is a
 //    separate concern from row rendering and gets its own component
@@ -28,11 +33,9 @@ export interface HistoryRowConfig {
     vscode: VsCodeApi<unknown>;
     /** `<div id="timeline">` — the parent container for all rows. */
     timelineEl: HTMLElement;
-    /** Toolbar diff button — disabled state tracks `selectedIds.size === 2`. */
+    /** Toolbar diff button — disabled state tracks the host-managed
+     *  selection queue length (must be exactly 2 to enable). */
     btnDiffEl: HTMLButtonElement;
-    /** Per-session selection set (max 2). Direct Set reference; mutated
-     *  by `toggleSelected`. */
-    selectedIds: Set<string>;
     /** Currently expanded row's id, or `null` when nothing is expanded.
      *  Mutated by `expandRow` (toggle) and `requestRowDiff` (replace). */
     getExpandedId(): string | null;
@@ -61,7 +64,6 @@ export function renderTimeline(
     const mainHash = findLatestMainHash(entries);
 
     const callbacks: HistoryRowCallbacks = {
-        onToggleSelected: (id, row) => toggleSelected(id, row, config),
         onExpand: (id, row) => expandRow(id, row, config),
         onDiffPrevious: (id, row) =>
             requestRowDiff(id, row, "previous", config),
@@ -81,32 +83,6 @@ export function renderTimeline(
         row.callbacks = callbacks;
         config.timelineEl.appendChild(row);
     }
-}
-
-/** Toggle [id] in/out of the (max-2) selection set, mirroring the row's
- *  `.selected` state. Drops the oldest selection when adding a third. */
-export function toggleSelected(
-    id: string,
-    row: HistoryRow,
-    config: HistoryRowConfig,
-): void {
-    if (config.selectedIds.has(id)) {
-        config.selectedIds.delete(id);
-        row.setSelected(false);
-    } else {
-        if (config.selectedIds.size >= 2) {
-            // Drop oldest selection so we never have more than 2.
-            const drop = [...config.selectedIds][0];
-            config.selectedIds.delete(drop);
-            const prev = config.timelineEl.querySelector<HistoryRow>(
-                'history-row[data-id="' + cssEscape(drop) + '"]',
-            );
-            prev?.setSelected(false);
-        }
-        config.selectedIds.add(id);
-        row.setSelected(true);
-    }
-    config.btnDiffEl.disabled = config.selectedIds.size !== 2;
 }
 
 /** Toggle the inline expansion (full-size image + actions) for [id].
