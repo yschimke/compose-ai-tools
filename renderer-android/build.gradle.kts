@@ -49,6 +49,11 @@ dependencies {
   // preview surfaces the specific semantics field it isolates (testTag, contentDescription,
   // role+clickable, mergeMode).
   testImplementation(project(":data-layoutinspector-connector"))
+  // I18nTranslationsFixtureTest exercises I18nTranslationsDataProducer.writeArtifacts +
+  // I18nTranslationsDataProductRegistry against a Compose Text rendered under a fixture
+  // strings.xml catalog (values/ + values-fr/) to assert the produced JSON resolves the
+  // rendered string back to its R.string.* and surfaces the supported-locale set.
+  testImplementation(project(":data-strings-connector"))
 
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
   // they must match what the CONSUMER module declares, because AGP's
