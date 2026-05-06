@@ -7,33 +7,27 @@
 //
 // Loads both base64 PNGs into hidden `<img>`s, draws each to a canvas,
 // walks the two `ImageData` buffers in parallel comparing RGBA quads. The
-// resolved `DiffStats` is a discriminated union so callers (`applyDiffStats`
-// label renderer, both panels) narrow correctly via `"error" in s` and
+// resolved `DiffStats` is a discriminated union so callers (the
+// `applyDiffStats` label renderer + the pure `formatDiffStatsLabel` in
+// `./diffStatsLabel.ts`) narrow correctly via `"error" in s` and
 // `s.sameSize`.
 //
 // Always resolves; never rejects. Every failure mode (image load error,
 // canvas-2d-unavailable, runtime exception during the byte walk) lands as
 // an `{ error }` variant so callers don't have to wrap the call in a
 // try/catch.
+//
+// The label-formatting logic lives in `./diffStatsLabel.ts` so the host
+// tsconfig can compile it alongside `cardData.ts` / `historyData.ts` and
+// unit-test it without a DOM.
 
-/** Outcome of a pixel diff between two base64 PNGs. */
-export type DiffStats =
-    | { error: string }
-    | {
-          sameSize: false;
-          leftW: number;
-          leftH: number;
-          rightW: number;
-          rightH: number;
-      }
-    | {
-          sameSize: true;
-          w: number;
-          h: number;
-          diffPx: number;
-          total: number;
-          percent: number;
-      };
+import { formatDiffStatsLabel, type DiffStats } from "./diffStatsLabel";
+
+/** Re-export so existing
+ *  `import { type DiffStats } from "../shared/pixelDiff"` paths keep
+ *  working — the canonical home is `./diffStatsLabel.ts` (no DOM
+ *  dependency, host-tsconfig-friendly). */
+export type { DiffStats };
 
 export function computeDiffStats(
     leftBase64: string,
@@ -118,4 +112,21 @@ export function computeDiffStats(
         left.src = "data:image/png;base64," + leftBase64;
         right.src = "data:image/png;base64," + rightBase64;
     });
+}
+
+/**
+ * Render the diff-stats label into [el]. Thin DOM wrapper around the
+ * pure `formatDiffStatsLabel` so the formatting logic stays unit-
+ * testable without a DOM. Sets `el.dataset.state` for CSS colouring
+ * (`identical` / `changed` / `size-mismatch`); removes the attribute
+ * when the formatter returns `state: null` (error / null input).
+ */
+export function applyDiffStats(el: HTMLElement, stats: DiffStats | null): void {
+    const { text, state } = formatDiffStatsLabel(stats);
+    el.textContent = text;
+    if (state) {
+        el.dataset.state = state;
+    } else {
+        el.removeAttribute("data-state");
+    }
 }

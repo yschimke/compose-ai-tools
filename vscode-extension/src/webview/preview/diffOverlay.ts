@@ -22,7 +22,11 @@
 // a different code path.
 
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
-import { computeDiffStats, type DiffStats } from "../shared/pixelDiff";
+import {
+    applyDiffStats,
+    computeDiffStats,
+    type DiffStats,
+} from "../shared/pixelDiff";
 import type { VsCodeApi } from "../shared/vscode";
 
 export type { DiffMode, DiffStats };
@@ -210,35 +214,4 @@ function buildPreviewDiffPane(
         pane.appendChild(empty);
     }
     return pane;
-}
-
-function applyDiffStats(el: HTMLElement, s: DiffStats): void {
-    if ("error" in s) {
-        el.textContent = s.error;
-        el.removeAttribute("data-state");
-        return;
-    }
-    if (!s.sameSize) {
-        el.textContent =
-            "sizes differ — " +
-            s.leftW +
-            "×" +
-            s.leftH +
-            " vs " +
-            s.rightW +
-            "×" +
-            s.rightH;
-        el.dataset.state = "size-mismatch";
-        return;
-    }
-    if (s.diffPx === 0) {
-        el.textContent = "identical · " + s.w + "×" + s.h;
-        el.dataset.state = "identical";
-        return;
-    }
-    const p = s.percent * 100;
-    const pct = p < 0.01 ? p.toFixed(3) : p.toFixed(2);
-    el.textContent =
-        s.diffPx.toLocaleString() + " px (" + pct + "%) · " + s.w + "×" + s.h;
-    el.dataset.state = "changed";
 }
