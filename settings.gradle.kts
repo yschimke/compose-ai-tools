@@ -138,6 +138,14 @@ include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
 
+// Exploratory prototype — a UIAutomator-shaped query/action API over the local View tree's
+// `AccessibilityNodeInfo`. Not published; promoted to `:data-uiautomator-core` if useful. See
+// `data/uiautomator/prototype-android/build.gradle.kts`.
+include(":data-uiautomator-prototype-android")
+
+project(":data-uiautomator-prototype-android").projectDir =
+  file("data/uiautomator/prototype-android")
+
 include(":daemon:android")
 
 include(":daemon:desktop")
