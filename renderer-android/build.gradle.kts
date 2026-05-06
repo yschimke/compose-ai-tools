@@ -47,7 +47,9 @@ dependencies {
   // ComposeSemanticsCoreFieldsTest exercises ComposeSemanticsDataProducer.writeArtifacts +
   // ComposeSemanticsDataProductRegistry against real Compose composables to assert each
   // preview surfaces the specific semantics field it isolates (testTag, contentDescription,
-  // role+clickable, mergeMode).
+  // role+clickable, mergeMode). TextStringsTruncationTest exercises the same producer +
+  // TextStringsDataProductRegistry against truncation fixtures to assert each preview
+  // triggers the expected text/strings v2 truncation check.
   testImplementation(project(":data-layoutinspector-connector"))
   // I18nTranslationsFixtureTest exercises I18nTranslationsDataProducer.writeArtifacts +
   // I18nTranslationsDataProductRegistry against a Compose Text rendered under a fixture
