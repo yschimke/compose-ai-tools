@@ -619,7 +619,10 @@ export function applyA11yUpdate(
     const img = container?.querySelector<HTMLImageElement>("img") ?? null;
     if (findings !== undefined) {
         if (findings && findings.length > 0) {
-            setCardA11yFindings(previewId, findings);
+            // Ensure the empty `.a11y-overlay` container exists before
+            // bumping the store — `<preview-card>`'s mapsRevision
+            // subscription will paint into it once the per-id Map
+            // write below fires the rebroadcast.
             if (container && !container.querySelector(".a11y-overlay")) {
                 const overlay = document.createElement("div");
                 overlay.className = "a11y-overlay";
@@ -633,9 +636,12 @@ export function applyA11yUpdate(
                 p.a11yFindings = [...findings];
                 card.appendChild(buildA11yLegend(card, p));
             }
-            if (img && img.complete && img.naturalWidth > 0) {
-                buildA11yOverlay(card, findings, img);
-            }
+            // Store write last — the `mapsRevision` bump triggers the
+            // component's `_repaintA11yOverlaysFromCache()` which runs
+            // `buildA11yOverlay` against the fresh findings. The
+            // component gates on `img.complete && img.naturalWidth > 0`
+            // exactly as the previous imperative branch did.
+            setCardA11yFindings(previewId, findings);
         } else {
             deleteCardA11yFindings(previewId);
             const overlay = card.querySelector(".a11y-overlay");
@@ -646,11 +652,11 @@ export function applyA11yUpdate(
     }
     if (nodes !== undefined) {
         if (nodes && nodes.length > 0) {
-            setCardA11yNodes(previewId, nodes);
             ensureHierarchyOverlay(container);
-            if (img && img.complete && img.naturalWidth > 0) {
-                applyHierarchyOverlay(card, nodes, img);
-            }
+            // Same pattern as findings above: store write fires the
+            // mapsRevision bump, the component re-paints the layer
+            // via `applyHierarchyOverlay`.
+            setCardA11yNodes(previewId, nodes);
         } else {
             deleteCardA11yNodes(previewId);
             const layer = card.querySelector(".a11y-hierarchy-overlay");
