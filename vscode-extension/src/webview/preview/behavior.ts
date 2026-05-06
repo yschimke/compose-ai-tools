@@ -16,7 +16,7 @@ import type {
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
-import { getVsCodeApi } from "../shared/vscode";
+import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
     applyRelativeSizing,
@@ -30,6 +30,10 @@ import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
+import {
+    FocusController,
+    type FocusControllerPersistedState,
+} from "./focusController";
 import { FocusInspectorController } from "./focusInspector";
 import {
     FocusToolbarController,
@@ -229,7 +233,16 @@ export function setupPreviewBehavior(
     const moduleDaemonReady = new Map<string, boolean>();
     const moduleInteractiveSupported = new Map<string, boolean>();
 
-    const inspector = new FocusInspectorController({
+    // Forward references — `inspector` / `liveState` / `focusController`
+    // close over each other via callback shapes, so we late-bind through
+    // these `let !` declarations. Each binding is dereferenced only at
+    // runtime (inside arrow callbacks fired by user events / message
+    // handlers), by which point all three are initialised.
+    let inspector!: FocusInspectorController;
+    let liveState!: LiveStateController;
+    let focusController!: FocusController;
+
+    inspector = new FocusInspectorController({
         el: focusInspector,
         earlyFeatures,
         getPreview: (id) => allPreviews.find((p) => p.id === id),
@@ -243,20 +256,18 @@ export function setupPreviewBehavior(
             [],
         getA11yOverlayId: a11yOverlay,
         isLive: (id) => liveState.isLive(id),
-        onToggleA11yOverlay: () => toggleA11yOverlay(),
+        onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
         onToggleInteractive: (shift) => liveState.toggleInteractive(shift),
         onToggleRecording: () => liveState.toggleRecording(),
-        onRequestFocusedDiff: (against) => requestFocusedDiff(against),
-        onRequestLaunchOnDevice: () => requestLaunchOnDevice(),
+        onRequestFocusedDiff: (against) =>
+            focusController.requestFocusedDiff(against),
+        onRequestLaunchOnDevice: () => focusController.requestLaunchOnDevice(),
     });
 
     // Config for the interactive-input pointer machine. The predicate
     // unifies live/recording state — both forward pointer/wheel input
     // to the daemon — so the module doesn't need direct access to
-    // either Set. `liveState` is initialised right below and only read
-    // when a real pointer event fires, so the closure access can never
-    // hit before the controller is bound.
-    let liveState!: LiveStateController;
+    // either Set.
     const interactiveInputConfig = {
         isLive: (id: string) =>
             liveState.isLive(id) || liveState.isRecording(id),
@@ -268,13 +279,12 @@ export function setupPreviewBehavior(
         recordingFormat,
         interactiveInputConfig,
         earlyFeatures,
-        inFocus: () => filterToolbar.getLayoutValue() === "focus",
-        focusedCard: () =>
-            filterToolbar.getLayoutValue() === "focus"
-                ? (getVisibleCards()[focusIndex] ?? null)
-                : null,
-        applyInteractiveButtonState: () => applyInteractiveButtonState(),
-        applyRecordingButtonState: () => applyRecordingButtonState(),
+        inFocus: () => focusController.inFocus(),
+        focusedCard: () => focusController.focusedCard(),
+        applyInteractiveButtonState: () =>
+            focusController.applyInteractiveButtonState(),
+        applyRecordingButtonState: () =>
+            focusController.applyRecordingButtonState(),
         renderInspector: (card) => inspector.render(card),
     });
 
@@ -292,6 +302,32 @@ export function setupPreviewBehavior(
             vscode.setState(state);
         },
     };
+
+    focusController = new FocusController({
+        vscode: vscode as VsCodeApi<FocusControllerPersistedState>,
+        grid,
+        filterToolbar,
+        focusControls,
+        focusPosition,
+        btnPrev,
+        btnNext,
+        focusToolbar,
+        inspector,
+        liveState,
+        diffOverlayConfig,
+        state,
+        moduleDaemonReady,
+        moduleInteractiveSupported,
+        earlyFeatures,
+        getA11yOverlayId: a11yOverlay,
+        setA11yOverlayId: setA11yOverlay,
+        getFocusIndex: () => focusIndex,
+        setFocusIndex,
+        getPreviousLayout: () => previousLayout,
+        setPreviousLayout,
+        getLastScopedPreviewId: () => lastScopedPreviewId,
+        setLastScopedPreviewId,
+    });
 
     const staleBadge = new StaleBadgeController(vscode);
     const loadingOverlay = new LoadingOverlay();
@@ -350,110 +386,40 @@ export function setupPreviewBehavior(
     btnRecording.addEventListener("click", () => liveState.toggleRecording());
     btnExitFocus.addEventListener("click", () => exitFocus());
 
-    function applyEarlyFeatureVisibility() {
-        focusToolbar.applyEarlyFeatureVisibility({
-            earlyFeatures: earlyFeatures(),
-            inFocus: filterToolbar.getLayoutValue() === "focus",
-        });
+    // Focus-mode orchestration (applyLayout, button-state hooks, focus
+    // navigation, the a11y-overlay toggle, focused-card actions) lives in
+    // `./focusController.ts` — see `FocusController`. The thin shims
+    // below keep the call shape stable for the message-context callbacks
+    // and for `applyFilters`, which is itself a closure over filterToolbar.
+    function applyLayout(): void {
+        focusController.applyLayout();
+    }
+    function applyInteractiveButtonState(): void {
+        focusController.applyInteractiveButtonState();
+    }
+    function applyRecordingButtonState(): void {
+        focusController.applyRecordingButtonState();
+    }
+    function navigateFocus(delta: number): void {
+        focusController.navigateFocus(delta);
+    }
+    function focusOnCard(card: HTMLElement): void {
+        focusController.focusOnCard(card);
+    }
+    function exitFocus(): void {
+        focusController.exitFocus();
+    }
+    function requestFocusedDiff(against: "head" | "main"): void {
+        focusController.requestFocusedDiff(against);
+    }
+    function requestLaunchOnDevice(): void {
+        focusController.requestLaunchOnDevice();
+    }
+    function toggleA11yOverlay(): void {
+        focusController.toggleA11yOverlay();
     }
 
-    function applyInteractiveButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        const previewId = card?.dataset.previewId ?? null;
-        const isLive = !!previewId && liveState.isLive(previewId);
-        focusToolbar.applyInteractiveButtonState({
-            inFocus,
-            focusedPreviewId: previewId,
-            isLive,
-            otherLiveCount: liveState.liveCount - (isLive ? 1 : 0),
-            hasLive: liveState.liveCount > 0,
-            daemonReady: isFocusedModuleReady(moduleDaemonReady),
-            interactiveSupported: isFocusedInteractiveSupported(
-                moduleDaemonReady,
-                moduleInteractiveSupported,
-            ),
-        });
-    }
-
-    function applyRecordingButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        const previewId = card?.dataset.previewId ?? null;
-        focusToolbar.applyRecordingButtonState({
-            inFocus,
-            earlyFeatures: earlyFeatures(),
-            focusedPreviewId: previewId,
-            daemonReady: isFocusedModuleReady(moduleDaemonReady),
-            isRecording: !!previewId && liveState.isRecording(previewId),
-        });
-    }
-
-    function applyA11yOverlayButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        focusToolbar.applyA11yOverlayButtonState({
-            inFocus,
-            earlyFeatures: earlyFeatures(),
-            focusedPreviewId: card?.dataset.previewId ?? null,
-            a11yOverlayId: a11yOverlay(),
-        });
-    }
-
-    // D2 — clicking the a11y toggle subscribes/unsubscribes via the extension. When
-    // turning OFF, the extension also pushes an empty updateA11y so the cached overlay
-    // tears down immediately rather than waiting for a next render. When turning ON for a
-    // different preview, first turn the previous one off so the wire stays clean.
-    function toggleA11yOverlay() {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const card = getVisibleCards()[focusIndex];
-        const previewId = card ? card.dataset.previewId : null;
-        if (!previewId) return;
-        const turningOn = previewId !== a11yOverlay();
-        if (a11yOverlay() && a11yOverlay() !== previewId) {
-            vscode.postMessage({
-                command: "setA11yOverlay",
-                previewId: a11yOverlay(),
-                enabled: false,
-            });
-        }
-        setA11yOverlay(turningOn ? previewId : null);
-        vscode.postMessage({
-            command: "setA11yOverlay",
-            previewId,
-            enabled: turningOn,
-        });
-        applyA11yOverlayButtonState();
-        inspector.render(card);
-    }
-
-    // Live + recording state (toolbar/per-card buttons, badge re-stamping,
-    // single-target follow-focus, viewport auto-stop) lives in
-    // `./liveState.ts` — see `LiveStateController`. The pointer + wheel
-    // state machine the live cards use lives in `./interactiveInput.ts`.
-
-    // Document-level Left/Right in focus mode steps between cards. The
-    // animated-carousel frame-controls handler stops propagation so
-    // its arrow keys still walk captures within a single card. Skip
-    // when an input-like element has focus (the layout dropdown,
-    // future text inputs) so native keyboard semantics aren't stolen.
-    document.addEventListener("keydown", (e) => {
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-        const tag = e.target instanceof Element ? e.target.tagName : null;
-        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-        navigateFocus(e.key === "ArrowLeft" ? -1 : 1);
-        e.preventDefault();
-    });
-
-    filterToolbar.addEventListener("filter-changed", () => {
-        saveFilterState();
-        if (filterDebounce) clearTimeout(filterDebounce);
-        filterDebounce = setTimeout(applyFilters, 100);
-    });
-
-    function saveFilterState() {
+    function saveFilterState(): void {
         state.filters = {
             fn: filterToolbar.getFunctionValue(),
             group: filterToolbar.getGroupValue(),
@@ -461,7 +427,7 @@ export function setupPreviewBehavior(
         vscode.setState(state);
     }
 
-    function restoreFilterState() {
+    function restoreFilterState(): void {
         const f = state.filters || {};
         if (f.fn && filterToolbar.hasFunctionOption(f.fn))
             filterToolbar.setFunctionValue(f.fn);
@@ -469,7 +435,7 @@ export function setupPreviewBehavior(
             filterToolbar.setGroupValue(f.group);
     }
 
-    function applyFilters() {
+    function applyFilters(): void {
         const visibleCount = grid.applyFilters({
             fn: filterToolbar.getFunctionValue(),
             group: filterToolbar.getGroupValue(),
@@ -504,174 +470,11 @@ export function setupPreviewBehavior(
     // shouldn't normally trigger — the extension sends an explicit
     // message for every empty state — but a silent blank view was the
     // original complaint, so this catches any future regressions.
-    function ensureNotBlank() {
+    function ensureNotBlank(): void {
         const hasCards = grid.querySelector(".preview-card") !== null;
         if (!hasCards && !messageBanner.isVisible()) {
             messageBanner.setMessage("Preparing previews…", "fallback");
         }
-    }
-
-    function getVisibleCards() {
-        return grid.getVisibleCards();
-    }
-
-    function applyLayout() {
-        const mode = filterToolbar.getLayoutValue();
-        grid.setLayoutMode(mode);
-        focusControls.hidden = mode !== "focus";
-
-        if (mode === "focus") {
-            const visible = getVisibleCards();
-            if (visible.length === 0) {
-                focusPosition.textContent = "0 / 0";
-                inspector.render(null);
-                publishScopedPreview();
-                return;
-            }
-            if (focusIndex >= visible.length) {
-                setFocusIndex(visible.length - 1);
-            }
-            if (focusIndex < 0) setFocusIndex(0);
-            grid.applyFocusVisibility(visible[focusIndex]);
-            focusPosition.textContent = focusIndex + 1 + " / " + visible.length;
-            btnPrev.disabled = focusIndex === 0;
-            btnNext.disabled = focusIndex === visible.length - 1;
-            inspector.render(visible[focusIndex]);
-        } else {
-            grid.applyFocusVisibility(null);
-            inspector.render(null);
-        }
-        document
-            .querySelectorAll(".image-container")
-            .forEach((c) => c.removeAttribute("title"));
-        publishScopedPreview();
-        // Single-target follow-focus teardown — see
-        // `LiveStateController.enforceSingleTargetFollowFocus`.
-        liveState.enforceSingleTargetFollowFocus(
-            mode === "focus" ? (getVisibleCards()[focusIndex] ?? null) : null,
-        );
-        // D2 — same teardown for the a11y overlay: navigating off the previewed card
-        // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
-        // user isn't looking at.
-        if (a11yOverlay()) {
-            const visible = getVisibleCards();
-            const card = mode === "focus" ? visible[focusIndex] : null;
-            if (!card || card.dataset.previewId !== a11yOverlay()) {
-                if (earlyFeatures()) {
-                    vscode.postMessage({
-                        command: "setA11yOverlay",
-                        previewId: a11yOverlay(),
-                        enabled: false,
-                    });
-                }
-                setA11yOverlay(null);
-            }
-        }
-        applyInteractiveButtonState();
-        applyRecordingButtonState();
-        applyA11yOverlayButtonState();
-        applyEarlyFeatureVisibility();
-    }
-
-    // Compute the focus-mode previewId. History is intentionally focus-only:
-    // list/grid/filter layouts publish null even if only one card is visible.
-    // Posts only when it changes so the extension does not rebuild history scope
-    // on ordinary filter/layout churn.
-    function publishScopedPreview() {
-        const visible = getVisibleCards();
-        let previewId = null;
-        if (filterToolbar.getLayoutValue() === "focus") {
-            if (
-                visible.length > 0 &&
-                focusIndex >= 0 &&
-                focusIndex < visible.length
-            ) {
-                previewId = visible[focusIndex].dataset.previewId || null;
-            }
-        }
-        if (previewId === lastScopedPreviewId) return;
-        setLastScopedPreviewId(previewId);
-        // Mirror to the store so subscribed components (the upcoming
-        // `<focus-controls>`, `<focus-inspector>`, etc.) react without
-        // re-walking the DOM. Same value goes upstream to the extension
-        // so the History panel can re-scope.
-        previewStore.setState({ focusedPreviewId: previewId });
-        vscode.postMessage({
-            command: "previewScopeChanged",
-            previewId,
-        });
-    }
-
-    function navigateFocus(delta: number): void {
-        const visible = getVisibleCards();
-        if (visible.length === 0) return;
-        setFocusIndex(
-            Math.max(0, Math.min(visible.length - 1, focusIndex + delta)),
-        );
-        applyLayout();
-    }
-
-    // Switch the layout to focus mode and target the supplied card.
-    // No-op when the card is filtered out (it wouldn't be in the visible
-    // set anyway, and forcing focus on an invisible card surfaces an
-    // empty pane).
-    function focusOnCard(card: HTMLElement): void {
-        const visible = getVisibleCards();
-        const idx = visible.indexOf(card);
-        if (idx === -1) return;
-        setFocusIndex(idx);
-        const current = filterToolbar.getLayoutValue();
-        if (current !== "focus") {
-            setPreviousLayout(current);
-            filterToolbar.setLayoutValue("focus");
-            state.layout = "focus";
-            vscode.setState(state);
-        }
-        applyLayout();
-    }
-
-    function exitFocus() {
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        filterToolbar.setLayoutValue(previousLayout);
-        state.layout = previousLayout;
-        vscode.setState(state);
-        applyLayout();
-    }
-
-    // Live-panel diff: only meaningful when one preview is focused. Pulls
-    // the currently focused card's previewId and asks the extension to
-    // resolve the comparison anchor (HEAD = latest archived render,
-    // main = latest archived render on the main branch).
-    function requestFocusedDiff(against: "head" | "main"): void {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) return;
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        showDiffOverlay(card, against, null, null, diffOverlayConfig);
-        vscode.postMessage({
-            command: "requestPreviewDiff",
-            previewId,
-            against,
-        });
-    }
-
-    // Live-panel "Launch on Device": runs the consumer's
-    // installDebug task and uses adb to start the launcher activity on
-    // a connected device. Only meaningful when one preview is focused
-    // -- the extension uses the focused previewId to pick the owning
-    // module before falling back to a quick-pick.
-    function requestLaunchOnDevice() {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) return;
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        vscode.postMessage({ command: "requestLaunchOnDevice", previewId });
     }
 
     // populateFilter / hasOption are gone — `<filter-toolbar>` owns the
@@ -700,11 +503,8 @@ export function setupPreviewBehavior(
         inspector,
         getAllPreviews: () => allPreviews,
         earlyFeatures,
-        inFocus: () => filterToolbar.getLayoutValue() === "focus",
-        focusedCard: () =>
-            filterToolbar.getLayoutValue() === "focus"
-                ? (getVisibleCards()[focusIndex] ?? null)
-                : null,
+        inFocus: () => focusController.inFocus(),
+        focusedCard: () => focusController.focusedCard(),
         enterFocus: focusOnCard,
         exitFocus,
         observeForViewport: observeCardForViewport,
