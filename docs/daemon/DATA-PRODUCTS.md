@@ -276,8 +276,49 @@ Each data product is a **pair of modules** under `data/<product>/`:
   to the daemon process.
 
 Why split: cores are reusable in non-daemon contexts (`:gradle-plugin`,
-`:cli`, third-party Robolectric tests). Connectors are thin adapters
-that depend on `:daemon:core`.
+`:cli`, third-party Robolectric tests, MCP clients in any language that
+pull just the schema artifact). Connectors are thin adapters that
+depend on `:daemon:core`.
 
 The `ImageProcessor` interface lives in `:daemon:core` so every
 connector can implement it without circular module dependencies.
+
+### Schema source-of-truth
+
+Each on-the-wire payload kind has exactly one `@Serializable` definition,
+in the corresponding `data-<product>-core` module. MCP clients in other
+languages can generate parsers from these without depending on the
+Compose runtime, daemon, or AndroidX:
+
+| Kind | Schema module | Schema type |
+|---|---|---|
+| `a11y/atf` | `:data-a11y-core` | `AccessibilityFindingsPayload`, `AccessibilityFinding` |
+| `a11y/hierarchy` | `:data-a11y-core` | `AccessibilityHierarchyPayload`, `AccessibilityNode` |
+| `a11y/touchTargets` | `:data-a11y-core` | `AccessibilityTouchTargetsPayload`, `AccessibilityTouchTarget` |
+| `a11y/overlay` | `:data-a11y-core` | `AccessibilityOverlayArtifact` (path-only) |
+| `compose/recomposition` | `:data-recomposition-core` | `RecompositionPayload`, `RecompositionNode` |
+| `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` |
+| `compose/theme` | `:data-theme-core` | `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` |
+| `compose/wallpaper` | `:data-wallpaper-core` | `WallpaperPayload` |
+| `fonts/used` | `:data-fonts-core` | `FontsUsedPayload`, `FontUsedEntry` |
+| `history/diff/regions` | `:data-history-core` | `HistoryDiffPayload`, `HistoryDiffRegion` |
+| `i18n/translations` | `:data-strings-core` | `I18nTranslationsPayload`, `I18nVisibleString` |
+| `layout/inspector` | `:data-layoutinspector-core` | `LayoutInspectorPayload`, `LayoutInspectorNode` |
+| `resources/used` | `:data-resources-core` | `ResourcesUsedPayload`, `ResourceUsedReference` |
+| `text/strings` | `:data-strings-core` | `TextStringsPayload`, `TextStringEntry` |
+
+Each `core` module advertises its kind identity and schemaVersion via a
+`<Feature>Product` object (`HistoryDiffRegionsProduct.KIND`,
+`Material3ThemeProduct.SCHEMA_VERSION`, etc.). Connectors and consumers
+both refer to those constants — never inline the string literals.
+
+### `data/scroll` is renderer-side only
+
+`data/scroll/core` carries scroll-scenario drivers (`ScrollDriver`,
+`ScrollGifEncoder`, `ScrollPreviewExtension`) that the renderer
+composes through the regular extension pipeline. There is no
+`data-scroll-connector` because scroll is not a daemon-side data
+product — it produces image artifacts (GIFs, long PNGs), not a JSON
+payload, so it has no `kind` and never appears on the
+`initialize.capabilities.dataProducts` list. The renderer drives it
+directly via the `PreviewPipelineStep` / scenario-driver hooks.

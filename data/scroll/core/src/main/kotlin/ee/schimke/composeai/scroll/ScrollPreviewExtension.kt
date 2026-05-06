@@ -7,7 +7,15 @@ import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
 
-/** Pipeline metadata for the scroll preview extension. */
+/**
+ * Pipeline metadata for the scroll preview extension.
+ *
+ * Unlike most `data/<feature>/`, scroll has only a `core/` module — there is no
+ * `data-scroll-connector`. Scroll produces image artifacts (long PNG, GIF) via the renderer's
+ * pipeline-step seam, not a JSON payload exposed on `data/fetch`. It never appears on
+ * `initialize.capabilities.dataProducts`. See `docs/daemon/DATA-PRODUCTS.md` § "`data/scroll` is
+ * renderer-side only".
+ */
 object ScrollPreviewExtension {
   const val ID: String = "scroll"
   const val ANNOTATION_ID: String = "scrolling-preview-annotation"
