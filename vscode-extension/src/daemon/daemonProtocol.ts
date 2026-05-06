@@ -1,13 +1,16 @@
 /**
- * TypeScript mirrors of the locked v1 protocol from
+ * TypeScript mirrors of the locked v2 protocol from
  * `daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt`.
  * Kept hand-rolled (no generator) so the round-trip golden fixtures under
  * `docs/daemon/protocol-fixtures/` are the only authority both sides depend on.
  *
- * Spec: docs/daemon/PROTOCOL.md (v1).
+ * Spec: docs/daemon/PROTOCOL.md (v2). v2 introduced `extensions/{list,enable,disable}`
+ * and emptied the default `initialize.capabilities.{dataProducts,dataExtensions,
+ * previewExtensions}` lists — clients call `extensions/enable` after the handshake to
+ * opt in to the contributions they actually use.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // JSON-RPC envelopes (PROTOCOL.md § 2)
 
@@ -304,6 +307,62 @@ export interface InitializeResult {
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };
+}
+
+// extensions/{list,enable,disable} (PROTOCOL.md § 3a)
+//
+// Daemons boot with every extension registered as inactive. Capability lists in
+// `InitializeResult.capabilities.{dataProducts,dataExtensions,previewExtensions}` start
+// empty; clients opt in via `extensions/enable`. Dependencies declared by an extension
+// are pulled in transitively but stay invisible to direct client RPC.
+
+export interface ExtensionInfo {
+    id: string;
+    displayName: string;
+    dependencies: string[];
+    publiclyEnabled: boolean;
+    /** True iff publicly enabled OR pulled in as a dependency of another public extension. */
+    active: boolean;
+    dataProductKinds: string[];
+    dataExtensionIds: string[];
+    previewExtensionIds: string[];
+}
+
+export interface ExtensionsListResult {
+    extensions: ExtensionInfo[];
+}
+
+export interface ExtensionsEnableParams {
+    ids: string[];
+}
+
+export interface ExtensionsEnableResult {
+    newlyEnabled: string[];
+    pulledIn: string[];
+    alreadyEnabled: string[];
+    unknown: string[];
+    /**
+     * Updated public capability snapshots — same shape as the `initialize.capabilities`
+     * fields. Saves a follow-up `extensions/list` round-trip after enabling.
+     */
+    dataProducts: DataProductCapability[];
+    dataExtensions: DataExtensionDescriptor[];
+    previewExtensions: PreviewExtensionDescriptor[];
+}
+
+export interface ExtensionsDisableParams {
+    ids: string[];
+}
+
+export interface ExtensionsDisableResult {
+    disabled: string[];
+    deactivated: string[];
+    stillActiveAsDependency: string[];
+    notEnabled: string[];
+    unknown: string[];
+    dataProducts: DataProductCapability[];
+    dataExtensions: DataExtensionDescriptor[];
+    previewExtensions: PreviewExtensionDescriptor[];
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "daemonVersion": "0.8.7-SNAPSHOT",
   "pid": 12345,
   "capabilities": {
