@@ -44,6 +44,11 @@ dependencies {
   // surface — see docs/daemon/CLASSLOADER-FORENSICS.md). `testImplementation` because it's only
   // referenced by `ClassloaderForensicsTest` and shouldn't widen the renderer's main classpath.
   testImplementation(project(":daemon:core"))
+  // ComposeSemanticsCoreFieldsTest exercises ComposeSemanticsDataProducer.writeArtifacts +
+  // ComposeSemanticsDataProductRegistry against real Compose composables to assert each
+  // preview surfaces the specific semantics field it isolates (testTag, contentDescription,
+  // role+clickable, mergeMode).
+  testImplementation(project(":data-layoutinspector-connector"))
 
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
   // they must match what the CONSUMER module declares, because AGP's
