@@ -1003,7 +1003,7 @@ class AndroidRecordingSessionTest {
         listOf(
           RecordingScriptEvent(
             tMs = 0L,
-            kind = StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT,
+            kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT,
           )
         )
       )
@@ -1060,7 +1060,7 @@ class AndroidRecordingSessionTest {
         listOf(
           RecordingScriptEvent(
             tMs = 0L,
-            kind = StateRecreateRecordingScriptEvents.STATE_RECREATE_EVENT,
+            kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT,
           )
         )
       )
