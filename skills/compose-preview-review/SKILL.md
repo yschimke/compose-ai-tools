@@ -10,11 +10,14 @@ agent-opened PRs that include preview screenshots, and wiring CI to post
 before/after diffs automatically.
 
 This skill assumes the **compose-preview** skill is installed — it owns
-the renderer, CLI, and Gradle plugin. The bootstrap installer covers
-both:
+the renderer, CLI, and Gradle plugin. Check first with
+`compose-preview --version`; if it's missing, ask the user to run the
+bootstrap installer (which covers both skills). The installer refuses to
+download without explicit `--yes` so agents don't pull binaries by accident:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
+  | bash -s -- --yes
 ```
 
 ## Source

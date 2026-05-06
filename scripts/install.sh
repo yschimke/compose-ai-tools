@@ -19,20 +19,35 @@
 # the consumer having to know the skill-bundle layout. Idempotent: rerunning
 # with the same version is a no-op.
 #
+# Download safety:
+#   By default this script will NOT download executables. It only proceeds
+#   when the user has explicitly opted in. This protects against agent loops
+#   that re-invoke the installer on every preview, and against generally
+#   blind `curl … | bash` consumption.
+#
+#   - First-time install requires --yes (or COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1).
+#     Without it, the script prints the exact command to run and exits 1.
+#   - When a different version is already installed, an upgrade requires
+#     --upgrade (or COMPOSE_PREVIEW_ACCEPT_UPGRADE=1). --upgrade implies --yes.
+#   - When the requested version matches what's already installed, the
+#     script is a no-op (just refreshes any missing symlinks; never downloads).
+#
 # Usage:
-#   scripts/install.sh                 # install latest release
-#   scripts/install.sh 0.3.2           # install a specific version
-#   VERSION=0.3.2 scripts/install.sh   # same, via env
-#   scripts/install.sh --android-sdk   # also install the Android SDK
-#                                      # (cmdline-tools + platforms;android-36 +
-#                                      # platform-tools + build-tools;36.0.0)
+#   scripts/install.sh --yes                   # install latest release
+#   scripts/install.sh --yes 0.3.2             # install a specific version
+#   VERSION=0.3.2 scripts/install.sh --yes     # same, via env
+#   scripts/install.sh --upgrade               # upgrade to latest
+#   scripts/install.sh --upgrade 0.4.0         # upgrade to specific version
+#   scripts/install.sh --yes --android-sdk     # also install the Android SDK
+#                                              # (cmdline-tools + platforms;android-36
+#                                              # + platform-tools + build-tools;36.0.0)
 #
 # Override locations:
-#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh
-#   PREFIX=$HOME/.local scripts/install.sh    # for the ~/.local/bin symlink
-#   REPO=yschimke/compose-ai-tools scripts/install.sh
-#   ANDROID_HOME=/opt/android-sdk scripts/install.sh --android-sdk
-#   INSTALL_ANDROID_SDK=1 scripts/install.sh  # same as --android-sdk
+#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh --yes
+#   PREFIX=$HOME/.local scripts/install.sh --yes  # for the ~/.local/bin symlink
+#   REPO=yschimke/compose-ai-tools scripts/install.sh --yes
+#   ANDROID_HOME=/opt/android-sdk scripts/install.sh --yes --android-sdk
+#   INSTALL_ANDROID_SDK=1 scripts/install.sh --yes  # same as --android-sdk
 #
 # Requires: bash, curl, tar, sha256sum (or shasum), and Java 17+ on PATH at
 # run time (not install time). The --android-sdk path additionally needs
@@ -69,6 +84,8 @@ REPO="${REPO:-yschimke/compose-ai-tools}"
 SKILL_DIR="${SKILL_DIR:-$HOME/.claude/skills/compose-preview}"
 PREFIX="${PREFIX:-$HOME/.local}"
 INSTALL_ANDROID_SDK="${INSTALL_ANDROID_SDK:-0}"
+ACCEPT_DOWNLOAD="${COMPOSE_PREVIEW_ACCEPT_DOWNLOAD:-0}"
+ACCEPT_UPGRADE="${COMPOSE_PREVIEW_ACCEPT_UPGRADE:-0}"
 
 # Argument parsing — flags first, then positional VERSION. Flags can appear in
 # any order. Unknown flags are an error so typos don't get silently swallowed.
@@ -76,6 +93,8 @@ positional=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --android-sdk) INSTALL_ANDROID_SDK=1; shift ;;
+    --yes|-y) ACCEPT_DOWNLOAD=1; shift ;;
+    --upgrade) ACCEPT_UPGRADE=1; ACCEPT_DOWNLOAD=1; shift ;;
     --) shift; positional+=("$@"); break ;;
     -*) echo "error: unknown flag: $1" >&2; exit 1 ;;
     *) positional+=("$1"); shift ;;
@@ -205,6 +224,9 @@ if [[ "$CLAUDE_CLOUD" == 1 ]]; then
   else
     JDK17_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
     if [[ ! -x "$JDK17_HOME/bin/java" ]]; then
+      if [[ "$ACCEPT_DOWNLOAD" != 1 && "$ACCEPT_UPGRADE" != 1 ]]; then
+        die "no JDK 17+ on PATH; rerun with --yes to apt-install openjdk-17-jdk-headless"
+      fi
       log "claude cloud: no JDK 17+ detected; installing openjdk-17-jdk-headless"
       SUDO=""
       if [[ $EUID -ne 0 ]]; then
@@ -313,18 +335,32 @@ if [[ "$INSTALL_ANDROID_SDK" == 1 ]]; then
 fi
 
 # ---- Resolve version ------------------------------------------------------
+#
+# The order matters for the download-safety gate further down: detect what's
+# already installed BEFORE talking to github.com, so a re-invocation that
+# wants the existing version can short-circuit without any network at all.
+
+SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
+INSTALLED_VERSION="$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)"
 
 if [[ -z "$VERSION" ]]; then
-  log "resolving latest release of $REPO"
-  # Use the public HTML redirect rather than api.github.com; the API is
-  # rate-limited on shared sandbox IPs and would 403 for unauthenticated
-  # callers. The redirect target is /releases/tag/v<VER>.
-  RESOLVED="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-    "https://github.com/$REPO/releases/latest")" \
-    || die "could not reach github.com/$REPO/releases/latest"
-  VERSION="${RESOLVED##*/v}"
-  [[ -n "$VERSION" && "$VERSION" != "$RESOLVED" ]] \
-    || die "could not parse version from $RESOLVED"
+  if [[ -n "$INSTALLED_VERSION" && "$ACCEPT_UPGRADE" != 1 ]]; then
+    # Something is already installed and the caller didn't ask to upgrade.
+    # Default to the installed version so re-invocations are pure no-ops.
+    VERSION="$INSTALLED_VERSION"
+    log "using installed version $VERSION (pass --upgrade to fetch latest)"
+  else
+    log "resolving latest release of $REPO"
+    # Use the public HTML redirect rather than api.github.com; the API is
+    # rate-limited on shared sandbox IPs and would 403 for unauthenticated
+    # callers. The redirect target is /releases/tag/v<VER>.
+    RESOLVED="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+      "https://github.com/$REPO/releases/latest")" \
+      || die "could not reach github.com/$REPO/releases/latest"
+    VERSION="${RESOLVED##*/v}"
+    [[ -n "$VERSION" && "$VERSION" != "$RESOLVED" ]] \
+      || die "could not parse version from $RESOLVED"
+  fi
 fi
 
 CLI_ASSET="compose-preview-${VERSION}.tar.gz"
@@ -333,13 +369,82 @@ CLI_URL="https://github.com/$REPO/releases/download/v${VERSION}/${CLI_ASSET}"
 CLI_DEST="$SKILL_DIR/cli"
 LAUNCHER="$CLI_DEST/compose-preview-${VERSION}/bin/compose-preview"
 SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
-SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
 
 # Sibling skill — same parent dir as $SKILL_DIR. Bundle covers PR-review
 # workflows; pairs with compose-preview but ships separately so an agent
 # loading just one of them doesn't pull in the other's content.
 REVIEW_SKILL_DIR="$(dirname "$SKILL_DIR")/compose-preview-review"
 REVIEW_SKILL_VERSION_FILE="$REVIEW_SKILL_DIR/.skill-version"
+
+# ---- Download-safety gate -------------------------------------------------
+#
+# Three states, three behaviours:
+#   1. Same version already installed → no download, refresh missing symlinks
+#      and exit. Always allowed; does not require any flag.
+#   2. Nothing installed → fresh install, requires --yes (or
+#      COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1). Otherwise prints the exact command
+#      to run and exits 1 without touching the network beyond the version
+#      probe above.
+#   3. Different version installed → upgrade, requires --upgrade (or
+#      COMPOSE_PREVIEW_ACCEPT_UPGRADE=1). Same fail-with-instructions otherwise.
+#
+# The point: an agent that re-runs the installer between previews must not
+# silently re-fetch tarballs. The user has to actively opt in.
+
+print_install_instructions() {
+  cat >&2 <<EOF
+
+compose-preview is not installed.
+
+By default this script does not download executables. To proceed, re-run
+it with --yes (which confirms you accept the download):
+
+  scripts/install.sh --yes${VERSION:+ $VERSION}
+
+Or pipe form:
+
+  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh \\
+    | bash -s -- --yes
+
+Equivalent env var: COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1.
+EOF
+}
+
+print_upgrade_instructions() {
+  cat >&2 <<EOF
+
+compose-preview $INSTALLED_VERSION is currently installed; this run would
+replace it with $VERSION.
+
+By default the installer refuses to overwrite an existing version. To
+upgrade, re-run with --upgrade:
+
+  scripts/install.sh --upgrade${1:+ $1}
+
+Or pipe form:
+
+  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh \\
+    | bash -s -- --upgrade
+
+Equivalent env var: COMPOSE_PREVIEW_ACCEPT_UPGRADE=1. Pass nothing if you
+want to keep $INSTALLED_VERSION — leaving --upgrade off is the safe choice.
+EOF
+}
+
+# Same-version short-circuit happens later (after function defs), so it can
+# call link_skills_for_detected_hosts / maybe_write_env_file. Here we only
+# enforce the consent gate, which never needs those helpers.
+if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
+  : # short-circuit eligible — handled below
+elif [[ -n "$INSTALLED_VERSION" && "$INSTALLED_VERSION" != "$VERSION" ]]; then
+  if [[ "$ACCEPT_UPGRADE" != 1 ]]; then
+    print_upgrade_instructions "$VERSION"
+    exit 1
+  fi
+elif [[ "$ACCEPT_DOWNLOAD" != 1 ]]; then
+  print_install_instructions
+  exit 1
+fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -411,15 +516,23 @@ install_skill_bundle() {
   printf '%s\n' "$VERSION" > "$marker"
 }
 
-# ---- Everything-already-installed short-circuit --------------------------
-# Both skill markers + CLI launcher + both symlinks all line up -> done.
+# ---- Same-version short-circuit ------------------------------------------
+# Runs after all helper functions are defined. Refreshes any symlinks the
+# caller might have blown away and repairs a missing sibling skill bundle
+# (cheap, install_skill_bundle is itself a no-op when the per-bundle marker
+# matches), but never re-downloads the CLI tarball or the main skill.
+#
+# Same-version repair doesn't trigger the consent gate above: the user
+# already accepted this version when they first installed it. The gate
+# exists to stop *new* downloads going through silently, not to block
+# topping up a previously-accepted install.
 
-if [[ -x "$LAUNCHER" \
-   && "$(readlink "$SKILL_LAUNCHER" 2>/dev/null || true)" == *"compose-preview-${VERSION}"* \
-   && "$(readlink "$BIN_DIR/compose-preview" 2>/dev/null || true)" == "$LAUNCHER" \
-   && "$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" \
-   && "$(cat "$REVIEW_SKILL_VERSION_FILE" 2>/dev/null || true)" == "$VERSION" ]]; then
-  log "compose-preview $VERSION already installed and linked"
+if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
+  log "compose-preview $VERSION already installed"
+  install_skill_bundle "compose-preview-review" "$REVIEW_SKILL_DIR" || true
+  mkdir -p "$SKILL_DIR/bin" "$BIN_DIR"
+  ln -sfn "../cli/compose-preview-${VERSION}/bin/compose-preview" "$SKILL_LAUNCHER"
+  ln -sfn "$LAUNCHER" "$BIN_DIR/compose-preview"
   "$LAUNCHER" --help >/dev/null 2>&1 || die "installed launcher is broken: $LAUNCHER"
   link_skills_for_detected_hosts
   maybe_write_env_file
