@@ -16,6 +16,7 @@
     "exclude": ["node_modules", "src/webview/**"],
     "files": [
         "src/webview/preview/cardData.ts",
+        "src/webview/preview/liveTransitions.ts",
         "src/webview/preview/moduleReadiness.ts",
         "src/webview/history/historyData.ts",
         "src/webview/shared/diffStatsLabel.ts",
