@@ -199,6 +199,15 @@ ignore renderFinished there" split is the expected pattern). New
 clients that only care about the buttery path can ignore
 `renderFinished` entirely on streamed previews.
 
+## VS Code opt-in
+
+The protocol is gated behind `composePreview.streaming.enabled` (default
+`false`). The legacy `<img src=…>` swap path stays the stable default
+until the new wire shape has bedded down; flipping the setting on routes
+live cards through `stream/start` + the canvas painter. Reads through
+`getConfiguration` so workspace + user scopes layer the usual way; the
+typed accessor lives in `vscode-extension/src/daemon/streamingSetting.ts`.
+
 ## Tests
 
 - `:daemon:core` `StreamFrameHeaderTest` — round-trip + magic / version /
@@ -209,3 +218,6 @@ clients that only care about the buttery path can ignore
   streams; mirrors `InteractiveRpcIntegrationTest`.
 - `vscode-extension` `streamClient.test.ts` — newest-wins queue,
   multi-stream demux, sink isolation, late-bind buffering.
+- `vscode-extension` `streamingSetting.test.ts` — pins the setting key,
+  default, and `package.json` advertisement so the opt-in can't silently
+  drift away from the documented spelling.

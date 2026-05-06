@@ -134,6 +134,11 @@
                     "default": false,
                     "description": "Enable early, unstable preview features in the VS Code panel, including focus-mode diffs, focus inspector extension layers, a11y overlay controls, recording, and diff-all commands. Focus mode and live interactive previews remain available when this is off."
                 },
+                "composePreview.streaming.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use the new `composestream/1` live-frame protocol (canvas paint + newest-wins queue) for live preview cards instead of the legacy <img src=…> swap. Eliminates the per-frame blink and the cold-blank on scroll-back-into-view; falls back automatically when the daemon is older than the protocol. Pre-1.0 — opt in to test, leave off for the stable path. See docs/daemon/STREAMING.md."
+                },
                 "composePreview.logging.level": {
                     "type": "string",
                     "enum": [
