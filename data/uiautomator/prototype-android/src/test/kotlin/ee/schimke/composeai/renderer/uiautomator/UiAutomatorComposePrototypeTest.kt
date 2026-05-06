@@ -122,4 +122,37 @@ class UiAutomatorComposePrototypeTest {
     rule.setContent { Text("Hello") }
     assertNull(UiAutomator.findObject(rule, By.text("Goodbye")))
   }
+
+  /**
+   * Default (merged) tree puts text + OnClick on the same node — `.click()` fires. Unmerged
+   * tree separates them — `By.text("Submit")` finds the inner `Text`, which has no `OnClick`,
+   * so `.click()` reports unsupported. This pins the documented trade-off so it doesn't
+   * silently change.
+   */
+  @Test
+  fun `useUnmergedTree splits Button into separate text and click nodes`() {
+    var clicks = 0
+    rule.setContent { Button(onClick = { clicks++ }) { Text("Submit") } }
+
+    // Merged (default) — one node with both text and OnClick.
+    val merged = UiAutomator.findObject(rule, By.text("Submit"))
+    assertNotNull(merged)
+    assertTrue(merged!!.click())
+    assertEquals(1, clicks)
+
+    // Unmerged — finds the inner Text, which has no OnClick.
+    val unmergedTextNode = UiAutomator.findObject(rule, By.text("Submit"), useUnmergedTree = true)
+    assertNotNull(unmergedTextNode)
+    assertEquals("Submit", unmergedTextNode!!.text?.toString())
+    assertEquals(false, unmergedTextNode.click())
+    assertEquals("clicks didn't change on the inner Text", 1, clicks)
+
+    // Unmerged Button parent — clickable but text comes only from merging, so the unmerged
+    // Button's own Text property is empty.
+    val unmergedButton = UiAutomator.findObject(rule, By.clickable(), useUnmergedTree = true)
+    assertNotNull(unmergedButton)
+    assertTrue(unmergedButton!!.text.isNullOrEmpty())
+    assertTrue(unmergedButton.click())
+    assertEquals(2, clicks)
+  }
 }

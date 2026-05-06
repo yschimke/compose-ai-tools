@@ -148,14 +148,23 @@ public object UiAutomator {
    * `SemanticsActions` lambdas the same way `:daemon:android`'s
    * `performSemanticsActionByContentDescription` does).
    *
-   * The **merged** tree is used — same view Compose's accessibility delegate exposes to the
-   * platform (and what real on-device UIAutomator selectors match against). This is what makes
-   * `By.text("Submit")` target a `Button { Text("Submit") }` as a single node carrying both
-   * the text and the `OnClick`. Walking the unmerged tree would find the inner `Text` (no
-   * `OnClick`) and the `Button` (no text) as separate nodes, defeating the point of the DSL.
+   * **Tree variant** ([useUnmergedTree], default `false`):
+   *  - **Merged** (default) — same view Compose's accessibility delegate exposes to the
+   *    platform, and what real on-device UIAutomator selectors match against.
+   *    `By.text("Submit")` matches a `Button { Text("Submit") }` as a single node carrying
+   *    both the text and the `OnClick`.
+   *  - **Unmerged** — every Compose node visible to the test framework. Use when you need to
+   *    target a specific inner node (e.g. the inner `Text` of a `Button` for its raw label,
+   *    or distinct child rows that the merged Button collapses into one announcement). Note
+   *    that selectors composed across "this node has the text AND has OnClick" will fail in
+   *    unmerged mode because text and click action live on separate nodes.
    */
-  public fun findObject(rule: ComposeContentTestRule, selector: Selector): SemanticsUiObject? {
-    val root = rule.onRoot(useUnmergedTree = false).fetchSemanticsNode()
+  public fun findObject(
+    rule: ComposeContentTestRule,
+    selector: Selector,
+    useUnmergedTree: Boolean = false,
+  ): SemanticsUiObject? {
+    val root = rule.onRoot(useUnmergedTree = useUnmergedTree).fetchSemanticsNode()
     walkBacking(SemanticsBacking(root)) { backing ->
       if (selector.matches(backing) && backing is SemanticsBacking) {
         return SemanticsUiObject(rule, backing.node)
@@ -164,12 +173,13 @@ public object UiAutomator {
     return null
   }
 
-  /** Pre-order walk; all matches in document order. */
+  /** Pre-order walk; all matches in document order. See [findObject] for the [useUnmergedTree] semantics. */
   public fun findObjects(
     rule: ComposeContentTestRule,
     selector: Selector,
+    useUnmergedTree: Boolean = false,
   ): List<SemanticsUiObject> {
-    val root = rule.onRoot(useUnmergedTree = false).fetchSemanticsNode()
+    val root = rule.onRoot(useUnmergedTree = useUnmergedTree).fetchSemanticsNode()
     val out = mutableListOf<SemanticsUiObject>()
     walkBacking(SemanticsBacking(root)) { backing ->
       if (selector.matches(backing) && backing is SemanticsBacking) {
