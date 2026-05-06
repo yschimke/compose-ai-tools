@@ -138,6 +138,10 @@ include(":data-wallpaper-connector")
 
 project(":data-wallpaper-connector").projectDir = file("data/wallpaper/connector")
 
+include(":data-recomposition-core")
+
+project(":data-recomposition-core").projectDir = file("data/recomposition/core")
+
 include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
