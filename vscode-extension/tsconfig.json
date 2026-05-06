@@ -21,6 +21,7 @@
         "src/webview/shared/diffStatsLabel.ts",
         "src/webview/shared/safeIndex.ts",
         "src/webview/shared/store.ts",
+        "src/webview/shared/storeController.ts",
         "src/webview/shared/types.ts"
     ]
 }
