@@ -2001,6 +2001,133 @@ class DaemonMcpServerTest {
     }
   }
 
+  @Test
+  fun `manifest poller imports new previews when discoverPreviews rewrites previews-json`() {
+    // Reproduces issue #834: a Gradle `discoverPreviews` re-run between renders rewrites the
+    // module's `previews.json` to include new `@Preview` ids. The MCP server must pick that up
+    // without a daemon restart so `render_preview` for the new id no longer fails with
+    // `PreviewManifestRouter: no manifest entry`.
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("manifest-workspace")
+      tmp.newFolder("manifest-workspace", "module")
+      val manifestFile = tmp.newFile("manifest-workspace.previews.json")
+      // Boot manifest — one entry. The supervisor's `synthesiseInitialDiscovery` reads it on
+      // initialize, so the catalog already contains `Initial`.
+      manifestFile.writeText(
+        """{"previews":[{"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"}]}"""
+      )
+      val initialMtime = System.currentTimeMillis() - 60_000
+      assertThat(manifestFile.setLastModified(initialMtime)).isTrue()
+
+      freshFactory.daemonConfigurer = { fake ->
+        fake.advertisedManifestPath = manifestFile.absolutePath
+      }
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "manifest-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+
+      // The synthesiseInitialDiscovery fan-out triggers a list_changed; drain it.
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      // Sanity: the boot id is in the catalog via `resources/list`.
+      val listBefore =
+        json
+          .decodeFromJsonElement(
+            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            freshClient.request("resources/list"),
+          )
+          .resources
+          .map { it.uri }
+      assertThat(listBefore.any { it.contains("com.example.Initial") }).isTrue()
+
+      // Gradle's `discoverPreviews` re-runs and rewrites the manifest with a new id.
+      manifestFile.writeText(
+        """
+        {"previews":[
+          {"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"},
+          {"id":"com.example.WeatherForecast_Light","className":"com.example","methodName":"WeatherForecast_Light","displayName":"WeatherForecast_Light"}
+        ]}
+        """
+          .trimIndent()
+      )
+      assertThat(manifestFile.setLastModified(initialMtime + 5_000)).isTrue()
+
+      // Drive the poll explicitly (the scheduler is disabled).
+      freshServer.runSourceFreshnessPoll()
+
+      // The new id should now be visible to MCP clients without a restart.
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val listAfter =
+        json
+          .decodeFromJsonElement(
+            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            freshClient.request("resources/list"),
+          )
+          .resources
+          .map { it.uri }
+      assertThat(listAfter.any { it.contains("com.example.WeatherForecast_Light") }).isTrue()
+      assertThat(listAfter.any { it.contains("com.example.Initial") }).isTrue()
+
+      // And the manifest counters should reflect the reread + the diff.
+      val manifest =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["manifest"]!!
+          .jsonObject
+      assertThat(manifest["rereads"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(manifest["previewsAdded"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(manifest["previewsRemoved"]?.jsonPrimitive?.content?.toLong()).isEqualTo(0L)
+
+      // Idempotency: a second poll with no manifest change does not re-fire.
+      freshServer.runSourceFreshnessPoll()
+      val manifestAfter =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["manifest"]!!
+          .jsonObject
+      assertThat(manifestAfter["rereads"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // D1 — data product tools
   // -------------------------------------------------------------------------

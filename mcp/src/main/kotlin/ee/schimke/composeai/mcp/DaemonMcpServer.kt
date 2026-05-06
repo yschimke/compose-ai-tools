@@ -659,6 +659,16 @@ class DaemonMcpServer(
         freshnessMetrics.pollingCycles.incrementAndGet()
         supervisor.listProjects().forEach { project ->
           project.daemons.forEach { (modulePath, daemon) ->
+            // Manifest stat first — a Gradle `discoverPreviews` re-run between renders rewrites
+            // `previews.json`. Picking that up here means new preview ids land in the catalog
+            // (and `render_preview` works) before the user's next request, without the
+            // restart-the-MCP-server escape hatch reported in issue #834.
+            runCatching { reloadManifestIfChanged(daemon) }
+              .onFailure {
+                System.err.println(
+                  "compose-preview-mcp: manifest reload failed for ${daemon.workspaceId}/${daemon.modulePath}: ${it.message}"
+                )
+              }
             val byId = catalog[DaemonAddr(project.workspaceId, modulePath)] ?: return@forEach
             byId.values.forEach { entry ->
               freshnessMetrics.pollingPreviewsScanned.incrementAndGet()
@@ -681,6 +691,73 @@ class DaemonMcpServer(
         // the poller silently. Logging keeps the behaviour observable.
         System.err.println("compose-preview-mcp: source-freshness poll failed: ${it.message}")
       }
+  }
+
+  /**
+   * Per-(workspace, module) last-seen mtime + content hash of the daemon's `previews.json`. The
+   * fast path (mtime unchanged) skips re-reading the file; on mtime advance we hash to confirm a
+   * real content change before incurring the parse + diff + dispatch cost, matching the
+   * source-freshness probe's two-stage shape.
+   */
+  private val manifestState = ConcurrentHashMap<DaemonAddr, ManifestState>()
+
+  private data class ManifestState(val mtimeMs: Long, val hash: String)
+
+  /**
+   * Stats the daemon's `previews.json`; if the file changed since the last cycle, parses it, diffs
+   * the preview ids against the current catalog, and routes a synthetic `discoveryUpdated` through
+   * [onDiscoveryUpdated] so the catalog + subscribers + watch-propagator all see the new ids
+   * exactly as if the daemon had pushed the notification itself. Idempotent: a no-op when the
+   * manifest hasn't changed since the last cycle.
+   *
+   * Internal so tests can drive it directly without racing the scheduled poll.
+   */
+  internal fun reloadManifestIfChanged(daemon: SupervisedDaemon) {
+    val manifestPath = daemon.manifestPath?.takeIf { it.isNotBlank() } ?: return
+    val file = File(manifestPath)
+    if (!file.isFile) return
+    freshnessMetrics.manifestStats.incrementAndGet()
+    val mtime = file.lastModified().takeIf { it > 0L } ?: return
+    val addr = DaemonAddr(daemon.workspaceId, daemon.modulePath)
+    val previous = manifestState[addr]
+    if (previous != null && mtime <= previous.mtimeMs) return
+
+    val hash = runCatching { sha256Hex(file) }.getOrNull() ?: return
+    if (previous != null && hash == previous.hash) {
+      // mtime moved (e.g. `touch` on previews.json) but bytes didn't — refresh mtime so the
+      // next cycle skips the hash, and bail out without redispatching.
+      manifestState[addr] = ManifestState(mtime, hash)
+      return
+    }
+
+    val text = runCatching { file.readText() }.getOrNull() ?: return
+    val previews =
+      runCatching {
+          val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
+          (obj["previews"] as? JsonArray)?.mapNotNull { it as? JsonObject }
+        }
+        .getOrNull() ?: return
+    manifestState[addr] = ManifestState(mtime, hash)
+
+    val incomingIds = previews.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }.toSet()
+    val currentIds = catalog[addr]?.keys?.toSet() ?: emptySet()
+    val added = previews.filter { (it["id"]?.jsonPrimitive?.contentOrNull ?: "") !in currentIds }
+    val changed = previews.filter { (it["id"]?.jsonPrimitive?.contentOrNull ?: "") in currentIds }
+    val removed = currentIds.filter { it !in incomingIds }
+
+    if (added.isEmpty() && removed.isEmpty()) return
+
+    freshnessMetrics.manifestRereads.incrementAndGet()
+    freshnessMetrics.manifestPreviewsAdded.addAndGet(added.size.toLong())
+    freshnessMetrics.manifestPreviewsRemoved.addAndGet(removed.size.toLong())
+
+    val params = buildJsonObject {
+      put("added", JsonArray(added))
+      put("removed", JsonArray(removed.map { JsonPrimitive(it) }))
+      put("changed", JsonArray(changed))
+      put("totalPreviews", JsonPrimitive(previews.size))
+    }
+    onDiscoveryUpdated(daemon, params)
   }
 
   /**

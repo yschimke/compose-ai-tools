@@ -43,6 +43,14 @@ class FreshnessMetrics {
   val pollingPreviewsScanned = AtomicLong()
   val pollingChangesDetected = AtomicLong()
 
+  // Manifest reload counters — bumped when the poller re-reads `previews.json` because its
+  // mtime+hash advanced. Lets an operator confirm the issue-#834 path actually fires when
+  // Gradle's `discoverPreviews` rewrites the manifest between renders.
+  val manifestStats = AtomicLong()
+  val manifestRereads = AtomicLong()
+  val manifestPreviewsAdded = AtomicLong()
+  val manifestPreviewsRemoved = AtomicLong()
+
   // Random-sampling counters — the deterministic-render probe bumps these.
   val samplingProbes = AtomicLong()
   val samplingSkippedBusy = AtomicLong()
@@ -84,6 +92,12 @@ class FreshnessMetrics {
       put("cycles", JsonPrimitive(pollingCycles.get()))
       put("previewsScanned", JsonPrimitive(pollingPreviewsScanned.get()))
       put("changesDetected", JsonPrimitive(pollingChangesDetected.get()))
+    }
+    putJsonObject("manifest") {
+      put("stats", JsonPrimitive(manifestStats.get()))
+      put("rereads", JsonPrimitive(manifestRereads.get()))
+      put("previewsAdded", JsonPrimitive(manifestPreviewsAdded.get()))
+      put("previewsRemoved", JsonPrimitive(manifestPreviewsRemoved.get()))
     }
     putJsonObject("sampling") {
       put("probes", JsonPrimitive(samplingProbes.get()))
