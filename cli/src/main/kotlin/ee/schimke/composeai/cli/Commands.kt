@@ -345,6 +345,57 @@ abstract class Command(protected val args: List<String>) {
   }
 
   /**
+   * Outcome of [renderAllModules] — the full result of "discover preview modules, run their
+   * `:renderAllPreviews` tasks, read each module's manifest, and build the merged [PreviewResult]
+   * list." Each subcommand decides what to do with this (filter, format, exit code) but the gradle
+   * drive is shared.
+   *
+   * [buildOk] reflects the gradle build result. Some callers (`show`) exit non-zero immediately on
+   * `false`; others (`a11y`) still want to surface the partial findings written before gradle gave
+   * up, so the bool is data on the outcome rather than an early-return.
+   */
+  protected data class RenderModulesOutcome(
+    val buildOk: Boolean,
+    val modules: List<PreviewModule>,
+    val manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    val results: List<PreviewResult>,
+  )
+
+  /**
+   * Shared "discover modules → run `:renderAllPreviews` → load manifests → build results" pipeline
+   * used by `show` and `a11y` (and follow-up commands). Each subcommand contributes the per-feature
+   * gradle properties via [gradleArguments] (e.g. a11y enables checks via
+   * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`); the shared body is what was
+   * previously duplicated in their `run()` methods.
+   *
+   * [silenceStdout] mirrors each command's `--json` flag: when on, the shared helpers redirect
+   * stdout to stderr so the gradle progress output doesn't poison the JSON envelope.
+   */
+  protected fun renderAllModules(
+    silenceStdout: Boolean,
+    gradleArguments: List<String> = emptyList(),
+  ): RenderModulesOutcome {
+    var outcome: RenderModulesOutcome? = null
+    withGradle(silenceStdout = silenceStdout) { gradle ->
+      val modules = withGradleStdout(silenceStdout) { resolveModules(gradle) }
+      val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+      val buildOk =
+        withGradleStdout(silenceStdout) { runGradle(gradle, *tasks, arguments = gradleArguments) }
+      if (!buildOk) reportRenderFailures(gradle)
+      val manifests = readAllManifests(modules)
+      val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+      outcome =
+        RenderModulesOutcome(
+          buildOk = buildOk,
+          modules = modules,
+          manifests = manifests,
+          results = results,
+        )
+    }
+    return outcome ?: error("renderAllModules: gradle block did not produce an outcome")
+  }
+
+  /**
    * Prints failing tests captured live during the build by [GradleConnection]'s Tooling API
    * listener. Called on Gradle build failure so users see the actual test exception in the CLI log
    * instead of just Gradle's "There were failing tests. See the report at file:///…/index.html"
@@ -697,106 +748,96 @@ class ShowCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    withGradle(silenceStdout = jsonOutput) { gradle ->
-      lateinit var modules: List<PreviewModule>
-      val buildOk =
-        withGradleStdout(jsonOutput) {
-          modules = resolveModules(gradle)
-          val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
-          runGradle(gradle, *tasks)
-        }
-
-      if (!buildOk) {
-        reportRenderFailures(gradle)
-        System.err.println("Render failed")
-        System.out.flush()
-        exitProcess(2)
-      }
-
-      val manifests = readAllManifests(modules)
-      if (manifests.isEmpty() || manifests.all { it.second.previews.isEmpty() }) {
-        if (jsonOutput) println(encodeResponse(emptyList(), countsScope = emptyList()))
-        else println("No previews found.")
-        // Mirror ShowResourcesCommand: a workspace with the plugin applied
-        // but no @Preview functions is a legitimate state (mid-adoption,
-        // first-ever render in CI), not a CLI error. Returning non-zero
-        // here trips `bash -e` in preview-comment.yml on the first run.
-        // Flush before exit because System.exit doesn't flush stdout, and
-        // the redirected file would otherwise lose this println (issue
-        // #292).
-        System.out.flush()
-        exitProcess(0)
-      }
-
-      val all = buildResults(manifests)
-      val filtered = applyFilters(all)
-
-      if (filtered.isEmpty()) {
-        // Counts reflect the full discovered set so an agent using
-        // `--changed-only` can still see "60 unchanged, 0 changed"
-        // and skip a follow-up query.
-        if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
-        else println("No previews matched.")
-        System.out.flush()
-        exitProcess(3)
-      }
-
-      if (jsonOutput) {
-        println(encodeResponse(filtered, countsScope = all))
-      } else {
-        var lastModule: String? = null
-        for (r in filtered) {
-          if (modules.size > 1 && r.module != lastModule) {
-            println("[${r.module}]")
-            lastModule = r.module
-          }
-          val statusTag =
-            when {
-              r.pngPath == null -> " [no PNG]"
-              r.anyChanged() -> " [changed]"
-              else -> ""
-            }
-          val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
-          println("${r.functionName} (${r.id})$statusTag$shaTag")
-          if (r.captures.size <= 1) {
-            if (r.pngPath != null) println("  ${r.pngPath}")
-          } else {
-            for (c in r.captures) {
-              val tag =
-                when {
-                  c.pngPath == null -> " [no PNG]"
-                  c.changed == true -> " [changed]"
-                  else -> ""
-                }
-              val coord =
-                listOfNotNull(
-                    c.advanceTimeMillis?.let { "${it}ms" },
-                    c.scroll?.let { "scroll ${it.mode.lowercase()}" },
-                  )
-                  .joinToString(" · ")
-                  .ifEmpty { "default" }
-              println("  [$coord]$tag ${c.pngPath ?: ""}")
-            }
-          }
-        }
-      }
-
-      // "Missing" = at least one capture failed to produce a PNG.
-      val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
-      if (missing.isNotEmpty()) {
-        System.err.println(
-          "Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
-        )
-        System.err.println(
-          "Check the Gradle output above — a common cause is the `renderPreviews` task " +
-            "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-            "testClassesDirs."
-        )
-        System.out.flush()
-        exitProcess(2)
-      }
+    val outcome = renderAllModules(silenceStdout = jsonOutput)
+    if (!outcome.buildOk) {
+      System.err.println("Render failed")
       System.out.flush()
+      exitProcess(2)
     }
+
+    if (outcome.manifests.isEmpty() || outcome.manifests.all { it.second.previews.isEmpty() }) {
+      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = emptyList()))
+      else println("No previews found.")
+      // Mirror ShowResourcesCommand: a workspace with the plugin applied
+      // but no @Preview functions is a legitimate state (mid-adoption,
+      // first-ever render in CI), not a CLI error. Returning non-zero
+      // here trips `bash -e` in preview-comment.yml on the first run.
+      // Flush before exit because System.exit doesn't flush stdout, and
+      // the redirected file would otherwise lose this println (issue
+      // #292).
+      System.out.flush()
+      exitProcess(0)
+    }
+
+    val all = outcome.results
+    val modules = outcome.modules
+    val filtered = applyFilters(all)
+
+    if (filtered.isEmpty()) {
+      // Counts reflect the full discovered set so an agent using
+      // `--changed-only` can still see "60 unchanged, 0 changed"
+      // and skip a follow-up query.
+      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
+      else println("No previews matched.")
+      System.out.flush()
+      exitProcess(3)
+    }
+
+    if (jsonOutput) {
+      println(encodeResponse(filtered, countsScope = all))
+    } else {
+      var lastModule: String? = null
+      for (r in filtered) {
+        if (modules.size > 1 && r.module != lastModule) {
+          println("[${r.module}]")
+          lastModule = r.module
+        }
+        val statusTag =
+          when {
+            r.pngPath == null -> " [no PNG]"
+            r.anyChanged() -> " [changed]"
+            else -> ""
+          }
+        val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
+        println("${r.functionName} (${r.id})$statusTag$shaTag")
+        if (r.captures.size <= 1) {
+          if (r.pngPath != null) println("  ${r.pngPath}")
+        } else {
+          for (c in r.captures) {
+            val tag =
+              when {
+                c.pngPath == null -> " [no PNG]"
+                c.changed == true -> " [changed]"
+                else -> ""
+              }
+            val coord =
+              listOfNotNull(
+                  c.advanceTimeMillis?.let { "${it}ms" },
+                  c.scroll?.let { "scroll ${it.mode.lowercase()}" },
+                )
+                .joinToString(" · ")
+                .ifEmpty { "default" }
+            println("  [$coord]$tag ${c.pngPath ?: ""}")
+          }
+        }
+      }
+    }
+
+    // "Missing" = at least one capture failed to produce a PNG.
+    val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
+    if (missing.isNotEmpty()) {
+      System.err.println(
+        "Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
+      )
+      System.err.println(
+        "Check the Gradle output above — a common cause is the `renderPreviews` task " +
+          "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
+          "testClassesDirs."
+      )
+      System.out.flush()
+      exitProcess(2)
+    }
+    System.out.flush()
   }
 }
 
@@ -909,78 +950,65 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
   private val failOn: String? = args.flagValue("--fail-on")
 
   override fun run() {
-    withGradle(silenceStdout = jsonOutput) { gradle ->
-      lateinit var modules: List<PreviewModule>
-      lateinit var tasks: Array<String>
-      modules =
-        withGradleStdout(jsonOutput) {
-          val resolved = resolveModules(gradle)
-          tasks = resolved.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
-          resolved
-        }
-      val gradleArguments =
-        if (forceEnable) {
-          listOf(
-            "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
-            "-PcomposePreview.previewExtensions.a11y.annotateScreenshots=true",
-          )
-        } else {
-          emptyList()
-        }
-      val buildOk =
-        withGradleStdout(jsonOutput) { runGradle(gradle, *tasks, arguments = gradleArguments) }
-      if (!buildOk) reportRenderFailures(gradle)
-
-      val manifests = readAllManifests(modules)
-      val enabledModules = manifests.filter { it.second.accessibilityReport != null }
-      if (enabledModules.isEmpty()) {
-        if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
-        else {
-          println(
-            "No module has accessibility checks enabled. Add\n" +
-              "  composePreview { previewExtensions { a11y { enableAllChecks() } } }\n" +
-              "to the module's build.gradle.kts."
-          )
-        }
-        exitProcess(if (buildOk) 0 else 2)
+    val gradleArguments =
+      if (forceEnable) {
+        listOf(
+          "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
+          "-PcomposePreview.previewExtensions.a11y.annotateScreenshots=true",
+        )
+      } else {
+        emptyList()
       }
+    val outcome = renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArguments)
 
-      val all = buildResults(manifests)
-      val filtered = all.filter {
+    val enabledModules = outcome.manifests.filter { it.second.accessibilityReport != null }
+    if (enabledModules.isEmpty()) {
+      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
+      else {
+        println(
+          "No module has accessibility checks enabled. Add\n" +
+            "  composePreview { previewExtensions { a11y { enableAllChecks() } } }\n" +
+            "to the module's build.gradle.kts."
+        )
+      }
+      exitProcess(if (outcome.buildOk) 0 else 2)
+    }
+
+    val filtered =
+      outcome.results.filter {
         matchesRequest(it) && it.a11yFindings != null && (!changedOnly || it.anyChanged())
       }
 
-      if (jsonOutput) {
-        println(encodeResponse(filtered, countsScope = null))
+    if (jsonOutput) {
+      println(encodeResponse(filtered, countsScope = null))
+    } else {
+      val flat = filtered.flatMap { r -> (r.a11yFindings ?: emptyList()).map { f -> r to f } }
+      if (flat.isEmpty()) {
+        println("No accessibility findings.")
       } else {
-        val flat = filtered.flatMap { r -> (r.a11yFindings ?: emptyList()).map { f -> r to f } }
-        if (flat.isEmpty()) {
-          println("No accessibility findings.")
-        } else {
-          println("${flat.size} accessibility finding(s):")
-          // Track per-preview so we only print the annotated-PNG
-          // hint once, on the first finding for that preview.
-          var lastPreviewId: String? = null
-          for ((r, f) in flat) {
-            println("  [${f.level}] ${r.id} · ${f.type}")
-            println("      ${f.message}")
-            f.viewDescription?.let { println("      element: $it") }
-            if (r.id != lastPreviewId) {
-              r.a11yAnnotatedPath?.let { println("      annotated: $it") }
-              lastPreviewId = r.id
-            }
+        println("${flat.size} accessibility finding(s):")
+        // Track per-preview so we only print the annotated-PNG
+        // hint once, on the first finding for that preview.
+        var lastPreviewId: String? = null
+        for ((r, f) in flat) {
+          println("  [${f.level}] ${r.id} · ${f.type}")
+          println("      ${f.message}")
+          f.viewDescription?.let { println("      element: $it") }
+          if (r.id != lastPreviewId) {
+            r.a11yAnnotatedPath?.let { println("      annotated: $it") }
+            lastPreviewId = r.id
           }
         }
       }
-
-      val errorCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
-      val warnCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
-      val exit = a11yExitCode(buildOk, errorCount, warnCount, failOn)
-      if (exit == EXIT_UNKNOWN_FAIL_ON) {
-        System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
-      }
-      exitProcess(exit)
     }
+
+    val errorCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
+    val warnCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
+    val exit = a11yExitCode(outcome.buildOk, errorCount, warnCount, failOn)
+    if (exit == EXIT_UNKNOWN_FAIL_ON) {
+      System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
+    }
+    exitProcess(exit)
   }
 }
 

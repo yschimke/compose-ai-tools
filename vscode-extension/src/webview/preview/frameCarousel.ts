@@ -7,17 +7,17 @@
 // swap and error-panel attach.
 //
 // Carousel state lives outside this module: `cardCaptures` is the
-// shared `Map<previewId, CapturePresentation[]>` owned by `behavior.ts`
-// (populated from `setPreviews`, mutated by `updateImage` /
-// `setImageError`, drained by `renderPreviews`'s removal pass), and
-// `card.dataset.currentIndex` tracks the visible frame as a string.
-// Both are passed in via `FrameCarouselConfig` so this module never
-// needs to reach into closures in `behavior.ts`.
+// shared `Map<previewId, CapturePresentation[]>` owned by
+// `previewStore` (populated from `setPreviews`, mutated by
+// `updateImage` / `setImageError`, drained by `renderPreviews`'s
+// removal pass), and `card.dataset.currentIndex` tracks the visible
+// frame as a string. The carousel reads the captures Map directly
+// off `previewStore.getState()` so this module never needs to reach
+// into closures in `behavior.ts`.
 //
 // Held as a `FrameCarouselController` so the dependencies (vscode,
-// the captures Map, the interactive-input config used when swapping
-// to a fresh `<img>`) bind once at panel boot rather than threading
-// through every call site.
+// the interactive-input config used when swapping to a fresh `<img>`)
+// bind once at panel boot rather than threading through every call site.
 
 import { mimeFor } from "./cardData";
 import { buildErrorPanel } from "./errorPanel";
@@ -25,6 +25,7 @@ import {
     attachInteractiveInputHandlers,
     type InteractiveInputConfig,
 } from "./interactiveInput";
+import { previewStore } from "./previewStore";
 import type { PreviewRenderError } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 
@@ -47,7 +48,6 @@ export interface CapturePresentation {
 
 export interface FrameCarouselConfig {
     vscode: VsCodeApi<unknown>;
-    cardCaptures: Map<string, CapturePresentation[]>;
     interactiveInputConfig: InteractiveInputConfig;
 }
 
@@ -122,7 +122,7 @@ export class FrameCarouselController {
         const nextBtn = card.querySelector<HTMLButtonElement>(".frame-next");
         if (!indicator) return;
         const previewId = card.dataset.previewId ?? "";
-        const caps = this.config.cardCaptures.get(previewId);
+        const caps = previewStore.getState().cardCaptures.get(previewId);
         if (!caps) return;
         const idx = parseInt(card.dataset.currentIndex || "0", 10);
         const capture = caps[idx];
@@ -134,7 +134,7 @@ export class FrameCarouselController {
 
     private step(card: HTMLElement, delta: number): void {
         const previewId = card.dataset.previewId ?? "";
-        const caps = this.config.cardCaptures.get(previewId);
+        const caps = previewStore.getState().cardCaptures.get(previewId);
         if (!caps) return;
         const cur = parseInt(card.dataset.currentIndex || "0", 10);
         const next = Math.max(0, Math.min(caps.length - 1, cur + delta));
@@ -145,7 +145,7 @@ export class FrameCarouselController {
 
     private show(card: HTMLElement, index: number): void {
         const previewId = card.dataset.previewId ?? "";
-        const caps = this.config.cardCaptures.get(previewId);
+        const caps = previewStore.getState().cardCaptures.get(previewId);
         if (!caps) return;
         const capture = caps[index];
         if (!capture) return;

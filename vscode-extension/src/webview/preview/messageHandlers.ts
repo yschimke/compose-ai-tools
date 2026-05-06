@@ -13,13 +13,15 @@
 // are thin orchestration over a typed controller (live state, stale badge,
 // loading overlay, focus inspector, diff overlay, viewport tracker) call into
 // those controllers directly. The remaining fields on the context cover the
-// state still owned imperatively by `behavior.ts` — `cardCaptures`,
-// `cardA11yFindings`, `cardA11yNodes`, `moduleDaemonReady`,
-// `moduleInteractiveSupported`, `allPreviews`, `moduleDir`,
-// `lastScopedPreviewId`, `a11yOverlayPreviewId` — and the orchestration
-// callbacks (`renderPreviews`, `applyLayout`, `applyFilters`, `updateImage`,
-// `applyA11yUpdate`, `focusOnCard`, etc.) that should fold into a future
-// `<preview-card>` Lit component.
+// state still owned imperatively by `behavior.ts` —
+// `moduleDaemonReady`, `moduleInteractiveSupported`, `allPreviews`,
+// `moduleDir`, `lastScopedPreviewId`, `a11yOverlayPreviewId` — and the
+// orchestration callbacks (`renderPreviews`, `applyLayout`,
+// `applyFilters`, `updateImage`, `applyA11yUpdate`, `focusOnCard`, etc.)
+// that should fold into a future `<preview-card>` Lit component. The
+// per-preview Maps (`cardCaptures`, `cardA11yFindings`, `cardA11yNodes`)
+// now live on `previewStore` and are reached through the helpers in
+// `previewStore.ts`.
 //
 // Some `ExtensionToWebview` variants are handled directly by Lit components
 // without going through this dispatcher — `<message-banner>` listens for
@@ -41,10 +43,14 @@ import { PreviewGrid } from "./components/PreviewGrid";
 import { buildErrorPanel } from "./errorPanel";
 import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
 import { FocusInspectorController } from "./focusInspector";
-import type { CapturePresentation } from "./frameCarousel";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
-import { previewStore } from "./previewStore";
+import {
+    bumpPreviewMapsRevision,
+    clearCardA11yFindings,
+    clearCardA11yNodes,
+    previewStore,
+} from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
 import { StreamingPainter } from "./streamingPainter";
 
@@ -65,13 +71,6 @@ export interface PreviewMessageContext {
     /** Painter for `composestream/1` live frames — see streamingPainter.ts. */
     streamingPainter: StreamingPainter;
 
-    /** Per-preview carousel runtime state — imageData / errorMessage per
-     *  capture. Populated from `setPreviews` / `updateImage` / `setImageError`
-     *  so prev/next navigation can swap the visible `<img>` without a fresh
-     *  extension round-trip. */
-    cardCaptures: Map<string, CapturePresentation[]>;
-    cardA11yFindings: Map<string, readonly AccessibilityFinding[]>;
-    cardA11yNodes: Map<string, readonly AccessibilityNode[]>;
     moduleDaemonReady: Map<string, boolean>;
     moduleInteractiveSupported: Map<string, boolean>;
 
@@ -332,7 +331,7 @@ function handleErrorMessage(
     const captureIndex = safeArrayIndex(rawCaptureIndex);
     const renderError =
         msg.command === "setImageError" ? (msg.renderError ?? null) : null;
-    const caps = ctx.cardCaptures.get(msg.previewId);
+    const caps = previewStore.getState().cardCaptures.get(msg.previewId);
     const replaceExisting =
         msg.command !== "setImageError" || msg.replaceExisting !== false;
     const container = errCard.querySelector<HTMLElement>(".image-container");
@@ -352,6 +351,10 @@ function handleErrorMessage(
         if (!keepExistingImage) {
             capture.imageData = null;
         }
+        // Mutated the capture object in place — Map identity unchanged
+        // but `mapsRevision` needs to advance so subscribers selecting
+        // on it see the new error state.
+        bumpPreviewMapsRevision();
     }
     const cur = parseInt(errCard.dataset.currentIndex || "0", 10);
     if (caps && cur !== captureIndex) return;
@@ -502,8 +505,8 @@ function handleSetEarlyFeatures(
                 ".a11y-legend, .a11y-overlay, .a11y-hierarchy-overlay",
             )
             .forEach((el) => el.remove());
-        ctx.cardA11yFindings.clear();
-        ctx.cardA11yNodes.clear();
+        clearCardA11yFindings();
+        clearCardA11yNodes();
         ctx.inspector.clearProducts();
         const a11yId = ctx.getA11yOverlayId();
         if (a11yId) {
