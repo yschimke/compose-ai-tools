@@ -1666,6 +1666,284 @@ class DaemonMcpServerTest {
   }
 
   // -------------------------------------------------------------------------
+  // Freshness metrics, polling, and random-sampling determinism probe.
+  // Background workers run on a scheduled executor in production; tests use `= 0` cadence to
+  // disable scheduling and trigger the workers directly so timing isn't load-bearing.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `freshness metrics buckets every probe outcome and surfaces them via status`() {
+    // Build a fresh server with the schedulers disabled so only on-demand probes count.
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("metrics-workspace")
+      val moduleDir = tmp.newFolder("metrics-workspace", "module")
+      val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+      sourceFile.parentFile.mkdirs()
+      sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+      val baseMtime = System.currentTimeMillis() - 60_000
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "metrics-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      val pngFile = tmp.newFile("metrics-render.png")
+      Files.write(pngFile.toPath(), byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47))
+      daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+      val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+      // First read — discovery seeded the hash + mtime, so the probe sees no change.
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // Mtime-advancing edit.
+      sourceFile.writeText("@Preview fun Red() { /* v1 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime + 5_000)).isTrue()
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // Frozen-mtime edit (slow path).
+      sourceFile.writeText("@Preview fun Red() { /* v2 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime + 5_000)).isTrue()
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // No-op read — mtime same, content same.
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      val status =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject
+      val probes = status["probes"]!!.jsonObject
+      assertThat(probes["total"]?.jsonPrimitive?.content?.toLong()).isEqualTo(4L)
+      assertThat(probes["changedByMtime"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(probes["changedByHash"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(probes["unchangedByHash"]?.jsonPrimitive?.content?.toLong()).isEqualTo(2L)
+      assertThat(probes["firstSighting"]?.jsonPrimitive?.content?.toLong()).isEqualTo(0L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `background poller forwards fileChanged when a frozen-mtime edit lands between renders`() {
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("poll-workspace")
+      val moduleDir = tmp.newFolder("poll-workspace", "module")
+      val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+      sourceFile.parentFile.mkdirs()
+      sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+      val baseMtime = System.currentTimeMillis() - 60_000
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "poll-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      // Edit content but freeze mtime — exactly the case the on-demand path would miss without
+      // the hash fallback. The poller should nevertheless observe it.
+      sourceFile.writeText("@Preview fun Red() { /* v1 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      // Drain anything left over from setup.
+      while (daemon.fileChanges.poll(0, TimeUnit.MILLISECONDS) != null) {}
+
+      freshServer.runSourceFreshnessPoll()
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage("polling cycle should detect the frozen-mtime content edit")
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+
+      val status =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject
+      val polling = status["polling"]!!.jsonObject
+      assertThat(polling["cycles"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(polling["previewsScanned"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(polling["changesDetected"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `random-sampling probe classifies unchanged vs changed renders`() {
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("sampling-workspace")
+      tmp.newFolder("sampling-workspace", "module")
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "sampling-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId)
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      val pngFile = tmp.newFile("sampling-render.png")
+      Files.write(pngFile.toPath(), byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47))
+      daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+      // Probe 1 — daemon reports `unchanged: true` (deterministic preview).
+      daemon.autoRenderUnchanged = { _ -> true }
+      freshServer.runRandomSamplingProbe()
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+
+      // Probe 2 — daemon reports `unchanged: false` (preview drifted with no source change).
+      daemon.autoRenderUnchanged = { _ -> false }
+      freshServer.runRandomSamplingProbe()
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+
+      // Give the renderFinished notifications time to round-trip on the daemon's reader thread.
+      val deadline = System.currentTimeMillis() + 2_000
+      while (System.currentTimeMillis() < deadline) {
+        val statusPayload =
+          json
+            .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+            .jsonObject["freshness"]!!
+            .jsonObject["sampling"]!!
+            .jsonObject
+        val det = statusPayload["deterministic"]?.jsonPrimitive?.content?.toLong() ?: 0L
+        val nondet = statusPayload["nondeterministic"]?.jsonPrimitive?.content?.toLong() ?: 0L
+        if (det >= 1L && nondet >= 1L) break
+        Thread.sleep(50)
+      }
+
+      val sampling =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["sampling"]!!
+          .jsonObject
+      assertThat(sampling["probes"]?.jsonPrimitive?.content?.toLong()).isEqualTo(2L)
+      assertThat(sampling["deterministic"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(sampling["nondeterministic"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      val recent =
+        sampling["recentNondeterministicUris"]!!.jsonArray.mapNotNull {
+          it.jsonObject["uri"]?.jsonPrimitive?.contentOrNull
+        }
+      assertThat(recent).contains(PreviewUri(workspaceId, ":module", previewId).toUri())
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // D1 — data product tools
   // -------------------------------------------------------------------------
 
