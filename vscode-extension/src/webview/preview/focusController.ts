@@ -57,8 +57,6 @@ export interface FocusControllerConfig {
      *  `state.layout` directly and calls `vscode.setState(state)` for
      *  layout transitions. */
     state: FocusControllerPersistedState;
-    moduleDaemonReady: Map<string, boolean>;
-    moduleInteractiveSupported: Map<string, boolean>;
     earlyFeatures(): boolean;
     getA11yOverlayId(): string | null;
     setA11yOverlayId(id: string | null): void;
@@ -109,10 +107,12 @@ export class FocusController {
             isLive,
             otherLiveCount: this.config.liveState.liveCount - (isLive ? 1 : 0),
             hasLive: this.config.liveState.liveCount > 0,
-            daemonReady: isFocusedModuleReady(this.config.moduleDaemonReady),
+            daemonReady: isFocusedModuleReady(
+                this.config.liveState.getModuleDaemonReady(),
+            ),
             interactiveSupported: isFocusedInteractiveSupported(
-                this.config.moduleDaemonReady,
-                this.config.moduleInteractiveSupported,
+                this.config.liveState.getModuleDaemonReady(),
+                this.config.liveState.getModuleInteractiveSupported(),
             ),
         });
     }
@@ -127,7 +127,9 @@ export class FocusController {
             inFocus,
             earlyFeatures: this.config.earlyFeatures(),
             focusedPreviewId: previewId,
-            daemonReady: isFocusedModuleReady(this.config.moduleDaemonReady),
+            daemonReady: isFocusedModuleReady(
+                this.config.liveState.getModuleDaemonReady(),
+            ),
             isRecording:
                 !!previewId && this.config.liveState.isRecording(previewId),
         });
