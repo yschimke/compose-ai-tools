@@ -175,18 +175,14 @@ export class DaemonScheduler {
      *
      * `progress` fires through `'spawning'` while the JVM comes up, `'bootstrapping'` only when the
      * cached descriptor could not be used, and `'ready'` once `initialize` is acknowledged.
-     * `'fallback'` fires only when the daemon is explicitly disabled.
-     * Enabled-but-broken daemon failures throw so the UI can surface the error. No-op when the gate
-     * is disabled.
+     * `'fallback'` fires only when the daemon is explicitly disabled by the build.
+     * Enabled-but-broken daemon failures throw so the UI can surface the error.
      */
     async warmModule(
         gradleService: GradleService,
         moduleId: string,
         progress?: WarmProgress,
     ): Promise<boolean> {
-        if (!this.gate.isEnabled()) {
-            return false;
-        }
         if (this.gate.isDaemonReady(moduleId)) {
             progress?.("ready");
             return true;
