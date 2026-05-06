@@ -15,7 +15,11 @@
 // preview panel's diff overlay reaches for the same algorithm.
 
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
-import { computeDiffStats, type DiffStats } from "../shared/pixelDiff";
+import {
+    applyDiffStats,
+    computeDiffStats,
+    type DiffStats,
+} from "../shared/pixelDiff";
 import type { HistoryDiffSummary } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 import { cssEscape } from "./historyData";
@@ -102,47 +106,6 @@ export function fillDiff(
     computeDiffStats(payload.leftImage, payload.rightImage).then((s) => {
         applyDiffStats(stats, s);
     });
-}
-
-/**
- * Render the stats label for a completed `computeDiffStats`. Sets a
- * `data-state` attribute on [el] so the CSS can colour the label by
- * outcome (`identical`, `changed`, `size-mismatch`).
- */
-export function applyDiffStats(el: HTMLElement, s: DiffStats | null): void {
-    if (!s) {
-        el.textContent = "";
-        el.removeAttribute("data-state");
-        return;
-    }
-    if ("error" in s) {
-        el.textContent = s.error;
-        el.removeAttribute("data-state");
-        return;
-    }
-    if (!s.sameSize) {
-        el.textContent =
-            "sizes differ — " +
-            s.leftW +
-            "×" +
-            s.leftH +
-            " vs " +
-            s.rightW +
-            "×" +
-            s.rightH;
-        el.dataset.state = "size-mismatch";
-        return;
-    }
-    if (s.diffPx === 0) {
-        el.textContent = "identical · " + s.w + "×" + s.h;
-        el.dataset.state = "identical";
-        return;
-    }
-    const p = s.percent * 100;
-    const pct = p < 0.01 ? p.toFixed(3) : p.toFixed(2);
-    el.textContent =
-        s.diffPx.toLocaleString() + " px (" + pct + "%) · " + s.w + "×" + s.h;
-    el.dataset.state = "changed";
 }
 
 function renderHistoryDiffMode(

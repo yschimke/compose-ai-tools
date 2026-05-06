@@ -17,6 +17,7 @@
     "files": [
         "src/webview/preview/cardData.ts",
         "src/webview/history/historyData.ts",
+        "src/webview/shared/diffStatsLabel.ts",
         "src/webview/shared/types.ts"
     ]
 }
