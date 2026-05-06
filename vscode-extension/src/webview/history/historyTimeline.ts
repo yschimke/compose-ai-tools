@@ -1,29 +1,28 @@
 // Timeline + row construction for the History panel.
 //
-// Lifted verbatim from `behavior.ts`'s `renderTimeline` / `toggleSelected` /
-// `expandRow` / `requestRowDiff` / `fillExpansion` / `populateThumb` cluster
-// so the imperative DOM operations stop needing closure access to the
-// rest of the panel. The diff sub-views (`fillDiff`, `computeDiffStats`,
-// `applyDiffStats`, `renderHistoryDiffMode`, `buildHistoryDiffStack`,
-// `buildDiffPane`, `showDiff`) are a follow-up — they're a separate
-// concern with its own state and call into a different DOM tree.
+// Step 1 of #858: row markup now lives in the `<history-row>` Lit
+// component (`./components/HistoryRow.ts`). This module shrank to:
 //
-// Each function takes a `HistoryRowConfig` covering the collaborator
-// surface — `vscode` (postMessage), the static `timelineEl` /
-// `btnDiffEl` DOM handles, the `selectedIds` Set + `expandedId` mutable
-// scalar, and the thumb-loading infrastructure (cache + dedup +
-// IntersectionObserver). The state stays owned by `behavior.ts` until
-// the eventual `<history-row>` Lit component lands and can claim it.
+//  - `renderTimeline`: declarative iteration over `entries`, swapping
+//    out `<history-row>` children on the timeline container.
+//  - `toggleSelected`: still owns the (max-2) selection set since
+//    that state lives in the host's `behavior.ts` closure for now.
+//    Step 2 of #858 moves selection state into the row's `@state`.
+//  - `expandRow` / `requestRowDiff` / `fillExpansion`: still
+//    imperative because the inline `.expanded` sibling div is a
+//    separate concern from row rendering and gets its own component
+//    later in the issue.
+//
+// Thumb byte cache: deleted from the config in favour of
+// `historyStore` (`./historyStore.ts`). Rows subscribe directly via
+// [StoreController] and re-render when their entry's bytes land.
+
+import "./components/HistoryRow";
 
 import type { HistoryEntry } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
-import {
-    cssEscape,
-    escapeHtml,
-    findLatestMainHash,
-    formatAbsolute,
-    formatRelative,
-} from "./historyData";
+import { HistoryRow, type HistoryRowCallbacks } from "./components/HistoryRow";
+import { cssEscape, findLatestMainHash } from "./historyData";
 
 export interface HistoryRowConfig {
     vscode: VsCodeApi<unknown>;
@@ -38,10 +37,6 @@ export interface HistoryRowConfig {
      *  Mutated by `expandRow` (toggle) and `requestRowDiff` (replace). */
     getExpandedId(): string | null;
     setExpandedId(id: string | null): void;
-    /** Thumb image cache (id → base64 PNG). Populated by the
-     *  `thumbReady` message handler; read here on render to skip a fresh
-     *  request for already-loaded thumbs. */
-    thumbCache: Map<string, string>;
     /** Dedup set: ids we've already asked the extension to load.
      *  Cleared per `renderTimeline` so a fresh entry set retries. */
     thumbRequested: Set<string>;
@@ -59,120 +54,57 @@ export function renderTimeline(
     if (config.thumbObserver) config.thumbObserver.disconnect();
     config.thumbRequested.clear();
     config.timelineEl.innerHTML = "";
+
     // Latest archived render on main for the currently scoped preview.
     // O(N) over the visible page; no extra request. Used for the
-    // "vs main" indicator dot below.
+    // "vs main" indicator dot in each row.
     const mainHash = findLatestMainHash(entries);
+
+    const callbacks: HistoryRowCallbacks = {
+        onToggleSelected: (id, row) => toggleSelected(id, row, config),
+        onExpand: (id, row) => expandRow(id, row, config),
+        onDiffPrevious: (id, row) =>
+            requestRowDiff(id, row, "previous", config),
+        onDiffCurrent: (id, row) => requestRowDiff(id, row, "current", config),
+        onThumbConnected: (thumbEl) => {
+            // Defer the byte fetch to the host's IntersectionObserver
+            // so off-screen rows don't hammer the daemon. The store
+            // covers cache hits already.
+            if (config.thumbObserver) config.thumbObserver.observe(thumbEl);
+        },
+    };
+
     for (const entry of entries) {
-        const entryId = entry.id ?? "";
-        const row = document.createElement("div");
-        row.className = "row";
-        row.setAttribute("role", "listitem");
-        row.dataset.id = entryId;
-        row.dataset.sourceKind = (entry.source && entry.source.kind) || "";
-        row.dataset.branch = (entry.git && entry.git.branch) || "";
-
-        const thumb = document.createElement("div");
-        thumb.className = "thumb";
-        thumb.dataset.id = entryId;
-        const cached = config.thumbCache.get(entryId);
-        if (cached !== undefined) {
-            populateThumb(thumb, cached);
-        } else if (config.thumbObserver) {
-            config.thumbObserver.observe(thumb);
-        }
-        row.appendChild(thumb);
-
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const ts = document.createElement("div");
-        ts.className = "ts";
-        ts.textContent = formatRelative(entry.timestamp);
-        ts.title = entry.timestamp || "";
-        meta.appendChild(ts);
-
-        const sub = document.createElement("div");
-        sub.className = "sub";
-        const dot =
-            entry.deltaFromPrevious && entry.deltaFromPrevious.pngHashChanged
-                ? '<span class="changed-dot" title="bytes changed vs previous"></span>'
-                : "";
-        const mainDot =
-            mainHash && entry.pngHash && entry.pngHash !== mainHash
-                ? '<span class="main-dot" title="bytes differ from latest main render"></span>'
-                : "";
-        const absolute = formatAbsolute(entry.timestamp);
-        const trigger = entry.trigger ? entry.trigger : "—";
-        const branch = (entry.git && entry.git.branch) || "";
-        const subParts: string[] = [];
-        if (absolute) subParts.push(escapeHtml(absolute));
-        subParts.push(escapeHtml(trigger));
-        if (branch) subParts.push(escapeHtml(branch));
-        sub.innerHTML = dot + mainDot + subParts.join(" · ");
-        meta.appendChild(sub);
-        row.appendChild(meta);
-
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = (entry.source && entry.source.kind) || "fs";
-        row.appendChild(badge);
-
-        const actions = document.createElement("div");
-        actions.className = "row-actions";
-        const diffPrevBtn = document.createElement("button");
-        diffPrevBtn.className = "icon-button row-action";
-        diffPrevBtn.title = "Diff against the previous entry for this preview";
-        diffPrevBtn.setAttribute("aria-label", "Diff vs previous");
-        diffPrevBtn.innerHTML =
-            '<i class="codicon codicon-arrow-up" aria-hidden="true"></i>';
-        diffPrevBtn.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            requestRowDiff(entryId, row, "previous", config);
-        });
-        actions.appendChild(diffPrevBtn);
-        const diffCurrentBtn = document.createElement("button");
-        diffCurrentBtn.className = "icon-button row-action";
-        diffCurrentBtn.title = "Diff against the live render of this preview";
-        diffCurrentBtn.setAttribute("aria-label", "Diff vs current");
-        diffCurrentBtn.innerHTML =
-            '<i class="codicon codicon-git-compare" aria-hidden="true"></i>';
-        diffCurrentBtn.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            requestRowDiff(entryId, row, "current", config);
-        });
-        actions.appendChild(diffCurrentBtn);
-        row.appendChild(actions);
-
-        row.addEventListener("click", (ev) => {
-            if (ev.shiftKey) toggleSelected(entryId, row, config);
-            else expandRow(entryId, row, config);
-        });
+        const row = document.createElement("history-row") as HistoryRow;
+        row.entry = entry;
+        row.mainHash = mainHash;
+        row.callbacks = callbacks;
         config.timelineEl.appendChild(row);
     }
 }
 
 /** Toggle [id] in/out of the (max-2) selection set, mirroring the row's
- *  `.selected` class. Drops the oldest selection when adding a third. */
+ *  `.selected` state. Drops the oldest selection when adding a third. */
 export function toggleSelected(
     id: string,
-    row: HTMLElement,
+    row: HistoryRow,
     config: HistoryRowConfig,
 ): void {
     if (config.selectedIds.has(id)) {
         config.selectedIds.delete(id);
-        row.classList.remove("selected");
+        row.setSelected(false);
     } else {
         if (config.selectedIds.size >= 2) {
             // Drop oldest selection so we never have more than 2.
             const drop = [...config.selectedIds][0];
             config.selectedIds.delete(drop);
-            const prev = config.timelineEl.querySelector(
-                '.row[data-id="' + cssEscape(drop) + '"]',
+            const prev = config.timelineEl.querySelector<HistoryRow>(
+                'history-row[data-id="' + cssEscape(drop) + '"]',
             );
-            if (prev) prev.classList.remove("selected");
+            prev?.setSelected(false);
         }
         config.selectedIds.add(id);
-        row.classList.add("selected");
+        row.setSelected(true);
     }
     config.btnDiffEl.disabled = config.selectedIds.size !== 2;
 }
@@ -182,7 +114,7 @@ export function toggleSelected(
  *  extension streams the PNG bytes back asynchronously. */
 export function expandRow(
     id: string,
-    row: HTMLElement,
+    row: HistoryRow,
     config: HistoryRowConfig,
 ): void {
     const prev = config.timelineEl.querySelector(".expanded");
@@ -206,7 +138,7 @@ export function expandRow(
  *  to compute the comparison. */
 export function requestRowDiff(
     id: string,
-    row: HTMLElement,
+    row: HistoryRow,
     against: "previous" | "current",
     config: HistoryRowConfig,
 ): void {
@@ -255,14 +187,4 @@ export function fillExpansion(
         actions.appendChild(open);
     }
     expansion.appendChild(actions);
-}
-
-/** Stamp a thumbnail image into a `.thumb` div. Idempotent — drops any
- *  prior content first. */
-export function populateThumb(thumbEl: HTMLElement, imageData: string): void {
-    thumbEl.innerHTML = "";
-    const img = document.createElement("img");
-    img.src = "data:image/png;base64," + imageData;
-    img.alt = "";
-    thumbEl.appendChild(img);
 }
