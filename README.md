@@ -36,6 +36,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RedToBlueScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif" width="150" /> |
 | `RedToBlueScrollPreview · scroll top` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_top.png" width="150" /> |
 | `RedToBlueScrollPreview · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ScrollPreviewsKt.RedToBlueScrollPreview_Scroll_SCROLL_end.png" width="150" /> |
+| `SemanticsClickableButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview.png" width="150" /> |
+| `SemanticsContentDescriptionPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview.png" width="150" /> |
+| `SemanticsMergeDescendantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview.png" width="150" /> |
+| `SemanticsTestTagPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview.png" width="150" /> |
 | `SettingsListScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.gif" width="150" /> |
 
 ## samples:android-daemon-bench

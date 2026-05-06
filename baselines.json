@@ -286,6 +286,34 @@
     "sha256": "a7ede269b8b34462117176a1c8da3d603d792df660e81cc0cb59c258ff5aa9ba",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview": {
+    "captureLabel": "",
+    "functionName": "SemanticsClickableButtonPreview",
+    "renderBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview.png",
+    "sha256": "5e38f19f141de1523f0154fffb924c2445f9cc9ba9a97021bea102a40cc3f117",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview": {
+    "captureLabel": "",
+    "functionName": "SemanticsContentDescriptionPreview",
+    "renderBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview.png",
+    "sha256": "5bc8a9c534cfd8f52f312f01d29111a647d1cf137496a1ceb2a32d9ce4696534",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview": {
+    "captureLabel": "",
+    "functionName": "SemanticsMergeDescendantsPreview",
+    "renderBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview.png",
+    "sha256": "73b4fe3117781d5ee1e766074c6d184b557c9e5af405c23cf2e3adea3f3be0f5",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview": {
+    "captureLabel": "",
+    "functionName": "SemanticsTestTagPreview",
+    "renderBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview.png",
+    "sha256": "fe1be87cb3081d70408608e78db9190b98a82be4e32d50e0fd3e9217f5b6dea7",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif": {
     "captureLabel": "scroll gif",
     "functionName": "SettingsListScrollGifPreview",
