@@ -5,8 +5,16 @@ that a client (VS Code, MCP, the CLI) wants to render in its own UI.
 Examples: ATF a11y findings, layout-inspector hierarchy, recomposition
 heat maps, resource jump-to-source, theme tokens.
 
-The wire surface is additive to PROTOCOL.md v1 — landing it does not
-bump `protocolVersion`.
+Wire surface is locked at PROTOCOL v2. As of v2, kinds are gated by the
+extension activation system (PROTOCOL.md § 3a): a daemon registers every
+data-product kind via an [`Extension`][ext], but advertises and serves
+only those whose owning extension is **publicly enabled** by the client
+via `extensions/enable`. The wire shapes below are unchanged; what
+changed is which kinds appear in `initialize.capabilities.dataProducts`
+at handshake time and which kinds round-trip through `data/fetch` and
+`data/subscribe`.
+
+[ext]: ../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/Extension.kt
 
 ## The primitive
 
@@ -130,10 +138,42 @@ options: {
 ```
 
 `attachDataProducts` is the "always on, every render, every preview"
-knob. Reserved for genuinely cheap kinds (today: `a11y/atf` only).
+knob. Reserved for genuinely cheap kinds (today: `a11y/atf` only). The
+set is filtered at initialize time against the **publicly enabled**
+capability set (see § Activation below); calling `extensions/enable`
+afterwards does not retroactively widen the global attach configuration.
 
-A daemon MUST advertise the kinds it can produce even when no client
-subscribes — so the UI can grey out unavailable panels.
+`initialize.capabilities.dataProducts` lists only kinds whose owning
+extension is publicly enabled. Until the client has called
+`extensions/enable`, this list is empty — UIs should treat that the same
+as "no kinds advertised" rather than as a fatal handshake.
+
+### Activation (extensions gate)
+
+Every data-product kind is owned by a single [`Extension`][ext]
+registered at daemon startup. Extensions are inactive by default;
+clients call `extensions/enable {ids}` (PROTOCOL.md § 3a) to opt in.
+Three states:
+
+- **inactive** — the kind does not appear in `initialize.capabilities.dataProducts`,
+  `data/fetch` returns `DataProductUnknown`, `data/subscribe` is rejected,
+  the producer's `onRender` does not run, and `renderFinished` carries no
+  attachment for the kind.
+- **active as dependency** — the producer's `onRender` runs in-process so
+  the depending extension can read its derived state. Client-visible
+  surfaces still treat the kind as inactive: it does not appear in
+  capability lists, `data/fetch` returns `DataProductUnknown`, attachments
+  skip it. This matches the rule "dependencies don't contribute to
+  responses directly, just via the extension that depends on them."
+- **publicly enabled** — full surface: capability advertisement, fetch,
+  subscribe, attachments, render-time hooks all wired.
+
+The MCP supervisor enables a configured allowlist on every spawned daemon
+(`DaemonSupervisor.defaultExtensions`). The VS Code extension currently
+enables every advertised extension on connect as a transitional step;
+lazy per-card enable/disable is the long-term direction.
+
+[ext]: ../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/Extension.kt
 
 ### `data/fetch`
 
@@ -157,6 +197,11 @@ Resolves against the latest render. Three outcomes: read from cache;
 recompute against cached state; trigger a re-render in the right mode
 (see Re-render semantics).
 
+`data/fetch` only routes to **publicly enabled** extensions. A kind whose
+owning extension is inactive — including dep-only-active extensions —
+returns `DataProductUnknown` (-32020), even if a producer is registered.
+Clients that need to fetch a kind must enable the owning extension first.
+
 ### `data/subscribe` / `data/unsubscribe`
 
 ```ts
@@ -168,6 +213,11 @@ While subscribed, every `renderFinished` for `previewId` carries a
 `dataProducts` entry for `kind`. Subscriptions are per-(previewId,
 kind), idempotent, and drop automatically when `previewId` leaves the
 most recent `setVisible` set. Reset across daemon restarts.
+
+Subscribing to a kind whose owning extension is inactive is rejected
+with `DataProductUnknown`. Calling `extensions/disable` on an extension
+with live subscriptions tears them down — the producer's `onUnsubscribe`
+fires through the active path so per-subscription state is cleared.
 
 ### `renderFinished` — additive `dataProducts` field
 
@@ -190,7 +240,7 @@ applies — clients MUST treat absent and `[]` identically.
 
 | Code   | Name                       | Meaning |
 |--------|----------------------------|---------|
-| -32020 | DataProductUnknown         | Kind not advertised by daemon. |
+| -32020 | DataProductUnknown         | Kind not advertised by daemon, or its owning extension is not publicly enabled. |
 | -32021 | DataProductNotAvailable    | Preview has never rendered; render first. |
 | -32022 | DataProductFetchFailed     | Re-render or projection failed; details in `data`. |
 | -32023 | DataProductBudgetExceeded  | Re-render budget tripped before payload landed. |
