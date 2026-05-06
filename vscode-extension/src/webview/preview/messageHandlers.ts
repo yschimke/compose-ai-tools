@@ -35,6 +35,7 @@ import type {
     PreviewInfo,
 } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
+import { safeArrayIndex } from "../shared/safeIndex";
 import { sanitizeId } from "./cardData";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { buildErrorPanel } from "./errorPanel";
@@ -487,16 +488,4 @@ function assertNever(value: never): never {
     throw new Error(
         `Unhandled ExtensionToWebview variant: ${JSON.stringify(value)}`,
     );
-}
-
-/** Coerce a wire-supplied capture index into a safe non-negative integer.
- *  TypeScript types `captureIndex` as `number`, but the value crosses the
- *  webview boundary so a defensive runtime check is warranted: anything
- *  non-integer / negative / non-finite collapses to 0 (the representative
- *  capture). Eliminates the prototype-pollution flow CodeQL flags when an
- *  unconstrained index is used to write into an array. */
-function safeArrayIndex(value: unknown): number {
-    return typeof value === "number" && Number.isInteger(value) && value >= 0
-        ? value
-        : 0;
 }
