@@ -1158,6 +1158,8 @@ open class RobolectricHost(
             listOf(
               FontsRecorderExtension.factory,
               ResourcesRecorderExtension.factory,
+              ComposeSemanticsExtension.factory,
+              LayoutInspectorExtension.factory,
               I18nTranslationsExtension.factory,
             )
           ),

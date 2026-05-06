@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsNode
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import java.io.File
@@ -68,5 +69,17 @@ object RenderDataArtifactContextKeys {
     ExtensionContextKey(
       name = "render-data-artifact.semanticsRoot",
       type = SemanticsNode::class.java,
+    )
+
+  /**
+   * Pre-built [PreviewContext] for the layout-inspector data product. Carries the
+   * captured slot tables, semantics root, device dimensions, and render-mode metadata that
+   * `LayoutInspectorDataProducer.writeArtifacts` consumes — assembled once by the render engine
+   * and shared with any extension that needs the same view of the rendered preview.
+   */
+  val LayoutInspectorPreviewContext: ExtensionContextKey<PreviewContext> =
+    ExtensionContextKey(
+      name = "render-data-artifact.layoutInspectorPreviewContext",
+      type = PreviewContext::class.java,
     )
 }

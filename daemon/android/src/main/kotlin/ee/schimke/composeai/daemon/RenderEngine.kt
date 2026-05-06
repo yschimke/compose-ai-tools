@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -323,64 +322,37 @@ class RenderEngine(
                 }
               }
 
-            // compose/semantics + layoutinspector data products. Default-mode data, independent
-            // of the accessibility checker: clients get inspector text bounds without paying ATF
-            // costs. The captured semantics root is also fed into the always-on data-artifact
-            // post-capture pass below (i18n).
-            var capturedSemanticsRoot: SemanticsNode? = null
-            if (dataDir != null) {
-              try {
-                trace.section("compose:defaultDataProducts") {
-                  val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-                  capturedSemanticsRoot = semanticsRoot
-                  ComposeSemanticsDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    root = semanticsRoot,
-                  )
-                  val layoutInspectionContext =
-                    PreviewContext.Builder(
-                        previewId = spec.previewId,
-                        backend = PreviewBackends.ANDROID,
-                        renderMode = spec.renderMode,
-                        outputBaseName = spec.outputBaseName,
-                      )
-                      .deviceFromRenderPixels(
-                        spec.device,
-                        spec.widthPx,
-                        spec.heightPx,
-                        spec.density,
-                        resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
-                      )
-                      .parameterInformationCollected()
-                      .addSlotTables(slotTableCapture.snapshot())
-                      .rootForTest(semanticsRoot.root)
-                      .build()
-                  LayoutInspectorDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    previewContext = layoutInspectionContext,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: default data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            // Always-on data-artifact extensions (fonts, resources, i18n). Each extension owns
-            // its own recorder lifecycle (installed during composition via
-            // [AroundComposableHook]) and writes its typed artefact through
+            // Always-on data-artifact extensions (fonts, resources, semantics, layout-inspector,
+            // i18n, etc). Each extension owns its own recorder lifecycle (installed during
+            // composition via [AroundComposableHook]) and writes its typed artefact through
             // [PostCaptureProcessor.process]. The render engine just hands them the typed
-            // post-capture context (rootDir, previewId, semantics root, locale) and lets each
-            // extension decide what to write.
+            // post-capture context (rootDir, previewId, semantics root, layout-inspector
+            // preview context, locale) and lets each extension decide what to write.
             if (dataDir != null && builtDataArtifactExtensions.isNotEmpty()) {
               val resolvedSemanticsRoot =
-                capturedSemanticsRoot
-                  ?: runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
-                    .getOrNull()
+                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
+                  .getOrNull()
+              val layoutInspectorPreviewContext =
+                resolvedSemanticsRoot?.let { semanticsRoot ->
+                  PreviewContext.Builder(
+                      previewId = spec.previewId,
+                      backend = PreviewBackends.ANDROID,
+                      renderMode = spec.renderMode,
+                      outputBaseName = spec.outputBaseName,
+                    )
+                    .deviceFromRenderPixels(
+                      spec.device,
+                      spec.widthPx,
+                      spec.heightPx,
+                      spec.density,
+                      resolvedDevice =
+                        spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+                    )
+                    .parameterInformationCollected()
+                    .addSlotTables(slotTableCapture.snapshot())
+                    .rootForTest(semanticsRoot.root)
+                    .build()
+                }
               val artifactContextData = buildList<ExtensionContextValue<*>> {
                 add(RenderDataArtifactContextKeys.RootDir provides dataDir)
                 add(RenderDataArtifactContextKeys.OutputBaseName provides spec.outputBaseName)
@@ -390,6 +362,9 @@ class RenderEngine(
                 }
                 resolvedSemanticsRoot?.let {
                   add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
+                }
+                layoutInspectorPreviewContext?.let {
+                  add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
                 }
               }
               val extensionContextData = ExtensionContextData.of(*artifactContextData.toTypedArray())
