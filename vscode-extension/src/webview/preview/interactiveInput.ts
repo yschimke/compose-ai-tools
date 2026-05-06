@@ -23,13 +23,13 @@
 // See docs/daemon/INTERACTIVE.md §§ 3, 6, 7.
 
 import type { VsCodeApi } from "../shared/vscode";
+import {
+    computeImagePoint,
+    isEventInsideRect,
+    type ImagePoint,
+} from "./pointerGeometry";
 
-export interface ImagePoint {
-    clientX: number;
-    clientY: number;
-    pixelX: number;
-    pixelY: number;
-}
+export type { ImagePoint };
 
 export interface InteractiveInputConfig {
     /**
@@ -197,40 +197,34 @@ export function attachInteractiveInputHandlers(
     });
 }
 
+/** DOM-bound shim around `computeImagePoint` — extracts natural / rect
+ *  dimensions from the live `<img>` and the pure helper does the math. */
 function imagePoint(
     img: HTMLImageElement,
     evt: { clientX: number; clientY: number },
 ): ImagePoint | null {
-    // Image-natural pixel coords — same space the daemon's renderer
-    // works in. The webview's offsetX/Y is in CSS pixels of the
-    // displayed image; scale by the displayed/natural ratio to recover
-    // the pixel the user actually clicked.
-    const natW = img.naturalWidth || 0;
-    const natH = img.naturalHeight || 0;
     const rect = img.getBoundingClientRect();
-    if (!natW || !natH || rect.width === 0 || rect.height === 0) return null;
-    const clientX = evt.clientX - rect.left;
-    const clientY = evt.clientY - rect.top;
-    const pixelX = Math.round(clientX * (natW / rect.width));
-    const pixelY = Math.round(clientY * (natH / rect.height));
-    return {
-        clientX,
-        clientY,
-        pixelX: Math.max(0, Math.min(natW - 1, pixelX)),
-        pixelY: Math.max(0, Math.min(natH - 1, pixelY)),
-    };
+    return computeImagePoint(
+        img.naturalWidth || 0,
+        img.naturalHeight || 0,
+        rect.width,
+        rect.height,
+        rect.left,
+        rect.top,
+        evt.clientX,
+        evt.clientY,
+    );
 }
 
+/** DOM-bound shim around `isEventInsideRect`. */
 function eventInsideElement(
     el: Element,
     evt: { clientX: number; clientY: number },
 ): boolean {
-    const rect = el.getBoundingClientRect();
-    return (
-        evt.clientX >= rect.left &&
-        evt.clientX <= rect.right &&
-        evt.clientY >= rect.top &&
-        evt.clientY <= rect.bottom
+    return isEventInsideRect(
+        el.getBoundingClientRect(),
+        evt.clientX,
+        evt.clientY,
     );
 }
 
