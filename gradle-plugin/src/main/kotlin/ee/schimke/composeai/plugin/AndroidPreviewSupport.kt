@@ -435,6 +435,27 @@ internal object AndroidPreviewSupport {
     if (manageDependencies) {
       project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-manifest")
       project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-junit4")
+      // Pin `androidx.core:core` to the floor that compose-ui 1.10+ requires.
+      // The renderer's test classpath gets compose-ui via roborazzi-compose's
+      // transitive deps regardless of what the consumer declares, and
+      // compose-ui 1.10+'s `InsetsListener.onViewAttachedToWindow` reads
+      // `androidx.core.R.id.tag_compat_insets_dispatch` (added in core
+      // 1.16.0). The merged unit-test resource APK is built from the
+      // consumer's MAIN variant, so on tile-only / older-Compose consumers
+      // (e.g. WearTilesKotlin: no compose-ui in main, transitive core is
+      // pre-1.16) the field is missing and Robolectric crashes the moment
+      // `AndroidComposeView.onAttachedToWindow` runs:
+      //
+      //   `NoSuchFieldError: Class androidx.core.R$id does not have member
+      //   field 'int tag_compat_insets_dispatch'`
+      //
+      // Adding the floor to `${variantName}Implementation` is the same
+      // pattern used for `tiles-renderer` below — a main-variant dep so AGP
+      // includes the R class in the merged test APK. Acts as a floor only:
+      // Gradle picks the higher version when consumers already pin core
+      // >= 1.16 via their own deps (compose-bom 2026.x, etc.), so it's
+      // non-destructive for the common case.
+      project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -450,6 +471,15 @@ internal object AndroidPreviewSupport {
         configuration = "testImplementation",
         outcome = "APPLIED",
         reason = "provides createAndroidComposeRule / mainClock used by renderer",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.core:core:1.16.0",
+        configuration = "${variantName}Implementation",
+        outcome = "APPLIED",
+        reason =
+          "compose-ui 1.10+ on the renderer test classpath reads R.id.tag_compat_insets_dispatch (added in core 1.16); merged test APK needs the field",
       )
     } else {
       recordInjectedDependency(
@@ -467,6 +497,15 @@ internal object AndroidPreviewSupport {
         configuration = "testImplementation",
         outcome = "SKIPPED_BY_CONFIG",
         reason = "manageDependencies=false; consumer must declare this in testImplementation",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.core:core:1.16.0",
+        configuration = "${variantName}Implementation",
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; consumer must ensure androidx.core:core >= 1.16.0 on the main variant so the merged test APK includes R.id.tag_compat_insets_dispatch",
       )
     }
 
@@ -1680,6 +1719,9 @@ internal object AndroidPreviewSupport {
     }
     if (!hasCoord("testImplementation", "androidx.compose.ui", "ui-test-junit4")) {
       missing += "testImplementation(\"androidx.compose.ui:ui-test-junit4\")"
+    }
+    if (!hasCoord("${variantName}Implementation", "androidx.core", "core")) {
+      missing += "${variantName}Implementation(\"androidx.core:core:1.16.0\")"
     }
     if (
       tilesRendererRequired &&
