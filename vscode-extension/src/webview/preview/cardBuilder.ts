@@ -39,6 +39,7 @@ import {
 import type { LiveStateController } from "./liveState";
 import type { StaleBadgeController } from "./staleBadge";
 import type { PreviewGrid } from "./components/PreviewGrid";
+import type { PreviewCard } from "./components/PreviewCard";
 import type { MessageOwner } from "./components/MessageBanner";
 import {
     bumpPreviewMapsRevision,
@@ -115,12 +116,19 @@ export interface CardBuilderConfig {
 }
 
 /**
- * Build the initial DOM for a preview card. Returns a detached
- * `HTMLDivElement` — caller is responsible for inserting it into the grid in
+ * Build the initial DOM for a preview card. Returns a `<preview-card>`
+ * Lit element — caller is responsible for inserting it into the grid in
  * the right position (`renderPreviews` orchestrates a stable insertion order
  * keyed on `previewId`).
  *
- * Side effects:
+ * Step 2 of #857: this is now a thin shim that constructs the
+ * `<preview-card>` shell and hands it the `preview` + `config` props.
+ * The imperative population (id / dataset / className / header /
+ * imgContainer / a11y / variant / carousel / observe-for-viewport)
+ * lives in `populatePreviewCard` and runs from the element's
+ * `firstUpdated()`.
+ *
+ * Side effects (deferred until the element's `firstUpdated`):
  *  - Seeds `previewStore`'s `cardCaptures` with one `CapturePresentation`
  *    per `p.captures` entry (via `setCardCaptures`).
  *  - Calls `config.staleBadge.apply(card, false)` once so the badge slot
@@ -132,10 +140,31 @@ export function buildPreviewCard(
     p: PreviewInfo,
     config: CardBuilderConfig,
 ): HTMLElement {
+    const card = document.createElement("preview-card") as PreviewCard;
+    card.preview = p;
+    card.config = config;
+    return card;
+}
+
+/**
+ * Imperative population helper — runs from the `<preview-card>` shell's
+ * `firstUpdated()` against the host element itself. Extracted from the
+ * old `buildPreviewCard` body; logic is otherwise unchanged.
+ *
+ * `card` here is the `<preview-card>` host (not a child div). The id,
+ * `preview-card` class, dataset attributes, and all child DOM land on
+ * `card` directly so existing `document.getElementById("preview-…")`
+ * lookups, `.preview-card` selectors, and CSS rules keep targeting the
+ * same element.
+ */
+export function populatePreviewCard(
+    card: HTMLElement,
+    p: PreviewInfo,
+    config: CardBuilderConfig,
+): void {
     const animated = isAnimatedPreview(p);
     const captures = p.captures;
 
-    const card = document.createElement("div");
     // `referenced` previews live in another file but target the active one
     // (idiomatic `XxxPreviews.kt` / `screenshotTest` layout). The CSS hook lets
     // the panel render them under a "from elsewhere" treatment without changing
@@ -293,7 +322,6 @@ export function buildPreviewCard(
     }
 
     config.observeForViewport(card);
-    return card;
 }
 
 /** Subset of `CardBuilderConfig` that `updateCardMetadata` actually
