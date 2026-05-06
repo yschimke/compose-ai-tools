@@ -19,6 +19,7 @@
         "src/webview/preview/liveTransitions.ts",
         "src/webview/preview/moduleReadiness.ts",
         "src/webview/preview/pointerGeometry.ts",
+        "src/webview/preview/relativeSizing.ts",
         "src/webview/history/historyData.ts",
         "src/webview/shared/diffStatsLabel.ts",
         "src/webview/shared/safeIndex.ts",
