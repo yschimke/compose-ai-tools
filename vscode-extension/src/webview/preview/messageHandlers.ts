@@ -13,15 +13,16 @@
 // are thin orchestration over a typed controller (live state, stale badge,
 // loading overlay, focus inspector, diff overlay, viewport tracker) call into
 // those controllers directly. The remaining fields on the context cover the
-// state still owned imperatively by `behavior.ts` —
-// `moduleDaemonReady`, `moduleInteractiveSupported`, `allPreviews`,
+// state still owned imperatively by `behavior.ts` — `allPreviews`,
 // `moduleDir`, `lastScopedPreviewId`, `a11yOverlayPreviewId` — and the
 // orchestration callbacks (`renderPreviews`, `applyLayout`,
 // `applyFilters`, `updateImage`, `applyA11yUpdate`, `focusOnCard`, etc.)
 // that should fold into a future `<preview-card>` Lit component. The
 // per-preview Maps (`cardCaptures`, `cardA11yFindings`, `cardA11yNodes`)
 // now live on `previewStore` and are reached through the helpers in
-// `previewStore.ts`.
+// `previewStore.ts`. The per-module availability Maps (`moduleDaemonReady`,
+// `moduleInteractiveSupported`) live on `LiveStateController`; this
+// dispatcher writes them via `ctx.liveState.setAvailability(...)`.
 //
 // Some `ExtensionToWebview` variants are handled directly by Lit components
 // without going through this dispatcher — `<message-banner>` listens for
@@ -70,9 +71,6 @@ export interface PreviewMessageContext {
     diffOverlayConfig: DiffOverlayConfig;
     /** Painter for `composestream/1` live frames — see streamingPainter.ts. */
     streamingPainter: StreamingPainter;
-
-    moduleDaemonReady: Map<string, boolean>;
-    moduleInteractiveSupported: Map<string, boolean>;
 
     earlyFeatures(): boolean;
     getA11yOverlayId(): string | null;
@@ -443,9 +441,9 @@ function handleSetInteractiveAvailability(
     msg: Extract<ExtensionToWebview, { command: "setInteractiveAvailability" }>,
     ctx: PreviewMessageContext,
 ): void {
-    ctx.moduleDaemonReady.set(msg.moduleId, !!msg.ready);
-    ctx.moduleInteractiveSupported.set(
+    ctx.liveState.setAvailability(
         msg.moduleId,
+        !!msg.ready,
         !!msg.interactiveSupported,
     );
     // Daemon went away while a card was live — drop the live state so the

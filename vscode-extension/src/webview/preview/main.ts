@@ -349,22 +349,14 @@ export class PreviewApp extends LitElement {
         });
         let filterDebounce: ReturnType<typeof setTimeout> | null = null;
 
-        // Interactive (live-stream) mode state. Declared up here — *before*
-        // the first applyLayout() call below — because applyLayout reaches
-        // through `liveState` on the early-exit-on-focus-change path.
-        // moduleDaemonReady tracks per-module daemon readiness pushed by the
-        // extension via setInteractiveAvailability; the button enables only
-        // when the focused card's owning module is ready. moduleInteractiveSupported
-        // distinguishes full v2 live mode from the Android/v1 fallback where
-        // renders refresh but pointer input doesn't mutate held composition state.
+        // Interactive (live-stream) mode state — the live + recording sets,
+        // their state machine, and the per-module daemon-readiness +
+        // interactive-supported maps (populated from
+        // `setInteractiveAvailability`) all live on `LiveStateController` in
+        // `./liveState.ts`. Constructed below, after `interactiveInputConfig`
+        // so the controller can hand the config to
+        // `attachInteractiveInputHandlers`.
         //
-        // The live + recording sets and their state machine live in
-        // `./liveState.ts` — see `LiveStateController`. Constructed below,
-        // after `interactiveInputConfig` so the controller can hand the
-        // config to `attachInteractiveInputHandlers`.
-        const moduleDaemonReady = new Map<string, boolean>();
-        const moduleInteractiveSupported = new Map<string, boolean>();
-
         // Forward references — `inspector` / `liveState` / `focusController`
         // close over each other via callback shapes, so we late-bind through
         // these `let !` declarations. Each binding is dereferenced only at
@@ -458,8 +450,6 @@ export class PreviewApp extends LitElement {
             liveState,
             diffOverlayConfig,
             state,
-            moduleDaemonReady,
-            moduleInteractiveSupported,
             earlyFeatures,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
@@ -658,8 +648,6 @@ export class PreviewApp extends LitElement {
             loadingOverlay,
             diffOverlayConfig,
             streamingPainter,
-            moduleDaemonReady,
-            moduleInteractiveSupported,
             earlyFeatures,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,

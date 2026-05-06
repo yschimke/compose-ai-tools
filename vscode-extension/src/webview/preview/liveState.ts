@@ -16,6 +16,16 @@
 // `isLive` / `isRecording`); `attachInteractiveInputHandlers` from
 // `./interactiveInput.ts` consults them through `interactiveInputConfig.isLive`.
 //
+// Also owns two per-module availability Maps populated from the
+// `setInteractiveAvailability` wire message:
+//  - `moduleDaemonReady` — whether the module's daemon is up and ready.
+//  - `moduleInteractiveSupported` — whether the daemon advertises full v2
+//    live mode (vs the Android/v1 fallback where renders refresh but pointer
+//    input doesn't mutate held composition state).
+// Writes flow through `setAvailability(moduleId, ready, interactiveSupported)`;
+// reads are exposed as ReadonlyMaps so callers (focus toolbar predicates) keep
+// their existing signatures.
+//
 // Plain click on the LIVE button is single-target — drop every prior stream
 // before adding (or re-removing) this one. Shift+click is multi-target — toggle
 // just this preview without disturbing the others. Recording is currently
@@ -74,7 +84,40 @@ export class LiveStateController {
     private interactivePreviewIds: Set<string> = new Set<string>();
     private recordingPreviewIds: Set<string> = new Set<string>();
 
+    // Per-module availability — written from `setInteractiveAvailability`
+    // via `setAvailability`, read by the focus toolbar predicates through
+    // the `getModuleDaemonReady` / `getModuleInteractiveSupported`
+    // ReadonlyMap accessors. See module-header doc.
+    private readonly moduleDaemonReady = new Map<string, boolean>();
+    private readonly moduleInteractiveSupported = new Map<string, boolean>();
+
     constructor(private readonly cfg: LiveStateConfig) {}
+
+    /** Record per-module daemon readiness + interactive-support flags. The
+     *  callers (`handleSetInteractiveAvailability`) coerce the wire payload
+     *  to booleans before calling. */
+    setAvailability(
+        moduleId: string,
+        ready: boolean,
+        interactiveSupported: boolean,
+    ): void {
+        this.moduleDaemonReady.set(moduleId, ready);
+        this.moduleInteractiveSupported.set(moduleId, interactiveSupported);
+    }
+
+    /** Read view of the per-module daemon-readiness map. Exposed as a
+     *  ReadonlyMap so the existing `isFocusedModuleReady` /
+     *  `isFocusedInteractiveSupported` predicates in `./moduleReadiness.ts`
+     *  consume it without signature changes. */
+    getModuleDaemonReady(): ReadonlyMap<string, boolean> {
+        return this.moduleDaemonReady;
+    }
+
+    /** Read view of the per-module interactive-supported map. See
+     *  `getModuleDaemonReady`. */
+    getModuleInteractiveSupported(): ReadonlyMap<string, boolean> {
+        return this.moduleInteractiveSupported;
+    }
 
     /**
      * Posts the live-mode wire command for [previewId] — routes through
