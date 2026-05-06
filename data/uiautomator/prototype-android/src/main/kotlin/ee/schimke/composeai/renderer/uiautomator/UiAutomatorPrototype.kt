@@ -563,14 +563,13 @@ internal constructor(
 ) {
   public fun text(value: String): Selector = copy(text = TextMatch.Exact(value))
 
-  public fun text(pattern: Pattern): Selector = copy(text = TextMatch.Regex(pattern))
+  public fun text(pattern: Pattern): Selector = copy(text = TextMatch.Regex(pattern.pattern()))
 
-  public fun textMatches(regex: String): Selector =
-    copy(text = TextMatch.Regex(Pattern.compile(regex)))
+  public fun textMatches(regex: String): Selector = copy(text = TextMatch.Regex(regex))
 
   public fun desc(value: String): Selector = copy(desc = TextMatch.Exact(value))
 
-  public fun desc(pattern: Pattern): Selector = copy(desc = TextMatch.Regex(pattern))
+  public fun desc(pattern: Pattern): Selector = copy(desc = TextMatch.Regex(pattern.pattern()))
 
   public fun clazz(value: String): Selector = copy(clazz = TextMatch.Exact(value))
 
@@ -649,9 +648,17 @@ internal sealed class TextMatch {
     override fun matches(value: CharSequence?): Boolean = value?.toString() == expected
   }
 
-  data class Regex(val pattern: Pattern) : TextMatch() {
+  /**
+   * Regex matcher. The regex source is stored as a `String` (rather than a compiled `Pattern`)
+   * so that `equals` / `hashCode` round-trip cleanly through the JSON wire format —
+   * `Pattern.equals` is reference identity, which would break selector round-trips even when
+   * two patterns have identical sources.
+   */
+  data class Regex(val regex: String) : TextMatch() {
+    @Transient private val compiled: Pattern = Pattern.compile(regex)
+
     override fun matches(value: CharSequence?): Boolean =
-      value != null && pattern.matcher(value).matches()
+      value != null && compiled.matcher(value).matches()
   }
 }
 
