@@ -1089,6 +1089,179 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `discoverPreviews infers cross-file target composable`() {
+    // Idiomatic preview-file layout: production composable `HomeScreen` lives in `HomeScreen.kt`,
+    // its `@Preview` lives in a sibling `Previews.kt`. PreviewTargetInference walks the preview
+    // method's bytecode, finds the single project-local @Composable call into HomeScreen, and
+    // attaches it as a target.
+    val projectDir = createCmpTestProject()
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "HomeScreen.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.unit.dp
+
+        @Composable
+        fun HomeScreen() {
+            Box(modifier = Modifier.size(100.dp).background(Color.Red)) {
+                Text("home")
+            }
+        }
+        """
+          .trimIndent()
+      )
+
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Preview
+        @Composable
+        fun HomeScreenPreview() {
+            HomeScreen()
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("discoverPreviews", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val preview = manifest.previews.single { it.functionName == "HomeScreenPreview" }
+    val target = preview.targets.single()
+    assertThat(target.className).isEqualTo("test.HomeScreenKt")
+    assertThat(target.functionName).isEqualTo("HomeScreen")
+    // Single project-local composable call + matching name + cross-file → HIGH confidence.
+    assertThat(target.confidence).isEqualTo(TargetConfidence.HIGH)
+    assertThat(target.signals)
+      .containsAtLeast(
+        TargetSignal.SINGLE_PROJECT_COMPOSABLE_CALL,
+        TargetSignal.NAME_MATCH,
+        TargetSignal.CROSS_FILE,
+      )
+    // Source path resolves to the production file, not the preview file.
+    assertThat(target.sourceFile).contains("HomeScreen.kt")
+  }
+
+  @Test
+  fun `discoverPreviews emits no target when preview body is purely framework`() {
+    // A preview that only calls AndroidX Compose primitives (no project-local composable) gets no
+    // target — the inference should not invent one from theming / layout calls.
+    val projectDir = createCmpTestProject()
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+
+      @Preview
+      @Composable
+      fun PrimitivesOnlyPreview() {
+          Box(modifier = Modifier.size(40.dp).background(Color.Red))
+      }
+      """
+        .trimIndent()
+    )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("discoverPreviews", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    assertThat(manifest.previews.single().targets).isEmpty()
+  }
+
+  @Test
+  fun `discoverPreviews skips other previews as candidate targets`() {
+    // A preview function that calls a *sibling* preview (instead of the production composable)
+    // should not surface that sibling as a target.
+    val projectDir = createCmpTestProject()
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+
+      @Preview
+      @Composable
+      fun FirstPreview() {
+          Box(modifier = Modifier.size(40.dp).background(Color.Red))
+      }
+
+      @Preview
+      @Composable
+      fun WrapperPreview() {
+          FirstPreview()
+      }
+      """
+        .trimIndent()
+    )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("discoverPreviews", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val wrapper = manifest.previews.single { it.functionName == "WrapperPreview" }
+    // FirstPreview itself is annotated @Preview, so it must be filtered out — no target emitted.
+    assertThat(wrapper.targets).isEmpty()
+  }
+
+  @Test
   fun `failOnEmpty fails the build and emits diagnostics when no previews exist`() {
     val projectDir = createCmpTestProject()
 
