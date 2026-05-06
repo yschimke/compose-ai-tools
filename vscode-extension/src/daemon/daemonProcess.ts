@@ -184,6 +184,39 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         throw err;
     }
 
+    // PROTOCOL.md § 3a — daemons advertise an empty capability surface until the client
+    // opts in via `extensions/enable`. The panel doesn't yet do per-card lifecycle
+    // (open card → enable extension → subscribe → close → unsubscribe), so as a
+    // transitional step we enable every extension the daemon registered, restoring the
+    // pre-v2 "everything advertised" behaviour. Lean opt-in is a follow-up.
+    try {
+        const list = await client.extensionsList();
+        const ids = list.extensions.map((info) => info.id);
+        if (ids.length > 0) {
+            const enabled = await client.extensionsEnable({ ids });
+            initializeResult = {
+                ...initializeResult,
+                capabilities: {
+                    ...initializeResult.capabilities,
+                    dataProducts: enabled.dataProducts,
+                    dataExtensions: enabled.dataExtensions,
+                    previewExtensions: enabled.previewExtensions,
+                },
+            };
+            if (enabled.unknown.length > 0) {
+                opts.logger?.appendLine(
+                    `[daemon] extensions/enable skipped unknown ids ${enabled.unknown.join(", ")}`,
+                );
+            }
+        }
+    } catch (err) {
+        // Non-fatal — daemons that don't speak v2 of this method still serve the
+        // initialize round-trip; the panel just sees empty capabilities and degrades.
+        opts.logger?.appendLine(
+            `[daemon] extensions/list+enable failed: ${(err as Error).message}`,
+        );
+    }
+
     client.initialized();
     return { client, process: child, initializeResult, exited };
 }

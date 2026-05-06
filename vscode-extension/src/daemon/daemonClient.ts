@@ -16,6 +16,11 @@ import {
     HistoryListResult,
     HistoryReadParams,
     HistoryReadResult,
+    ExtensionsDisableParams,
+    ExtensionsDisableResult,
+    ExtensionsEnableParams,
+    ExtensionsEnableResult,
+    ExtensionsListResult,
     InitializeParams,
     InitializeResult,
     InteractiveInputParams,
@@ -142,6 +147,38 @@ export class DaemonClient {
 
     initialized(): void {
         this.notify("initialized", undefined);
+    }
+
+    /**
+     * `extensions/list` (PROTOCOL.md § 3a). Snapshot of every registered extension and
+     * whether it's currently public or pulled in as a dependency. Cheap; the panel calls
+     * this once after `initialize` to learn what's available before deciding what to enable.
+     */
+    extensionsList(): Promise<ExtensionsListResult> {
+        return this.request<ExtensionsListResult>("extensions/list", undefined);
+    }
+
+    /**
+     * `extensions/enable {ids}`. Returns the new public capability snapshot in the
+     * response so callers don't need a follow-up `extensions/list`.
+     */
+    extensionsEnable(
+        params: ExtensionsEnableParams,
+    ): Promise<ExtensionsEnableResult> {
+        return this.request<ExtensionsEnableResult>(
+            "extensions/enable",
+            params,
+        );
+    }
+
+    /** `extensions/disable {ids}`. */
+    extensionsDisable(
+        params: ExtensionsDisableParams,
+    ): Promise<ExtensionsDisableResult> {
+        return this.request<ExtensionsDisableResult>(
+            "extensions/disable",
+            params,
+        );
     }
 
     setVisible(params: SetVisibleParams): void {

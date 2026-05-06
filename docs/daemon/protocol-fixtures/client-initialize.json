@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "clientVersion": "0.8.6",
   "workspaceRoot": "/home/dev/projects/my-app",
   "moduleId": ":samples:android",
