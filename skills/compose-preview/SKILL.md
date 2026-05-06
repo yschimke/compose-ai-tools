@@ -141,6 +141,12 @@ compose-preview mcp install                  # auto-detects Antigravity
 compose-preview mcp install --antigravity    # force the Antigravity config write
 ```
 
+`mcp install` is a one-time bootstrap. If a render misbehaves, do **not**
+re-run it and do **not** kill the daemon — run `compose-preview mcp doctor`
+first and follow the verdict it prints. The supervisor respawns daemons
+automatically on classpath changes. See
+[design/MCP.md § Troubleshooting](./design/MCP.md#troubleshooting-first--when-not-to-act).
+
 Apply the plugin in `<module>/build.gradle.kts`:
 
 <!-- x-release-please-start-version -->
