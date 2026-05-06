@@ -86,7 +86,7 @@ private constructor(
     val id = nextId.getAndIncrement()
     val params =
       InitializeParams(
-        protocolVersion = 1,
+        protocolVersion = 2,
         clientVersion = "harness-v0",
         workspaceRoot = workspaceRoot,
         moduleId = moduleId,

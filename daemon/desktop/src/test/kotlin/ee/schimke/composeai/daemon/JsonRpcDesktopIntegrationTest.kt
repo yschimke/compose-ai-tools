@@ -121,7 +121,7 @@ class JsonRpcDesktopIntegrationTest {
         clientToServerOut,
         """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-                  "protocolVersion":1,
+                  "protocolVersion":2,
                   "clientVersion":"test",
                   "workspaceRoot":"/tmp",
                   "moduleId":":test",
@@ -370,7 +370,7 @@ class JsonRpcDesktopIntegrationTest {
       out,
       """
       {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-                "protocolVersion":1,
+                "protocolVersion":2,
                 "clientVersion":"test",
                 "workspaceRoot":"/tmp",
                 "moduleId":":test",

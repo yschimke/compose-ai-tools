@@ -14,6 +14,12 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataSubscribeParams
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.DiscoveryUpdatedParams
+import ee.schimke.composeai.daemon.protocol.ExtensionInfoDto
+import ee.schimke.composeai.daemon.protocol.ExtensionsDisableParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsListResult
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.HistoryAddedParams
@@ -50,8 +56,6 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
 import ee.schimke.composeai.daemon.protocol.UiMode
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -178,14 +182,16 @@ class JsonRpcServer(
    */
   private val autoPruneInitialDelayMs: Long = HistoryManager.DEFAULT_INITIAL_DELAY_MS,
   /**
-   * D1 — producer-side seam for the data-product surface. Defaults to [DataProductRegistry.Empty]
-   * so pre-D2 callers keep `capabilities.dataProducts = []` and every `data/fetch` /
-   * `data/subscribe` short-circuits to `DataProductUnknown`. The renderer-side a11y producer (D2,
-   * in `renderer-android`) is the first concrete implementation that gets wired in by `DaemonMain`.
+   * Daemon extension registry (see [Extension] and [ExtensionRegistry]). Replaces the per-feature
+   * lists this constructor used to take (`dataProducts`, `dataExtensions`, `previewExtensions`).
+   *
+   * Daemons start with every extension registered as inactive — `initialize.capabilities` reports
+   * empty kind/descriptor lists and every `data/fetch`/`data/subscribe` short-circuits to
+   * `DataProductUnknown`. Clients call `extensions/enable` to opt in to the contributions they
+   * actually need. Defaults to [ExtensionRegistry.Empty] for in-process tests and harness fake-mode
+   * scenarios that don't wire any.
    */
-  private val dataProducts: DataProductRegistry = DataProductRegistry.Empty,
-  private val dataExtensions: List<DataExtensionDescriptor> = emptyList(),
-  private val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
+  internal val extensions: ExtensionRegistry = ExtensionRegistry.Empty,
   /**
    * D3 — per-request budget for `data/fetch` re-render-on-demand (DATA-PRODUCTS.md § "Re-render
    * semantics"). When the registry returns [DataProductRegistry.Outcome.RequiresRerender] the
@@ -569,6 +575,9 @@ class JsonRpcServer(
       "data/fetch" -> handleDataFetch(req)
       "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
       "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
+      "extensions/list" -> handleExtensionsList(req)
+      "extensions/enable" -> handleExtensionsEnable(req)
+      "extensions/disable" -> handleExtensionsDisable(req)
       "interactive/start" -> handleInteractiveStart(req)
       "recording/start" -> handleRecordingStart(req)
       "recording/stop" -> handleRecordingStop(req)
@@ -612,7 +621,8 @@ class JsonRpcServer(
     // silently dropped: pre-D2 daemons advertise nothing, so even an over-eager client falls
     // back to no global attachments rather than tripping `DataProductUnknown` on every
     // render.
-    val attachableKinds = dataProducts.capabilities.filter { it.attachable }.map { it.kind }.toSet()
+    val attachableKinds =
+      extensions.publicDataProductCapabilities().filter { it.attachable }.map { it.kind }.toSet()
     globalAttachKinds =
       (params.options?.attachDataProducts ?: emptyList()).toSet().intersect(attachableKinds)
     // PROTOCOL.md § 3 — per-render timeout override. Positive values win; null / ≤ 0 keeps the
@@ -640,9 +650,9 @@ class JsonRpcServer(
             // Leak detection (B2.4) not wired yet — empty list = unavailable.
             leakDetection = emptyList<LeakDetectionMode>(),
             // D1 — advertised kinds. Empty when no producer was wired (pre-D2 default).
-            dataProducts = dataProducts.capabilities,
-            dataExtensions = dataExtensions,
-            previewExtensions = previewExtensions,
+            dataProducts = extensions.publicDataProductCapabilities(),
+            dataExtensions = extensions.publicDataExtensionDescriptors(),
+            previewExtensions = extensions.publicPreviewExtensionDescriptors(),
             // INTERACTIVE.md § 9 — `true` when the host's `acquireInteractiveSession` returns a
             // real held-scene session (DesktopHost). `false` for hosts that inherit the throwing
             // default (FakeHost, RobolectricHost today) — clients fall back to v1 dispatch.
@@ -974,12 +984,9 @@ class JsonRpcServer(
     // and we emit `tookMs = 0`. Other RenderMetrics fields (heap / native / sandbox-age) stay
     // null until B2.3 wires the cost-model collection path.
     try {
-      dataProducts.onRender(
-        previewId,
-        result,
-        hostIdToOverrides.remove(result.id),
-        result.previewContext,
-      )
+      extensions
+        .activeDataProducts()
+        .onRender(previewId, result, hostIdToOverrides.remove(result.id), result.previewContext)
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRender failed for $previewId " +
@@ -1411,7 +1418,7 @@ class JsonRpcServer(
     inFlightRenders.remove(failure.hostId)
     previewIdsWithOverridesInFlight.remove(previewId)
     try {
-      dataProducts.onRenderFailed(previewId, failure.cause)
+      extensions.activeDataProducts().onRenderFailed(previewId, failure.cause)
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRenderFailed failed for $previewId " +
@@ -1520,7 +1527,7 @@ class JsonRpcServer(
       (subscriptions[previewId]?.toSet() ?: emptySet()) + globalAttachKinds
     val attachments: List<DataProductAttachment> =
       if (requestedKinds.isEmpty()) emptyList()
-      else dataProducts.attachmentsFor(previewId, requestedKinds)
+      else extensions.publicDataProducts().attachmentsFor(previewId, requestedKinds)
     return RenderFinishedParams(
       id = previewId,
       pngPath = pngPath,
@@ -1546,7 +1553,10 @@ class JsonRpcServer(
         )
         return
       }
-    val outcome = dataProducts.fetch(params.previewId, params.kind, params.params, params.inline)
+    val outcome =
+      extensions
+        .publicDataProducts()
+        .fetch(params.previewId, params.kind, params.params, params.inline)
     if (outcome is DataProductRegistry.Outcome.RequiresRerender) {
       // D3 — kick the re-render off the read loop so other notifications / requests aren't
       // blocked while we wait out the budget. The worker thread submits the render, parks on a
@@ -1630,7 +1640,9 @@ class JsonRpcServer(
               // producer bug — we don't recurse, we surface a fetch-failed so callers see it.
               val secondOutcome =
                 try {
-                  dataProducts.fetch(params.previewId, params.kind, params.params, params.inline)
+                  extensions
+                    .publicDataProducts()
+                    .fetch(params.previewId, params.kind, params.params, params.inline)
                 } catch (t: Throwable) {
                   DataProductRegistry.Outcome.FetchFailed(
                     "registry threw on post-rerender fetch: ${t.message ?: t.javaClass.simpleName}"
@@ -1765,7 +1777,8 @@ class JsonRpcServer(
         return
       }
     if (subscribe) {
-      val capability = dataProducts.capabilities.firstOrNull { it.kind == params.kind }
+      val capability =
+        extensions.publicDataProductCapabilities().firstOrNull { it.kind == params.kind }
       if (capability == null || !capability.attachable) {
         sendErrorResponse(
           id = req.id,
@@ -1783,7 +1796,7 @@ class JsonRpcServer(
       // leaves the dispatcher state consistent with the client's view (a subsequent unsubscribe
       // will clear it). Re-subscribes pass the latest `params` through verbatim — producers that
       // care about reset-on-re-subscribe handle that themselves.
-      dataProducts.onSubscribe(params.previewId, params.kind, params.params)
+      extensions.publicDataProducts().onSubscribe(params.previewId, params.kind, params.params)
     } else {
       val existed = subscriptions[params.previewId]?.remove(params.kind) == true
       // Drop the inner set when its last subscription cleared so the bookkeeping doesn't
@@ -1792,7 +1805,7 @@ class JsonRpcServer(
       // Notify the producer — but only if there was actually a live subscription. Calling
       // onUnsubscribe for a never-subscribed pair would invite producers to log spurious
       // "no such subscription" warnings.
-      if (existed) dataProducts.onUnsubscribe(params.previewId, params.kind)
+      if (existed) extensions.publicDataProducts().onUnsubscribe(params.previewId, params.kind)
     }
     sendResponse(req.id, encode(DataSubscribeResult.serializer(), DataSubscribeResult.OK))
   }
@@ -1811,8 +1824,110 @@ class JsonRpcServer(
     val toDrop = subscriptions.keys - visible
     for (id in toDrop) {
       val droppedKinds = subscriptions.remove(id) ?: continue
-      for (kind in droppedKinds) dataProducts.onUnsubscribe(id, kind)
+      for (kind in droppedKinds) extensions.publicDataProducts().onUnsubscribe(id, kind)
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // extensions/{list,enable,disable} — see PROTOCOL.md § 3a.
+  //
+  // The daemon registers every Extension at startup but leaves them inactive. Clients call
+  // `extensions/enable` to opt in to specific contributions; the response contains the new public
+  // capability snapshot so the client doesn't need a follow-up `list`. Dependencies pulled in
+  // transitively are reported in `pulledIn` but their kinds/descriptors do not appear in any
+  // public surface — they only flow through their depending extension.
+  // --------------------------------------------------------------------------
+
+  private fun handleExtensionsList(req: JsonRpcRequest) {
+    val result =
+      ExtensionsListResult(
+        extensions =
+          extensions.infoList().map { info ->
+            ExtensionInfoDto(
+              id = info.id,
+              displayName = info.displayName,
+              dependencies = info.dependencies,
+              publiclyEnabled = info.publiclyEnabled,
+              active = info.active,
+              dataProductKinds = info.dataProductKinds,
+              dataExtensionIds = info.dataExtensionIds,
+              previewExtensionIds = info.previewExtensionIds,
+            )
+          }
+      )
+    sendResponse(req.id, encode(ExtensionsListResult.serializer(), result))
+  }
+
+  private fun handleExtensionsEnable(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, ExtensionsEnableParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid extensions/enable params: ${e.message}",
+        )
+        return
+      }
+    val outcome = extensions.enable(params.ids)
+    val result =
+      ExtensionsEnableResult(
+        newlyEnabled = outcome.newlyEnabled,
+        pulledIn = outcome.pulledIn,
+        alreadyEnabled = outcome.alreadyEnabled,
+        unknown = outcome.unknown,
+        dataProducts = extensions.publicDataProductCapabilities(),
+        dataExtensions = extensions.publicDataExtensionDescriptors(),
+        previewExtensions = extensions.publicPreviewExtensionDescriptors(),
+      )
+    sendResponse(req.id, encode(ExtensionsEnableResult.serializer(), result))
+  }
+
+  private fun handleExtensionsDisable(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, ExtensionsDisableParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid extensions/disable params: ${e.message}",
+        )
+        return
+      }
+    // Drop subscriptions for kinds whose owning extension is being disabled — the producer side
+    // would otherwise leak per-subscription state and a future re-enable would inherit it.
+    val priorPublic = extensions.publicDataProductCapabilities().map { it.kind }.toSet()
+    val outcome = extensions.disable(params.ids)
+    val nowPublic = extensions.publicDataProductCapabilities().map { it.kind }.toSet()
+    val droppedKinds = priorPublic - nowPublic
+    if (droppedKinds.isNotEmpty()) {
+      for ((previewId, kinds) in subscriptions) {
+        val toRemove = kinds.intersect(droppedKinds)
+        if (toRemove.isEmpty()) continue
+        kinds.removeAll(toRemove)
+        // We can't dispatch onUnsubscribe through `publicDataProducts()` here because the kind is
+        // no longer public. Reach through the active set instead so the producer still tears down
+        // its per-subscription state.
+        for (kind in toRemove) {
+          extensions.activeDataProducts().onUnsubscribe(previewId, kind)
+        }
+      }
+      subscriptions.values.removeIf { it.isEmpty() }
+    }
+    val result =
+      ExtensionsDisableResult(
+        disabled = outcome.disabled,
+        deactivated = outcome.deactivated,
+        stillActiveAsDependency = outcome.stillActiveAsDependency,
+        notEnabled = outcome.notEnabled,
+        unknown = outcome.unknown,
+        dataProducts = extensions.publicDataProductCapabilities(),
+        dataExtensions = extensions.publicDataExtensionDescriptors(),
+        previewExtensions = extensions.publicPreviewExtensionDescriptors(),
+      )
+    sendResponse(req.id, encode(ExtensionsDisableResult.serializer(), result))
   }
 
   // --------------------------------------------------------------------------
@@ -2897,8 +3012,14 @@ class JsonRpcServer(
   }
 
   companion object {
-    /** PROTOCOL.md § 7. */
-    const val PROTOCOL_VERSION: Int = 1
+    /**
+     * PROTOCOL.md § 7. Bumped to 2 when daemons stopped advertising every extension's contributions
+     * by default — `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` are
+     * empty until the client opts in via `extensions/enable`. v1 clients calling against a v2
+     * daemon will see empty capability lists and assume nothing is supported; the daemon errors out
+     * on `protocolVersion` mismatch so they get a clean handshake failure instead.
+     */
+    const val PROTOCOL_VERSION: Int = 2
 
     const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
     const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L

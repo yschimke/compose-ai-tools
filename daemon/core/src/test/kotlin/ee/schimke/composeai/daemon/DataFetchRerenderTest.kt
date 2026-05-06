@@ -442,7 +442,9 @@ class DataFetchRerenderTest {
         host = host,
         daemonVersion = "test",
         idleTimeoutMs = 100L,
-        dataProducts = producer,
+        extensions =
+          ExtensionRegistry(listOf(Extension(id = "test/producer", dataProductRegistry = producer)))
+            .also { it.enable(listOf("test/producer")) },
         dataFetchRerenderBudgetMs = dataFetchRerenderBudgetMs,
         onExit = { code ->
           exitCode.set(code)
@@ -524,7 +526,7 @@ class DataFetchRerenderTest {
       send(
         """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-          "protocolVersion":1,
+          "protocolVersion":2,
           "clientVersion":"test",
           "workspaceRoot":"/tmp",
           "moduleId":":test",
