@@ -338,48 +338,19 @@ export class PreviewApp extends LitElement {
         // `setCompileErrors` / `clearCompileErrors` directly and toggles
         // the `compile-stale` class on `#preview-grid` itself.
 
-        // Panel-level scalars are mirrored to `previewStore` on every write so
-        // future components (the upcoming `<preview-card>`, the focus inspector,
-        // etc.) can subscribe via `StoreController`. Local mutable bindings stay
-        // here for terseness in the heavy imperative paths
-        // (`createCard`/`renderPreviews`/`updateImage`/etc.); keep the two
-        // synchronised by going through these wrappers.
-        let allPreviews: PreviewInfo[] = [];
-        function setAllPreviews(next: PreviewInfo[]): void {
-            allPreviews = next;
-            previewStore.setState({ allPreviews: next });
-        }
-        let moduleDir = "";
-        function setModuleDir(next: string): void {
-            moduleDir = next;
-            previewStore.setState({ moduleDir: next });
-        }
-        let focusIndex = 0;
-        function setFocusIndex(next: number): void {
-            focusIndex = next;
-            previewStore.setState({ focusIndex: next });
-        }
-        // Last previewId published to the extension via previewScopeChanged.
-        // Tracked here so we don't spam the History panel with redundant
-        // re-scopes (e.g. layout reapplies on every filter tweak).
-        let lastScopedPreviewId: string | null = null;
-        function setLastScopedPreviewId(next: string | null): void {
-            lastScopedPreviewId = next;
-            previewStore.setState({ lastScopedPreviewId: next });
-        }
-        // Layout to fall back to when the user exits focus mode. Captured
-        // whenever we transition into focus from another layout (dropdown
-        // change, dblclick on a card). Defaults to grid so the very first
-        // exit lands somewhere sensible.
-        let previousLayout: "grid" | "flow" | "column" =
-            state.layout && state.layout !== "focus" ? state.layout : "grid";
-        function setPreviousLayout(next: "grid" | "flow" | "column"): void {
-            previousLayout = next;
-            previewStore.setState({ previousLayout: next });
-        }
-        // Seed the store with the persisted-state-derived defaults so initial
-        // subscribers see the right values.
-        previewStore.setState({ previousLayout });
+        // Panel-level scalars (`allPreviews`, `moduleDir`, `focusIndex`,
+        // `previousLayout`, `lastScopedPreviewId`) live in `previewStore`.
+        // Readers go through `previewStore.getState()` and writers through
+        // `previewStore.setState({ ... })` — the wrappers passed via
+        // `messageContext` / `FocusController` config are now thin arrows
+        // defined inline at their call sites. Seed `previousLayout` from
+        // the persisted layout so initial subscribers see the right value.
+        previewStore.setState({
+            previousLayout:
+                state.layout && state.layout !== "focus"
+                    ? state.layout
+                    : "grid",
+        });
         let filterDebounce: ReturnType<typeof setTimeout> | null = null;
 
         // Interactive (live-stream) mode state. Declared up here — *before*
@@ -410,15 +381,24 @@ export class PreviewApp extends LitElement {
         inspector = new FocusInspectorController({
             el: focusInspector,
             earlyFeatures,
-            getPreview: (id) => allPreviews.find((p) => p.id === id),
-            getA11yFindings: (id) =>
-                previewStore.getState().cardA11yFindings.get(id) ||
-                allPreviews.find((p) => p.id === id)?.a11yFindings ||
-                [],
-            getA11yNodes: (id) =>
-                previewStore.getState().cardA11yNodes.get(id) ||
-                allPreviews.find((p) => p.id === id)?.a11yNodes ||
-                [],
+            getPreview: (id) =>
+                previewStore.getState().allPreviews.find((p) => p.id === id),
+            getA11yFindings: (id) => {
+                const store = previewStore.getState();
+                return (
+                    store.cardA11yFindings.get(id) ||
+                    store.allPreviews.find((p) => p.id === id)?.a11yFindings ||
+                    []
+                );
+            },
+            getA11yNodes: (id) => {
+                const store = previewStore.getState();
+                return (
+                    store.cardA11yNodes.get(id) ||
+                    store.allPreviews.find((p) => p.id === id)?.a11yNodes ||
+                    []
+                );
+            },
             getA11yOverlayId: a11yOverlay,
             isLive: (id) => liveState.isLive(id),
             onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
@@ -488,12 +468,16 @@ export class PreviewApp extends LitElement {
             earlyFeatures,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
-            getFocusIndex: () => focusIndex,
-            setFocusIndex,
-            getPreviousLayout: () => previousLayout,
-            setPreviousLayout,
-            getLastScopedPreviewId: () => lastScopedPreviewId,
-            setLastScopedPreviewId,
+            getFocusIndex: () => previewStore.getState().focusIndex,
+            setFocusIndex: (next) =>
+                previewStore.setState({ focusIndex: next }),
+            getPreviousLayout: () => previewStore.getState().previousLayout,
+            setPreviousLayout: (next) =>
+                previewStore.setState({ previousLayout: next }),
+            getLastScopedPreviewId: () =>
+                previewStore.getState().lastScopedPreviewId,
+            setLastScopedPreviewId: (next) =>
+                previewStore.setState({ lastScopedPreviewId: next }),
         });
 
         // Filter + message-banner orchestration lives in `./filterController.ts`
@@ -506,7 +490,7 @@ export class PreviewApp extends LitElement {
             filterToolbar,
             grid,
             messageBanner,
-            getAllPreviews: () => allPreviews,
+            getAllPreviews: () => previewStore.getState().allPreviews,
             applyLayout: () => focusController.applyLayout(),
         });
 
@@ -541,7 +525,9 @@ export class PreviewApp extends LitElement {
             const next = filterToolbar.getLayoutValue();
             if (next === "focus" && state.layout !== "focus") {
                 // state.layout is now narrowed to "grid"|"flow"|"column"|undefined.
-                setPreviousLayout(state.layout ?? "grid");
+                previewStore.setState({
+                    previousLayout: state.layout ?? "grid",
+                });
             }
             state.layout = next;
             vscode.setState(state);
@@ -634,7 +620,7 @@ export class PreviewApp extends LitElement {
             interactiveInputConfig,
             diffOverlayConfig,
             inspector,
-            getAllPreviews: () => allPreviews,
+            getAllPreviews: () => previewStore.getState().allPreviews,
             earlyFeatures,
             inFocus: () => focusController.inFocus(),
             focusedCard: () => focusController.focusedCard(),
@@ -682,9 +668,11 @@ export class PreviewApp extends LitElement {
             earlyFeatures,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
-            setAllPreviews,
-            setModuleDir,
-            setLastScopedPreviewId,
+            setAllPreviews: (next) =>
+                previewStore.setState({ allPreviews: next }),
+            setModuleDir: (next) => previewStore.setState({ moduleDir: next }),
+            setLastScopedPreviewId: (next) =>
+                previewStore.setState({ lastScopedPreviewId: next }),
             renderPreviews,
             applyRelativeSizing,
             applyFilters,
