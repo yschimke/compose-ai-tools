@@ -475,6 +475,20 @@
     "sha256": "9340c279d321d58e4646637d6e1fa5334cba2241c02ffd519766043ad501f3bc",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
+  "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {
+    "captureLabel": "",
+    "functionName": "AmbientStatusAmbientPreview",
+    "renderBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+    "sha256": "d3f3ee5f6deedfb3132b2f5eef69319f4bd30fb2776fdf51a0c2897719ac2403",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient body \u2014 interactive": {
+    "captureLabel": "",
+    "functionName": "AmbientStatusInteractivePreview",
+    "renderBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
+    "sha256": "d3f3ee5f6deedfb3132b2f5eef69319f4bd30fb2776fdf51a0c2897719ac2403",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
+  },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large": {
     "captureLabel": "",
     "functionName": "ActivityListFontScalesPreview",

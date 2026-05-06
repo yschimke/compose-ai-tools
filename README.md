@@ -114,6 +114,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png" width="150" /> |
+| `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Larger.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Largest.png" width="150" /> |
