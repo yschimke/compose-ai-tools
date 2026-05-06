@@ -142,6 +142,35 @@ export interface PreviewInfo {
      * `docs/daemon/DATA-PRODUCTS.md` § "Worked example".
      */
     a11yNodes?: AccessibilityNode[] | null;
+    /**
+     * Composables this preview is presumed to render. Inferred by the Gradle
+     * plugin from the preview's bytecode (see `PreviewTargetInference.kt`); v1
+     * emits 0 or 1 entries. The extension uses this to surface previews from
+     * elsewhere when the user opens the production composable file — see
+     * `previewsReferencingFile` in `extension.ts`.
+     */
+    targets?: PreviewTarget[];
+    /**
+     * Set by the extension (not the manifest) when this preview is being
+     * displayed in the panel because one of its [targets] points at the active
+     * file, rather than because its own [sourceFile] matches. Lets the webview
+     * render a "from elsewhere" treatment without changing the message shape.
+     */
+    referenced?: boolean;
+}
+
+/**
+ * Mirrors the plugin-side `PreviewTarget`. Only the fields the panel/webview
+ * actually consume are typed; signal/confidence enums are treated as strings
+ * because the panel never enumerates them — they're surfaced verbatim in
+ * tooltips when present.
+ */
+export interface PreviewTarget {
+    className: string;
+    functionName: string;
+    sourceFile: string | null;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    signals?: string[];
 }
 
 /**

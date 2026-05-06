@@ -15,6 +15,7 @@ import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvid
 import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
+import { visiblePreviewsForFile } from "./previewScope";
 import {
     AccessibilityFinding,
     AccessibilityNode,
@@ -1867,13 +1868,16 @@ function previewsForFile(
     if (!gradleService) {
         return [];
     }
-    return previews.filter((preview) =>
-        previewSourceMatches(
-            preview.sourceFile,
-            filePath,
-            gradleService!.workspaceRoot,
-            module,
-        ),
+    // Primary first (previews authored in this file), then referenced
+    // (previews authored elsewhere whose inferred target points back at this
+    // file — idiomatic `XxxPreviews.kt` / `screenshotTest` layout). Referenced
+    // entries carry `referenced = true` so the webview can group them under a
+    // "from elsewhere" header without touching the cached manifest.
+    return visiblePreviewsForFile(
+        previews,
+        gradleService.workspaceRoot,
+        module,
+        filePath,
     );
 }
 
