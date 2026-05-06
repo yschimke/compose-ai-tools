@@ -11,11 +11,7 @@
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
 // queries below resolve.
 
-import type {
-    AccessibilityFinding,
-    AccessibilityNode,
-    PreviewInfo,
-} from "../shared/types";
+import type { PreviewInfo } from "../shared/types";
 import { requireElementById, requireSelector } from "../shared/domRefs";
 import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
@@ -42,10 +38,7 @@ import {
     isFocusedInteractiveSupported,
     isFocusedModuleReady,
 } from "./focusToolbar";
-import {
-    FrameCarouselController,
-    type CapturePresentation,
-} from "./frameCarousel";
+import { FrameCarouselController } from "./frameCarousel";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import {
@@ -146,15 +139,14 @@ export function setupPreviewBehavior(
     const setA11yOverlay = (id: string | null): void => {
         previewStore.setState({ a11yOverlayPreviewId: id });
     };
-    // previewId -> findings. Populated from setPreviews so updateImage can
-    // re-read the list on every image (re)load without re-querying the
-    // DOM for data attributes.
-    const cardA11yFindings = new Map<string, readonly AccessibilityFinding[]>();
-    // D2 — previewId -> nodes for the daemon-attached a11y/hierarchy payload. Drives
-    // the local hierarchy overlay (translucent rectangles + label/role/states tooltip
-    // on hover) drawn on top of the existing finding overlay. Populated by
-    // applyA11yUpdate and re-read on each image (re)load via applyHierarchyOverlay.
-    const cardA11yNodes = new Map<string, readonly AccessibilityNode[]>();
+    // The per-preview a11y caches (`cardA11yFindings`, `cardA11yNodes`)
+    // and the per-preview capture cache (`cardCaptures`) live in
+    // `previewStore` — populated from `setPreviews` so `updateImage`
+    // can re-read findings + hierarchy nodes on every image (re)load
+    // without re-querying the DOM. The store owns them so the upcoming
+    // `<preview-card>` Lit component can subscribe per-card without
+    // going through this closure (see the versioned-counter notes in
+    // `previewStore.ts`).
     const focusPosition = requireElementById<HTMLElement>("focus-position");
     // Progress bar is owned by `<progress-bar>` — see
     // `components/ProgressBar.ts`. It listens for `setProgress` /
@@ -239,11 +231,11 @@ export function setupPreviewBehavior(
         earlyFeatures,
         getPreview: (id) => allPreviews.find((p) => p.id === id),
         getA11yFindings: (id) =>
-            cardA11yFindings.get(id) ||
+            previewStore.getState().cardA11yFindings.get(id) ||
             allPreviews.find((p) => p.id === id)?.a11yFindings ||
             [],
         getA11yNodes: (id) =>
-            cardA11yNodes.get(id) ||
+            previewStore.getState().cardA11yNodes.get(id) ||
             allPreviews.find((p) => p.id === id)?.a11yNodes ||
             [],
         getA11yOverlayId: a11yOverlay,
@@ -340,13 +332,12 @@ export function setupPreviewBehavior(
     const loadingOverlay = new LoadingOverlay();
 
     // Per-preview carousel runtime state — imageData / errorMessage per
-    // capture. Populated from updateImage / setImageError messages so
-    // prev/next navigation can swap the visible <img> without a fresh
-    // extension round-trip.
-    const cardCaptures = new Map<string, CapturePresentation[]>();
+    // capture — lives on `previewStore.cardCaptures`. Populated from
+    // updateImage / setImageError messages so prev/next navigation can
+    // swap the visible <img> without a fresh extension round-trip; the
+    // carousel reads it via `previewStore.getState().cardCaptures`.
     const frameCarousel = new FrameCarouselController({
         vscode,
-        cardCaptures,
         interactiveInputConfig,
     });
 
@@ -451,9 +442,6 @@ export function setupPreviewBehavior(
     const cardBuilderConfig: CardBuilderConfig = {
         vscode,
         grid,
-        cardCaptures,
-        cardA11yFindings,
-        cardA11yNodes,
         staleBadge,
         frameCarousel,
         liveState,
@@ -503,9 +491,6 @@ export function setupPreviewBehavior(
         loadingOverlay,
         diffOverlayConfig,
         streamingPainter,
-        cardCaptures,
-        cardA11yFindings,
-        cardA11yNodes,
         moduleDaemonReady,
         moduleInteractiveSupported,
         earlyFeatures,

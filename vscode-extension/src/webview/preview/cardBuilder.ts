@@ -40,6 +40,17 @@ import type { LiveStateController } from "./liveState";
 import type { StaleBadgeController } from "./staleBadge";
 import type { PreviewGrid } from "./components/PreviewGrid";
 import type { MessageOwner } from "./components/MessageBanner";
+import {
+    bumpPreviewMapsRevision,
+    clearCardA11yFindings,
+    deleteCardA11yFindings,
+    deleteCardA11yNodes,
+    deleteCardCaptures,
+    previewStore,
+    setCardA11yFindings,
+    setCardA11yNodes,
+    setCardCaptures,
+} from "./previewStore";
 import type {
     AccessibilityFinding,
     AccessibilityNode,
@@ -53,16 +64,6 @@ export interface CardBuilderConfig {
      *  `.preview-card` children to diff against the new manifest, and
      *  uses `insertBefore` to keep the manifest's order stable. */
     grid: PreviewGrid;
-    /** Per-preview carousel runtime state — populated here on creation,
-     *  read by `updateImage` / `setImageError` / `frameCarousel` later. */
-    cardCaptures: Map<string, CapturePresentation[]>;
-    /** Per-preview a11y findings cache — populated by
-     *  `applyA11yUpdate` from daemon `a11y/atf` payloads, re-read on
-     *  every image (re)load to repaint the finding overlay. */
-    cardA11yFindings: Map<string, readonly AccessibilityFinding[]>;
-    /** Per-preview a11y hierarchy nodes cache — same shape, populated
-     *  from `a11y/hierarchy` payloads. */
-    cardA11yNodes: Map<string, readonly AccessibilityNode[]>;
     staleBadge: StaleBadgeController;
     frameCarousel: FrameCarouselController;
     liveState: LiveStateController;
@@ -120,8 +121,8 @@ export interface CardBuilderConfig {
  * keyed on `previewId`).
  *
  * Side effects:
- *  - Seeds `config.cardCaptures.set(p.id, ...)` with one
- *    `CapturePresentation` per `p.captures` entry.
+ *  - Seeds `previewStore`'s `cardCaptures` with one `CapturePresentation`
+ *    per `p.captures` entry (via `setCardCaptures`).
  *  - Calls `config.staleBadge.apply(card, false)` once so the badge slot
  *    exists in DOM order before the rest of the header is appended.
  *  - Calls `config.observeForViewport(card)` so the viewport tracker
@@ -154,7 +155,7 @@ export function buildPreviewCard(
     if (p.referenced) {
         card.dataset.referenced = "1";
     }
-    config.cardCaptures.set(
+    setCardCaptures(
         p.id,
         captures.map(
             (c): CapturePresentation => ({
@@ -297,10 +298,12 @@ export function buildPreviewCard(
 
 /** Subset of `CardBuilderConfig` that `updateCardMetadata` actually
  *  reaches for. Kept narrow so callers — and the eventual reactive
- *  Lit component — only have to satisfy what's used. */
+ *  Lit component — only have to satisfy what's used. The capture
+ *  cache itself lives in `previewStore` (see `setCardCaptures`),
+ *  so it isn't part of this surface. */
 export type CardUpdateConfig = Pick<
     CardBuilderConfig,
-    "cardCaptures" | "frameCarousel" | "earlyFeatures"
+    "frameCarousel" | "earlyFeatures"
 >;
 
 /**
@@ -334,7 +337,7 @@ export function updateCardMetadata(
         renderOutput: c.renderOutput,
         label: c.label || "",
     }));
-    const prior = config.cardCaptures.get(p.id) ?? [];
+    const prior = previewStore.getState().cardCaptures.get(p.id) ?? [];
     // Match by index rather than renderOutput since filenames may
     // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
     // annotation). Mismatched positions just reset to null-image.
@@ -347,7 +350,7 @@ export function updateCardMetadata(
             renderError: prior[i]?.renderError ?? null,
         }),
     );
-    config.cardCaptures.set(p.id, mergedCaps);
+    setCardCaptures(p.id, mergedCaps);
     const curIdx = parseInt(card.dataset.currentIndex || "0", 10);
     if (curIdx >= mergedCaps.length) {
         card.dataset.currentIndex = String(Math.max(0, mergedCaps.length - 1));
@@ -408,13 +411,12 @@ export function updateCardMetadata(
 // the existing `behavior.ts` import paths.
 export { applyRelativeSizing } from "./relativeSizing";
 
-/** Subset `updateImage` reaches for — every per-frame paint dependency. */
+/** Subset `updateImage` reaches for — every per-frame paint dependency.
+ *  The per-preview caches (`cardCaptures`, `cardA11yFindings`,
+ *  `cardA11yNodes`) live in `previewStore` and are read directly there. */
 export type UpdateImageConfig = Pick<
     CardBuilderConfig,
     | "vscode"
-    | "cardCaptures"
-    | "cardA11yFindings"
-    | "cardA11yNodes"
     | "frameCarousel"
     | "liveState"
     | "interactiveInputConfig"
@@ -429,7 +431,9 @@ export type UpdateImageConfig = Pick<
  * touched (the bytes wait for prev/next).
  *
  * Side effects (when [captureIndex] matches the displayed capture):
- *  - Updates / mutates the per-capture cache entry on `cardCaptures`.
+ *  - Updates / mutates the per-capture cache entry on
+ *    `previewStore`'s `cardCaptures` and bumps `mapsRevision` so
+ *    subscribers selecting on the cache notice the new bytes.
  *  - Replaces the card's `<img>` `src` (or creates one if missing).
  *  - Re-attaches the live pointer/wheel handlers via
  *    `attachInteractiveInputHandlers`.
@@ -448,8 +452,11 @@ export function updateImage(
     if (!card) return;
 
     // Cache so carousel navigation can restore this capture without
-    // a fresh extension round-trip.
-    const caps = config.cardCaptures.get(previewId);
+    // a fresh extension round-trip. Mutates the capture object in
+    // place — the Map identity is unchanged but `mapsRevision` is
+    // bumped so subscribers selecting on it can react to fresh
+    // frames in live mode.
+    const caps = previewStore.getState().cardCaptures.get(previewId);
     const capture =
         caps && captureIndex >= 0 && captureIndex < caps.length
             ? caps[captureIndex]
@@ -458,6 +465,7 @@ export function updateImage(
         capture.imageData = imageData;
         capture.errorMessage = null;
         capture.renderError = null;
+        bumpPreviewMapsRevision();
     }
 
     // Only paint the <img> if the currently-displayed capture is the
@@ -532,8 +540,8 @@ export function updateImage(
     // renderPreviews pipeline. Gated on earlyFeatures so the
     // overlay only paints when the user has opted into the
     // accessibility-overlay feature surface.
-    const findings = config.cardA11yFindings.get(previewId);
-    const nodes = config.cardA11yNodes.get(previewId);
+    const findings = previewStore.getState().cardA11yFindings.get(previewId);
+    const nodes = previewStore.getState().cardA11yNodes.get(previewId);
     if (
         config.earlyFeatures() &&
         ((findings && findings.length > 0) || (nodes && nodes.length > 0))
@@ -553,16 +561,12 @@ export function updateImage(
     }
 }
 
-/** Subset `applyA11yUpdate` reaches for. */
+/** Subset `applyA11yUpdate` reaches for. The a11y caches themselves
+ *  live in `previewStore` and are written via the `setCardA11y…` /
+ *  `deleteCardA11y…` helpers. */
 export type A11yUpdateConfig = Pick<
     CardBuilderConfig,
-    | "cardA11yFindings"
-    | "cardA11yNodes"
-    | "getAllPreviews"
-    | "inspector"
-    | "earlyFeatures"
-    | "inFocus"
-    | "focusedCard"
+    "getAllPreviews" | "inspector" | "earlyFeatures" | "inFocus" | "focusedCard"
 >;
 
 /**
@@ -587,7 +591,7 @@ export function applyA11yUpdate(
     const img = container?.querySelector<HTMLImageElement>("img") ?? null;
     if (findings !== undefined) {
         if (findings && findings.length > 0) {
-            config.cardA11yFindings.set(previewId, findings);
+            setCardA11yFindings(previewId, findings);
             if (container && !container.querySelector(".a11y-overlay")) {
                 const overlay = document.createElement("div");
                 overlay.className = "a11y-overlay";
@@ -605,7 +609,7 @@ export function applyA11yUpdate(
                 buildA11yOverlay(card, findings, img);
             }
         } else {
-            config.cardA11yFindings.delete(previewId);
+            deleteCardA11yFindings(previewId);
             const overlay = card.querySelector(".a11y-overlay");
             if (overlay) overlay.remove();
             const legend = card.querySelector(".a11y-legend");
@@ -614,13 +618,13 @@ export function applyA11yUpdate(
     }
     if (nodes !== undefined) {
         if (nodes && nodes.length > 0) {
-            config.cardA11yNodes.set(previewId, nodes);
+            setCardA11yNodes(previewId, nodes);
             ensureHierarchyOverlay(container);
             if (img && img.complete && img.naturalWidth > 0) {
                 applyHierarchyOverlay(card, nodes, img);
             }
         } else {
-            config.cardA11yNodes.delete(previewId);
+            deleteCardA11yNodes(previewId);
             const layer = card.querySelector(".a11y-hierarchy-overlay");
             if (layer) layer.remove();
         }
@@ -631,14 +635,14 @@ export function applyA11yUpdate(
 }
 
 /** Subset `renderPreviews` reaches for — initial-build + metadata-refresh
- *  collaborator surface plus the grid + viewport + message-banner hooks. */
+ *  collaborator surface plus the grid + viewport + message-banner hooks.
+ *  The per-preview Maps live in `previewStore` and are mutated through
+ *  the `…CardCaptures` / `…CardA11y…` helpers, so they don't appear on
+ *  this surface. */
 export type RenderPreviewsConfig = Pick<
     CardBuilderConfig,
     | "vscode"
     | "grid"
-    | "cardCaptures"
-    | "cardA11yFindings"
-    | "cardA11yNodes"
     | "staleBadge"
     | "frameCarousel"
     | "liveState"
@@ -664,11 +668,12 @@ export type RenderPreviewsConfig = Pick<
  * `updateImage` messages.
  *
  * Side effects:
- *  - Removed cards drop their `cardCaptures` entry and detach from the
- *    viewport tracker via `config.forgetViewport`.
- *  - The `cardA11yFindings` cache is fully rebuilt from each preview's
- *    `a11yFindings` so `updateImage`'s on-load handler can repaint
- *    overlays consistently.
+ *  - Removed cards drop their `previewStore` `cardCaptures` entry (via
+ *    `deleteCardCaptures`) and detach from the viewport tracker via
+ *    `config.forgetViewport`.
+ *  - The `cardA11yFindings` cache on `previewStore` is fully rebuilt
+ *    from each preview's `a11yFindings` so `updateImage`'s on-load
+ *    handler can repaint overlays consistently.
  *  - Insert order matches the manifest; `insertBefore` keeps existing
  *    cards in place when their position survives.
  *  - After cards land, transient owner messages (`loading`, `fallback`)
@@ -702,7 +707,7 @@ export function renderPreviews(
     // data so stale entries don't pile up if a preview is renamed.
     for (const [id, card] of existingCards) {
         if (!newIds.has(id)) {
-            config.cardCaptures.delete(id);
+            deleteCardCaptures(id);
             config.forgetViewport(id, card);
             card.remove();
         }
@@ -710,11 +715,14 @@ export function renderPreviews(
 
     // Refresh per-preview findings cache so updateImage can attach
     // them to each new image load. Drop stale entries (preview
-    // removed) so the map doesn't grow across sessions.
-    config.cardA11yFindings.clear();
+    // removed) so the map doesn't grow across sessions. Mutates the
+    // store's Map in place; the per-id `setCardA11yFindings` helper
+    // bumps `mapsRevision` for each addition, plus `clearCardA11y…`
+    // covers the case where the manifest reseed brings zero findings.
+    clearCardA11yFindings();
     for (const p of previews) {
         if (p.a11yFindings && p.a11yFindings.length > 0) {
-            config.cardA11yFindings.set(p.id, p.a11yFindings);
+            setCardA11yFindings(p.id, p.a11yFindings);
         }
     }
 
