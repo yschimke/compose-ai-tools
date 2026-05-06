@@ -176,20 +176,49 @@ export function setupPreviewBehavior(
     // `setCompileErrors` / `clearCompileErrors` directly and toggles
     // the `compile-stale` class on `#preview-grid` itself.
 
+    // Panel-level scalars are mirrored to `previewStore` on every write so
+    // future components (the upcoming `<preview-card>`, the focus inspector,
+    // etc.) can subscribe via `StoreController`. Local mutable bindings stay
+    // here for terseness in the heavy imperative paths
+    // (`createCard`/`renderPreviews`/`updateImage`/etc.); keep the two
+    // synchronised by going through these wrappers.
     let allPreviews: PreviewInfo[] = [];
+    function setAllPreviews(next: PreviewInfo[]): void {
+        allPreviews = next;
+        previewStore.setState({ allPreviews: next });
+    }
     let moduleDir = "";
-    let filterDebounce: ReturnType<typeof setTimeout> | null = null;
+    function setModuleDir(next: string): void {
+        moduleDir = next;
+        previewStore.setState({ moduleDir: next });
+    }
     let focusIndex = 0;
+    function setFocusIndex(next: number): void {
+        focusIndex = next;
+        previewStore.setState({ focusIndex: next });
+    }
     // Last previewId published to the extension via previewScopeChanged.
     // Tracked here so we don't spam the History panel with redundant
     // re-scopes (e.g. layout reapplies on every filter tweak).
     let lastScopedPreviewId: string | null = null;
+    function setLastScopedPreviewId(next: string | null): void {
+        lastScopedPreviewId = next;
+        previewStore.setState({ lastScopedPreviewId: next });
+    }
     // Layout to fall back to when the user exits focus mode. Captured
     // whenever we transition into focus from another layout (dropdown
     // change, dblclick on a card). Defaults to grid so the very first
     // exit lands somewhere sensible.
     let previousLayout: "grid" | "flow" | "column" =
         state.layout && state.layout !== "focus" ? state.layout : "grid";
+    function setPreviousLayout(next: "grid" | "flow" | "column"): void {
+        previousLayout = next;
+        previewStore.setState({ previousLayout: next });
+    }
+    // Seed the store with the persisted-state-derived defaults so initial
+    // subscribers see the right values.
+    previewStore.setState({ previousLayout });
+    let filterDebounce: ReturnType<typeof setTimeout> | null = null;
 
     // Interactive (live-stream) mode state. Declared up here — *before*
     // the first applyLayout() call below — because applyLayout reaches
@@ -301,13 +330,12 @@ export function setupPreviewBehavior(
     messageBanner.setMessage("Loading Compose previews…", "fallback");
 
     filterToolbar.addEventListener("layout-changed", () => {
-        if (
-            filterToolbar.getLayoutValue() === "focus" &&
-            state.layout !== "focus"
-        ) {
-            previousLayout = state.layout || "grid";
+        const next = filterToolbar.getLayoutValue();
+        if (next === "focus" && state.layout !== "focus") {
+            // state.layout is now narrowed to "grid"|"flow"|"column"|undefined.
+            setPreviousLayout(state.layout ?? "grid");
         }
-        state.layout = filterToolbar.getLayoutValue();
+        state.layout = next;
         vscode.setState(state);
         applyLayout();
     });
@@ -508,8 +536,10 @@ export function setupPreviewBehavior(
                 publishScopedPreview();
                 return;
             }
-            if (focusIndex >= visible.length) focusIndex = visible.length - 1;
-            if (focusIndex < 0) focusIndex = 0;
+            if (focusIndex >= visible.length) {
+                setFocusIndex(visible.length - 1);
+            }
+            if (focusIndex < 0) setFocusIndex(0);
             grid.applyFocusVisibility(visible[focusIndex]);
             focusPosition.textContent = focusIndex + 1 + " / " + visible.length;
             btnPrev.disabled = focusIndex === 0;
@@ -568,7 +598,7 @@ export function setupPreviewBehavior(
             }
         }
         if (previewId === lastScopedPreviewId) return;
-        lastScopedPreviewId = previewId;
+        setLastScopedPreviewId(previewId);
         // Mirror to the store so subscribed components (the upcoming
         // `<focus-controls>`, `<focus-inspector>`, etc.) react without
         // re-walking the DOM. Same value goes upstream to the extension
@@ -583,9 +613,8 @@ export function setupPreviewBehavior(
     function navigateFocus(delta: number): void {
         const visible = getVisibleCards();
         if (visible.length === 0) return;
-        focusIndex = Math.max(
-            0,
-            Math.min(visible.length - 1, focusIndex + delta),
+        setFocusIndex(
+            Math.max(0, Math.min(visible.length - 1, focusIndex + delta)),
         );
         applyLayout();
     }
@@ -598,10 +627,10 @@ export function setupPreviewBehavior(
         const visible = getVisibleCards();
         const idx = visible.indexOf(card);
         if (idx === -1) return;
-        focusIndex = idx;
+        setFocusIndex(idx);
         const current = filterToolbar.getLayoutValue();
         if (current !== "focus") {
-            previousLayout = current;
+            setPreviousLayout(current);
             filterToolbar.setLayoutValue("focus");
             state.layout = "focus";
             vscode.setState(state);
@@ -1222,15 +1251,9 @@ export function setupPreviewBehavior(
         earlyFeatures,
         getA11yOverlayId: a11yOverlay,
         setA11yOverlayId: setA11yOverlay,
-        setAllPreviews: (previews) => {
-            allPreviews = previews;
-        },
-        setModuleDir: (dir) => {
-            moduleDir = dir;
-        },
-        setLastScopedPreviewId: (id) => {
-            lastScopedPreviewId = id;
-        },
+        setAllPreviews,
+        setModuleDir,
+        setLastScopedPreviewId,
         renderPreviews,
         applyRelativeSizing,
         applyFilters,
