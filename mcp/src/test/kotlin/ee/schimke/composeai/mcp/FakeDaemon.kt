@@ -234,6 +234,14 @@ class FakeDaemon : DaemonSpawn {
    */
   @Volatile var autoRenderUnchanged: ((previewId: String) -> Boolean?)? = null
 
+  /**
+   * Path returned in `InitializeResult.manifest.path`. The MCP server's `DaemonSupervisor` caches
+   * it on `SupervisedDaemon.manifestPath` so the background poller can stat the file and re-read on
+   * change (issue #834). Tests that drive the manifest poller assign this before the spawn calls
+   * `initialize`.
+   */
+  @Volatile var advertisedManifestPath: String = ""
+
   private lateinit var _client: DaemonClient
 
   override val client: DaemonClient
@@ -382,7 +390,7 @@ class FakeDaemon : DaemonSpawn {
                 recordingFormats = advertisedRecordingFormats,
               ),
             classpathFingerprint = "fake-fingerprint",
-            manifest = Manifest(path = "", previewCount = 0),
+            manifest = Manifest(path = advertisedManifestPath, previewCount = 0),
           )
         sendResponse(id, json.encodeToJsonElement(InitializeResult.serializer(), result))
       }
