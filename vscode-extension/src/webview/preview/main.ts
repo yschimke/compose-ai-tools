@@ -10,9 +10,8 @@
 // into reactive sub-components.
 
 import { LitElement, html, type TemplateResult } from "lit";
-import { customElement } from "lit/decorators.js";
+import { customElement, query } from "lit/decorators.js";
 import type { PreviewInfo } from "../shared/types";
-import { requireElementById, requireSelector } from "../shared/domRefs";
 import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
@@ -73,6 +72,31 @@ export class PreviewApp extends LitElement {
     protected createRenderRoot(): HTMLElement {
         return this;
     }
+
+    // Element handles into the rendered template. Lit resolves these lazily on
+    // first access via `this.querySelector`, which works in light DOM. We read
+    // them inside `firstUpdated` (after the template is in the DOM) and alias
+    // each to a local `const` to minimise diff churn against the previous
+    // `requireElementById` / `requireSelector` setup body — step 3+ will lift
+    // these onto controllers and the locals will go away naturally.
+    @query("#preview-grid") private _grid!: PreviewGrid;
+    @query("#focus-inspector") private _focusInspector!: HTMLElement;
+    @query("message-banner") private _messageBanner!: MessageBanner;
+    @query("filter-toolbar") private _filterToolbar!: FilterToolbar;
+    @query("#focus-controls") private _focusControls!: HTMLElement;
+    @query("#btn-prev") private _btnPrev!: HTMLButtonElement;
+    @query("#btn-next") private _btnNext!: HTMLButtonElement;
+    @query("#btn-diff-head") private _btnDiffHead!: HTMLButtonElement;
+    @query("#btn-diff-main") private _btnDiffMain!: HTMLButtonElement;
+    @query("#btn-launch-device") private _btnLaunchDevice!: HTMLButtonElement;
+    @query("#btn-a11y-overlay") private _btnA11yOverlay!: HTMLButtonElement;
+    @query("#btn-interactive") private _btnInteractive!: HTMLButtonElement;
+    @query("#btn-stop-interactive")
+    private _btnStopInteractive!: HTMLButtonElement;
+    @query("#btn-recording") private _btnRecording!: HTMLButtonElement;
+    @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
+    @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
+    @query("#focus-position") private _focusPosition!: HTMLElement;
 
     protected render(): TemplateResult {
         return html`
@@ -239,43 +263,36 @@ export class PreviewApp extends LitElement {
             previewStore.getState().streamingEnabled;
         const streamingPainter = new StreamingPainter();
 
-        const grid = requireElementById<PreviewGrid>("preview-grid");
-        const focusInspector =
-            requireElementById<HTMLElement>("focus-inspector");
+        // Element handles resolve via `@query` decorators on this element —
+        // see the field declarations above. We alias them to local `const`s
+        // so the rest of `firstUpdated` (controllers, cardBuilderConfig,
+        // messageContext) can keep reading them by their short names.
+        const grid = this._grid;
+        const focusInspector = this._focusInspector;
         // `<message-banner>` owns the status strip; we use a typed handle to
         // call setMessage / read its current owner from the few cases that
         // still need to drive it (filter narrowing, ensureNotBlank fallback,
         // clearAll). showMessage messages from the extension reach the
         // component directly without going through this code.
-        const messageBanner = requireSelector<MessageBanner>("message-banner");
+        const messageBanner = this._messageBanner;
         // `<filter-toolbar>` owns the function/group/layout selects,
         // their options, and the user-interaction events. We grab a handle
         // here for the programmatic get/set + populate paths used by
         // applyFilters / applyLayout / setPreviews / setFunctionFilter /
         // focusOnCard / exitFocus / restoreFilterState.
-        const filterToolbar = requireSelector<FilterToolbar>("filter-toolbar");
-        const focusControls = requireElementById<HTMLElement>("focus-controls");
-        const btnPrev = requireElementById<HTMLButtonElement>("btn-prev");
-        const btnNext = requireElementById<HTMLButtonElement>("btn-next");
-        const btnDiffHead =
-            requireElementById<HTMLButtonElement>("btn-diff-head");
-        const btnDiffMain =
-            requireElementById<HTMLButtonElement>("btn-diff-main");
-        const btnLaunchDevice =
-            requireElementById<HTMLButtonElement>("btn-launch-device");
-        const btnA11yOverlay =
-            requireElementById<HTMLButtonElement>("btn-a11y-overlay");
-        const btnInteractive =
-            requireElementById<HTMLButtonElement>("btn-interactive");
-        const btnStopInteractive = requireElementById<HTMLButtonElement>(
-            "btn-stop-interactive",
-        );
-        const btnRecording =
-            requireElementById<HTMLButtonElement>("btn-recording");
-        const recordingFormat =
-            requireElementById<HTMLSelectElement>("recording-format");
-        const btnExitFocus =
-            requireElementById<HTMLButtonElement>("btn-exit-focus");
+        const filterToolbar = this._filterToolbar;
+        const focusControls = this._focusControls;
+        const btnPrev = this._btnPrev;
+        const btnNext = this._btnNext;
+        const btnDiffHead = this._btnDiffHead;
+        const btnDiffMain = this._btnDiffMain;
+        const btnLaunchDevice = this._btnLaunchDevice;
+        const btnA11yOverlay = this._btnA11yOverlay;
+        const btnInteractive = this._btnInteractive;
+        const btnStopInteractive = this._btnStopInteractive;
+        const btnRecording = this._btnRecording;
+        const recordingFormat = this._recordingFormat;
+        const btnExitFocus = this._btnExitFocus;
         const focusToolbar = new FocusToolbarController({
             btnPrev,
             btnNext,
@@ -311,7 +328,7 @@ export class PreviewApp extends LitElement {
         // `<preview-card>` Lit component can subscribe per-card without
         // going through this closure (see the versioned-counter notes in
         // `previewStore.ts`).
-        const focusPosition = requireElementById<HTMLElement>("focus-position");
+        const focusPosition = this._focusPosition;
         // Progress bar is owned by `<progress-bar>` — see
         // `components/ProgressBar.ts`. It listens for `setProgress` /
         // `clearProgress` directly and owns its own deferred-paint timing.
