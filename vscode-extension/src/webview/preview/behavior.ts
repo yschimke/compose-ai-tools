@@ -25,6 +25,7 @@ import {
 } from "./cardBuilder";
 import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
+import "./components/PreviewCard";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
