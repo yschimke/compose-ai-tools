@@ -127,6 +127,63 @@ class RecordingScriptHandlerRegistryTest {
   }
 
   @Test
+  fun `dispatch fires observers before the handler runs`() {
+    val seen = mutableListOf<String>()
+    val observer = RecordingScriptDispatchObserver { event, _ -> seen += "observer:${event.kind}" }
+    val handler = RecordingScriptEventHandler { event, _ ->
+      seen += "handler:${event.kind}"
+      appliedEvidence(event)
+    }
+    val registry =
+      RecordingScriptHandlerRegistry(
+        handlers = mapOf("input.click" to handler),
+        observers = listOf(observer),
+      )
+
+    registry.dispatch(
+      RecordingScriptEvent(tMs = 0L, kind = "input.click"),
+      SimpleRecordingDispatchContext(0L, 0L),
+    )
+
+    assertEquals(listOf("observer:input.click", "handler:input.click"), seen)
+  }
+
+  @Test
+  fun `observer faults are isolated and do not poison dispatch`() {
+    val faulty = RecordingScriptDispatchObserver { _, _ -> throw RuntimeException("boom") }
+    val handler = RecordingScriptEventHandler { event, _ -> appliedEvidence(event, "ok") }
+    val registry =
+      RecordingScriptHandlerRegistry(
+        handlers = mapOf("input.click" to handler),
+        observers = listOf(faulty),
+      )
+
+    val evidence =
+      registry.dispatch(
+        RecordingScriptEvent(tMs = 0L, kind = "input.click"),
+        SimpleRecordingDispatchContext(0L, 0L),
+      )
+
+    assertEquals(RecordingScriptEventStatus.APPLIED, evidence.status)
+    assertEquals("ok", evidence.message)
+  }
+
+  @Test
+  fun `observers fire even when no handler is registered`() {
+    var observerSaw: String? = null
+    val observer = RecordingScriptDispatchObserver { event, _ -> observerSaw = event.kind }
+    val registry =
+      RecordingScriptHandlerRegistry(handlers = emptyMap(), observers = listOf(observer))
+
+    registry.dispatch(
+      RecordingScriptEvent(tMs = 0L, kind = "input.click"),
+      SimpleRecordingDispatchContext(0L, 0L),
+    )
+
+    assertEquals("input.click", observerSaw)
+  }
+
+  @Test
   fun `dispatch returns the handler's own evidence object verbatim`() {
     val sentinelEvidence = appliedEvidence(RecordingScriptEvent(tMs = 0L, kind = "click"))
     val registry =

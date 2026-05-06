@@ -41,6 +41,16 @@ wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
+# `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
+# the AOSP entry point both horologist's `AmbientAware` and direct subscribers
+# wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
+# controller) so consumer code wired to `AmbientAware { ... }` can render under
+# a synthetic ambient state without flashing a real watch.
+wear = "1.3.0"
+# Horologist's `AmbientAware` composable + `AmbientState` sealed type — the
+# de-facto helper most Wear apps use to wrap their root content. Used by
+# `:samples:wear` previews to demonstrate the ambient override end-to-end.
+horologist = "0.7.15"
 # Remote Compose — alpha artifacts, used only by `:samples:remotecompose` to
 # demonstrate `RemotePreview` + `@PreviewWrapper(RemotePreviewWrapper::class)`.
 # Re-check minCompileSdk / AGP requirements when bumping these — the alpha
@@ -116,6 +126,8 @@ wear-tiles-renderer = { module = "androidx.wear.tiles:tiles-renderer", version.r
 wear-tiles-tooling = { module = "androidx.wear.tiles:tiles-tooling", version.ref = "wear-tiles" }
 wear-tiles-tooling-preview = { module = "androidx.wear.tiles:tiles-tooling-preview", version.ref = "wear-tiles" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
+wear = { module = "androidx.wear:wear", version.ref = "wear" }
+horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }
 compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tooling-preview", version.ref = "compose-remote" }
 compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
 compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }

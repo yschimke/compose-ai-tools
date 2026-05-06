@@ -40,6 +40,21 @@ fun interface RecordingScriptEventHandler {
 }
 
 /**
+ * Side-band dispatch hook for cross-cutting connectors that need to react to every recording script
+ * event (analytics, tracing, the ambient connector's wake-on-input). Observers fire **before** the
+ * registered handler so they can mutate connector-side state the handler reads — the ambient
+ * connector flips [AmbientStateController] before the touch click reaches the held rule's pointer
+ * pipeline.
+ *
+ * Observer faults are isolated by [RecordingScriptHandlerRegistry.dispatch] via `runCatching` — the
+ * recording session is the source of truth for evidence shape and shouldn't fail because an
+ * extension threw.
+ */
+fun interface RecordingScriptDispatchObserver {
+  fun beforeDispatch(event: RecordingScriptEvent, ctx: RecordingDispatchContext)
+}
+
+/**
  * Map from event-kind wire string to its [RecordingScriptEventHandler]. Built by each
  * [RenderHost.acquireRecordingSession] call so handlers can close over the per-session held
  * scene/rule. The registry shape itself is renderer-agnostic — desktop and Android both build one,
@@ -48,15 +63,29 @@ fun interface RecordingScriptEventHandler {
  * Lookup is by `event.kind` (the wire string the agent sent). Kinds with no registered handler
  * yield [unsupportedEvidence] — defense in depth for events the MCP layer didn't filter (older MCP
  * servers, direct daemon clients).
+ *
+ * [observers] receive every dispatched event before the handler runs — see
+ * [RecordingScriptDispatchObserver] for the contract.
  */
 class RecordingScriptHandlerRegistry(
-  private val handlers: Map<String, RecordingScriptEventHandler>
+  private val handlers: Map<String, RecordingScriptEventHandler>,
+  private val observers: List<RecordingScriptDispatchObserver> = emptyList(),
 ) {
 
   fun dispatch(
     event: RecordingScriptEvent,
     ctx: RecordingDispatchContext,
   ): RecordingScriptEvidence {
+    for (observer in observers) {
+      runCatching { observer.beforeDispatch(event, ctx) }
+        .onFailure { t ->
+          System.err.println(
+            "compose-ai-daemon: RecordingScriptDispatchObserver " +
+              "${observer.javaClass.name} threw on '${event.kind}': " +
+              "${t.javaClass.simpleName}: ${t.message}"
+          )
+        }
+    }
     val handler = handlers[event.kind]
     return if (handler == null) {
       unsupportedEvidence(event, "no recording-script handler registered for kind '${event.kind}'")
