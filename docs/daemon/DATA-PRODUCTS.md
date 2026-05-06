@@ -292,7 +292,10 @@ Compose runtime, daemon, or AndroidX:
 
 | Kind | Schema module | Schema type |
 |---|---|---|
-| `a11y/*` | `:data-a11y-core` | `AccessibilityReport`, `AccessibilityEntry` |
+| `a11y/atf` | `:data-a11y-core` | `AccessibilityFindingsPayload`, `AccessibilityFinding` |
+| `a11y/hierarchy` | `:data-a11y-core` | `AccessibilityHierarchyPayload`, `AccessibilityNode` |
+| `a11y/touchTargets` | `:data-a11y-core` | `AccessibilityTouchTargetsPayload`, `AccessibilityTouchTarget` |
+| `a11y/overlay` | `:data-a11y-core` | `AccessibilityOverlayArtifact` (path-only) |
 | `compose/recomposition` | `:data-recomposition-core` | `RecompositionPayload`, `RecompositionNode` |
 | `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` |
 | `compose/theme` | `:data-theme-core` | `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` |
