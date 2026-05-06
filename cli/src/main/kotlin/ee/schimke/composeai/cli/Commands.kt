@@ -362,11 +362,59 @@ abstract class Command(protected val args: List<String>) {
   )
 
   /**
-   * Shared "discover modules → run `:renderAllPreviews` → load manifests → build results" pipeline
-   * used by `show` and `a11y` (and follow-up commands). Each subcommand contributes the per-feature
-   * gradle properties via [gradleArguments] (e.g. a11y enables checks via
-   * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`); the shared body is what was
-   * previously duplicated in their `run()` methods.
+   * Lower-level outcome of [renderModules] — only the gradle build result and the (optionally
+   * filtered) module list, leaving manifest reads + result building to the caller. Used by commands
+   * whose manifests don't fit the `PreviewManifest` / `PreviewResult` shape (today:
+   * `show-resources`, which has its own resource-manifest type).
+   */
+  protected data class RawRenderOutcome(val buildOk: Boolean, val modules: List<PreviewModule>)
+
+  /**
+   * Shared gradle-drive pipeline — open the connector, resolve preview modules, optionally filter
+   * them, run a per-module task, report failures. Returns the build result + the modules the caller
+   * should read manifests from.
+   *
+   * [moduleFilter] runs after `resolveModules`; pass it when only a subset of plugin-applied
+   * modules participates in this pipeline (e.g. `show-resources` filters to Android-only modules
+   * because `:renderAndroidResources` doesn't exist on CMP modules).
+   *
+   * [taskFor] builds the gradle task path for one module. Standard preview commands use
+   * `:${path}:renderAllPreviews`; resource commands use `:${path}:renderAndroidResources`.
+   *
+   * Skips the actual `runGradle` call (and reports `buildOk = true`) when [moduleFilter] yields an
+   * empty list — there's nothing to render and `gradle.runTasks([])` has no defined meaning.
+   */
+  protected fun renderModules(
+    silenceStdout: Boolean,
+    moduleFilter: (PreviewModule) -> Boolean = { true },
+    taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:renderAllPreviews" },
+    gradleArguments: List<String> = emptyList(),
+  ): RawRenderOutcome {
+    var outcome: RawRenderOutcome? = null
+    withGradle(silenceStdout = silenceStdout) { gradle ->
+      val modules = withGradleStdout(silenceStdout) { resolveModules(gradle).filter(moduleFilter) }
+      val buildOk =
+        if (modules.isEmpty()) true
+        else {
+          val tasks = modules.map(taskFor).toTypedArray()
+          val ok =
+            withGradleStdout(silenceStdout) {
+              runGradle(gradle, *tasks, arguments = gradleArguments)
+            }
+          if (!ok) reportRenderFailures(gradle)
+          ok
+        }
+      outcome = RawRenderOutcome(buildOk = buildOk, modules = modules)
+    }
+    return outcome ?: error("renderModules: gradle block did not produce an outcome")
+  }
+
+  /**
+   * Standard "discover modules → run `:renderAllPreviews` → load manifests → build results"
+   * pipeline used by `show` and `a11y`. Wraps [renderModules] with the preview-manifest read
+   * + [PreviewResult] build steps. Each subcommand contributes per-feature gradle properties via
+   *   [gradleArguments] (e.g. a11y enables checks via
+   *   `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`).
    *
    * [silenceStdout] mirrors each command's `--json` flag: when on, the shared helpers redirect
    * stdout to stderr so the gradle progress output doesn't poison the JSON envelope.
@@ -375,24 +423,15 @@ abstract class Command(protected val args: List<String>) {
     silenceStdout: Boolean,
     gradleArguments: List<String> = emptyList(),
   ): RenderModulesOutcome {
-    var outcome: RenderModulesOutcome? = null
-    withGradle(silenceStdout = silenceStdout) { gradle ->
-      val modules = withGradleStdout(silenceStdout) { resolveModules(gradle) }
-      val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
-      val buildOk =
-        withGradleStdout(silenceStdout) { runGradle(gradle, *tasks, arguments = gradleArguments) }
-      if (!buildOk) reportRenderFailures(gradle)
-      val manifests = readAllManifests(modules)
-      val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
-      outcome =
-        RenderModulesOutcome(
-          buildOk = buildOk,
-          modules = modules,
-          manifests = manifests,
-          results = results,
-        )
-    }
-    return outcome ?: error("renderAllModules: gradle block did not produce an outcome")
+    val raw = renderModules(silenceStdout = silenceStdout, gradleArguments = gradleArguments)
+    val manifests = readAllManifests(raw.modules)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+    return RenderModulesOutcome(
+      buildOk = raw.buildOk,
+      modules = raw.modules,
+      manifests = manifests,
+      results = results,
+    )
   }
 
   /**
