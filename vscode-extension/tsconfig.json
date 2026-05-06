@@ -13,5 +13,6 @@
         "resolveJsonModule": true
     },
     "include": ["src/**/*"],
-    "exclude": ["node_modules", "src/webview/**"]
+    "exclude": ["node_modules", "src/webview/**"],
+    "files": ["src/webview/preview/cardData.ts", "src/webview/shared/types.ts"]
 }
