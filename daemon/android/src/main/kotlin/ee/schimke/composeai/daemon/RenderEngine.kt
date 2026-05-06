@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -36,13 +35,6 @@ import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCom
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
-import ee.schimke.composeai.data.render.extensions.ExtensionContextData
-import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
-import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
-import ee.schimke.composeai.data.render.extensions.provides
-import ee.schimke.composeai.renderer.AccessibilityDataProducts
-import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
-import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import java.io.File
 import java.util.Base64
 import kotlinx.serialization.decodeFromString
@@ -128,6 +120,15 @@ class RenderEngine(
    */
   private val previewOverrideExtensions: PreviewOverrideExtensions =
     PreviewOverrideExtensions.Empty,
+  /**
+   * Post-capture producers the engine drives after `captureRoboImage` finishes. Defaults to the
+   * full in-tree set ([AndroidPostCaptureProducers.defaults]); `DaemonMain` can swap this for a
+   * narrower list (e.g. omit `a11y` when the host doesn't enable a11y mode at all). Iterated in
+   * order; each runs inside a `try/catch` and a `trace.section(producer.id)` so a misbehaving
+   * producer can't strand the PNG.
+   */
+  private val postCaptureProducers: List<AndroidPostCaptureProducer> =
+    AndroidPostCaptureProducers.defaults(),
 ) {
 
   /**
@@ -313,138 +314,31 @@ class RenderEngine(
                 }
               }
 
-            if (dataDir != null) {
-              try {
-                trace.section("compose:fontsUsedDataProduct") {
-                  FontsUsedDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.previewId ?: spec.outputBaseName,
-                    payload = fontRecorder.payload(),
+            if (dataDir != null && postCaptureProducers.isNotEmpty()) {
+              val context =
+                AndroidPostCaptureContext(
+                  rule = rule,
+                  activity = rule.activity,
+                  spec = spec,
+                  outputFile = outputFile,
+                  dataDir = dataDir,
+                  isRound = isRound,
+                  runAccessibility = runAccessibility,
+                  slotTables = slotTableCapture.snapshot(),
+                  fontRecorder = fontRecorder,
+                  resourceRecorder = resourceRecorder,
+                  imageProcessors = imageProcessors,
+                )
+              for (producer in postCaptureProducers) {
+                if (!producer.shouldRun(context)) continue
+                try {
+                  trace.section(producer.id) { producer.write(context) }
+                } catch (t: Throwable) {
+                  System.err.println(
+                    "RenderEngine: ${producer.id} failed for ${spec.outputBaseName}: " +
+                      "${t.javaClass.simpleName}: ${t.message}"
                   )
                 }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: fonts/used data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            if (dataDir != null) {
-              try {
-                trace.section("android:resourcesUsedDataProduct") {
-                  ResourcesUsedDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    recorder = resourceRecorder,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: resources/used data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            // compose/semantics and i18n/translations data products. Both are default-mode data,
-            // independent of the accessibility checker: clients get inspector text bounds and
-            // locale coverage without paying ATF costs.
-            if (dataDir != null) {
-              try {
-                trace.section("compose:defaultDataProducts") {
-                  val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-                  ComposeSemanticsDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    root = semanticsRoot,
-                  )
-                  val layoutInspectionContext =
-                    PreviewContext.Builder(
-                        previewId = spec.previewId,
-                        backend = PreviewBackends.ANDROID,
-                        renderMode = spec.renderMode,
-                        outputBaseName = spec.outputBaseName,
-                      )
-                      .deviceFromRenderPixels(
-                        spec.device,
-                        spec.widthPx,
-                        spec.heightPx,
-                        spec.density,
-                        resolvedDevice = spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
-                      )
-                      .parameterInformationCollected()
-                      .addSlotTables(slotTableCapture.snapshot())
-                      .rootForTest(semanticsRoot.root)
-                      .build()
-                  LayoutInspectorDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    previewContext = layoutInspectionContext,
-                  )
-                  I18nTranslationsDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    root = semanticsRoot,
-                    renderedLocale = spec.localeTag,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: default data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
-
-            // D2 — a11y data products. Walk the same `ViewRootForTest` ATF can populate, dump
-            // `a11y-atf.json` (findings) and `a11y-hierarchy.json` (nodes) next to the PNG. The
-            // dispatcher reads these on `data/fetch` / `data/subscribe` attachment via
-            // `AccessibilityDataProductRegistry`. Wrapped in try/catch so an a11y failure does
-            // not strand the PNG the user already cares about — the registry sees a missing
-            // file as "no attachment for this kind on this render".
-            if (runAccessibility && dataDir != null) {
-              try {
-                trace.section("a11y:dataProducts") {
-                  val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
-                  // Hierarchy + ATF come from a typed extension instead of a direct
-                  // AccessibilityChecker.analyze call. The extension owns the platform-specific
-                  // ATF walk; downstream consumers (TouchTargets, Overlay) read declared inputs
-                  // without re-walking the View. A future :data-a11y-hierarchy-desktop (CMP
-                  // semantics walk) would target {Desktop} and emit the same product keys; the
-                  // planner's target filter selects exactly one provider per platform.
-                  val hierarchyExtension = AccessibilityHierarchyExtension()
-                  val store = RecordingDataProductStore()
-                  hierarchyExtension.process(
-                    ExtensionPostCaptureContext(
-                      extensionId = hierarchyExtension.id,
-                      previewId = spec.outputBaseName,
-                      renderMode = spec.renderMode,
-                      products = store.scopedFor(hierarchyExtension),
-                      data =
-                        ExtensionContextData.of(
-                          AccessibilityHierarchyContextKeys.ViewRoot provides view
-                        ),
-                    )
-                  )
-                  val hierarchy = store.require(AccessibilityDataProducts.Hierarchy)
-                  val findings = store.require(AccessibilityDataProducts.Atf)
-                  AccessibilityDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    findings = findings.findings,
-                    nodes = hierarchy.nodes,
-                    density = spec.density,
-                    pngFile = outputFile,
-                    isRound = isRound,
-                    imageProcessors = imageProcessors,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
               }
             }
           } finally {
@@ -635,7 +529,7 @@ class RenderEngine(
   }
 }
 
-private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
+internal fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
   PreviewDeviceSpec(widthDp = widthDp, heightDp = heightDp, density = density, isRound = isRound)
 
 /**
