@@ -11,6 +11,7 @@
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
 // queries below resolve.
 
+import { requireElementById } from "../shared/domRefs";
 import type { HistoryEntry, HistoryToWebview } from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
 import { cssEscape } from "./historyData";
@@ -25,15 +26,6 @@ import {
     populateThumb,
     renderTimeline as renderTimelineDom,
 } from "./historyTimeline";
-
-/** Look up a known-present DOM element. Used for the static ids that
- *  `<history-app>` has already rendered into the light DOM. Throws so a
- *  missing template surfaces early. */
-function requireElementById<T extends HTMLElement>(id: string): T {
-    const el = document.getElementById(id);
-    if (!el) throw new Error(`Required element #${id} not found`);
-    return el as T;
-}
 
 export function setupHistoryBehavior(): void {
     const vscode = getVsCodeApi();

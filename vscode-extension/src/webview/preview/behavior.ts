@@ -16,6 +16,7 @@ import type {
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
+import { requireElementById, requireSelector } from "../shared/domRefs";
 import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
@@ -62,22 +63,6 @@ interface PersistedState {
     filters?: { fn?: string; group?: string };
     layout?: "grid" | "flow" | "column" | "focus";
     diffMode?: DiffMode;
-}
-
-/** Look up a known-present DOM element. Used for the static ids that
- *  `<preview-app>` has already rendered into the light DOM by the time this
- *  module runs. Throws so a missing template (e.g. an HTML-template typo)
- *  surfaces early rather than landing as a runtime null-deref deeper in. */
-function requireElementById<T extends HTMLElement>(id: string): T {
-    const el = document.getElementById(id);
-    if (!el) throw new Error(`Required element #${id} not found`);
-    return el as T;
-}
-
-function requireSelector<T extends Element>(selector: string): T {
-    const el = document.querySelector<T>(selector);
-    if (!el) throw new Error(`Required element ${selector} not found`);
-    return el;
 }
 
 export function setupPreviewBehavior(
