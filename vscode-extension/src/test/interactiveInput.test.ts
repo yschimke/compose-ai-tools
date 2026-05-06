@@ -125,7 +125,34 @@ function createVscode(): {
     };
 }
 
+/** Deterministic stub for `requestAnimationFrame`: queues callbacks until
+ *  `flushRaf()` runs them. The pointermove coalescer dispatches via rAF,
+ *  so tests need to control when the flush fires to assert the
+ *  before/after states (otherwise happy-dom's real rAF would race the
+ *  assertions). Restored after each test. */
+let pendingRaf: FrameRequestCallback[] = [];
+let originalRaf: typeof globalThis.requestAnimationFrame | undefined;
+function installRafStub(): void {
+    originalRaf = globalThis.requestAnimationFrame;
+    pendingRaf = [];
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        pendingRaf.push(cb);
+        return pendingRaf.length;
+    }) as typeof globalThis.requestAnimationFrame;
+}
+function flushRaf(): void {
+    const cbs = pendingRaf;
+    pendingRaf = [];
+    for (const cb of cbs) cb(performance.now());
+}
+function restoreRaf(): void {
+    if (originalRaf) globalThis.requestAnimationFrame = originalRaf;
+    originalRaf = undefined;
+    pendingRaf = [];
+}
+
 afterEach(() => {
+    restoreRaf();
     document.body.innerHTML = "";
 });
 
@@ -446,5 +473,161 @@ describe("attachInteractiveInputHandlers pointer — streaming mode", () => {
 
         assert.strictEqual(posted.length, 0);
         assert.strictEqual(evt.defaultPrevented, false);
+    });
+});
+
+describe("attachInteractiveInputHandlers pointermove — rAF coalescing", () => {
+    it("collapses a burst of pointermoves into one daemon post per rAF tick", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+        );
+        // First crossing the 4-CSS-px threshold flips `dragging` and posts
+        // pointerDown synchronously.
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 20, clientY: 10 }),
+        );
+        // Three more moves arrive before the rAF fires — the painter only
+        // consumes one frame per rAF, so one post per rAF is what the
+        // daemon should see too.
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 30, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 40, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 50, clientY: 10 }),
+        );
+
+        // pointerDown went through immediately, but no pointerMove yet.
+        assert.deepStrictEqual(
+            posted.map((m) => m["kind"]),
+            ["pointerDown"],
+        );
+
+        flushRaf();
+
+        // After the rAF flush, exactly one pointerMove is posted carrying
+        // the latest position (50,10 in CSS → 200,40 in natural pixels).
+        assert.deepStrictEqual(
+            posted.map((m) => m["kind"]),
+            ["pointerDown", "pointerMove"],
+        );
+        const move = posted[1];
+        assert.strictEqual(move["pixelX"], 200);
+        assert.strictEqual(move["pixelY"], 40);
+    });
+
+    it("schedules a fresh rAF for moves that arrive after the previous flush", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 20, clientY: 10 }),
+        );
+        flushRaf();
+        // Second burst — must trigger a new rAF, not piggyback on a stale flag.
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 60, clientY: 10 }),
+        );
+        flushRaf();
+
+        const moves = posted.filter((m) => m["kind"] === "pointerMove");
+        assert.strictEqual(moves.length, 2);
+        assert.strictEqual(moves[0]["pixelX"], 80); // 20 css → 80 nat
+        assert.strictEqual(moves[1]["pixelX"], 240); // 60 css → 240 nat
+    });
+
+    it("flushes any pending coalesced move on pointerup so the gesture's tail isn't dropped", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 20, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 30, clientY: 10 }),
+        );
+        // Pointerup before the rAF would have fired — without an explicit
+        // flush the daemon would never see the (30,10) position.
+        canvas.dispatchEvent(
+            pointerEvent("pointerup", { clientX: 35, clientY: 10 }),
+        );
+
+        const kinds = posted.map((m) => m["kind"]);
+        assert.deepStrictEqual(kinds, [
+            "pointerDown",
+            "pointerMove",
+            "pointerUp",
+        ]);
+        const move = posted[1];
+        assert.strictEqual(move["pixelX"], 120); // 30 css → 120 nat
+        const up = posted[2];
+        assert.strictEqual(up["pixelX"], 140); // 35 css → 140 nat
+
+        // The deferred rAF, if any, must not double-post once it fires.
+        flushRaf();
+        const movesAfter = posted.filter((m) => m["kind"] === "pointerMove");
+        assert.strictEqual(movesAfter.length, 1);
+    });
+
+    it("drops pending moves on pointercancel without posting them", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", { clientX: 20, clientY: 10 }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointercancel", { clientX: 20, clientY: 10 }),
+        );
+        flushRaf();
+
+        // Only the pointerDown made it; the pending coalesced move was
+        // discarded along with the cancelled gesture.
+        assert.deepStrictEqual(
+            posted.map((m) => m["kind"]),
+            ["pointerDown"],
+        );
     });
 });
