@@ -18,17 +18,13 @@ import type {
 } from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
 import {
-    applyHierarchyOverlay,
-    buildA11yLegend,
-    buildA11yOverlay,
-    ensureHierarchyOverlay,
-} from "./a11yOverlay";
-import {
+    applyA11yUpdate,
     applyRelativeSizing,
     buildPreviewCard,
+    type CardBuilderConfig,
     updateCardMetadata,
+    updateImage,
 } from "./cardBuilder";
-import { mimeFor, parseBounds, sanitizeId } from "./cardData";
 import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
 import { PreviewGrid } from "./components/PreviewGrid";
@@ -43,7 +39,6 @@ import {
     FrameCarouselController,
     type CapturePresentation,
 } from "./frameCarousel";
-import { attachInteractiveInputHandlers } from "./interactiveInput";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import {
@@ -685,20 +680,29 @@ export function setupPreviewBehavior(
     // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
     // when only `fnOptions` / `grpOptions` change.
 
-    // Initial card construction lives in `./cardBuilder.ts` — see
-    // `buildPreviewCard`. The dynamic update paths (`updateCardMetadata`,
-    // `updateImage`, `applyA11yUpdate`) still live here for now and patch
-    // the card in place via `document.getElementById`. The eventual
-    // `<preview-card>` Lit component will fold both into a single reactive
-    // `render()`.
-    const cardBuilderConfig = {
+    // Card lifecycle lives in `./cardBuilder.ts` — see `buildPreviewCard`,
+    // `updateCardMetadata`, `applyRelativeSizing`, `updateImage`,
+    // `applyA11yUpdate`. The eventual `<preview-card>` Lit component will
+    // fold all five into a single reactive `render()` and consume the same
+    // `CardBuilderConfig` shape for its collaborator surface.
+    const cardBuilderConfig: CardBuilderConfig = {
         vscode,
         cardCaptures,
+        cardA11yFindings,
+        cardA11yNodes,
         staleBadge,
         frameCarousel,
         liveState,
+        interactiveInputConfig,
+        diffOverlayConfig,
+        inspector,
+        getAllPreviews: () => allPreviews,
         earlyFeatures,
         inFocus: () => filterToolbar.getLayoutValue() === "focus",
+        focusedCard: () =>
+            filterToolbar.getLayoutValue() === "focus"
+                ? (getVisibleCards()[focusIndex] ?? null)
+                : null,
         enterFocus: focusOnCard,
         exitFocus,
         observeForViewport: observeCardForViewport,
@@ -706,14 +710,6 @@ export function setupPreviewBehavior(
     function createCard(p: PreviewInfo): HTMLElement {
         return buildPreviewCard(p, cardBuilderConfig);
     }
-
-    // `updateCardMetadata` and `applyRelativeSizing` live in
-    // `./cardBuilder.ts` alongside `buildPreviewCard`.
-    const cardUpdateConfig = {
-        cardCaptures,
-        frameCarousel,
-        earlyFeatures,
-    };
 
     /**
      * Incremental diff: update existing cards, add new ones, remove missing.
@@ -762,7 +758,7 @@ export function setupPreviewBehavior(
         for (const p of previews) {
             const existing = existingCards.get(p.id);
             if (existing) {
-                updateCardMetadata(existing, p, cardUpdateConfig);
+                updateCardMetadata(existing, p, cardBuilderConfig);
                 // Ensure correct position
                 if (lastInsertedCard) {
                     if (lastInsertedCard.nextSibling !== existing) {
@@ -799,179 +795,6 @@ export function setupPreviewBehavior(
         const owner = messageBanner.getOwner();
         if (owner && owner !== "extension") {
             setMessage("", owner);
-        }
-    }
-
-    function updateImage(
-        previewId: string,
-        captureIndex: number,
-        imageData: string,
-    ): void {
-        const card = document.getElementById(
-            "preview-" + sanitizeId(previewId),
-        );
-        if (!card) return;
-
-        // Cache so carousel navigation can restore this capture without
-        // a fresh extension round-trip.
-        const caps = cardCaptures.get(previewId);
-        const capture =
-            caps && captureIndex >= 0 && captureIndex < caps.length
-                ? caps[captureIndex]
-                : null;
-        if (capture) {
-            capture.imageData = imageData;
-            capture.errorMessage = null;
-            capture.renderError = null;
-        }
-
-        // Only paint the <img> if the currently-displayed capture is the
-        // one that just arrived. Otherwise the cached bytes wait for
-        // prev/next.
-        const cur = parseInt(card.dataset.currentIndex || "0", 10);
-        if (cur !== captureIndex) {
-            if (caps) frameCarousel.updateIndicator(card);
-            return;
-        }
-
-        const container = card.querySelector<HTMLElement>(".image-container");
-        if (!container) return;
-        // Tear down every prior state before showing the new image.
-        // Leftover .error-message divs here are what caused the
-        // "Render pending — save the file to trigger a render" banner
-        // to stay visible forever even after a successful render.
-        container.querySelector(".skeleton")?.remove();
-        container.querySelector(".loading-overlay")?.remove();
-        container.querySelector(".error-message")?.remove();
-        card.classList.remove("has-error");
-
-        const ro = capture ? capture.renderOutput : "";
-        const newSrc = "data:" + mimeFor(ro) + ";base64," + imageData;
-
-        let img = container.querySelector("img");
-        if (!img) {
-            img = document.createElement("img");
-            img.alt = (card.dataset.function ?? "") + " preview";
-            container.appendChild(img);
-        }
-        img.src = newSrc;
-        // In live mode the new bytes are a frame, not a card reload —
-        // skip the fade-in so successive frames read as a stream rather
-        // than a sequence of independent renders. See INTERACTIVE.md § 3.
-        const isLive = liveState.isLive(previewId);
-        img.className = isLive ? "live-frame" : "fade-in";
-        attachInteractiveInputHandlers(card, img, interactiveInputConfig);
-
-        if (caps) frameCarousel.updateIndicator(card);
-
-        // If a diff overlay is open on this card and uses the live render
-        // as its left anchor (head / main / current), the bytes the
-        // overlay is showing just went stale. Re-issue so the user sees
-        // the new render without clicking — symmetric with the
-        // compose-preview/main ref watcher's auto-refresh on the right anchor.
-        const openDiff = container.querySelector<HTMLElement>(
-            ".preview-diff-overlay",
-        );
-        if (earlyFeatures() && openDiff) {
-            const against = openDiff.dataset.against;
-            if (against === "head" || against === "main") {
-                showDiffOverlay(card, against, null, null, diffOverlayConfig);
-                vscode.postMessage({
-                    command: "requestPreviewDiff",
-                    previewId,
-                    against,
-                });
-            }
-        }
-
-        // Re-build the a11y overlay once the image natural dimensions
-        // are known. Data-URL srcs may resolve synchronously; in that
-        // case img.complete is true and load will not fire, so we
-        // check both. Findings are stashed at setPreviews time via the
-        // renderPreviews pipeline. Gated on earlyFeatures so the
-        // overlay only paints when the user has opted into the
-        // accessibility-overlay feature surface.
-        const findings = cardA11yFindings.get(previewId);
-        const nodes = cardA11yNodes.get(previewId);
-        if (
-            earlyFeatures() &&
-            ((findings && findings.length > 0) || (nodes && nodes.length > 0))
-        ) {
-            const apply = () => {
-                if (findings && findings.length > 0)
-                    buildA11yOverlay(card, findings, img);
-                if (nodes && nodes.length > 0)
-                    applyHierarchyOverlay(card, nodes, img);
-            };
-            if (img.complete && img.naturalWidth > 0) {
-                apply();
-            } else {
-                img.addEventListener("load", apply, { once: true });
-            }
-        }
-    }
-
-    // D2 — handles updateA11y from the extension (daemon-attached a11y data products).
-    // Updates the per-preview caches and re-applies whichever overlays are now relevant
-    // without rebuilding the whole card. Findings -> legend + finding overlay; nodes ->
-    // hierarchy overlay. Either argument may be omitted to leave that side untouched.
-    // Gated on earlyFeatures so daemon-attached a11y data is dropped silently when the
-    // user has not opted into the accessibility-overlay feature surface.
-    function applyA11yUpdate(
-        previewId: string,
-        findings: readonly AccessibilityFinding[] | null | undefined,
-        nodes: readonly AccessibilityNode[] | null | undefined,
-    ): void {
-        if (!earlyFeatures()) return;
-        const card = document.getElementById(
-            "preview-" + sanitizeId(previewId),
-        );
-        if (!card) return;
-        const container = card.querySelector(".image-container");
-        const img = container && container.querySelector("img");
-        if (findings !== undefined) {
-            if (findings && findings.length > 0) {
-                cardA11yFindings.set(previewId, findings);
-                if (container && !container.querySelector(".a11y-overlay")) {
-                    const overlay = document.createElement("div");
-                    overlay.className = "a11y-overlay";
-                    overlay.setAttribute("aria-hidden", "true");
-                    container.appendChild(overlay);
-                }
-                const existingLegend = card.querySelector(".a11y-legend");
-                if (existingLegend) existingLegend.remove();
-                const p = allPreviews.find((pp) => pp.id === previewId);
-                if (p) {
-                    p.a11yFindings = [...findings];
-                    card.appendChild(buildA11yLegend(card, p));
-                }
-                if (img && img.complete && img.naturalWidth > 0) {
-                    buildA11yOverlay(card, findings, img);
-                }
-            } else {
-                cardA11yFindings.delete(previewId);
-                const overlay = card.querySelector(".a11y-overlay");
-                if (overlay) overlay.remove();
-                const legend = card.querySelector(".a11y-legend");
-                if (legend) legend.remove();
-            }
-        }
-        if (nodes !== undefined) {
-            if (nodes && nodes.length > 0) {
-                cardA11yNodes.set(previewId, nodes);
-                ensureHierarchyOverlay(container);
-                if (img && img.complete && img.naturalWidth > 0) {
-                    applyHierarchyOverlay(card, nodes, img);
-                }
-            } else {
-                cardA11yNodes.delete(previewId);
-                const layer = card.querySelector(".a11y-hierarchy-overlay");
-                if (layer) layer.remove();
-            }
-        }
-        if (filterToolbar.getLayoutValue() === "focus") {
-            const focused = getVisibleCards()[focusIndex];
-            if (focused === card) inspector.render(card);
         }
     }
 
@@ -1022,8 +845,10 @@ export function setupPreviewBehavior(
         saveFilterState,
         restoreFilterState,
         ensureNotBlank,
-        updateImage,
-        applyA11yUpdate,
+        updateImage: (previewId, captureIndex, imageData) =>
+            updateImage(previewId, captureIndex, imageData, cardBuilderConfig),
+        applyA11yUpdate: (previewId, findings, nodes) =>
+            applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig),
         focusOnCard,
     };
     window.addEventListener("message", (event) => {

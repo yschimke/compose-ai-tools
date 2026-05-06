@@ -1,31 +1,48 @@
 // Lifecycle DOM operations for a single `<div class="preview-card">`:
 // initial build (`buildPreviewCard`), metadata refresh on a fresh
-// `setPreviews` (`updateCardMetadata`), and the grid-wide relative-sizing
-// pass (`applyRelativeSizing`).
+// `setPreviews` (`updateCardMetadata`), grid-wide relative-sizing
+// (`applyRelativeSizing`), per-frame image swap (`updateImage`), and
+// daemon-attached a11y refresh (`applyA11yUpdate`).
 //
-// Lifted verbatim from `behavior.ts`'s `createCard` / `updateCardMetadata` /
-// `applyRelativeSizing` so the imperative DOM operations stop needing
-// closure access to the rest of the panel. The remaining update paths —
-// `updateImage` (per-frame image swap) and `applyA11yUpdate` (daemon-
-// attached a11y refresh) — still live in `behavior.ts` and patch the card
-// in place via `document.getElementById`. The eventual `<preview-card>`
-// Lit component will fold all five into a single reactive `render()`.
+// Lifted verbatim from `behavior.ts` so the imperative DOM operations
+// stop needing closure access to the rest of the panel. Each function
+// takes a narrow `Pick` of `CardBuilderConfig` covering only the fields
+// it touches — the shared interface is the single source of truth for
+// the card's collaborator surface, and the eventual `<preview-card>`
+// Lit component will reach for those collaborators through the same
+// shape.
 
-import { buildA11yLegend, buildA11yOverlay } from "./a11yOverlay";
+import {
+    applyHierarchyOverlay,
+    buildA11yLegend,
+    buildA11yOverlay,
+    ensureHierarchyOverlay,
+} from "./a11yOverlay";
 import {
     buildTooltip,
     buildVariantLabel,
     isAnimatedPreview,
     isWearPreview,
+    mimeFor,
     sanitizeId,
 } from "./cardData";
+import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
+import type { FocusInspectorController } from "./focusInspector";
 import type {
     CapturePresentation,
     FrameCarouselController,
 } from "./frameCarousel";
+import {
+    attachInteractiveInputHandlers,
+    type InteractiveInputConfig,
+} from "./interactiveInput";
 import type { LiveStateController } from "./liveState";
 import type { StaleBadgeController } from "./staleBadge";
-import type { PreviewInfo } from "../shared/types";
+import type {
+    AccessibilityFinding,
+    AccessibilityNode,
+    PreviewInfo,
+} from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 
 export interface CardBuilderConfig {
@@ -33,15 +50,43 @@ export interface CardBuilderConfig {
     /** Per-preview carousel runtime state — populated here on creation,
      *  read by `updateImage` / `setImageError` / `frameCarousel` later. */
     cardCaptures: Map<string, CapturePresentation[]>;
+    /** Per-preview a11y findings cache — populated by
+     *  `applyA11yUpdate` from daemon `a11y/atf` payloads, re-read on
+     *  every image (re)load to repaint the finding overlay. */
+    cardA11yFindings: Map<string, readonly AccessibilityFinding[]>;
+    /** Per-preview a11y hierarchy nodes cache — same shape, populated
+     *  from `a11y/hierarchy` payloads. */
+    cardA11yNodes: Map<string, readonly AccessibilityNode[]>;
     staleBadge: StaleBadgeController;
     frameCarousel: FrameCarouselController;
     liveState: LiveStateController;
-    /** Whether `composePreview.earlyFeatures` is on — gates the a11y legend
-     *  + overlay layer that the build path attaches up front. */
+    /** Pointer-input config for live cards — handed to
+     *  `attachInteractiveInputHandlers` whenever a fresh `<img>` lands
+     *  via `updateImage`. */
+    interactiveInputConfig: InteractiveInputConfig;
+    /** Diff overlay persistence + vscode handle — passed through to
+     *  `showDiffOverlay` when an open diff needs auto-refresh on a new
+     *  render. */
+    diffOverlayConfig: DiffOverlayConfig;
+    /** Focus-inspector handle so `applyA11yUpdate` can re-render when
+     *  a11y data lands for the focused card. */
+    inspector: FocusInspectorController;
+    /** Latest `setPreviews` manifest — `applyA11yUpdate` mutates the
+     *  matching entry's `a11yFindings` so legend rebuilds via
+     *  `buildA11yLegend(card, p)` see the fresh findings without a
+     *  separate parameter. */
+    getAllPreviews(): readonly PreviewInfo[];
+    /** Whether `composePreview.earlyFeatures` is on — gates the a11y
+     *  legend / overlay rebuild and the diff-overlay auto-refresh. */
     earlyFeatures(): boolean;
     /** Predicate for "panel is currently in focus layout" — keeps the
-     *  per-card focus button's enter/exit toggle in sync with the toolbar. */
+     *  per-card focus button's enter/exit toggle in sync with the toolbar
+     *  and gates the inspector re-render in `applyA11yUpdate`. */
     inFocus(): boolean;
+    /** The currently-focused preview card, or null when none is focused.
+     *  `applyA11yUpdate` uses it to decide whether to re-render the
+     *  inspector. */
+    focusedCard(): HTMLElement | null;
     /** Imperative actions the builder hands back to `behavior.ts` rather
      *  than reaching for them at construction time. */
     enterFocus(card: HTMLElement): void;
@@ -357,5 +402,227 @@ export function applyRelativeSizing(previews: readonly PreviewInfo[]): void {
             card.style.removeProperty("--size-ratio");
             card.style.removeProperty("--aspect-ratio");
         }
+    }
+}
+
+/** Subset `updateImage` reaches for — every per-frame paint dependency. */
+export type UpdateImageConfig = Pick<
+    CardBuilderConfig,
+    | "vscode"
+    | "cardCaptures"
+    | "cardA11yFindings"
+    | "cardA11yNodes"
+    | "frameCarousel"
+    | "liveState"
+    | "interactiveInputConfig"
+    | "diffOverlayConfig"
+    | "earlyFeatures"
+>;
+
+/**
+ * Paint a fresh capture image into the matching card. Idempotent — if the
+ * currently-displayed capture index doesn't match the arriving bytes, the
+ * cache is updated and the carousel indicator refreshed but no `<img>` is
+ * touched (the bytes wait for prev/next).
+ *
+ * Side effects (when [captureIndex] matches the displayed capture):
+ *  - Updates / mutates the per-capture cache entry on `cardCaptures`.
+ *  - Replaces the card's `<img>` `src` (or creates one if missing).
+ *  - Re-attaches the live pointer/wheel handlers via
+ *    `attachInteractiveInputHandlers`.
+ *  - If a diff overlay is open against `head` / `main`, re-issues the
+ *    diff request so the user sees the new bytes without clicking.
+ *  - Repaints the a11y finding / hierarchy overlays once the image's
+ *    natural dimensions are known.
+ */
+export function updateImage(
+    previewId: string,
+    captureIndex: number,
+    imageData: string,
+    config: UpdateImageConfig,
+): void {
+    const card = document.getElementById("preview-" + sanitizeId(previewId));
+    if (!card) return;
+
+    // Cache so carousel navigation can restore this capture without
+    // a fresh extension round-trip.
+    const caps = config.cardCaptures.get(previewId);
+    const capture =
+        caps && captureIndex >= 0 && captureIndex < caps.length
+            ? caps[captureIndex]
+            : null;
+    if (capture) {
+        capture.imageData = imageData;
+        capture.errorMessage = null;
+        capture.renderError = null;
+    }
+
+    // Only paint the <img> if the currently-displayed capture is the
+    // one that just arrived. Otherwise the cached bytes wait for
+    // prev/next.
+    const cur = parseInt(card.dataset.currentIndex || "0", 10);
+    if (cur !== captureIndex) {
+        if (caps) config.frameCarousel.updateIndicator(card);
+        return;
+    }
+
+    const container = card.querySelector<HTMLElement>(".image-container");
+    if (!container) return;
+    // Tear down every prior state before showing the new image.
+    // Leftover .error-message divs here are what caused the
+    // "Render pending — save the file to trigger a render" banner
+    // to stay visible forever even after a successful render.
+    container.querySelector(".skeleton")?.remove();
+    container.querySelector(".loading-overlay")?.remove();
+    container.querySelector(".error-message")?.remove();
+    card.classList.remove("has-error");
+
+    const ro = capture ? capture.renderOutput : "";
+    const newSrc = "data:" + mimeFor(ro) + ";base64," + imageData;
+
+    let img = container.querySelector("img");
+    if (!img) {
+        img = document.createElement("img");
+        img.alt = (card.dataset.function ?? "") + " preview";
+        container.appendChild(img);
+    }
+    img.src = newSrc;
+    // In live mode the new bytes are a frame, not a card reload —
+    // skip the fade-in so successive frames read as a stream rather
+    // than a sequence of independent renders. See INTERACTIVE.md § 3.
+    const isLive = config.liveState.isLive(previewId);
+    img.className = isLive ? "live-frame" : "fade-in";
+    attachInteractiveInputHandlers(card, img, config.interactiveInputConfig);
+
+    if (caps) config.frameCarousel.updateIndicator(card);
+
+    // If a diff overlay is open on this card and uses the live render
+    // as its left anchor (head / main / current), the bytes the
+    // overlay is showing just went stale. Re-issue so the user sees
+    // the new render without clicking — symmetric with the
+    // compose-preview/main ref watcher's auto-refresh on the right anchor.
+    const openDiff = container.querySelector<HTMLElement>(
+        ".preview-diff-overlay",
+    );
+    if (config.earlyFeatures() && openDiff) {
+        const against = openDiff.dataset.against;
+        if (against === "head" || against === "main") {
+            showDiffOverlay(
+                card,
+                against,
+                null,
+                null,
+                config.diffOverlayConfig,
+            );
+            config.vscode.postMessage({
+                command: "requestPreviewDiff",
+                previewId,
+                against,
+            });
+        }
+    }
+
+    // Re-build the a11y overlay once the image natural dimensions
+    // are known. Data-URL srcs may resolve synchronously; in that
+    // case img.complete is true and load will not fire, so we
+    // check both. Findings are stashed at setPreviews time via the
+    // renderPreviews pipeline. Gated on earlyFeatures so the
+    // overlay only paints when the user has opted into the
+    // accessibility-overlay feature surface.
+    const findings = config.cardA11yFindings.get(previewId);
+    const nodes = config.cardA11yNodes.get(previewId);
+    if (
+        config.earlyFeatures() &&
+        ((findings && findings.length > 0) || (nodes && nodes.length > 0))
+    ) {
+        const paintedImg = img;
+        const apply = (): void => {
+            if (findings && findings.length > 0)
+                buildA11yOverlay(card, findings, paintedImg);
+            if (nodes && nodes.length > 0)
+                applyHierarchyOverlay(card, nodes, paintedImg);
+        };
+        if (paintedImg.complete && paintedImg.naturalWidth > 0) {
+            apply();
+        } else {
+            paintedImg.addEventListener("load", apply, { once: true });
+        }
+    }
+}
+
+/** Subset `applyA11yUpdate` reaches for. */
+export type A11yUpdateConfig = Pick<
+    CardBuilderConfig,
+    | "cardA11yFindings"
+    | "cardA11yNodes"
+    | "getAllPreviews"
+    | "inspector"
+    | "earlyFeatures"
+    | "inFocus"
+    | "focusedCard"
+>;
+
+/**
+ * D2 — handles `updateA11y` from the extension (daemon-attached a11y data
+ * products). Updates the per-preview caches and re-applies whichever
+ * overlays are now relevant without rebuilding the whole card. Findings
+ * → legend + finding overlay; nodes → hierarchy overlay. Either argument
+ * may be omitted to leave that side untouched. Gated on `earlyFeatures()`
+ * so daemon-attached a11y data is dropped silently when the user has not
+ * opted into the accessibility-overlay feature surface.
+ */
+export function applyA11yUpdate(
+    previewId: string,
+    findings: readonly AccessibilityFinding[] | null | undefined,
+    nodes: readonly AccessibilityNode[] | null | undefined,
+    config: A11yUpdateConfig,
+): void {
+    if (!config.earlyFeatures()) return;
+    const card = document.getElementById("preview-" + sanitizeId(previewId));
+    if (!card) return;
+    const container = card.querySelector(".image-container");
+    const img = container?.querySelector<HTMLImageElement>("img") ?? null;
+    if (findings !== undefined) {
+        if (findings && findings.length > 0) {
+            config.cardA11yFindings.set(previewId, findings);
+            if (container && !container.querySelector(".a11y-overlay")) {
+                const overlay = document.createElement("div");
+                overlay.className = "a11y-overlay";
+                overlay.setAttribute("aria-hidden", "true");
+                container.appendChild(overlay);
+            }
+            const existingLegend = card.querySelector(".a11y-legend");
+            if (existingLegend) existingLegend.remove();
+            const p = config.getAllPreviews().find((pp) => pp.id === previewId);
+            if (p) {
+                p.a11yFindings = [...findings];
+                card.appendChild(buildA11yLegend(card, p));
+            }
+            if (img && img.complete && img.naturalWidth > 0) {
+                buildA11yOverlay(card, findings, img);
+            }
+        } else {
+            config.cardA11yFindings.delete(previewId);
+            const overlay = card.querySelector(".a11y-overlay");
+            if (overlay) overlay.remove();
+            const legend = card.querySelector(".a11y-legend");
+            if (legend) legend.remove();
+        }
+    }
+    if (nodes !== undefined) {
+        if (nodes && nodes.length > 0) {
+            config.cardA11yNodes.set(previewId, nodes);
+            ensureHierarchyOverlay(container);
+            if (img && img.complete && img.naturalWidth > 0) {
+                applyHierarchyOverlay(card, nodes, img);
+            }
+        } else {
+            config.cardA11yNodes.delete(previewId);
+            const layer = card.querySelector(".a11y-hierarchy-overlay");
+            if (layer) layer.remove();
+        }
+    }
+    if (config.inFocus() && config.focusedCard() === card) {
+        config.inspector.render(card);
     }
 }
