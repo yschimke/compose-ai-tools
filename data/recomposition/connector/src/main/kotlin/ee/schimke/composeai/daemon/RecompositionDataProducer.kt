@@ -71,11 +71,36 @@ import kotlinx.serialization.json.contentOrNull
  *
  * **Safety net.** [androidx.compose.runtime.tooling.CompositionObserver] is
  * `@ExperimentalComposeRuntimeApi`. Compose may rename or restructure these surfaces between
- * runtime releases. Every observer-install path is wrapped in `try/catch (LinkageError |
- * NoSuchMethodError)` so a future API rename degrades the producer to "advertise but useless"
- * (subscriptions succeed, `nodes: []` ships) rather than crashing the daemon JVM.
+ * runtime releases. Every observer-install path is wrapped in `try/catch (Throwable)` so a future
+ * API rename degrades the producer to "advertised but unavailable" rather than crashing the daemon
+ * JVM. Once any install attempt fails, the registry-level [globallyUnavailable] flag latches:
+ * subsequent `data/subscribe` calls succeed (the kind is still advertised in
+ * `initialize.capabilities` and we can't unsay that) but skip the install attempt entirely,
+ * `attachmentsFor` returns `emptyList()` (no attachment shipped — clients see no
+ * `compose/recomposition` entries on `renderFinished` instead of misleading `nodes: []` payloads),
+ * and `fetch(mode=delta)` returns `Outcome.FetchFailed` with a clear "instrumentation unavailable
+ * on this Compose runtime" message so the panel can surface a real error rather than spin on empty
+ * deltas.
  */
 open class RecompositionDataProductRegistry : DataProductRegistry {
+
+  /**
+   * Latched true after the first observer-install failure. The panel UI grey-out signal: when the
+   * registry sees a `LinkageError` / `NoSuchFieldException` / similar, it stops trying — the
+   * Compose runtime on this daemon doesn't expose the surfaces this producer needs. Volatile so the
+   * observer-install path on the recomposer thread and the dispatcher's `fetch` / `attachmentsFor`
+   * calls on the read thread agree on the latest value.
+   */
+  @Volatile private var globallyUnavailable: Boolean = false
+
+  /**
+   * Test seam: flip the registry into the latched-unavailable state without driving a real
+   * observer-install failure. Production callers never invoke this; the path that flips the flag
+   * for real is `installObserverSafely`'s catch block.
+   */
+  internal fun markGloballyUnavailableForTesting() {
+    globallyUnavailable = true
+  }
 
   /**
    * Per-previewId tracking of the currently-held [ImageComposeScene], populated by [DesktopHost]'s
@@ -138,10 +163,15 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
         // Delta mode is only meaningful when there's a live session backing the previewId. The
         // brief says: "in mode = delta against a non-live session, return Outcome.NotAvailable."
         if (liveScenes[previewId] == null) return DataProductRegistry.Outcome.NotAvailable
-        // For a live session, the canonical delta lives on the renderFinished attachment path —
-        // the panel doesn't normally `data/fetch` deltas (they ride attached). When it does, we
-        // surface the current counters without resetting; the attachment path is what mutates.
+        // Honest signal when instrumentation broke: the kind is advertised but the Compose
+        // runtime on this daemon doesn't expose the reflection targets we need. Surface
+        // FetchFailed instead of an empty Ok payload so the panel can show a real error.
         val state = subscriptions[previewId]
+        if (globallyUnavailable || state?.instrumentationUnavailable == true) {
+          return DataProductRegistry.Outcome.FetchFailed(
+            message = "compose/recomposition: instrumentation unavailable for this Compose runtime"
+          )
+        }
         val payload =
           if (state == null) {
             RecompositionPayload(
@@ -185,6 +215,10 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
   override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
     if (KIND !in kinds) return emptyList()
     val state = subscriptions[previewId] ?: return emptyList()
+    // When instrumentation isn't available, ship no attachment at all rather than an empty
+    // payload — the client sees no `compose/recomposition` entry on `renderFinished` and
+    // greys out its panel, which is the honest signal.
+    if (globallyUnavailable || state.instrumentationUnavailable) return emptyList()
     // Bump the input-seq counter once per attachment build — that's exactly one per
     // post-input renderFinished in the interactive path (the dispatcher calls attachmentsFor
     // once per render). Snapshot the counter map *before* incrementing so the payload reads
@@ -231,11 +265,15 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     subscriptions.remove(previewId)?.disposeObserver()
     val state = SubscriptionState(frameStreamId = frameStreamId, mode = effectiveMode)
     subscriptions[previewId] = state
-    if (effectiveMode == MODE_DELTA) {
+    if (effectiveMode == MODE_DELTA && !globallyUnavailable) {
       val scene = liveScenes[previewId]
       if (scene != null) {
         installObserverSafely(state, scene)
       }
+    } else if (globallyUnavailable) {
+      // Latched failure on a previous install — don't retry, but propagate the flag so the
+      // dispatcher's fetch / attachmentsFor calls return honest signals for this subscription.
+      state.instrumentationUnavailable = true
     }
   }
 
@@ -266,6 +304,10 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     liveScenes[previewId] = scene
     val state = subscriptions[previewId] ?: return
     if (state.observerHandle != null || state.instrumentationUnavailable) return
+    if (globallyUnavailable) {
+      state.instrumentationUnavailable = true
+      return
+    }
     if (state.mode != MODE_DELTA) {
       // Promote a snapshot subscription to delta now that we have a live scene. Replace the
       // state with a fresh delta-mode entry so the existing inputSeq doesn't carry forward
@@ -293,14 +335,17 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
         // The brief mandates LinkageError / NoSuchMethodError specifically; we widen to any
         // Throwable here because the reflection path has more failure modes than just the
         // experimental-API-rename one (private-field access denied under a future SecurityManager,
-        // null intermediate values, etc.). All of them should degrade to "advertise but useless"
-        // rather than killing the daemon.
+        // null intermediate values, etc.). All of them should degrade to "advertised but
+        // unavailable" rather than killing the daemon. Latch [globallyUnavailable] so subsequent
+        // subscribes don't retry — if reflection is broken on this Compose runtime, it'll stay
+        // broken until the daemon is rebuilt, and retrying just spams stderr.
         System.err.println(
           "compose-ai-daemon: RecompositionDataProductRegistry: observer install failed for " +
             "previewId='?' frameStreamId='${state.frameStreamId}' " +
             "(${t.javaClass.simpleName}: ${t.message}); marking instrumentation unavailable"
         )
         state.instrumentationUnavailable = true
+        globallyUnavailable = true
         null
       }
     state.observerHandle = handle
