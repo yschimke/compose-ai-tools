@@ -118,7 +118,14 @@ export function buildPreviewCard(
     const captures = p.captures;
 
     const card = document.createElement("div");
-    card.className = "preview-card" + (animated ? " animated-card" : "");
+    // `referenced` previews live in another file but target the active one
+    // (idiomatic `XxxPreviews.kt` / `screenshotTest` layout). The CSS hook lets
+    // the panel render them under a "from elsewhere" treatment without changing
+    // the message shape.
+    card.className =
+        "preview-card" +
+        (animated ? " animated-card" : "") +
+        (p.referenced ? " referenced" : "");
     card.id = "preview-" + sanitizeId(p.id);
     card.setAttribute("role", "listitem");
     card.dataset.function = p.functionName;
@@ -127,6 +134,9 @@ export function buildPreviewCard(
     card.dataset.className = p.className;
     card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
     card.dataset.currentIndex = "0";
+    if (p.referenced) {
+        card.dataset.referenced = "1";
+    }
     config.cardCaptures.set(
         p.id,
         captures.map(

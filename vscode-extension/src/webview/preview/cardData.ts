@@ -107,6 +107,9 @@ export function buildTooltip(p: PreviewInfo): string {
     if (p.params.uiMode) parts.push("uiMode=" + p.params.uiMode);
     if (p.params.locale) parts.push(p.params.locale);
     if (p.params.group) parts.push("group: " + p.params.group);
+    if (p.referenced && p.sourceFile) {
+        parts.push("from " + p.sourceFile);
+    }
     return parts.length ? base + "\\n" + parts.join(" · ") : base;
 }
 
