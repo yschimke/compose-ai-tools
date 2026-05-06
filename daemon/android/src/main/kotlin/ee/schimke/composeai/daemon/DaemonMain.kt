@@ -308,6 +308,13 @@ fun main(args: Array<String>) {
             dataProductRegistry = WallpaperDataProductRegistry(),
           )
         )
+        add(
+          Extension(
+            id = "data/ambient",
+            displayName = "Wear OS ambient override",
+            dataProductRegistry = AmbientDataProductRegistry(),
+          )
+        )
         if (historyManager != null) {
           add(
             Extension(

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -26,6 +27,7 @@ data class PreviewOverrideBaseSpec(
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides? = null,
   val wallpaper: WallpaperOverride? = null,
+  val ambient: AmbientOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -40,6 +42,7 @@ data class MergedPreviewOverrides(
   val inspectionMode: Boolean?,
   val material3Theme: Material3ThemeOverrides?,
   val wallpaper: WallpaperOverride?,
+  val ambient: AmbientOverride?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries
@@ -48,8 +51,12 @@ data class MergedPreviewOverrides(
    * data-extension pipeline entirely.
    */
   fun toExtensionOverrides(): PreviewOverrides? {
-    if (material3Theme == null && wallpaper == null) return null
-    return PreviewOverrides(material3Theme = material3Theme, wallpaper = wallpaper)
+    if (material3Theme == null && wallpaper == null && ambient == null) return null
+    return PreviewOverrides(
+      material3Theme = material3Theme,
+      wallpaper = wallpaper,
+      ambient = ambient,
+    )
   }
 }
 
@@ -78,6 +85,7 @@ fun mergePreviewOverrides(
       inspectionMode = base.inspectionMode,
       material3Theme = base.material3Theme,
       wallpaper = base.wallpaper,
+      ambient = base.ambient,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -101,5 +109,6 @@ fun mergePreviewOverrides(
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
     material3Theme = overrides.material3Theme ?: base.material3Theme,
     wallpaper = overrides.wallpaper ?: base.wallpaper,
+    ambient = overrides.ambient ?: base.ambient,
   )
 }

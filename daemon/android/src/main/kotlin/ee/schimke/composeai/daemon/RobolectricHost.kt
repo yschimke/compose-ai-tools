@@ -284,6 +284,7 @@ open class RobolectricHost(
       "inspectionMode",
       "material3Theme",
       "wallpaper",
+      "ambient",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
@@ -921,6 +922,10 @@ open class RobolectricHost(
       interactive = interactive,
       framesDir = framesDir,
       encodedDir = encodedDir,
+      // Side-band observers fired before every script-event dispatch. Today only the ambient
+      // connector ships one — wakes [AmbientStateController] on activating gestures so a
+      // recording can exercise the ambient ↔ interactive flip mid-script.
+      dispatchObservers = listOf(AmbientInputDispatchObserver()),
     )
   }
 
@@ -958,6 +963,7 @@ open class RobolectricHost(
             inspectionMode = base.inspectionMode,
             material3Theme = base.overrides?.material3Theme,
             wallpaper = base.overrides?.wallpaper,
+            ambient = base.overrides?.ambient,
           ),
         overrides = overrides,
       )
@@ -1133,7 +1139,7 @@ open class RobolectricHost(
    * didn't need it but the annotation is harmless when the body is a stub.
    */
   @RunWith(SandboxHoldingRunner::class)
-  @Config(sdk = [ANDROID_SDK])
+  @Config(sdk = [ANDROID_SDK], shadows = [ShadowAmbientLifecycleObserver::class])
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   class SandboxRunner {
 
@@ -1151,7 +1157,11 @@ open class RobolectricHost(
       RenderEngine(
         previewOverrideExtensions =
           PreviewOverrideExtensions(
-            listOf(WallpaperPreviewOverrideExtension(), Material3ThemePreviewOverrideExtension())
+            listOf(
+              AmbientPreviewOverrideExtension(),
+              WallpaperPreviewOverrideExtension(),
+              Material3ThemePreviewOverrideExtension(),
+            )
           ),
         dataArtifactExtensions =
           RenderDataArtifactExtensions(

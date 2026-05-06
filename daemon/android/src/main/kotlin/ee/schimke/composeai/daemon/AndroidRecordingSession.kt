@@ -48,6 +48,13 @@ class AndroidRecordingSession(
   private val interactive: InteractiveSession,
   private val framesDir: File,
   private val encodedDir: File,
+  /**
+   * Side-band observers fired before every script-event dispatch (live or scripted). The ambient
+   * connector ships [AmbientInputDispatchObserver] to wake on activating input gestures; future
+   * tracing / analytics extensions can ride alongside without sprouting a special case in the
+   * dispatch loop.
+   */
+  private val dispatchObservers: List<RecordingScriptDispatchObserver> = emptyList(),
 ) : RecordingSession {
 
   private val timeline = mutableListOf<RecordingScriptEvent>()
@@ -245,7 +252,7 @@ class AndroidRecordingSession(
 
   private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
     RecordingScriptHandlerRegistry(
-      buildMap {
+      handlers = buildMap {
         put(
           InputTouchRecordingScriptEvents.CLICK_EVENT,
           interactiveDispatchHandler(InteractiveInputKind.CLICK),
@@ -310,7 +317,8 @@ class AndroidRecordingSession(
         put(StateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
         put(StateRecordingScriptEvents.STATE_SAVE_EVENT, stateSaveHandler())
         put(StateRecordingScriptEvents.STATE_RESTORE_EVENT, stateRestoreHandler())
-      }
+      },
+      observers = dispatchObservers,
     )
 
   /**

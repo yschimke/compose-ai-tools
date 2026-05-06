@@ -62,6 +62,10 @@ dependencies {
   implementation(project(":data-strings-connector"))
   implementation(project(":data-theme-connector"))
   implementation(project(":data-wallpaper-connector"))
+  // Wear OS ambient-mode connector — Robolectric shadow of `AmbientLifecycleObserver`,
+  // `AmbientStateController`, the `AroundComposable` extension that primes it, and the
+  // `AmbientInputDispatchObserver` that wakes on activating gestures during recording.
+  implementation(project(":data-ambient-connector"))
   // UIAutomator-shaped Selector + UiObject — RobolectricHost.performUiAutomatorAction decodes
   // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
   // UiAutomator.findObject(rule, selector, useUnmergedTree).

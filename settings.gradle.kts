@@ -142,6 +142,14 @@ include(":data-wallpaper-connector")
 
 project(":data-wallpaper-connector").projectDir = file("data/wallpaper/connector")
 
+include(":data-ambient-core")
+
+project(":data-ambient-core").projectDir = file("data/ambient/core")
+
+include(":data-ambient-connector")
+
+project(":data-ambient-connector").projectDir = file("data/ambient/connector")
+
 include(":data-recomposition-core")
 
 project(":data-recomposition-core").projectDir = file("data/recomposition/core")

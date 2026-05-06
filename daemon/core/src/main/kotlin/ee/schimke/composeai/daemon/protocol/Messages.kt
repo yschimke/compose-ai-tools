@@ -440,6 +440,15 @@ data class PreviewOverrides(
    * "live update" path the wallpaper data product covers.
    */
   val wallpaper: WallpaperOverride? = null,
+  /**
+   * Optional Wear OS ambient-state override. Drives the connector-side `AmbientLifecycleObserver`
+   * shadow so consumer code wrapping its UI in `AmbientAware { ... }` (or registering its own
+   * `AmbientLifecycleCallback`) renders under the requested state. The shadow defaults to
+   * `Inactive` when no override is set; setting `state = AMBIENT` causes `isAmbient()` to return
+   * `true` and primes registered callbacks with `onEnterAmbient(...)`. Wear-only — the desktop
+   * backend ignores this field.
+   */
+  val ambient: AmbientOverride? = null,
 )
 
 /**
@@ -476,6 +485,58 @@ data class WallpaperOverride(
  * Mirrors `com.materialkolor.PaletteStyle` so the protocol stays free of an external dependency;
  * the wallpaper connector maps each value to the upstream enum.
  */
+/**
+ * Wear OS ambient-mode override for previews. Drives the
+ * `androidx.wear.ambient.AmbientLifecycleObserver` shadow (see `:data-ambient-connector`) so a
+ * preview's `AmbientAware`-wrapped UI composes under the requested ambient state without flashing a
+ * real watch.
+ *
+ * `AmbientStateOverride.AMBIENT` triggers `onEnterAmbient(...)` on every registered
+ * `AmbientLifecycleCallback`. During an interactive recording session the controller flips back to
+ * `Interactive` on activating input gestures (touch click / pointer-down, RSB rotary scroll) — the
+ * same gestures the AOSP `AmbientLifecycleObserver` itself wakes on — and restores the override's
+ * requested state after [idleTimeoutMs] of further inactivity.
+ */
+@Serializable
+data class AmbientOverride(
+  /** Requested ambient state. */
+  val state: AmbientStateOverride,
+  /**
+   * Mirrors `AmbientLifecycleObserver.AmbientDetails.burnInProtectionRequired`. Forwarded to
+   * `onEnterAmbient(...)` so consumer code that branches on burn-in protection runs unchanged. Null
+   * falls back to `false`.
+   */
+  val burnInProtectionRequired: Boolean? = null,
+  /**
+   * Mirrors `AmbientLifecycleObserver.AmbientDetails.deviceHasLowBitAmbient`. Forwarded to
+   * `onEnterAmbient(...)`. Null falls back to `false`.
+   */
+  val deviceHasLowBitAmbient: Boolean? = null,
+  /**
+   * Synthetic minute-tick timestamp threaded through the connector's payload. Null means the
+   * controller uses the render-time wall-clock when capturing the [AmbientPayload]. The renderer
+   * does not synthesise periodic `onUpdateAmbient(...)` ticks — Wear's minute-tick cadence is
+   * driven by explicit timestamps so render-time captures stay deterministic. A future
+   * `ambient.updateTime` recording-script event will fire ticks at scripted points without a
+   * wall-clock timer.
+   */
+  val updateTimeMillis: Long? = null,
+  /**
+   * Idle-after-input timeout (in milliseconds) before the controller restores the override's
+   * requested state during a `record_preview` / interactive session. Null falls back to ~5000 ms,
+   * matching the Wear OS system's default ambient timeout.
+   */
+  val idleTimeoutMs: Long? = null,
+)
+
+/** Wire spelling for [AmbientOverride.state]. */
+@Serializable
+enum class AmbientStateOverride {
+  @SerialName("interactive") INTERACTIVE,
+  @SerialName("ambient") AMBIENT,
+  @SerialName("inactive") INACTIVE,
+}
+
 @Serializable
 enum class WallpaperPaletteStyle {
   @SerialName("tonalSpot") TONAL_SPOT,
