@@ -22,6 +22,7 @@ import {
     applyRelativeSizing,
     buildPreviewCard,
     type CardBuilderConfig,
+    renderPreviews as renderPreviewsImpl,
     updateCardMetadata,
     updateImage,
 } from "./cardBuilder";
@@ -687,6 +688,7 @@ export function setupPreviewBehavior(
     // `CardBuilderConfig` shape for its collaborator surface.
     const cardBuilderConfig: CardBuilderConfig = {
         vscode,
+        grid,
         cardCaptures,
         cardA11yFindings,
         cardA11yNodes,
@@ -706,96 +708,12 @@ export function setupPreviewBehavior(
         enterFocus: focusOnCard,
         exitFocus,
         observeForViewport: observeCardForViewport,
+        forgetViewport: (id, card) => viewport.forget(id, card),
+        setMessage,
+        getMessageOwner: () => messageBanner.getOwner(),
     };
-    function createCard(p: PreviewInfo): HTMLElement {
-        return buildPreviewCard(p, cardBuilderConfig);
-    }
-
-    /**
-     * Incremental diff: update existing cards, add new ones, remove missing.
-     * Keeps rendered images in place during refresh — they're replaced as
-     * new images stream in from updateImage messages.
-     */
     function renderPreviews(previews: readonly PreviewInfo[]): void {
-        if (previews.length === 0) {
-            // Defensive fallback — the extension now always sends an
-            // explicit showMessage for empty states, so this branch
-            // shouldn't normally fire. Kept so the view never ends up
-            // with an empty grid + empty message if a bug slips through.
-            grid.innerHTML = "";
-            setMessage("No @Preview functions found", "fallback");
-            return;
-        }
-        const newIds = new Set(previews.map((p) => p.id));
-        const existingCards = new Map<string, HTMLElement>();
-        grid.querySelectorAll<HTMLElement>(".preview-card").forEach((card) => {
-            const id = card.dataset.previewId;
-            if (id) existingCards.set(id, card);
-        });
-
-        // Remove cards that no longer exist — drop their cached capture
-        // data so stale entries don't pile up if a preview is renamed.
-        for (const [id, card] of existingCards) {
-            if (!newIds.has(id)) {
-                cardCaptures.delete(id);
-                viewport.forget(id, card);
-                card.remove();
-            }
-        }
-
-        // Refresh per-preview findings cache so updateImage can attach
-        // them to each new image load. Drop stale entries (preview
-        // removed) so the map doesn't grow across sessions.
-        cardA11yFindings.clear();
-        for (const p of previews) {
-            if (p.a11yFindings && p.a11yFindings.length > 0) {
-                cardA11yFindings.set(p.id, p.a11yFindings);
-            }
-        }
-
-        // Add new cards / update existing ones, preserving order
-        let lastInsertedCard = null;
-        for (const p of previews) {
-            const existing = existingCards.get(p.id);
-            if (existing) {
-                updateCardMetadata(existing, p, cardBuilderConfig);
-                // Ensure correct position
-                if (lastInsertedCard) {
-                    if (lastInsertedCard.nextSibling !== existing) {
-                        grid.insertBefore(
-                            existing,
-                            lastInsertedCard.nextSibling,
-                        );
-                    }
-                } else if (grid.firstChild !== existing) {
-                    grid.insertBefore(existing, grid.firstChild);
-                }
-                lastInsertedCard = existing;
-            } else {
-                const card = createCard(p);
-                if (lastInsertedCard) {
-                    grid.insertBefore(card, lastInsertedCard.nextSibling);
-                } else {
-                    grid.insertBefore(card, grid.firstChild);
-                }
-                lastInsertedCard = card;
-            }
-        }
-
-        // Clear transient owner messages now that cards are in the DOM.
-        // The 'loading' Building… banner and the 'fallback' "Preparing
-        // previews…" placeholder both get cleared here. 'extension'-owned
-        // messages (build errors, empty-state notices) are left alone —
-        // those are terminal states the extension is asserting and the
-        // caller wouldn't be sending setPreviews alongside them anyway.
-        //
-        // Must run *after* cards are inserted: setMessage('', …) calls
-        // ensureNotBlank, which would re-set "Preparing previews…" if
-        // the grid still looked empty when the message was cleared.
-        const owner = messageBanner.getOwner();
-        if (owner && owner !== "extension") {
-            setMessage("", owner);
-        }
+        renderPreviewsImpl(previews, cardBuilderConfig);
     }
 
     // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
