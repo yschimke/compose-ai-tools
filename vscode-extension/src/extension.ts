@@ -28,10 +28,6 @@ import { captureLabel, withDataProductCaptures } from "./captureLabels";
 import { DaemonGate } from "./daemon/daemonGate";
 import { DataProductAttachment } from "./daemon/daemonProtocol";
 import {
-    STREAMING_ENABLED_SETTING,
-    streamingEnabled,
-} from "./daemon/streamingSetting";
-import {
     A11Y_OVERLAY_KINDS,
     DaemonScheduler,
     WarmState,
@@ -648,12 +644,8 @@ export async function activate(
               handleWebviewMessage(msg);
           }
         : handleWebviewMessage;
-    panel = new PreviewPanel(
-        context.extensionUri,
-        onMessage,
-        () => earlyFeaturesEnabled(),
-        undefined,
-        () => streamingEnabled(),
+    panel = new PreviewPanel(context.extensionUri, onMessage, () =>
+        earlyFeaturesEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -937,12 +929,6 @@ export async function activate(
                 panel?.postMessage({
                     command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),
-                });
-            }
-            if (event.affectsConfiguration(STREAMING_ENABLED_SETTING)) {
-                panel?.postMessage({
-                    command: "setStreamingEnabled",
-                    enabled: streamingEnabled(),
                 });
             }
         }),
@@ -3299,9 +3285,6 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void launchOnDevice(msg.previewId);
             }
             break;
-        case "setInteractive":
-            queueInteractiveMutation(msg.previewId, msg.enabled);
-            break;
         case "requestStreamStart":
             void handleRequestStreamStart(msg.previewId);
             break;
@@ -4181,14 +4164,13 @@ async function handleSetInteractive(
 /**
  * `composestream/1` — entry/exit handler for the new live-frame surface. Calls
  * `stream/start` on the daemon, posts a `streamStarted` to the webview so the
- * card swaps in its `<canvas>` painter, and stashes the resulting frameStreamId
+ * card mounts its `<canvas>` painter, and stashes the resulting frameStreamId
  * for input forwarding. Exit calls `stream/stop` (notification) and posts
- * `streamStopped` so the webview reverts to the legacy `<img>`.
+ * `streamStopped`.
  *
- * Distinct from [handleSetInteractive] so both can coexist while the new path
- * is opt-in via `composePreview.streaming.enabled`. The wire-level
- * `interactive/input` is shared — input dispatch routes by the active
- * frameStreamId regardless of which handler minted it.
+ * The wire-level `interactive/input` is shared with [handleSetInteractive] —
+ * input dispatch routes by the active frameStreamId regardless of which
+ * handler minted it.
  */
 async function handleRequestStreamStart(previewId: string): Promise<void> {
     if (!daemonGate || !daemonScheduler) {
@@ -4303,10 +4285,10 @@ const activeInteractiveStreams = new Map<string, string>();
 
 /**
  * `composestream/1` — previewId → frameStreamId for currently-active live-frame
- * streams (the new wire path). Populated by [handleRequestStreamStart] on enter,
- * cleared on exit. Distinct from [activeInteractiveStreams] so both surfaces can
- * coexist while the new path is opt-in via `composePreview.streaming.enabled`;
- * a single previewId is in at most one map at a time.
+ * streams. Populated by [handleRequestStreamStart] on enter, cleared on exit.
+ * Distinct from [activeInteractiveStreams] (the legacy `interactive/start`
+ * surface, still used by recording); a single previewId is in at most one map
+ * at a time.
  *
  * Frame routing reads this map: every `streamFrame` notification with a known
  * frameStreamId gets posted into the webview as a `streamFrame` message. Stream

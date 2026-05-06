@@ -30,8 +30,8 @@ export interface ViewportTrackerConfig {
     /**
      * Fired when a card with `previewId` leaves the viewport. The host
      * is expected to check whether that preview is currently in the
-     * live set and, if so, toggle live mode off (post setInteractive,
-     * update local sets, refresh badges/buttons).
+     * live set and, if so, post the appropriate visibility throttle
+     * (`requestStreamVisibility(visible:false)`).
      */
     onCardLeftViewport(previewId: string): void;
 }

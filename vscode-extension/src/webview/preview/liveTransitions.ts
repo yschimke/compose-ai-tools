@@ -11,15 +11,17 @@
 //   - what the post-transition Set looks like
 //
 // The DOM-bound `LiveStateController` consumes the plan: it posts the
-// `setInteractive` / `setRecording` wire commands the plan calls for,
-// replaces its internal Set with `next`, and re-runs the badge / button
-// hooks. This module owns no state of its own.
+// `requestStreamStart` / `requestStreamStop` / `setRecording` wire
+// commands the plan calls for, replaces its internal Set with `next`,
+// and re-runs the badge / button hooks. This module owns no state of
+// its own.
 
 /** Plan returned by the transition functions. Callers apply it by:
- *  1. For each `id` in `deactivate`: post `setInteractive(id, false)`
+ *  1. For each `id` in `deactivate`: post `requestStreamStop(id)`
  *     (or `setRecording(id, false, format)` for the recording variant).
  *  2. Replace the local Set with `next`.
- *  3. Post `setInteractive(targetId, turnOnTarget)` (or recording).
+ *  3. Post `requestStreamStart(targetId)` / `requestStreamStop(targetId)`
+ *     based on `turnOnTarget` (or `setRecording`).
  */
 export interface LiveToggleResult {
     /** Ids to send the "off" wire message for. Empty in the multi-

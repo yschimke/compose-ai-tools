@@ -21,9 +21,10 @@
 // just this preview without disturbing the others. Recording is currently
 // single-target only (Shift modifier intentionally not wired through).
 //
-// The controller posts the `setInteractive` / `setRecording` wire commands and
-// then re-runs the supplied button-state hooks so the toolbar reflects the new
-// truth synchronously. Silent variants (`handleDaemonLost`,
+// The controller posts the `requestStreamStart` / `requestStreamStop` /
+// `setRecording` wire commands and then re-runs the supplied button-state
+// hooks so the toolbar reflects the new truth synchronously. Silent
+// variants (`handleDaemonLost`,
 // `handleExtensionClearInteractive`, `handleExtensionClearRecording`,
 // `pruneLive`) drop UI bookkeeping without posting back — those paths are
 // triggered after the extension or daemon has already torn the streams down,
@@ -51,15 +52,6 @@ export interface LiveStateConfig {
     interactiveInputConfig: InteractiveInputConfig;
     /** Whether `composePreview.earlyFeatures` is on — recording is gated on it. */
     earlyFeatures(): boolean;
-    /**
-     * Whether `composePreview.streaming.enabled` is on. When true, the
-     * controller posts `requestStreamStart` / `requestStreamStop` instead
-     * of `setInteractive` so the new `composestream/1` painter takes over
-     * from the legacy `<img src=…>` swap. Read fresh on every gesture so
-     * Settings changes take effect on the next click without a panel
-     * reload. See docs/daemon/STREAMING.md.
-     */
-    streamingEnabled(): boolean;
     /** Whether the panel is currently in focus layout. The Live / Recording
      *  toolbar buttons only act when one card is focused. */
     inFocus(): boolean;
@@ -86,15 +78,13 @@ export class LiveStateController {
 
     /**
      * Posts the live-mode wire command for [previewId] — routes through
-     * [liveToggleCommand] which picks `requestStreamStart` /
-     * `requestStreamStop` when the streaming opt-in is on, and falls back
-     * to the legacy `setInteractive` otherwise. Single choke point so
-     * every per-card / toolbar / focus-mode entry point shares one rule.
+     * [liveToggleCommand] which always picks `requestStreamStart` /
+     * `requestStreamStop` now that streaming is the only live path.
+     * Single choke point so every per-card / toolbar / focus-mode entry
+     * point shares one rule.
      */
     private postLiveCommand(previewId: string, enabled: boolean): void {
-        this.cfg.vscode.postMessage(
-            liveToggleCommand(previewId, enabled, this.cfg.streamingEnabled()),
-        );
+        this.cfg.vscode.postMessage(liveToggleCommand(previewId, enabled));
     }
 
     isLive(previewId: string): boolean {
@@ -250,29 +240,18 @@ export class LiveStateController {
     }
 
     /**
-     * Viewport callback — auto-stop a live stream once its card has scrolled
-     * fully out of view.
+     * Viewport callback — soft-throttle a live stream once its card has
+     * scrolled fully out of view.
      *
-     * Under streaming mode the daemon supports a softer "throttle to
-     * keyframes-only" mode (`stream/visibility`) that keeps the held session
-     * warm so scroll-back-into-view repaints from the cached anchor instead
-     * of cold-blanking. We post that as `requestStreamVisibility` rather
-     * than tearing the stream down — the legacy path keeps the hard stop.
+     * The daemon's `stream/visibility` "throttle to keyframes-only" mode
+     * keeps the held session warm so scroll-back-into-view repaints from
+     * the cached anchor instead of cold-blanking. The local
+     * `interactivePreviewIds` set still says "this card is live" so the
+     * LIVE badge survives the throttle.
      */
     onCardLeftViewport(previewId: string): void {
         if (!this.interactivePreviewIds.has(previewId)) return;
-        const streaming = this.cfg.streamingEnabled();
-        const cmd = liveViewportCommand(previewId, false, streaming);
-        this.cfg.vscode.postMessage(cmd);
-        if (cmd.command === "requestStreamVisibility") {
-            // Streaming path keeps the held session warm; the local
-            // `interactivePreviewIds` set still says "this card is live"
-            // so the LIVE badge survives the throttle.
-            return;
-        }
-        this.interactivePreviewIds.delete(previewId);
-        this.applyLiveBadge();
-        this.cfg.applyInteractiveButtonState();
+        this.cfg.vscode.postMessage(liveViewportCommand(previewId, false));
     }
 
     /** Drop live previewIds that are gone from a fresh setPreviews manifest.
