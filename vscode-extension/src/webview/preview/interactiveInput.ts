@@ -21,6 +21,13 @@
 // same space the renderer paints in. The CSS-pixel offsets the browser
 // gives us are scaled by the displayed/natural ratio in `imagePoint`.
 // See docs/daemon/INTERACTIVE.md §§ 3, 6, 7.
+//
+// Streaming-mode wheel quirk: when the daemon is pushing live frames over
+// `composestream/1` the painter hides the `<img>` (display:none → 0×0
+// rect) and paints into a `<canvas class="stream-canvas">` overlay. The
+// wheel handler resolves the live render surface dynamically per event
+// via `liveRenderSurface(card)` — preferring the canvas — so rotary
+// scroll keeps reaching the daemon after the painter swap.
 
 import type { VsCodeApi } from "../shared/vscode";
 import {
@@ -30,6 +37,45 @@ import {
 } from "./pointerGeometry";
 
 export type { ImagePoint };
+
+/** Visible live render surface: an `<img>` in the legacy capture-and-show
+ *  path, or the streaming `<canvas class="stream-canvas">` once the
+ *  painter has taken over. The interactive wheel/pointer plumbing only
+ *  cares about its bounding rect and natural-pixel dimensions. */
+export interface LiveSurface {
+    el: Element;
+    naturalWidth: number;
+    naturalHeight: number;
+}
+
+/** Resolve the live render surface inside [card]. Streaming canvas wins
+ *  when present and sized — the painter hides the legacy `<img>` once
+ *  it attaches, so `<img>.getBoundingClientRect()` is 0×0 and pointer
+ *  geometry against it always returns null. Returns null when neither
+ *  surface has usable natural dimensions yet. */
+export function liveRenderSurface(card: Element): LiveSurface | null {
+    const canvas = card.querySelector<HTMLCanvasElement>(
+        "canvas.stream-canvas",
+    );
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
+        return {
+            el: canvas,
+            naturalWidth: canvas.width,
+            naturalHeight: canvas.height,
+        };
+    }
+    const img = card.querySelector<HTMLImageElement>(
+        "img.preview-image, img.preview-gif, img",
+    );
+    if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        return {
+            el: img,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight,
+        };
+    }
+    return null;
+}
 
 export interface InteractiveInputConfig {
     /**
@@ -65,18 +111,20 @@ export function attachInteractiveInputHandlers(
                 // wheel lands on preview pixels, forward it as rotary scroll; if it lands on
                 // the card chrome, still consume it so enthusiastic scrolling cannot bubble to
                 // the list and push the live preview out of view.
-                const currentImg = card.querySelector<HTMLImageElement>(
-                    "img.preview-image, img.preview-gif, img",
-                );
+                //
+                // Resolve the visible surface dynamically so the streaming `<canvas>` takes
+                // over from the (now hidden) `<img>` once `streamingPainter` attaches — see
+                // module header.
+                const surface = liveRenderSurface(card);
                 const point =
-                    currentImg && eventInsideElement(currentImg, evt)
-                        ? imagePoint(currentImg, evt)
+                    surface && eventInsideElement(surface.el, evt)
+                        ? surfacePoint(surface, evt)
                         : null;
-                if (currentImg && point) {
+                if (surface && point) {
                     postInteractiveInput(
                         config.vscode,
                         id,
-                        currentImg,
+                        surface,
                         "rotaryScroll",
                         point,
                         evt.deltaY,
@@ -197,16 +245,33 @@ export function attachInteractiveInputHandlers(
     });
 }
 
-/** DOM-bound shim around `computeImagePoint` — extracts natural / rect
- *  dimensions from the live `<img>` and the pure helper does the math. */
+/** DOM-bound shim around `computeImagePoint` — extracts the live `<img>`'s
+ *  natural and rect dimensions and lets the pure helper do the math. */
 function imagePoint(
     img: HTMLImageElement,
     evt: { clientX: number; clientY: number },
 ): ImagePoint | null {
-    const rect = img.getBoundingClientRect();
+    return surfacePoint(
+        {
+            el: img,
+            naturalWidth: img.naturalWidth || 0,
+            naturalHeight: img.naturalHeight || 0,
+        },
+        evt,
+    );
+}
+
+/** Same as `imagePoint`, but for an arbitrary `LiveSurface` — used by the
+ *  wheel handler so the streaming `<canvas>` is treated identically to a
+ *  legacy `<img>`. */
+function surfacePoint(
+    surface: LiveSurface,
+    evt: { clientX: number; clientY: number },
+): ImagePoint | null {
+    const rect = surface.el.getBoundingClientRect();
     return computeImagePoint(
-        img.naturalWidth || 0,
-        img.naturalHeight || 0,
+        surface.naturalWidth,
+        surface.naturalHeight,
         rect.width,
         rect.height,
         rect.left,
@@ -238,13 +303,19 @@ type InteractiveInputKind =
 function postInteractiveInput(
     vscode: VsCodeApi<unknown>,
     previewId: string,
-    img: HTMLImageElement,
+    target: LiveSurface | HTMLImageElement,
     kind: InteractiveInputKind,
     point: ImagePoint | null,
     scrollDeltaY?: number,
 ): void {
-    const natW = img.naturalWidth || 0;
-    const natH = img.naturalHeight || 0;
+    const natW =
+        target instanceof HTMLImageElement
+            ? target.naturalWidth || 0
+            : target.naturalWidth;
+    const natH =
+        target instanceof HTMLImageElement
+            ? target.naturalHeight || 0
+            : target.naturalHeight;
     if (!point || !natW || !natH) return;
     vscode.postMessage({
         command: "recordInteractiveInput",
