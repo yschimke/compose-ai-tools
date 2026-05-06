@@ -2191,12 +2191,18 @@ class JsonRpcServer(
     // so a client racing visibility/stop sees the same shape across surfaces.
     val finalFrame = streamRegistry.finalFrameOnStop(params.frameStreamId)
     streamRegistry.unregister(params.frameStreamId)
+    // Always drop the routing entry — `handleStreamStart` populates `interactiveTargets`
+    // unconditionally (so the v1 fallback path can route inputs), so leaving it in place
+    // when no held session was acquired leaks the routing entry across start/stop cycles
+    // and lets stale `interactive/input` notifications keep triggering fallback renders.
+    // See PR #847 reviewer P2.
+    interactiveTargets.remove(params.frameStreamId)
     val session = streamSessions.remove(params.frameStreamId)
     if (session != null) {
-      // The session was also registered in the interactive maps (see handleStreamStart) so input
-      // routing worked. Tear those down too, mirroring `interactive/stop`'s teardown order so a
-      // stream/stop is wire-equivalent to an interactive/stop on the same id.
-      interactiveTargets.remove(params.frameStreamId)
+      // The session was also registered in `interactiveSessions` so input dispatch went
+      // through the held-session path. Tear those down too, mirroring `interactive/stop`'s
+      // teardown order so a stream/stop is wire-equivalent to an interactive/stop on the
+      // same id.
       stopInteractiveFrameLoop(params.frameStreamId)
       interactiveSessions.remove(params.frameStreamId)
       try {

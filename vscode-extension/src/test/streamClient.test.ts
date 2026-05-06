@@ -8,6 +8,7 @@
 
 import * as assert from "assert";
 import {
+    shouldPaintDecodedFrame,
     StreamClient,
     StreamFrameQueue,
     type PaintableFrame,
@@ -216,5 +217,29 @@ describe("StreamClient — multi-stream demux", () => {
         client.tick();
         assert.strictEqual(painted.length, 1);
         assert.strictEqual(painted[0].seq, 5);
+    });
+});
+
+describe("shouldPaintDecodedFrame", () => {
+    // Regression for PR #847 reviewer P1 — under load `createImageBitmap` can
+    // resolve frame N+1 before frame N. Without this watermark the painter
+    // would draw N+1, then redraw N on top, time-travelling the visible
+    // content. The helper drops the stale resolution.
+    it("paints when the decoded seq is strictly newer than the watermark", () => {
+        assert.strictEqual(shouldPaintDecodedFrame(-1, 1), true);
+        assert.strictEqual(shouldPaintDecodedFrame(5, 6), true);
+    });
+
+    it("drops a decoded frame older than the watermark", () => {
+        assert.strictEqual(shouldPaintDecodedFrame(6, 5), false);
+        assert.strictEqual(
+            shouldPaintDecodedFrame(10, 1),
+            false,
+            "much-older late decode must drop",
+        );
+    });
+
+    it("drops a decoded frame equal to the watermark (already painted)", () => {
+        assert.strictEqual(shouldPaintDecodedFrame(5, 5), false);
     });
 });
