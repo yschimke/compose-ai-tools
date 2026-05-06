@@ -62,6 +62,14 @@ dependencies {
   implementation(project(":data-strings-connector"))
   implementation(project(":data-theme-connector"))
   implementation(project(":data-wallpaper-connector"))
+  // UIAutomator-shaped Selector + UiObject — RobolectricHost.performUiAutomatorAction decodes
+  // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
+  // UiAutomator.findObject(rule, selector, useUnmergedTree).
+  implementation(project(":data-uiautomator-core"))
+  // `uia.*` script-event descriptors — DaemonMain registers an Extension(id="uiautomator", ...)
+  // carrying these descriptors; AndroidRecordingSession registers a handler per id that routes
+  // to dispatchUiAutomator.
+  implementation(project(":data-uiautomator-connector"))
 
   // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,

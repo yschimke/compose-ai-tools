@@ -281,6 +281,51 @@ internal constructor(
   }
 
   /**
+   * Override of [InteractiveSession.dispatchUiAutomator]. Enqueues a
+   * [InteractiveCommand.DispatchUiAutomator] envelope through the bridge; the sandbox-side loop
+   * in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] decodes the selector JSON,
+   * resolves the matching node via `UiAutomator.findObject(rule, selector, useUnmergedTree)`,
+   * and invokes the corresponding `SemanticsActions` lambda.
+   *
+   * Returns `true` when the action fired against a matched node; `false` when no node matched
+   * or the matched node didn't expose the action (caller surfaces unsupported evidence). Throws
+   * when the action body itself failed — same propagation path as [dispatchSemanticsAction].
+   */
+  override fun dispatchUiAutomator(
+    actionKind: String,
+    selectorJson: String,
+    useUnmergedTree: Boolean,
+    inputText: String?,
+  ): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyMatched = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchUiAutomator(
+        streamId = streamId,
+        actionKind = actionKind,
+        selectorJson = selectorJson,
+        useUnmergedTree = useUnmergedTree,
+        inputText = inputText,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyMatched = replyMatched,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchUiAutomator timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (action=$actionKind, " +
+          "selectorJson='$selectorJson'). Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyMatched.get()
+  }
+
+  /**
    * Override of [InteractiveSession.dispatchLifecycle]. Enqueues a
    * [InteractiveCommand.DispatchLifecycle] envelope through the bridge; the sandbox-side loop in
    * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to a

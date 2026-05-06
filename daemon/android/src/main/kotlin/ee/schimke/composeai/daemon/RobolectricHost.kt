@@ -1724,6 +1724,23 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.DispatchUiAutomator -> {
+                  try {
+                    val matched = performUiAutomatorAction(rule, cmd)
+                    cmd.replyMatched.set(matched)
+                    if (matched) {
+                      // Same settle window as the contentDescription-driven path —
+                      // recompositions from the SemanticsActions lambda need one tick before
+                      // subsequent inputs / renders observe the new state.
+                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      rule.waitForIdle()
+                    }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.DispatchLifecycle -> {
                   try {
                     val applied = performLifecycleTransition(rule, cmd)
@@ -2031,6 +2048,49 @@ open class RobolectricHost(
      * down the scenario and break subsequent renders. Document as a follow-up if a use case for
      * post-destroy recording surfaces.
      */
+    /**
+     * UIAutomator-shaped dispatch: decode [cmd.selectorJson] via `:data-uiautomator-core`'s
+     * `decodeSelectorJson(...)`, walk the rule's `SemanticsOwner` tree, and invoke the named
+     * `SemanticsActions` lambda against the matched node. Returns `true` when a node matched
+     * AND the matched node exposed the requested action; `false` otherwise (caller surfaces
+     * unsupported evidence with a specific reason).
+     *
+     * `useUnmergedTree` mirrors the prototype's option — defaults to `false` (merged) so the
+     * common `By.text("Submit") + click` shape targets a `Button { Text(...) }` as one node.
+     *
+     * Action kinds map 1:1 onto [`UiObject`]'s methods. Unknown kinds yield `false` so the
+     * caller can surface a precise unsupported reason.
+     */
+    private fun performUiAutomatorAction(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.DispatchUiAutomator,
+    ): Boolean {
+      val selector =
+        ee.schimke.composeai.renderer.uiautomator.decodeSelectorJson(cmd.selectorJson)
+      val target =
+        ee.schimke.composeai.renderer.uiautomator.UiAutomator.findObject(
+          rule = rule,
+          selector = selector,
+          useUnmergedTree = cmd.useUnmergedTree,
+        ) ?: return false
+      return when (cmd.actionKind) {
+        "click" -> target.click()
+        "longClick" -> target.longClick()
+        "scrollForward" -> target.scrollForward()
+        "scrollBackward" -> target.scrollBackward()
+        "requestFocus" -> target.requestFocus()
+        "expand" -> target.expand()
+        "collapse" -> target.collapse()
+        "dismiss" -> target.dismiss()
+        "inputText" -> target.inputText(cmd.inputText.orEmpty())
+        else -> false
+      }
+    }
+
     private fun performLifecycleTransition(
       rule:
         androidx.compose.ui.test.junit4.AndroidComposeTestRule<
