@@ -126,6 +126,10 @@ include(":data-strings-core")
 
 project(":data-strings-core").projectDir = file("data/strings/core")
 
+include(":data-theme-core")
+
+project(":data-theme-core").projectDir = file("data/theme/core")
+
 include(":data-theme-connector")
 
 project(":data-theme-connector").projectDir = file("data/theme/connector")
