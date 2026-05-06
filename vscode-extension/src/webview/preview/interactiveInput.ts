@@ -157,6 +157,14 @@ export function attachInteractiveInputHandlers(
          * `<img>` ↔ `<canvas>` flip is asynchronous).
          */
         surface: LiveSurface | null;
+        /**
+         * Latest pointerMove position not yet posted to the daemon —
+         * coalesced and flushed once per animation frame. See
+         * `flushPendingMove`.
+         */
+        pendingMove: ImagePoint | null;
+        /** True between scheduling and firing the rAF flush. */
+        rafScheduled: boolean;
     }
     const state: PointerState = {
         pointerId: null,
@@ -165,6 +173,36 @@ export function attachInteractiveInputHandlers(
         dragging: false,
         sentDown: false,
         surface: null,
+        pendingMove: null,
+        rafScheduled: false,
+    };
+
+    // Coalesce pointerMove dispatch to rAF cadence. Native pointermove
+    // fires faster than the painter's frame rate (typical mice ~120 Hz,
+    // gaming mice up to 1 kHz; the painter consumes one frame per rAF,
+    // ~60 Hz). Posting every native move overwhelms the daemon's render
+    // pipeline — frames pile up faster than they can be produced, the
+    // painter's newest-wins drops most of them, and the user sees motion
+    // that lags and skips between cursor positions instead of cleanly
+    // tracking the gesture. Sending one move per frame keeps the daemon
+    // in step with what the painter can actually display.
+    //
+    // pointerDown / pointerUp still go through immediately so the
+    // gesture's begin / end aren't delayed by up to 16 ms.
+    const flushPendingMove = (): void => {
+        state.rafScheduled = false;
+        const move = state.pendingMove;
+        state.pendingMove = null;
+        if (!move || !state.surface) return;
+        const id = card.dataset.previewId;
+        if (!id || !config.isLive(id)) return;
+        postInteractiveInput(
+            config.vscode,
+            id,
+            state.surface,
+            "pointerMove",
+            move,
+        );
     };
 
     card.addEventListener("pointerdown", (evt) => {
@@ -216,14 +254,20 @@ export function attachInteractiveInputHandlers(
                 );
                 state.sentDown = true;
             }
-            postInteractiveInput(
-                config.vscode,
-                id,
-                state.surface,
-                "pointerMove",
-                next,
-            );
+            // Stash the latest position; the rAF tick will post it. See
+            // `flushPendingMove` for the rationale on coalescing.
+            state.pendingMove = next;
             state.last = next;
+            if (!state.rafScheduled) {
+                if (typeof requestAnimationFrame === "function") {
+                    state.rafScheduled = true;
+                    requestAnimationFrame(flushPendingMove);
+                } else {
+                    // No rAF (test runner / non-browser host) — dispatch
+                    // immediately so events aren't silently lost.
+                    flushPendingMove();
+                }
+            }
             evt.preventDefault();
             evt.stopPropagation();
         }
@@ -244,6 +288,18 @@ export function attachInteractiveInputHandlers(
                     state.surface,
                     "pointerDown",
                     state.start,
+                );
+            }
+            // Flush any coalesced move so the daemon sees the cursor's
+            // last in-flight position before the lift-off, otherwise the
+            // gesture's tail (up to a frame's worth of motion) is dropped.
+            if (state.pendingMove) {
+                postInteractiveInput(
+                    config.vscode,
+                    id,
+                    state.surface,
+                    "pointerMove",
+                    state.pendingMove,
                 );
             }
             postInteractiveInput(
@@ -269,6 +325,7 @@ export function attachInteractiveInputHandlers(
         state.dragging = false;
         state.sentDown = false;
         state.surface = null;
+        state.pendingMove = null;
         evt.preventDefault();
         evt.stopPropagation();
     });
@@ -282,6 +339,7 @@ export function attachInteractiveInputHandlers(
         state.dragging = false;
         state.sentDown = false;
         state.surface = null;
+        state.pendingMove = null;
     });
 
     card.addEventListener("contextmenu", (evt) => {
