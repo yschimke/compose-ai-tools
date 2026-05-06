@@ -142,6 +142,35 @@ export interface PreviewInfo {
      * `docs/daemon/DATA-PRODUCTS.md` § "Worked example".
      */
     a11yNodes?: AccessibilityNode[] | null;
+    /**
+     * Composables this preview is presumed to render. Inferred by the Gradle
+     * plugin from the preview's bytecode (see `PreviewTargetInference.kt`); v1
+     * emits 0 or 1 entries. The extension uses this to surface previews from
+     * elsewhere when the user opens the production composable file — see
+     * `previewsReferencingFile` in `extension.ts`.
+     */
+    targets?: PreviewTarget[];
+    /**
+     * Set by the extension (not the manifest) when this preview is being
+     * displayed in the panel because one of its [targets] points at the active
+     * file, rather than because its own [sourceFile] matches. Lets the webview
+     * render a "from elsewhere" treatment without changing the message shape.
+     */
+    referenced?: boolean;
+}
+
+/**
+ * Mirrors the plugin-side `PreviewTarget`. Only the fields the panel/webview
+ * actually consume are typed; signal/confidence enums are treated as strings
+ * because the panel never enumerates them — they're surfaced verbatim in
+ * tooltips when present.
+ */
+export interface PreviewTarget {
+    className: string;
+    functionName: string;
+    sourceFile: string | null;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    signals?: string[];
 }
 
 /**
@@ -717,3 +746,82 @@ export type WebviewToExtension =
      * both sides.
      */
     | { command: "setA11yOverlay"; previewId: string; enabled: boolean };
+
+/**
+ * Narrow shape the History panel reads off each sidecar JSON entry. The
+ * underlying file format is open-ended (see HISTORY.md § "Sidecar metadata
+ * schema") and the daemon returns `unknown[]`; this is the slice the webview
+ * actually uses. Optional throughout because older sidecars may pre-date a
+ * given field, and synthetic `currentRenders` entries are sparse.
+ */
+export interface HistoryEntry {
+    id?: string;
+    previewId?: string;
+    timestamp?: string;
+    pngHash?: string;
+    pngPath?: string;
+    trigger?: string;
+    source?: { kind?: string; id?: string };
+    git?: { branch?: string | null; commit?: string };
+    deltaFromPrevious?: { pngHashChanged?: boolean };
+    previewMetadata?: { sourceFile?: string; [k: string]: unknown };
+    [k: string]: unknown;
+}
+
+/** Metadata + diff stats the History panel renders for a Side / Overlay /
+ *  Onion comparison between two entries. Mirrors the daemon's
+ *  `HistoryDiffResult` shape; null is sent on failure. */
+export interface HistoryDiffSummary {
+    pngHashChanged: boolean;
+    fromMetadata?: unknown;
+    toMetadata?: unknown;
+    diffPx?: number;
+    ssim?: number;
+    diffPngPath?: string;
+}
+
+/** Messages from extension to the History webview panel. */
+export type HistoryToWebview =
+    | {
+          command: "setEntries";
+          result: { entries: HistoryEntry[]; totalCount?: number };
+      }
+    | { command: "entryAdded"; entry: HistoryEntry }
+    | { command: "setScopeLabel"; label: string }
+    | { command: "showMessage"; text: string }
+    | {
+          command: "imageReady";
+          id: string;
+          imageData: string;
+          entry?: HistoryEntry;
+      }
+    | { command: "imageError"; id: string; message: string }
+    | {
+          command: "thumbReady";
+          id: string;
+          imageData: string;
+          entry?: HistoryEntry;
+      }
+    | { command: "thumbError"; id: string; message: string }
+    | {
+          command: "diffReady";
+          id: string;
+          against: "previous" | "current";
+          leftLabel: string;
+          leftImage: string;
+          rightLabel: string;
+          rightImage: string;
+      }
+    | {
+          command: "diffPairError";
+          id: string;
+          against: "previous" | "current";
+          message: string;
+      }
+    | {
+          command: "diffResult";
+          fromId: string;
+          toId: string;
+          result: HistoryDiffSummary | null;
+      }
+    | { command: "diffError"; fromId: string; toId: string; message: string };

@@ -20,10 +20,13 @@ CMP Desktop / pure-JVM; Android-consumer builds need one extra step.
    are Android + downloadable-fonts specific. Don't use **Full**; it's broader
    than needed.
 
-2. **Drop the install script into the environment setup script:**
+2. **Drop the install script into the environment setup script.** Pass
+   `--yes` so the installer knows you've accepted the download — it
+   refuses to run otherwise (see "Download safety" below):
 
    ```
-   curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
+     | bash -s -- --yes
    ```
 
 3. **Verify** in a fresh session: `compose-preview doctor`. With the cloud
@@ -99,13 +102,19 @@ recipe but switch to Custom first (see below).
 #!/usr/bin/env bash
 set -euo pipefail
 
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
+  | bash -s -- --yes
 
 # Optional pre-warm — bakes Gradle's downloaded deps into the env snapshot.
 # CLI auto-discovers every module that applies the plugin.
 export PATH=$HOME/.local/bin:$PATH
 compose-preview show --json --brief || true
 ```
+
+`--yes` is required: the installer refuses to download tarballs without it.
+This protects against agent loops that would otherwise re-fetch binaries
+between previews. To bump to a newer release, replace `--yes` with
+`--upgrade`.
 
 Verify with `compose-preview doctor`. Expected: a `[env]` block showing
 JDK 17+ on PATH (21 on current images), Gradle reachable, and four
@@ -136,7 +145,7 @@ to `$CLAUDE_ENV_FILE`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
-  | bash -s -- --android-sdk
+  | bash -s -- --yes --android-sdk
 
 # Optional pre-warm; `|| true` so a partial render still populates the cache.
 ./gradlew --no-daemon :samples:android:renderAllPreviews || true

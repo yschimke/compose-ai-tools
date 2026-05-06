@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 object ComposeSemanticsProduct {
   const val KIND: String = "compose/semantics"
-  const val SCHEMA_VERSION: Int = 1
+  const val SCHEMA_VERSION: Int = 2
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -26,6 +26,12 @@ data class ComposeSemanticsNode(
   val layoutFontSize: String? = null,
   val layoutForegroundColor: String? = null,
   val layoutBackgroundColor: String? = null,
+  val layoutLineCount: Int? = null,
+  val layoutMaxLines: Int? = null,
+  val layoutOverflow: String? = null,
+  val layoutTruncated: Boolean? = null,
+  val layoutDidOverflowWidth: Boolean? = null,
+  val layoutDidOverflowHeight: Boolean? = null,
   val editableText: String? = null,
   val inputText: String? = null,
   val role: String? = null,

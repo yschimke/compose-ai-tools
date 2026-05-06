@@ -56,7 +56,7 @@ export interface FocusInspectorConfig {
     /** `shift = false` matches the toolbar Live button — single-target. */
     onToggleInteractive(shift: boolean): void;
     onToggleRecording(): void;
-    onRequestFocusedDiff(against: string): void;
+    onRequestFocusedDiff(against: "head" | "main"): void;
     onRequestLaunchOnDevice(): void;
 }
 

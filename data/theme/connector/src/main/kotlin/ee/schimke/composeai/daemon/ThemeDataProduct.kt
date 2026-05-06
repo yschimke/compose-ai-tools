@@ -34,9 +34,12 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
 import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorExtension
 import ee.schimke.composeai.data.render.extensions.compose.ComposeColorSpec
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionSink
+import ee.schimke.composeai.data.theme.Material3ThemeProduct
+import ee.schimke.composeai.data.theme.ResolvedThemeTokens
+import ee.schimke.composeai.data.theme.ThemePayload
+import ee.schimke.composeai.data.theme.TypographyToken
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
@@ -194,8 +197,8 @@ class ThemeDataProductRegistry : DataProductRegistry {
   }
 
   companion object {
-    const val KIND = "compose/theme"
-    const val SCHEMA_VERSION = 1
+    const val KIND: String = Material3ThemeProduct.KIND
+    const val SCHEMA_VERSION: Int = Material3ThemeProduct.SCHEMA_VERSION
     const val RENDER_MODE = "theme"
 
     private val json = Json {
@@ -249,34 +252,6 @@ class ThemeCaptureExtension :
       )
   }
 }
-
-@Serializable
-data class ThemePayload(
-  val resolvedTokens: ResolvedThemeTokens,
-  val consumers: List<ThemeConsumer> = emptyList(),
-)
-
-@Serializable
-data class ResolvedThemeTokens(
-  val colorScheme: Map<String, String>,
-  val typography: Map<String, TypographyToken>,
-  val shapes: Map<String, String>,
-)
-
-@Serializable data class ThemeConsumer(val nodeId: String, val tokens: List<String>)
-
-@Serializable
-data class TypographyToken(
-  val fontFamily: String? = null,
-  val fontSize: Float? = null,
-  val fontSizeUnit: String? = null,
-  val fontWeight: String? = null,
-  val fontStyle: String? = null,
-  val lineHeight: Float? = null,
-  val lineHeightUnit: String? = null,
-  val letterSpacing: Float? = null,
-  val letterSpacingUnit: String? = null,
-)
 
 fun themePayloadFromMaterialTheme(
   colorScheme: ColorScheme,

@@ -9,6 +9,7 @@ plugins {
 dependencies {
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
+  api(project(":data-wallpaper-core"))
   implementation(compose.runtime)
   implementation(compose.ui)
   implementation(compose.material3)

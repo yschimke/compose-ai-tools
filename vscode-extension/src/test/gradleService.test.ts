@@ -861,5 +861,61 @@ describe("GradleService", () => {
                 assert.strictEqual(api.cancelCalls.length >= 0, true); // at least attempted
             }),
         );
+
+        it(
+            "skips composePreviewDaemonStart so a refresh-cancel can't kill the daemon bootstrap mid-flight",
+            withTempDir(async (dir, api) => {
+                // Stub that keeps runTask pending until we tell it to resolve,
+                // so the cancellation key is still in activeKeys when cancel()
+                // is called. Without this the default stub resolves before the
+                // test even gets to cancel(), and the assertion is vacuous.
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        api.runCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask(opts) {
+                        api.cancelCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                    },
+                };
+                const service = new GradleService(dir, heldApi);
+
+                const bootstrap = service
+                    .runDaemonBootstrap("mod")
+                    .catch(() => {});
+                const render = service.discoverPreviews("mod").catch(() => {});
+                // Yield enough turns for both runTask invocations to be
+                // recorded in activeKeys.
+                await new Promise((resolve) => setImmediate(resolve));
+                await new Promise((resolve) => setImmediate(resolve));
+
+                await service.cancel();
+
+                const cancelledTasks = api.cancelCalls.map((c) => c.taskName);
+                assert.ok(
+                    !cancelledTasks.some((t) =>
+                        t.endsWith(":composePreviewDaemonStart"),
+                    ),
+                    `bootstrap must not be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+                assert.ok(
+                    cancelledTasks.some((t) => t.endsWith(":discoverPreviews")),
+                    `render-path task must still be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+
+                // Release both held tasks so the test cleans up.
+                for (const r of resolvers) r();
+                await Promise.all([bootstrap, render]);
+            }),
+        );
     });
 });

@@ -124,6 +124,12 @@ export class TaskCancelledError extends Error {
 
 const CANCELLED_RE = /\bCANCELLED\b/i;
 
+/** `cancellationKey` is `compose-preview-${counter}|${task}`; extract the task. */
+function taskFromKey(key: string): string {
+    const sep = key.indexOf("|");
+    return sep < 0 ? key : key.slice(sep + 1);
+}
+
 // Module identifiers are stored as forward-slash relative paths from the
 // workspace root (e.g. `samples/wear`) so the same string serves both as a
 // Gradle project segment and a filesystem path through `path.join`. Gradle
@@ -622,13 +628,34 @@ export class GradleService {
     }
 
     async cancel(): Promise<void> {
-        const keys = [...this.activeKeys];
-        this.activeKeys.clear();
-        for (const key of keys) {
+        // `composePreviewDaemonStart` is intentionally excluded from the cancel
+        // pool. It's a one-shot, cheap, idempotent task that writes the launch
+        // descriptor every subsequent refresh needs; cancelling it mid-flight
+        // when the next refresh fires creates a permanent cycle where bootstrap
+        // is killed by the refresh it was supposed to enable, leaving
+        // "no launch descriptor" / "Build cancelled" forever.
+        //
+        // Tradeoff: a refresh that arrives while the first-time bootstrap is
+        // still running now queues behind it on the Gradle daemon (the daemon
+        // serialises clients) instead of jumping the queue. That can add a few
+        // seconds on the very first refresh of a cold module, but only once
+        // per session — the descriptor is then UP-TO-DATE and bootstrap
+        // returns instantly. Steady-state is unaffected.
+        const toCancel: string[] = [];
+        const toKeep = new Set<string>();
+        for (const key of this.activeKeys) {
+            if (taskFromKey(key).endsWith(":composePreviewDaemonStart")) {
+                toKeep.add(key);
+            } else {
+                toCancel.push(key);
+            }
+        }
+        this.activeKeys = toKeep;
+        for (const key of toCancel) {
             try {
                 await this.gradleApi.cancelRunTask({
                     projectFolder: this.workspaceRoot,
-                    taskName: key.split("|")[1],
+                    taskName: taskFromKey(key),
                     cancellationKey: key,
                 });
             } catch {

@@ -1,57 +1,77 @@
-// @ts-nocheck
-//
 // Imperative behaviour for the live "Compose Preview" webview panel.
 //
 // Verbatim port of the previously-inline IIFE script in
 // `src/previewPanel.ts` (the `<script nonce="...">` block in `getHtml()`).
-// Kept untyped for now so the lift-into-bundle change stays mechanical;
-// future commits can incrementally type-tighten and split this into
-// reactive Lit components.
+// Now type-checked end-to-end; pieces still intentionally imperative
+// (`createCard` / `updateCardMetadata` / `renderPreviews` / `updateImage`
+// / `applyA11yUpdate`) are slated to fold into a future `<preview-card>`
+// Lit component.
 //
 // Runs once per webview load. Assumes `<preview-app>` has already
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
 // queries below resolve.
 
-import { getVsCodeApi } from "../shared/vscode";
+import type {
+    AccessibilityFinding,
+    AccessibilityNode,
+    PreviewInfo,
+} from "../shared/types";
+import { requireElementById, requireSelector } from "../shared/domRefs";
+import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
-    applyHierarchyOverlay,
-    buildA11yLegend,
-    buildA11yOverlay,
-    ensureHierarchyOverlay,
-} from "./a11yOverlay";
-import {
-    buildTooltip,
-    buildVariantLabel,
-    isAnimatedPreview,
-    isWearPreview,
-    mimeFor,
-    parseBounds,
-    sanitizeId,
-} from "./cardData";
+    applyA11yUpdate,
+    applyRelativeSizing,
+    buildPreviewCard,
+    type CardBuilderConfig,
+    renderPreviews as renderPreviewsImpl,
+    updateCardMetadata,
+    updateImage,
+} from "./cardBuilder";
+import { FilterToolbar } from "./components/FilterToolbar";
+import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
 import { PreviewGrid } from "./components/PreviewGrid";
+import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
-import { buildErrorPanel } from "./errorPanel";
+import {
+    FocusController,
+    type FocusControllerPersistedState,
+} from "./focusController";
 import { FocusInspectorController } from "./focusInspector";
 import {
     FocusToolbarController,
     isFocusedInteractiveSupported,
     isFocusedModuleReady,
 } from "./focusToolbar";
-import { FrameCarouselController } from "./frameCarousel";
-import { attachInteractiveInputHandlers } from "./interactiveInput";
+import {
+    FrameCarouselController,
+    type CapturePresentation,
+} from "./frameCarousel";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
+import {
+    handleExtensionMessage,
+    type PreviewMessageContext,
+} from "./messageHandlers";
 import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
 import { StreamingPainter } from "./streamingPainter";
 import { ViewportTracker } from "./viewportTracker";
 
+/** Persisted webview state stored via `vscode.setState` / `getState`. Survives
+ *  across webview reloads (panel hidden + revealed) but not across full
+ *  extension reloads. */
+interface PersistedState {
+    filters?: { fn?: string; group?: string };
+    layout?: "grid" | "flow" | "column" | "focus";
+    diffMode?: DiffMode;
+}
+
 export function setupPreviewBehavior(
     initialEarlyFeaturesEnabled: boolean,
     initialStreamingEnabled: boolean = false,
 ): void {
-    const vscode = getVsCodeApi();
-    const state = vscode.getState() || { filters: {} };
+    const vscode = getVsCodeApi<PersistedState>();
+    const state: PersistedState = vscode.getState() ?? { filters: {} };
     // `earlyFeaturesEnabled` lives in `previewStore` so future
     // components can subscribe to it without going through this
     // closure. Reads inside this file go through the local helper for
@@ -66,32 +86,39 @@ export function setupPreviewBehavior(
         previewStore.getState().streamingEnabled;
     const streamingPainter = new StreamingPainter();
 
-    const grid = document.getElementById("preview-grid") as PreviewGrid;
-    const focusInspector = document.getElementById("focus-inspector");
-    // `<message-banner>` owns the status strip; we use a typed-ish handle
-    // to call setMessage / read its current owner from the few cases that
+    const grid = requireElementById<PreviewGrid>("preview-grid");
+    const focusInspector = requireElementById<HTMLElement>("focus-inspector");
+    // `<message-banner>` owns the status strip; we use a typed handle to
+    // call setMessage / read its current owner from the few cases that
     // still need to drive it (filter narrowing, ensureNotBlank fallback,
     // clearAll). showMessage messages from the extension reach the
     // component directly without going through this code.
-    const messageBanner = document.querySelector("message-banner");
+    const messageBanner = requireSelector<MessageBanner>("message-banner");
     // `<filter-toolbar>` owns the function/group/layout selects,
     // their options, and the user-interaction events. We grab a handle
     // here for the programmatic get/set + populate paths used by
     // applyFilters / applyLayout / setPreviews / setFunctionFilter /
     // focusOnCard / exitFocus / restoreFilterState.
-    const filterToolbar = document.querySelector("filter-toolbar");
-    const focusControls = document.getElementById("focus-controls");
-    const btnPrev = document.getElementById("btn-prev");
-    const btnNext = document.getElementById("btn-next");
-    const btnDiffHead = document.getElementById("btn-diff-head");
-    const btnDiffMain = document.getElementById("btn-diff-main");
-    const btnLaunchDevice = document.getElementById("btn-launch-device");
-    const btnA11yOverlay = document.getElementById("btn-a11y-overlay");
-    const btnInteractive = document.getElementById("btn-interactive");
-    const btnStopInteractive = document.getElementById("btn-stop-interactive");
-    const btnRecording = document.getElementById("btn-recording");
-    const recordingFormat = document.getElementById("recording-format");
-    const btnExitFocus = document.getElementById("btn-exit-focus");
+    const filterToolbar = requireSelector<FilterToolbar>("filter-toolbar");
+    const focusControls = requireElementById<HTMLElement>("focus-controls");
+    const btnPrev = requireElementById<HTMLButtonElement>("btn-prev");
+    const btnNext = requireElementById<HTMLButtonElement>("btn-next");
+    const btnDiffHead = requireElementById<HTMLButtonElement>("btn-diff-head");
+    const btnDiffMain = requireElementById<HTMLButtonElement>("btn-diff-main");
+    const btnLaunchDevice =
+        requireElementById<HTMLButtonElement>("btn-launch-device");
+    const btnA11yOverlay =
+        requireElementById<HTMLButtonElement>("btn-a11y-overlay");
+    const btnInteractive =
+        requireElementById<HTMLButtonElement>("btn-interactive");
+    const btnStopInteractive = requireElementById<HTMLButtonElement>(
+        "btn-stop-interactive",
+    );
+    const btnRecording = requireElementById<HTMLButtonElement>("btn-recording");
+    const recordingFormat =
+        requireElementById<HTMLSelectElement>("recording-format");
+    const btnExitFocus =
+        requireElementById<HTMLButtonElement>("btn-exit-focus");
     const focusToolbar = new FocusToolbarController({
         btnPrev,
         btnNext,
@@ -122,13 +149,13 @@ export function setupPreviewBehavior(
     // previewId -> findings. Populated from setPreviews so updateImage can
     // re-read the list on every image (re)load without re-querying the
     // DOM for data attributes.
-    const cardA11yFindings = new Map();
+    const cardA11yFindings = new Map<string, readonly AccessibilityFinding[]>();
     // D2 — previewId -> nodes for the daemon-attached a11y/hierarchy payload. Drives
     // the local hierarchy overlay (translucent rectangles + label/role/states tooltip
     // on hover) drawn on top of the existing finding overlay. Populated by
     // applyA11yUpdate and re-read on each image (re)load via applyHierarchyOverlay.
-    const cardA11yNodes = new Map();
-    const focusPosition = document.getElementById("focus-position");
+    const cardA11yNodes = new Map<string, readonly AccessibilityNode[]>();
+    const focusPosition = requireElementById<HTMLElement>("focus-position");
     // Progress bar is owned by `<progress-bar>` — see
     // `components/ProgressBar.ts`. It listens for `setProgress` /
     // `clearProgress` directly and owns its own deferred-paint timing.
@@ -138,20 +165,49 @@ export function setupPreviewBehavior(
     // `setCompileErrors` / `clearCompileErrors` directly and toggles
     // the `compile-stale` class on `#preview-grid` itself.
 
-    let allPreviews = [];
+    // Panel-level scalars are mirrored to `previewStore` on every write so
+    // future components (the upcoming `<preview-card>`, the focus inspector,
+    // etc.) can subscribe via `StoreController`. Local mutable bindings stay
+    // here for terseness in the heavy imperative paths
+    // (`createCard`/`renderPreviews`/`updateImage`/etc.); keep the two
+    // synchronised by going through these wrappers.
+    let allPreviews: PreviewInfo[] = [];
+    function setAllPreviews(next: PreviewInfo[]): void {
+        allPreviews = next;
+        previewStore.setState({ allPreviews: next });
+    }
     let moduleDir = "";
-    let filterDebounce = null;
+    function setModuleDir(next: string): void {
+        moduleDir = next;
+        previewStore.setState({ moduleDir: next });
+    }
     let focusIndex = 0;
+    function setFocusIndex(next: number): void {
+        focusIndex = next;
+        previewStore.setState({ focusIndex: next });
+    }
     // Last previewId published to the extension via previewScopeChanged.
     // Tracked here so we don't spam the History panel with redundant
     // re-scopes (e.g. layout reapplies on every filter tweak).
-    let lastScopedPreviewId = null;
+    let lastScopedPreviewId: string | null = null;
+    function setLastScopedPreviewId(next: string | null): void {
+        lastScopedPreviewId = next;
+        previewStore.setState({ lastScopedPreviewId: next });
+    }
     // Layout to fall back to when the user exits focus mode. Captured
     // whenever we transition into focus from another layout (dropdown
     // change, dblclick on a card). Defaults to grid so the very first
     // exit lands somewhere sensible.
-    let previousLayout =
+    let previousLayout: "grid" | "flow" | "column" =
         state.layout && state.layout !== "focus" ? state.layout : "grid";
+    function setPreviousLayout(next: "grid" | "flow" | "column"): void {
+        previousLayout = next;
+        previewStore.setState({ previousLayout: next });
+    }
+    // Seed the store with the persisted-state-derived defaults so initial
+    // subscribers see the right values.
+    previewStore.setState({ previousLayout });
+    let filterDebounce: ReturnType<typeof setTimeout> | null = null;
 
     // Interactive (live-stream) mode state. Declared up here — *before*
     // the first applyLayout() call below — because applyLayout reaches
@@ -166,10 +222,19 @@ export function setupPreviewBehavior(
     // `./liveState.ts` — see `LiveStateController`. Constructed below,
     // after `interactiveInputConfig` so the controller can hand the
     // config to `attachInteractiveInputHandlers`.
-    const moduleDaemonReady = new Map();
-    const moduleInteractiveSupported = new Map();
+    const moduleDaemonReady = new Map<string, boolean>();
+    const moduleInteractiveSupported = new Map<string, boolean>();
 
-    const inspector = new FocusInspectorController({
+    // Forward references — `inspector` / `liveState` / `focusController`
+    // close over each other via callback shapes, so we late-bind through
+    // these `let !` declarations. Each binding is dereferenced only at
+    // runtime (inside arrow callbacks fired by user events / message
+    // handlers), by which point all three are initialised.
+    let inspector!: FocusInspectorController;
+    let liveState!: LiveStateController;
+    let focusController!: FocusController;
+
+    inspector = new FocusInspectorController({
         el: focusInspector,
         earlyFeatures,
         getPreview: (id) => allPreviews.find((p) => p.id === id),
@@ -183,22 +248,21 @@ export function setupPreviewBehavior(
             [],
         getA11yOverlayId: a11yOverlay,
         isLive: (id) => liveState.isLive(id),
-        onToggleA11yOverlay: () => toggleA11yOverlay(),
+        onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
         onToggleInteractive: (shift) => liveState.toggleInteractive(shift),
         onToggleRecording: () => liveState.toggleRecording(),
-        onRequestFocusedDiff: (against) => requestFocusedDiff(against),
-        onRequestLaunchOnDevice: () => requestLaunchOnDevice(),
+        onRequestFocusedDiff: (against) =>
+            focusController.requestFocusedDiff(against),
+        onRequestLaunchOnDevice: () => focusController.requestLaunchOnDevice(),
     });
 
     // Config for the interactive-input pointer machine. The predicate
     // unifies live/recording state — both forward pointer/wheel input
     // to the daemon — so the module doesn't need direct access to
-    // either Set. `liveState` is initialised right below and only read
-    // when a real pointer event fires, so the closure access can never
-    // hit before the controller is bound.
-    let liveState!: LiveStateController;
+    // either Set.
     const interactiveInputConfig = {
-        isLive: (id) => liveState.isLive(id) || liveState.isRecording(id),
+        isLive: (id: string) =>
+            liveState.isLive(id) || liveState.isRecording(id),
         vscode,
     };
 
@@ -208,13 +272,12 @@ export function setupPreviewBehavior(
         interactiveInputConfig,
         earlyFeatures,
         streamingEnabled,
-        inFocus: () => filterToolbar.getLayoutValue() === "focus",
-        focusedCard: () =>
-            filterToolbar.getLayoutValue() === "focus"
-                ? (getVisibleCards()[focusIndex] ?? null)
-                : null,
-        applyInteractiveButtonState: () => applyInteractiveButtonState(),
-        applyRecordingButtonState: () => applyRecordingButtonState(),
+        inFocus: () => focusController.inFocus(),
+        focusedCard: () => focusController.focusedCard(),
+        applyInteractiveButtonState: () =>
+            focusController.applyInteractiveButtonState(),
+        applyRecordingButtonState: () =>
+            focusController.applyRecordingButtonState(),
         renderInspector: (card) => inspector.render(card),
     });
 
@@ -233,6 +296,46 @@ export function setupPreviewBehavior(
         },
     };
 
+    focusController = new FocusController({
+        vscode: vscode as VsCodeApi<FocusControllerPersistedState>,
+        grid,
+        filterToolbar,
+        focusControls,
+        focusPosition,
+        btnPrev,
+        btnNext,
+        focusToolbar,
+        inspector,
+        liveState,
+        diffOverlayConfig,
+        state,
+        moduleDaemonReady,
+        moduleInteractiveSupported,
+        earlyFeatures,
+        getA11yOverlayId: a11yOverlay,
+        setA11yOverlayId: setA11yOverlay,
+        getFocusIndex: () => focusIndex,
+        setFocusIndex,
+        getPreviousLayout: () => previousLayout,
+        setPreviousLayout,
+        getLastScopedPreviewId: () => lastScopedPreviewId,
+        setLastScopedPreviewId,
+    });
+
+    // Filter + message-banner orchestration lives in `./filterController.ts`
+    // — see `FilterController`. Built after `focusController` because
+    // `apply()` calls `applyLayout()` to recompute focus bounds against the
+    // narrowed visible set.
+    const filterController = new FilterController({
+        vscode,
+        state,
+        filterToolbar,
+        grid,
+        messageBanner,
+        getAllPreviews: () => allPreviews,
+        applyLayout: () => focusController.applyLayout(),
+    });
+
     const staleBadge = new StaleBadgeController(vscode);
     const loadingOverlay = new LoadingOverlay();
 
@@ -240,8 +343,7 @@ export function setupPreviewBehavior(
     // capture. Populated from updateImage / setImageError messages so
     // prev/next navigation can swap the visible <img> without a fresh
     // extension round-trip.
-    // Map<previewId, CapturePresentation[]>
-    const cardCaptures = new Map();
+    const cardCaptures = new Map<string, CapturePresentation[]>();
     const frameCarousel = new FrameCarouselController({
         vscode,
         cardCaptures,
@@ -263,13 +365,12 @@ export function setupPreviewBehavior(
     messageBanner.setMessage("Loading Compose previews…", "fallback");
 
     filterToolbar.addEventListener("layout-changed", () => {
-        if (
-            filterToolbar.getLayoutValue() === "focus" &&
-            state.layout !== "focus"
-        ) {
-            previousLayout = state.layout || "grid";
+        const next = filterToolbar.getLayoutValue();
+        if (next === "focus" && state.layout !== "focus") {
+            // state.layout is now narrowed to "grid"|"flow"|"column"|undefined.
+            setPreviousLayout(state.layout ?? "grid");
         }
-        state.layout = filterToolbar.getLayoutValue();
+        state.layout = next;
         vscode.setState(state);
         applyLayout();
     });
@@ -292,327 +393,48 @@ export function setupPreviewBehavior(
     btnRecording.addEventListener("click", () => liveState.toggleRecording());
     btnExitFocus.addEventListener("click", () => exitFocus());
 
-    function applyEarlyFeatureVisibility() {
-        focusToolbar.applyEarlyFeatureVisibility({
-            earlyFeatures: earlyFeatures(),
-            inFocus: filterToolbar.getLayoutValue() === "focus",
-        });
+    // Focus-mode orchestration (applyLayout, button-state hooks, focus
+    // navigation, the a11y-overlay toggle, focused-card actions) lives in
+    // `./focusController.ts` — see `FocusController`. The thin shims
+    // below keep the call shape stable for the message-context callbacks
+    // and for `applyFilters`, which is itself a closure over filterToolbar.
+    function applyLayout(): void {
+        focusController.applyLayout();
+    }
+    function applyInteractiveButtonState(): void {
+        focusController.applyInteractiveButtonState();
+    }
+    function applyRecordingButtonState(): void {
+        focusController.applyRecordingButtonState();
+    }
+    function navigateFocus(delta: number): void {
+        focusController.navigateFocus(delta);
+    }
+    function focusOnCard(card: HTMLElement): void {
+        focusController.focusOnCard(card);
+    }
+    function exitFocus(): void {
+        focusController.exitFocus();
+    }
+    function requestFocusedDiff(against: "head" | "main"): void {
+        focusController.requestFocusedDiff(against);
+    }
+    function requestLaunchOnDevice(): void {
+        focusController.requestLaunchOnDevice();
+    }
+    function toggleA11yOverlay(): void {
+        focusController.toggleA11yOverlay();
     }
 
-    function applyInteractiveButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        const previewId = card?.dataset.previewId ?? null;
-        const isLive = !!previewId && liveState.isLive(previewId);
-        focusToolbar.applyInteractiveButtonState({
-            inFocus,
-            focusedPreviewId: previewId,
-            isLive,
-            otherLiveCount: liveState.liveCount - (isLive ? 1 : 0),
-            hasLive: liveState.liveCount > 0,
-            daemonReady: isFocusedModuleReady(moduleDaemonReady),
-            interactiveSupported: isFocusedInteractiveSupported(
-                moduleDaemonReady,
-                moduleInteractiveSupported,
-            ),
-        });
-    }
-
-    function applyRecordingButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        const previewId = card?.dataset.previewId ?? null;
-        focusToolbar.applyRecordingButtonState({
-            inFocus,
-            earlyFeatures: earlyFeatures(),
-            focusedPreviewId: previewId,
-            daemonReady: isFocusedModuleReady(moduleDaemonReady),
-            isRecording: !!previewId && liveState.isRecording(previewId),
-        });
-    }
-
-    function applyA11yOverlayButtonState() {
-        const inFocus = filterToolbar.getLayoutValue() === "focus";
-        const card = inFocus ? getVisibleCards()[focusIndex] : null;
-        focusToolbar.applyA11yOverlayButtonState({
-            inFocus,
-            earlyFeatures: earlyFeatures(),
-            focusedPreviewId: card?.dataset.previewId ?? null,
-            a11yOverlayId: a11yOverlay(),
-        });
-    }
-
-    // D2 — clicking the a11y toggle subscribes/unsubscribes via the extension. When
-    // turning OFF, the extension also pushes an empty updateA11y so the cached overlay
-    // tears down immediately rather than waiting for a next render. When turning ON for a
-    // different preview, first turn the previous one off so the wire stays clean.
-    function toggleA11yOverlay() {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const card = getVisibleCards()[focusIndex];
-        const previewId = card ? card.dataset.previewId : null;
-        if (!previewId) return;
-        const turningOn = previewId !== a11yOverlay();
-        if (a11yOverlay() && a11yOverlay() !== previewId) {
-            vscode.postMessage({
-                command: "setA11yOverlay",
-                previewId: a11yOverlay(),
-                enabled: false,
-            });
-        }
-        setA11yOverlay(turningOn ? previewId : null);
-        vscode.postMessage({
-            command: "setA11yOverlay",
-            previewId,
-            enabled: turningOn,
-        });
-        applyA11yOverlayButtonState();
-        inspector.render(card);
-    }
-
-    // Live + recording state (toolbar/per-card buttons, badge re-stamping,
-    // single-target follow-focus, viewport auto-stop) lives in
-    // `./liveState.ts` — see `LiveStateController`. The pointer + wheel
-    // state machine the live cards use lives in `./interactiveInput.ts`.
-
-    // Document-level Left/Right in focus mode steps between cards. The
-    // animated-carousel frame-controls handler stops propagation so
-    // its arrow keys still walk captures within a single card. Skip
-    // when an input-like element has focus (the layout dropdown,
-    // future text inputs) so native keyboard semantics aren't stolen.
-    document.addEventListener("keydown", (e) => {
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-        const tag = e.target && e.target.tagName;
-        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-        navigateFocus(e.key === "ArrowLeft" ? -1 : 1);
-        e.preventDefault();
-    });
-
-    filterToolbar.addEventListener("filter-changed", () => {
-        saveFilterState();
-        if (filterDebounce) clearTimeout(filterDebounce);
-        filterDebounce = setTimeout(applyFilters, 100);
-    });
-
-    function saveFilterState() {
-        state.filters = {
-            fn: filterToolbar.getFunctionValue(),
-            group: filterToolbar.getGroupValue(),
-        };
-        vscode.setState(state);
-    }
-
-    function restoreFilterState() {
-        const f = state.filters || {};
-        if (f.fn && filterToolbar.hasFunctionOption(f.fn))
-            filterToolbar.setFunctionValue(f.fn);
-        if (f.group && filterToolbar.hasGroupOption(f.group))
-            filterToolbar.setGroupValue(f.group);
-    }
-
-    function applyFilters() {
-        const visibleCount = grid.applyFilters({
-            fn: filterToolbar.getFunctionValue(),
-            group: filterToolbar.getGroupValue(),
-        });
-
-        // Only own the message when we have a filter-specific thing to
-        // say. When there are no previews at all, the extension owns the
-        // message (e.g. "No @Preview functions in this file") — clearing
-        // it here was how the view went blank after a refresh.
-        if (allPreviews.length > 0 && visibleCount === 0) {
-            setMessage("No previews match the current filters", "filter");
-        } else if (messageBanner.getOwner() === "filter") {
-            // We set this earlier; clear it now that it no longer applies.
-            setMessage("", "filter");
-        }
-
-        // Re-apply layout so focus mode updates correctly after filter change
-        applyLayout();
-    }
-
-    // Thin shim around `<message-banner>.setMessage` that keeps the
-    // ensureNotBlank() backstop wired in. The owner tag is used only to
-    // let applyFilters clear its own message without touching extension-
-    // set text (empty-file notice, build errors, etc.).
-    function setMessage(text, owner) {
-        messageBanner.setMessage(text, owner || "extension");
-        ensureNotBlank();
-    }
-
-    // Safety net: if the grid ends up empty *and* no message is showing,
-    // surface a placeholder so the user doesn't stare at a void. This
-    // shouldn't normally trigger — the extension sends an explicit
-    // message for every empty state — but a silent blank view was the
-    // original complaint, so this catches any future regressions.
-    function ensureNotBlank() {
-        const hasCards = grid.querySelector(".preview-card") !== null;
-        if (!hasCards && !messageBanner.isVisible()) {
-            messageBanner.setMessage("Preparing previews…", "fallback");
-        }
-    }
-
-    function getVisibleCards() {
-        return grid.getVisibleCards();
-    }
-
-    function applyLayout() {
-        const mode = filterToolbar.getLayoutValue();
-        grid.setLayoutMode(mode);
-        focusControls.hidden = mode !== "focus";
-
-        if (mode === "focus") {
-            const visible = getVisibleCards();
-            if (visible.length === 0) {
-                focusPosition.textContent = "0 / 0";
-                inspector.render(null);
-                publishScopedPreview();
-                return;
-            }
-            if (focusIndex >= visible.length) focusIndex = visible.length - 1;
-            if (focusIndex < 0) focusIndex = 0;
-            grid.applyFocusVisibility(visible[focusIndex]);
-            focusPosition.textContent = focusIndex + 1 + " / " + visible.length;
-            btnPrev.disabled = focusIndex === 0;
-            btnNext.disabled = focusIndex === visible.length - 1;
-            inspector.render(visible[focusIndex]);
-        } else {
-            grid.applyFocusVisibility(null);
-            inspector.render(null);
-        }
-        document
-            .querySelectorAll(".image-container")
-            .forEach((c) => c.removeAttribute("title"));
-        publishScopedPreview();
-        // Single-target follow-focus teardown — see
-        // `LiveStateController.enforceSingleTargetFollowFocus`.
-        liveState.enforceSingleTargetFollowFocus(
-            mode === "focus" ? (getVisibleCards()[focusIndex] ?? null) : null,
-        );
-        // D2 — same teardown for the a11y overlay: navigating off the previewed card
-        // (or exiting focus mode) unsubscribes so the wire stays quiet for cards the
-        // user isn't looking at.
-        if (a11yOverlay()) {
-            const visible = getVisibleCards();
-            const card = mode === "focus" ? visible[focusIndex] : null;
-            if (!card || card.dataset.previewId !== a11yOverlay()) {
-                if (earlyFeatures()) {
-                    vscode.postMessage({
-                        command: "setA11yOverlay",
-                        previewId: a11yOverlay(),
-                        enabled: false,
-                    });
-                }
-                setA11yOverlay(null);
-            }
-        }
-        applyInteractiveButtonState();
-        applyRecordingButtonState();
-        applyA11yOverlayButtonState();
-        applyEarlyFeatureVisibility();
-    }
-
-    // Compute the focus-mode previewId. History is intentionally focus-only:
-    // list/grid/filter layouts publish null even if only one card is visible.
-    // Posts only when it changes so the extension does not rebuild history scope
-    // on ordinary filter/layout churn.
-    function publishScopedPreview() {
-        const visible = getVisibleCards();
-        let previewId = null;
-        if (filterToolbar.getLayoutValue() === "focus") {
-            if (
-                visible.length > 0 &&
-                focusIndex >= 0 &&
-                focusIndex < visible.length
-            ) {
-                previewId = visible[focusIndex].dataset.previewId || null;
-            }
-        }
-        if (previewId === lastScopedPreviewId) return;
-        lastScopedPreviewId = previewId;
-        // Mirror to the store so subscribed components (the upcoming
-        // `<focus-controls>`, `<focus-inspector>`, etc.) react without
-        // re-walking the DOM. Same value goes upstream to the extension
-        // so the History panel can re-scope.
-        previewStore.setState({ focusedPreviewId: previewId });
-        vscode.postMessage({
-            command: "previewScopeChanged",
-            previewId,
-        });
-    }
-
-    function navigateFocus(delta) {
-        const visible = getVisibleCards();
-        if (visible.length === 0) return;
-        focusIndex = Math.max(
-            0,
-            Math.min(visible.length - 1, focusIndex + delta),
-        );
-        applyLayout();
-    }
-
-    // Switch the layout to focus mode and target the supplied card.
-    // No-op when the card is filtered out (it wouldn't be in the visible
-    // set anyway, and forcing focus on an invisible card surfaces an
-    // empty pane).
-    function focusOnCard(card) {
-        const visible = getVisibleCards();
-        const idx = visible.indexOf(card);
-        if (idx === -1) return;
-        focusIndex = idx;
-        if (filterToolbar.getLayoutValue() !== "focus") {
-            previousLayout = filterToolbar.getLayoutValue();
-            filterToolbar.setLayoutValue("focus");
-            state.layout = "focus";
-            vscode.setState(state);
-        }
-        applyLayout();
-    }
-
-    function exitFocus() {
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        filterToolbar.setLayoutValue(previousLayout);
-        state.layout = previousLayout;
-        vscode.setState(state);
-        applyLayout();
-    }
-
-    // Live-panel diff: only meaningful when one preview is focused. Pulls
-    // the currently focused card's previewId and asks the extension to
-    // resolve the comparison anchor (HEAD = latest archived render,
-    // main = latest archived render on the main branch).
-    function requestFocusedDiff(against) {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) return;
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        showDiffOverlay(card, against, null, null, diffOverlayConfig);
-        vscode.postMessage({
-            command: "requestPreviewDiff",
-            previewId,
-            against,
-        });
-    }
-
-    // Live-panel "Launch on Device": runs the consumer's
-    // installDebug task and uses adb to start the launcher activity on
-    // a connected device. Only meaningful when one preview is focused
-    // -- the extension uses the focused previewId to pick the owning
-    // module before falling back to a quick-pick.
-    function requestLaunchOnDevice() {
-        if (!earlyFeatures()) return;
-        if (filterToolbar.getLayoutValue() !== "focus") return;
-        const visible = getVisibleCards();
-        const card = visible[focusIndex];
-        if (!card) return;
-        const previewId = card.dataset.previewId;
-        if (!previewId) return;
-        vscode.postMessage({ command: "requestLaunchOnDevice", previewId });
-    }
+    // Filter + message-banner orchestration shims — implementations live
+    // in `./filterController.ts`. The shims keep the call shape stable
+    // for the message-context callbacks and the various event listeners.
+    const saveFilterState = (): void => filterController.save();
+    const restoreFilterState = (): void => filterController.restore();
+    const applyFilters = (): void => filterController.apply();
+    const setMessage = (text: string, owner?: MessageOwner): void =>
+        filterController.setMessage(text, owner);
+    const ensureNotBlank = (): void => filterController.ensureNotBlank();
 
     // populateFilter / hasOption are gone — `<filter-toolbar>` owns the
     // option lists via setFunctionOptions / setGroupOptions and exposes
@@ -621,513 +443,36 @@ export function setupPreviewBehavior(
     // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
     // when only `fnOptions` / `grpOptions` change.
 
-    function createCard(p) {
-        const animated = isAnimatedPreview(p);
-        const captures = p.captures;
-
-        const card = document.createElement("div");
-        card.className = "preview-card" + (animated ? " animated-card" : "");
-        card.id = "preview-" + sanitizeId(p.id);
-        card.setAttribute("role", "listitem");
-        card.dataset.function = p.functionName;
-        card.dataset.group = p.params.group || "";
-        card.dataset.previewId = p.id;
-        card.dataset.className = p.className;
-        card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
-        card.dataset.currentIndex = "0";
-        cardCaptures.set(
-            p.id,
-            captures.map((c) => ({
-                label: c.label || "",
-                renderOutput: c.renderOutput || "",
-                imageData: null,
-                errorMessage: null,
-                renderError: null,
-            })),
-        );
-
-        const header = document.createElement("div");
-        header.className = "card-header";
-
-        const titleRow = document.createElement("div");
-        titleRow.className = "card-title-row";
-
-        const title = document.createElement("button");
-        title.className = "card-title";
-        title.textContent =
-            p.functionName + (p.params.name ? " — " + p.params.name : "");
-        title.title = buildTooltip(p);
-        title.addEventListener("click", () => {
-            vscode.postMessage({
-                command: "openFile",
-                className: p.className,
-                functionName: p.functionName,
-            });
-        });
-        titleRow.appendChild(title);
-
-        if (animated) {
-            // Inline marker so the title row telegraphs "this one has
-            // multiple captures"; the carousel strip under the image is
-            // the interactive surface.
-            const icon = document.createElement("i");
-            icon.className = "codicon codicon-play-circle animation-icon";
-            icon.title = captures.length + " captures";
-            icon.setAttribute(
-                "aria-label",
-                "Animated preview (" + captures.length + " captures)",
-            );
-            titleRow.appendChild(icon);
-        }
-
-        // Per-card focus icon. Replaces the previous "double-click image"
-        // affordance — single-click on the image is now reserved for
-        // entering LIVE (interactive) mode, so we need an explicit handle
-        // for "view this card by itself". Same hot zone toggles between
-        // enter-focus (other layouts) and exit-focus (focus layout).
-        const focusBtn = document.createElement("button");
-        focusBtn.type = "button";
-        focusBtn.className = "card-focus-btn";
-        focusBtn.innerHTML =
-            '<i class="codicon codicon-screen-full" aria-hidden="true"></i>';
-        focusBtn.title = "Focus this preview";
-        focusBtn.setAttribute("aria-label", "Focus this preview");
-        focusBtn.addEventListener("click", (evt) => {
-            evt.stopPropagation();
-            if (filterToolbar.getLayoutValue() === "focus") {
-                exitFocus();
-            } else {
-                focusOnCard(card);
-            }
-        });
-        titleRow.appendChild(focusBtn);
-
-        // Stale-tier refresh button — only attached up front for cards
-        // already known to be stale at setPreviews time. updateStaleBadges
-        // also adds/removes it on subsequent renders. Placed before the
-        // header is appended so its DOM order stays predictable.
-        staleBadge.apply(card, false);
-
-        header.appendChild(titleRow);
-        card.appendChild(header);
-
-        const imgContainer = document.createElement("div");
-        imgContainer.className = "image-container";
-        const skeleton = document.createElement("div");
-        skeleton.className = "skeleton";
-        skeleton.setAttribute("aria-label", "Loading preview");
-        imgContainer.appendChild(skeleton);
-        card.appendChild(imgContainer);
-
-        // Single-click on the image enters LIVE for this preview (in any
-        // layout — focus, grid, flow, column). The first click toggles
-        // interactive on; subsequent clicks while LIVE forward as pointer
-        // events to the daemon (handled by attachInteractiveInputHandlers
-        // attached via updateImage). The handler is on the container, not
-        // the <img>, so clicks land before the image renders too. Modifier-
-        // aware: Shift+click follows the multi-stream semantics from
-        // toggleInteractive().
-        imgContainer.addEventListener("click", (evt) => {
-            const previewId = card.dataset.previewId;
-            if (!previewId) return;
-            // If we're already live for this preview, the per-image click
-            // handler routes to recordInteractiveInput. Check before the
-            // stale-card branch so interactive clicks do not also queue a
-            // heavyweight refresh for stale captures.
-            if (liveState.isLive(previewId)) return;
-            if (card.classList.contains("is-stale")) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                staleBadge.requestHeavyRefresh(card);
-                return;
-            }
-            liveState.enterInteractiveOnCard(card, evt.shiftKey);
-        });
-
-        // ATF legend + overlay layer — rendered in the webview (not
-        // baked into the PNG) so rows stay interactive: hovering a
-        // finding highlights its bounds on the clean image. Populated
-        // only when findings exist AND `composePreview.earlyFeatures`
-        // is on; the overlay layer's boxes get computed lazily once
-        // the image is loaded (see buildA11yOverlay).
-        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-            const overlay = document.createElement("div");
-            overlay.className = "a11y-overlay";
-            overlay.setAttribute("aria-hidden", "true");
-            imgContainer.appendChild(overlay);
-            card.appendChild(buildA11yLegend(card, p));
-        }
-
-        const variantLabel = buildVariantLabel(p);
-        if (variantLabel) {
-            const badge = document.createElement("div");
-            badge.className = "variant-badge";
-            badge.textContent = variantLabel;
-            card.appendChild(badge);
-        }
-
-        if (animated) {
-            card.appendChild(frameCarousel.buildControls(card));
-        }
-
-        observeCardForViewport(card);
-        return card;
-    }
-
-    function updateCardMetadata(card, p) {
-        card.dataset.function = p.functionName;
-        card.dataset.group = p.params.group || "";
-        card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
-        const title = card.querySelector(".card-title");
-        if (title) {
-            title.textContent =
-                p.functionName + (p.params.name ? " — " + p.params.name : "");
-            title.title = buildTooltip(p);
-        }
-        // Refresh capture labels in place. If the capture count changed
-        // (e.g. user edited @RoboComposePreviewOptions) we preserve
-        // already-received imageData for renderOutputs that carry over.
-        const newCaps = p.captures.map((c) => ({
-            renderOutput: c.renderOutput,
-            label: c.label || "",
-        }));
-        const prior = cardCaptures.get(p.id) || [];
-        // Match by index rather than renderOutput since filenames may
-        // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
-        // annotation). Mismatched positions just reset to null-image.
-        const mergedCaps = newCaps.map((nc, i) => ({
-            label: nc.label,
-            renderOutput: nc.renderOutput || "",
-            imageData: prior[i]?.imageData ?? null,
-            errorMessage: prior[i]?.errorMessage ?? null,
-            renderError: prior[i]?.renderError ?? null,
-        }));
-        cardCaptures.set(p.id, mergedCaps);
-        const curIdx = parseInt(card.dataset.currentIndex || "0", 10);
-        if (curIdx >= mergedCaps.length) {
-            card.dataset.currentIndex = String(
-                Math.max(0, mergedCaps.length - 1),
-            );
-        }
-        if (isAnimatedPreview(p)) frameCarousel.updateIndicator(card);
-        const variantLabel = buildVariantLabel(p);
-        let badge = card.querySelector(".variant-badge");
-        if (variantLabel) {
-            if (!badge) {
-                badge = document.createElement("div");
-                badge.className = "variant-badge";
-                card.appendChild(badge);
-            }
-            badge.textContent = variantLabel;
-        } else if (badge) {
-            badge.remove();
-        }
-
-        // Refresh the a11y legend + overlay in place when findings
-        // change (e.g. toggling a11y on turns findings from null → list,
-        // or a fresh render updates the set). Tear down the old nodes
-        // and rebuild: simpler than reconciling row-by-row for what is
-        // a rare event.
-        const existingLegend = card.querySelector(".a11y-legend");
-        const existingOverlay = card.querySelector(".a11y-overlay");
-        if (existingLegend) existingLegend.remove();
-        if (existingOverlay) existingOverlay.innerHTML = "";
-        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-            const container = card.querySelector(".image-container");
-            if (container && !container.querySelector(".a11y-overlay")) {
-                const overlay = document.createElement("div");
-                overlay.className = "a11y-overlay";
-                overlay.setAttribute("aria-hidden", "true");
-                container.appendChild(overlay);
-            }
-            const legend = buildA11yLegend(card, p);
-            card.appendChild(legend);
-            // Repopulate box geometry if the image is already loaded —
-            // otherwise updateImage's load handler will pick it up on
-            // the next render cycle.
-            const img = card.querySelector(".image-container img");
-            if (img && img.complete && img.naturalWidth > 0) {
-                buildA11yOverlay(card, p.a11yFindings, img);
-            }
-        } else if (existingOverlay) {
-            // No findings or feature off — drop any leftover overlay
-            // div so cards stay clean when the user toggles
-            // earlyFeatures off mid-session.
-            existingOverlay.remove();
-        }
-    }
-
-    // Scale image containers so preview variants at different device sizes
-    // (e.g. wearos_large_round 227dp vs wearos_small_round 192dp) render at
-    // relative sizes in fixed-layout modes. Only applied when we have real
-    // widthDp/heightDp — variants without known dimensions fall back to
-    // the default CSS (full card width, auto aspect).
-    function applyRelativeSizing(previews) {
-        const widths = previews
-            .map((p) => p.params.widthDp || 0)
-            .filter((w) => w > 0);
-        const maxW = widths.length > 0 ? Math.max.apply(null, widths) : 0;
-        for (const p of previews) {
-            const card = document.getElementById("preview-" + sanitizeId(p.id));
-            if (!card) continue;
-            const w = p.params.widthDp;
-            const h = p.params.heightDp;
-            if (w && h && maxW > 0) {
-                card.style.setProperty("--size-ratio", (w / maxW).toFixed(4));
-                card.style.setProperty("--aspect-ratio", w + " / " + h);
-            } else {
-                card.style.removeProperty("--size-ratio");
-                card.style.removeProperty("--aspect-ratio");
-            }
-        }
-    }
-
-    /**
-     * Incremental diff: update existing cards, add new ones, remove missing.
-     * Keeps rendered images in place during refresh — they're replaced as
-     * new images stream in from updateImage messages.
-     */
-    function renderPreviews(previews) {
-        if (previews.length === 0) {
-            // Defensive fallback — the extension now always sends an
-            // explicit showMessage for empty states, so this branch
-            // shouldn't normally fire. Kept so the view never ends up
-            // with an empty grid + empty message if a bug slips through.
-            grid.innerHTML = "";
-            setMessage("No @Preview functions found", "empty");
-            return;
-        }
-        const newIds = new Set(previews.map((p) => p.id));
-        const existingCards = new Map();
-        grid.querySelectorAll(".preview-card").forEach((card) => {
-            existingCards.set(card.dataset.previewId, card);
-        });
-
-        // Remove cards that no longer exist — drop their cached capture
-        // data so stale entries don't pile up if a preview is renamed.
-        for (const [id, card] of existingCards) {
-            if (!newIds.has(id)) {
-                cardCaptures.delete(id);
-                viewport.forget(id, card);
-                card.remove();
-            }
-        }
-
-        // Refresh per-preview findings cache so updateImage can attach
-        // them to each new image load. Drop stale entries (preview
-        // removed) so the map doesn't grow across sessions.
-        cardA11yFindings.clear();
-        for (const p of previews) {
-            if (p.a11yFindings && p.a11yFindings.length > 0) {
-                cardA11yFindings.set(p.id, p.a11yFindings);
-            }
-        }
-
-        // Add new cards / update existing ones, preserving order
-        let lastInsertedCard = null;
-        for (const p of previews) {
-            const existing = existingCards.get(p.id);
-            if (existing) {
-                updateCardMetadata(existing, p);
-                // Ensure correct position
-                if (lastInsertedCard) {
-                    if (lastInsertedCard.nextSibling !== existing) {
-                        grid.insertBefore(
-                            existing,
-                            lastInsertedCard.nextSibling,
-                        );
-                    }
-                } else if (grid.firstChild !== existing) {
-                    grid.insertBefore(existing, grid.firstChild);
-                }
-                lastInsertedCard = existing;
-            } else {
-                const card = createCard(p);
-                if (lastInsertedCard) {
-                    grid.insertBefore(card, lastInsertedCard.nextSibling);
-                } else {
-                    grid.insertBefore(card, grid.firstChild);
-                }
-                lastInsertedCard = card;
-            }
-        }
-
-        // Clear transient owner messages now that cards are in the DOM.
-        // The 'loading' Building… banner and the 'fallback' "Preparing
-        // previews…" placeholder both get cleared here. 'extension'-owned
-        // messages (build errors, empty-state notices) are left alone —
-        // those are terminal states the extension is asserting and the
-        // caller wouldn't be sending setPreviews alongside them anyway.
-        //
-        // Must run *after* cards are inserted: setMessage('', …) calls
-        // ensureNotBlank, which would re-set "Preparing previews…" if
-        // the grid still looked empty when the message was cleared.
-        const owner = messageBanner.getOwner();
-        if (owner && owner !== "extension") {
-            setMessage("", owner);
-        }
-    }
-
-    function updateImage(previewId, captureIndex, imageData) {
-        const card = document.getElementById(
-            "preview-" + sanitizeId(previewId),
-        );
-        if (!card) return;
-
-        // Cache so carousel navigation can restore this capture without
-        // a fresh extension round-trip.
-        const caps = cardCaptures.get(previewId);
-        if (caps && caps[captureIndex]) {
-            caps[captureIndex].imageData = imageData;
-            caps[captureIndex].errorMessage = null;
-            caps[captureIndex].renderError = null;
-        }
-
-        // Only paint the <img> if the currently-displayed capture is the
-        // one that just arrived. Otherwise the cached bytes wait for
-        // prev/next.
-        const cur = parseInt(card.dataset.currentIndex || "0", 10);
-        if (cur !== captureIndex) {
-            if (caps) frameCarousel.updateIndicator(card);
-            return;
-        }
-
-        const container = card.querySelector(".image-container");
-        // Tear down every prior state before showing the new image.
-        // Leftover .error-message divs here are what caused the
-        // "Render pending — save the file to trigger a render" banner
-        // to stay visible forever even after a successful render.
-        const skeleton = container.querySelector(".skeleton");
-        const overlay = container.querySelector(".loading-overlay");
-        const errorMsg = container.querySelector(".error-message");
-        if (skeleton) skeleton.remove();
-        if (overlay) overlay.remove();
-        if (errorMsg) errorMsg.remove();
-        card.classList.remove("has-error");
-
-        const ro =
-            caps && caps[captureIndex] ? caps[captureIndex].renderOutput : "";
-        const newSrc = "data:" + mimeFor(ro) + ";base64," + imageData;
-
-        let img = container.querySelector("img");
-        if (!img) {
-            img = document.createElement("img");
-            img.alt = card.dataset.function + " preview";
-            container.appendChild(img);
-        }
-        img.src = newSrc;
-        // In live mode the new bytes are a frame, not a card reload —
-        // skip the fade-in so successive frames read as a stream rather
-        // than a sequence of independent renders. See INTERACTIVE.md § 3.
-        const isLive = liveState.isLive(previewId);
-        img.className = isLive ? "live-frame" : "fade-in";
-        attachInteractiveInputHandlers(card, img, interactiveInputConfig);
-
-        if (caps) frameCarousel.updateIndicator(card);
-
-        // If a diff overlay is open on this card and uses the live render
-        // as its left anchor (head / main / current), the bytes the
-        // overlay is showing just went stale. Re-issue so the user sees
-        // the new render without clicking — symmetric with the
-        // compose-preview/main ref watcher's auto-refresh on the right anchor.
-        const openDiff = container.querySelector(".preview-diff-overlay");
-        if (earlyFeatures() && openDiff) {
-            const against = openDiff.dataset.against;
-            if (against === "head" || against === "main") {
-                showDiffOverlay(card, against, null, null, diffOverlayConfig);
-                vscode.postMessage({
-                    command: "requestPreviewDiff",
-                    previewId,
-                    against,
-                });
-            }
-        }
-
-        // Re-build the a11y overlay once the image natural dimensions
-        // are known. Data-URL srcs may resolve synchronously; in that
-        // case img.complete is true and load will not fire, so we
-        // check both. Findings are stashed at setPreviews time via the
-        // renderPreviews pipeline. Gated on earlyFeatures so the
-        // overlay only paints when the user has opted into the
-        // accessibility-overlay feature surface.
-        const findings = cardA11yFindings.get(previewId);
-        const nodes = cardA11yNodes.get(previewId);
-        if (
-            earlyFeatures() &&
-            ((findings && findings.length > 0) || (nodes && nodes.length > 0))
-        ) {
-            const apply = () => {
-                if (findings && findings.length > 0)
-                    buildA11yOverlay(card, findings, img);
-                if (nodes && nodes.length > 0)
-                    applyHierarchyOverlay(card, nodes, img);
-            };
-            if (img.complete && img.naturalWidth > 0) {
-                apply();
-            } else {
-                img.addEventListener("load", apply, { once: true });
-            }
-        }
-    }
-
-    // D2 — handles updateA11y from the extension (daemon-attached a11y data products).
-    // Updates the per-preview caches and re-applies whichever overlays are now relevant
-    // without rebuilding the whole card. Findings -> legend + finding overlay; nodes ->
-    // hierarchy overlay. Either argument may be omitted to leave that side untouched.
-    // Gated on earlyFeatures so daemon-attached a11y data is dropped silently when the
-    // user has not opted into the accessibility-overlay feature surface.
-    function applyA11yUpdate(previewId, findings, nodes) {
-        if (!earlyFeatures()) return;
-        const card = document.getElementById(
-            "preview-" + sanitizeId(previewId),
-        );
-        if (!card) return;
-        const container = card.querySelector(".image-container");
-        const img = container && container.querySelector("img");
-        if (findings !== undefined) {
-            if (findings && findings.length > 0) {
-                cardA11yFindings.set(previewId, findings);
-                if (container && !container.querySelector(".a11y-overlay")) {
-                    const overlay = document.createElement("div");
-                    overlay.className = "a11y-overlay";
-                    overlay.setAttribute("aria-hidden", "true");
-                    container.appendChild(overlay);
-                }
-                const existingLegend = card.querySelector(".a11y-legend");
-                if (existingLegend) existingLegend.remove();
-                const p = allPreviews.find((pp) => pp.id === previewId);
-                if (p) {
-                    p.a11yFindings = findings;
-                    card.appendChild(buildA11yLegend(card, p));
-                }
-                if (img && img.complete && img.naturalWidth > 0) {
-                    buildA11yOverlay(card, findings, img);
-                }
-            } else {
-                cardA11yFindings.delete(previewId);
-                const overlay = card.querySelector(".a11y-overlay");
-                if (overlay) overlay.remove();
-                const legend = card.querySelector(".a11y-legend");
-                if (legend) legend.remove();
-            }
-        }
-        if (nodes !== undefined) {
-            if (nodes && nodes.length > 0) {
-                cardA11yNodes.set(previewId, nodes);
-                ensureHierarchyOverlay(container);
-                if (img && img.complete && img.naturalWidth > 0) {
-                    applyHierarchyOverlay(card, nodes, img);
-                }
-            } else {
-                cardA11yNodes.delete(previewId);
-                const layer = card.querySelector(".a11y-hierarchy-overlay");
-                if (layer) layer.remove();
-            }
-        }
-        if (filterToolbar.getLayoutValue() === "focus") {
-            const focused = getVisibleCards()[focusIndex];
-            if (focused === card) inspector.render(card);
-        }
+    // Card lifecycle lives in `./cardBuilder.ts` — see `buildPreviewCard`,
+    // `updateCardMetadata`, `applyRelativeSizing`, `updateImage`,
+    // `applyA11yUpdate`. The eventual `<preview-card>` Lit component will
+    // fold all five into a single reactive `render()` and consume the same
+    // `CardBuilderConfig` shape for its collaborator surface.
+    const cardBuilderConfig: CardBuilderConfig = {
+        vscode,
+        grid,
+        cardCaptures,
+        cardA11yFindings,
+        cardA11yNodes,
+        staleBadge,
+        frameCarousel,
+        liveState,
+        interactiveInputConfig,
+        diffOverlayConfig,
+        inspector,
+        getAllPreviews: () => allPreviews,
+        earlyFeatures,
+        inFocus: () => focusController.inFocus(),
+        focusedCard: () => focusController.focusedCard(),
+        enterFocus: focusOnCard,
+        exitFocus,
+        observeForViewport: observeCardForViewport,
+        forgetViewport: (id, card) => viewport.forget(id, card),
+        setMessage,
+        getMessageOwner: () => messageBanner.getOwner(),
+    };
+    function renderPreviews(previews: readonly PreviewInfo[]): void {
+        renderPreviewsImpl(previews, cardBuilderConfig);
     }
 
     // ----- Viewport tracking (daemon scroll-ahead, PREDICTIVE.md § 7) -----
@@ -1139,410 +484,52 @@ export function setupPreviewBehavior(
         onCardLeftViewport: (id) => liveState.onCardLeftViewport(id),
     });
 
-    function observeCardForViewport(card) {
+    function observeCardForViewport(card: HTMLElement): void {
         viewport.observe(card);
     }
 
+    // Message dispatch lives in a typed sibling module — see
+    // `./messageHandlers.ts`. The discriminated `ExtensionToWebview` union
+    // flows through `handleExtensionMessage` so every variant is exhaustively
+    // checked at compile time. The context exposes the orchestration
+    // callbacks and pieces of imperative state still owned here.
+    const messageContext: PreviewMessageContext = {
+        vscode,
+        grid,
+        filterToolbar,
+        inspector,
+        liveState,
+        staleBadge,
+        loadingOverlay,
+        diffOverlayConfig,
+        streamingPainter,
+        cardCaptures,
+        cardA11yFindings,
+        cardA11yNodes,
+        moduleDaemonReady,
+        moduleInteractiveSupported,
+        earlyFeatures,
+        getA11yOverlayId: a11yOverlay,
+        setA11yOverlayId: setA11yOverlay,
+        setAllPreviews,
+        setModuleDir,
+        setLastScopedPreviewId,
+        renderPreviews,
+        applyRelativeSizing,
+        applyFilters,
+        applyLayout,
+        applyInteractiveButtonState,
+        applyRecordingButtonState,
+        saveFilterState,
+        restoreFilterState,
+        ensureNotBlank,
+        updateImage: (previewId, captureIndex, imageData) =>
+            updateImage(previewId, captureIndex, imageData, cardBuilderConfig),
+        applyA11yUpdate: (previewId, findings, nodes) =>
+            applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig),
+        focusOnCard,
+    };
     window.addEventListener("message", (event) => {
-        const msg = event.data;
-        switch (msg.command) {
-            case "setPreviews": {
-                allPreviews = msg.previews;
-                moduleDir = msg.moduleDir;
-                renderPreviews(msg.previews);
-                applyRelativeSizing(msg.previews);
-                // Stale-tier badges depend on the latest render's tier
-                // (sent from the extension as heavyStaleIds). Apply
-                // *after* renderPreviews so the badge attaches to cards
-                // that were just inserted, not stripped by a stale-state
-                // diff from the previous setPreviews.
-                staleBadge.updateAll(grid, msg.heavyStaleIds);
-
-                const fns = [
-                    ...new Set(msg.previews.map((p) => p.functionName)),
-                ].sort();
-                const groups = [
-                    ...new Set(
-                        msg.previews.map((p) => p.params.group).filter(Boolean),
-                    ),
-                ].sort();
-
-                filterToolbar.setFunctionOptions(fns);
-                filterToolbar.setGroupOptions(groups);
-
-                restoreFilterState();
-                applyFilters();
-                applyLayout();
-                // setPreviews can rebuild the focused card from scratch;
-                // re-stamp the live badge so the LIVE chip reattaches to
-                // the right card(s). Drop any live previewIds that are
-                // gone from the new manifest — silent cleanup; we don't
-                // bother sending interactive/stop because the preview no
-                // longer exists for the daemon to dispatch into anyway.
-                const newIds = new Set(msg.previews.map((p) => p.id));
-                liveState.pruneLive((id) => newIds.has(id));
-                liveState.applyLiveBadge();
-                applyInteractiveButtonState();
-                // Tell the extension the cards reached the grid. Powers the
-                // e2e test's "real webview consumed setPreviews" assertion —
-                // postedMessageLog alone only proves the host posted the
-                // message, not that a resolved webview ever received it.
-                vscode.postMessage({
-                    command: "webviewPreviewsRendered",
-                    count: grid.querySelectorAll(".preview-card").length,
-                });
-                break;
-            }
-
-            case "markAllLoading":
-                loadingOverlay.markAll();
-                break;
-
-            case "clearAll":
-                allPreviews = [];
-                grid.innerHTML = "";
-                // Reset so the next setPreviews can re-publish the
-                // narrowed-preview scope if applicable — otherwise a
-                // stale id from the previous module would dedupe the
-                // first publish and the History panel would miss it.
-                lastScopedPreviewId = null;
-                previewStore.setState({ focusedPreviewId: null });
-                // Cards are gone — escalation timer has nothing left to
-                // promote. Avoids a stray timer firing after the next
-                // refresh has installed fresh minimal overlays.
-                loadingOverlay.cancel();
-                // Don't clear the message here — if it came with a
-                // follow-up showMessage (the usual pattern) it'll be
-                // replaced; if not, ensureNotBlank will backstop a
-                // placeholder so the view never ends up empty+silent.
-                ensureNotBlank();
-                break;
-
-            case "updateImage":
-                updateImage(
-                    msg.previewId,
-                    msg.captureIndex || 0,
-                    msg.imageData,
-                );
-                break;
-
-            case "updateA11y":
-                // D2 — daemon-attached a11y data products landed for one preview. Refresh
-                // the per-card caches and re-apply the overlays in place; no full re-render
-                // of the grid. findings/nodes left undefined means leave that side alone.
-                applyA11yUpdate(msg.previewId, msg.findings, msg.nodes);
-                break;
-
-            case "setModules":
-                // Module selector removed from UI — module is resolved from the active editor.
-                break;
-
-            case "setFunctionFilter": {
-                // Driven by the gutter-icon hover link: narrow the grid
-                // to a single @Preview function. `<filter-toolbar>`'s
-                // setFunctionValue ensures the option exists for the
-                // gutter-before-setPreviews case so the value sticks.
-                filterToolbar.setFunctionValue(msg.functionName);
-                saveFilterState();
-                applyFilters();
-                break;
-            }
-
-            case "setLoading":
-                if (msg.previewId) {
-                    const card = document.getElementById(
-                        "preview-" + sanitizeId(msg.previewId),
-                    );
-                    if (card) {
-                        const container =
-                            card.querySelector(".image-container");
-                        if (!container.querySelector(".loading-overlay")) {
-                            const overlay = document.createElement("div");
-                            overlay.className = "loading-overlay";
-                            overlay.innerHTML =
-                                '<div class="spinner" aria-label="Rendering"></div>';
-                            container.appendChild(overlay);
-                        }
-                    }
-                }
-                // Whole-panel loading state is now carried by the slim
-                // progress bar at the top of the view (setProgress).
-                // Avoid double-signalling with a "Building…" banner —
-                // it competes with the bar for visual attention.
-                break;
-
-            // setProgress / clearProgress are handled by <progress-bar>.
-            // setCompileErrors / clearCompileErrors are handled by
-            // <compile-errors-banner>.
-
-            case "setError":
-            case "setImageError": {
-                const errCard = document.getElementById(
-                    "preview-" + sanitizeId(msg.previewId),
-                );
-                if (errCard) {
-                    // Stash per-capture error so carousel navigation
-                    // restores the message when the user returns to
-                    // that specific capture. setError is preview-wide
-                    // (captureIndex defaulted to 0) — applies to the
-                    // representative image container only.
-                    const captureIndex =
-                        msg.command === "setImageError"
-                            ? msg.captureIndex || 0
-                            : 0;
-                    const renderError =
-                        msg.command === "setImageError"
-                            ? msg.renderError || null
-                            : null;
-                    const caps = cardCaptures.get(msg.previewId);
-                    const replaceExisting =
-                        msg.command !== "setImageError" ||
-                        msg.replaceExisting !== false;
-                    const existingImageData =
-                        caps && caps[captureIndex]
-                            ? caps[captureIndex].imageData
-                            : null;
-                    const container = errCard.querySelector(".image-container");
-                    const existingImg = container.querySelector("img");
-                    const keepExistingImage =
-                        !replaceExisting && (existingImageData || existingImg);
-                    if (caps && caps[captureIndex]) {
-                        caps[captureIndex].errorMessage = msg.message;
-                        caps[captureIndex].renderError = renderError;
-                        if (!keepExistingImage) {
-                            caps[captureIndex].imageData = null;
-                        }
-                    }
-                    const cur = parseInt(
-                        errCard.dataset.currentIndex || "0",
-                        10,
-                    );
-                    if (caps && cur !== captureIndex) break;
-
-                    errCard.classList.add("has-error");
-                    const previousErr =
-                        container.querySelector(".error-message");
-                    if (previousErr) previousErr.remove();
-                    const overlay = container.querySelector(".loading-overlay");
-                    if (overlay) overlay.remove();
-                    const skeleton = container.querySelector(".skeleton");
-                    if (
-                        skeleton &&
-                        (keepExistingImage || msg.command === "setImageError")
-                    ) {
-                        skeleton.remove();
-                    }
-                    // setImageError keeps any existing rendered <img>
-                    // visible underneath the error overlay so the user
-                    // still has the previous render as a reference.
-                    // setError is the preview-wide path — wipe everything
-                    // and replace with just the error.
-                    if (msg.command === "setError") {
-                        const existingImg = container.querySelector("img");
-                        if (existingImg) existingImg.remove();
-                    }
-                    container.appendChild(
-                        buildErrorPanel(
-                            vscode,
-                            msg.message,
-                            renderError,
-                            errCard.dataset.className,
-                        ),
-                    );
-                }
-                break;
-            }
-
-            // showMessage is handled by <message-banner>.
-
-            case "previewDiffReady": {
-                if (!earlyFeatures()) break;
-                const card = document.getElementById(
-                    "preview-" + sanitizeId(msg.previewId),
-                );
-                if (!card) break;
-                showDiffOverlay(
-                    card,
-                    msg.against,
-                    {
-                        leftLabel: msg.leftLabel,
-                        leftImage: msg.leftImage,
-                        rightLabel: msg.rightLabel,
-                        rightImage: msg.rightImage,
-                    },
-                    null,
-                    diffOverlayConfig,
-                );
-                break;
-            }
-            case "previewDiffError": {
-                if (!earlyFeatures()) break;
-                const card = document.getElementById(
-                    "preview-" + sanitizeId(msg.previewId),
-                );
-                if (!card) break;
-                showDiffOverlay(
-                    card,
-                    msg.against,
-                    null,
-                    msg.message || "Diff unavailable.",
-                    diffOverlayConfig,
-                );
-                break;
-            }
-            case "focusAndDiff": {
-                if (!earlyFeatures()) break;
-                const card = document.getElementById(
-                    "preview-" + sanitizeId(msg.previewId),
-                );
-                if (!card) break;
-                focusOnCard(card);
-                showDiffOverlay(
-                    card,
-                    msg.against,
-                    null,
-                    null,
-                    diffOverlayConfig,
-                );
-                vscode.postMessage({
-                    command: "requestPreviewDiff",
-                    previewId: msg.previewId,
-                    against: msg.against,
-                });
-                break;
-            }
-            case "setInteractiveAvailability": {
-                moduleDaemonReady.set(msg.moduleId, !!msg.ready);
-                moduleInteractiveSupported.set(
-                    msg.moduleId,
-                    !!msg.interactiveSupported,
-                );
-                // Daemon went away while a card was live — drop the live
-                // state so the user doesn't keep seeing a LIVE badge on
-                // a card whose stream has stopped. Today the panel is
-                // single-module-scoped so any not-ready signal applies
-                // to every live preview; if the panel ever shows multi-
-                // module previews simultaneously, this needs scoping by
-                // each preview's owning module.
-                if (!msg.ready) liveState.handleDaemonLost();
-                else {
-                    applyInteractiveButtonState();
-                    applyRecordingButtonState();
-                }
-                break;
-            }
-            case "clearInteractive": {
-                liveState.handleExtensionClearInteractive(
-                    msg.previewId ?? null,
-                );
-                break;
-            }
-            case "clearRecording": {
-                liveState.handleExtensionClearRecording(msg.previewId ?? null);
-                break;
-            }
-            case "previewMainRefChanged": {
-                if (!earlyFeatures()) break;
-                // compose-preview/main moved — re-issue any open vs-main
-                // diff overlay so the user sees the new bytes without
-                // clicking. Other diffs (HEAD, current, previous) are
-                // unaffected.
-                document
-                    .querySelectorAll(
-                        '.preview-diff-overlay[data-against="main"]',
-                    )
-                    .forEach((overlay) => {
-                        const card = overlay.closest(".preview-card");
-                        const previewId = card && card.dataset.previewId;
-                        if (!card || !previewId) return;
-                        showDiffOverlay(
-                            card,
-                            "main",
-                            null,
-                            null,
-                            diffOverlayConfig,
-                        );
-                        vscode.postMessage({
-                            command: "requestPreviewDiff",
-                            previewId,
-                            against: "main",
-                        });
-                    });
-                break;
-            }
-            case "streamStarted": {
-                const card = document.getElementById(
-                    "preview-" + sanitizeId(msg.previewId),
-                );
-                if (card) {
-                    streamingPainter.attach(
-                        card as HTMLElement,
-                        msg.previewId,
-                        msg.frameStreamId,
-                    );
-                }
-                break;
-            }
-            case "streamFrame": {
-                streamingPainter.onFrame({
-                    frameStreamId: msg.frameStreamId,
-                    seq: msg.seq,
-                    ptsMillis: msg.ptsMillis,
-                    widthPx: msg.widthPx,
-                    heightPx: msg.heightPx,
-                    codec: msg.codec,
-                    keyframe: msg.keyframe ?? false,
-                    final: msg.final ?? false,
-                    payloadBase64: msg.payloadBase64,
-                });
-                break;
-            }
-            case "streamStopped": {
-                streamingPainter.detach(msg.previewId);
-                break;
-            }
-            case "setStreamingEnabled": {
-                previewStore.setState({ streamingEnabled: !!msg.enabled });
-                break;
-            }
-            case "setEarlyFeatures": {
-                previewStore.setState({ earlyFeaturesEnabled: !!msg.enabled });
-                if (!earlyFeatures()) {
-                    document
-                        .querySelectorAll(".preview-diff-overlay")
-                        .forEach((overlay) => overlay.remove());
-                    // Tear down every a11y rendering surface — finding
-                    // legends, finding-overlay boxes, and the daemon-
-                    // attached hierarchy overlay — and drop the cached
-                    // findings/nodes so re-enabling the feature picks
-                    // up fresh data from the next setPreviews / updateA11y.
-                    document
-                        .querySelectorAll(
-                            ".a11y-legend, .a11y-overlay, .a11y-hierarchy-overlay",
-                        )
-                        .forEach((el) => el.remove());
-                    cardA11yFindings.clear();
-                    cardA11yNodes.clear();
-                    inspector.clearProducts();
-                    if (a11yOverlay()) {
-                        vscode.postMessage({
-                            command: "setA11yOverlay",
-                            previewId: a11yOverlay(),
-                            enabled: false,
-                        });
-                        setA11yOverlay(null);
-                    }
-                    liveState.handleEarlyFeaturesDisabled();
-                }
-                applyLayout();
-                break;
-            }
-        }
+        handleExtensionMessage(event.data, messageContext);
     });
-
-    function escapeHtml(text) {
-        const div = document.createElement("div");
-        div.textContent = text;
-        return div.innerHTML;
-    }
 }

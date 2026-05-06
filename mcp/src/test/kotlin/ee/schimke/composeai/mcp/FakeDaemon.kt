@@ -226,6 +226,22 @@ class FakeDaemon : DaemonSpawn {
    */
   @Volatile var autoRenderPngPath: ((previewId: String) -> String?)? = null
 
+  /**
+   * Optional companion to [autoRenderPngPath] — when set, the auto-emitted `renderFinished` carries
+   * an `unchanged: true|false` flag derived from this lambda. Returning `null` means "omit the
+   * field" (the wire's default), matching the daemon's "not deduplicated" path. Used by the
+   * freshness-sampling tests to drive deterministic vs non-deterministic outcomes.
+   */
+  @Volatile var autoRenderUnchanged: ((previewId: String) -> Boolean?)? = null
+
+  /**
+   * Path returned in `InitializeResult.manifest.path`. The MCP server's `DaemonSupervisor` caches
+   * it on `SupervisedDaemon.manifestPath` so the background poller can stat the file and re-read on
+   * change (issue #834). Tests that drive the manifest poller assign this before the spawn calls
+   * `initialize`.
+   */
+  @Volatile var advertisedManifestPath: String = ""
+
   private lateinit var _client: DaemonClient
 
   override val client: DaemonClient
@@ -297,11 +313,12 @@ class FakeDaemon : DaemonSpawn {
   }
 
   /** Pushes a `renderFinished` notification. Returns the synthetic pngPath emitted. */
-  fun emitRenderFinished(previewId: String, pngPath: String): String {
+  fun emitRenderFinished(previewId: String, pngPath: String, unchanged: Boolean? = null): String {
     val params = buildJsonObject {
       put("id", previewId)
       put("pngPath", pngPath)
       put("tookMs", 50L)
+      if (unchanged != null) put("unchanged", unchanged)
     }
     sendNotification("renderFinished", params)
     return pngPath
@@ -373,7 +390,7 @@ class FakeDaemon : DaemonSpawn {
                 recordingFormats = advertisedRecordingFormats,
               ),
             classpathFingerprint = "fake-fingerprint",
-            manifest = Manifest(path = "", previewCount = 0),
+            manifest = Manifest(path = advertisedManifestPath, previewCount = 0),
           )
         sendResponse(id, json.encodeToJsonElement(InitializeResult.serializer(), result))
       }
@@ -406,7 +423,7 @@ class FakeDaemon : DaemonSpawn {
         autoRenderPngPath?.let { provider ->
           previews.forEach { pid ->
             val path = provider(pid)
-            if (path != null) emitRenderFinished(pid, path)
+            if (path != null) emitRenderFinished(pid, path, autoRenderUnchanged?.invoke(pid))
           }
         }
       }

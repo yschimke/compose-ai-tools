@@ -94,6 +94,10 @@ include(":data-scroll-core")
 
 project(":data-scroll-core").projectDir = file("data/scroll/core")
 
+include(":data-history-core")
+
+project(":data-history-core").projectDir = file("data/history/core")
+
 include(":data-history-connector")
 
 project(":data-history-connector").projectDir = file("data/history/connector")
@@ -122,17 +126,37 @@ include(":data-strings-core")
 
 project(":data-strings-core").projectDir = file("data/strings/core")
 
+include(":data-theme-core")
+
+project(":data-theme-core").projectDir = file("data/theme/core")
+
 include(":data-theme-connector")
 
 project(":data-theme-connector").projectDir = file("data/theme/connector")
+
+include(":data-wallpaper-core")
+
+project(":data-wallpaper-core").projectDir = file("data/wallpaper/core")
 
 include(":data-wallpaper-connector")
 
 project(":data-wallpaper-connector").projectDir = file("data/wallpaper/connector")
 
+include(":data-recomposition-core")
+
+project(":data-recomposition-core").projectDir = file("data/recomposition/core")
+
 include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
+
+// Exploratory prototype — a UIAutomator-shaped query/action API over the local View tree's
+// `AccessibilityNodeInfo`. Not published; promoted to `:data-uiautomator-core` if useful. See
+// `data/uiautomator/prototype-android/build.gradle.kts`.
+include(":data-uiautomator-prototype-android")
+
+project(":data-uiautomator-prototype-android").projectDir =
+  file("data/uiautomator/prototype-android")
 
 include(":daemon:android")
 

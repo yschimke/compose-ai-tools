@@ -1,6 +1,8 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.theme.ResolvedThemeTokens
+import ee.schimke.composeai.data.theme.ThemePayload
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject

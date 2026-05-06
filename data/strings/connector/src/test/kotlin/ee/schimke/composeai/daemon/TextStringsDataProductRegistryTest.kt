@@ -4,6 +4,8 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import java.io.File
 import java.nio.file.Files
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -109,6 +111,66 @@ class TextStringsDataProductRegistryTest {
     assertNull("semantic-only entries omit text", second["text"])
     assertNull("semantic-only entries omit text source", second["textSource"])
     assertEquals("Settings", second["semanticsLabel"]!!.jsonPrimitive.content)
+
+    assertNull("v1 payloads omit truncation flags", first["truncated"])
+    assertNull("v1 payloads omit overflow", first["overflow"])
+    assertNull("v1 payloads omit lineCount", first["lineCount"])
+  }
+
+  @Test
+  fun `fetch surfaces truncation overflow line count and maxLines from semantics`() {
+    val previewId = "com.example.TextPreview"
+    writeSemantics(
+      previewId,
+      """
+      {
+        "root": {
+          "nodeId": "1",
+          "boundsInRoot": "0,0,200,200",
+          "children": [
+            {
+              "nodeId": "2",
+              "boundsInRoot": "10,20,90,40",
+              "layoutText": "A very long French label",
+              "layoutTruncated": true,
+              "layoutDidOverflowWidth": true,
+              "layoutDidOverflowHeight": false,
+              "layoutLineCount": 1,
+              "layoutMaxLines": 1,
+              "layoutOverflow": "Ellipsis"
+            }
+          ]
+        }
+      }
+      """
+        .trimIndent(),
+    )
+    val registry =
+      TextStringsDataProductRegistry(rootDir = rootDir, previewIndex = PreviewIndex.empty())
+
+    val outcome =
+      registry.fetch(
+        previewId = previewId,
+        kind = TextStringsDataProductRegistry.KIND,
+        params = null,
+        inline = true,
+      )
+
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val entry =
+      (outcome as DataProductRegistry.Outcome.Ok)
+        .result
+        .payload!!
+        .jsonObject["texts"]!!
+        .jsonArray
+        .single()
+        .jsonObject
+    assertEquals(true, entry["truncated"]!!.jsonPrimitive.boolean)
+    assertEquals(true, entry["didOverflowWidth"]!!.jsonPrimitive.boolean)
+    assertEquals(false, entry["didOverflowHeight"]!!.jsonPrimitive.boolean)
+    assertEquals(1, entry["lineCount"]!!.jsonPrimitive.int)
+    assertEquals(1, entry["maxLines"]!!.jsonPrimitive.int)
+    assertEquals("Ellipsis", entry["overflow"]!!.jsonPrimitive.content)
   }
 
   @Test
@@ -177,7 +239,7 @@ class TextStringsDataProductRegistryTest {
       registry.attachmentsFor(previewId, setOf(TextStringsDataProductRegistry.KIND)).single()
 
     assertEquals(TextStringsDataProductRegistry.KIND, attachment.kind)
-    assertEquals(1, attachment.schemaVersion)
+    assertEquals(2, attachment.schemaVersion)
     assertNull(attachment.path)
     assertNotNull(attachment.payload)
     val entry = attachment.payload!!.jsonObject["texts"]!!.jsonArray.single().jsonObject
