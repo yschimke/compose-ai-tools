@@ -38,6 +38,8 @@ import {
 } from "./interactiveInput";
 import type { LiveStateController } from "./liveState";
 import type { StaleBadgeController } from "./staleBadge";
+import type { PreviewGrid } from "./components/PreviewGrid";
+import type { MessageOwner } from "./components/MessageBanner";
 import type {
     AccessibilityFinding,
     AccessibilityNode,
@@ -47,6 +49,10 @@ import type { VsCodeApi } from "../shared/vscode";
 
 export interface CardBuilderConfig {
     vscode: VsCodeApi<unknown>;
+    /** The `<preview-grid>` host — `renderPreviews` walks its
+     *  `.preview-card` children to diff against the new manifest, and
+     *  uses `insertBefore` to keep the manifest's order stable. */
+    grid: PreviewGrid;
     /** Per-preview carousel runtime state — populated here on creation,
      *  read by `updateImage` / `setImageError` / `frameCarousel` later. */
     cardCaptures: Map<string, CapturePresentation[]>;
@@ -94,6 +100,17 @@ export interface CardBuilderConfig {
     /** Hook the freshly-built card into the viewport tracker so daemon
      *  scroll-ahead works. */
     observeForViewport(card: HTMLElement): void;
+    /** Drop a card from the viewport tracker — paired with
+     *  `observeForViewport`; called by `renderPreviews` when an existing
+     *  preview disappears from the new manifest. */
+    forgetViewport(previewId: string, card: HTMLElement): void;
+    /** Set the message banner text + owner, with `ensureNotBlank()`
+     *  backstop. Used by `renderPreviews`'s empty-state fallback. */
+    setMessage(text: string, owner: MessageOwner): void;
+    /** Read the current message-banner owner so `renderPreviews` knows
+     *  whether to clear a transient `loading` / `fallback` placeholder
+     *  after cards land in the DOM. */
+    getMessageOwner(): MessageOwner | null;
 }
 
 /**
@@ -634,5 +651,138 @@ export function applyA11yUpdate(
     }
     if (config.inFocus() && config.focusedCard() === card) {
         config.inspector.render(card);
+    }
+}
+
+/** Subset `renderPreviews` reaches for — initial-build + metadata-refresh
+ *  collaborator surface plus the grid + viewport + message-banner hooks. */
+export type RenderPreviewsConfig = Pick<
+    CardBuilderConfig,
+    | "vscode"
+    | "grid"
+    | "cardCaptures"
+    | "cardA11yFindings"
+    | "cardA11yNodes"
+    | "staleBadge"
+    | "frameCarousel"
+    | "liveState"
+    | "interactiveInputConfig"
+    | "diffOverlayConfig"
+    | "inspector"
+    | "getAllPreviews"
+    | "earlyFeatures"
+    | "inFocus"
+    | "focusedCard"
+    | "enterFocus"
+    | "exitFocus"
+    | "observeForViewport"
+    | "forgetViewport"
+    | "setMessage"
+    | "getMessageOwner"
+>;
+
+/**
+ * Incremental diff against the grid's current contents: update existing
+ * cards, add new ones, remove missing. Keeps rendered images in place
+ * during refresh — they're replaced as new images stream in from
+ * `updateImage` messages.
+ *
+ * Side effects:
+ *  - Removed cards drop their `cardCaptures` entry and detach from the
+ *    viewport tracker via `config.forgetViewport`.
+ *  - The `cardA11yFindings` cache is fully rebuilt from each preview's
+ *    `a11yFindings` so `updateImage`'s on-load handler can repaint
+ *    overlays consistently.
+ *  - Insert order matches the manifest; `insertBefore` keeps existing
+ *    cards in place when their position survives.
+ *  - After cards land, transient owner messages (`loading`, `fallback`)
+ *    are cleared via `config.setMessage("", owner)` — the
+ *    `extension`-owned messages (build errors, empty-state notices) are
+ *    left alone.
+ */
+export function renderPreviews(
+    previews: readonly PreviewInfo[],
+    config: RenderPreviewsConfig,
+): void {
+    if (previews.length === 0) {
+        // Defensive fallback — the extension now always sends an
+        // explicit showMessage for empty states, so this branch
+        // shouldn't normally fire. Kept so the view never ends up
+        // with an empty grid + empty message if a bug slips through.
+        config.grid.innerHTML = "";
+        config.setMessage("No @Preview functions found", "fallback");
+        return;
+    }
+    const newIds = new Set(previews.map((p) => p.id));
+    const existingCards = new Map<string, HTMLElement>();
+    config.grid
+        .querySelectorAll<HTMLElement>(".preview-card")
+        .forEach((card) => {
+            const id = card.dataset.previewId;
+            if (id) existingCards.set(id, card);
+        });
+
+    // Remove cards that no longer exist — drop their cached capture
+    // data so stale entries don't pile up if a preview is renamed.
+    for (const [id, card] of existingCards) {
+        if (!newIds.has(id)) {
+            config.cardCaptures.delete(id);
+            config.forgetViewport(id, card);
+            card.remove();
+        }
+    }
+
+    // Refresh per-preview findings cache so updateImage can attach
+    // them to each new image load. Drop stale entries (preview
+    // removed) so the map doesn't grow across sessions.
+    config.cardA11yFindings.clear();
+    for (const p of previews) {
+        if (p.a11yFindings && p.a11yFindings.length > 0) {
+            config.cardA11yFindings.set(p.id, p.a11yFindings);
+        }
+    }
+
+    // Add new cards / update existing ones, preserving order
+    let lastInsertedCard: HTMLElement | null = null;
+    for (const p of previews) {
+        const existing = existingCards.get(p.id);
+        if (existing) {
+            updateCardMetadata(existing, p, config);
+            // Ensure correct position
+            if (lastInsertedCard) {
+                if (lastInsertedCard.nextSibling !== existing) {
+                    config.grid.insertBefore(
+                        existing,
+                        lastInsertedCard.nextSibling,
+                    );
+                }
+            } else if (config.grid.firstChild !== existing) {
+                config.grid.insertBefore(existing, config.grid.firstChild);
+            }
+            lastInsertedCard = existing;
+        } else {
+            const card = buildPreviewCard(p, config);
+            if (lastInsertedCard) {
+                config.grid.insertBefore(card, lastInsertedCard.nextSibling);
+            } else {
+                config.grid.insertBefore(card, config.grid.firstChild);
+            }
+            lastInsertedCard = card;
+        }
+    }
+
+    // Clear transient owner messages now that cards are in the DOM.
+    // The 'loading' Building… banner and the 'fallback' "Preparing
+    // previews…" placeholder both get cleared here. 'extension'-owned
+    // messages (build errors, empty-state notices) are left alone —
+    // those are terminal states the extension is asserting and the
+    // caller wouldn't be sending setPreviews alongside them anyway.
+    //
+    // Must run *after* cards are inserted: setMessage('', …) calls
+    // ensureNotBlank, which would re-set "Preparing previews…" if
+    // the grid still looked empty when the message was cleared.
+    const owner = config.getMessageOwner();
+    if (owner && owner !== "extension") {
+        config.setMessage("", owner);
     }
 }
