@@ -67,7 +67,7 @@ class S3RenderAfterEditTest {
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
       val initResult = client.initialize()
-      assertEquals(1, initResult.protocolVersion)
+      assertEquals(2, initResult.protocolVersion)
       assertTrue(
         "B2.2 phase 2 — IncrementalDiscovery wired in fake-mode, capability must flip true",
         initResult.capabilities.incrementalDiscovery,

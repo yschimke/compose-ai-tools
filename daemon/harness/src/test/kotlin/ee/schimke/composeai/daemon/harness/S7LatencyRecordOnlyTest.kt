@@ -44,7 +44,7 @@ class S7LatencyRecordOnlyTest {
 
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       // 5 cold/warm renders. The first one carries the daemon's spawn + classloader + first-render

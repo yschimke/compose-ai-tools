@@ -69,7 +69,7 @@ class S1LifecycleAndroidRealModeTest {
       //    daemon's initialize handler does not block on the sandbox (sandbox starts lazily on
       //    first render), so this is fast in practice.
       val initResult = client.initialize()
-      assertEquals(1, initResult.protocolVersion)
+      assertEquals(2, initResult.protocolVersion)
 
       // 2. initialized.
       client.sendInitialized()

@@ -113,7 +113,7 @@ class S1LifecycleRealModeTest {
     try {
       // 1. initialize. Cap at 30s — covers JVM cold start + Compose/Skiko bootstrap.
       val initResult = client.initialize()
-      assertEquals(1, initResult.protocolVersion)
+      assertEquals(2, initResult.protocolVersion)
 
       // 2. initialized.
       client.sendInitialized()

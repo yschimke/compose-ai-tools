@@ -102,7 +102,7 @@ class S6ClasspathDirtyRealModeTest {
     val s6Start = System.currentTimeMillis()
     try {
       val init = client.initialize()
-      assertEquals(1, init.protocolVersion)
+      assertEquals(2, init.protocolVersion)
       assertEquals(
         "initialize.classpathFingerprint must be a SHA-256 hex string",
         ee.schimke.composeai.daemon.ClasspathFingerprint.SHA_256_HEX_LENGTH,

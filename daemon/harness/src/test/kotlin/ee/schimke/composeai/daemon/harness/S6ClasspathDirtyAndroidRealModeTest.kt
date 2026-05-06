@@ -76,7 +76,7 @@ class S6ClasspathDirtyAndroidRealModeTest {
     val s6Start = System.currentTimeMillis()
     try {
       val init = client.initialize()
-      assertEquals(1, init.protocolVersion)
+      assertEquals(2, init.protocolVersion)
       assertEquals(
         ee.schimke.composeai.daemon.ClasspathFingerprint.SHA_256_HEX_LENGTH,
         init.classpathFingerprint.length,
