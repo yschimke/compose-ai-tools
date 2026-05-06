@@ -87,7 +87,11 @@ class DaemonMcpServer(
    * disables the sampler; production defaults to 10 minutes.
    */
   private val samplingIntervalMs: Long = DEFAULT_SAMPLING_INTERVAL_MS,
+  fullToolDefsLoader: (() -> List<ToolDef>)? = null,
 ) {
+
+  private val fullToolDefsLoader: () -> List<ToolDef> =
+    fullToolDefsLoader ?: { buildFullToolDefs() }
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -228,8 +232,21 @@ class DaemonMcpServer(
   private val fullToolCatalogWasDelayed = AtomicBoolean(false)
   @Volatile private var fullToolCatalogError: String? = null
 
+  /**
+   * Sessions that have been served [bootstrapToolDefs] from `tools/list` while [fullToolDefsFuture]
+   * was still loading. Each such session must receive `notifications/tools/list_changed` once the
+   * full catalog is ready, regardless of whether the load took more or less than
+   * [TOOL_CATALOG_NOTIFY_DELAY_MS] — clients that rely on `listChanged` would otherwise permanently
+   * miss the tools that only appear in the full catalog (see #670). Guarded by
+   * [bootstrapNotifyLock] so the future-completion handler and `tools/list` callers cannot lose a
+   * session through the isDone/add race.
+   */
+  private val bootstrapNotifyLock = Any()
+  private val bootstrapServedSessions = mutableSetOf<Session>()
+
   private val fullToolDefsFuture: CompletableFuture<List<ToolDef>> =
-    CompletableFuture.supplyAsync({ buildFullToolDefs() }, toolCatalogExecutor).also { future ->
+    CompletableFuture.supplyAsync({ this.fullToolDefsLoader() }, toolCatalogExecutor).also { future
+      ->
       progressBeatExecutor.schedule(
         {
           if (!future.isDone) {
@@ -243,8 +260,14 @@ class DaemonMcpServer(
         if (error != null) {
           fullToolCatalogError = error.message ?: error::class.java.simpleName
           System.err.println("compose-preview-mcp: full tool catalog failed: ${error.message}")
-        } else if (fullToolCatalogWasDelayed.get()) {
-          sessions.forEach { it.notifyToolListChanged() }
+        } else {
+          val toNotify =
+            synchronized(bootstrapNotifyLock) {
+              val snapshot = bootstrapServedSessions.toList()
+              bootstrapServedSessions.clear()
+              snapshot
+            }
+          toNotify.forEach { runCatching { it.notifyToolListChanged() } }
         }
       }
     }
@@ -304,7 +327,7 @@ class DaemonMcpServer(
           sdkServer.installComposePreviewHandlers(
             sdkSession = sdkSession,
             session = session,
-            listTools = { currentToolDefs() },
+            listTools = { currentToolDefs(session) },
             callTool = { name, arguments -> handleCallTool(session, name, arguments) },
             listResources = { catalogResources() },
             readResource = { uri, progressToken ->
@@ -329,6 +352,7 @@ class DaemonMcpServer(
     val released = subscriptions.forgetDataSubscriptions(session)
     released.forEach { key -> dispatchDataUnsubscribe(key) }
     subscriptions.forget(session)
+    synchronized(bootstrapNotifyLock) { bootstrapServedSessions.remove(session) }
     sessions.unregister(session)
   }
 
@@ -770,12 +794,29 @@ class DaemonMcpServer(
   // Tool surface
   // -------------------------------------------------------------------------
 
-  private fun currentToolDefs(): List<ToolDef> =
-    if (!fullToolDefsFuture.isDone) {
+  private fun currentToolDefs(session: Session): List<ToolDef> {
+    if (fullToolDefsFuture.isDone) {
+      return runCatching { fullToolDefsFuture.getNow(bootstrapToolDefs) }
+        .getOrDefault(bootstrapToolDefs)
+    }
+    // Bootstrap path: enroll the session under the lock so the future-completion handler cannot
+    // race past it. If the future completed between the outer isDone check and acquiring the lock,
+    // serve the full list directly and skip enrollment — the transition has already happened.
+    val servedBootstrap =
+      synchronized(bootstrapNotifyLock) {
+        if (fullToolDefsFuture.isDone) {
+          false
+        } else {
+          bootstrapServedSessions.add(session)
+          true
+        }
+      }
+    return if (servedBootstrap) {
       bootstrapToolDefs
     } else {
       runCatching { fullToolDefsFuture.getNow(bootstrapToolDefs) }.getOrDefault(bootstrapToolDefs)
     }
+  }
 
   private val bootstrapToolDefs: List<ToolDef> by lazy {
     listOf(

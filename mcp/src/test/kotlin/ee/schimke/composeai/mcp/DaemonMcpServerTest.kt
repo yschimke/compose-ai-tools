@@ -135,6 +135,64 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `bootstrap tools list_changed fires when full catalog completes inside grace period`() {
+    // Race covered by issue #670: a client receives bootstrapToolDefs from tools/list, the full
+    // catalog finishes loading well under TOOL_CATALOG_NOTIFY_DELAY_MS, and without this fix no
+    // notifications/tools/list_changed is sent — so listChanged-only clients permanently miss
+    // tools like `record_preview`.
+    runCatching { client.close() }
+    runCatching { session.close() }
+    runCatching { supervisor.shutdown() }
+
+    val gate = java.util.concurrent.CountDownLatch(1)
+    val loaderEntered = java.util.concurrent.CountDownLatch(1)
+    factory = FakeDaemonClientFactory()
+    supervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = factory)
+    server =
+      DaemonMcpServer(
+        supervisor = supervisor,
+        fullToolDefsLoader = {
+          loaderEntered.countDown()
+          gate.await()
+          listOf(
+            ee.schimke.composeai.mcp.protocol.ToolDef(
+              name = "record_preview",
+              description = "stub for the test",
+              inputSchema =
+                Json.parseToJsonElement("""{"type":"object","properties":{}}""").jsonObject,
+            )
+          )
+        },
+      )
+
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    session =
+      server.newSession(input = serverFromClient, output = serverToClient).also { it.start() }
+    client = McpTestClient(input = clientFromServer, output = clientToServer)
+
+    client.initialize()
+
+    // Wait until the loader is actually blocked, otherwise we might race past the bootstrap window.
+    assertThat(loaderEntered.await(5, TimeUnit.SECONDS)).isTrue()
+
+    val bootstrap =
+      json.decodeFromJsonElement(ListToolsResult.serializer(), client.request("tools/list"))
+    assertThat(bootstrap.tools.map { it.name }).doesNotContain("record_preview")
+
+    // Release the loader; the full catalog now resolves quickly — long before the 3s grace window.
+    gate.countDown()
+
+    // The fix's contract: this notification arrives even though the load was not "delayed".
+    client.expectNotification("notifications/tools/list_changed", 5_000)
+
+    val full =
+      json.decodeFromJsonElement(ListToolsResult.serializer(), client.request("tools/list"))
+    assertThat(full.tools.map { it.name }).contains("record_preview")
+  }
+
+  @Test
   fun `register_project returns workspaceId and notifies list_changed`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
