@@ -321,6 +321,34 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.TruncationPreviewsKt.FitsInBoundsPreview": {
+    "captureLabel": "",
+    "functionName": "FitsInBoundsPreview",
+    "renderBasename": "TruncationPreviewsKt.FitsInBoundsPreview.png",
+    "sha256": "1510fc2e5f2053195995a5a896ad9008b4f36550a8714dd9f260e4c4ad0aeb5a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.TruncationPreviewsKt.TruncatedHeightClipPreview": {
+    "captureLabel": "",
+    "functionName": "TruncatedHeightClipPreview",
+    "renderBasename": "TruncationPreviewsKt.TruncatedHeightClipPreview.png",
+    "sha256": "c9f58155f4aa9d931b55dbb945f3303983248595445fcdcb9b86d6bb392f6335",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview": {
+    "captureLabel": "",
+    "functionName": "TruncatedMaxLinesEllipsisPreview",
+    "renderBasename": "TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview.png",
+    "sha256": "7d3ed30e0e755f6f8b7306be75a810eb192c7fe6184df33e09ef450b54e39382",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.TruncationPreviewsKt.TruncatedWidthNoWrapPreview": {
+    "captureLabel": "",
+    "functionName": "TruncatedWidthNoWrapPreview",
+    "renderBasename": "TruncationPreviewsKt.TruncatedWidthNoWrapPreview.png",
+    "sha256": "aacc761a152be927c1802ea58b182fe52de0ee1dc8fa6d74e649c4a9d210421b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt"
+  },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
     "captureLabel": "",
     "functionName": "SharedBlueBoxPreview",
@@ -500,7 +528,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
