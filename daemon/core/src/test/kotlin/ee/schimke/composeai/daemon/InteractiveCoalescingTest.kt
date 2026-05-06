@@ -173,7 +173,7 @@ class InteractiveCoalescingTest {
     writeFrame(
       out,
       """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-        "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+        "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
         "moduleId":":test","moduleProjectDir":"/tmp",
         "capabilities":{"visibility":true,"metrics":false}}}""",
     )

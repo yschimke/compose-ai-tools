@@ -61,6 +61,17 @@ class DaemonSupervisor(
    * `initialize` path. Tests use it directly (see `DaemonMcpServerTest`).
    */
   private val globalAttachDataProducts: List<String> = emptyList(),
+  /**
+   * Extension ids the supervisor enables on every spawned daemon right after `initialize` succeeds.
+   * Maps onto the daemon's `extensions/enable` JSON-RPC method (PROTOCOL.md § 3a). Daemons start
+   * with everything inactive; the supervisor opts in to the contributions this MCP session needs.
+   *
+   * Defaults to empty so a baseline daemon is as lean as possible. Production entry points
+   * ([DaemonMcpMain]) and embedding consumers populate this with the kinds their tools require. The
+   * supervisor passes them through verbatim — unknown ids land in the daemon's `extensions/enable`
+   * response under `unknown` and are logged but not retried.
+   */
+  private val defaultExtensions: List<String> = emptyList(),
 ) {
 
   init {
@@ -206,12 +217,31 @@ class DaemonSupervisor(
             moduleProjectDir = descriptor.workingDirectory,
             attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
           )
-        // D1 — surface the daemon's advertised data-product kinds so the MCP server's
-        // `list_data_products` tool can answer without a wire round-trip. Empty list on pre-D2
-        // daemons; the field is also `emptyList()` by default in [ServerCapabilities] so absent
-        // and `[]` collapse the same way client-side.
-        supervised.dataProductCapabilities = result.capabilities.dataProducts
-        supervised.dataExtensionDescriptors = result.capabilities.dataExtensions
+        // PROTOCOL.md § 3a — the daemon comes up with every extension inactive so
+        // `initialize.capabilities.dataProducts` / `dataExtensions` / `previewExtensions` are
+        // empty.
+        // Opt the daemon into the configured `defaultExtensions` set; the response carries the
+        // updated public capability lists which we cache below so the MCP catalogue surfaces them
+        // without a follow-up `extensions/list` round-trip.
+        val initialDataProducts: List<DataProductCapability>
+        val initialDataExtensions:
+          List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor>
+        if (defaultExtensions.isNotEmpty()) {
+          val enableResult = spawn.client.extensionsEnable(defaultExtensions)
+          if (enableResult.unknown.isNotEmpty()) {
+            System.err.println(
+              "daemon ${project.workspaceId}/${descriptor.modulePath}: extensions/enable " +
+                "skipped unknown ids ${enableResult.unknown}"
+            )
+          }
+          initialDataProducts = enableResult.dataProducts
+          initialDataExtensions = enableResult.dataExtensions
+        } else {
+          initialDataProducts = result.capabilities.dataProducts
+          initialDataExtensions = result.capabilities.dataExtensions
+        }
+        supervised.dataProductCapabilities = initialDataProducts
+        supervised.dataExtensionDescriptors = initialDataExtensions
         // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
         // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
         // backend will actually apply (instead of silently no-op'ing fields the backend ignores)

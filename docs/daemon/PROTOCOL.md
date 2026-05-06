@@ -1,6 +1,6 @@
 # Preview daemon — IPC protocol
 
-> **Status:** v1 contract. Locked as of this document; further changes require a PR that updates both the daemon (Kotlin) and the VS Code client (TypeScript) in lockstep, plus a `protocolVersion` bump.
+> **Status:** v2 contract. Pre-1.0 — wire shape may break across minor versions in a coordinated daemon + client release. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
 
 This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md). Open protocol work is tracked in [ROADMAP.md](ROADMAP.md).
 
@@ -89,7 +89,7 @@ Params:
 
 ```ts
 {
-  protocolVersion: number;           // currently 1
+  protocolVersion: number;           // currently 2
   clientVersion: string;             // e.g. extension semver "0.8.6"
   workspaceRoot: string;             // absolute path
   moduleId: string;                  // Gradle path, e.g. ":samples:android"
@@ -174,6 +174,87 @@ No params. Result is `null`. Daemon stops accepting `renderNow`, drains the in-f
 ### `exit` (notification, client → daemon)
 
 No params. Daemon exits.
+
+## 3a. Extensions
+
+Daemons boot with every extension registered as inactive metadata only — `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` start empty. Clients use the methods below to opt in to specific contributions for the daemon's lifetime. Registry semantics are documented in `Extension.kt` / `ExtensionRegistry.kt`; the wire shapes round-trip through `protocol/Messages.kt`.
+
+Three states for each extension:
+
+- **inactive** — neither publicly enabled nor pulled in as a dependency. Contributes nothing anywhere.
+- **active as dependency** — pulled in transitively by another publicly-enabled extension. `onRender` runs in-process so the depending extension can read derived state, but client-visible surfaces (capability lists, `data/fetch`, `data/subscribe`, render attachments, `extensions/list`'s `publiclyEnabled` flag) stay empty for this id.
+- **publicly enabled** — turned on by `extensions/enable`. Contributes everywhere.
+
+### `extensions/list` (request, client → daemon)
+
+No params. Result:
+
+```ts
+{
+  extensions: Array<{
+    id: string;
+    displayName: string;
+    dependencies: string[];
+    publiclyEnabled: boolean;
+    active: boolean;          // public OR pulled in as dependency
+    dataProductKinds: string[];
+    dataExtensionIds: string[];
+    previewExtensionIds: string[];
+  }>;
+}
+```
+
+### `extensions/enable` (request, client → daemon)
+
+```ts
+{ ids: string[] }
+```
+
+Enables every id in the list. Unknown ids are reported and skipped. Already-public ids are reported separately (idempotent on the wire). Dependencies declared by a freshly-enabled extension are pulled in transitively and reported in `pulledIn` — those ids' kinds and descriptors do **not** appear in the response's capability snapshots, only their owning public extension's contributions do.
+
+Result:
+
+```ts
+{
+  newlyEnabled: string[];
+  pulledIn: string[];
+  alreadyEnabled: string[];
+  unknown: string[];
+  // Updated public capability snapshots — same shape as the corresponding
+  // initialize.capabilities fields. Saves a follow-up extensions/list round-trip.
+  dataProducts: DataProductCapability[];
+  dataExtensions: DataExtensionDescriptor[];
+  previewExtensions: PreviewExtensionDescriptor[];
+}
+```
+
+### `extensions/disable` (request, client → daemon)
+
+```ts
+{ ids: string[] }
+```
+
+Removes the listed ids from the public set. An id that was disabled publicly but remains active as a dependency of some other publicly-enabled extension lands in `stillActiveAsDependency` — disabling it is fine, the client just sees that the dep didn't fully deactivate. Subscriptions for kinds whose owning extension just left the public set are torn down (the producer's `onUnsubscribe` fires through the active path).
+
+Result:
+
+```ts
+{
+  disabled: string[];
+  deactivated: string[];          // ids no longer active anywhere (no remaining dependent)
+  stillActiveAsDependency: string[];
+  notEnabled: string[];           // requested but weren't public to begin with
+  unknown: string[];
+  dataProducts: DataProductCapability[];
+  dataExtensions: DataExtensionDescriptor[];
+  previewExtensions: PreviewExtensionDescriptor[];
+}
+```
+
+### Caveats
+
+- `initialize.options.attachDataProducts` is filtered against the **public** capability set captured at initialize time. Enabling extensions afterwards does **not** retroactively widen the global attach set; the client sets up the ambient attach configuration during the handshake or not at all.
+- The MCP supervisor's `defaultExtensions: List<String>` is the production knob for "always enable these on every spawned daemon". `DaemonMcpMain` exposes a CLI flag for this; embedding consumers populate it directly.
 
 ## 4. Client → daemon notifications
 
@@ -580,7 +661,7 @@ Emitted after each NON-EMPTY prune pass. Empty (no-op) passes produce no notific
 
 ## 7. Versioning
 
-- `protocolVersion: 1` is this document.
+- `protocolVersion: 2` is this document. v2 introduced `extensions/{list,enable,disable}` (§ 3a) and emptied the default `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` lists. v1 clients are rejected at handshake.
 - Non-breaking additions (new optional fields, new notification methods) **do not** bump the version. Daemon and client must ignore unknown fields and unknown notifications.
 - Breaking changes (renamed/removed fields, changed semantics, new required fields) bump `protocolVersion` and require a coordinated daemon + extension release.
 - `initialize` is the only handshake; mismatched versions fail closed with `InvalidRequest`.

@@ -93,68 +93,13 @@ fun main(args: Array<String>) {
       PreviewIndex.empty()
     }
 
-  // D5 — wire the `compose/recomposition` data-product producer. The producer is itself a
-  // [DesktopHost.InteractiveSessionListener]; we pass it to both the host (so it learns about
-  // session lifecycle) and the JsonRpcServer (so it surfaces capabilities + handles
-  // data/subscribe). Constructed unconditionally on desktop — it advertises one kind, and a
-  // panel that doesn't subscribe pays nothing.
+  // Producer-side registries. Constructed unconditionally so they can be referenced from
+  // capture/listener lambdas; their per-render side effects are gated by the [ExtensionRegistry]
+  // built below — when an extension is inactive, no callbacks fire.
   val recompositionRegistry = RecompositionDataProductRegistry()
   val themeRegistry = ThemeDataProductRegistry()
   val wallpaperRegistry = WallpaperDataProductRegistry()
-  val renderEngine =
-    RenderEngine(
-      previewContextCapture =
-        object : RenderEngine.PreviewContextCapture {
-          override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
-            themeRegistry.shouldCapture(previewId, renderMode)
-        },
-      previewOverrideExtensions =
-        PreviewOverrideExtensions(
-          listOf(
-            // Both planners run for every render — each abstains (returns null) when its own
-            // override field on PreviewOverrides is not set. Order in the list controls
-            // around-composable wrapping order: wallpaper applies first so an explicit
-            // material3Theme override still wins for any role the caller pinned.
-            WallpaperPreviewOverrideExtension(),
-            Material3ThemePreviewOverrideExtension(),
-          )
-        ),
-    )
 
-  val manifestPath = System.getProperty("composeai.harness.previewsManifest")
-  val host: RenderHost =
-    if (manifestPath != null && manifestPath.isNotBlank()) {
-      val manifest = PreviewManifestRouter.loadManifest(File(manifestPath))
-      System.err.println(
-        "compose-ai-tools desktop daemon: PreviewManifestRouter active " +
-          "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
-      )
-      PreviewManifestRouter(
-        manifest = manifest,
-        engine = renderEngine,
-        userClassloaderHolder = userClassloaderHolder,
-      )
-    } else {
-      DesktopHost(
-        engine = renderEngine,
-        userClassloaderHolder = userClassloaderHolder,
-        // v2 — resolve `previewId` via PreviewIndex for the interactive session path. Issue #420
-        // wired the `params` block on `PreviewInfoDto`, so when the discovery JSON carries
-        // explicit `widthDp` / `heightDp` / `density` / `fontScale` / `locale` / `uiMode` /
-        // `device` / `showBackground` / `backgroundColor`, the resolver builds a `RenderSpec` that
-        // matches the user's `@Preview(...)` exactly. Per-field fallback to the `RenderSpec`
-        // defaults (320x320, density 2.0, white background, ...) when an individual field is null.
-        // See INTERACTIVE.md § 9 ("RenderHost surface").
-        previewSpecResolver =
-          previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
-        // D5 — see RecompositionDataProductRegistry KDoc. Producer learns about session
-        // lifecycle here so it can install/dispose its CompositionObserver.
-        interactiveSessionListener =
-          DesktopHost.InteractiveSessionListener { previewId, scene ->
-            recompositionRegistry.onSessionLifecycle(previewId, scene)
-          },
-      )
-    }
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
   // `composeai.daemon.cheapSignalFiles` (set by the gradle plugin's composePreviewDaemonStart).
   // Authoritative classpath comes from this JVM's own `java.class.path`. When the cheap-signal
@@ -231,34 +176,156 @@ fun main(args: Array<String>) {
 
   val composeTraceEnabled =
     PerfettoTraceDataProducer.enabled() && System.getProperty(RenderEngine.OUTPUT_DIR_PROP) != null
-  val dataProducts =
-    CompositeDataProductRegistry(
+
+  // ExtensionRegistry — every contribution the daemon can expose is registered here, all inactive
+  // by default. Clients call `extensions/enable` to opt in (typically the MCP supervisor enables a
+  // configured allowlist on connect). See docs/daemon/PROTOCOL.md § 3a.
+  val perfettoDataRoot =
+    if (composeTraceEnabled) {
+      System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
+        File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
+      }
+    } else null
+  val extensions =
+    ExtensionRegistry(
       buildList {
-        add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
-        add(DeviceBackgroundDataProductRegistry(previewIndex = previewIndex))
-        add(RenderTraceDataProductRegistry())
-        add(TestFailureDataProductRegistry())
-        add(themeRegistry)
-        add(wallpaperRegistry)
-        add(recompositionRegistry)
-        if (composeTraceEnabled) {
-          System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
-            val dataRoot =
-              File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-            System.err.println(
-              "compose-ai-tools desktop daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
+        add(
+          Extension(
+            id = "device/clip",
+            displayName = "Device clip",
+            dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "device/background",
+            displayName = "Device background",
+            dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "render/trace",
+            displayName = "Render trace",
+            dataProductRegistry = RenderTraceDataProductRegistry(),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "render/test-failure",
+            displayName = "Test failure",
+            dataProductRegistry = TestFailureDataProductRegistry(),
+          )
+        )
+        add(
+          Extension(
+            id = "render/overlay-legend",
+            displayName = "Render overlay legend",
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "data/theme",
+            displayName = "Material 3 theme override",
+            dataProductRegistry = themeRegistry,
+            previewOverrideExtensions = listOf(Material3ThemePreviewOverrideExtension()),
+          )
+        )
+        add(
+          Extension(
+            id = "data/wallpaper",
+            displayName = "Wallpaper override",
+            dataProductRegistry = wallpaperRegistry,
+            previewOverrideExtensions = listOf(WallpaperPreviewOverrideExtension()),
+          )
+        )
+        add(
+          Extension(
+            id = "data/recomposition",
+            displayName = "Recomposition counters",
+            dataProductRegistry = recompositionRegistry,
+          )
+        )
+        if (composeTraceEnabled && perfettoDataRoot != null) {
+          add(
+            Extension(
+              id = "compose/trace",
+              displayName = "Compose Perfetto trace",
+              dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = perfettoDataRoot),
+              previewExtensionDescriptors = listOf(RenderPreviewExtension.composeTraceDescriptor),
             )
-            add(PerfettoTraceDataProductRegistry(rootDir = dataRoot))
-          }
+          )
         }
         if (historyManager != null) {
-          System.err.println(
-            "compose-ai-tools desktop daemon: HistoryDiffRegionsDataProductRegistry active"
+          add(
+            Extension(
+              id = "history/diff-regions",
+              displayName = "History diff regions",
+              dataProductRegistry =
+                HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
+            )
           )
-          add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
         }
+        // Recording-script extensions are descriptor-only on the daemon side — the host's session
+        // registry decides what's actually dispatchable. The roadmap descriptors are advertised so
+        // panels can grey out unimplemented actions.
+        add(
+          Extension(
+            id = "recording/script",
+            displayName = "Recording-script extensions",
+            dataExtensionDescriptors = RecordingScriptDataExtensions.roadmapDescriptors,
+          )
+        )
       }
     )
+
+  // Render engine consumes the registry's live override aggregator so `extensions/enable` mid-
+  // session takes effect on the next render. PreviewContextCapture gates on `data/theme`'s
+  // active state; while theme is inactive the renderer skips the per-render Compose-context
+  // capture.
+  val renderEngine =
+    RenderEngine(
+      previewContextCapture =
+        object : RenderEngine.PreviewContextCapture {
+          override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
+            extensions.isActive("data/theme") && themeRegistry.shouldCapture(previewId, renderMode)
+        },
+      previewOverrideExtensions = extensions.activeOverrideExtensions(),
+    )
+
+  val manifestPath = System.getProperty("composeai.harness.previewsManifest")
+  val host: RenderHost =
+    if (manifestPath != null && manifestPath.isNotBlank()) {
+      val manifest = PreviewManifestRouter.loadManifest(File(manifestPath))
+      System.err.println(
+        "compose-ai-tools desktop daemon: PreviewManifestRouter active " +
+          "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
+      )
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine = renderEngine,
+        userClassloaderHolder = userClassloaderHolder,
+      )
+    } else {
+      DesktopHost(
+        engine = renderEngine,
+        userClassloaderHolder = userClassloaderHolder,
+        previewSpecResolver =
+          previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
+        // Recomposition session listener gates on the extension's active state — when inactive,
+        // the producer doesn't install its CompositionObserver.
+        interactiveSessionListener =
+          DesktopHost.InteractiveSessionListener { previewId, scene ->
+            if (extensions.isActive("data/recomposition")) {
+              recompositionRegistry.onSessionLifecycle(previewId, scene)
+            }
+          },
+      )
+    }
 
   val server =
     JsonRpcServer(
@@ -270,29 +337,7 @@ fun main(args: Array<String>) {
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
-      // D5 — only the desktop daemon advertises `compose/recomposition` today. The
-      // PreviewManifestRouter
-      // path doesn't expose interactive sessions, so the producer's lookups will all return empty
-      // for that host; a delta subscribe degrades to "advertise but useless" via the same code
-      // path as a future Compose API rename. Wiring is intentionally global — kinds advertised
-      // in `initialize.capabilities.dataProducts` reflect the daemon's whole surface.
-      dataProducts = dataProducts,
-      // dataExtensions = host's supported recording-script extensions + renderer-agnostic roadmap
-      // descriptors. The host's contribution flips supported flags as new handlers land in its
-      // session registry; the roadmap list is the global "advertised but not yet implemented" set
-      // (state.save / state.restore / lifecycle.event / preview.reload).
-      dataExtensions =
-        host.recordingScriptEventDescriptors() + RecordingScriptDataExtensions.roadmapDescriptors,
-      previewExtensions =
-        buildList {
-          add(RenderPreviewExtension.deviceClipDescriptor)
-          add(RenderPreviewExtension.deviceBackgroundDescriptor)
-          add(RenderPreviewExtension.renderTraceDescriptor)
-          if (composeTraceEnabled) {
-            add(RenderPreviewExtension.composeTraceDescriptor)
-          }
-          add(RenderPreviewExtension.overlayLegendDescriptor)
-        },
+      extensions = extensions,
     )
 
   installSigtermShutdownHook(host, originalStdin = System.`in`)

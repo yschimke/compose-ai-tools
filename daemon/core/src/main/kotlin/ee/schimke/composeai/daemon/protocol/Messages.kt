@@ -285,6 +285,57 @@ enum class LeakDetectionMode {
 @Serializable data class Manifest(val path: String, val previewCount: Int)
 
 // =====================================================================
+// 2b. extensions/{list,enable,disable} (PROTOCOL.md § 3a)
+//
+// Daemons register every extension as inactive. Clients call `extensions/enable` to opt in to the
+// ones they want — the corresponding kinds, descriptors, and override planners come online for
+// that daemon's lifetime (until a matching `extensions/disable`). Dependencies declared by an
+// extension are pulled in transitively but stay invisible to direct client RPC.
+// =====================================================================
+
+@Serializable
+data class ExtensionInfoDto(
+  val id: String,
+  val displayName: String,
+  val dependencies: List<String> = emptyList(),
+  val publiclyEnabled: Boolean = false,
+  val active: Boolean = false,
+  val dataProductKinds: List<String> = emptyList(),
+  val dataExtensionIds: List<String> = emptyList(),
+  val previewExtensionIds: List<String> = emptyList(),
+)
+
+@Serializable data class ExtensionsListResult(val extensions: List<ExtensionInfoDto>)
+
+@Serializable data class ExtensionsEnableParams(val ids: List<String>)
+
+@Serializable
+data class ExtensionsEnableResult(
+  val newlyEnabled: List<String> = emptyList(),
+  val pulledIn: List<String> = emptyList(),
+  val alreadyEnabled: List<String> = emptyList(),
+  val unknown: List<String> = emptyList(),
+  /** New public capability snapshots so a client doesn't need a follow-up `extensions/list`. */
+  val dataProducts: List<DataProductCapability> = emptyList(),
+  val dataExtensions: List<DataExtensionDescriptor> = emptyList(),
+  val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
+)
+
+@Serializable data class ExtensionsDisableParams(val ids: List<String>)
+
+@Serializable
+data class ExtensionsDisableResult(
+  val disabled: List<String> = emptyList(),
+  val deactivated: List<String> = emptyList(),
+  val stillActiveAsDependency: List<String> = emptyList(),
+  val notEnabled: List<String> = emptyList(),
+  val unknown: List<String> = emptyList(),
+  val dataProducts: List<DataProductCapability> = emptyList(),
+  val dataExtensions: List<DataExtensionDescriptor> = emptyList(),
+  val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
+)
+
+// =====================================================================
 // 3. Client → daemon notifications (PROTOCOL.md § 4)
 // =====================================================================
 

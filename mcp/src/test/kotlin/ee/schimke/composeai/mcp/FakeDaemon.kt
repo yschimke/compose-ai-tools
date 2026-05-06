@@ -375,7 +375,7 @@ class FakeDaemon : DaemonSpawn {
         if (params != null) runCatching { onInitializeReceived(params) }
         val result =
           InitializeResult(
-            protocolVersion = 1,
+            protocolVersion = 2,
             daemonVersion = "fake",
             pid = 0,
             capabilities =

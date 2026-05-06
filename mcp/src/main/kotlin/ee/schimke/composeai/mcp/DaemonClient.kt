@@ -6,6 +6,11 @@ import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataSubscribeParams
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsDisableParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsListResult
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
@@ -100,7 +105,7 @@ class DaemonClient(
     val id = nextId.getAndIncrement()
     val params =
       InitializeParams(
-        protocolVersion = 1,
+        protocolVersion = 2,
         clientVersion = "compose-preview-mcp/v0",
         workspaceRoot = workspaceRoot,
         moduleId = moduleId,
@@ -303,6 +308,54 @@ class DaemonClient(
     kind: String,
     timeout: Duration = 15.seconds,
   ): DataSubscribeResult = dataSubOrUnsub("data/unsubscribe", previewId, kind, timeout)
+
+  // ---------------------------------------------------------------------------
+  // extensions/{list,enable,disable} — see PROTOCOL.md § 3a.
+  //
+  // The MCP supervisor calls `extensionsEnable` right after `initialize` to opt the daemon into
+  // the contributions this MCP session needs (today: nothing by default; future: per-tool
+  // requirements). Disabling them on shutdown is unnecessary — the daemon dies with the spawn.
+  // ---------------------------------------------------------------------------
+
+  fun extensionsList(timeout: Duration = 15.seconds): ExtensionsListResult {
+    val id = nextId.getAndIncrement()
+    val request =
+      JsonRpcRequest(id = id, method = "extensions/list", params = JsonObject(emptyMap()))
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem = response["result"] ?: error("extensions/list: no result — full=$response")
+    return json.decodeFromJsonElement(ExtensionsListResult.serializer(), resultElem)
+  }
+
+  fun extensionsEnable(ids: List<String>, timeout: Duration = 15.seconds): ExtensionsEnableResult {
+    val id = nextId.getAndIncrement()
+    val params = ExtensionsEnableParams(ids = ids)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "extensions/enable",
+        params = json.encodeToJsonElement(ExtensionsEnableParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem = response["result"] ?: error("extensions/enable: no result — full=$response")
+    return json.decodeFromJsonElement(ExtensionsEnableResult.serializer(), resultElem)
+  }
+
+  fun extensionsDisable(
+    ids: List<String>,
+    timeout: Duration = 15.seconds,
+  ): ExtensionsDisableResult {
+    val id = nextId.getAndIncrement()
+    val params = ExtensionsDisableParams(ids = ids)
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "extensions/disable",
+        params = json.encodeToJsonElement(ExtensionsDisableParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val resultElem = response["result"] ?: error("extensions/disable: no result — full=$response")
+    return json.decodeFromJsonElement(ExtensionsDisableResult.serializer(), resultElem)
+  }
 
   private fun dataSubOrUnsub(
     method: String,

@@ -31,11 +31,19 @@ typealias PreviewOverrideExtension = DataExtension<PreviewOverrides>
  * Used to keep render-engine call sites generic: instead of hardcoding `spec.wallpaper?.let(...)`
  * and friends, the engine calls [plan] and receives the list of [PlannedDataExtension] entries to
  * thread through `ComposeDataExtensionPipeline.Apply`.
+ *
+ * `isActive` is consulted on every `plan(...)` call so a runtime `extensions/enable` /
+ * `extensions/disable` from the [ExtensionRegistry] takes effect on the next render without
+ * rebuilding the renderer. The default predicate considers every extension active — used by tests
+ * and by callers that want the legacy "always on" behaviour.
  */
-class PreviewOverrideExtensions(val extensions: List<PreviewOverrideExtension>) {
+class PreviewOverrideExtensions(
+  val extensions: List<PreviewOverrideExtension>,
+  private val isActive: (PreviewOverrideExtension) -> Boolean = { true },
+) {
   fun plan(overrides: PreviewOverrides?): List<PlannedDataExtension> {
     if (overrides == null || extensions.isEmpty()) return emptyList()
-    return extensions.mapNotNull { it.plan(overrides) }
+    return extensions.mapNotNull { if (isActive(it)) it.plan(overrides) else null }
   }
 
   companion object {
