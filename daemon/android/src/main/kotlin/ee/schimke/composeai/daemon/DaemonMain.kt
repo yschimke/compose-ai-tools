@@ -390,6 +390,16 @@ fun main(args: Array<String>) {
               )
             )
           }
+          // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.). Always
+          // wired on the Android backend — the dispatch path lives in RobolectricHost and
+          // doesn't depend on the a11y opt-in.
+          add(
+            Extension(
+              id = UiAutomatorRecordingScriptEvents.EXTENSION_ID,
+              displayName = "UIAutomator script actions",
+              dataExtensionDescriptors = UiAutomatorRecordingScriptEvents.descriptors,
+            )
+          )
         }
         // host-wired recording-script extensions + renderer-agnostic roadmap descriptors. The
         // host's contribution flips supported flags as new handlers land in its session registry.

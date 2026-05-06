@@ -284,6 +284,16 @@ class AndroidRecordingSession(
         for (action in A11Y_SEMANTIC_ACTIONS) {
           put("a11y.action.$action", a11ySemanticsActionHandler(action))
         }
+        // UIAutomator-shaped dispatch — every `uia.<actionKind>` id reads the event's `selector`
+        // JsonObject (multi-axis BySelector predicate), encodes it as a JSON string, and routes
+        // through `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree,
+        // inputText)`. The matching arm in `RobolectricHost.performUiAutomatorAction` decodes the
+        // selector and dispatches the named UiObject method. See [UiAutomatorRecordingScriptEvents]
+        // for the descriptor + supported-id list.
+        for (id in UiAutomatorRecordingScriptEvents.WIRED_EVENTS) {
+          val actionKind = id.removePrefix("uia.")
+          put(id, uiAutomatorActionHandler(actionKind))
+        }
         // Lifecycle dispatch — one event id per state transition (`lifecycle.pause` /
         // `lifecycle.resume` / `lifecycle.stop`). Each routes through
         // `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`. See
@@ -359,6 +369,54 @@ class AndroidRecordingSession(
         unsupportedEvidence(
           event,
           "no node with contentDescription='$description' exposes the '$actionKind' semantic",
+        )
+      }
+    }
+
+  /**
+   * Shared factory for every `uia.<actionKind>` script event. Reads the event's `selector`
+   * `JsonObject` (multi-axis BySelector-style predicate; see `:data-uiautomator-core`'s
+   * `SelectorJson`), serialises it to a JSON string, and forwards to
+   * `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree, inputText)`. The
+   * arm in [RobolectricHost.performUiAutomatorAction] decodes the JSON, walks
+   * `UiAutomator.findObject(rule, selector, useUnmergedTree)`, and invokes the matching
+   * `UiObject` method.
+   *
+   * Reports `unsupported` (with a specific reason) when the agent didn't supply `selector`, when
+   * `inputText` is required (`uia.inputText`) but absent, when no node matched, or when the
+   * matched node didn't expose the requested action. Throws (propagating into stop()) only when
+   * the action body itself fails — same shape as the `a11y.action.*` path.
+   */
+  private fun uiAutomatorActionHandler(actionKind: String): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val selector = event.selector
+      if (selector == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-null 'selector' object to resolve the target node",
+        )
+      }
+      if (actionKind == "inputText" && event.inputText == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-null 'inputText' string",
+        )
+      }
+      val selectorJson = selector.toString()
+      val useUnmergedTree = event.useUnmergedTree ?: false
+      val matched =
+        interactive.dispatchUiAutomator(
+          actionKind = actionKind,
+          selectorJson = selectorJson,
+          useUnmergedTree = useUnmergedTree,
+          inputText = event.inputText,
+        )
+      if (matched) {
+        appliedEvidence(event, "uia '$actionKind' fired against selector=$selectorJson")
+      } else {
+        unsupportedEvidence(
+          event,
+          "no node matched selector=$selectorJson for uia '$actionKind' (or matched node didn't expose the action)",
         )
       }
     }

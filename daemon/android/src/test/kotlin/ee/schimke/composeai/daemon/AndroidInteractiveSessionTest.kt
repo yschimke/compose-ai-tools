@@ -190,6 +190,106 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun uiAutomatorClickMutatesHeldStateThroughTheBridge() {
+    // End-to-end coverage of the new InteractiveCommand.DispatchUiAutomator path:
+    // session.dispatchUiAutomator(...) → bridge envelope → RobolectricHost.performUiAutomatorAction
+    // → :data-uiautomator-core's decodeSelectorJson + UiAutomator.findObject
+    // → SemanticsActions.OnClick on the matched ClickableToggleSquare node.
+    //
+    // Mirrors `clickableClickMutatesHeldState` but takes the selector path instead of pixel
+    // input. ClickableToggleSquare is the cheapest target — `Modifier.clickable {}` exposes
+    // exactly one OnClick lambda, so `{"clickable":true}` matches the single Box and flips
+    // its red→green state.
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-uia").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = CLICKABLE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "ClickableToggleSquare must start red before the uia.click",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        val matched =
+          session.dispatchUiAutomator(
+            actionKind = "click",
+            selectorJson = """{"clickable":true}""",
+            useUnmergedTree = false,
+            inputText = null,
+          )
+        assertTrue(
+          "dispatchUiAutomator must report a match against the clickable node — selector " +
+            "{clickable:true} should hit Modifier.clickable {}'s OnClick",
+          matched,
+        )
+
+        val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val greenAfter = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "expected post-uia.click held capture to be ≥95% green (got " +
+            "${"%.2f".format(greenAfter * 100)}%) — bridge → RobolectricHost → SemanticsActions " +
+            "didn't flip the held composition's state",
+          greenAfter >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun uiAutomatorClickReportsUnmatchedWhenNoNodeSatisfiesTheSelector() {
+    // Negative-path coverage — the bridge must report `matched = false` (and *not* throw)
+    // when the selector finds no nodes. The recording-session handler relies on this to
+    // emit a precise unsupported evidence string.
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-uia-miss").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = CLICKABLE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val matched =
+          session.dispatchUiAutomator(
+            actionKind = "click",
+            selectorJson = """{"text":"NoSuchLabel"}""",
+            useUnmergedTree = false,
+            inputText = null,
+          )
+        assertEquals(
+          "selector with no matching node must report unmatched (the recording session turns " +
+            "this into unsupported evidence)",
+          false,
+          matched,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun fingerDragScrollsVerticalScrollable() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
