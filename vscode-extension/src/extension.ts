@@ -1176,22 +1176,28 @@ export function deactivate() {
  * silently swallowed because we're on the way out anyway.
  */
 async function flushInteractiveStreams(): Promise<void> {
-    if (activeInteractiveStreams.size === 0) {
+    const interactiveEntries = [...activeInteractiveStreams.entries()];
+    const streamEntries = [...activeStreamFrameStreams.entries()];
+    if (interactiveEntries.length === 0 && streamEntries.length === 0) {
         return;
     }
-    const entries = [...activeInteractiveStreams.entries()];
     activeInteractiveStreams.clear();
+    activeStreamFrameStreams.clear();
+    streamFrameIdToPreviewId.clear();
     updateInteractiveStatus();
     if (!daemonGate?.isEnabled() || !daemonScheduler) {
         return;
     }
-    await Promise.all(
-        entries.map(async ([previewId, streamId]) => {
+    // Flush each surface through the matching wire-level stop. Using the
+    // wrong stop (e.g. `interactive/stop` on a stream id minted by
+    // `stream/start`) leaves the daemon-side stream subscription alive
+    // and the panel keeps receiving `streamFrame` notifications it has
+    // no painter for. See PR #847 reviewer P1.
+    await Promise.all([
+        ...interactiveEntries.map(async ([previewId, streamId]) => {
             try {
                 const moduleId = previewModuleMap.get(previewId);
-                if (!moduleId) {
-                    return;
-                }
+                if (!moduleId) return;
                 const client = await daemonGate?.getOrSpawn(
                     moduleId,
                     daemonScheduler!.daemonEvents(moduleId),
@@ -1201,7 +1207,21 @@ async function flushInteractiveStreams(): Promise<void> {
                 /* deactivate path — best-effort */
             }
         }),
-    );
+        ...streamEntries.map(async ([previewId, streamId]) => {
+            try {
+                const moduleId = previewModuleMap.get(previewId);
+                if (!moduleId) return;
+                const client = await daemonGate?.getOrSpawn(
+                    moduleId,
+                    daemonScheduler!.daemonEvents(moduleId),
+                );
+                client?.streamStop({ frameStreamId: streamId });
+                panel?.postMessage({ command: "streamStopped", previewId });
+            } catch {
+                /* deactivate path — best-effort */
+            }
+        }),
+    ]);
 }
 
 async function flushRecordingSessions(options: {
@@ -4199,12 +4219,13 @@ async function handleRequestStreamStart(previewId: string): Promise<void> {
     }
     try {
         const result = await client.streamStart({ previewId });
+        // Stream id stays in `activeStreamFrameStreams` only; do NOT cross-
+        // populate `activeInteractiveStreams` (which is torn down by the
+        // legacy `interactive/stop` flush path) or the daemon-side stream
+        // subscription leaks. Input forwarding consults both maps via
+        // `lookupActiveStreamId`. See PR #847 reviewer P1.
         activeStreamFrameStreams.set(previewId, result.frameStreamId);
         streamFrameIdToPreviewId.set(result.frameStreamId, previewId);
-        // Reuse the interactive-streams map so the existing input-forwarding
-        // path (recordInteractiveInput) finds the streamId — `stream/start`
-        // routes inputs through the same `interactive/input` channel.
-        activeInteractiveStreams.set(previewId, result.frameStreamId);
         updateInteractiveStatus();
         panel?.postMessage({
             command: "streamStarted",
@@ -4240,7 +4261,6 @@ async function handleRequestStreamStop(previewId: string): Promise<void> {
     }
     activeStreamFrameStreams.delete(previewId);
     streamFrameIdToPreviewId.delete(sid);
-    activeInteractiveStreams.delete(previewId);
     updateInteractiveStatus();
     const moduleId = previewModuleMap.get(previewId);
     if (!daemonGate?.isEnabled() || !daemonScheduler || !moduleId) {
@@ -4357,12 +4377,19 @@ function updateInteractiveStatus(): void {
     if (!interactiveStatusItem) {
         return;
     }
-    if (!daemonGate || activeInteractiveStreams.size === 0) {
+    if (
+        !daemonGate ||
+        (activeInteractiveStreams.size === 0 &&
+            activeStreamFrameStreams.size === 0)
+    ) {
         interactiveStatusItem.hide();
         return;
     }
     const unsupportedModules = new Set<string>();
-    for (const previewId of activeInteractiveStreams.keys()) {
+    for (const previewId of [
+        ...activeInteractiveStreams.keys(),
+        ...activeStreamFrameStreams.keys(),
+    ]) {
         const moduleId = previewModuleMap.get(previewId);
         if (!moduleId) {
             continue;
@@ -4487,7 +4514,12 @@ async function forwardInteractiveInput(
         return;
     }
     const previewId = input.previewId;
-    const streamId = activeInteractiveStreams.get(previewId);
+    // Either surface (legacy `interactive/start` or new `stream/start`)
+    // routes inputs through `interactive/input` on the same wire — the
+    // stream id may live in either map. See PR #847 reviewer P1.
+    const streamId =
+        activeStreamFrameStreams.get(previewId) ??
+        activeInteractiveStreams.get(previewId);
     if (!streamId) {
         return;
     }

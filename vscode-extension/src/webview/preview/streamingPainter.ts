@@ -18,7 +18,11 @@
 // reverts the card to its `<img>` so the legacy renderFinished path can
 // take over again.
 
-import { StreamClient, type PaintableFrame } from "../../daemon/streamClient";
+import {
+    StreamClient,
+    shouldPaintDecodedFrame,
+    type PaintableFrame,
+} from "../../daemon/streamClient";
 
 interface PainterEntry {
     canvas: HTMLCanvasElement;
@@ -29,6 +33,15 @@ interface PainterEntry {
      */
     anchor: ImageBitmap | null;
     pendingFinal: boolean;
+    /**
+     * Highest `seq` whose decoded bitmap has been painted. Out-of-order
+     * `createImageBitmap` resolutions (a small frame N+1 finishing before
+     * a larger frame N) would otherwise paint N+1 first and then be
+     * overwritten by stale N — visible time-travel under load. We compare
+     * each resolved bitmap's `seq` against this watermark before drawing
+     * and drop strictly-older frames. See PR #847 reviewer P1.
+     */
+    paintedSeq: number;
 }
 
 function mimeForCodec(codec: "png" | "webp" | undefined): string {
@@ -105,6 +118,7 @@ export class StreamingPainter {
             ctx: bitmapCtx ?? (ctx2d as CanvasRenderingContext2D),
             anchor: null,
             pendingFinal: false,
+            paintedSeq: -1,
         };
         this.entries.set(frameStreamId, entry);
         this.previewIdToStreamId.set(previewId, frameStreamId);
@@ -199,6 +213,16 @@ export class StreamingPainter {
                     bitmap.close?.();
                     return;
                 }
+                // Out-of-order decode guard: if a later frame has already
+                // painted, this resolution is stale (frame N decoded after
+                // frame N+M for M > 0). Drop without touching the canvas
+                // so we don't time-travel the painted content. See PR #847
+                // reviewer P1; helper logic + tests live in streamClient.
+                if (!shouldPaintDecodedFrame(entry.paintedSeq, frame.seq)) {
+                    bitmap.close?.();
+                    return;
+                }
+                entry.paintedSeq = frame.seq;
                 if (
                     entry.canvas.width !== bitmap.width ||
                     entry.canvas.height !== bitmap.height

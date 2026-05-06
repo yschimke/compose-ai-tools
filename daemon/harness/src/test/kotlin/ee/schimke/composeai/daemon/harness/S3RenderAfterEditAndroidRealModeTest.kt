@@ -54,7 +54,7 @@ class S3RenderAfterEditAndroidRealModeTest {
 
     val client = HarnessClient.start(paths.launcher)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       // 1. First render — RedSquare. The "edit" hasn't happened yet. 120s timeout for the cold

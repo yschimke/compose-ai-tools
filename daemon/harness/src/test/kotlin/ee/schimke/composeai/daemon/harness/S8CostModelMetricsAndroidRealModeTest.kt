@@ -56,7 +56,7 @@ class S8CostModelMetricsAndroidRealModeTest {
 
     val client = HarnessClient.start(paths.launcher)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       val start = System.currentTimeMillis()

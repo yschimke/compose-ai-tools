@@ -197,7 +197,7 @@ class S3_5RecompileSaveLoopRealModeTest {
     val recorder = LatencyRecorder(csvFile = HarnessTestSupport.LATENCY_CSV)
     val perIterationBytes = mutableListOf<ByteArray>()
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       versions.forEachIndexed { index, (label, bytes) ->

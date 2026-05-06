@@ -48,7 +48,7 @@ class S2DrainSemanticsTest {
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
       val initResult = client.initialize()
-      assertEquals(1, initResult.protocolVersion)
+      assertEquals(2, initResult.protocolVersion)
       client.sendInitialized()
 
       // 2. renderNow + measure latency for S7-record purposes.

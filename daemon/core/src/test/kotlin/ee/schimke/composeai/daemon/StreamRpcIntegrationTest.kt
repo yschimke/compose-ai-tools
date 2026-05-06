@@ -327,6 +327,67 @@ class StreamRpcIntegrationTest {
     teardownServer(out, received, serverThread, exitLatch)
   }
 
+  /**
+   * Regression for PR #847 reviewer P2 — `handleStreamStart` always populates `interactiveTargets`
+   * (so the v1 fallback path can route inputs), but `handleStreamStop` previously only cleared it
+   * inside `if (session != null)`. On the v1-fallback path that left a stale target entry behind,
+   * so a stale `interactive/input` after `stream/stop` would still trigger a fresh render. We
+   * assert that no `renderFinished` (and no `streamFrame`) arrives for the stale input — the
+   * routing entry must be gone.
+   */
+  @Test(timeout = 30_000)
+  fun stop_drops_routing_entry_on_v1_fallback_path() {
+    val tmp = Files.createTempDirectory("stream-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    // StreamRpcFakeHost doesn't override acquireInteractiveSession → the daemon falls
+    // back to the v1 stateless path. That's the case the bug hit.
+    val host = StreamRpcFakeHost(pngFile)
+
+    val (_, serverThread, out, received, exitLatch) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":1,"method":"stream/start","params":{"previewId":"preview-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }!!
+    val streamId = startResp["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    assertEquals(
+      "this regression test depends on the v1 fallback being exercised",
+      false,
+      startResp["result"]!!.jsonObject["heldSession"]?.jsonPrimitive?.boolean,
+    )
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"stream/stop","params":{"frameStreamId":"$streamId"}}""",
+    )
+    // Settle so the stop is processed before the stale input.
+    Thread.sleep(50)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"interactive/input","params":{
+              "frameStreamId":"$streamId","kind":"click","pixelX":1,"pixelY":1}}""",
+    )
+
+    // Without the fix, the v1-fallback path would mint a fresh hostId and emit
+    // `renderFinished` for the stale input. With the fix, `interactiveTargets` was
+    // cleared in handleStreamStop, so handleInteractiveInput drops the input on
+    // the floor.
+    val staleRender =
+      pollUntil(received, timeoutMs = 800) {
+        it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
+      }
+    assertNull(
+      "stale input after stream/stop on v1 fallback path must not trigger a fresh render",
+      staleRender,
+    )
+
+    teardownServer(out, received, serverThread, exitLatch)
+  }
+
   @Test(timeout = 30_000)
   fun start_with_blank_previewId_yields_invalid_params() {
     val tmp = Files.createTempDirectory("stream-rpc-test").toFile()
@@ -426,7 +487,7 @@ class StreamRpcIntegrationTest {
     writeFrame(
       out,
       """{"jsonrpc":"2.0","id":1000,"method":"initialize","params":{
-            "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+            "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
             "moduleId":":test","moduleProjectDir":"/tmp",
             "capabilities":{"visibility":true,"metrics":false}}}""",
     )

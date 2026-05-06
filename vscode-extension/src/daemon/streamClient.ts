@@ -117,6 +117,31 @@ function toPaintable(frame: StreamFrameParams): PaintableFrame {
 }
 
 /**
+ * Out-of-order decode guard for the canvas painter.
+ *
+ * `createImageBitmap` decodes asynchronously; under load a smaller frame N+1
+ * can resolve before a larger frame N and would otherwise paint first, then
+ * be overwritten by stale N — visible time-travel even though the queue
+ * itself is newest-wins. The painter tracks the highest `seq` already
+ * painted as a watermark and consults this helper before drawing each
+ * decoded bitmap.
+ *
+ * Returns `true` when the resolved `decodedSeq` should be painted (it's
+ * strictly newer than the watermark), `false` when it's stale. Callers are
+ * expected to bump their watermark to `decodedSeq` on a `true` result.
+ *
+ * Lives in the host-tsconfig module so the regression test can drive it
+ * without dragging the painter (and its DOM deps) into a node-runner mocha
+ * run. See PR #847 reviewer P1.
+ */
+export function shouldPaintDecodedFrame(
+    paintedSeq: number,
+    decodedSeq: number,
+): boolean {
+    return decodedSeq > paintedSeq;
+}
+
+/**
  * Multi-stream demultiplexer + raf-driven dispatcher.
  *
  * Consumers:

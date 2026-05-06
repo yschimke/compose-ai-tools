@@ -60,7 +60,7 @@ class S2DrainSemanticsRealModeTest {
 
     val client = HarnessClient.start(paths.launcher)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       // 1. renderNow + measure latency.

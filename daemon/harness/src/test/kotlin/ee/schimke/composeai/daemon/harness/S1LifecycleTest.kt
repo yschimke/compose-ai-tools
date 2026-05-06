@@ -22,7 +22,7 @@ import org.junit.Test
  *
  * 1. Generate a single PNG via `TestPatterns.solidColour(...)` into the fixture dir.
  * 2. Write `previews.json` listing one preview id.
- * 3. `initialize` → assert `protocolVersion == 1`.
+ * 3. `initialize` → assert `protocolVersion == 2`.
  * 4. `initialized` notification.
  * 5. `renderNow(["preview-1"], tier=fast)` → assert `queued == ["preview-1"]`, no rejections.
  * 6. Poll `renderStarted` → id = `preview-1`.
@@ -76,7 +76,7 @@ class S1LifecycleTest {
     try {
       // 4. initialize.
       val initResult = client.initialize()
-      assertEquals(1, initResult.protocolVersion)
+      assertEquals(2, initResult.protocolVersion)
       // The daemon's manifest is reported as a placeholder until B2.2 ships incremental discovery;
       // the field exists and previewCount is 0 in the B1.5 stub. Assert the field shape rather
       // than a specific count so the harness keeps passing once B2.2 plumbs a real value through.

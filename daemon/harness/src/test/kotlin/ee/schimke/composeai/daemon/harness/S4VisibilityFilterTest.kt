@@ -55,7 +55,7 @@ class S4VisibilityFilterTest {
 
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       // 1. Visibility hints.

@@ -64,7 +64,7 @@ class S8CostModelMetricsTest {
 
     val client = HarnessClient.start(fixtureDir = paths.fixtureDir, classpath = paths.classpath)
     try {
-      assertEquals(1, client.initialize().protocolVersion)
+      assertEquals(2, client.initialize().protocolVersion)
       client.sendInitialized()
 
       val start = System.currentTimeMillis()
