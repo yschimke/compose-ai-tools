@@ -44,6 +44,11 @@ dependencies {
   // surface — see docs/daemon/CLASSLOADER-FORENSICS.md). `testImplementation` because it's only
   // referenced by `ClassloaderForensicsTest` and shouldn't widen the renderer's main classpath.
   testImplementation(project(":daemon:core"))
+  // Integration test for `text/strings` v2 truncation fields (TextStringsTruncationTest):
+  // exercises ComposeSemanticsDataProducer.writeArtifacts + TextStringsDataProductRegistry
+  // against real Compose composables to assert each preview triggers the expected check.
+  testImplementation(project(":data-layoutinspector-connector"))
+  testImplementation(project(":data-strings-connector"))
 
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
   // they must match what the CONSUMER module declares, because AGP's
