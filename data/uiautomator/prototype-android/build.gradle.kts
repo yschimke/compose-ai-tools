@@ -13,12 +13,31 @@
 plugins {
   id("composeai.android-conventions")
   alias(libs.plugins.android.library)
+  alias(libs.plugins.compose.compiler)
   alias(libs.plugins.tapmoc)
 }
 
 android { namespace = "ee.schimke.composeai.data.uiautomator.prototype" }
 
 dependencies {
+  // Compose-side traversal walks `SemanticsNode` and dispatches actions through
+  // `SemanticsActions` lambdas. `compileOnly` for the same reason `:renderer-android` does it
+  // — the consumer's classpath supplies the actual runtime, and we don't want to pin a
+  // specific Compose version onto downstream projects. Tests use full runtime classes via
+  // `testImplementation`.
+  compileOnly(platform(libs.compose.bom.compat))
+  compileOnly(libs.compose.ui)
+  compileOnly(libs.compose.runtime)
+  compileOnly("androidx.compose.ui:ui-test-junit4")
+
   testImplementation(libs.junit)
   testImplementation(libs.robolectric)
+  testImplementation(platform(libs.compose.bom.compat))
+  testImplementation(libs.compose.ui)
+  testImplementation(libs.compose.foundation)
+  testImplementation(libs.compose.material3)
+  testImplementation(libs.compose.runtime)
+  testImplementation(libs.activity.compose)
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  testImplementation("androidx.compose.ui:ui-test-manifest")
 }
