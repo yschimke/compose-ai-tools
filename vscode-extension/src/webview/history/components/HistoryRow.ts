@@ -8,11 +8,14 @@
 // `thumbReady` message lands and `behavior.ts` writes it into the
 // store, only the rows whose entry id matches re-render.
 //
-// Selection (`.selected` class) and inline expansion (`.expanded`
-// sibling div) STAY OWNED by the host — the row exposes
-// `setSelected(bool)` for the host to toggle, and the click handlers
-// route back through the existing config callbacks. Step 2 of #858
-// migrates that state into `@state` and a reactive `expanded` slot.
+// Step 2 of #858: the row now owns its `selected` state. Shift-click
+// flips `this.selected` and dispatches `history-row-selection-change`
+// (bubbling) so the host can aggregate the (max-2) selection queue
+// without holding a separate `Set<string>`. The host can still
+// imperatively set `.selected = false` to clear the oldest selection
+// when a third row gets picked. Inline expansion (`.expanded` sibling
+// div) STAYS OWNED by the host — step 3 of #858 folds that into the
+// component.
 //
 // Light DOM: `media/history.css` rules target `.row`, `.thumb`,
 // `.meta`, etc. — keep them applying without touching CSS.
@@ -26,10 +29,11 @@ import { escapeHtml, formatAbsolute, formatRelative } from "../historyData";
 import { historyStore, type HistoryState } from "../historyStore";
 
 /** Per-row callbacks the host wires up so the row stays presentational
- *  while step-1 keeps selection/expansion logic in `behavior.ts`. */
+ *  while the inline expansion / diff overlays still live in
+ *  `historyTimeline.ts`. Selection notifications travel via the
+ *  `history-row-selection-change` CustomEvent — see
+ *  [HistoryRowSelectionChangeEvent]. */
 export interface HistoryRowCallbacks {
-    /** Shift-click: toggle membership in the (max-2) selection set. */
-    onToggleSelected(id: string, row: HistoryRow): void;
     /** Plain click: open / collapse the inline image expansion. */
     onExpand(id: string, row: HistoryRow): void;
     /** Up-arrow icon: diff against the previous entry for this preview. */
@@ -43,15 +47,36 @@ export interface HistoryRowCallbacks {
     onThumbConnected(thumbEl: HTMLElement, id: string): void;
 }
 
+/** Detail for the `history-row-selection-change` CustomEvent the row
+ *  dispatches when its `selected` state flips because of user input
+ *  (shift-click). External `.selected = ...` writes do NOT dispatch —
+ *  only the row's own click handler does, so the host can imperatively
+ *  clear an oldest selection without re-entering its own listener. */
+export interface HistoryRowSelectionChangeDetail {
+    id: string;
+    selected: boolean;
+}
+
+export type HistoryRowSelectionChangeEvent =
+    CustomEvent<HistoryRowSelectionChangeDetail>;
+
+declare global {
+    interface HTMLElementEventMap {
+        "history-row-selection-change": HistoryRowSelectionChangeEvent;
+    }
+}
+
 @customElement("history-row")
 export class HistoryRow extends LitElement {
     /** The history entry this row renders. Required — render() returns
      *  empty until set. */
     @property({ attribute: false }) entry: HistoryEntry | null = null;
 
-    /** When true the row paints with the `.selected` class — used by the
-     *  shift-click selection logic. Mirror state, not source of truth
-     *  yet (step 2 of #858 moves the source-of-truth into the row). */
+    /** Source of truth for whether the row is in the (max-2) selection
+     *  set. The row flips this itself on shift-click and dispatches
+     *  `history-row-selection-change`; the host's listener may write it
+     *  back to `false` to evict the oldest selection when a third row
+     *  is picked. External writes do NOT re-dispatch. */
     @property({ type: Boolean }) selected = false;
 
     /** Hash of the latest archived render on `main` for the currently
@@ -61,8 +86,7 @@ export class HistoryRow extends LitElement {
 
     /** Callbacks supplied by the host's `renderTimeline` so the row's
      *  click / button handlers stay routed through the existing
-     *  selection / expansion / diff plumbing. Set imperatively after
-     *  construction. */
+     *  expansion / diff plumbing. Set imperatively after construction. */
     callbacks: HistoryRowCallbacks | null = null;
 
     private readonly thumbBytes = new StoreController<
@@ -76,14 +100,6 @@ export class HistoryRow extends LitElement {
     // styles in `media/history.css` apply unchanged.
     protected createRenderRoot(): HTMLElement {
         return this;
-    }
-
-    /** Imperative setter so the host doesn't have to re-render the
-     *  whole timeline to flip selection state. Mirrors the legacy
-     *  `row.classList.add/remove("selected")` calls. */
-    setSelected(next: boolean): void {
-        if (this.selected === next) return;
-        this.selected = next;
     }
 
     protected updated(): void {
@@ -189,9 +205,22 @@ export class HistoryRow extends LitElement {
         // The action buttons stop propagation themselves — anything
         // reaching here is a click on the row body.
         const id = this.entry?.id ?? "";
-        if (!id || !this.callbacks) return;
-        if (ev.shiftKey) this.callbacks.onToggleSelected(id, this);
-        else this.callbacks.onExpand(id, this);
+        if (!id) return;
+        if (ev.shiftKey) {
+            this.selected = !this.selected;
+            this.dispatchEvent(
+                new CustomEvent<HistoryRowSelectionChangeDetail>(
+                    "history-row-selection-change",
+                    {
+                        detail: { id, selected: this.selected },
+                        bubbles: true,
+                        composed: true,
+                    },
+                ),
+            );
+        } else {
+            this.callbacks?.onExpand(id, this);
+        }
     };
 
     private readonly onDiffPrevClick = (ev: MouseEvent): void => {
