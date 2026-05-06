@@ -11,11 +11,15 @@
 // drive overlay repaints from the component itself instead of from
 // `applyA11yUpdate`.
 //
-// Step 4 still leaves the `<img>` paint and the on-image-load a11y
-// branch in `updateImage` — only the cache-change overlay refresh
-// path moves into the component. That gives us the StoreController
-// integration without disturbing the more delicate image-load
-// timing or the legend rebuild.
+// The `<img>` paint itself stays in `updateImage` (it owns the
+// `img.src` swap, the live-frame class, and the interactive-input
+// rebind). The on-image-load a11y repaint, however, lives here:
+// when a `mapsRevision` bump arrives but the `<img>` has not yet
+// resolved its `naturalWidth`, this component attaches a one-time
+// `load` listener instead of bailing. Combined with `updateImage`
+// bumping `mapsRevision` AFTER assigning the new `src`, the
+// component's StoreController fires with the right image element
+// and the load listener attaches against the new src.
 //
 // We pass `preview` as a `@property` rather than just a `previewId`
 // because `populatePreviewCard` needs the full `PreviewInfo` (function
@@ -106,9 +110,10 @@ export class PreviewCard extends LitElement {
      *    runs on every `updated()` (Lit re-renders fire the hook
      *    regardless of which property changed) so the cache-change
      *    case is covered without an explicit changedProperties guard.
-     *    The image-load case stays in `updateImage` — that path
-     *    triggers when the `<img>` becomes paintable, not when the
-     *    cache changes. */
+     *    If the `<img>` has not yet resolved natural dimensions,
+     *    `_repaintA11yOverlaysFromCache` falls back to a one-time
+     *    `load` listener so a fresh `updateImage` swap is followed by
+     *    a deferred repaint once the new bytes are decoded. */
     protected updated(changedProperties: Map<string, unknown>): void {
         if (!this._built) return;
         if (changedProperties.has("preview")) {
@@ -122,15 +127,18 @@ export class PreviewCard extends LitElement {
     }
 
     /** Re-paint the a11y findings / hierarchy overlays from the latest
-     *  per-preview store snapshot, if the `<img>` is ready to drive
-     *  the percent-of-natural math. No-op if the cache is empty for
-     *  this preview, the image hasn't loaded, or `earlyFeatures` is
-     *  off — matches the gating in `applyA11yUpdate`. The overlay
-     *  paint helpers are idempotent (they `innerHTML = ""` the layer
-     *  before re-emitting boxes), so calling this on every store fire
-     *  is safe. The legend rebuild stays in `applyA11yUpdate` — that
-     *  side effect lives next to the per-id store write and isn't
-     *  driven by `mapsRevision`. */
+     *  per-preview store snapshot. No-op if the cache is empty for
+     *  this preview or `earlyFeatures` is off — matches the gating in
+     *  `applyA11yUpdate`. If the `<img>` has resolved its natural
+     *  dimensions the paint runs immediately; if not (e.g. a fresh
+     *  `updateImage` just assigned a new `src` and decoding hasn't
+     *  finished) we attach a one-time `load` listener instead and
+     *  paint when the bytes land. The overlay paint helpers are
+     *  idempotent (they `innerHTML = ""` the layer before re-emitting
+     *  boxes), so calling this on every store fire is safe. The
+     *  legend rebuild stays in `applyA11yUpdate` — that side effect
+     *  lives next to the per-id store write and isn't driven by
+     *  `mapsRevision`. */
     private _repaintA11yOverlaysFromCache(): void {
         const preview = this.preview;
         const config = this.config;
@@ -139,15 +147,41 @@ export class PreviewCard extends LitElement {
         const img = this.querySelector<HTMLImageElement>(
             ".image-container img",
         );
-        if (!img || !img.complete || img.naturalWidth === 0) return;
+        if (!img) return;
         const state = previewStore.getState();
         const findings = state.cardA11yFindings.get(preview.id);
-        if (findings && findings.length > 0) {
-            buildA11yOverlay(this, findings, img);
-        }
         const nodes = state.cardA11yNodes.get(preview.id);
-        if (nodes && nodes.length > 0) {
-            applyHierarchyOverlay(this, nodes, img);
+        const haveFindings = !!findings && findings.length > 0;
+        const haveNodes = !!nodes && nodes.length > 0;
+        if (!haveFindings && !haveNodes) return;
+        if (img.complete && img.naturalWidth > 0) {
+            if (haveFindings) buildA11yOverlay(this, findings, img);
+            if (haveNodes) applyHierarchyOverlay(this, nodes, img);
+            return;
         }
+        // Image not yet decoded — defer to the next `load` event.
+        // `mapsRevision` may bump again before the image lands (e.g.
+        // a follow-up live frame), and Lit re-runs `updated()` on
+        // every fire, so guard against stacking listeners on the
+        // same `<img>` via a dataset flag. The handler clears the
+        // flag before painting so a later swap (new `<img>` element
+        // or a future `src` change once this one is loaded) can
+        // re-arm.
+        if (img.dataset.a11yPaintScheduled === "1") return;
+        img.dataset.a11yPaintScheduled = "1";
+        img.addEventListener(
+            "load",
+            () => {
+                delete img.dataset.a11yPaintScheduled;
+                // Re-read the cache at fire time — it may have been
+                // updated again between schedule and load.
+                const s = previewStore.getState();
+                const f = s.cardA11yFindings.get(preview.id);
+                const n = s.cardA11yNodes.get(preview.id);
+                if (f && f.length > 0) buildA11yOverlay(this, f, img);
+                if (n && n.length > 0) applyHierarchyOverlay(this, n, img);
+            },
+            { once: true },
+        );
     }
 }
