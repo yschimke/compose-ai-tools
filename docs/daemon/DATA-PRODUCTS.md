@@ -228,7 +228,7 @@ A `data/fetch` that needs a re-render:
 | `compose/recomposition` | instrumented | medium | `[{nodeId, count, sinceFrameStreamId?}]`. Heat map. Snapshot or click-delta. |
 | `compose/theme` | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed them. |
 | `resources/used` | default | low | `R.*` references resolved during render. |
-| `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds. |
+| `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds, plus per-entry `truncated` / `overflow` / `lineCount` / `maxLines` / `didOverflowWidth/Height` from the Compose `TextLayoutResult`. |
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
 | `render/composeAiTrace` | default/live | low | Render pipeline trace as Perfetto-importable Chrome trace JSON. |
 | `render/trace` | default | low | Phase breakdown from render metrics. |

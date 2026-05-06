@@ -131,7 +131,12 @@ Issue-identifying output:
         "nodeId": "7",
         "boundsInScreen": "16,10,96,34",
         "localeTag": "de-DE",
-        "fontScale": 1.0
+        "fontScale": 1.0,
+        "truncated": true,
+        "didOverflowWidth": true,
+        "lineCount": 1,
+        "maxLines": 1,
+        "overflow": "Ellipsis"
       }
     ]
   }
@@ -158,11 +163,11 @@ Issue-identifying output:
 
 Action: cite both products: `resources/used` proves the German resource was
 selected, and `text/strings` proves the German text is what was laid out in
-the 96 dp button. Open the rendered PNG to confirm visible truncation; explicit
-`truncated` / `clipBounds` fields are not exposed yet (tracked in
-compose-ai-tools#705). Ask for flexible width, wrapping, shorter localized
-copy, or an alternate compact layout. Then rerender with the same `localeTag`
-override.
+the 96 dp button. The `truncated`, `overflow`, and `didOverflowWidth/Height`
+fields on each entry confirm visible truncation directly without needing to
+inspect the PNG; pair with the rendered image when the audit needs a visual.
+Ask for flexible width, wrapping, shorter localized copy, or an alternate
+compact layout. Then rerender with the same `localeTag` override.
 
 Check:
 
@@ -295,9 +300,10 @@ Issue-identifying output:
 
 Action: ask for wrapping, a vertical layout at larger font scales, constrained
 number formatting, or `TextOverflow.Ellipsis` only when truncation is accepted
-by product. `text/strings` does not yet report overlap or truncation directly
-(tracked in compose-ai-tools#705), so confirm with the same data product and
-the rendered PNG.
+by product. `text/strings` reports per-entry `truncated` / `overflow` /
+`didOverflowWidth/Height`; for adjacent-content overlap (which is not implied
+by truncation flags), check `boundsInScreen` overlap across entries or confirm
+visually in the rendered PNG.
 
 Check:
 

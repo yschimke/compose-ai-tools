@@ -64,6 +64,12 @@ object ComposeSemanticsDataProducer {
       layoutFontSize = layout?.fontSize,
       layoutForegroundColor = layout?.foregroundColor,
       layoutBackgroundColor = layout?.backgroundColor,
+      layoutLineCount = layout?.lineCount,
+      layoutMaxLines = layout?.maxLines,
+      layoutOverflow = layout?.overflow,
+      layoutTruncated = layout?.truncated,
+      layoutDidOverflowWidth = layout?.didOverflowWidth,
+      layoutDidOverflowHeight = layout?.didOverflowHeight,
       editableText = cfg.getOrNull(SemanticsProperties.EditableText)?.text,
       inputText = cfg.getOrNull(SemanticsProperties.InputText)?.text,
       role = cfg.getOrNull(SemanticsProperties.Role)?.toString(),
@@ -118,6 +124,20 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
         ?.let { "${it}sp" }
+    val truncated = results.any { it.hasVisualOverflow }
+    val didOverflowWidth = results.any { it.didOverflowWidth }
+    val didOverflowHeight = results.any { it.didOverflowHeight }
+    val lineCount = results.sumOf { it.lineCount }.takeIf { it > 0 }
+    val maxLines =
+      results
+        .map { it.layoutInput.maxLines }
+        .filter { it != Int.MAX_VALUE && it > 0 }
+        .distinct()
+        .singleOrNull()
+    val overflow =
+      results.map { it.layoutInput.overflow.toString() }.distinct().singleOrNull()?.takeIf {
+        it.isNotBlank()
+      }
     return LayoutTextDetails(
       text = text,
       fontSize = fontSize,
@@ -125,6 +145,12 @@ object ComposeSemanticsDataProducer {
         unambiguousColor(results.flatMap { it.textColors() })?.let(::colorToWireString),
       backgroundColor =
         unambiguousColor(results.flatMap { it.backgroundColors() })?.let(::colorToWireString),
+      lineCount = lineCount,
+      maxLines = maxLines,
+      overflow = overflow,
+      truncated = truncated.takeIf { results.isNotEmpty() },
+      didOverflowWidth = didOverflowWidth.takeIf { results.isNotEmpty() },
+      didOverflowHeight = didOverflowHeight.takeIf { results.isNotEmpty() },
     )
   }
 
@@ -151,6 +177,12 @@ object ComposeSemanticsDataProducer {
     val fontSize: String?,
     val foregroundColor: String?,
     val backgroundColor: String?,
+    val lineCount: Int?,
+    val maxLines: Int?,
+    val overflow: String?,
+    val truncated: Boolean?,
+    val didOverflowWidth: Boolean?,
+    val didOverflowHeight: Boolean?,
   )
 
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =

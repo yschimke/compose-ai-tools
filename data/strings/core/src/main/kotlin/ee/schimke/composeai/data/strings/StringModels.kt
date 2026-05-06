@@ -8,7 +8,7 @@ import org.w3c.dom.Element
 
 object TextStringsProduct {
   const val KIND: String = "text/strings"
-  const val SCHEMA_VERSION: Int = 1
+  const val SCHEMA_VERSION: Int = 2
 }
 
 object I18nTranslationsProduct {
@@ -34,6 +34,12 @@ data class TextStringEntry(
   val boundsInScreen: String,
   val localeTag: String,
   val fontScale: Float,
+  val truncated: Boolean? = null,
+  val lineCount: Int? = null,
+  val maxLines: Int? = null,
+  val overflow: String? = null,
+  val didOverflowWidth: Boolean? = null,
+  val didOverflowHeight: Boolean? = null,
 )
 
 @Serializable
