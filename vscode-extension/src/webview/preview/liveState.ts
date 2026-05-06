@@ -179,14 +179,10 @@ export class LiveStateController {
         }
         this.interactivePreviewIds = plan.next;
         if (plan.turnOnTarget) {
-            const img = card.querySelector(".image-container img");
-            if (img instanceof HTMLImageElement) {
-                attachInteractiveInputHandlers(
-                    card,
-                    img,
-                    this.cfg.interactiveInputConfig,
-                );
-            }
+            attachInteractiveInputHandlers(
+                card,
+                this.cfg.interactiveInputConfig,
+            );
         }
         this.postLiveCommand(previewId, plan.turnOnTarget);
         this.applyLiveBadge();
@@ -221,14 +217,10 @@ export class LiveStateController {
         }
         this.recordingPreviewIds = plan.next;
         if (plan.turnOnTarget) {
-            const img = card.querySelector(".image-container img");
-            if (img instanceof HTMLImageElement) {
-                attachInteractiveInputHandlers(
-                    card,
-                    img,
-                    this.cfg.interactiveInputConfig,
-                );
-            }
+            attachInteractiveInputHandlers(
+                card,
+                this.cfg.interactiveInputConfig,
+            );
         }
         this.cfg.vscode.postMessage({
             command: "setRecording",
@@ -364,13 +356,6 @@ export class LiveStateController {
             });
             container.appendChild(btn);
         }
-        const img = container.querySelector("img");
-        if (img instanceof HTMLImageElement) {
-            attachInteractiveInputHandlers(
-                card,
-                img,
-                this.cfg.interactiveInputConfig,
-            );
-        }
+        attachInteractiveInputHandlers(card, this.cfg.interactiveInputConfig);
     }
 }

@@ -1,33 +1,38 @@
 // Pointer + wheel state machine for live (interactive) previews.
 //
-// Lifted verbatim from `behavior.ts` (`ensureInteractiveInputHandlers`,
-// `imagePoint`, `eventInsideElement`, `postInteractiveInput`) so the
-// pointer logic stops needing `@ts-nocheck`. Behaviour is unchanged:
-// pointer down / move / up / cancel / context-menu on the live image,
-// plus a capture-phase wheel listener on the whole card that maps
-// vertical deltas to rotary scroll. Listeners are idempotent — flagged
-// via `dataset.interactiveBound` / `dataset.interactiveWheelBound` so
-// re-attaching on subsequent `updateImage` calls doesn't stack
-// duplicates.
+// Both handler families attach to the `.preview-card` element, gated
+// per event by an `isLive` predicate, and resolve the visible render
+// surface dynamically via `liveRenderSurface(card)`:
 //
-// The handlers stay attached after a card leaves live mode. They go
-// inert because every event re-checks the `isLive` predicate — so a
-// non-live card swallows nothing. We deliberately don't tear handlers
-// down because live can be re-entered without producing a fresh `<img>`
-// (e.g. the same image element survives a single-target → re-toggle
-// cycle), and re-binding would race with in-flight pointer captures.
+//  - **Wheel** — capture-phase listener on the card. Vertical deltas
+//    over the surface forward as rotary scroll; deltas over chrome are
+//    still consumed so enthusiastic scrolling can't push the live
+//    preview out of view.
+//  - **Pointer** — bubble-phase listeners on the card. Pointerdown is
+//    only hijacked when `evt.target === surface.el`, so the stop
+//    button / focus toolbar / badges keep native click semantics. The
+//    surface resolved at pointerdown is held in `state.surface` for
+//    the lifetime of the gesture, so coords stay in a single natural-
+//    pixel space even if the painter swaps the surface mid-drag (the
+//    `<img>` ↔ `<canvas>` flip is asynchronous).
+//
+// Listeners are idempotent — flagged via
+// `dataset.interactiveWheelBound` and `dataset.interactivePointerBound`
+// so re-attaching on subsequent `updateImage` / live-toggle calls
+// doesn't stack duplicates. The handlers stay attached after a card
+// leaves live mode; they go inert because every event re-checks the
+// `isLive` predicate.
 //
 // Coordinates the daemon expects are image-natural pixel space — the
 // same space the renderer paints in. The CSS-pixel offsets the browser
-// gives us are scaled by the displayed/natural ratio in `imagePoint`.
+// gives us are scaled by the displayed/natural ratio in `surfacePoint`.
 // See docs/daemon/INTERACTIVE.md §§ 3, 6, 7.
 //
-// Streaming-mode wheel quirk: when the daemon is pushing live frames over
-// `composestream/1` the painter hides the `<img>` (display:none → 0×0
-// rect) and paints into a `<canvas class="stream-canvas">` overlay. The
-// wheel handler resolves the live render surface dynamically per event
-// via `liveRenderSurface(card)` — preferring the canvas — so rotary
-// scroll keeps reaching the daemon after the painter swap.
+// Streaming-mode rationale: the painter hides the legacy `<img>`
+// (display:none → 0×0 rect, pointer events never fire on it) and paints
+// into a `<canvas class="stream-canvas">` overlay. Both handler families
+// hang off the card (not the img) so they keep working across that
+// swap. `liveRenderSurface` prefers the canvas when present.
 
 import type { VsCodeApi } from "../shared/vscode";
 import {
@@ -93,7 +98,6 @@ export interface InteractiveInputConfig {
 
 export function attachInteractiveInputHandlers(
     card: HTMLElement,
-    img: HTMLImageElement,
     config: InteractiveInputConfig,
 ): void {
     const previewId = card.dataset.previewId;
@@ -137,8 +141,8 @@ export function attachInteractiveInputHandlers(
         );
     }
 
-    if (img.dataset.interactiveBound === "1") return;
-    img.dataset.interactiveBound = "1";
+    if (card.dataset.interactivePointerBound === "1") return;
+    card.dataset.interactivePointerBound = "1";
 
     interface PointerState {
         pointerId: number | null;
@@ -146,6 +150,13 @@ export function attachInteractiveInputHandlers(
         last: ImagePoint | null;
         dragging: boolean;
         sentDown: boolean;
+        /**
+         * Surface captured at pointerdown. Held for the lifetime of a
+         * drag so coords stay in a single natural-pixel space even if
+         * the painter swaps surfaces mid-gesture (rare but the
+         * `<img>` ↔ `<canvas>` flip is asynchronous).
+         */
+        surface: LiveSurface | null;
     }
     const state: PointerState = {
         pointerId: null,
@@ -153,27 +164,41 @@ export function attachInteractiveInputHandlers(
         last: null,
         dragging: false,
         sentDown: false,
+        surface: null,
     };
 
-    img.addEventListener("pointerdown", (evt) => {
+    card.addEventListener("pointerdown", (evt) => {
         const id = card.dataset.previewId;
         if (!id || !config.isLive(id)) return;
         if (evt.button !== 0 && evt.button !== 2) return;
+        const surface = liveRenderSurface(card);
+        // Only hijack the gesture when it starts on the live surface.
+        // Anything else (stop button, focus toolbar, badges) is chrome and
+        // must keep its native click semantics — those overlay siblings
+        // sit on top of the surface so `evt.target` is the truth.
+        if (!surface || evt.target !== surface.el) return;
+        const point = surfacePoint(surface, evt);
+        if (!point) return;
         state.pointerId = evt.pointerId;
-        state.start = imagePoint(img, evt);
-        state.last = state.start;
+        state.start = point;
+        state.last = point;
         state.dragging = false;
         state.sentDown = false;
-        img.setPointerCapture?.(evt.pointerId);
+        state.surface = surface;
+        // Capture on the card so subsequent move/up route here even when
+        // the cursor leaves the surface (or the surface gets swapped out
+        // mid-drag by the streaming painter).
+        card.setPointerCapture?.(evt.pointerId);
         evt.preventDefault();
         evt.stopPropagation();
     });
 
-    img.addEventListener("pointermove", (evt) => {
+    card.addEventListener("pointermove", (evt) => {
         const id = card.dataset.previewId;
         if (!id || !config.isLive(id)) return;
-        if (state.pointerId !== evt.pointerId || !state.start) return;
-        const next = imagePoint(img, evt);
+        if (state.pointerId !== evt.pointerId || !state.start || !state.surface)
+            return;
+        const next = surfacePoint(state.surface, evt);
         if (!next) return;
         const dx = next.clientX - state.start.clientX;
         const dy = next.clientY - state.start.clientY;
@@ -185,85 +210,92 @@ export function attachInteractiveInputHandlers(
                 postInteractiveInput(
                     config.vscode,
                     id,
-                    img,
+                    state.surface,
                     "pointerDown",
                     state.start,
                 );
                 state.sentDown = true;
             }
-            postInteractiveInput(config.vscode, id, img, "pointerMove", next);
+            postInteractiveInput(
+                config.vscode,
+                id,
+                state.surface,
+                "pointerMove",
+                next,
+            );
             state.last = next;
             evt.preventDefault();
             evt.stopPropagation();
         }
     });
 
-    img.addEventListener("pointerup", (evt) => {
+    card.addEventListener("pointerup", (evt) => {
         const id = card.dataset.previewId;
         if (!id || !config.isLive(id)) return;
-        if (state.pointerId !== evt.pointerId || !state.start) return;
-        const point = imagePoint(img, evt) || state.last || state.start;
+        if (state.pointerId !== evt.pointerId || !state.start || !state.surface)
+            return;
+        const point =
+            surfacePoint(state.surface, evt) || state.last || state.start;
         if (state.dragging) {
             if (!state.sentDown) {
                 postInteractiveInput(
                     config.vscode,
                     id,
-                    img,
+                    state.surface,
                     "pointerDown",
                     state.start,
                 );
             }
-            postInteractiveInput(config.vscode, id, img, "pointerUp", point);
+            postInteractiveInput(
+                config.vscode,
+                id,
+                state.surface,
+                "pointerUp",
+                point,
+            );
         } else {
-            postInteractiveInput(config.vscode, id, img, "click", point);
+            postInteractiveInput(
+                config.vscode,
+                id,
+                state.surface,
+                "click",
+                point,
+            );
         }
-        img.releasePointerCapture?.(evt.pointerId);
+        card.releasePointerCapture?.(evt.pointerId);
         state.pointerId = null;
         state.start = null;
         state.last = null;
         state.dragging = false;
         state.sentDown = false;
+        state.surface = null;
         evt.preventDefault();
         evt.stopPropagation();
     });
 
-    img.addEventListener("pointercancel", (evt) => {
+    card.addEventListener("pointercancel", (evt) => {
         if (state.pointerId !== evt.pointerId) return;
-        img.releasePointerCapture?.(evt.pointerId);
+        card.releasePointerCapture?.(evt.pointerId);
         state.pointerId = null;
         state.start = null;
         state.last = null;
         state.dragging = false;
         state.sentDown = false;
+        state.surface = null;
     });
 
-    img.addEventListener("contextmenu", (evt) => {
+    card.addEventListener("contextmenu", (evt) => {
         const id = card.dataset.previewId;
         if (!id || !config.isLive(id)) return;
+        const surface = liveRenderSurface(card);
+        if (!surface || evt.target !== surface.el) return;
         evt.preventDefault();
         evt.stopPropagation();
     });
 }
 
-/** DOM-bound shim around `computeImagePoint` — extracts the live `<img>`'s
- *  natural and rect dimensions and lets the pure helper do the math. */
-function imagePoint(
-    img: HTMLImageElement,
-    evt: { clientX: number; clientY: number },
-): ImagePoint | null {
-    return surfacePoint(
-        {
-            el: img,
-            naturalWidth: img.naturalWidth || 0,
-            naturalHeight: img.naturalHeight || 0,
-        },
-        evt,
-    );
-}
-
-/** Same as `imagePoint`, but for an arbitrary `LiveSurface` — used by the
- *  wheel handler so the streaming `<canvas>` is treated identically to a
- *  legacy `<img>`. */
+/** DOM-bound shim around `computeImagePoint` — extracts the surface's
+ *  bounding rect and lets the pure helper do the natural-pixel math. */
 function surfacePoint(
     surface: LiveSurface,
     evt: { clientX: number; clientY: number },
@@ -303,28 +335,20 @@ type InteractiveInputKind =
 function postInteractiveInput(
     vscode: VsCodeApi<unknown>,
     previewId: string,
-    target: LiveSurface | HTMLImageElement,
+    surface: LiveSurface,
     kind: InteractiveInputKind,
     point: ImagePoint | null,
     scrollDeltaY?: number,
 ): void {
-    const natW =
-        target instanceof HTMLImageElement
-            ? target.naturalWidth || 0
-            : target.naturalWidth;
-    const natH =
-        target instanceof HTMLImageElement
-            ? target.naturalHeight || 0
-            : target.naturalHeight;
-    if (!point || !natW || !natH) return;
+    if (!point || !surface.naturalWidth || !surface.naturalHeight) return;
     vscode.postMessage({
         command: "recordInteractiveInput",
         previewId,
         kind,
         pixelX: point.pixelX,
         pixelY: point.pixelY,
-        imageWidth: natW,
-        imageHeight: natH,
+        imageWidth: surface.naturalWidth,
+        imageHeight: surface.naturalHeight,
         scrollDeltaY,
     });
 }

@@ -531,7 +531,7 @@ export function updateImage(
     // than a sequence of independent renders. See INTERACTIVE.md § 3.
     const isLive = config.liveState.isLive(previewId);
     img.className = isLive ? "live-frame" : "fade-in";
-    attachInteractiveInputHandlers(card, img, config.interactiveInputConfig);
+    attachInteractiveInputHandlers(card, config.interactiveInputConfig);
 
     if (caps) config.frameCarousel.updateIndicator(card);
 
