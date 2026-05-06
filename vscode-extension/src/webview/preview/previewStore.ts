@@ -38,6 +38,15 @@ export interface PreviewState {
     focusedPreviewId: string | null;
 
     /**
+     * Reflects `composePreview.streaming.enabled`. When true, the LIVE
+     * button posts `requestStreamStart` instead of `setInteractive` so
+     * the new `composestream/1` painter takes over from the legacy
+     * `<img src=…>` swap. Updated at boot (initial extension seed) and
+     * on the `setStreamingEnabled` extension message.
+     */
+    streamingEnabled: boolean;
+
+    /**
      * Latest manifest from the extension's `setPreviews` message. The
      * canonical source of preview metadata that `<preview-card>` will
      * subscribe to once that component lands. Replaced (not mutated)
@@ -82,6 +91,7 @@ const initialState: PreviewState = {
     earlyFeaturesEnabled: false,
     a11yOverlayPreviewId: null,
     focusedPreviewId: null,
+    streamingEnabled: false,
     allPreviews: [],
     moduleDir: "",
     focusIndex: 0,

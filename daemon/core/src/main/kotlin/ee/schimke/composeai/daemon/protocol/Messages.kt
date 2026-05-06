@@ -1223,3 +1223,144 @@ data class RecordingEncodeResult(
   val mimeType: String,
   val sizeBytes: Long,
 )
+
+// =====================================================================
+// 5c. Live-frame streaming (`composestream/1`) — buttery follow-up to
+// `interactive/*`.
+//
+// `interactive/*` keeps the composition alive but still publishes each frame
+// as a JSON `renderFinished` carrying a re-used `pngPath` on disk. Two
+// glitches fall out of that:
+//   * the webview swaps `<img src=…>` and the browser blanks the element
+//     until the new PNG decodes — that's the "blink" on every input;
+//   * the daemon overwrites the same on-disk path every frame, so a busy
+//     webview can race a partial write and decode torn bytes.
+//
+// `stream/start` opts the same held session into a binary-framed stream:
+// frames ride on `streamFrame` notifications carrying the bytes inline (no
+// reused file path) plus a sequence number, and the client paints into a
+// canvas via `createImageBitmap` with a newest-wins queue. See
+// `docs/daemon/STREAMING.md` for the wire contract and the rationale.
+//
+// Additive on the wire (PROTOCOL.md § 7): a daemon that hasn't grown the
+// new methods rejects `stream/start` with MethodNotFound and the client
+// falls back to the existing `<img>` swap path.
+// =====================================================================
+
+@Serializable
+enum class StreamCodec {
+  /** Raw PNG bytes — same encoding the renderer already produces. The default. */
+  @SerialName("png") PNG,
+  /**
+   * WebP-lossless. Smaller than PNG (typically 30–60% smaller for UI frames) and decoded by every
+   * browser via `createImageBitmap`. Opt-in: requires an encoder on the daemon side
+   * (`StreamFrameEncoder.WebP`); pre-encoder builds advertise PNG only and downgrade silently.
+   */
+  @SerialName("webp") WEBP,
+}
+
+/**
+ * `stream/start` — opens a live frame stream against a held interactive session.
+ *
+ * The daemon allocates a fresh `frameStreamId`, opens a held session against [previewId] (same
+ * machinery `interactive/start` uses — see [InteractiveStartParams]), and emits `streamFrame`
+ * notifications on every `renderFinished` for that preview until `stream/stop` arrives.
+ *
+ * - [codec] requests an encoding. Daemons that don't support the requested codec downgrade to PNG
+ *   and report the chosen codec in [StreamStartResult.codec]; the client must inspect that field
+ *   rather than assume its requested codec is in use.
+ * - [maxFps] caps the emit rate. Bursts of `renderFinished` notifications are coalesced — the
+ *   daemon emits the most recent frame at most once per `1000 / maxFps` ms; intermediate frames are
+ *   dropped (but their `renderFinished` notifications still flow on the legacy channel for clients
+ *   that don't subscribe to streams). `null` means "no cap" (renderer-natural cadence).
+ * - [hidpi] hints the renderer to keep the source pixels at the captured density (the default).
+ *   `false` lets the encoder downscale to logical density to save bytes — useful for previews of
+ *   very high-density devices feeding a small webview.
+ */
+@Serializable
+data class StreamStartParams(
+  val previewId: String,
+  val codec: StreamCodec? = null,
+  val maxFps: Int? = null,
+  val hidpi: Boolean? = null,
+  /** Mirrors [InteractiveStartParams.inspectionMode]; `null` keeps the v2 default. */
+  val inspectionMode: Boolean? = null,
+)
+
+/**
+ * `stream/start` reply.
+ *
+ * - [frameStreamId] is the routing key for follow-up `stream/stop` / `stream/visibility` /
+ *   `interactive/input` notifications and the value of [StreamFrameParams.frameStreamId].
+ * - [codec] is the codec the daemon will actually emit — equal to or downgraded from the client's
+ *   requested [StreamStartParams.codec]. Clients pick a decoder off this field.
+ * - [heldSession] mirrors [InteractiveStartResult.heldSession]; `false` means the daemon couldn't
+ *   acquire a held composition for [StreamStartParams.previewId] and is using the v1 stateless
+ *   path. Frames still flow.
+ * - [fallbackReason] carries a human-readable string when [heldSession] is `false`.
+ */
+@Serializable
+data class StreamStartResult(
+  val frameStreamId: String,
+  val codec: StreamCodec,
+  val heldSession: Boolean,
+  val fallbackReason: String? = null,
+)
+
+@Serializable data class StreamStopParams(val frameStreamId: String)
+
+/**
+ * `stream/visibility` — fire-and-forget signal the client uses to throttle a stream when the
+ * preview card scrolls out of viewport (or the tab becomes hidden). Replaces the old "auto-stop on
+ * scroll-out" semantics: the held session stays warm, but the emit rate drops to keyframes only
+ * (`fps = 1` by convention) until visibility flips back. Cards that scroll back into view re-paint
+ * from the cached last frame immediately, then catch up — no blanking.
+ *
+ * - [visible] toggles the throttle. `true` = renderer-natural cadence (capped by the `stream/start`
+ *   `maxFps`); `false` = throttled.
+ * - [fps] overrides the throttled rate. `null` → `1.0` fps when [visible] is false; ignored when
+ *   [visible] is true.
+ */
+@Serializable
+data class StreamVisibilityParams(
+  val frameStreamId: String,
+  val visible: Boolean,
+  val fps: Int? = null,
+)
+
+/**
+ * `streamFrame` notification — one frame on a live stream. Sent by the daemon for every render that
+ * survives the per-stream dedup + visibility filters.
+ *
+ * Wire layout mirrors the binary header documented in `STREAMING.md`:
+ * - [frameStreamId] routes to the receiving stream.
+ * - [seq] is monotonic per-stream and lets the client drop late frames; sequencing is independent
+ *   per stream so multi-target streams stay independent.
+ * - [ptsMillis] is the daemon's wall-clock at frame production, suitable for client-side fps and
+ *   latency telemetry.
+ * - [codec] is the encoding of [payloadBase64]. When [codec] is omitted the frame is an `unchanged`
+ *   heartbeat — bytes-identical to the previous frame on this stream — and [payloadBase64] is null.
+ *   Sequence numbers are still consumed so clients can drive a "no-op tick" indicator without a
+ *   re-decode.
+ * - [keyframe] marks the first frame after `stream/start` or after a visibility flip; clients cache
+ *   it as the "show on scroll-back-into-view" anchor.
+ * - [final] flags the last frame the server will emit on this stream (a `stream/stop` arrived
+ *   between the render kicking off and the frame leaving the wire); clients can release decoder
+ *   state on receipt.
+ */
+@Serializable
+data class StreamFrameParams(
+  val frameStreamId: String,
+  val seq: Long,
+  val ptsMillis: Long,
+  val widthPx: Int,
+  val heightPx: Int,
+  val codec: StreamCodec? = null,
+  val keyframe: Boolean = false,
+  val final: Boolean = false,
+  /**
+   * Frame bytes encoded with [codec], base64'd into the JSON payload. Null when the frame is an
+   * `unchanged` heartbeat — see [codec].
+   */
+  val payloadBase64: String? = null,
+)

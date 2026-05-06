@@ -29,6 +29,10 @@
 // triggered after the extension or daemon has already torn the streams down,
 // and re-posting would race the flush.
 
+import {
+    liveToggleCommand,
+    liveViewportCommand,
+} from "../../daemon/liveCommand";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
@@ -47,6 +51,15 @@ export interface LiveStateConfig {
     interactiveInputConfig: InteractiveInputConfig;
     /** Whether `composePreview.earlyFeatures` is on — recording is gated on it. */
     earlyFeatures(): boolean;
+    /**
+     * Whether `composePreview.streaming.enabled` is on. When true, the
+     * controller posts `requestStreamStart` / `requestStreamStop` instead
+     * of `setInteractive` so the new `composestream/1` painter takes over
+     * from the legacy `<img src=…>` swap. Read fresh on every gesture so
+     * Settings changes take effect on the next click without a panel
+     * reload. See docs/daemon/STREAMING.md.
+     */
+    streamingEnabled(): boolean;
     /** Whether the panel is currently in focus layout. The Live / Recording
      *  toolbar buttons only act when one card is focused. */
     inFocus(): boolean;
@@ -70,6 +83,19 @@ export class LiveStateController {
     private recordingPreviewIds: Set<string> = new Set<string>();
 
     constructor(private readonly cfg: LiveStateConfig) {}
+
+    /**
+     * Posts the live-mode wire command for [previewId] — routes through
+     * [liveToggleCommand] which picks `requestStreamStart` /
+     * `requestStreamStop` when the streaming opt-in is on, and falls back
+     * to the legacy `setInteractive` otherwise. Single choke point so
+     * every per-card / toolbar / focus-mode entry point shares one rule.
+     */
+    private postLiveCommand(previewId: string, enabled: boolean): void {
+        this.cfg.vscode.postMessage(
+            liveToggleCommand(previewId, enabled, this.cfg.streamingEnabled()),
+        );
+    }
 
     isLive(previewId: string): boolean {
         return this.interactivePreviewIds.has(previewId);
@@ -113,11 +139,7 @@ export class LiveStateController {
         const ids = Array.from(this.interactivePreviewIds);
         this.interactivePreviewIds.clear();
         ids.forEach((previewId) => {
-            this.cfg.vscode.postMessage({
-                command: "setInteractive",
-                previewId,
-                enabled: false,
-            });
+            this.postLiveCommand(previewId, false);
         });
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
@@ -128,11 +150,7 @@ export class LiveStateController {
         const previewId = card.dataset.previewId;
         if (!previewId || !this.interactivePreviewIds.has(previewId)) return;
         this.interactivePreviewIds.delete(previewId);
-        this.cfg.vscode.postMessage({
-            command: "setInteractive",
-            previewId,
-            enabled: false,
-        });
+        this.postLiveCommand(previewId, false);
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
     }
@@ -162,11 +180,7 @@ export class LiveStateController {
             shift,
         );
         for (const prior of plan.deactivate) {
-            this.cfg.vscode.postMessage({
-                command: "setInteractive",
-                previewId: prior,
-                enabled: false,
-            });
+            this.postLiveCommand(prior, false);
         }
         this.interactivePreviewIds = plan.next;
         if (plan.turnOnTarget) {
@@ -179,11 +193,7 @@ export class LiveStateController {
                 );
             }
         }
-        this.cfg.vscode.postMessage({
-            command: "setInteractive",
-            previewId,
-            enabled: plan.turnOnTarget,
-        });
+        this.postLiveCommand(previewId, plan.turnOnTarget);
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
         this.cfg.renderInspector(card);
@@ -247,25 +257,33 @@ export class LiveStateController {
         const lone = this.interactivePreviewIds.values().next().value;
         if (lone === undefined) return;
         if (focusedCard && focusedCard.dataset.previewId === lone) return;
-        this.cfg.vscode.postMessage({
-            command: "setInteractive",
-            previewId: lone,
-            enabled: false,
-        });
+        this.postLiveCommand(lone, false);
         this.interactivePreviewIds.clear();
         this.applyLiveBadge();
     }
 
-    /** Viewport callback — auto-stop a live stream once its card has scrolled
-     *  fully out of view. */
+    /**
+     * Viewport callback — auto-stop a live stream once its card has scrolled
+     * fully out of view.
+     *
+     * Under streaming mode the daemon supports a softer "throttle to
+     * keyframes-only" mode (`stream/visibility`) that keeps the held session
+     * warm so scroll-back-into-view repaints from the cached anchor instead
+     * of cold-blanking. We post that as `requestStreamVisibility` rather
+     * than tearing the stream down — the legacy path keeps the hard stop.
+     */
     onCardLeftViewport(previewId: string): void {
         if (!this.interactivePreviewIds.has(previewId)) return;
+        const streaming = this.cfg.streamingEnabled();
+        const cmd = liveViewportCommand(previewId, false, streaming);
+        this.cfg.vscode.postMessage(cmd);
+        if (cmd.command === "requestStreamVisibility") {
+            // Streaming path keeps the held session warm; the local
+            // `interactivePreviewIds` set still says "this card is live"
+            // so the LIVE badge survives the throttle.
+            return;
+        }
         this.interactivePreviewIds.delete(previewId);
-        this.cfg.vscode.postMessage({
-            command: "setInteractive",
-            previewId,
-            enabled: false,
-        });
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
     }

@@ -28,6 +28,10 @@ import { captureLabel, withDataProductCaptures } from "./captureLabels";
 import { DaemonGate } from "./daemon/daemonGate";
 import { DataProductAttachment } from "./daemon/daemonProtocol";
 import {
+    STREAMING_ENABLED_SETTING,
+    streamingEnabled,
+} from "./daemon/streamingSetting";
+import {
     A11Y_OVERLAY_KINDS,
     DaemonScheduler,
     WarmState,
@@ -526,6 +530,37 @@ export async function activate(
                 // asks for a diff from the focused preview.
                 void params;
             },
+            onStreamFrame: (_moduleId, params) => {
+                // `composestream/1` — daemon emitted a frame on a live stream. Look up the
+                // owning previewId by frameStreamId; drop frames whose stream id we never
+                // minted (idempotent on a stale stream from a previous daemon lifetime).
+                const previewId = streamFrameIdToPreviewId.get(
+                    params.frameStreamId,
+                );
+                if (!previewId) {
+                    return;
+                }
+                if (!panel) {
+                    return;
+                }
+                panel.postMessage({
+                    command: "streamFrame",
+                    previewId,
+                    frameStreamId: params.frameStreamId,
+                    seq: params.seq,
+                    ptsMillis: params.ptsMillis,
+                    widthPx: params.widthPx,
+                    heightPx: params.heightPx,
+                    codec: params.codec,
+                    keyframe: params.keyframe,
+                    final: params.final,
+                    payloadBase64: params.payloadBase64,
+                });
+                if (params.final === true) {
+                    streamFrameIdToPreviewId.delete(params.frameStreamId);
+                    activeStreamFrameStreams.delete(previewId);
+                }
+            },
             onChannelClosed: (moduleId) => {
                 clearDaemonShownPreviewWarmScopes(moduleId);
                 // Daemon's stdio channel closed (process exit, classpath dirty,
@@ -544,6 +579,18 @@ export async function activate(
                 }
                 for (const previewId of stale) {
                     activeInteractiveStreams.delete(previewId);
+                }
+                // Same hygiene for `composestream/1` streams — frameStreamIds don't survive
+                // a daemon respawn either, so a `requestStreamStop` against a stale id would
+                // be a wasted notification at best, mis-routed at worst.
+                for (const previewId of [...activeStreamFrameStreams.keys()]) {
+                    if (previewModuleMap.get(previewId) !== moduleId) {
+                        continue;
+                    }
+                    const sid = activeStreamFrameStreams.get(previewId);
+                    activeStreamFrameStreams.delete(previewId);
+                    if (sid) streamFrameIdToPreviewId.delete(sid);
+                    panel?.postMessage({ command: "streamStopped", previewId });
                 }
                 for (const previewId of [...activeRecordingSessions.keys()]) {
                     if (previewModuleMap.get(previewId) === moduleId) {
@@ -601,8 +648,12 @@ export async function activate(
               handleWebviewMessage(msg);
           }
         : handleWebviewMessage;
-    panel = new PreviewPanel(context.extensionUri, onMessage, () =>
-        earlyFeaturesEnabled(),
+    panel = new PreviewPanel(
+        context.extensionUri,
+        onMessage,
+        () => earlyFeaturesEnabled(),
+        undefined,
+        () => streamingEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -886,6 +937,12 @@ export async function activate(
                 panel?.postMessage({
                     command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),
+                });
+            }
+            if (event.affectsConfiguration(STREAMING_ENABLED_SETTING)) {
+                panel?.postMessage({
+                    command: "setStreamingEnabled",
+                    enabled: streamingEnabled(),
                 });
             }
         }),
@@ -3228,6 +3285,19 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case "setInteractive":
             queueInteractiveMutation(msg.previewId, msg.enabled);
             break;
+        case "requestStreamStart":
+            void handleRequestStreamStart(msg.previewId);
+            break;
+        case "requestStreamStop":
+            void handleRequestStreamStop(msg.previewId);
+            break;
+        case "requestStreamVisibility":
+            void handleRequestStreamVisibility(
+                msg.previewId,
+                msg.visible,
+                msg.fps,
+            );
+            break;
         case "setRecording":
             if (earlyFeaturesEnabled()) {
                 queueRecordingMutation(
@@ -4092,6 +4162,120 @@ async function handleSetInteractive(
 }
 
 /**
+ * `composestream/1` — entry/exit handler for the new live-frame surface. Calls
+ * `stream/start` on the daemon, posts a `streamStarted` to the webview so the
+ * card swaps in its `<canvas>` painter, and stashes the resulting frameStreamId
+ * for input forwarding. Exit calls `stream/stop` (notification) and posts
+ * `streamStopped` so the webview reverts to the legacy `<img>`.
+ *
+ * Distinct from [handleSetInteractive] so both can coexist while the new path
+ * is opt-in via `composePreview.streaming.enabled`. The wire-level
+ * `interactive/input` is shared — input dispatch routes by the active
+ * frameStreamId regardless of which handler minted it.
+ */
+async function handleRequestStreamStart(previewId: string): Promise<void> {
+    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+        return;
+    }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) {
+        logLine(
+            `[stream] no module for ${previewId}; ignoring requestStreamStart`,
+        );
+        return;
+    }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
+    );
+    if (!client) {
+        panel?.postMessage({
+            command: "setInteractiveAvailability",
+            moduleId,
+            ready: false,
+            interactiveSupported: false,
+        });
+        return;
+    }
+    try {
+        const result = await client.streamStart({ previewId });
+        activeStreamFrameStreams.set(previewId, result.frameStreamId);
+        streamFrameIdToPreviewId.set(result.frameStreamId, previewId);
+        // Reuse the interactive-streams map so the existing input-forwarding
+        // path (recordInteractiveInput) finds the streamId — `stream/start`
+        // routes inputs through the same `interactive/input` channel.
+        activeInteractiveStreams.set(previewId, result.frameStreamId);
+        updateInteractiveStatus();
+        panel?.postMessage({
+            command: "streamStarted",
+            previewId,
+            frameStreamId: result.frameStreamId,
+            codec: result.codec,
+            heldSession: result.heldSession,
+        });
+        logLine(
+            `[stream] started for ${previewId} (module=${moduleId}, ` +
+                `streamId=${result.frameStreamId}, codec=${result.codec}, ` +
+                `heldSession=${result.heldSession})`,
+        );
+        await daemonScheduler.setFocus(moduleId, [previewId]);
+    } catch (err) {
+        // MethodNotFound on older daemons → silent fallback. The webview
+        // already toggled the card into LIVE optimistically; revert it.
+        logLine(
+            `[stream] start failed for ${previewId}: ${(err as Error).message}; ` +
+                `falling back to legacy interactive path`,
+        );
+        panel?.postMessage({ command: "streamStopped", previewId });
+        // Best-effort fallback to the existing interactive path so the user
+        // still gets live updates — just via the legacy `<img>` swap.
+        await handleSetInteractive(previewId, true);
+    }
+}
+
+async function handleRequestStreamStop(previewId: string): Promise<void> {
+    const sid = activeStreamFrameStreams.get(previewId);
+    if (!sid) {
+        return;
+    }
+    activeStreamFrameStreams.delete(previewId);
+    streamFrameIdToPreviewId.delete(sid);
+    activeInteractiveStreams.delete(previewId);
+    updateInteractiveStatus();
+    const moduleId = previewModuleMap.get(previewId);
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !moduleId) {
+        return;
+    }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
+    );
+    client?.streamStop({ frameStreamId: sid });
+    panel?.postMessage({ command: "streamStopped", previewId });
+    logLine(`[stream] stopped for ${previewId} (streamId=${sid})`);
+}
+
+async function handleRequestStreamVisibility(
+    previewId: string,
+    visible: boolean,
+    fps: number | undefined,
+): Promise<void> {
+    const sid = activeStreamFrameStreams.get(previewId);
+    if (!sid) {
+        return;
+    }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!daemonGate?.isEnabled() || !daemonScheduler || !moduleId) {
+        return;
+    }
+    const client = await daemonGate?.getOrSpawn(
+        moduleId,
+        daemonScheduler.daemonEvents(moduleId),
+    );
+    client?.streamVisibility({ frameStreamId: sid, visible, fps });
+}
+
+/**
  * previewId → frameStreamId for currently-active interactive streams. Populated by
  * [handleSetInteractive] on enter, cleared on exit. Click forwarding consults this
  * to look up the stream id the daemon expects on `interactive/input` notifications;
@@ -4099,6 +4283,21 @@ async function handleSetInteractive(
  * (MethodNotFound), or has already been stopped" — drop the click.
  */
 const activeInteractiveStreams = new Map<string, string>();
+
+/**
+ * `composestream/1` — previewId → frameStreamId for currently-active live-frame
+ * streams (the new wire path). Populated by [handleRequestStreamStart] on enter,
+ * cleared on exit. Distinct from [activeInteractiveStreams] so both surfaces can
+ * coexist while the new path is opt-in via `composePreview.streaming.enabled`;
+ * a single previewId is in at most one map at a time.
+ *
+ * Frame routing reads this map: every `streamFrame` notification with a known
+ * frameStreamId gets posted into the webview as a `streamFrame` message. Stream
+ * ids the extension never minted are dropped silently — same idempotent shape as
+ * `interactive/stop` follow-up notifications.
+ */
+const activeStreamFrameStreams = new Map<string, string>();
+const streamFrameIdToPreviewId = new Map<string, string>();
 
 const activeRecordingSessions = new Map<string, string>();
 

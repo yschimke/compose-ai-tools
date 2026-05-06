@@ -10,6 +10,7 @@ import {
     HistoryAddedParams,
     RenderFinishedParams,
     RenderTier,
+    StreamFrameParams,
 } from "./daemonProtocol";
 
 export type WarmProgress = (state: WarmState) => void;
@@ -66,6 +67,14 @@ export interface SchedulerEvents {
     /** Phase H2 — daemon archived a render. Forwarded to the History
      *  panel; optional because the panel may not exist in test mode. */
     onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
+    /**
+     * `composestream/1` — daemon emitted a live frame. The scheduler
+     * forwards it untouched; `extension.ts` routes it to the matching
+     * webview via `postMessage`. Optional because most daemons / tests
+     * never see one (no client subscribed via `stream/start`). See
+     * docs/daemon/STREAMING.md.
+     */
+    onStreamFrame?: (moduleId: string, params: StreamFrameParams) => void;
     /**
      * The daemon's stdio channel closed (process exit, classpath dirty,
      * spawn died). Subscribers use this to drop module-scoped state that
@@ -468,6 +477,9 @@ export class DaemonScheduler {
             },
             onHistoryAdded: (params: HistoryAddedParams) => {
                 this.events.onHistoryAdded?.(moduleId, params);
+            },
+            onStreamFrame: (params: StreamFrameParams) => {
+                this.events.onStreamFrame?.(moduleId, params);
             },
             onChannelClosed: () => {
                 // Daemon died; clear caches so the next call re-issues them

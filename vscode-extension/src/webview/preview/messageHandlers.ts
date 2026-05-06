@@ -46,6 +46,7 @@ import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
+import { StreamingPainter } from "./streamingPainter";
 
 /** Every dependency a message handler can reach for. Built once in
  *  `behavior.ts` and held by-reference for the lifetime of the panel. */
@@ -61,6 +62,8 @@ export interface PreviewMessageContext {
     staleBadge: StaleBadgeController;
     loadingOverlay: LoadingOverlay;
     diffOverlayConfig: DiffOverlayConfig;
+    /** Painter for `composestream/1` live frames — see streamingPainter.ts. */
+    streamingPainter: StreamingPainter;
 
     /** Per-preview carousel runtime state — imageData / errorMessage per
      *  capture. Populated from `setPreviews` / `updateImage` / `setImageError`
@@ -175,6 +178,38 @@ export function handleExtensionMessage(
             return handlePreviewMainRefChanged(ctx);
         case "setEarlyFeatures":
             return handleSetEarlyFeatures(msg, ctx);
+        case "setStreamingEnabled":
+            previewStore.setState({ streamingEnabled: !!msg.enabled });
+            return;
+        case "streamStarted": {
+            const card = document.getElementById(
+                "preview-" + sanitizeId(msg.previewId),
+            );
+            if (card) {
+                ctx.streamingPainter.attach(
+                    card as HTMLElement,
+                    msg.previewId,
+                    msg.frameStreamId,
+                );
+            }
+            return;
+        }
+        case "streamFrame":
+            ctx.streamingPainter.onFrame({
+                frameStreamId: msg.frameStreamId,
+                seq: msg.seq,
+                ptsMillis: msg.ptsMillis,
+                widthPx: msg.widthPx,
+                heightPx: msg.heightPx,
+                codec: msg.codec,
+                keyframe: msg.keyframe ?? false,
+                final: msg.final ?? false,
+                payloadBase64: msg.payloadBase64,
+            });
+            return;
+        case "streamStopped":
+            ctx.streamingPainter.detach(msg.previewId);
+            return;
         case "showMessage":
         case "setProgress":
         case "clearProgress":

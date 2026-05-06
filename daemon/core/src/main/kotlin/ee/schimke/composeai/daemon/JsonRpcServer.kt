@@ -55,6 +55,9 @@ import ee.schimke.composeai.daemon.protocol.RenderStartedParams
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.daemon.protocol.StreamStartParams
+import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.daemon.protocol.UiMode
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
@@ -394,6 +397,25 @@ class JsonRpcServer(
 
   private val nextStreamIdCounter = java.util.concurrent.atomic.AtomicLong(1)
 
+  /**
+   * Live-frame streaming registry — keyed by `frameStreamId`, tracks per-stream codec / fps gate /
+   * visibility / dedup. Populated by `stream/start`, drained by `stream/stop`. See
+   * `docs/daemon/STREAMING.md` and [FrameStreamRegistry] for the full state machine.
+   *
+   * Streams are layered on top of held interactive sessions: `stream/start` acquires a session via
+   * the same `host.acquireInteractiveSession` path `interactive/start` uses, so the same
+   * `interactive/input` notifications drive frame production. The streaming layer is a *consumer*
+   * of `renderFinished` — it does not gate the existing renderFinished notification.
+   */
+  private val streamRegistry = FrameStreamRegistry()
+
+  /**
+   * Held interactive sessions allocated specifically through `stream/start`. Distinct from
+   * [interactiveSessions] so a `stream/stop` doesn't tear down a session a concurrent
+   * `interactive/start` is also using; each surface owns its own lifecycle.
+   */
+  private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
+
   // ----------------------------------------------------------------------
   // Recording (scripted screen-record) state — see docs/daemon/RECORDING.md.
   //
@@ -579,6 +601,7 @@ class JsonRpcServer(
       "extensions/enable" -> handleExtensionsEnable(req)
       "extensions/disable" -> handleExtensionsDisable(req)
       "interactive/start" -> handleInteractiveStart(req)
+      "stream/start" -> handleStreamStart(req)
       "recording/start" -> handleRecordingStart(req)
       "recording/stop" -> handleRecordingStop(req)
       "recording/encode" -> handleRecordingEncode(req)
@@ -1006,6 +1029,24 @@ class JsonRpcServer(
       frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
     val outboundFinished = if (isUnchanged) finished.copy(unchanged = true) else finished
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), outboundFinished))
+    // Live-frame streaming (`composestream/1`). The streaming layer is a *consumer* of the
+    // renderFinished above, not a replacement for it: legacy clients keep painting via
+    // `<img src=…>` from `pngPath`; new clients subscribe with `stream/start` and get
+    // sequenced binary-bytes notifications instead. See docs/daemon/STREAMING.md for the
+    // wire contract and the rationale for landing this on top of `interactive/*`.
+    if (streamRegistry.hasStreamsFor(previewId)) {
+      val frames =
+        streamRegistry.consumeForPreview(
+          previewId = previewId,
+          pngPath = result.pngPath,
+          pngHash = frameHash,
+          widthPx = 0,
+          heightPx = 0,
+        )
+      for (frame in frames) {
+        sendNotification("streamFrame", encode(StreamFrameParams.serializer(), frame))
+      }
+    }
     if (firstRenderFinishedSeen.compareAndSet(false, true)) {
       StartupTimings.mark("first renderFinished sent")
       StartupTimings.summary()
@@ -2040,6 +2081,148 @@ class JsonRpcServer(
     )
   }
 
+  // --------------------------------------------------------------------------
+  // Live-frame streaming — `stream/start` / `stream/stop` / `stream/visibility`.
+  // See docs/daemon/STREAMING.md and [FrameStreamRegistry].
+  //
+  // `stream/start` opens a held interactive session (same path `interactive/start` uses), then
+  // registers a frame-stream subscriber. From there, every `renderFinished` for the target
+  // preview also pushes a `streamFrame` notification carrying the frame bytes inline. The
+  // stream surface is layered on top of the existing held-session surface so a client can
+  // mix `interactive/input` with `stream/*` cleanly — inputs route by `frameStreamId` against
+  // either map.
+  // --------------------------------------------------------------------------
+
+  private fun handleStreamStart(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, StreamStartParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid stream/start params: ${e.message}",
+        )
+        return
+      }
+    if (params.previewId.isBlank()) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "stream/start: previewId is blank",
+      )
+      return
+    }
+    if (params.maxFps != null && params.maxFps <= 0) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "stream/start: maxFps must be positive when set, got ${params.maxFps}",
+      )
+      return
+    }
+    val streamId = streamRegistry.mintStreamId()
+    var fallbackReason: String? = null
+    val session: InteractiveSession? =
+      try {
+        val classLoader =
+          host.userClassloaderHolder?.currentChildLoader()
+            ?: this::class.java.classLoader
+            ?: ClassLoader.getSystemClassLoader()
+        host.acquireInteractiveSession(params.previewId, classLoader, params.inspectionMode)
+      } catch (t: UnsupportedOperationException) {
+        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
+        null
+      } catch (t: Throwable) {
+        // Same policy as interactive/start: if the host claims to support held sessions but
+        // failed, surface as an internal error. Otherwise fall back to v1 stateless renders.
+        if (host.supportsInteractive) {
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_INTERNAL,
+            message =
+              "stream/start: host advertises held sessions but failed to acquire one for " +
+                "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}",
+          )
+          return
+        }
+        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
+        null
+      }
+    val codec = streamRegistry.negotiateCodec(params.codec)
+    streamRegistry.register(
+      frameStreamId = streamId,
+      previewId = params.previewId,
+      codec = codec,
+      maxFps = params.maxFps,
+    )
+    // Always register in `interactiveTargets` so `interactive/input` notifications carrying this
+    // streamId route to the right preview — the v1 fallback path (no held session) still needs
+    // the target entry to know which preview to re-render. The session map and frame-loop are
+    // only populated when v2 actually allocated a held session.
+    interactiveTargets[streamId] =
+      InteractiveTarget(previewId = params.previewId, frameStreamId = streamId)
+    if (session != null) {
+      streamSessions[streamId] = session
+      interactiveSessions[streamId] = session
+      startInteractiveFrameLoop(streamId, params.previewId, session)
+    }
+    // Wipe the per-preview dedup hash so the first stream frame always carries pixels (and is
+    // marked as a keyframe by the registry). Mirrors the same wipe `interactive/start` does at
+    // line 1910 — without it, a stream that re-attaches to an already-rendered preview would
+    // see an `unchanged` heartbeat as its first frame.
+    lastFrameHashes.remove(params.previewId)
+    sendResponse(
+      req.id,
+      encode(
+        StreamStartResult.serializer(),
+        StreamStartResult(
+          frameStreamId = streamId,
+          codec = codec,
+          heldSession = session != null,
+          fallbackReason = fallbackReason,
+        ),
+      ),
+    )
+  }
+
+  private fun handleStreamStop(params: ee.schimke.composeai.daemon.protocol.StreamStopParams) {
+    // Idempotent — a stop on an unknown stream id is a no-op. Match interactive/stop semantics
+    // so a client racing visibility/stop sees the same shape across surfaces.
+    val finalFrame = streamRegistry.finalFrameOnStop(params.frameStreamId)
+    streamRegistry.unregister(params.frameStreamId)
+    val session = streamSessions.remove(params.frameStreamId)
+    if (session != null) {
+      // The session was also registered in the interactive maps (see handleStreamStart) so input
+      // routing worked. Tear those down too, mirroring `interactive/stop`'s teardown order so a
+      // stream/stop is wire-equivalent to an interactive/stop on the same id.
+      interactiveTargets.remove(params.frameStreamId)
+      stopInteractiveFrameLoop(params.frameStreamId)
+      interactiveSessions.remove(params.frameStreamId)
+      try {
+        session.close()
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: stream/stop: session.close() threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+        )
+      }
+    }
+    if (finalFrame != null) {
+      sendNotification("streamFrame", encode(StreamFrameParams.serializer(), finalFrame))
+    }
+  }
+
+  private fun handleStreamVisibility(
+    params: ee.schimke.composeai.daemon.protocol.StreamVisibilityParams
+  ) {
+    streamRegistry.setVisibility(
+      frameStreamId = params.frameStreamId,
+      visible = params.visible,
+      fps = params.fps,
+    )
+  }
+
   private fun handleInteractiveStop(
     params: ee.schimke.composeai.daemon.protocol.InteractiveStopParams
   ) {
@@ -2500,6 +2683,14 @@ class JsonRpcServer(
       "interactive/input" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveInputParams.serializer(), n) {
           handleInteractiveInput(it)
+        }
+      "stream/stop" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.StreamStopParams.serializer(), n) {
+          handleStreamStop(it)
+        }
+      "stream/visibility" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.StreamVisibilityParams.serializer(), n) {
+          handleStreamVisibility(it)
         }
       "recording/script" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.RecordingScriptParams.serializer(), n) {

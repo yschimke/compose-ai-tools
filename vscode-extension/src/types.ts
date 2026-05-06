@@ -526,6 +526,50 @@ export type ExtensionToWebview =
      */
     | { command: "clearInteractive"; previewId?: string }
     | { command: "clearRecording"; previewId?: string }
+    /**
+     * `composestream/1` — daemon emitted a frame on a live stream. The
+     * webview's StreamClient consumes these with a newest-wins queue and
+     * paints into the card's `<canvas>` via `createImageBitmap`. Sent at
+     * up to the per-stream fps cap; absent fields (`codec`, `payloadBase64`)
+     * mean "unchanged-heartbeat — bytes-identical to the prior frame on
+     * this stream." See docs/daemon/STREAMING.md.
+     */
+    | {
+          command: "streamFrame";
+          previewId: string;
+          frameStreamId: string;
+          seq: number;
+          ptsMillis: number;
+          widthPx: number;
+          heightPx: number;
+          codec?: "png" | "webp";
+          keyframe?: boolean;
+          final?: boolean;
+          payloadBase64?: string;
+      }
+    /**
+     * `composestream/1` — `stream/start` succeeded. The webview swaps the
+     * card's `<img>` for a `<canvas>` and registers a StreamClient sink.
+     * `heldSession=false` signals the daemon fell back to v1 stateless
+     * dispatch — frames will still arrive but state won't survive across
+     * inputs.
+     */
+    | {
+          command: "streamStarted";
+          previewId: string;
+          frameStreamId: string;
+          codec: "png" | "webp";
+          heldSession: boolean;
+      }
+    | { command: "streamStopped"; previewId: string }
+    /**
+     * Toggle the `composestream/1` opt-in at runtime — fired when the user
+     * flips `composePreview.streaming.enabled` in Settings without reloading
+     * the panel. The webview's LIVE-button handler reads the latest value
+     * before deciding whether to post `requestStreamStart` or
+     * `setInteractive`.
+     */
+    | { command: "setStreamingEnabled"; enabled: boolean }
     | { command: "setEarlyFeatures"; enabled: boolean };
 
 /** Messages from webview to extension */
@@ -645,6 +689,28 @@ export type WebviewToExtension =
      * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
      */
     | { command: "setInteractive"; previewId: string; enabled: boolean }
+    /**
+     * `composestream/1` — open a live frame stream for [previewId]. The
+     * extension acquires a held interactive session and pumps `streamFrame`
+     * notifications down to the webview, where the canvas painter consumes
+     * them with a newest-wins queue. Symmetric to `setInteractive` but
+     * routed through the binary-bytes streaming path; gated behind
+     * `composePreview.streaming.enabled`. See docs/daemon/STREAMING.md.
+     */
+    | { command: "requestStreamStart"; previewId: string }
+    | { command: "requestStreamStop"; previewId: string }
+    /**
+     * Webview reports the live card scrolled into / out of viewport. The
+     * extension forwards this as a `stream/visibility` notification so the
+     * daemon can downshift to keyframes-only without tearing the held
+     * session down — replaces the legacy "auto-stop on scroll-out".
+     */
+    | {
+          command: "requestStreamVisibility";
+          previewId: string;
+          visible: boolean;
+          fps?: number;
+      }
     | {
           command: "setRecording";
           previewId: string;

@@ -54,6 +54,7 @@ import {
 } from "./messageHandlers";
 import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
+import { StreamingPainter } from "./streamingPainter";
 import { ViewportTracker } from "./viewportTracker";
 
 /** Persisted webview state stored via `vscode.setState` / `getState`. Survives
@@ -67,6 +68,7 @@ interface PersistedState {
 
 export function setupPreviewBehavior(
     initialEarlyFeaturesEnabled: boolean,
+    initialStreamingEnabled: boolean = false,
 ): void {
     const vscode = getVsCodeApi<PersistedState>();
     const state: PersistedState = vscode.getState() ?? { filters: {} };
@@ -76,9 +78,13 @@ export function setupPreviewBehavior(
     // terseness; writes go straight to `previewStore.setState`.
     previewStore.setState({
         earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
+        streamingEnabled: initialStreamingEnabled,
     });
     const earlyFeatures = (): boolean =>
         previewStore.getState().earlyFeaturesEnabled;
+    const streamingEnabled = (): boolean =>
+        previewStore.getState().streamingEnabled;
+    const streamingPainter = new StreamingPainter();
 
     const grid = requireElementById<PreviewGrid>("preview-grid");
     const focusInspector = requireElementById<HTMLElement>("focus-inspector");
@@ -265,6 +271,7 @@ export function setupPreviewBehavior(
         recordingFormat,
         interactiveInputConfig,
         earlyFeatures,
+        streamingEnabled,
         inFocus: () => focusController.inFocus(),
         focusedCard: () => focusController.focusedCard(),
         applyInteractiveButtonState: () =>
@@ -495,6 +502,7 @@ export function setupPreviewBehavior(
         staleBadge,
         loadingOverlay,
         diffOverlayConfig,
+        streamingPainter,
         cardCaptures,
         cardA11yFindings,
         cardA11yNodes,
