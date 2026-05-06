@@ -23,6 +23,7 @@ import {
     buildA11yOverlay,
     ensureHierarchyOverlay,
 } from "./a11yOverlay";
+import { buildPreviewCard } from "./cardBuilder";
 import {
     buildTooltip,
     buildVariantLabel,
@@ -689,159 +690,26 @@ export function setupPreviewBehavior(
     // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
     // when only `fnOptions` / `grpOptions` change.
 
+    // Initial card construction lives in `./cardBuilder.ts` — see
+    // `buildPreviewCard`. The dynamic update paths (`updateCardMetadata`,
+    // `updateImage`, `applyA11yUpdate`) still live here for now and patch
+    // the card in place via `document.getElementById`. The eventual
+    // `<preview-card>` Lit component will fold both into a single reactive
+    // `render()`.
+    const cardBuilderConfig = {
+        vscode,
+        cardCaptures,
+        staleBadge,
+        frameCarousel,
+        liveState,
+        earlyFeatures,
+        inFocus: () => filterToolbar.getLayoutValue() === "focus",
+        enterFocus: focusOnCard,
+        exitFocus,
+        observeForViewport: observeCardForViewport,
+    };
     function createCard(p: PreviewInfo): HTMLElement {
-        const animated = isAnimatedPreview(p);
-        const captures = p.captures;
-
-        const card = document.createElement("div");
-        card.className = "preview-card" + (animated ? " animated-card" : "");
-        card.id = "preview-" + sanitizeId(p.id);
-        card.setAttribute("role", "listitem");
-        card.dataset.function = p.functionName;
-        card.dataset.group = p.params.group || "";
-        card.dataset.previewId = p.id;
-        card.dataset.className = p.className;
-        card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
-        card.dataset.currentIndex = "0";
-        cardCaptures.set(
-            p.id,
-            captures.map(
-                (c): CapturePresentation => ({
-                    label: c.label || "",
-                    renderOutput: c.renderOutput || "",
-                    imageData: null,
-                    errorMessage: null,
-                    renderError: null,
-                }),
-            ),
-        );
-
-        const header = document.createElement("div");
-        header.className = "card-header";
-
-        const titleRow = document.createElement("div");
-        titleRow.className = "card-title-row";
-
-        const title = document.createElement("button");
-        title.className = "card-title";
-        title.textContent =
-            p.functionName + (p.params.name ? " — " + p.params.name : "");
-        title.title = buildTooltip(p);
-        title.addEventListener("click", () => {
-            vscode.postMessage({
-                command: "openFile",
-                className: p.className,
-                functionName: p.functionName,
-            });
-        });
-        titleRow.appendChild(title);
-
-        if (animated) {
-            // Inline marker so the title row telegraphs "this one has
-            // multiple captures"; the carousel strip under the image is
-            // the interactive surface.
-            const icon = document.createElement("i");
-            icon.className = "codicon codicon-play-circle animation-icon";
-            icon.title = captures.length + " captures";
-            icon.setAttribute(
-                "aria-label",
-                "Animated preview (" + captures.length + " captures)",
-            );
-            titleRow.appendChild(icon);
-        }
-
-        // Per-card focus icon. Replaces the previous "double-click image"
-        // affordance — single-click on the image is now reserved for
-        // entering LIVE (interactive) mode, so we need an explicit handle
-        // for "view this card by itself". Same hot zone toggles between
-        // enter-focus (other layouts) and exit-focus (focus layout).
-        const focusBtn = document.createElement("button");
-        focusBtn.type = "button";
-        focusBtn.className = "card-focus-btn";
-        focusBtn.innerHTML =
-            '<i class="codicon codicon-screen-full" aria-hidden="true"></i>';
-        focusBtn.title = "Focus this preview";
-        focusBtn.setAttribute("aria-label", "Focus this preview");
-        focusBtn.addEventListener("click", (evt) => {
-            evt.stopPropagation();
-            if (filterToolbar.getLayoutValue() === "focus") {
-                exitFocus();
-            } else {
-                focusOnCard(card);
-            }
-        });
-        titleRow.appendChild(focusBtn);
-
-        // Stale-tier refresh button — only attached up front for cards
-        // already known to be stale at setPreviews time. updateStaleBadges
-        // also adds/removes it on subsequent renders. Placed before the
-        // header is appended so its DOM order stays predictable.
-        staleBadge.apply(card, false);
-
-        header.appendChild(titleRow);
-        card.appendChild(header);
-
-        const imgContainer = document.createElement("div");
-        imgContainer.className = "image-container";
-        const skeleton = document.createElement("div");
-        skeleton.className = "skeleton";
-        skeleton.setAttribute("aria-label", "Loading preview");
-        imgContainer.appendChild(skeleton);
-        card.appendChild(imgContainer);
-
-        // Single-click on the image enters LIVE for this preview (in any
-        // layout — focus, grid, flow, column). The first click toggles
-        // interactive on; subsequent clicks while LIVE forward as pointer
-        // events to the daemon (handled by attachInteractiveInputHandlers
-        // attached via updateImage). The handler is on the container, not
-        // the <img>, so clicks land before the image renders too. Modifier-
-        // aware: Shift+click follows the multi-stream semantics from
-        // toggleInteractive().
-        imgContainer.addEventListener("click", (evt) => {
-            const previewId = card.dataset.previewId;
-            if (!previewId) return;
-            // If we're already live for this preview, the per-image click
-            // handler routes to recordInteractiveInput. Check before the
-            // stale-card branch so interactive clicks do not also queue a
-            // heavyweight refresh for stale captures.
-            if (liveState.isLive(previewId)) return;
-            if (card.classList.contains("is-stale")) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                staleBadge.requestHeavyRefresh(card);
-                return;
-            }
-            liveState.enterInteractiveOnCard(card, evt.shiftKey);
-        });
-
-        // ATF legend + overlay layer — rendered in the webview (not
-        // baked into the PNG) so rows stay interactive: hovering a
-        // finding highlights its bounds on the clean image. Populated
-        // only when findings exist AND `composePreview.earlyFeatures`
-        // is on; the overlay layer's boxes get computed lazily once
-        // the image is loaded (see buildA11yOverlay).
-        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-            const overlay = document.createElement("div");
-            overlay.className = "a11y-overlay";
-            overlay.setAttribute("aria-hidden", "true");
-            imgContainer.appendChild(overlay);
-            card.appendChild(buildA11yLegend(card, p));
-        }
-
-        const variantLabel = buildVariantLabel(p);
-        if (variantLabel) {
-            const badge = document.createElement("div");
-            badge.className = "variant-badge";
-            badge.textContent = variantLabel;
-            card.appendChild(badge);
-        }
-
-        if (animated) {
-            card.appendChild(frameCarousel.buildControls(card));
-        }
-
-        observeCardForViewport(card);
-        return card;
+        return buildPreviewCard(p, cardBuilderConfig);
     }
 
     function updateCardMetadata(card: HTMLElement, p: PreviewInfo): void {
