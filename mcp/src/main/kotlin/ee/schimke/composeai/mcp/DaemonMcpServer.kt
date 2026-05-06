@@ -1504,7 +1504,10 @@ class DaemonMcpServer(
                       "checkpointId":{"type":"string","description":"Checkpoint id for state save/restore audit events."},
                       "lifecycleEvent":{"type":"string","description":"Lifecycle transition for lifecycle script events, e.g. resume, pause, destroy."},
                       "tags":{"type":"array","items":{"type":"string"},"description":"Optional agent tags copied into scriptEvents evidence."},
-                      "nodeContentDescription":{"type":"string","description":"For `a11y.action.*` kinds — visible content description of the target accessibility node (`Modifier.semantics { contentDescription = ... }` / `Icon(contentDescription = ...)`). The daemon resolves this against the held composition's semantics tree and dispatches the corresponding SemanticsActions action — same lookup a screen reader walks via AccessibilityNodeInfo.performAction. Ignored for input/probe/state/lifecycle events."}
+                      "nodeContentDescription":{"type":"string","description":"For `a11y.action.*` kinds — visible content description of the target accessibility node (`Modifier.semantics { contentDescription = ... }` / `Icon(contentDescription = ...)`). The daemon resolves this against the held composition's semantics tree and dispatches the corresponding SemanticsActions action — same lookup a screen reader walks via AccessibilityNodeInfo.performAction. Ignored for input/probe/state/lifecycle events."},
+                      "selector":{"type":"object","description":"For `uia.*` kinds — multi-axis BySelector-style predicate matching androidx.test.uiautomator's `By` factory. Optional fields (every axis is missing-means-not-filtered): `text` / `desc` / `clazz` / `res` (exact match) plus `textMatches` / `descMatches` / `clazzMatches` / `resMatches` (regex); boolean state predicates `enabled` / `clickable` / `longClickable` / `checkable` / `checked` / `selected` / `focused` / `scrollable`; tree predicates `hasChild` / `hasDescendant` (arrays of nested selectors). Ignored for non-`uia.*` events. See data-uiautomator-core's `SelectorJson` for the full schema."},
+                      "useUnmergedTree":{"type":"boolean","description":"For `uia.*` kinds — `false` (default) walks Compose's merged accessibility tree (matches on-device UIAutomator semantics: `By.text + click` targets `Button { Text(...) }` as one node); `true` walks the unmerged tree to reach inner Compose nodes."},
+                      "inputText":{"type":"string","description":"For `uia.inputText` only — the text to type into the matched editable node via SemanticsActions.SetText (Compose) or ACTION_SET_TEXT (View). Required for `uia.inputText`; ignored for other kinds."}
                     },
                     "required":["tMs","kind"]
                   }
@@ -2990,6 +2993,10 @@ class DaemonMcpServer(
           (obj["tags"] as? JsonArray)?.mapNotNull { tag -> tag.jsonPrimitive.contentOrNull }
             ?: emptyList(),
         nodeContentDescription = obj["nodeContentDescription"]?.jsonPrimitive?.contentOrNull,
+        selector = obj["selector"] as? JsonObject,
+        useUnmergedTree =
+          obj["useUnmergedTree"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull(),
+        inputText = obj["inputText"]?.jsonPrimitive?.contentOrNull,
       )
     }
   }

@@ -471,6 +471,44 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
+   * UIAutomator-shaped dispatch: resolve a node by a BySelector-style predicate and invoke a
+   * named action against it. The sandbox-side handler decodes [selectorJson] via
+   * `decodeSelectorJson(...)` (from `:data-uiautomator-core`), walks the rule's
+   * `SemanticsOwner` tree, and dispatches the matching `SemanticsActions` lambda — same path
+   * `:daemon:android`'s `performSemanticsActionByContentDescription` already uses, just behind
+   * a multi-axis selector instead of a single content-description string.
+   *
+   * [actionKind] is a short wire name (`"click"`, `"longClick"`, `"scrollForward"`, …); the
+   * sandbox maps it to the corresponding `UiObject` method. New actions extend the sandbox-side
+   * `when`; the bridge shape doesn't need to change per action. [inputText] is populated only
+   * for `actionKind = "inputText"` and ignored otherwise.
+   *
+   * [useUnmergedTree] mirrors the prototype's option — defaults to `false` (merged) so the
+   * common `By.text("Submit")` + `.click()` shape targets a `Button { Text(...) }` as a
+   * single node, matching on-device UIAutomator's selector semantics. Agents that need to
+   * target inner nodes can opt into the unmerged tree.
+   *
+   * [replyMatched] is set by the sandbox before [replyLatch] counts down: `true` when a node
+   * matched and the action fired, `false` when no node matched or the matched node didn't
+   * expose the action (caller surfaces unsupported evidence). Throwables from the action body
+   * land in [replyError]; the host's `dispatchUiAutomator` rethrows on the caller thread so
+   * the recording session sees the failure rather than a silently-truncated playback.
+   *
+   * Strings travel as `java.lang.String` (do-not-acquire). No `Selector` / `UiObject` types
+   * cross the bridge — the sandbox does the JSON-decode + matcher resolution itself.
+   */
+  data class DispatchUiAutomator(
+    override val streamId: String,
+    val actionKind: String,
+    val selectorJson: String,
+    val useUnmergedTree: Boolean,
+    val inputText: String?,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyMatched: AtomicBoolean,
+  ) : InteractiveCommand
+
+  /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
    * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
    * events to drive `onPause` / `onResume` / `onStop` on the held composition.

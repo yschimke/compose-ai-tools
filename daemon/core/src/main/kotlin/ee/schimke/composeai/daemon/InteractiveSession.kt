@@ -75,6 +75,38 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchSemanticsAction(actionKind: String, nodeContentDescription: String): Boolean = false
 
   /**
+   * UIAutomator-shaped dispatch: resolve a node by a multi-axis BySelector-style predicate and
+   * invoke a named action against it. Mirrors [dispatchSemanticsAction] but with a structured
+   * selector instead of a single content description, so agents can target nodes by text / resource
+   * id / state / tree predicates without falling back on pixel coordinates.
+   *
+   * Returns `true` when the action fired against a matched node; `false` when no node matched or
+   * the matched node didn't expose the action (caller surfaces unsupported evidence with a specific
+   * reason). Throws when the action body itself failed — same propagation path as [dispatch] /
+   * [dispatchSemanticsAction].
+   *
+   * Default returns `false` so hosts without UIAutomator support cleanly surface "no uiautomator
+   * dispatch available" instead of blowing up the session.
+   *
+   * @param actionKind short name of the action — `"click"`, `"longClick"`, `"scrollForward"`,
+   *   `"scrollBackward"`, `"requestFocus"`, `"expand"`, `"collapse"`, `"dismiss"`, `"inputText"`.
+   *   Maps to the matching `UiObject` action.
+   * @param selectorJson serialised [`Selector`] (see `:data-uiautomator-core`'s `SelectorJson`).
+   *   Decoded sandbox-side; nothing in this interface couples to the matcher's types.
+   * @param useUnmergedTree mirror of the prototype's option. Default `false` (merged) so
+   *   `By.text("Submit") + click` targets a `Button { Text(...) }` as one node, matching on-device
+   *   UIAutomator semantics. Pass `true` to target inner Compose nodes.
+   * @param inputText payload for `actionKind = "inputText"`; ignored otherwise. Routed through
+   *   `SemanticsActions.SetText` (Compose) or `ACTION_SET_TEXT` (View).
+   */
+  fun dispatchUiAutomator(
+    actionKind: String,
+    selectorJson: String,
+    useUnmergedTree: Boolean = false,
+    inputText: String? = null,
+  ): Boolean = false
+
+  /**
    * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
    * state, exercising `onPause` / `onResume` / `onStop` etc. on the way. Used by `record_preview`'s
    * `lifecycle.event` script events to verify that a preview survives a pause-resume cycle or a

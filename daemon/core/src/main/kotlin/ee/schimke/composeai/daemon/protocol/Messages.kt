@@ -1149,6 +1149,29 @@ data class RecordingScriptEvent(
    * so per-action validation stays typed end-to-end.
    */
   val nodeContentDescription: String? = null,
+  /**
+   * Multi-axis BySelector-style predicate for `kind = uia.*` events. The shape is `SelectorJson`
+   * from `:data-uiautomator-core` — a flat object with optional `text` / `desc` / `clazz` / `res`
+   * (plus `*Matches` regex variants), boolean state predicates (`enabled` / `clickable` / …), and
+   * tree predicates (`hasChild` / `hasDescendant`). Carried as a `JsonObject` so the daemon hands
+   * it to the Android sandbox as a JSON string without parsing into the matcher type at this layer
+   * (the matcher lives in `:data-uiautomator-core`, which `:daemon:core` doesn't depend on).
+   * Ignored for non-`uia` events.
+   */
+  val selector: kotlinx.serialization.json.JsonObject? = null,
+  /**
+   * Mirror of `UiAutomator.findObject(..., useUnmergedTree)` — `false` (default) walks Compose's
+   * merged accessibility tree (matches on-device UIAutomator semantics: `By.text + click` targets
+   * `Button { Text(...) }` as one node); `true` walks the unmerged tree to reach inner Compose
+   * nodes. Ignored for non-`uia` events.
+   */
+  val useUnmergedTree: Boolean? = null,
+  /**
+   * Payload for `uia.inputText`: the text to type into the matched editable node. Routed through
+   * `SemanticsActions.SetText` (Compose) or `ACTION_SET_TEXT` (View). Ignored for other event
+   * kinds.
+   */
+  val inputText: String? = null,
 )
 
 @Serializable

@@ -150,13 +150,16 @@ include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
 
-// Exploratory prototype — a UIAutomator-shaped query/action API over the local View tree's
-// `AccessibilityNodeInfo`. Not published; promoted to `:data-uiautomator-core` if useful. See
-// `data/uiautomator/prototype-android/build.gradle.kts`.
-include(":data-uiautomator-prototype-android")
+// UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
+// the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
+// `record_preview`'s `uia.*` script events.
+include(":data-uiautomator-core")
 
-project(":data-uiautomator-prototype-android").projectDir =
-  file("data/uiautomator/prototype-android")
+project(":data-uiautomator-core").projectDir = file("data/uiautomator/core")
+
+include(":data-uiautomator-connector")
+
+project(":data-uiautomator-connector").projectDir = file("data/uiautomator/connector")
 
 include(":daemon:android")
 
