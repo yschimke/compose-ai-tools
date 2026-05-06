@@ -1,11 +1,13 @@
 // Imperative behaviour for the read-only Preview History panel.
 //
-// Verbatim port of the previously-inline IIFE script in
-// `src/historyPanel.ts` (the `<script nonce="...">` block in `getHtml()`).
-// Now type-checked end-to-end against `HistoryToWebview` (from
-// `shared/types`). Pieces still imperative — `renderTimeline` (~85 lines
-// of `document.createElement`), the diff stack builder, the per-row event
-// handlers — are slated to fold into Lit components in a follow-up.
+// Originally a verbatim port of the inline IIFE script in
+// `src/historyPanel.ts`'s `getHtml()`. Type-checked end-to-end against
+// `HistoryToWebview` (from `shared/types`). Step 1 of #858 lifted the
+// per-row markup into the `<history-row>` Lit component
+// (`./components/HistoryRow.ts`) and routed thumb bytes through
+// `historyStore`; selection / expansion / diff overlays still flow
+// through closure-state callbacks in this file pending the later
+// steps of the issue.
 //
 // Runs once per webview load. Assumes `<history-app>` has already
 // rendered its skeleton into light DOM, so `document.getElementById(...)`
@@ -20,10 +22,10 @@ import {
     type HistoryDiffViewConfig,
     showDiff as showDiffDom,
 } from "./historyDiffView";
+import { setThumb } from "./historyStore";
 import {
     fillExpansion as fillExpansionDom,
     type HistoryRowConfig,
-    populateThumb,
     renderTimeline as renderTimelineDom,
 } from "./historyTimeline";
 
@@ -43,10 +45,11 @@ export function setupHistoryBehavior(): void {
     let entries: HistoryEntry[] = [];
     const selectedIds = new Set<string>();
     let expandedId: string | null = null;
-    // Thumbnail cache + dedup so each entry's PNG is fetched at most once
-    // per panel session even if scrolling brings the same row back into
-    // view repeatedly.
-    const thumbCache = new Map<string, string>();
+    // Thumbnail bytes live in `historyStore` so `<history-row>` can
+    // subscribe and re-render reactively. `thumbRequested` here just
+    // dedupes the per-session fetch — the IntersectionObserver fires
+    // once per row scroll-into-view and we skip ids we've already
+    // asked the extension to load.
     const thumbRequested = new Set<string>();
     const thumbObserver: IntersectionObserver | null =
         "IntersectionObserver" in window
@@ -127,11 +130,12 @@ export function setupHistoryBehavior(): void {
         }
     }
 
-    // Timeline row construction lives in `./historyTimeline.ts` — see
-    // `renderTimeline`, `toggleSelected`, `expandRow`, `requestRowDiff`,
-    // `fillExpansion`, `populateThumb`. The config exposes the static DOM
-    // handles plus thin getter/setter pairs over `expandedId` so the lifted
-    // module doesn't need closure access to this scope.
+    // Timeline row markup lives in the `<history-row>` Lit component
+    // (`./components/HistoryRow.ts`); orchestration around it —
+    // selection set, expansion DOM, diff requests — stays in
+    // `./historyTimeline.ts`. The config exposes the static DOM
+    // handles plus thin getter/setter pairs over `expandedId` so the
+    // lifted module doesn't need closure access to this scope.
     const rowConfig: HistoryRowConfig = {
         vscode,
         timelineEl,
@@ -141,7 +145,6 @@ export function setupHistoryBehavior(): void {
         setExpandedId: (next) => {
             expandedId = next;
         },
-        thumbCache,
         thumbRequested,
         thumbObserver,
     };
@@ -196,14 +199,12 @@ export function setupHistoryBehavior(): void {
                         (msg.message || "(no detail)");
                 break;
             }
-            case "thumbReady": {
-                thumbCache.set(msg.id, msg.imageData);
-                const thumbEl = timelineEl.querySelector<HTMLElement>(
-                    '.thumb[data-id="' + cssEscape(msg.id) + '"]',
-                );
-                if (thumbEl) populateThumb(thumbEl, msg.imageData);
+            case "thumbReady":
+                // Writing into `historyStore` re-renders the matching
+                // `<history-row>` via its StoreController subscription;
+                // no manual DOM patch needed.
+                setThumb(msg.id, msg.imageData);
                 break;
-            }
             case "thumbError":
                 // Drop the dedup so a future re-render can retry. Leave
                 // the gray box in place; surfacing per-entry errors at
