@@ -18,13 +18,13 @@ import type {
     HistoryToWebview,
 } from "../shared/types";
 import { getVsCodeApi } from "../shared/vscode";
+import { cssEscape } from "./historyData";
 import {
-    cssEscape,
-    escapeHtml,
-    findLatestMainHash,
-    formatAbsolute,
-    formatRelative,
-} from "./historyData";
+    fillExpansion as fillExpansionDom,
+    type HistoryRowConfig,
+    populateThumb,
+    renderTimeline as renderTimelineDom,
+} from "./historyTimeline";
 
 /** Look up a known-present DOM element. Used for the static ids that
  *  `<history-app>` has already rendered into the light DOM. Throws so a
@@ -135,198 +135,26 @@ export function setupHistoryBehavior(): void {
         }
     }
 
+    // Timeline row construction lives in `./historyTimeline.ts` — see
+    // `renderTimeline`, `toggleSelected`, `expandRow`, `requestRowDiff`,
+    // `fillExpansion`, `populateThumb`. The config exposes the static DOM
+    // handles plus thin getter/setter pairs over `expandedId` so the lifted
+    // module doesn't need closure access to this scope.
+    const rowConfig: HistoryRowConfig = {
+        vscode,
+        timelineEl,
+        btnDiffEl,
+        selectedIds,
+        getExpandedId: () => expandedId,
+        setExpandedId: (next) => {
+            expandedId = next;
+        },
+        thumbCache,
+        thumbRequested,
+        thumbObserver,
+    };
     function renderTimeline(): void {
-        // Thumbnails not yet loaded for the new entry set should retry —
-        // disconnect the old observer and rebuild against the new rows.
-        if (thumbObserver) thumbObserver.disconnect();
-        thumbRequested.clear();
-        timelineEl.innerHTML = "";
-        // Latest archived render on main for the currently scoped preview.
-        // O(N) over the visible page; no extra request. Used for the
-        // "vs main" indicator dot below.
-        const mainHash = findLatestMainHash(entries);
-        for (const entry of entries) {
-            const entryId = entry.id ?? "";
-            const row = document.createElement("div");
-            row.className = "row";
-            row.setAttribute("role", "listitem");
-            row.dataset.id = entryId;
-            row.dataset.sourceKind = (entry.source && entry.source.kind) || "";
-            row.dataset.branch = (entry.git && entry.git.branch) || "";
-
-            const thumb = document.createElement("div");
-            thumb.className = "thumb";
-            thumb.dataset.id = entryId;
-            const cached = thumbCache.get(entryId);
-            if (cached !== undefined) {
-                populateThumb(thumb, cached);
-            } else if (thumbObserver) {
-                thumbObserver.observe(thumb);
-            }
-            row.appendChild(thumb);
-
-            const meta = document.createElement("div");
-            meta.className = "meta";
-            const ts = document.createElement("div");
-            ts.className = "ts";
-            ts.textContent = formatRelative(entry.timestamp);
-            ts.title = entry.timestamp || "";
-            meta.appendChild(ts);
-
-            const sub = document.createElement("div");
-            sub.className = "sub";
-            const dot =
-                entry.deltaFromPrevious &&
-                entry.deltaFromPrevious.pngHashChanged
-                    ? '<span class="changed-dot" title="bytes changed vs previous"></span>'
-                    : "";
-            const mainDot =
-                mainHash && entry.pngHash && entry.pngHash !== mainHash
-                    ? '<span class="main-dot" title="bytes differ from latest main render"></span>'
-                    : "";
-            const absolute = formatAbsolute(entry.timestamp);
-            const trigger = entry.trigger ? entry.trigger : "—";
-            const branch = (entry.git && entry.git.branch) || "";
-            const subParts = [];
-            if (absolute) subParts.push(escapeHtml(absolute));
-            subParts.push(escapeHtml(trigger));
-            if (branch) subParts.push(escapeHtml(branch));
-            sub.innerHTML = dot + mainDot + subParts.join(" · ");
-            meta.appendChild(sub);
-            row.appendChild(meta);
-
-            const badge = document.createElement("span");
-            badge.className = "badge";
-            badge.textContent = (entry.source && entry.source.kind) || "fs";
-            row.appendChild(badge);
-
-            const actions = document.createElement("div");
-            actions.className = "row-actions";
-            const diffPrevBtn = document.createElement("button");
-            diffPrevBtn.className = "icon-button row-action";
-            diffPrevBtn.title =
-                "Diff against the previous entry for this preview";
-            diffPrevBtn.setAttribute("aria-label", "Diff vs previous");
-            diffPrevBtn.innerHTML =
-                '<i class="codicon codicon-arrow-up" aria-hidden="true"></i>';
-            diffPrevBtn.addEventListener("click", (ev) => {
-                ev.stopPropagation();
-                requestRowDiff(entryId, row, "previous");
-            });
-            actions.appendChild(diffPrevBtn);
-            const diffCurrentBtn = document.createElement("button");
-            diffCurrentBtn.className = "icon-button row-action";
-            diffCurrentBtn.title =
-                "Diff against the live render of this preview";
-            diffCurrentBtn.setAttribute("aria-label", "Diff vs current");
-            diffCurrentBtn.innerHTML =
-                '<i class="codicon codicon-git-compare" aria-hidden="true"></i>';
-            diffCurrentBtn.addEventListener("click", (ev) => {
-                ev.stopPropagation();
-                requestRowDiff(entryId, row, "current");
-            });
-            actions.appendChild(diffCurrentBtn);
-            row.appendChild(actions);
-
-            row.addEventListener("click", (ev) => {
-                if (ev.shiftKey) toggleSelected(entryId, row);
-                else expandRow(entryId, row);
-            });
-            timelineEl.appendChild(row);
-        }
-    }
-
-    function toggleSelected(id: string, row: HTMLElement): void {
-        if (selectedIds.has(id)) {
-            selectedIds.delete(id);
-            row.classList.remove("selected");
-        } else {
-            if (selectedIds.size >= 2) {
-                // Drop oldest selection so we never have more than 2.
-                const drop = [...selectedIds][0];
-                selectedIds.delete(drop);
-                const prev = timelineEl.querySelector(
-                    '.row[data-id="' + cssEscape(drop) + '"]',
-                );
-                if (prev) prev.classList.remove("selected");
-            }
-            selectedIds.add(id);
-            row.classList.add("selected");
-        }
-        btnDiffEl.disabled = selectedIds.size !== 2;
-    }
-
-    function expandRow(id: string, row: HTMLElement): void {
-        // Collapse any previous expansion.
-        const prev = timelineEl.querySelector(".expanded");
-        if (prev) prev.remove();
-        if (expandedId === id) {
-            expandedId = null;
-            return;
-        }
-        expandedId = id;
-
-        const expansion = document.createElement("div");
-        expansion.className = "expanded";
-        expansion.dataset.id = id;
-        expansion.innerHTML = "<div>Loading…</div>";
-        row.parentNode?.insertBefore(expansion, row.nextSibling);
-        vscode.postMessage({ command: "loadImage", id });
-    }
-
-    function requestRowDiff(
-        id: string,
-        row: HTMLElement,
-        against: "previous" | "current",
-    ): void {
-        const prev = timelineEl.querySelector(".expanded");
-        if (prev) prev.remove();
-        expandedId = id;
-        const expansion = document.createElement("div");
-        expansion.className = "expanded diff-expanded";
-        expansion.dataset.id = id;
-        expansion.dataset.against = against;
-        expansion.innerHTML = "<div>Loading diff…</div>";
-        row.parentNode?.insertBefore(expansion, row.nextSibling);
-        vscode.postMessage({ command: "requestDiff", id, against });
-    }
-
-    function fillExpansion(
-        id: string,
-        imageData: string,
-        entry: HistoryEntry | undefined,
-    ): void {
-        const expansion = timelineEl.querySelector(
-            '.expanded[data-id="' + cssEscape(id) + '"]',
-        );
-        if (!expansion) return;
-        expansion.innerHTML = "";
-        const img = document.createElement("img");
-        img.src = "data:image/png;base64," + imageData;
-        img.alt = (entry && entry.previewId) || id;
-        expansion.appendChild(img);
-
-        const actions = document.createElement("div");
-        actions.className = "actions";
-        const sourceFile =
-            entry && entry.previewMetadata && entry.previewMetadata.sourceFile;
-        if (sourceFile) {
-            const open = document.createElement("button");
-            open.textContent = "Open in Editor";
-            open.addEventListener("click", () =>
-                vscode.postMessage({ command: "openSource", sourceFile }),
-            );
-            actions.appendChild(open);
-        }
-        expansion.appendChild(actions);
-    }
-
-    function populateThumb(thumbEl: HTMLElement, imageData: string): void {
-        thumbEl.innerHTML = "";
-        const img = document.createElement("img");
-        img.src = "data:image/png;base64," + imageData;
-        img.alt = "";
-        thumbEl.appendChild(img);
+        renderTimelineDom(entries, rowConfig);
     }
 
     interface DiffPayload {
@@ -691,7 +519,7 @@ export function setupHistoryBehavior(): void {
                 // exhaustiveness check holds.
                 break;
             case "imageReady":
-                fillExpansion(msg.id, msg.imageData, msg.entry);
+                fillExpansionDom(msg.id, msg.imageData, msg.entry, rowConfig);
                 break;
             case "imageError": {
                 const expansion = timelineEl.querySelector<HTMLElement>(
