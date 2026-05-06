@@ -28,7 +28,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { CardBuilderConfig } from "../cardBuilder";
-import { populatePreviewCard } from "../cardBuilder";
+import { populatePreviewCard, updateCardMetadata } from "../cardBuilder";
 import type { PreviewInfo } from "../../shared/types";
 
 @customElement("preview-card")
@@ -42,6 +42,11 @@ export class PreviewCard extends LitElement {
      *  message hooks — everything `populatePreviewCard` reaches for. */
     @property({ attribute: false }) config: CardBuilderConfig | null = null;
 
+    /** Set once `firstUpdated` has populated the card. Guards `updated`
+     *  from running the metadata patch on the initial render — that path
+     *  is already covered by `populatePreviewCard`. */
+    private _built = false;
+
     // Light DOM keeps `media/preview.css` rules applying unchanged.
     protected createRenderRoot(): HTMLElement {
         return this;
@@ -49,8 +54,8 @@ export class PreviewCard extends LitElement {
 
     // Lit calls `render()` even though we populate imperatively; return
     // an empty template so it doesn't wipe children we add in
-    // `firstUpdated`. Step 3 / step 4 will start producing real
-    // template content here as the metadata / image paths go reactive.
+    // `firstUpdated`. Step 4 will start producing real template content
+    // here as the image / a11y paths go reactive.
     protected render(): TemplateResult {
         return html``;
     }
@@ -60,5 +65,20 @@ export class PreviewCard extends LitElement {
         const config = this.config;
         if (!preview || !config) return;
         populatePreviewCard(this, preview, config);
+        this._built = true;
+    }
+
+    /** React to a `preview` reassignment from the host (`renderPreviews`
+     *  reseed). Patches the card's dataset, title, capture cache,
+     *  variant badge, and a11y legend / overlay in place — same body
+     *  the imperative call site used to drive directly. Skipped on the
+     *  first render: `firstUpdated` already built the card. */
+    protected updated(changedProperties: Map<string, unknown>): void {
+        if (!this._built) return;
+        if (!changedProperties.has("preview")) return;
+        const preview = this.preview;
+        const config = this.config;
+        if (!preview || !config) return;
+        updateCardMetadata(this, preview, config);
     }
 }

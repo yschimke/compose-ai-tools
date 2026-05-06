@@ -759,7 +759,13 @@ export function renderPreviews(
     for (const p of previews) {
         const existing = existingCards.get(p.id);
         if (existing) {
-            updateCardMetadata(existing, p, config);
+            // Reassigning `.preview` triggers `<preview-card>`'s reactive
+            // `updated()` hook, which calls `updateCardMetadata` against
+            // the host element. Cast is safe — `existingCards` is
+            // populated from the `.preview-card`-classed elements
+            // `buildPreviewCard` creates, all of which are
+            // `<preview-card>` instances.
+            (existing as PreviewCard).preview = p;
             // Ensure correct position
             if (lastInsertedCard) {
                 if (lastInsertedCard.nextSibling !== existing) {
