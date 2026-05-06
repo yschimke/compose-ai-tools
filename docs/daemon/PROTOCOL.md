@@ -400,7 +400,14 @@ Errors:
 Errors:
 - `HistoryEntryNotFound` (-32010) — `id` does not match any entry in the configured sources.
 
-### `history/diff` (phase H3 — metadata mode)
+### `history/diff` (phase H3 — metadata mode, **experimental in 1.0**)
+
+> **Experimental — gated off by default.** Production daemons reply with
+> `MethodNotFound` (-32601) until launched with
+> `-Dcomposeai.experimental.historyDiff=true`. The metadata path works (and is
+> exercised by the daemon test suite) but pixel mode (H5), git-ref write
+> modes, and LFS / squash-GC handling are still on the roadmap, so the
+> contract may change. Stabilization is tracked for 1.1.
 
 ```ts
 // params

@@ -179,6 +179,19 @@ class JsonRpcServer(
    */
   private val historyManager: HistoryManager? = null,
   /**
+   * Experimental gate for `history/diff`. The metadata-mode handler exists (H3) but the broader
+   * history surface — pixel mode (H5), git-ref write modes, LFS/squash-GC handling — is incomplete
+   * (see `docs/daemon/ROADMAP.md` § History). For 1.0 the dispatcher returns method-not-found
+   * unless this flag is on, so consumers don't accidentally code against an interface that's still
+   * moving. Defaults to the [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests
+   * that assert on the diff handler pass `historyDiffExperimental = true` explicitly.
+   *
+   * TODO(1.1): land H5 + the remaining roadmap items, flip the default to on, and remove this
+   *   parameter.
+   */
+  private val historyDiffExperimental: Boolean =
+    System.getProperty(HISTORY_DIFF_EXPERIMENTAL_PROP)?.toBoolean() ?: false,
+  /**
    * H4 — initial delay for the auto-prune scheduler. Defaults to
    * [HistoryManager.DEFAULT_INITIAL_DELAY_MS] (5s — runs after sandbox bootstrap). Tests pass a
    * very small value (e.g. 50ms) to drive the schedule deterministically.
@@ -592,7 +605,20 @@ class JsonRpcServer(
       "shutdown" -> handleShutdown(req)
       "history/list" -> handleHistoryList(req)
       "history/read" -> handleHistoryRead(req)
-      "history/diff" -> handleHistoryDiff(req)
+      "history/diff" ->
+        // TODO(1.1): drop the experimental gate once the History roadmap lands (pixel mode H5,
+        // git-ref write modes, LFS/squash-GC). Until then, production daemons report
+        // method-not-found so clients that pre-handle that case (`historyDiff` UI on vscode) keep
+        // working without coding against a half-finished surface.
+        if (historyDiffExperimental) handleHistoryDiff(req)
+        else
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_METHOD_NOT_FOUND,
+            message =
+              "history/diff is experimental in 1.0 and disabled by default; " +
+                "set -D$HISTORY_DIFF_EXPERIMENTAL_PROP=true to enable",
+          )
       "history/prune" -> handleHistoryPrune(req)
       "data/fetch" -> handleDataFetch(req)
       "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
@@ -1269,9 +1295,13 @@ class JsonRpcServer(
   }
 
   /**
-   * H3 — `history/diff` metadata mode. Resolves [from] and [to] entry ids via the [historyManager]
-   * (which iterates configured sources in priority order, so a cross-source diff "LocalFs vs GitRef
-   * preview/main" works the same as an intra-source diff). Emits:
+   * H3 — `history/diff` metadata mode. Gated experimental in 1.0 (see [historyDiffExperimental]);
+   * the dispatcher returns method-not-found unless the gate is on, so this body only runs in tests
+   * or with `-D$HISTORY_DIFF_EXPERIMENTAL_PROP=true`. TODO(1.1): drop the gate.
+   *
+   * Resolves [from] and [to] entry ids via the [historyManager] (which iterates configured sources
+   * in priority order, so a cross-source diff "LocalFs vs GitRef preview/main" works the same as an
+   * intra-source diff). Emits:
    *
    * - `HistoryEntryNotFound` (-32010) when either id is missing.
    * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
@@ -3244,6 +3274,13 @@ class JsonRpcServer(
      */
     const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
     const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
+
+    /**
+     * Experimental gate for `history/diff`. See the constructor parameter on [JsonRpcServer] for
+     * rationale. TODO(1.1): remove once H5 + the rest of the History roadmap lands and the diff
+     * surface is no longer half-finished.
+     */
+    const val HISTORY_DIFF_EXPERIMENTAL_PROP: String = "composeai.experimental.historyDiff"
 
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —

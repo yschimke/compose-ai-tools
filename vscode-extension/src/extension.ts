@@ -713,6 +713,12 @@ export async function activate(
             if (!client) {
                 throw new Error("daemon unavailable");
             }
+            // TODO(1.1): history/diff is experimental in the 1.0 daemon and
+            // returns MethodNotFound unless the user opts in via
+            // `composeai.experimental.historyDiff`. Once the daemon flips the
+            // default, simplify this back to a direct call. Until then,
+            // surface the gate as a clear "diff unavailable" rather than a
+            // raw RPC error.
             return client.historyDiff({
                 from: fromId,
                 to: toId,

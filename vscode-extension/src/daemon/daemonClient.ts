@@ -213,7 +213,14 @@ export class DaemonClient {
 
     /** Phase H3 (metadata mode). `mode: 'pixel'` is reserved for H5 and
      *  rejects with `HistoryPixelNotImplemented` until then. See
-     *  PROTOCOL.md § 5 (history/diff). */
+     *  PROTOCOL.md § 5 (history/diff).
+     *
+     *  Experimental in 1.0: production daemons gate the handler behind
+     *  `composeai.experimental.historyDiff`, so this call rejects with
+     *  `MethodNotFound` (-32601) unless that sysprop is set. Callers should
+     *  treat `MethodNotFound` as "diff unavailable" and fall back to a
+     *  metadata-only side-by-side. TODO(1.1): once the daemon flips the
+     *  default, drop the fallback path on the call sites. */
     historyDiff(params: HistoryDiffParams): Promise<HistoryDiffResult> {
         return this.request<HistoryDiffResult>("history/diff", params);
     }

@@ -83,6 +83,7 @@ class JsonRpcServerHistoryIntegrationTest {
         host = host,
         daemonVersion = "test",
         historyManager = historyManager,
+        historyDiffExperimental = true,
         onExit = { _ -> exitLatch.countDown() },
       )
     val serverThread =
