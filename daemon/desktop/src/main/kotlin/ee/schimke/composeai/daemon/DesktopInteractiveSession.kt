@@ -42,6 +42,9 @@ class DesktopInteractiveSession(
 
   @Volatile private var closed: Boolean = false
 
+  override val isClosed: Boolean
+    get() = closed
+
   override fun dispatch(input: InteractiveInputParams) {
     if (closed) return
     val px = input.pixelX
