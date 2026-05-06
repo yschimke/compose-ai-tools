@@ -23,16 +23,12 @@ import {
     buildA11yOverlay,
     ensureHierarchyOverlay,
 } from "./a11yOverlay";
-import { buildPreviewCard } from "./cardBuilder";
 import {
-    buildTooltip,
-    buildVariantLabel,
-    isAnimatedPreview,
-    isWearPreview,
-    mimeFor,
-    parseBounds,
-    sanitizeId,
-} from "./cardData";
+    applyRelativeSizing,
+    buildPreviewCard,
+    updateCardMetadata,
+} from "./cardBuilder";
+import { mimeFor, parseBounds, sanitizeId } from "./cardData";
 import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
 import { PreviewGrid } from "./components/PreviewGrid";
@@ -308,8 +304,7 @@ export function setupPreviewBehavior(
     // capture. Populated from updateImage / setImageError messages so
     // prev/next navigation can swap the visible <img> without a fresh
     // extension round-trip.
-    // Map<previewId, CapturePresentation[]>
-    const cardCaptures = new Map();
+    const cardCaptures = new Map<string, CapturePresentation[]>();
     const frameCarousel = new FrameCarouselController({
         vscode,
         cardCaptures,
@@ -712,117 +707,13 @@ export function setupPreviewBehavior(
         return buildPreviewCard(p, cardBuilderConfig);
     }
 
-    function updateCardMetadata(card: HTMLElement, p: PreviewInfo): void {
-        card.dataset.function = p.functionName;
-        card.dataset.group = p.params.group || "";
-        card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
-        const title = card.querySelector<HTMLButtonElement>(".card-title");
-        if (title) {
-            title.textContent =
-                p.functionName + (p.params.name ? " — " + p.params.name : "");
-            title.title = buildTooltip(p);
-        }
-        // Refresh capture labels in place. If the capture count changed
-        // (e.g. user edited @RoboComposePreviewOptions) we preserve
-        // already-received imageData for renderOutputs that carry over.
-        const newCaps = p.captures.map((c) => ({
-            renderOutput: c.renderOutput,
-            label: c.label || "",
-        }));
-        const prior = cardCaptures.get(p.id) ?? [];
-        // Match by index rather than renderOutput since filenames may
-        // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
-        // annotation). Mismatched positions just reset to null-image.
-        const mergedCaps = newCaps.map(
-            (nc, i): CapturePresentation => ({
-                label: nc.label,
-                renderOutput: nc.renderOutput || "",
-                imageData: prior[i]?.imageData ?? null,
-                errorMessage: prior[i]?.errorMessage ?? null,
-                renderError: prior[i]?.renderError ?? null,
-            }),
-        );
-        cardCaptures.set(p.id, mergedCaps);
-        const curIdx = parseInt(card.dataset.currentIndex || "0", 10);
-        if (curIdx >= mergedCaps.length) {
-            card.dataset.currentIndex = String(
-                Math.max(0, mergedCaps.length - 1),
-            );
-        }
-        if (isAnimatedPreview(p)) frameCarousel.updateIndicator(card);
-        const variantLabel = buildVariantLabel(p);
-        let badge = card.querySelector(".variant-badge");
-        if (variantLabel) {
-            if (!badge) {
-                badge = document.createElement("div");
-                badge.className = "variant-badge";
-                card.appendChild(badge);
-            }
-            badge.textContent = variantLabel;
-        } else if (badge) {
-            badge.remove();
-        }
-
-        // Refresh the a11y legend + overlay in place when findings
-        // change (e.g. toggling a11y on turns findings from null → list,
-        // or a fresh render updates the set). Tear down the old nodes
-        // and rebuild: simpler than reconciling row-by-row for what is
-        // a rare event.
-        const existingLegend = card.querySelector(".a11y-legend");
-        const existingOverlay = card.querySelector(".a11y-overlay");
-        if (existingLegend) existingLegend.remove();
-        if (existingOverlay) existingOverlay.innerHTML = "";
-        if (earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-            const container = card.querySelector(".image-container");
-            if (container && !container.querySelector(".a11y-overlay")) {
-                const overlay = document.createElement("div");
-                overlay.className = "a11y-overlay";
-                overlay.setAttribute("aria-hidden", "true");
-                container.appendChild(overlay);
-            }
-            const legend = buildA11yLegend(card, p);
-            card.appendChild(legend);
-            // Repopulate box geometry if the image is already loaded —
-            // otherwise updateImage's load handler will pick it up on
-            // the next render cycle.
-            const img = card.querySelector<HTMLImageElement>(
-                ".image-container img",
-            );
-            if (img && img.complete && img.naturalWidth > 0) {
-                buildA11yOverlay(card, p.a11yFindings, img);
-            }
-        } else if (existingOverlay) {
-            // No findings or feature off — drop any leftover overlay
-            // div so cards stay clean when the user toggles
-            // earlyFeatures off mid-session.
-            existingOverlay.remove();
-        }
-    }
-
-    // Scale image containers so preview variants at different device sizes
-    // (e.g. wearos_large_round 227dp vs wearos_small_round 192dp) render at
-    // relative sizes in fixed-layout modes. Only applied when we have real
-    // widthDp/heightDp — variants without known dimensions fall back to
-    // the default CSS (full card width, auto aspect).
-    function applyRelativeSizing(previews: readonly PreviewInfo[]): void {
-        const widths = previews
-            .map((p) => p.params.widthDp ?? 0)
-            .filter((w) => w > 0);
-        const maxW = widths.length > 0 ? Math.max(...widths) : 0;
-        for (const p of previews) {
-            const card = document.getElementById("preview-" + sanitizeId(p.id));
-            if (!card) continue;
-            const w = p.params.widthDp;
-            const h = p.params.heightDp;
-            if (w && h && maxW > 0) {
-                card.style.setProperty("--size-ratio", (w / maxW).toFixed(4));
-                card.style.setProperty("--aspect-ratio", w + " / " + h);
-            } else {
-                card.style.removeProperty("--size-ratio");
-                card.style.removeProperty("--aspect-ratio");
-            }
-        }
-    }
+    // `updateCardMetadata` and `applyRelativeSizing` live in
+    // `./cardBuilder.ts` alongside `buildPreviewCard`.
+    const cardUpdateConfig = {
+        cardCaptures,
+        frameCarousel,
+        earlyFeatures,
+    };
 
     /**
      * Incremental diff: update existing cards, add new ones, remove missing.
@@ -871,7 +762,7 @@ export function setupPreviewBehavior(
         for (const p of previews) {
             const existing = existingCards.get(p.id);
             if (existing) {
-                updateCardMetadata(existing, p);
+                updateCardMetadata(existing, p, cardUpdateConfig);
                 // Ensure correct position
                 if (lastInsertedCard) {
                     if (lastInsertedCard.nextSibling !== existing) {
