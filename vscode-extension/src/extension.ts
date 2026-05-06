@@ -429,10 +429,10 @@ export async function activate(
         logFilter,
     );
 
-    // Daemon path is controlled by composePreview.daemon.enabled (true by default). When disabled
-    // the gate's `isEnabled()` returns false and the scheduler is never asked to spawn anything —
-    // the Gradle path is the temporary escape hatch. When enabled, daemon failures surface as
-    // errors instead of silently falling back to Gradle.
+    // The daemon path is always on; the build can still opt out per-module via
+    // `composePreview { daemon { enabled = false } }`, in which case the gate falls back to the
+    // Gradle render path for that module. Daemon failures surface as errors instead of silently
+    // falling back to Gradle.
     daemonGate = new DaemonGate(
         workspaceRoot,
         "0.1.0",
@@ -1185,7 +1185,7 @@ async function flushInteractiveStreams(): Promise<void> {
     activeStreamFrameStreams.clear();
     streamFrameIdToPreviewId.clear();
     updateInteractiveStatus();
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     // Flush each surface through the matching wire-level stop. Using the
@@ -1234,7 +1234,7 @@ async function flushRecordingSessions(options: {
     const formats = new Map(activeRecordingFormats);
     activeRecordingSessions.clear();
     activeRecordingFormats.clear();
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     await Promise.all(
@@ -1452,14 +1452,15 @@ async function applyDiscoveryDiff(
 }
 
 /**
- * Side-channel save handler that pushes a `fileChanged` + focus-scoped `renderNow` to the daemon
- * when the daemon path is enabled. Explicit daemon opt-out returns `'disabled'` so the caller can
- * use the Gradle render path; daemon failures return `'failed'` and do not fall back.
+ * Side-channel save handler that pushes a `fileChanged` + focus-scoped `renderNow` to the daemon.
+ * A build-side opt-out (`composePreview { daemon { enabled = false } }`) returns `'disabled'` so
+ * the caller can use the Gradle render path; daemon failures return `'failed'` and do not fall
+ * back.
  */
 type DaemonSaveResult = "accepted" | "disabled" | "failed";
 
 async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+    if (!daemonGate || !daemonScheduler || !gradleService) {
         return "disabled";
     }
     const module = gradleService.resolveModule(filePath);
@@ -1714,14 +1715,14 @@ async function runActivationRefresh(filePath: string): Promise<void> {
  * daemon-enabled module, kick off `composePreviewDaemonStart` + JVM spawn
  * in the background so the first save in the session collapses to
  * "kotlinc + render" instead of paying the cold-bootstrap latency on the
- * user's interactive path. No-op when the daemon flag is off, when the
- * file isn't in a preview module, or when the daemon is already up.
+ * user's interactive path. No-op when the file isn't in a preview module
+ * or when the daemon is already up.
  */
 async function warmDaemonForFile(
     filePath: string,
     opts: { refreshAfterReady?: boolean } = {},
 ): Promise<boolean> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+    if (!daemonGate || !daemonScheduler || !gradleService) {
         return false;
     }
     const module = gradleService.resolveModule(filePath);
@@ -1760,7 +1761,7 @@ async function warmDaemonForFile(
             `daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`,
         );
         vscode.window.showErrorMessage(
-            "Compose Preview daemon is enabled but failed to start. Preview saves will not fall back to Gradle until the daemon is fixed or disabled.",
+            "Compose Preview daemon failed to start. Preview saves will not render until the daemon is fixed.",
         );
         return false;
     }
@@ -2131,7 +2132,7 @@ async function warmShownPreviewsForFile(
     filePath: string,
     reason: string,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !gradleService) {
+    if (!daemonGate || !daemonScheduler || !gradleService) {
         return;
     }
     const module = gradleService.resolveModule(filePath);
@@ -2390,9 +2391,9 @@ function maybeFirePendingRefresh(): void {
  *  during the run, re-applying the debounce-elapsed check.
  *
  *  Picks daemon-vs-Gradle deliberately — never runs both for the same save.
- *  When the daemon is enabled for the file's module, the save uses the daemon path. If the daemon
- *  is unavailable while enabled, we surface an error instead of rendering via Gradle. Explicitly
- *  disabling the daemon keeps the Gradle render path available for now.
+ *  Saves use the daemon path; if the daemon is unavailable we surface an error instead of
+ *  rendering via Gradle. The build can still opt out per-module via
+ *  `composePreview { daemon { enabled = false } }`, in which case the Gradle render path runs.
  *
  *  **Recompile-before-notify invariant.** In the daemon path the compile
  *  step runs *first*, then the daemon is notified. The daemon's
@@ -2430,7 +2431,7 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
                 return;
             }
             vscode.window.showErrorMessage(
-                "Compose Preview daemon is enabled but unavailable. Restart the preview daemon after fixing the daemon issue.",
+                "Compose Preview daemon is unavailable. Restart the preview daemon after fixing the daemon issue.",
             );
             return;
         }
@@ -2499,11 +2500,7 @@ function pickRefreshMode(filePath: string): RefreshMode {
     if (!daemonGate || !gradleService) {
         return "gradle";
     }
-    return pickRefreshModeFor(
-        filePath,
-        daemonGate.isEnabled(),
-        gradleService.resolveModule(filePath),
-    );
+    return pickRefreshModeFor(filePath, gradleService.resolveModule(filePath));
 }
 
 function sendModuleList() {
@@ -3234,7 +3231,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             const mod = previewModuleMap.get(msg.previewId);
             if (mod) {
                 optInHeavyRefresh(mod, msg.previewId);
-                if (daemonGate?.isEnabled() && daemonScheduler) {
+                if (daemonGate && daemonScheduler) {
                     void daemonScheduler.renderNow(
                         mod,
                         [msg.previewId],
@@ -4107,7 +4104,7 @@ async function handleSetInteractive(
     previewId: string,
     enabled: boolean,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     const moduleId = previewModuleMap.get(previewId);
@@ -4194,7 +4191,7 @@ async function handleSetInteractive(
  * frameStreamId regardless of which handler minted it.
  */
 async function handleRequestStreamStart(previewId: string): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     const moduleId = previewModuleMap.get(previewId);
@@ -4263,7 +4260,7 @@ async function handleRequestStreamStop(previewId: string): Promise<void> {
     streamFrameIdToPreviewId.delete(sid);
     updateInteractiveStatus();
     const moduleId = previewModuleMap.get(previewId);
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !moduleId) {
+    if (!daemonGate || !daemonScheduler || !moduleId) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
@@ -4285,7 +4282,7 @@ async function handleRequestStreamVisibility(
         return;
     }
     const moduleId = previewModuleMap.get(previewId);
-    if (!daemonGate?.isEnabled() || !daemonScheduler || !moduleId) {
+    if (!daemonGate || !daemonScheduler || !moduleId) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
@@ -4421,7 +4418,7 @@ async function handleSetRecording(
     enabled: boolean,
     format: "apng" | "mp4",
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     const moduleId = previewModuleMap.get(previewId);
@@ -4510,7 +4507,7 @@ async function handleSetRecording(
 async function forwardInteractiveInput(
     input: Extract<WebviewToExtension, { command: "recordInteractiveInput" }>,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     const previewId = input.previewId;
@@ -4546,7 +4543,7 @@ async function forwardInteractiveInput(
 async function forwardRecordingInput(
     input: Extract<WebviewToExtension, { command: "recordInteractiveInput" }>,
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     const previewId = input.previewId;
@@ -4598,7 +4595,7 @@ async function notifyDaemonViewport(
     visible: string[],
     predicted: string[],
 ): Promise<void> {
-    if (!daemonGate?.isEnabled() || !daemonScheduler) {
+    if (!daemonGate || !daemonScheduler) {
         return;
     }
     // Group by owning module — viewports cross module boundaries only when

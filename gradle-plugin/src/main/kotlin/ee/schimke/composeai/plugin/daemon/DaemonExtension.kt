@@ -25,12 +25,12 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * false` so the VS Code extension can sniff the file and learn the user explicitly opted out —
    * but the extension must NOT spawn the daemon JVM in that case.
    *
-   * When `true`, the descriptor's `enabled: true` flag is set and the VS Code extension may launch
-   * the daemon per its `composePreview.daemon.enabled` setting.
+   * When `true`, the descriptor's `enabled: true` flag is set and the VS Code extension launches
+   * the daemon.
    *
    * Flip via build script (`composePreview { daemon { enabled = false } }`). The Gradle property
-   * override is intentionally NOT wired here — it would key the config cache on a property that VS
-   * Code flips frequently. See `CONFIG.md`.
+   * override is intentionally NOT wired here — it would key the config cache on a property that may
+   * be toggled frequently. See `CONFIG.md`.
    */
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 

@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import { GradleService } from "../gradleService";
 import { LogFilter } from "../logFilter";
 import {
@@ -13,15 +12,12 @@ import {
 } from "./daemonProcess";
 import { DaemonLaunchDescriptor } from "./daemonProtocol";
 
-const SETTING_ENABLED = "daemon.enabled";
-
 /**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
  *
- * Controlled by the `composePreview.daemon.enabled` setting (true by default).
- * When enabled, daemon startup/render failures are surfaced to the user rather
- * than silently falling back to `renderPreviews`. Users can explicitly disable
- * the daemon setting to use the Gradle path temporarily.
+ * The daemon path is always on; the build can still opt out by emitting a
+ * descriptor with `enabled: false` (`composePreview { daemon { enabled = false } }`),
+ * in which case we fall back to the Gradle render path for that module.
  *
  * One daemon per Gradle module (per `:samples:android`, etc.). Modules are
  * spawned lazily on first use and shut down on extension dispose.
@@ -30,7 +26,6 @@ export class DaemonGate {
     private readonly daemons = new Map<string, ManagedDaemon>();
     private readonly spawns = new Map<string, Promise<DaemonClient>>();
     private disposed = false;
-    private warnedUserDisabled = false;
     private readonly warnedBuildDisabled = new Set<string>();
 
     constructor(
@@ -40,38 +35,17 @@ export class DaemonGate {
         private readonly logFilter: LogFilter = new LogFilter(),
     ) {}
 
-    /** Reads the user setting freshly each time so toggles don't need a reload. */
-    isEnabled(): boolean {
-        const config = vscode.workspace.getConfiguration("composePreview");
-        const current = config.inspect<boolean>(SETTING_ENABLED);
-        const value =
-            current?.workspaceFolderValue ??
-            current?.workspaceValue ??
-            current?.globalValue ??
-            true;
-        if (!value && !this.warnedUserDisabled) {
-            this.warnedUserDisabled = true;
-            this.logger.appendLine(
-                "[daemon] WARNING: composePreview.daemon.enabled is false; using the Gradle render path. " +
-                    "The daemon will become required by the VS Code extension in a future release.",
-            );
-        }
-        return value;
-    }
-
     /**
      * Returns a healthy daemon for [moduleId], spawning one if needed. Returns null when the daemon
-     * path has been explicitly disabled by user or build config. Throws when the daemon is enabled
-     * but unavailable, so callers can surface the failure instead of silently rendering via Gradle.
-     * Reasons null is returned:
-     *   - Setting disabled.
-     *   - Descriptor's `enabled: false` (user didn't opt in at the build level).
+     * has been explicitly disabled by build config. Throws when the daemon is enabled but
+     * unavailable, so callers can surface the failure instead of silently rendering via Gradle.
+     * Returns null when the descriptor's `enabled: false` (user didn't opt in at the build level).
      */
     async getOrSpawn(
         moduleId: string,
         events: DaemonClientEvents,
     ): Promise<DaemonClient | null> {
-        if (this.disposed || !this.isEnabled()) {
+        if (this.disposed) {
             return null;
         }
 
@@ -184,9 +158,6 @@ export class DaemonGate {
         gradleService: GradleService,
         moduleId: string,
     ): Promise<void> {
-        if (!this.isEnabled()) {
-            return;
-        }
         await gradleService.runDaemonBootstrap(moduleId);
     }
 

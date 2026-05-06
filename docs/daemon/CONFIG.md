@@ -26,7 +26,7 @@ The block used to live under `experimental`; new builds should use the top-level
 |-|-|
 | **Default** | `true` |
 | **Range** | `true` / `false` |
-| **Effect** | Master switch. When `false`, `composePreviewDaemonStart` still runs and writes a descriptor with `"enabled": false` so VS Code can warn and use the Gradle render path temporarily. When `true`, the descriptor's `"enabled": true` flag is set and the VS Code extension launches the daemon per its own `composePreview.daemon.enabled` setting. |
+| **Effect** | Master switch. When `false`, `composePreviewDaemonStart` still runs and writes a descriptor with `"enabled": false` so VS Code can warn and use the Gradle render path temporarily. When `true`, the descriptor's `"enabled": true` flag is set and the VS Code extension launches the daemon. |
 
 The flag does NOT control task registration: the task is always registered so the file-presence check on the VS Code side has a stable signal.
 
@@ -85,7 +85,7 @@ model.
 
 ## Gradle properties
 
-There is intentionally NO `-PcomposePreview.daemon.enabled=...` property override. Gradle property reads at config time key the configuration cache, and the daemon flag is one consumers may flip from VS Code — a property override would force a ~5–10s reconfigure on every toggle. Flip via build script and rely on Gradle's incremental task graph, or use VS Code's own setting (which gates the spawn without re-running `composePreviewDaemonStart`).
+There is intentionally NO `-PcomposePreview.daemon.enabled=...` property override. Gradle property reads at config time key the configuration cache, and a property override would force a ~5–10s reconfigure on every toggle. Flip via build script and rely on Gradle's incremental task graph.
 
 ## Schema
 

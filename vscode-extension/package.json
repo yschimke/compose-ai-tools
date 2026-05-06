@@ -124,11 +124,6 @@
                     "default": "debug",
                     "description": "Build variant to use for preview rendering"
                 },
-                "composePreview.daemon.enabled": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Use the persistent preview daemon for refresh on saves to files the user has open, plus scroll-ahead speculative renders. When on, daemon failures are shown as errors instead of silently falling back to the Gradle `renderPreviews` task. Turning this off temporarily uses the Gradle path, but the daemon will become required by the extension in a future release."
-                },
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,

@@ -94,7 +94,7 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
 
     if (!descriptor.enabled) {
         throw new Error(
-            "Daemon disabled in build config: set composePreview.daemon.enabled = true",
+            "Daemon disabled in build config: set `composePreview { daemon { enabled = true } }`",
         );
     }
 

@@ -65,7 +65,6 @@ class FakeClient {
  * scheduler may register a different bag per module.
  */
 class FakeGate {
-    public enabled = true;
     public client: FakeClient | null = new FakeClient();
     public ready = false;
     public getOrSpawnCalls: string[] = [];
@@ -93,9 +92,6 @@ class FakeGate {
         }
     >();
 
-    isEnabled(): boolean {
-        return this.enabled;
-    }
     isDaemonReady(_moduleId: string): boolean {
         return this.ready;
     }
@@ -283,9 +279,8 @@ describe("DaemonScheduler", () => {
         assert.deepStrictEqual(params.previews, ["fresh1", "fresh2"]);
     });
 
-    it("skips daemon traffic entirely when the gate is disabled", async () => {
+    it("skips daemon traffic entirely when the gate has no client", async () => {
         const { gate, scheduler } = build();
-        gate.enabled = false;
         gate.client = null;
         await scheduler.fileChanged("mod", "/x.kt");
         await scheduler.setFocus("mod", ["a"]);
@@ -520,7 +515,6 @@ describe("DaemonScheduler", () => {
         const ok = await scheduler.renderNow("mod", ["p1"], "fast");
         assert.strictEqual(ok, true);
 
-        gate.enabled = false;
         gate.client = null;
         const fail = await scheduler.renderNow("mod2", ["p1"], "fast");
         assert.strictEqual(fail, false);
@@ -649,21 +643,6 @@ describe("DaemonScheduler", () => {
                 "spawning",
                 "fallback",
             ]);
-        });
-
-        it("returns false without progress events when the gate is disabled", async () => {
-            const { gate, scheduler } = build();
-            gate.enabled = false;
-            const gradle = new FakeGradleService();
-            const states: string[] = [];
-            const ok = await scheduler.warmModule(
-                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                "mod",
-                (s) => states.push(s),
-            );
-            assert.strictEqual(ok, false);
-            assert.deepStrictEqual(states, []);
-            assert.deepStrictEqual(gradle.bootstrapCalls, []);
         });
     });
 

@@ -775,8 +775,7 @@ export class GradleService {
     /**
      * Runs `:<module>:composePreviewDaemonStart` so the daemon launch
      * descriptor (`build/compose-previews/daemon-launch.json`) is up to date.
-     * Cheap and cacheable — emits a small JSON. Called only when the daemon
-     * path is enabled (`composePreview.daemon.enabled`); the caller (DaemonGate) handles errors.
+     * Cheap and cacheable — emits a small JSON. The caller (DaemonGate) handles errors.
      */
     async runDaemonBootstrap(module: string): Promise<void> {
         await this.runTask(
