@@ -40,9 +40,6 @@ import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.provides
-import ee.schimke.composeai.renderer.AccessibilityDataProducts
-import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
-import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import java.io.File
 import java.util.Base64
 import kotlinx.serialization.decodeFromString
@@ -356,6 +353,10 @@ class RenderEngine(
               val artifactContextData = buildList<ExtensionContextValue<*>> {
                 add(RenderDataArtifactContextKeys.RootDir provides dataDir)
                 add(RenderDataArtifactContextKeys.OutputBaseName provides spec.outputBaseName)
+                add(RenderDataArtifactContextKeys.RenderDensity provides spec.density)
+                add(RenderDataArtifactContextKeys.OutputPngFile provides outputFile)
+                add(RenderDataArtifactContextKeys.IsRoundScreen provides isRound)
+                add(RenderDataArtifactContextKeys.ImageProcessors provides imageProcessors)
                 spec.previewId?.let { add(RenderDataArtifactContextKeys.PreviewId provides it) }
                 spec.localeTag?.takeIf { it.isNotBlank() }?.let {
                   add(RenderDataArtifactContextKeys.RenderedLocale provides it)
@@ -365,6 +366,17 @@ class RenderEngine(
                 }
                 layoutInspectorPreviewContext?.let {
                   add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
+                }
+                // a11y data is collected only when the render ran in a11y mode. Presence of this
+                // key is the gate the AccessibilityArtifactExtension uses to decide whether to
+                // run; absence means "this render didn't collect accessibility data, skip the
+                // sidecar."
+                if (runAccessibility) {
+                  runCatching {
+                    (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
+                  }
+                    .getOrNull()
+                    ?.let { add(RenderDataArtifactContextKeys.AccessibilityViewRoot provides it) }
                 }
               }
               val extensionContextData = ExtensionContextData.of(*artifactContextData.toTypedArray())
@@ -392,56 +404,6 @@ class RenderEngine(
               }
             }
 
-            // D2 — a11y data products. Walk the same `ViewRootForTest` ATF can populate, dump
-            // `a11y-atf.json` (findings) and `a11y-hierarchy.json` (nodes) next to the PNG. The
-            // dispatcher reads these on `data/fetch` / `data/subscribe` attachment via
-            // `AccessibilityDataProductRegistry`. Wrapped in try/catch so an a11y failure does
-            // not strand the PNG the user already cares about — the registry sees a missing
-            // file as "no attachment for this kind on this render".
-            if (runAccessibility && dataDir != null) {
-              try {
-                trace.section("a11y:dataProducts") {
-                  val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
-                  // Hierarchy + ATF come from a typed extension instead of a direct
-                  // AccessibilityChecker.analyze call. The extension owns the platform-specific
-                  // ATF walk; downstream consumers (TouchTargets, Overlay) read declared inputs
-                  // without re-walking the View. A future :data-a11y-hierarchy-desktop (CMP
-                  // semantics walk) would target {Desktop} and emit the same product keys; the
-                  // planner's target filter selects exactly one provider per platform.
-                  val hierarchyExtension = AccessibilityHierarchyExtension()
-                  val store = RecordingDataProductStore()
-                  hierarchyExtension.process(
-                    ExtensionPostCaptureContext(
-                      extensionId = hierarchyExtension.id,
-                      previewId = spec.outputBaseName,
-                      renderMode = spec.renderMode,
-                      products = store.scopedFor(hierarchyExtension),
-                      data =
-                        ExtensionContextData.of(
-                          AccessibilityHierarchyContextKeys.ViewRoot provides view
-                        ),
-                    )
-                  )
-                  val hierarchy = store.require(AccessibilityDataProducts.Hierarchy)
-                  val findings = store.require(AccessibilityDataProducts.Atf)
-                  AccessibilityDataProducer.writeArtifacts(
-                    rootDir = dataDir,
-                    previewId = spec.outputBaseName,
-                    findings = findings.findings,
-                    nodes = hierarchy.nodes,
-                    density = spec.density,
-                    pngFile = outputFile,
-                    isRound = isRound,
-                    imageProcessors = imageProcessors,
-                  )
-                }
-              } catch (t: Throwable) {
-                System.err.println(
-                  "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
-                )
-              }
-            }
           } finally {
             // DESIGN § 9 + § 10 cleanup epilogue. The Compose test rule does not allow a second
             // `setContent` on the same `ComponentActivity`, so we can't drive the

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import android.content.Context
+import android.view.View
 import androidx.compose.ui.semantics.SemanticsNode
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
@@ -81,5 +82,48 @@ object RenderDataArtifactContextKeys {
     ExtensionContextKey(
       name = "render-data-artifact.layoutInspectorPreviewContext",
       type = PreviewContext::class.java,
+    )
+
+  /**
+   * The Android `View` backing `ViewRootForTest` after capture. Populated only when the render
+   * ran in a11y mode; extensions that consume this key should treat its absence as "accessibility
+   * data not collected for this render" rather than fail. This key's presence doubles as the
+   * gate that replaces the old `if (runAccessibility) { ... }` wrapper around the inline
+   * accessibility sidecar block.
+   */
+  val AccessibilityViewRoot: ExtensionContextKey<View> =
+    ExtensionContextKey(
+      name = "render-data-artifact.accessibilityViewRoot",
+      type = View::class.java,
+    )
+
+  /** Render-time density in dp/px (`spec.density`). */
+  val RenderDensity: ExtensionContextKey<Float> =
+    ExtensionContextKey(
+      name = "render-data-artifact.renderDensity",
+      type = Float::class.javaObjectType,
+    )
+
+  /** Path to the just-captured PNG. Used by sidecars that overlay onto the preview image. */
+  val OutputPngFile: ExtensionContextKey<File> =
+    ExtensionContextKey(name = "render-data-artifact.outputPngFile", type = File::class.java)
+
+  /** True when the render qualifier set "round" was applied (Wear OS round screens). */
+  val IsRoundScreen: ExtensionContextKey<Boolean> =
+    ExtensionContextKey(
+      name = "render-data-artifact.isRoundScreen",
+      type = Boolean::class.javaObjectType,
+    )
+
+  /**
+   * Legacy [ImageProcessor] list configured on the render engine. Only consulted by extensions
+   * that interop with the pre-extension `ImageProcessor` surface; defaults to empty when not
+   * populated.
+   */
+  val ImageProcessors: ExtensionContextKey<List<ImageProcessor>> =
+    @Suppress("UNCHECKED_CAST")
+    ExtensionContextKey(
+      name = "render-data-artifact.imageProcessors",
+      type = List::class.java as Class<List<ImageProcessor>>,
     )
 }
