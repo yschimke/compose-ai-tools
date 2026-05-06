@@ -23,6 +23,7 @@ import type {
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
+import { parseBounds } from "./cardData";
 
 /**
  * Builds the per-card legend (one row per finding) shown beneath the
@@ -201,23 +202,4 @@ function highlightA11yFinding(card: HTMLElement, idx: number | null): void {
     )) {
         el.classList.add("a11y-active");
     }
-}
-
-interface ParsedBounds {
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
-}
-
-function parseBounds(s: string | null | undefined): ParsedBounds | null {
-    if (!s) return null;
-    const parts = s.split(",").map((x) => parseInt(x.trim(), 10));
-    if (parts.length !== 4 || parts.some(isNaN)) return null;
-    return {
-        left: parts[0],
-        top: parts[1],
-        right: parts[2],
-        bottom: parts[3],
-    };
 }
