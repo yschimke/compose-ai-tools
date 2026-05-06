@@ -1,12 +1,15 @@
 // Singleton state for the live "Compose Preview" panel.
 //
-// Phase 6 of the migration: introduces the store with the smallest
-// useful field — `earlyFeaturesEnabled` — so the pattern is concrete
-// before bigger lifts. Future commits will grow the field set
-// (interactive/recording previewIds, a11y overlay target, daemon
-// readiness map, focus-mode index, etc.) and have new components
-// subscribe via [StoreController].
+// Migration scope: the panel-level scalars that components want to
+// subscribe to. The big per-preview maps (`cardCaptures`,
+// `cardA11yFindings`, `cardA11yNodes`) intentionally still live as
+// closure state in `behavior.ts` until the `<preview-card>` Lit
+// component lands — moving them in would force every `Map.set` to
+// allocate a fresh Map (the store's reference-equality rule for change
+// detection) which is too much churn while the imperative
+// `renderPreviews` / `updateImage` paths still own them.
 
+import type { PreviewInfo } from "../shared/types";
 import { Store } from "../shared/store";
 
 export interface PreviewState {
@@ -33,12 +36,57 @@ export interface PreviewState {
      * here so subscribers can react without re-walking the DOM.
      */
     focusedPreviewId: string | null;
+
+    /**
+     * Latest manifest from the extension's `setPreviews` message. The
+     * canonical source of preview metadata that `<preview-card>` will
+     * subscribe to once that component lands. Replaced (not mutated)
+     * on every `setPreviews` so reference-equality change detection
+     * works.
+     */
+    allPreviews: readonly PreviewInfo[];
+
+    /**
+     * Module directory the latest manifest came from — used to resolve
+     * relative `previewMetadata.sourceFile` paths back to workspace
+     * URIs. Empty string before the first `setPreviews`.
+     */
+    moduleDir: string;
+
+    /**
+     * Index into `getVisibleCards()` for the focus-mode-active card.
+     * Bounded to `[0, visible.length - 1]`. Meaningful only in focus
+     * layout; other layouts retain the value so re-entering focus
+     * lands on the same card.
+     */
+    focusIndex: number;
+
+    /**
+     * Layout to fall back to when the user exits focus mode. Captured
+     * whenever we transition into focus from another layout (dropdown
+     * change, dblclick on a card). Defaults to `"grid"` so the very
+     * first exit lands somewhere sensible.
+     */
+    previousLayout: "grid" | "flow" | "column";
+
+    /**
+     * Last `previewId` published to the extension via
+     * `previewScopeChanged`. Tracked here so we don't spam the History
+     * panel with redundant re-scopes (e.g. layout reapplies on every
+     * filter tweak).
+     */
+    lastScopedPreviewId: string | null;
 }
 
 const initialState: PreviewState = {
     earlyFeaturesEnabled: false,
     a11yOverlayPreviewId: null,
     focusedPreviewId: null,
+    allPreviews: [],
+    moduleDir: "",
+    focusIndex: 0,
+    previousLayout: "grid",
+    lastScopedPreviewId: null,
 };
 
 export const previewStore = new Store<PreviewState>(initialState);
