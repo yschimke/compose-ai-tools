@@ -124,6 +124,12 @@
                     "default": "debug",
                     "description": "Build variant to use for preview rendering"
                 },
+                "composePreview.daemon.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Deprecated. The preview daemon is always on; this setting is ignored. Opt out at the build level via `composePreview { daemon { enabled = false } }`.",
+                    "markdownDeprecationMessage": "This setting has no effect. The preview daemon is always on; opt out at the build level via `composePreview { daemon { enabled = false } }`."
+                },
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,
