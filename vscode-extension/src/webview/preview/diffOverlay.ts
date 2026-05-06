@@ -22,9 +22,10 @@
 // a different code path.
 
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
+import { computeDiffStats, type DiffStats } from "../shared/pixelDiff";
 import type { VsCodeApi } from "../shared/vscode";
 
-export type { DiffMode };
+export type { DiffMode, DiffStats };
 
 export interface DiffPayload {
     leftLabel: string;
@@ -209,104 +210,6 @@ function buildPreviewDiffPane(
         pane.appendChild(empty);
     }
     return pane;
-}
-
-export type DiffStats =
-    | { error: string }
-    | {
-          sameSize: false;
-          leftW: number;
-          leftH: number;
-          rightW: number;
-          rightH: number;
-      }
-    | {
-          sameSize: true;
-          w: number;
-          h: number;
-          diffPx: number;
-          total: number;
-          percent: number;
-      };
-
-/**
- * Client-side pixel diff: load both base64 PNGs into `<img>`s, draw to
- * canvases, walk the `ImageData` buffers in parallel. Resolves to one
- * of three shapes — error, size-mismatch, or identical/changed stats.
- * Always resolves; never rejects.
- */
-function computeDiffStats(
-    leftBase64: string,
-    rightBase64: string,
-): Promise<DiffStats> {
-    return new Promise((resolve) => {
-        const left = new Image();
-        const right = new Image();
-        let loaded = 0;
-        const onErr = (): void => resolve({ error: "image failed to load" });
-        const onOk = (): void => {
-            if (++loaded < 2) return;
-            try {
-                if (
-                    left.naturalWidth !== right.naturalWidth ||
-                    left.naturalHeight !== right.naturalHeight
-                ) {
-                    resolve({
-                        sameSize: false,
-                        leftW: left.naturalWidth,
-                        leftH: left.naturalHeight,
-                        rightW: right.naturalWidth,
-                        rightH: right.naturalHeight,
-                    });
-                    return;
-                }
-                const w = left.naturalWidth;
-                const h = left.naturalHeight;
-                const c1 = document.createElement("canvas");
-                c1.width = w;
-                c1.height = h;
-                c1.getContext("2d")!.drawImage(left, 0, 0);
-                const d1 = c1.getContext("2d")!.getImageData(0, 0, w, h).data;
-                const c2 = document.createElement("canvas");
-                c2.width = w;
-                c2.height = h;
-                c2.getContext("2d")!.drawImage(right, 0, 0);
-                const d2 = c2.getContext("2d")!.getImageData(0, 0, w, h).data;
-                let diff = 0;
-                const len = d1.length;
-                for (let i = 0; i < len; i += 4) {
-                    if (
-                        d1[i] !== d2[i] ||
-                        d1[i + 1] !== d2[i + 1] ||
-                        d1[i + 2] !== d2[i + 2] ||
-                        d1[i + 3] !== d2[i + 3]
-                    )
-                        diff++;
-                }
-                const total = w * h;
-                resolve({
-                    sameSize: true,
-                    w,
-                    h,
-                    diffPx: diff,
-                    total,
-                    percent: total > 0 ? diff / total : 0,
-                });
-            } catch (err) {
-                resolve({
-                    error:
-                        (err instanceof Error && err.message) ||
-                        "stats unavailable",
-                });
-            }
-        };
-        left.onload = onOk;
-        left.onerror = onErr;
-        right.onload = onOk;
-        right.onerror = onErr;
-        left.src = "data:image/png;base64," + leftBase64;
-        right.src = "data:image/png;base64," + rightBase64;
-    });
 }
 
 function applyDiffStats(el: HTMLElement, s: DiffStats): void {
