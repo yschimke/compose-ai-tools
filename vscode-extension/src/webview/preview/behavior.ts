@@ -29,6 +29,7 @@ import {
 import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
 import { PreviewGrid } from "./components/PreviewGrid";
+import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
     FocusController,
@@ -329,6 +330,20 @@ export function setupPreviewBehavior(
         setLastScopedPreviewId,
     });
 
+    // Filter + message-banner orchestration lives in `./filterController.ts`
+    // — see `FilterController`. Built after `focusController` because
+    // `apply()` calls `applyLayout()` to recompute focus bounds against the
+    // narrowed visible set.
+    const filterController = new FilterController({
+        vscode,
+        state,
+        filterToolbar,
+        grid,
+        messageBanner,
+        getAllPreviews: () => allPreviews,
+        applyLayout: () => focusController.applyLayout(),
+    });
+
     const staleBadge = new StaleBadgeController(vscode);
     const loadingOverlay = new LoadingOverlay();
 
@@ -419,63 +434,15 @@ export function setupPreviewBehavior(
         focusController.toggleA11yOverlay();
     }
 
-    function saveFilterState(): void {
-        state.filters = {
-            fn: filterToolbar.getFunctionValue(),
-            group: filterToolbar.getGroupValue(),
-        };
-        vscode.setState(state);
-    }
-
-    function restoreFilterState(): void {
-        const f = state.filters || {};
-        if (f.fn && filterToolbar.hasFunctionOption(f.fn))
-            filterToolbar.setFunctionValue(f.fn);
-        if (f.group && filterToolbar.hasGroupOption(f.group))
-            filterToolbar.setGroupValue(f.group);
-    }
-
-    function applyFilters(): void {
-        const visibleCount = grid.applyFilters({
-            fn: filterToolbar.getFunctionValue(),
-            group: filterToolbar.getGroupValue(),
-        });
-
-        // Only own the message when we have a filter-specific thing to
-        // say. When there are no previews at all, the extension owns the
-        // message (e.g. "No @Preview functions in this file") — clearing
-        // it here was how the view went blank after a refresh.
-        if (allPreviews.length > 0 && visibleCount === 0) {
-            setMessage("No previews match the current filters", "filter");
-        } else if (messageBanner.getOwner() === "filter") {
-            // We set this earlier; clear it now that it no longer applies.
-            setMessage("", "filter");
-        }
-
-        // Re-apply layout so focus mode updates correctly after filter change
-        applyLayout();
-    }
-
-    // Thin shim around `<message-banner>.setMessage` that keeps the
-    // ensureNotBlank() backstop wired in. The owner tag is used only to
-    // let applyFilters clear its own message without touching extension-
-    // set text (empty-file notice, build errors, etc.).
-    function setMessage(text: string, owner?: MessageOwner): void {
-        messageBanner.setMessage(text, owner ?? "extension");
-        ensureNotBlank();
-    }
-
-    // Safety net: if the grid ends up empty *and* no message is showing,
-    // surface a placeholder so the user doesn't stare at a void. This
-    // shouldn't normally trigger — the extension sends an explicit
-    // message for every empty state — but a silent blank view was the
-    // original complaint, so this catches any future regressions.
-    function ensureNotBlank(): void {
-        const hasCards = grid.querySelector(".preview-card") !== null;
-        if (!hasCards && !messageBanner.isVisible()) {
-            messageBanner.setMessage("Preparing previews…", "fallback");
-        }
-    }
+    // Filter + message-banner orchestration shims — implementations live
+    // in `./filterController.ts`. The shims keep the call shape stable
+    // for the message-context callbacks and the various event listeners.
+    const saveFilterState = (): void => filterController.save();
+    const restoreFilterState = (): void => filterController.restore();
+    const applyFilters = (): void => filterController.apply();
+    const setMessage = (text: string, owner?: MessageOwner): void =>
+        filterController.setMessage(text, owner);
+    const ensureNotBlank = (): void => filterController.ensureNotBlank();
 
     // populateFilter / hasOption are gone — `<filter-toolbar>` owns the
     // option lists via setFunctionOptions / setGroupOptions and exposes
