@@ -31,6 +31,7 @@
 
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
+import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import type { VsCodeApi } from "../shared/vscode";
 import { sanitizeId } from "./cardData";
 
@@ -60,8 +61,13 @@ export interface LiveStateConfig {
 }
 
 export class LiveStateController {
-    private readonly interactivePreviewIds = new Set<string>();
-    private readonly recordingPreviewIds = new Set<string>();
+    // Mutable references — the planner-driven mutators in
+    // `setInteractiveForCard` / `toggleRecording` replace these with
+    // fresh Sets returned by the planners, while the local-mutation
+    // methods (`stopAllInteractive`, the silent extension-clear paths,
+    // etc.) call `.clear()` / `.delete()` directly.
+    private interactivePreviewIds: Set<string> = new Set<string>();
+    private recordingPreviewIds: Set<string> = new Set<string>();
 
     constructor(private readonly cfg: LiveStateConfig) {}
 
@@ -150,21 +156,20 @@ export class LiveStateController {
     setInteractiveForCard(card: HTMLElement, shift: boolean): void {
         const previewId = card.dataset.previewId;
         if (!previewId) return;
-        const wasLive = this.interactivePreviewIds.has(previewId);
-        if (!shift) {
-            this.interactivePreviewIds.forEach((prior) => {
-                if (prior === previewId) return;
-                this.cfg.vscode.postMessage({
-                    command: "setInteractive",
-                    previewId: prior,
-                    enabled: false,
-                });
+        const plan = planLiveToggle(
+            this.interactivePreviewIds,
+            previewId,
+            shift,
+        );
+        for (const prior of plan.deactivate) {
+            this.cfg.vscode.postMessage({
+                command: "setInteractive",
+                previewId: prior,
+                enabled: false,
             });
-            this.interactivePreviewIds.clear();
         }
-        const turnOn = !wasLive;
-        if (turnOn) {
-            this.interactivePreviewIds.add(previewId);
+        this.interactivePreviewIds = plan.next;
+        if (plan.turnOnTarget) {
             const img = card.querySelector(".image-container img");
             if (img instanceof HTMLImageElement) {
                 attachInteractiveInputHandlers(
@@ -173,13 +178,11 @@ export class LiveStateController {
                     this.cfg.interactiveInputConfig,
                 );
             }
-        } else {
-            this.interactivePreviewIds.delete(previewId);
         }
         this.cfg.vscode.postMessage({
             command: "setInteractive",
             previewId,
-            enabled: turnOn,
+            enabled: plan.turnOnTarget,
         });
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
@@ -201,20 +204,18 @@ export class LiveStateController {
         const card = this.cfg.focusedCard();
         const previewId = card ? card.dataset.previewId : null;
         if (!card || !previewId) return;
-        const turnOn = !this.recordingPreviewIds.has(previewId);
         const format = this.cfg.recordingFormat.value;
-        if (turnOn) {
-            this.recordingPreviewIds.forEach((prior) => {
-                if (prior === previewId) return;
-                this.cfg.vscode.postMessage({
-                    command: "setRecording",
-                    previewId: prior,
-                    enabled: false,
-                    format,
-                });
+        const plan = planRecordingToggle(this.recordingPreviewIds, previewId);
+        for (const prior of plan.deactivate) {
+            this.cfg.vscode.postMessage({
+                command: "setRecording",
+                previewId: prior,
+                enabled: false,
+                format,
             });
-            this.recordingPreviewIds.clear();
-            this.recordingPreviewIds.add(previewId);
+        }
+        this.recordingPreviewIds = plan.next;
+        if (plan.turnOnTarget) {
             const img = card.querySelector(".image-container img");
             if (img instanceof HTMLImageElement) {
                 attachInteractiveInputHandlers(
@@ -223,13 +224,11 @@ export class LiveStateController {
                     this.cfg.interactiveInputConfig,
                 );
             }
-        } else {
-            this.recordingPreviewIds.delete(previewId);
         }
         this.cfg.vscode.postMessage({
             command: "setRecording",
             previewId,
-            enabled: turnOn,
+            enabled: plan.turnOnTarget,
             format,
         });
         this.cfg.applyRecordingButtonState();
