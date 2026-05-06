@@ -1152,7 +1152,15 @@ open class RobolectricHost(
         previewOverrideExtensions =
           PreviewOverrideExtensions(
             listOf(WallpaperPreviewOverrideExtension(), Material3ThemePreviewOverrideExtension())
-          )
+          ),
+        dataArtifactExtensions =
+          RenderDataArtifactExtensions(
+            listOf(
+              FontsRecorderExtension.factory,
+              ResourcesRecorderExtension.factory,
+              I18nTranslationsExtension.factory,
+            )
+          ),
       )
     }
 
