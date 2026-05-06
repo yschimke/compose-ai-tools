@@ -461,14 +461,20 @@ export type UpdateImageConfig = Pick<
  * Side effects (when [captureIndex] matches the displayed capture):
  *  - Updates / mutates the per-capture cache entry on
  *    `previewStore`'s `cardCaptures` and bumps `mapsRevision` so
- *    subscribers selecting on the cache notice the new bytes.
+ *    subscribers selecting on the cache notice the new bytes. The
+ *    bump is issued AFTER the `<img>` `src` swap so the
+ *    `<preview-card>` StoreController fires with the new image
+ *    state and its on-load a11y deferral attaches against the right
+ *    src.
  *  - Replaces the card's `<img>` `src` (or creates one if missing).
  *  - Re-attaches the live pointer/wheel handlers via
  *    `attachInteractiveInputHandlers`.
  *  - If a diff overlay is open against `head` / `main`, re-issues the
  *    diff request so the user sees the new bytes without clicking.
- *  - Repaints the a11y finding / hierarchy overlays once the image's
- *    natural dimensions are known.
+ *
+ * Note: the a11y overlay repaint that used to live at the tail of
+ * this function now runs inside `<preview-card>`'s `mapsRevision`
+ * subscription — see `PreviewCard._repaintA11yOverlaysFromCache`.
  */
 export function updateImage(
     previewId: string,
@@ -481,9 +487,10 @@ export function updateImage(
 
     // Cache so carousel navigation can restore this capture without
     // a fresh extension round-trip. Mutates the capture object in
-    // place — the Map identity is unchanged but `mapsRevision` is
-    // bumped so subscribers selecting on it can react to fresh
-    // frames in live mode.
+    // place — the Map identity is unchanged. The matching
+    // `bumpPreviewMapsRevision()` is deferred until after the
+    // `<img>` `src` swap below, so the `<preview-card>` StoreController
+    // fires with the new image element / src in place.
     const caps = previewStore.getState().cardCaptures.get(previewId);
     const capture =
         caps && captureIndex >= 0 && captureIndex < caps.length
@@ -493,7 +500,6 @@ export function updateImage(
         capture.imageData = imageData;
         capture.errorMessage = null;
         capture.renderError = null;
-        bumpPreviewMapsRevision();
     }
 
     // Only paint the <img> if the currently-displayed capture is the
@@ -533,6 +539,12 @@ export function updateImage(
     img.className = isLive ? "live-frame" : "fade-in";
     attachInteractiveInputHandlers(card, config.interactiveInputConfig);
 
+    // Bump AFTER `img.src` is set so `<preview-card>`'s StoreController
+    // sees the new image when it re-runs `_repaintA11yOverlaysFromCache`.
+    // The component handles both the immediately-decoded path and the
+    // on-load deferral itself — see PreviewCard.
+    if (capture) bumpPreviewMapsRevision();
+
     if (caps) config.frameCarousel.updateIndicator(card);
 
     // If a diff overlay is open on this card and uses the live render
@@ -561,32 +573,13 @@ export function updateImage(
         }
     }
 
-    // Re-build the a11y overlay once the image natural dimensions
-    // are known. Data-URL srcs may resolve synchronously; in that
-    // case img.complete is true and load will not fire, so we
-    // check both. Findings are stashed at setPreviews time via the
-    // renderPreviews pipeline. Gated on earlyFeatures so the
-    // overlay only paints when the user has opted into the
-    // accessibility-overlay feature surface.
-    const findings = previewStore.getState().cardA11yFindings.get(previewId);
-    const nodes = previewStore.getState().cardA11yNodes.get(previewId);
-    if (
-        config.earlyFeatures() &&
-        ((findings && findings.length > 0) || (nodes && nodes.length > 0))
-    ) {
-        const paintedImg = img;
-        const apply = (): void => {
-            if (findings && findings.length > 0)
-                buildA11yOverlay(card, findings, paintedImg);
-            if (nodes && nodes.length > 0)
-                applyHierarchyOverlay(card, nodes, paintedImg);
-        };
-        if (paintedImg.complete && paintedImg.naturalWidth > 0) {
-            apply();
-        } else {
-            paintedImg.addEventListener("load", apply, { once: true });
-        }
-    }
+    // The a11y overlay repaint that used to run here lives in
+    // `<preview-card>` — the `mapsRevision` bump above (via the
+    // `if (capture)` branch) drives `_repaintA11yOverlaysFromCache`
+    // inside the component, which both handles the synchronous
+    // (`img.complete && naturalWidth > 0`) case and attaches a
+    // one-time `load` listener when the new bytes haven't decoded
+    // yet.
 }
 
 /** Subset `applyA11yUpdate` reaches for. The a11y caches themselves
