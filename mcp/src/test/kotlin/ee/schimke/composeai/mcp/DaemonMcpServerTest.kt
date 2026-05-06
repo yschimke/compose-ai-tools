@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.After
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -1507,6 +1509,172 @@ class DaemonMcpServerTest {
     assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
     assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
       .isEqualTo(listOf(previewId))
+  }
+
+  // -------------------------------------------------------------------------
+  // Edit-loop staleness regression — agents that edit a preview source repeatedly
+  // and request a render after each edit observe stale renders when
+  // ensureSourceFreshBeforeRender (DaemonMcpServer.kt:438) doesn't forward a
+  // fileChanged. The daemon's UserClassLoaderHolder.swap fires only on
+  // fileChanged({kind: "source"}), so without it the next render binds against
+  // the previous bytecode.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `resources read forwards fileChanged on every iteration of an edit render loop`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val baseMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("loop-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    val iterations = 5
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      // Bump mtime forward each iteration. This is the happy path — File.lastModified()
+      // is monotonic so the daemon-side classloader swap fires.
+      assertThat(sourceFile.setLastModified(baseMtime + 1_000L * (i + 1))).isTrue()
+
+      client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage(
+          "iteration #${i + 1}: expected fileChanged forwarded for advancing-mtime edit"
+        )
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["path"]?.jsonPrimitive?.contentOrNull)
+        .isEqualTo(sourceFile.canonicalPath)
+      assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+    }
+  }
+
+  @Test
+  @Ignore(
+    "Documents the staleness mechanism agents observe: ensureSourceFreshBeforeRender " +
+      "(DaemonMcpServer.kt:451) returns early on `currentModifiedMs <= knownModifiedMs`, so " +
+      "edits that don't advance the source's mtime (same-millisecond writes, mtime-preserving " +
+      "editors, agent harnesses that touch files without bumping mtime) leak through stale. " +
+      "Test currently fails 0/5 fileChanged forwards. Remove @Ignore once the check augments " +
+      "mtime with a content-hash signal so content-only edits also fire fileChanged. " +
+      "Workaround for agents today: call notify_file_changed explicitly after each edit " +
+      "(covered by the next test)."
+  )
+  fun `resources read forwards fileChanged when content changes but mtime is preserved`() {
+    // Reproduces the staleness agents observe: a tight edit loop where the source's
+    // mtime stays pinned (same-millisecond writes on fast SSDs / tmpfs, mtime-preserving
+    // editors, agent harnesses that touch files programmatically without bumping mtime).
+    // Today's ensureSourceFreshBeforeRender returns early on
+    // `currentModifiedMs <= knownModifiedMs` (DaemonMcpServer.kt:451) so the daemon
+    // never sees a fileChanged and the next render binds against stale bytecode.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val frozenMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("frozen-mtime-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    val iterations = 5
+    val notifiedIterations = mutableListOf<Int>()
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      // Pin mtime to the original value AFTER the write. Simulates a mtime-preserving
+      // editor or two writes within the same millisecond.
+      assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+      client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+      // Drain the renderNow so the next iteration's poll doesn't see a stale entry.
+      daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS)
+
+      val fileChanged = daemon.fileChanges.poll(500, TimeUnit.MILLISECONDS)
+      if (fileChanged != null) notifiedIterations.add(i + 1)
+    }
+
+    assertWithMessage(
+        "expected fileChanged to be forwarded for every edit (got ${notifiedIterations.size}/$iterations); " +
+          "ensureSourceFreshBeforeRender currently relies on mtime advancing, so content-only edits leak through stale"
+      )
+      .that(notifiedIterations)
+      .hasSize(iterations)
+  }
+
+  @Test
+  fun `notify_file_changed forwards fileChanged regardless of mtime so agents can bypass staleness`() {
+    // The documented workaround for the mtime-based staleness gap above: agents call
+    // the explicit `notify_file_changed` MCP tool after every edit. This test pins the
+    // workaround so a regression in the tool's forwarding path (DaemonMcpServer.kt:2766)
+    // is caught early.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val frozenMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val iterations = 5
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+      client.callTool(
+        "notify_file_changed",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("path", sourceFile.absolutePath)
+          put("kind", "source")
+          put("changeType", "modified")
+        },
+      )
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage("iteration #${i + 1}: notify_file_changed must always forward")
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["path"]?.jsonPrimitive?.contentOrNull)
+        .isEqualTo(sourceFile.absolutePath)
+      assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+    }
   }
 
   // -------------------------------------------------------------------------
