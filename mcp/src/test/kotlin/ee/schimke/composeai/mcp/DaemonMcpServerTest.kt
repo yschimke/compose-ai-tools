@@ -31,7 +31,6 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.After
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -1568,23 +1567,12 @@ class DaemonMcpServerTest {
   }
 
   @Test
-  @Ignore(
-    "Documents the staleness mechanism agents observe: ensureSourceFreshBeforeRender " +
-      "(DaemonMcpServer.kt:451) returns early on `currentModifiedMs <= knownModifiedMs`, so " +
-      "edits that don't advance the source's mtime (same-millisecond writes, mtime-preserving " +
-      "editors, agent harnesses that touch files without bumping mtime) leak through stale. " +
-      "Test currently fails 0/5 fileChanged forwards. Remove @Ignore once the check augments " +
-      "mtime with a content-hash signal so content-only edits also fire fileChanged. " +
-      "Workaround for agents today: call notify_file_changed explicitly after each edit " +
-      "(covered by the next test)."
-  )
   fun `resources read forwards fileChanged when content changes but mtime is preserved`() {
-    // Reproduces the staleness agents observe: a tight edit loop where the source's
-    // mtime stays pinned (same-millisecond writes on fast SSDs / tmpfs, mtime-preserving
-    // editors, agent harnesses that touch files programmatically without bumping mtime).
-    // Today's ensureSourceFreshBeforeRender returns early on
-    // `currentModifiedMs <= knownModifiedMs` (DaemonMcpServer.kt:451) so the daemon
-    // never sees a fileChanged and the next render binds against stale bytecode.
+    // Tight edit loop where the source's mtime stays pinned across every iteration —
+    // simulates same-millisecond writes on fast SSDs / tmpfs, mtime-preserving editors, and
+    // agent harnesses that touch files programmatically without bumping mtime.
+    // ensureSourceFreshBeforeRender's slow path hashes the file when mtime didn't move, so
+    // content-only edits still fire `fileChanged` and the daemon's classloader rotates.
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
     val moduleDir = tmp.newFolder("workspace", "module")

@@ -435,20 +435,64 @@ class DaemonMcpServer(
     }
   }
 
+  /**
+   * Decides whether the user has edited [uri]'s source since the last time the daemon was told
+   * about it, and forwards a `fileChanged({kind: "source"})` notification when so. The daemon's
+   * [`UserClassLoaderHolder.swap`][ee.schimke.composeai.daemon.UserClassLoaderHolder.swap] only
+   * rotates the user classloader on `fileChanged`, so missing this signal is exactly what makes
+   * agents perceive "stale renders" after an edit.
+   *
+   * Two-stage detection:
+   * 1. **Fast path — mtime advanced.** Almost every editor advances the source's `lastModified` on
+   *    save, so the cheap `stat` is enough. Fire `fileChanged`, refresh the cached mtime + a fresh
+   *    content hash, return.
+   * 2. **Slow path — mtime did not advance.** Same-millisecond writes on fast SSDs / tmpfs,
+   *    mtime-preserving editors, and agent harnesses that touch files programmatically without
+   *    bumping mtime all leave the file's mtime exactly where discovery saw it. Hash the bytes and
+   *    compare against the cached hash; on mismatch, fire `fileChanged` and refresh the cache. The
+   *    hash cost (one SHA-256 over a Kotlin source — a few KB to ~tens of KB) is in the noise next
+   *    to the render itself (Robolectric: hundreds of ms).
+   *
+   * First-sighting (catalog entry has neither mtime nor hash) records both silently — the mtime is
+   * what was captured at discovery, and the hash is computed on demand. Matches the pre-fix
+   * behaviour of "first read after discovery is a no-op".
+   */
   private fun ensureSourceFreshBeforeRender(uri: PreviewUri, daemon: SupervisedDaemon) {
     val addr = DaemonAddr(uri.workspaceId, uri.modulePath)
     val entry = catalog[addr]?.get(uri.previewFqn) ?: return
     val sourceFile = resolvePreviewSourceFile(uri, entry.sourceFile) ?: return
     val currentModifiedMs = sourceFile.lastModified().takeIf { it > 0L } ?: return
-    val knownModifiedMs =
-      entry.sourceLastModifiedMs
+
+    val mtimeAdvanced =
+      entry.sourceLastModifiedMs?.let { currentModifiedMs > it }
         ?: run {
+          // First sighting via mtime — record what we know and bail without firing. The hash
+          // is filled in on the first slow-path probe so subsequent frozen-mtime edits get
+          // caught on iteration two.
           catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
             current.copy(sourceLastModifiedMs = currentModifiedMs)
           }
           return
         }
-    if (currentModifiedMs <= knownModifiedMs) return
+
+    val needsNotify =
+      if (mtimeAdvanced) {
+        true
+      } else {
+        // mtime didn't move — confirm with a content hash. If we have nothing to compare
+        // against (legacy entry / first probe after discovery without a hash), record the
+        // current hash so the next probe has a baseline.
+        val currentHash = runCatching { sha256Hex(sourceFile) }.getOrNull() ?: return
+        val knownHash = entry.sourceContentHash
+        if (knownHash == null) {
+          catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
+            current.copy(sourceContentHash = currentHash)
+          }
+          return
+        }
+        currentHash != knownHash
+      }
+    if (!needsNotify) return
 
     daemon.allClients().forEach { client ->
       runCatching {
@@ -459,8 +503,12 @@ class DaemonMcpServer(
         )
       }
     }
+    val refreshedHash = runCatching { sha256Hex(sourceFile) }.getOrNull()
     catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
-      current.copy(sourceLastModifiedMs = currentModifiedMs)
+      current.copy(
+        sourceLastModifiedMs = currentModifiedMs,
+        sourceContentHash = refreshedHash ?: current.sourceContentHash,
+      )
     }
   }
 
@@ -2824,18 +2872,21 @@ class DaemonMcpServer(
     for (entry in added + changed) {
       val id = entry["id"]?.jsonPrimitive?.contentOrNull ?: continue
       val sourceFile = entry["sourceFile"]?.jsonPrimitive?.contentOrNull
-      val sourceLastModifiedMs =
+      val resolved =
         resolvePreviewSourceFile(
-            PreviewUri(
-              workspaceId = daemon.workspaceId,
-              modulePath = daemon.modulePath,
-              previewFqn = id,
-              config = entry["config"]?.jsonPrimitive?.contentOrNull,
-            ),
-            sourceFile,
-          )
-          ?.lastModified()
-          ?.takeIf { it > 0L }
+          PreviewUri(
+            workspaceId = daemon.workspaceId,
+            modulePath = daemon.modulePath,
+            previewFqn = id,
+            config = entry["config"]?.jsonPrimitive?.contentOrNull,
+          ),
+          sourceFile,
+        )
+      val sourceLastModifiedMs = resolved?.lastModified()?.takeIf { it > 0L }
+      // Seed the content hash at discovery so the very first frozen-mtime edit is caught
+      // against this baseline. Failures (unreadable file, permissions) just leave the hash
+      // null — `ensureSourceFreshBeforeRender` falls back to the legacy mtime-only path.
+      val sourceContentHash = resolved?.let { runCatching { sha256Hex(it) }.getOrNull() }
       byId[id] =
         PreviewEntry(
           fqn = id,
@@ -2843,6 +2894,7 @@ class DaemonMcpServer(
           config = entry["config"]?.jsonPrimitive?.contentOrNull,
           sourceFile = sourceFile,
           sourceLastModifiedMs = sourceLastModifiedMs,
+          sourceContentHash = sourceContentHash,
         )
     }
     removed.forEach { byId.remove(it) }
@@ -3078,6 +3130,15 @@ class DaemonMcpServer(
     val config: String?,
     val sourceFile: String?,
     val sourceLastModifiedMs: Long? = null,
+    /**
+     * SHA-256 of the source file's bytes captured at discovery and refreshed on every
+     * [ensureSourceFreshBeforeRender] call that fires a `fileChanged`. Lets the freshness check
+     * detect content-only edits — same-millisecond writes on fast SSDs/tmpfs, mtime-preserving
+     * editors, agent harnesses that touch files programmatically without bumping mtime — that the
+     * mtime-only comparison misses. Null until the source is hashed for the first time (legacy
+     * entries; null sourceFile; unreadable file).
+     */
+    val sourceContentHash: String? = null,
   )
 
   /**
