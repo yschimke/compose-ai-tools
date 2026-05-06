@@ -43,10 +43,12 @@ import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
+import { StreamingPainter } from "./streamingPainter";
 import { ViewportTracker } from "./viewportTracker";
 
 export function setupPreviewBehavior(
     initialEarlyFeaturesEnabled: boolean,
+    initialStreamingEnabled: boolean = false,
 ): void {
     const vscode = getVsCodeApi();
     const state = vscode.getState() || { filters: {} };
@@ -56,9 +58,13 @@ export function setupPreviewBehavior(
     // terseness; writes go straight to `previewStore.setState`.
     previewStore.setState({
         earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
+        streamingEnabled: initialStreamingEnabled,
     });
     const earlyFeatures = (): boolean =>
         previewStore.getState().earlyFeaturesEnabled;
+    const streamingEnabled = (): boolean =>
+        previewStore.getState().streamingEnabled;
+    const streamingPainter = new StreamingPainter();
 
     const grid = document.getElementById("preview-grid") as PreviewGrid;
     const focusInspector = document.getElementById("focus-inspector");
@@ -201,6 +207,7 @@ export function setupPreviewBehavior(
         recordingFormat,
         interactiveInputConfig,
         earlyFeatures,
+        streamingEnabled,
         inFocus: () => filterToolbar.getLayoutValue() === "focus",
         focusedCard: () =>
             filterToolbar.getLayoutValue() === "focus"
@@ -1461,6 +1468,41 @@ export function setupPreviewBehavior(
                             against: "main",
                         });
                     });
+                break;
+            }
+            case "streamStarted": {
+                const card = document.getElementById(
+                    "preview-" + sanitizeId(msg.previewId),
+                );
+                if (card) {
+                    streamingPainter.attach(
+                        card as HTMLElement,
+                        msg.previewId,
+                        msg.frameStreamId,
+                    );
+                }
+                break;
+            }
+            case "streamFrame": {
+                streamingPainter.onFrame({
+                    frameStreamId: msg.frameStreamId,
+                    seq: msg.seq,
+                    ptsMillis: msg.ptsMillis,
+                    widthPx: msg.widthPx,
+                    heightPx: msg.heightPx,
+                    codec: msg.codec,
+                    keyframe: msg.keyframe ?? false,
+                    final: msg.final ?? false,
+                    payloadBase64: msg.payloadBase64,
+                });
+                break;
+            }
+            case "streamStopped": {
+                streamingPainter.detach(msg.previewId);
+                break;
+            }
+            case "setStreamingEnabled": {
+                previewStore.setState({ streamingEnabled: !!msg.enabled });
                 break;
             }
             case "setEarlyFeatures": {

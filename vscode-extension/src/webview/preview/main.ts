@@ -173,7 +173,8 @@ export class PreviewApp extends LitElement {
 
     protected firstUpdated(): void {
         const initialEarlyFeatures = this.dataset.earlyFeatures === "true";
-        setupPreviewBehavior(initialEarlyFeatures);
+        const initialStreamingEnabled = this.dataset.streaming === "true";
+        setupPreviewBehavior(initialEarlyFeatures, initialStreamingEnabled);
         // Tell the extension we exist. The host posts `setPreviews` /
         // `setModules` / etc. as soon as it has data — but `postMessage`
         // silently drops messages while the webview view is unresolved
