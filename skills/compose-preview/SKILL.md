@@ -110,12 +110,25 @@ the pattern with code.
 
 The plugin is on Maven Central — most projects already have `mavenCentral()`
 in their plugin repositories, so no credentials or extra registry config.
-Bootstrap the CLI and verify the environment:
+
+**Agents: check first, install only with user consent.** Run
+`compose-preview --version && compose-preview doctor` to see whether the CLI
+is already available — if it is, you're done. Don't blindly re-run the
+installer between previews; that's how runaway download loops start.
+
+If the CLI is missing, surface this command to the user and let them run
+it (or copy it back to you). The installer refuses to download without
+`--yes`, which exists exactly so agents can't pull binaries by accident:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
+  | bash -s -- --yes
 compose-preview doctor
 ```
+
+To upgrade an existing install, swap `--yes` for `--upgrade` (or set
+`COMPOSE_PREVIEW_ACCEPT_UPGRADE=1`). Without either flag the script prints
+instructions and exits — no tarball is fetched.
 
 `doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
 compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the
@@ -127,6 +140,12 @@ From a Compose project root, install the MCP server descriptors:
 compose-preview mcp install                  # auto-detects Antigravity
 compose-preview mcp install --antigravity    # force the Antigravity config write
 ```
+
+`mcp install` is a one-time bootstrap. If a render misbehaves, do **not**
+re-run it and do **not** kill the daemon — run `compose-preview mcp doctor`
+first and follow the verdict it prints. The supervisor respawns daemons
+automatically on classpath changes. See
+[design/MCP.md § Troubleshooting](./design/MCP.md#troubleshooting-first--when-not-to-act).
 
 Apply the plugin in `<module>/build.gradle.kts`:
 

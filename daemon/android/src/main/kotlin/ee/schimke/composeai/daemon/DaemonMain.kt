@@ -242,91 +242,168 @@ fun main(args: Array<String>) {
     )
   }
 
-  // D2 — wire data-product registries. `compose/semantics` is default-mode data emitted by the
-  // Android render loop whenever a render output dir exists. A11y is selected through the generic
-  // data-plugin property emitted by Gradle, not a daemon-specific feature flag.
+  // ExtensionRegistry — every extension is registered here in the inactive state. Clients call
+  // `extensions/enable` to opt in to specific contributions. A11y registries / descriptors are
+  // wired only when `composeai.a11y.previewExtension.enabled=true` because the host doesn't ship
+  // an ATF dispatch path otherwise; if the prop is unset the extension simply isn't registered.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
   val a11yPreviewExtensionEnabled =
     System.getProperty(RenderEngine.A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true"
   val composeTraceEnabled = renderOutputDir != null && PerfettoTraceDataProducer.enabled()
-  val dataProducts: DataProductRegistry =
-    buildList {
-        System.err.println("compose-ai-tools daemon: DeviceClipDataProductRegistry active")
-        add(DeviceClipDataProductRegistry(previewIndex = previewIndex))
-        System.err.println("compose-ai-tools daemon: DeviceBackgroundDataProductRegistry active")
-        add(DeviceBackgroundDataProductRegistry(previewIndex = previewIndex))
-        System.err.println("compose-ai-tools daemon: RenderTraceDataProductRegistry active")
-        add(RenderTraceDataProductRegistry())
-        System.err.println("compose-ai-tools daemon: TestFailureDataProductRegistry active")
-        add(TestFailureDataProductRegistry())
-        System.err.println("compose-ai-tools daemon: ThemeDataProductRegistry active")
-        add(ThemeDataProductRegistry())
-        System.err.println("compose-ai-tools daemon: WallpaperDataProductRegistry active")
-        add(WallpaperDataProductRegistry())
+  val dataRoot: File? =
+    renderOutputDir?.let { File(it).parentFile?.resolve("data") ?: File(it) }
+  val extensions =
+    ExtensionRegistry(
+      buildList {
+        add(
+          Extension(
+            id = "device/clip",
+            displayName = "Device clip",
+            dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "device/background",
+            displayName = "Device background",
+            dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
+            previewExtensionDescriptors =
+              listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "render/trace",
+            displayName = "Render trace",
+            dataProductRegistry = RenderTraceDataProductRegistry(),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "render/test-failure",
+            displayName = "Test failure",
+            dataProductRegistry = TestFailureDataProductRegistry(),
+          )
+        )
+        add(
+          Extension(
+            id = "render/overlay-legend",
+            displayName = "Render overlay legend",
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
+          )
+        )
+        add(
+          Extension(
+            id = "data/theme",
+            displayName = "Material 3 theme override",
+            dataProductRegistry = ThemeDataProductRegistry(),
+          )
+        )
+        add(
+          Extension(
+            id = "data/wallpaper",
+            displayName = "Wallpaper override",
+            dataProductRegistry = WallpaperDataProductRegistry(),
+          )
+        )
         if (historyManager != null) {
-          System.err.println(
-            "compose-ai-tools daemon: HistoryDiffRegionsDataProductRegistry active"
+          add(
+            Extension(
+              id = "history/diff-regions",
+              displayName = "History diff regions",
+              dataProductRegistry =
+                HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
+            )
           )
-          add(HistoryDiffRegionsDataProductRegistry(historyManager = historyManager))
         }
-        if (renderOutputDir != null) {
-          val dataRoot = File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-          System.err.println(
-            "compose-ai-tools daemon: ComposeSemanticsDataProductRegistry active (dataRoot=$dataRoot)"
+        if (dataRoot != null) {
+          add(
+            Extension(
+              id = "compose/semantics",
+              displayName = "Compose semantics snapshot",
+              dataProductRegistry = ComposeSemanticsDataProductRegistry(rootDir = dataRoot),
+            )
           )
-          add(ComposeSemanticsDataProductRegistry(rootDir = dataRoot))
-          System.err.println(
-            "compose-ai-tools daemon: LayoutInspectorDataProductRegistry active (dataRoot=$dataRoot)"
+          add(
+            Extension(
+              id = "layout/inspector",
+              displayName = "Layout inspector",
+              dataProductRegistry = LayoutInspectorDataProductRegistry(rootDir = dataRoot),
+            )
           )
-          add(LayoutInspectorDataProductRegistry(rootDir = dataRoot))
-          System.err.println(
-            "compose-ai-tools daemon: ResourcesUsedDataProductRegistry active (dataRoot=$dataRoot)"
+          add(
+            Extension(
+              id = "resources/used",
+              displayName = "Resources used",
+              dataProductRegistry = ResourcesUsedDataProductRegistry(rootDir = dataRoot),
+            )
           )
-          add(ResourcesUsedDataProductRegistry(rootDir = dataRoot))
-          System.err.println(
-            "compose-ai-tools daemon: I18nTranslationsDataProductRegistry active (dataRoot=$dataRoot)"
+          add(
+            Extension(
+              id = "i18n/translations",
+              displayName = "i18n translations",
+              dataProductRegistry = I18nTranslationsDataProductRegistry(rootDir = dataRoot),
+            )
           )
-          add(I18nTranslationsDataProductRegistry(rootDir = dataRoot))
-          System.err.println(
-            "compose-ai-tools daemon: FontsUsedDataProductRegistry active (dataRoot=$dataRoot)"
+          add(
+            Extension(
+              id = "fonts/used",
+              displayName = "Fonts used",
+              dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
+            )
           )
-          add(FontsUsedDataProductRegistry(rootDir = dataRoot))
           if (composeTraceEnabled) {
-            System.err.println(
-              "compose-ai-tools daemon: PerfettoTraceDataProductRegistry active (dataRoot=$dataRoot)"
+            add(
+              Extension(
+                id = "compose/trace",
+                displayName = "Compose Perfetto trace",
+                dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = dataRoot),
+                previewExtensionDescriptors =
+                  listOf(RenderPreviewExtension.composeTraceDescriptor),
+              )
             )
-            add(PerfettoTraceDataProductRegistry(rootDir = dataRoot))
           }
-          System.err.println(
-            "compose-ai-tools daemon: TextStringsDataProductRegistry active (dataRoot=$dataRoot)"
-          )
-          add(TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex))
-          if (a11yPreviewExtensionEnabled) {
-            System.err.println(
-              "compose-ai-tools daemon: AccessibilityDataProductRegistry active (dataRoot=$dataRoot)"
+          add(
+            Extension(
+              id = "text/strings",
+              displayName = "Text strings",
+              dataProductRegistry =
+                TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex),
             )
-            add(AccessibilityDataProductRegistry(rootDir = dataRoot))
-          } else {
-            System.err.println("compose-ai-tools daemon: a11y data product plugin disabled")
+          )
+          if (a11yPreviewExtensionEnabled) {
+            add(
+              Extension(
+                id = "a11y",
+                displayName = "Accessibility",
+                dataProductRegistry = AccessibilityDataProductRegistry(rootDir = dataRoot),
+                dataExtensionDescriptors = AccessibilityRecordingScriptEvents.descriptors,
+                previewExtensionDescriptors =
+                  listOf(
+                    AccessibilitySemanticsPreviewExtension.descriptor,
+                    AtfChecksPreviewExtension.descriptor,
+                    AccessibilityOverlayPreviewExtension.descriptor,
+                    AccessibilityAnnotatedPreviewExtension.descriptor,
+                  ),
+              )
+            )
           }
         }
+        // host-wired recording-script extensions + renderer-agnostic roadmap descriptors. The
+        // host's contribution flips supported flags as new handlers land in its session registry.
+        add(
+          Extension(
+            id = "recording/script",
+            displayName = "Recording-script extensions",
+            dataExtensionDescriptors =
+              host.recordingScriptEventDescriptors() +
+                RecordingScriptDataExtensions.roadmapDescriptors,
+          )
+        )
       }
-      .let(::CompositeDataProductRegistry)
-  val previewExtensions = buildList {
-    add(RenderPreviewExtension.deviceClipDescriptor)
-    add(RenderPreviewExtension.deviceBackgroundDescriptor)
-    add(RenderPreviewExtension.renderTraceDescriptor)
-    if (composeTraceEnabled) {
-      add(RenderPreviewExtension.composeTraceDescriptor)
-    }
-    add(RenderPreviewExtension.overlayLegendDescriptor)
-    if (a11yPreviewExtensionEnabled) {
-      add(AccessibilitySemanticsPreviewExtension.descriptor)
-      add(AtfChecksPreviewExtension.descriptor)
-      add(AccessibilityOverlayPreviewExtension.descriptor)
-      add(AccessibilityAnnotatedPreviewExtension.descriptor)
-    }
-  }
+    )
 
   val server =
     JsonRpcServer(
@@ -338,24 +415,7 @@ fun main(args: Array<String>) {
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
-      dataProducts = dataProducts,
-      // dataExtensions composition:
-      //   - host.recordingScriptEventDescriptors()  → host-wired extensions
-      //     (recording.probe + lifecycle + preview.reload + state.{recreate,save,restore})
-      //   - AccessibilityRecordingScriptEvents.descriptor  → the `a11y` extension. Single
-      //     descriptor carrying all 19 actions; 12 are supported = true, 7 are supported = false.
-      //     Wired only when the a11y preview extension is enabled so a non-a11y daemon doesn't
-      //     advertise actions it can't dispatch.
-      //   - RecordingScriptDataExtensions.roadmapDescriptors  → renderer-agnostic roadmap
-      //     (currently empty; new entries land here when an event has a renderer-agnostic
-      //     dispatch story but no host has wired it yet).
-      // `record_preview`'s validateRecordingScriptKinds filters by per-event `supported` flag.
-      dataExtensions =
-        host.recordingScriptEventDescriptors() +
-          (if (a11yPreviewExtensionEnabled) AccessibilityRecordingScriptEvents.descriptors
-          else emptyList()) +
-          RecordingScriptDataExtensions.roadmapDescriptors,
-      previewExtensions = previewExtensions,
+      extensions = extensions,
     )
   server.run()
 }

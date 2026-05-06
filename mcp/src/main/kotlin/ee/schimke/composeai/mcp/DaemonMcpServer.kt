@@ -35,6 +35,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -68,12 +69,41 @@ class DaemonMcpServer(
   private val serverInfo: Implementation =
     Implementation(name = "compose-preview-mcp", version = "v0"),
   private val renderTimeoutMs: Long = 60_000,
+  /**
+   * Cadence (ms) of the background source-freshness poller. The poller walks the catalog and runs
+   * the same `ensureSourceFreshBeforeRender` probe as the on-demand path, so edits land on the
+   * daemon proactively even when no MCP `resources/read` arrives. `0` disables the poller — test
+   * fixtures use `0` to keep tests deterministic; production defaults to 30 s, slow enough to be
+   * cheap and fast enough that an interactive editor sees a refreshed render within the next
+   * `renderNow`.
+   */
+  private val sourcePollIntervalMs: Long = DEFAULT_SOURCE_POLL_INTERVAL_MS,
+  /**
+   * Cadence (ms) of the random-sampling deterministic-render probe. The sampler picks a preview at
+   * random whose render queue is empty, fires a `renderNow` past the freshness check (no
+   * `fileChanged` is sent, so the daemon's classloader stays put), and reads the resulting
+   * `renderFinished.unchanged` flag — a non-`true` reply indicates the preview's bytes drifted with
+   * no source change (clock-reading composables, daemon classloader bugs, build-output drift). `0`
+   * disables the sampler; production defaults to 10 minutes.
+   */
+  private val samplingIntervalMs: Long = DEFAULT_SAMPLING_INTERVAL_MS,
+  fullToolDefsLoader: (() -> List<ToolDef>)? = null,
 ) {
+
+  private val fullToolDefsLoader: () -> List<ToolDef> =
+    fullToolDefsLoader ?: { buildFullToolDefs() }
 
   private val json = Json {
     ignoreUnknownKeys = true
     encodeDefaults = false
   }
+
+  /**
+   * Counters surfaced via the `status` MCP tool: probe outcomes, polling cycles, and random
+   * sampling determinism. Lets an operator answer "why does my agent see stale renders?" without
+   * digging through wire traces.
+   */
+  private val freshnessMetrics = FreshnessMetrics()
 
   /**
    * Per-(workspace, module) catalog: preview-id → minimal metadata. Updated from `discoveryUpdated`
@@ -167,6 +197,27 @@ class DaemonMcpServer(
     }
 
   /**
+   * Scheduled worker that owns the background source-freshness poller and the random-sampling
+   * deterministic-render probe. Pool size 2 so a slow probe can't push the next polling tick;
+   * daemon-flagged so neither delays JVM shutdown.
+   */
+  private val freshnessExecutor: java.util.concurrent.ScheduledExecutorService =
+    java.util.concurrent.Executors.newScheduledThreadPool(2) { r ->
+      Thread(r, "mcp-freshness").apply { isDaemon = true }
+    }
+
+  /**
+   * Per-(workspace, module, previewId) count of in-flight sampling probes. Bumped before the
+   * sampler issues `renderNow`; decremented (and removed when zero) by `onRenderFinished` so the
+   * matching `renderFinished` can be classified as a probe and its `unchanged` flag fed into the
+   * sampling counters. Race acceptable: a real user render arriving simultaneously with a probe may
+   * attribute the probe outcome incorrectly, but the sampler only fires when [previewQueues] is
+   * empty for the previewId, so the window is tiny.
+   */
+  private val pendingProbes =
+    ConcurrentHashMap<PreviewIdKey, java.util.concurrent.atomic.AtomicInteger>()
+
+  /**
    * Keep the MCP handshake off the full command-catalog path. Some clients enforce a tight startup
    * deadline; parsing every schema and loading extension command metadata before `initialize` risks
    * surfacing as "context deadline exceeded". Start with a compact core surface, build the full
@@ -181,8 +232,21 @@ class DaemonMcpServer(
   private val fullToolCatalogWasDelayed = AtomicBoolean(false)
   @Volatile private var fullToolCatalogError: String? = null
 
+  /**
+   * Sessions that have been served [bootstrapToolDefs] from `tools/list` while [fullToolDefsFuture]
+   * was still loading. Each such session must receive `notifications/tools/list_changed` once the
+   * full catalog is ready, regardless of whether the load took more or less than
+   * [TOOL_CATALOG_NOTIFY_DELAY_MS] — clients that rely on `listChanged` would otherwise permanently
+   * miss the tools that only appear in the full catalog (see #670). Guarded by
+   * [bootstrapNotifyLock] so the future-completion handler and `tools/list` callers cannot lose a
+   * session through the isDone/add race.
+   */
+  private val bootstrapNotifyLock = Any()
+  private val bootstrapServedSessions = mutableSetOf<Session>()
+
   private val fullToolDefsFuture: CompletableFuture<List<ToolDef>> =
-    CompletableFuture.supplyAsync({ buildFullToolDefs() }, toolCatalogExecutor).also { future ->
+    CompletableFuture.supplyAsync({ this.fullToolDefsLoader() }, toolCatalogExecutor).also { future
+      ->
       progressBeatExecutor.schedule(
         {
           if (!future.isDone) {
@@ -196,8 +260,14 @@ class DaemonMcpServer(
         if (error != null) {
           fullToolCatalogError = error.message ?: error::class.java.simpleName
           System.err.println("compose-preview-mcp: full tool catalog failed: ${error.message}")
-        } else if (fullToolCatalogWasDelayed.get()) {
-          sessions.forEach { it.notifyToolListChanged() }
+        } else {
+          val toNotify =
+            synchronized(bootstrapNotifyLock) {
+              val snapshot = bootstrapServedSessions.toList()
+              bootstrapServedSessions.clear()
+              snapshot
+            }
+          toNotify.forEach { runCatching { it.notifyToolListChanged() } }
         }
       }
     }
@@ -214,6 +284,31 @@ class DaemonMcpServer(
       evictDataProductsForDaemon(daemon.workspaceId, daemon.modulePath)
       watchPropagator.forget(daemon)
     }
+    if (sourcePollIntervalMs > 0) {
+      freshnessExecutor.scheduleWithFixedDelay(
+        ::runSourceFreshnessPoll,
+        sourcePollIntervalMs,
+        sourcePollIntervalMs,
+        TimeUnit.MILLISECONDS,
+      )
+    }
+    if (samplingIntervalMs > 0) {
+      freshnessExecutor.scheduleWithFixedDelay(
+        ::runRandomSamplingProbe,
+        samplingIntervalMs,
+        samplingIntervalMs,
+        TimeUnit.MILLISECONDS,
+      )
+    }
+  }
+
+  /**
+   * Stops the freshness poller + sampler and shuts the executor down. Idempotent. Tests call this
+   * from `tearDown` so background tasks don't stretch into the next test; production never calls it
+   * because the executors are daemon-flagged and the JVM exits cleanly.
+   */
+  fun shutdown() {
+    runCatching { freshnessExecutor.shutdownNow() }
   }
 
   // -------------------------------------------------------------------------
@@ -232,7 +327,7 @@ class DaemonMcpServer(
           sdkServer.installComposePreviewHandlers(
             sdkSession = sdkSession,
             session = session,
-            listTools = { currentToolDefs() },
+            listTools = { currentToolDefs(session) },
             callTool = { name, arguments -> handleCallTool(session, name, arguments) },
             listResources = { catalogResources() },
             readResource = { uri, progressToken ->
@@ -257,6 +352,7 @@ class DaemonMcpServer(
     val released = subscriptions.forgetDataSubscriptions(session)
     released.forEach { key -> dispatchDataUnsubscribe(key) }
     subscriptions.forget(session)
+    synchronized(bootstrapNotifyLock) { bootstrapServedSessions.remove(session) }
     sessions.unregister(session)
   }
 
@@ -435,20 +531,99 @@ class DaemonMcpServer(
     }
   }
 
-  private fun ensureSourceFreshBeforeRender(uri: PreviewUri, daemon: SupervisedDaemon) {
+  /**
+   * Decides whether the user has edited [uri]'s source since the last time the daemon was told
+   * about it, and forwards a `fileChanged({kind: "source"})` notification when so. The daemon's
+   * [`UserClassLoaderHolder.swap`][ee.schimke.composeai.daemon.UserClassLoaderHolder.swap] only
+   * rotates the user classloader on `fileChanged`, so missing this signal is exactly what makes
+   * agents perceive "stale renders" after an edit.
+   *
+   * Two-stage detection:
+   * 1. **Fast path — mtime advanced.** Almost every editor advances the source's `lastModified` on
+   *    save, so the cheap `stat` is enough. Fire `fileChanged`, refresh the cached mtime + a fresh
+   *    content hash, return.
+   * 2. **Slow path — mtime did not advance.** Same-millisecond writes on fast SSDs / tmpfs,
+   *    mtime-preserving editors, and agent harnesses that touch files programmatically without
+   *    bumping mtime all leave the file's mtime exactly where discovery saw it. Hash the bytes and
+   *    compare against the cached hash; on mismatch, fire `fileChanged` and refresh the cache. The
+   *    hash cost (one SHA-256 over a Kotlin source — a few KB to ~tens of KB) is in the noise next
+   *    to the render itself (Robolectric: hundreds of ms).
+   *
+   * First-sighting (catalog entry has neither mtime nor hash) records both silently — the mtime is
+   * what was captured at discovery, and the hash is computed on demand. Matches the pre-fix
+   * behaviour of "first read after discovery is a no-op".
+   */
+  /**
+   * @return `true` when this probe forwarded a `fileChanged` to the daemon, `false` otherwise. The
+   *   polling path uses the return to bump `polling.changesDetected`; on-demand callers can ignore
+   *   it.
+   */
+  private fun ensureSourceFreshBeforeRender(uri: PreviewUri, daemon: SupervisedDaemon): Boolean {
+    freshnessMetrics.probesTotal.incrementAndGet()
     val addr = DaemonAddr(uri.workspaceId, uri.modulePath)
-    val entry = catalog[addr]?.get(uri.previewFqn) ?: return
-    val sourceFile = resolvePreviewSourceFile(uri, entry.sourceFile) ?: return
-    val currentModifiedMs = sourceFile.lastModified().takeIf { it > 0L } ?: return
-    val knownModifiedMs =
-      entry.sourceLastModifiedMs
+    val entry =
+      catalog[addr]?.get(uri.previewFqn)
         ?: run {
+          freshnessMetrics.probesNoEntry.incrementAndGet()
+          return false
+        }
+    val sourceFile =
+      resolvePreviewSourceFile(uri, entry.sourceFile)
+        ?: run {
+          freshnessMetrics.probesNoSource.incrementAndGet()
+          return false
+        }
+    val currentModifiedMs =
+      sourceFile.lastModified().takeIf { it > 0L }
+        ?: run {
+          freshnessMetrics.probesNoSource.incrementAndGet()
+          return false
+        }
+
+    val mtimeAdvanced =
+      entry.sourceLastModifiedMs?.let { currentModifiedMs > it }
+        ?: run {
+          // First sighting via mtime — record what we know and bail without firing. The hash
+          // is filled in on the first slow-path probe so subsequent frozen-mtime edits get
+          // caught on iteration two.
           catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
             current.copy(sourceLastModifiedMs = currentModifiedMs)
           }
-          return
+          freshnessMetrics.probesFirstSighting.incrementAndGet()
+          return false
         }
-    if (currentModifiedMs <= knownModifiedMs) return
+
+    val needsNotify =
+      if (mtimeAdvanced) {
+        freshnessMetrics.probesChangedByMtime.incrementAndGet()
+        true
+      } else {
+        // mtime didn't move — confirm with a content hash. If we have nothing to compare
+        // against (legacy entry / first probe after discovery without a hash), record the
+        // current hash so the next probe has a baseline.
+        val currentHash =
+          runCatching { sha256Hex(sourceFile) }.getOrNull()
+            ?: run {
+              freshnessMetrics.probesNoSource.incrementAndGet()
+              return false
+            }
+        val knownHash = entry.sourceContentHash
+        if (knownHash == null) {
+          catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
+            current.copy(sourceContentHash = currentHash)
+          }
+          freshnessMetrics.probesUnchangedNoBaseline.incrementAndGet()
+          return false
+        }
+        if (currentHash == knownHash) {
+          freshnessMetrics.probesUnchangedByHash.incrementAndGet()
+          false
+        } else {
+          freshnessMetrics.probesChangedByHash.incrementAndGet()
+          true
+        }
+      }
+    if (!needsNotify) return false
 
     daemon.allClients().forEach { client ->
       runCatching {
@@ -459,9 +634,185 @@ class DaemonMcpServer(
         )
       }
     }
+    val refreshedHash = runCatching { sha256Hex(sourceFile) }.getOrNull()
     catalog[addr]?.computeIfPresent(uri.previewFqn) { _, current ->
-      current.copy(sourceLastModifiedMs = currentModifiedMs)
+      current.copy(
+        sourceLastModifiedMs = currentModifiedMs,
+        sourceContentHash = refreshedHash ?: current.sourceContentHash,
+      )
     }
+    return true
+  }
+
+  /**
+   * Background poller — walks every spawned daemon's catalog and runs the same
+   * [ensureSourceFreshBeforeRender] probe as the on-demand path, so source edits land on the daemon
+   * proactively instead of waiting for the next `resources/read`. Cheap: one stat per preview on
+   * the fast path; one stat + one SHA-256 on the slow path. Wraps each per-preview probe in
+   * `runCatching` so a single broken entry doesn't cancel the whole cycle.
+   *
+   * Module-internal so tests can trigger a poll deterministically (with `sourcePollIntervalMs = 0`
+   * to disable the scheduled invocation) instead of racing the executor's cadence.
+   */
+  internal fun runSourceFreshnessPoll() {
+    runCatching {
+        freshnessMetrics.pollingCycles.incrementAndGet()
+        supervisor.listProjects().forEach { project ->
+          project.daemons.forEach { (modulePath, daemon) ->
+            // Manifest stat first — a Gradle `discoverPreviews` re-run between renders rewrites
+            // `previews.json`. Picking that up here means new preview ids land in the catalog
+            // (and `render_preview` works) before the user's next request, without the
+            // restart-the-MCP-server escape hatch reported in issue #834.
+            runCatching { reloadManifestIfChanged(daemon) }
+              .onFailure {
+                System.err.println(
+                  "compose-preview-mcp: manifest reload failed for ${daemon.workspaceId}/${daemon.modulePath}: ${it.message}"
+                )
+              }
+            val byId = catalog[DaemonAddr(project.workspaceId, modulePath)] ?: return@forEach
+            byId.values.forEach { entry ->
+              freshnessMetrics.pollingPreviewsScanned.incrementAndGet()
+              val uri =
+                PreviewUri(
+                  workspaceId = project.workspaceId,
+                  modulePath = modulePath,
+                  previewFqn = entry.fqn,
+                  config = entry.config,
+                )
+              val fired =
+                runCatching { ensureSourceFreshBeforeRender(uri, daemon) }.getOrDefault(false)
+              if (fired) freshnessMetrics.pollingChangesDetected.incrementAndGet()
+            }
+          }
+        }
+      }
+      .onFailure {
+        // Defensive — the executor swallows uncaught throws and cancels future runs; we'd lose
+        // the poller silently. Logging keeps the behaviour observable.
+        System.err.println("compose-preview-mcp: source-freshness poll failed: ${it.message}")
+      }
+  }
+
+  /**
+   * Per-(workspace, module) last-seen mtime + content hash of the daemon's `previews.json`. The
+   * fast path (mtime unchanged) skips re-reading the file; on mtime advance we hash to confirm a
+   * real content change before incurring the parse + diff + dispatch cost, matching the
+   * source-freshness probe's two-stage shape.
+   */
+  private val manifestState = ConcurrentHashMap<DaemonAddr, ManifestState>()
+
+  private data class ManifestState(val mtimeMs: Long, val hash: String)
+
+  /**
+   * Stats the daemon's `previews.json`; if the file changed since the last cycle, parses it, diffs
+   * the preview ids against the current catalog, and routes a synthetic `discoveryUpdated` through
+   * [onDiscoveryUpdated] so the catalog + subscribers + watch-propagator all see the new ids
+   * exactly as if the daemon had pushed the notification itself. Idempotent: a no-op when the
+   * manifest hasn't changed since the last cycle.
+   *
+   * Internal so tests can drive it directly without racing the scheduled poll.
+   */
+  internal fun reloadManifestIfChanged(daemon: SupervisedDaemon) {
+    val manifestPath = daemon.manifestPath?.takeIf { it.isNotBlank() } ?: return
+    val file = File(manifestPath)
+    if (!file.isFile) return
+    freshnessMetrics.manifestStats.incrementAndGet()
+    val mtime = file.lastModified().takeIf { it > 0L } ?: return
+    val addr = DaemonAddr(daemon.workspaceId, daemon.modulePath)
+    val previous = manifestState[addr]
+    if (previous != null && mtime <= previous.mtimeMs) return
+
+    val hash = runCatching { sha256Hex(file) }.getOrNull() ?: return
+    if (previous != null && hash == previous.hash) {
+      // mtime moved (e.g. `touch` on previews.json) but bytes didn't — refresh mtime so the
+      // next cycle skips the hash, and bail out without redispatching.
+      manifestState[addr] = ManifestState(mtime, hash)
+      return
+    }
+
+    val text = runCatching { file.readText() }.getOrNull() ?: return
+    val previews =
+      runCatching {
+          val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
+          (obj["previews"] as? JsonArray)?.mapNotNull { it as? JsonObject }
+        }
+        .getOrNull() ?: return
+    manifestState[addr] = ManifestState(mtime, hash)
+
+    val incomingIds = previews.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }.toSet()
+    val currentIds = catalog[addr]?.keys?.toSet() ?: emptySet()
+    val added = previews.filter { (it["id"]?.jsonPrimitive?.contentOrNull ?: "") !in currentIds }
+    val changed = previews.filter { (it["id"]?.jsonPrimitive?.contentOrNull ?: "") in currentIds }
+    val removed = currentIds.filter { it !in incomingIds }
+
+    if (added.isEmpty() && removed.isEmpty()) return
+
+    freshnessMetrics.manifestRereads.incrementAndGet()
+    freshnessMetrics.manifestPreviewsAdded.addAndGet(added.size.toLong())
+    freshnessMetrics.manifestPreviewsRemoved.addAndGet(removed.size.toLong())
+
+    val params = buildJsonObject {
+      put("added", JsonArray(added))
+      put("removed", JsonArray(removed.map { JsonPrimitive(it) }))
+      put("changed", JsonArray(changed))
+      put("totalPreviews", JsonPrimitive(previews.size))
+    }
+    onDiscoveryUpdated(daemon, params)
+  }
+
+  /**
+   * Random-sampling deterministic-render probe — picks a preview at random whose render queue is
+   * empty (so we don't compete with a real user request) and fires a `renderNow` past the freshness
+   * check. The daemon's frame-hash dedup (JsonRpcServer.kt:993) sets `unchanged: true` when the new
+   * bytes match the prior frame for this preview; a missing or `false` flag with no source change
+   * between probes means the preview drifted on its own — clock-reading composables, daemon
+   * classloader bugs, or build-output drift. Rare by design; the cadence is configurable via the
+   * constructor's `samplingIntervalMs`.
+   *
+   * Module-internal so tests can trigger a probe deterministically (with `samplingIntervalMs = 0`
+   * to disable the scheduled invocation) instead of racing the executor's cadence.
+   */
+  internal fun runRandomSamplingProbe() {
+    runCatching {
+        val candidates = mutableListOf<Triple<SupervisedDaemon, DaemonAddr, PreviewEntry>>()
+        supervisor.listProjects().forEach { project ->
+          project.daemons.forEach { (modulePath, daemon) ->
+            val addr = DaemonAddr(project.workspaceId, modulePath)
+            catalog[addr]?.values?.forEach { entry -> candidates.add(Triple(daemon, addr, entry)) }
+          }
+        }
+        if (candidates.isEmpty()) return@runCatching
+        val pick = candidates.random()
+        val (daemon, addr, entry) = pick
+        val key = PreviewIdKey(addr.workspaceId, addr.modulePath, entry.fqn)
+        if (previewQueues.containsKey(key)) {
+          freshnessMetrics.samplingSkippedBusy.incrementAndGet()
+          return@runCatching
+        }
+        pendingProbes
+          .computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
+          .incrementAndGet()
+        freshnessMetrics.samplingProbes.incrementAndGet()
+        runCatching {
+            daemon
+              .clientForRender(entry.fqn)
+              .renderNow(
+                previews = listOf(entry.fqn),
+                tier = RenderTier.FULL,
+                reason = "freshness:sampling",
+              )
+          }
+          .onFailure {
+            // Roll back the pending count on a wire failure so a future renderFinished isn't
+            // misattributed to a probe that never went out.
+            pendingProbes.computeIfPresent(key) { _, c ->
+              if (c.decrementAndGet() <= 0) null else c
+            }
+          }
+      }
+      .onFailure {
+        System.err.println("compose-preview-mcp: random-sampling probe failed: ${it.message}")
+      }
   }
 
   private fun resolvePreviewSourceFile(uri: PreviewUri, sourceFile: String?): File? {
@@ -520,12 +871,29 @@ class DaemonMcpServer(
   // Tool surface
   // -------------------------------------------------------------------------
 
-  private fun currentToolDefs(): List<ToolDef> =
-    if (!fullToolDefsFuture.isDone) {
+  private fun currentToolDefs(session: Session): List<ToolDef> {
+    if (fullToolDefsFuture.isDone) {
+      return runCatching { fullToolDefsFuture.getNow(bootstrapToolDefs) }
+        .getOrDefault(bootstrapToolDefs)
+    }
+    // Bootstrap path: enroll the session under the lock so the future-completion handler cannot
+    // race past it. If the future completed between the outer isDone check and acquiring the lock,
+    // serve the full list directly and skip enrollment — the transition has already happened.
+    val servedBootstrap =
+      synchronized(bootstrapNotifyLock) {
+        if (fullToolDefsFuture.isDone) {
+          false
+        } else {
+          bootstrapServedSessions.add(session)
+          true
+        }
+      }
+    return if (servedBootstrap) {
       bootstrapToolDefs
     } else {
       runCatching { fullToolDefsFuture.getNow(bootstrapToolDefs) }.getOrDefault(bootstrapToolDefs)
     }
+  }
 
   private val bootstrapToolDefs: List<ToolDef> by lazy {
     listOf(
@@ -1254,6 +1622,7 @@ class DaemonMcpServer(
           )
         }
       }
+      put("freshness", freshnessMetrics.toJson())
     }
     return textCallToolResult(payload.toString())
   }
@@ -2824,18 +3193,21 @@ class DaemonMcpServer(
     for (entry in added + changed) {
       val id = entry["id"]?.jsonPrimitive?.contentOrNull ?: continue
       val sourceFile = entry["sourceFile"]?.jsonPrimitive?.contentOrNull
-      val sourceLastModifiedMs =
+      val resolved =
         resolvePreviewSourceFile(
-            PreviewUri(
-              workspaceId = daemon.workspaceId,
-              modulePath = daemon.modulePath,
-              previewFqn = id,
-              config = entry["config"]?.jsonPrimitive?.contentOrNull,
-            ),
-            sourceFile,
-          )
-          ?.lastModified()
-          ?.takeIf { it > 0L }
+          PreviewUri(
+            workspaceId = daemon.workspaceId,
+            modulePath = daemon.modulePath,
+            previewFqn = id,
+            config = entry["config"]?.jsonPrimitive?.contentOrNull,
+          ),
+          sourceFile,
+        )
+      val sourceLastModifiedMs = resolved?.lastModified()?.takeIf { it > 0L }
+      // Seed the content hash at discovery so the very first frozen-mtime edit is caught
+      // against this baseline. Failures (unreadable file, permissions) just leave the hash
+      // null — `ensureSourceFreshBeforeRender` falls back to the legacy mtime-only path.
+      val sourceContentHash = resolved?.let { runCatching { sha256Hex(it) }.getOrNull() }
       byId[id] =
         PreviewEntry(
           fqn = id,
@@ -2843,6 +3215,7 @@ class DaemonMcpServer(
           config = entry["config"]?.jsonPrimitive?.contentOrNull,
           sourceFile = sourceFile,
           sourceLastModifiedMs = sourceLastModifiedMs,
+          sourceContentHash = sourceContentHash,
         )
     }
     removed.forEach { byId.remove(it) }
@@ -2853,11 +3226,37 @@ class DaemonMcpServer(
   private fun onRenderFinished(daemon: SupervisedDaemon, params: JsonObject?) {
     val previewId = params?.get("id")?.jsonPrimitive?.contentOrNull ?: return
     val pngPath = params["pngPath"]?.jsonPrimitive?.contentOrNull ?: return
+    val key = PreviewIdKey(daemon.workspaceId, daemon.modulePath, previewId)
+    // 0. Sampling attribution. If a sampling probe was pending for this previewId, claim it and
+    //    classify the render's `unchanged` flag as deterministic / non-deterministic. Probes
+    //    never enqueue futures, so step 1's `popHeadAndPromoteNext` stays a no-op for them
+    //    (empty queue) and they don't disturb the user-driven serialization.
+    var probeClaimed = false
+    pendingProbes.computeIfPresent(key) { _, counter ->
+      probeClaimed = true
+      if (counter.decrementAndGet() <= 0) null else counter
+    }
+    if (probeClaimed) {
+      val unchanged = params["unchanged"]?.jsonPrimitive?.booleanOrNull == true
+      if (unchanged) {
+        freshnessMetrics.samplingDeterministic.incrementAndGet()
+      } else {
+        freshnessMetrics.samplingNondeterministic.incrementAndGet()
+        val entryForUri = catalog[DaemonAddr(daemon.workspaceId, daemon.modulePath)]?.get(previewId)
+        val probeUri =
+          PreviewUri(
+            workspaceId = daemon.workspaceId,
+            modulePath = daemon.modulePath,
+            previewFqn = previewId,
+            config = entryForUri?.config,
+          )
+        freshnessMetrics.recordNondeterministic(probeUri.toUri())
+      }
+    }
     // 1. Pop the head group of this URI's queue, wake its waiters with the rendered bytes, and
     //    promote-and-dispatch the next group's renderNow if one is queued. This is the
     //    serialization core that PR #432's by-previewId fanout (now removed) tried to paper
     //    over — see `popHeadAndPromoteNext` and `awaitNextRender`'s kdoc for the rationale.
-    val key = PreviewIdKey(daemon.workspaceId, daemon.modulePath, previewId)
     popHeadAndPromoteNext(daemon, key, RenderOutcome.Finished(pngPath))
     // 2. Refresh the data-product attachment cache for this `(uri)`. Any kind the daemon attached
     //    on this render is the new fresh payload; any kind it didn't attach is stale and gets
@@ -3078,6 +3477,15 @@ class DaemonMcpServer(
     val config: String?,
     val sourceFile: String?,
     val sourceLastModifiedMs: Long? = null,
+    /**
+     * SHA-256 of the source file's bytes captured at discovery and refreshed on every
+     * [ensureSourceFreshBeforeRender] call that fires a `fileChanged`. Lets the freshness check
+     * detect content-only edits — same-millisecond writes on fast SSDs/tmpfs, mtime-preserving
+     * editors, agent harnesses that touch files programmatically without bumping mtime — that the
+     * mtime-only comparison misses. Null until the source is hashed for the first time (legacy
+     * entries; null sourceFile; unreadable file).
+     */
+    val sourceContentHash: String? = null,
   )
 
   /**
@@ -3222,6 +3630,22 @@ class DaemonMcpServer(
 
     /** Suggested delay before polling `watch(awaitDiscovery=false)` readiness again. */
     private const val WATCH_DISCOVERY_RETRY_AFTER_MS: Long = 500
+
+    /**
+     * Default cadence for the background source-freshness poller. 30 s is slow enough to be cheap
+     * (one stat + occasional SHA-256 per preview) and fast enough that an interactive editor sees a
+     * refreshed render within the next render request. Override per-instance via the constructor's
+     * `sourcePollIntervalMs`; pass `0` to disable.
+     */
+    const val DEFAULT_SOURCE_POLL_INTERVAL_MS: Long = 30_000
+
+    /**
+     * Default cadence for the random-sampling deterministic-render probe. 10 minutes keeps the
+     * sampler well below 1 % of total render work in a normal session while giving operators enough
+     * samples per hour to spot flaky previews. Override per-instance via the constructor's
+     * `samplingIntervalMs`; pass `0` to disable.
+     */
+    const val DEFAULT_SAMPLING_INTERVAL_MS: Long = 10 * 60_000
 
     /**
      * D2.1 — default `kind` for `render_preview_overlay` when the caller doesn't specify one.

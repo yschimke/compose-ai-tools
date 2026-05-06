@@ -108,7 +108,7 @@ class JsonRpcServerIntegrationTest {
         clientToServerOut,
         """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-                  "protocolVersion":1,
+                  "protocolVersion":2,
                   "clientVersion":"test",
                   "workspaceRoot":"/tmp",
                   "moduleId":":test",
@@ -218,13 +218,18 @@ class JsonRpcServerIntegrationTest {
 
     val registry = FailureRecordingDataProductRegistry()
     val host = FakeRenderHost(failureToThrow = IllegalStateException("deliberate test failure"))
+    val extensions =
+      ExtensionRegistry(
+        listOf(Extension(id = "test/failure-recording", dataProductRegistry = registry))
+      )
+    extensions.enable(listOf("test/failure-recording"))
     val server =
       JsonRpcServer(
         input = clientToServerIn,
         output = serverToClientOut,
         host = host,
         daemonVersion = "test",
-        dataProducts = registry,
+        extensions = extensions,
       )
     val serverThread =
       Thread({ server.run() }, "json-rpc-server-test-failure-data").apply { isDaemon = true }
@@ -251,7 +256,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -358,7 +363,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -436,7 +441,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -523,7 +528,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -645,7 +650,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -760,7 +765,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -883,7 +888,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -1001,7 +1006,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":false}}}""",
       )
@@ -1169,7 +1174,7 @@ class JsonRpcServerIntegrationTest {
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-              "protocolVersion":1,"clientVersion":"test","workspaceRoot":"/tmp",
+              "protocolVersion":2,"clientVersion":"test","workspaceRoot":"/tmp",
               "moduleId":":test","moduleProjectDir":"/tmp",
               "capabilities":{"visibility":true,"metrics":true}}}""",
       )
@@ -1266,7 +1271,7 @@ class JsonRpcServerIntegrationTest {
         clientToServerOut,
         """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-                  "protocolVersion":1,
+                  "protocolVersion":2,
                   "clientVersion":"test",
                   "workspaceRoot":"/tmp",
                   "moduleId":":test",

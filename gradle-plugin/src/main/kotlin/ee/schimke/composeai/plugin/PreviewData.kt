@@ -278,7 +278,67 @@ data class PreviewInfo(
    * screenshots; clients fetch or surface them through the data-product path.
    */
   val dataProducts: List<PreviewDataProduct> = emptyList(),
+  /**
+   * Composables this preview is presumed to render. Discovery infers this by walking the preview
+   * function's bytecode for project-local `@Composable` calls, filtering theme/layout wrappers, and
+   * scoring the remaining candidates against the preview's name and source-set context. Empty when
+   * no candidate cleared the confidence threshold; ordered most-confident first.
+   *
+   * v1 emits at most one entry; the list shape is reserved for future multi-target inference (e.g.
+   * `Row { Foo(); Bar() }` returning both `Foo` and `Bar`).
+   */
+  val targets: List<PreviewTarget> = emptyList(),
 )
+
+/**
+ * A composable that a `@Preview` function is presumed to render. Attached to [PreviewInfo.targets]
+ * when discovery finds a high-enough-confidence match.
+ *
+ * The target is keyed by FQN + simple method name so consumers can correlate the rendered PNG back
+ * to the production composable's source — the canonical use case is "this UI PR changed
+ * `HomeScreen` in `src/main`, did its preview in `src/debug` change too?". [signals] makes the
+ * inference auditable: tooling that wants to be strict can require `CROSS_FILE` + `NAME_MATCH`,
+ * while best-effort consumers can use the [confidence] tier directly.
+ */
+@Serializable
+data class PreviewTarget(
+  /** Owner class FQN (synthetic `…Kt` for top-level functions). */
+  val className: String,
+  /** Composable function name on [className]. */
+  val functionName: String,
+  /** Module-relative source path of the target's owning file, when resolvable. */
+  val sourceFile: String? = null,
+  val confidence: TargetConfidence,
+  val signals: List<TargetSignal> = emptyList(),
+)
+
+@Serializable
+enum class TargetConfidence {
+  HIGH,
+  MEDIUM,
+  LOW,
+}
+
+@Serializable
+enum class TargetSignal {
+  /** Preview file lives in a non-shipping source set (debug, screenshotTest, test, …). */
+  NON_SHIPPING_SOURCE_SET,
+  /** Preview file's name and contents look dedicated to previews (e.g. `*Previews.kt`). */
+  DEDICATED_PREVIEW_FILE,
+  /** Exactly one project-local non-wrapper `@Composable` call survived filtering. */
+  SINGLE_PROJECT_COMPOSABLE_CALL,
+  /** Stripping `Preview`/`Preview_` from the preview function name yields the candidate. */
+  NAME_MATCH,
+  /** Candidate is declared in a different source file than the preview. */
+  CROSS_FILE,
+  /** `@PreviewParameter` value was forwarded into the candidate call. */
+  PARAMETER_FORWARDED,
+  /**
+   * Discovery recursed through a project-local theming/wrapper composable (single `@Composable ()
+   * -> Unit` parameter) before landing on the candidate.
+   */
+  WRAPPER_UNWRAPPED,
+}
 
 @Serializable
 data class PreviewManifest(

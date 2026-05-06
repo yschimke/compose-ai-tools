@@ -6,10 +6,13 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.history.HistoryDiffAverageDelta
+import ee.schimke.composeai.data.history.HistoryDiffPayload
+import ee.schimke.composeai.data.history.HistoryDiffRegion
+import ee.schimke.composeai.data.history.HistoryDiffRegionsProduct
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -28,8 +31,8 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
   override val capabilities: List<DataProductCapability> =
     listOf(
       DataProductCapability(
-        kind = KIND,
-        schemaVersion = SCHEMA_VERSION,
+        kind = HistoryDiffRegionsProduct.KIND,
+        schemaVersion = HistoryDiffRegionsProduct.SCHEMA_VERSION,
         transport = DataProductTransport.INLINE,
         attachable = true,
         fetchable = true,
@@ -43,7 +46,7 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
     params: JsonElement?,
     inline: Boolean,
   ): DataProductRegistry.Outcome {
-    if (kind != KIND) return DataProductRegistry.Outcome.Unknown
+    if (kind != HistoryDiffRegionsProduct.KIND) return DataProductRegistry.Outcome.Unknown
     val diffParams =
       parseParams(params)
         ?: return DataProductRegistry.Outcome.FetchFailed(
@@ -53,27 +56,27 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
   }
 
   override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (KIND !in kinds) return emptyList()
+    if (HistoryDiffRegionsProduct.KIND !in kinds) return emptyList()
     val params = subscriptions[previewId] ?: return emptyList()
     val outcome = fetchDiff(previewId, params)
     if (outcome !is DataProductRegistry.Outcome.Ok) return emptyList()
     return listOf(
       DataProductAttachment(
-        kind = KIND,
-        schemaVersion = SCHEMA_VERSION,
+        kind = HistoryDiffRegionsProduct.KIND,
+        schemaVersion = HistoryDiffRegionsProduct.SCHEMA_VERSION,
         payload = outcome.result.payload,
       )
     )
   }
 
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
-    if (kind != KIND) return
+    if (kind != HistoryDiffRegionsProduct.KIND) return
     val parsed = parseParams(params) ?: return
     subscriptions[previewId] = parsed
   }
 
   override fun onUnsubscribe(previewId: String, kind: String) {
-    if (kind == KIND) subscriptions.remove(previewId)
+    if (kind == HistoryDiffRegionsProduct.KIND) subscriptions.remove(previewId)
   }
 
   private fun fetchDiff(previewId: String, params: DiffParams): DataProductRegistry.Outcome {
@@ -112,9 +115,9 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
     val payload = diff(params.baselineHistoryId, latestImage, baselineImage, params.threshold)
     return DataProductRegistry.Outcome.Ok(
       DataFetchResult(
-        kind = KIND,
-        schemaVersion = SCHEMA_VERSION,
-        payload = json.encodeToJsonElement(DiffPayload.serializer(), payload),
+        kind = HistoryDiffRegionsProduct.KIND,
+        schemaVersion = HistoryDiffRegionsProduct.SCHEMA_VERSION,
+        payload = json.encodeToJsonElement(HistoryDiffPayload.serializer(), payload),
       )
     )
   }
@@ -124,7 +127,7 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
     latest: java.awt.image.BufferedImage,
     baseline: java.awt.image.BufferedImage,
     threshold: Int,
-  ): DiffPayload {
+  ): HistoryDiffPayload {
     val width = latest.width
     val height = latest.height
     val changed = BooleanArray(width * height)
@@ -166,7 +169,7 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
       regions += region
     }
     val totalPixels = width.toLong() * height.toLong()
-    return DiffPayload(
+    return HistoryDiffPayload(
       baselineHistoryId = baselineHistoryId,
       totalPixelsChanged = totalChanged,
       changedFraction = if (totalPixels == 0L) 0.0 else totalChanged.toDouble() / totalPixels,
@@ -197,12 +200,12 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
       sumB += channel(latestArgb, 0) - channel(baselineArgb, 0)
     }
 
-    fun toRegion(): DiffRegion =
-      DiffRegion(
+    fun toRegion(): HistoryDiffRegion =
+      HistoryDiffRegion(
         bounds = "$minX,$minY,${maxX + 1},${maxY + 1}",
         pixelCount = pixelCount,
         avgDelta =
-          AverageDelta(
+          HistoryDiffAverageDelta(
             r = sumR.toDouble() / pixelCount,
             g = sumG.toDouble() / pixelCount,
             b = sumB.toDouble() / pixelCount,
@@ -223,22 +226,7 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
 
   private data class DiffParams(val baselineHistoryId: String, val threshold: Int)
 
-  @Serializable
-  data class DiffPayload(
-    val baselineHistoryId: String,
-    val totalPixelsChanged: Long,
-    val changedFraction: Double,
-    val regions: List<DiffRegion>,
-  )
-
-  @Serializable
-  data class DiffRegion(val bounds: String, val pixelCount: Long, val avgDelta: AverageDelta)
-
-  @Serializable data class AverageDelta(val r: Double, val g: Double, val b: Double, val a: Double)
-
-  companion object {
-    const val KIND: String = "history/diff/regions"
-    const val SCHEMA_VERSION: Int = 1
+  private companion object {
     private const val DEFAULT_THRESHOLD = 4
     private const val MAX_REGIONS = 50
 

@@ -2,7 +2,7 @@
     "compilerOptions": {
         "module": "commonjs",
         "target": "ES2022",
-        "lib": ["ES2022"],
+        "lib": ["ES2022", "DOM"],
         "types": ["node", "mocha"],
         "outDir": "out",
         "rootDir": "src",
@@ -13,5 +13,18 @@
         "resolveJsonModule": true
     },
     "include": ["src/**/*"],
-    "exclude": ["node_modules", "src/webview/**"]
+    "exclude": ["node_modules", "src/webview/**"],
+    "files": [
+        "src/webview/preview/cardData.ts",
+        "src/webview/preview/liveTransitions.ts",
+        "src/webview/preview/moduleReadiness.ts",
+        "src/webview/preview/pointerGeometry.ts",
+        "src/webview/preview/relativeSizing.ts",
+        "src/webview/history/historyData.ts",
+        "src/webview/shared/diffStatsLabel.ts",
+        "src/webview/shared/safeIndex.ts",
+        "src/webview/shared/store.ts",
+        "src/webview/shared/storeController.ts",
+        "src/webview/shared/types.ts"
+    ]
 }

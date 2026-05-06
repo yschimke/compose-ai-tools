@@ -175,6 +175,20 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         .scan()
         .use { scanResult ->
           reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
+          // Project-local class FQNs — only classes loaded from the project's own
+          // class output directories, never from a dependency JAR. Powers the
+          // "is this @Composable call into project code?" filter inside
+          // PreviewTargetInference; computed once per scan and passed through.
+          val classDirPaths = existingClassDirs.map { it.absolutePath }.toSet()
+          val projectClassFqns =
+            scanResult.allClasses
+              .asSequence()
+              .filter { ci ->
+                val element = ci.classpathElementFile ?: return@filter false
+                element.isDirectory && element.absolutePath in classDirPaths
+              }
+              .map { it.name }
+              .toSet()
           for (classInfo in scanResult.allClasses) {
             scanClassCount++
             for (method in classInfo.methodInfo) {
@@ -183,7 +197,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
               }
-              discoverFromMethod(classInfo, method, annotations.toList(), scanResult, previews)
+              discoverFromMethod(
+                classInfo,
+                method,
+                annotations.toList(),
+                scanResult,
+                projectClassFqns,
+                previews,
+              )
             }
           }
         }
@@ -448,6 +469,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     method: MethodInfo,
     annotations: List<AnnotationInfo>,
     scanResult: ScanResult,
+    projectClassFqns: Set<String>,
     previews: MutableList<PreviewInfo>,
   ) {
     // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
@@ -471,6 +493,27 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // @Preview drove the fan-out.
     val previewParameter = extractPreviewParameter(method)
 
+    // Target inference is identical across every @Preview expansion on a single function — the
+    // bytecode and signals don't change between (e.g.) the Light and Dark variants of a
+    // `@LightAndDark` multi-preview. Wrap in `lazy` so a multi-preview function with N expansions
+    // walks the bytecode once instead of N times; tile previews skip the inference entirely
+    // (handled in `makePreview`) and the lazy never forces.
+    val previewSourceFile = sourceFilePath(classInfo)
+    val inferredTargets = lazy {
+      PreviewTargetInference.infer(
+        previewClassInfo = classInfo,
+        previewMethod = method,
+        scanResult = scanResult,
+        projectClassFqns = projectClassFqns,
+        previewSourceFile = previewSourceFile,
+        resolveSourceFile = { ownerFqn ->
+          scanResult.getClassInfo(ownerFqn)?.let { sourceFilePath(it) }
+        },
+        variantName = variantName.get(),
+        hasPreviewParameter = previewParameter != null,
+      )
+    }
+
     val directPreviews = collectDirectPreviews(annotations)
     if (directPreviews.isNotEmpty()) {
       for (ann in directPreviews) {
@@ -484,6 +527,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             animationSpec,
             timings,
             previewParameter,
+            previewSourceFile,
+            inferredTargets,
           )
         )
       }
@@ -503,6 +548,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             animationSpec,
             timings,
             previewParameter,
+            previewSourceFile,
+            inferredTargets,
           )
         )
       }
@@ -884,20 +931,27 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     animation: AnimationCapture?,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
+    previewSourceFile: String?,
+    inferredTargets: Lazy<List<PreviewTarget>>,
   ): PreviewInfo {
     val params = extractPreviewParams(ann, wrapperClassName, previewParameter)
     val fqn = "${classInfo.name}.${method.name}"
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
     val outputPlan = buildOutputPlan(ann, id, scrolls, animation, timings)
+    // Tile previews don't go through @Composable invocations — they return a `TilePreviewData`
+    // and the renderer reflects them directly. Skipping the lazy means the bytecode walk never
+    // runs for tile-only methods.
+    val targets = if (params.kind == PreviewKind.TILE) emptyList() else inferredTargets.value
     return PreviewInfo(
       id = id,
       functionName = method.name,
       className = classInfo.name,
-      sourceFile = sourceFilePath(classInfo),
+      sourceFile = previewSourceFile,
       params = params,
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
+      targets = targets,
     )
   }
 

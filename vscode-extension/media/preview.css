@@ -653,6 +653,14 @@ body {
     border-color: var(--vscode-focusBorder);
 }
 
+/* Referenced previews live in another file but target the active one (idiomatic
+   XxxPreviews.kt / screenshotTest layout). A subtle dashed left edge is enough
+   to telegraph "this is from somewhere else"; the tooltip carries the source
+   path. Theme tokens keep it readable on both light and dark themes. */
+.preview-card.referenced {
+    border-left: 3px dashed var(--vscode-textLink-foreground);
+}
+
 /* Header overlays the image, hidden until hover/focus. */
 .card-header {
     position: absolute;

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
@@ -131,6 +132,64 @@ class DaemonMcpServerTest {
     assertThat(payload["ready"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
     assertThat(payload["toolCatalog"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull)
       .isAnyOf("loading", "ready")
+  }
+
+  @Test
+  fun `bootstrap tools list_changed fires when full catalog completes inside grace period`() {
+    // Race covered by issue #670: a client receives bootstrapToolDefs from tools/list, the full
+    // catalog finishes loading well under TOOL_CATALOG_NOTIFY_DELAY_MS, and without this fix no
+    // notifications/tools/list_changed is sent — so listChanged-only clients permanently miss
+    // tools like `record_preview`.
+    runCatching { client.close() }
+    runCatching { session.close() }
+    runCatching { supervisor.shutdown() }
+
+    val gate = java.util.concurrent.CountDownLatch(1)
+    val loaderEntered = java.util.concurrent.CountDownLatch(1)
+    factory = FakeDaemonClientFactory()
+    supervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = factory)
+    server =
+      DaemonMcpServer(
+        supervisor = supervisor,
+        fullToolDefsLoader = {
+          loaderEntered.countDown()
+          gate.await()
+          listOf(
+            ee.schimke.composeai.mcp.protocol.ToolDef(
+              name = "record_preview",
+              description = "stub for the test",
+              inputSchema =
+                Json.parseToJsonElement("""{"type":"object","properties":{}}""").jsonObject,
+            )
+          )
+        },
+      )
+
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    session =
+      server.newSession(input = serverFromClient, output = serverToClient).also { it.start() }
+    client = McpTestClient(input = clientFromServer, output = clientToServer)
+
+    client.initialize()
+
+    // Wait until the loader is actually blocked, otherwise we might race past the bootstrap window.
+    assertThat(loaderEntered.await(5, TimeUnit.SECONDS)).isTrue()
+
+    val bootstrap =
+      json.decodeFromJsonElement(ListToolsResult.serializer(), client.request("tools/list"))
+    assertThat(bootstrap.tools.map { it.name }).doesNotContain("record_preview")
+
+    // Release the loader; the full catalog now resolves quickly — long before the 3s grace window.
+    gate.countDown()
+
+    // The fix's contract: this notification arrives even though the load was not "delayed".
+    client.expectNotification("notifications/tools/list_changed", 5_000)
+
+    val full =
+      json.decodeFromJsonElement(ListToolsResult.serializer(), client.request("tools/list"))
+    assertThat(full.tools.map { it.name }).contains("record_preview")
   }
 
   @Test
@@ -1507,6 +1566,566 @@ class DaemonMcpServerTest {
     assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
     assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
       .isEqualTo(listOf(previewId))
+  }
+
+  // -------------------------------------------------------------------------
+  // Edit-loop staleness regression — agents that edit a preview source repeatedly
+  // and request a render after each edit observe stale renders when
+  // ensureSourceFreshBeforeRender (DaemonMcpServer.kt:438) doesn't forward a
+  // fileChanged. The daemon's UserClassLoaderHolder.swap fires only on
+  // fileChanged({kind: "source"}), so without it the next render binds against
+  // the previous bytecode.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `resources read forwards fileChanged on every iteration of an edit render loop`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val baseMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("loop-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    val iterations = 5
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      // Bump mtime forward each iteration. This is the happy path — File.lastModified()
+      // is monotonic so the daemon-side classloader swap fires.
+      assertThat(sourceFile.setLastModified(baseMtime + 1_000L * (i + 1))).isTrue()
+
+      client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage(
+          "iteration #${i + 1}: expected fileChanged forwarded for advancing-mtime edit"
+        )
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["path"]?.jsonPrimitive?.contentOrNull)
+        .isEqualTo(sourceFile.canonicalPath)
+      assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+    }
+  }
+
+  @Test
+  fun `resources read forwards fileChanged when content changes but mtime is preserved`() {
+    // Tight edit loop where the source's mtime stays pinned across every iteration —
+    // simulates same-millisecond writes on fast SSDs / tmpfs, mtime-preserving editors, and
+    // agent harnesses that touch files programmatically without bumping mtime.
+    // ensureSourceFreshBeforeRender's slow path hashes the file when mtime didn't move, so
+    // content-only edits still fire `fileChanged` and the daemon's classloader rotates.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val frozenMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("frozen-mtime-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    val iterations = 5
+    val notifiedIterations = mutableListOf<Int>()
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      // Pin mtime to the original value AFTER the write. Simulates a mtime-preserving
+      // editor or two writes within the same millisecond.
+      assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+      client.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+      // Drain the renderNow so the next iteration's poll doesn't see a stale entry.
+      daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS)
+
+      val fileChanged = daemon.fileChanges.poll(500, TimeUnit.MILLISECONDS)
+      if (fileChanged != null) notifiedIterations.add(i + 1)
+    }
+
+    assertWithMessage(
+        "expected fileChanged to be forwarded for every edit (got ${notifiedIterations.size}/$iterations); " +
+          "ensureSourceFreshBeforeRender currently relies on mtime advancing, so content-only edits leak through stale"
+      )
+      .that(notifiedIterations)
+      .hasSize(iterations)
+  }
+
+  @Test
+  fun `notify_file_changed forwards fileChanged regardless of mtime so agents can bypass staleness`() {
+    // The documented workaround for the mtime-based staleness gap above: agents call
+    // the explicit `notify_file_changed` MCP tool after every edit. This test pins the
+    // workaround so a regression in the tool's forwarding path (DaemonMcpServer.kt:2766)
+    // is caught early.
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+    val frozenMtime = System.currentTimeMillis() - 60_000
+    assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val iterations = 5
+    repeat(iterations) { i ->
+      sourceFile.writeText("@Preview fun Red() { /* v${i + 1} */ }")
+      assertThat(sourceFile.setLastModified(frozenMtime)).isTrue()
+
+      client.callTool(
+        "notify_file_changed",
+        buildJsonObject {
+          put("workspaceId", workspaceId.value)
+          put("path", sourceFile.absolutePath)
+          put("kind", "source")
+          put("changeType", "modified")
+        },
+      )
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage("iteration #${i + 1}: notify_file_changed must always forward")
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["path"]?.jsonPrimitive?.contentOrNull)
+        .isEqualTo(sourceFile.absolutePath)
+      assertThat(fileChanged["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Freshness metrics, polling, and random-sampling determinism probe.
+  // Background workers run on a scheduled executor in production; tests use `= 0` cadence to
+  // disable scheduling and trigger the workers directly so timing isn't load-bearing.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `freshness metrics buckets every probe outcome and surfaces them via status`() {
+    // Build a fresh server with the schedulers disabled so only on-demand probes count.
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("metrics-workspace")
+      val moduleDir = tmp.newFolder("metrics-workspace", "module")
+      val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+      sourceFile.parentFile.mkdirs()
+      sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+      val baseMtime = System.currentTimeMillis() - 60_000
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "metrics-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      val pngFile = tmp.newFile("metrics-render.png")
+      Files.write(pngFile.toPath(), byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47))
+      daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+      val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+      // First read — discovery seeded the hash + mtime, so the probe sees no change.
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // Mtime-advancing edit.
+      sourceFile.writeText("@Preview fun Red() { /* v1 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime + 5_000)).isTrue()
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // Frozen-mtime edit (slow path).
+      sourceFile.writeText("@Preview fun Red() { /* v2 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime + 5_000)).isTrue()
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      // No-op read — mtime same, content same.
+      freshClient.request("resources/read", buildJsonObject { put("uri", uri) }, timeoutMs = 10_000)
+
+      val status =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject
+      val probes = status["probes"]!!.jsonObject
+      assertThat(probes["total"]?.jsonPrimitive?.content?.toLong()).isEqualTo(4L)
+      assertThat(probes["changedByMtime"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(probes["changedByHash"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(probes["unchangedByHash"]?.jsonPrimitive?.content?.toLong()).isEqualTo(2L)
+      assertThat(probes["firstSighting"]?.jsonPrimitive?.content?.toLong()).isEqualTo(0L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `background poller forwards fileChanged when a frozen-mtime edit lands between renders`() {
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("poll-workspace")
+      val moduleDir = tmp.newFolder("poll-workspace", "module")
+      val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+      sourceFile.parentFile.mkdirs()
+      sourceFile.writeText("@Preview fun Red() { /* v0 */ }")
+      val baseMtime = System.currentTimeMillis() - 60_000
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "poll-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      // Edit content but freeze mtime — exactly the case the on-demand path would miss without
+      // the hash fallback. The poller should nevertheless observe it.
+      sourceFile.writeText("@Preview fun Red() { /* v1 */ }")
+      assertThat(sourceFile.setLastModified(baseMtime)).isTrue()
+
+      // Drain anything left over from setup.
+      while (daemon.fileChanges.poll(0, TimeUnit.MILLISECONDS) != null) {}
+
+      freshServer.runSourceFreshnessPoll()
+
+      val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+      assertWithMessage("polling cycle should detect the frozen-mtime content edit")
+        .that(fileChanged)
+        .isNotNull()
+      assertThat(fileChanged!!["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("source")
+
+      val status =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject
+      val polling = status["polling"]!!.jsonObject
+      assertThat(polling["cycles"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(polling["previewsScanned"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(polling["changesDetected"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `random-sampling probe classifies unchanged vs changed renders`() {
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("sampling-workspace")
+      tmp.newFolder("sampling-workspace", "module")
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "sampling-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+      val daemon = freshFactory.daemons.getValue(workspaceId to ":module")
+      val previewId = "com.example.Red"
+      daemon.emitDiscovery(previewId)
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      val pngFile = tmp.newFile("sampling-render.png")
+      Files.write(pngFile.toPath(), byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47))
+      daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+      // Probe 1 — daemon reports `unchanged: true` (deterministic preview).
+      daemon.autoRenderUnchanged = { _ -> true }
+      freshServer.runRandomSamplingProbe()
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+
+      // Probe 2 — daemon reports `unchanged: false` (preview drifted with no source change).
+      daemon.autoRenderUnchanged = { _ -> false }
+      freshServer.runRandomSamplingProbe()
+      assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+        .isEqualTo(listOf(previewId))
+
+      // Give the renderFinished notifications time to round-trip on the daemon's reader thread.
+      val deadline = System.currentTimeMillis() + 2_000
+      while (System.currentTimeMillis() < deadline) {
+        val statusPayload =
+          json
+            .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+            .jsonObject["freshness"]!!
+            .jsonObject["sampling"]!!
+            .jsonObject
+        val det = statusPayload["deterministic"]?.jsonPrimitive?.content?.toLong() ?: 0L
+        val nondet = statusPayload["nondeterministic"]?.jsonPrimitive?.content?.toLong() ?: 0L
+        if (det >= 1L && nondet >= 1L) break
+        Thread.sleep(50)
+      }
+
+      val sampling =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["sampling"]!!
+          .jsonObject
+      assertThat(sampling["probes"]?.jsonPrimitive?.content?.toLong()).isEqualTo(2L)
+      assertThat(sampling["deterministic"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(sampling["nondeterministic"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      val recent =
+        sampling["recentNondeterministicUris"]!!.jsonArray.mapNotNull {
+          it.jsonObject["uri"]?.jsonPrimitive?.contentOrNull
+        }
+      assertThat(recent).contains(PreviewUri(workspaceId, ":module", previewId).toUri())
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `manifest poller imports new previews when discoverPreviews rewrites previews-json`() {
+    // Reproduces issue #834: a Gradle `discoverPreviews` re-run between renders rewrites the
+    // module's `previews.json` to include new `@Preview` ids. The MCP server must pick that up
+    // without a daemon restart so `render_preview` for the new id no longer fails with
+    // `PreviewManifestRouter: no manifest entry`.
+    val freshFactory = FakeDaemonClientFactory()
+    val freshSupervisor =
+      DaemonSupervisor(descriptorProvider = FakeDescriptorProvider(), clientFactory = freshFactory)
+    val freshServer =
+      DaemonMcpServer(
+        supervisor = freshSupervisor,
+        sourcePollIntervalMs = 0,
+        samplingIntervalMs = 0,
+      )
+    val (clientToServer, serverFromClient) = pipedPair()
+    val (serverToClient, clientFromServer) = pipedPair()
+    val freshSession = freshServer.newSession(input = serverFromClient, output = serverToClient)
+    freshSession.start()
+    val freshClient = McpTestClient(input = clientFromServer, output = clientToServer)
+    try {
+      freshClient.initialize()
+      val projectDir = tmp.newFolder("manifest-workspace")
+      tmp.newFolder("manifest-workspace", "module")
+      val manifestFile = tmp.newFile("manifest-workspace.previews.json")
+      // Boot manifest — one entry. The supervisor's `synthesiseInitialDiscovery` reads it on
+      // initialize, so the catalog already contains `Initial`.
+      manifestFile.writeText(
+        """{"previews":[{"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"}]}"""
+      )
+      val initialMtime = System.currentTimeMillis() - 60_000
+      assertThat(manifestFile.setLastModified(initialMtime)).isTrue()
+
+      freshFactory.daemonConfigurer = { fake ->
+        fake.advertisedManifestPath = manifestFile.absolutePath
+      }
+
+      val ws =
+        json
+          .parseToJsonElement(
+            freshClient
+              .callTool(
+                "register_project",
+                buildJsonObject {
+                  put("path", projectDir.absolutePath)
+                  put("rootProjectName", "manifest-demo")
+                },
+              )
+              .firstTextContent()
+          )
+          .jsonObject["workspaceId"]!!
+          .jsonPrimitive
+          .content
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val workspaceId = WorkspaceId(ws)
+      freshSupervisor.daemonFor(workspaceId, ":module")
+
+      // The synthesiseInitialDiscovery fan-out triggers a list_changed; drain it.
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+
+      // Sanity: the boot id is in the catalog via `resources/list`.
+      val listBefore =
+        json
+          .decodeFromJsonElement(
+            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            freshClient.request("resources/list"),
+          )
+          .resources
+          .map { it.uri }
+      assertThat(listBefore.any { it.contains("com.example.Initial") }).isTrue()
+
+      // Gradle's `discoverPreviews` re-runs and rewrites the manifest with a new id.
+      manifestFile.writeText(
+        """
+        {"previews":[
+          {"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"},
+          {"id":"com.example.WeatherForecast_Light","className":"com.example","methodName":"WeatherForecast_Light","displayName":"WeatherForecast_Light"}
+        ]}
+        """
+          .trimIndent()
+      )
+      assertThat(manifestFile.setLastModified(initialMtime + 5_000)).isTrue()
+
+      // Drive the poll explicitly (the scheduler is disabled).
+      freshServer.runSourceFreshnessPoll()
+
+      // The new id should now be visible to MCP clients without a restart.
+      freshClient.expectNotification("notifications/resources/list_changed", 2_000)
+      val listAfter =
+        json
+          .decodeFromJsonElement(
+            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            freshClient.request("resources/list"),
+          )
+          .resources
+          .map { it.uri }
+      assertThat(listAfter.any { it.contains("com.example.WeatherForecast_Light") }).isTrue()
+      assertThat(listAfter.any { it.contains("com.example.Initial") }).isTrue()
+
+      // And the manifest counters should reflect the reread + the diff.
+      val manifest =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["manifest"]!!
+          .jsonObject
+      assertThat(manifest["rereads"]?.jsonPrimitive?.content?.toLong()).isAtLeast(1L)
+      assertThat(manifest["previewsAdded"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+      assertThat(manifest["previewsRemoved"]?.jsonPrimitive?.content?.toLong()).isEqualTo(0L)
+
+      // Idempotency: a second poll with no manifest change does not re-fire.
+      freshServer.runSourceFreshnessPoll()
+      val manifestAfter =
+        json
+          .parseToJsonElement(freshClient.callTool("status").firstTextContent())
+          .jsonObject["freshness"]!!
+          .jsonObject["manifest"]!!
+          .jsonObject
+      assertThat(manifestAfter["rereads"]?.jsonPrimitive?.content?.toLong()).isEqualTo(1L)
+    } finally {
+      runCatching { freshClient.close() }
+      runCatching { freshSession.close() }
+      runCatching { freshServer.shutdown() }
+      runCatching { freshSupervisor.shutdown() }
+    }
   }
 
   // -------------------------------------------------------------------------

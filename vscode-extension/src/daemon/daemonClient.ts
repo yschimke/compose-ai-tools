@@ -43,6 +43,11 @@ import {
     SandboxRecycleParams,
     SetFocusParams,
     SetVisibleParams,
+    StreamFrameParams,
+    StreamStartParams,
+    StreamStartResult,
+    StreamStopParams,
+    StreamVisibilityParams,
 } from "./daemonProtocol";
 
 export interface DaemonClientLogger {
@@ -73,6 +78,10 @@ export interface DaemonClientEvents {
     /** Phase H2 — daemon emits this after writing each render's sidecar +
      *  index entry. Subscribers avoid polling `history/list`. */
     onHistoryAdded?: (params: HistoryAddedParams) => void;
+    /** `composestream/1` — one frame on a live stream. See
+     *  docs/daemon/STREAMING.md. The client routes these to the active
+     *  webview's painter via the StreamClient + canvas pipeline. */
+    onStreamFrame?: (params: StreamFrameParams) => void;
     /** Stream end / framing collapse. After this fires, the client is dead. */
     onChannelClosed?: (err?: Error) => void;
 }
@@ -235,6 +244,36 @@ export class DaemonClient {
         this.notify("interactive/input", params);
     }
 
+    /**
+     * `composestream/1` — opens a live frame stream against a held
+     * interactive session. The daemon emits `streamFrame` notifications
+     * carrying inline base64 payload (or unchanged-heartbeats) on every
+     * renderFinished for the target preview until `stream/stop` arrives.
+     *
+     * Daemons older than the protocol reject with `MethodNotFound (-32601)`;
+     * callers should fall back to `interactiveStart` + the legacy
+     * `renderFinished` PNG-on-disk path. See docs/daemon/STREAMING.md.
+     */
+    streamStart(params: StreamStartParams): Promise<StreamStartResult> {
+        return this.request<StreamStartResult>("stream/start", params);
+    }
+
+    /** Symmetric to {@link streamStart}. Idempotent — extra stops are
+     *  no-ops. Notification, drop-and-go semantics. The daemon emits one
+     *  final `streamFrame` carrying `final: true` so the painter can
+     *  release decoder state. */
+    streamStop(params: StreamStopParams): void {
+        this.notify("stream/stop", params);
+    }
+
+    /** Throttle / un-throttle a stream when the preview card scrolls out
+     *  of (or back into) viewport. Idempotent and silent on unknown stream
+     *  ids. Replaces the legacy "stop on scroll-out" semantics — the held
+     *  session stays warm while throttled. */
+    streamVisibility(params: StreamVisibilityParams): void {
+        this.notify("stream/visibility", params);
+    }
+
     recordingStart(
         params: RecordingStartParams,
     ): Promise<RecordingStartResult> {
@@ -383,6 +422,9 @@ export class DaemonClient {
                 break;
             case "historyAdded":
                 this.events.onHistoryAdded?.(params as HistoryAddedParams);
+                break;
+            case "streamFrame":
+                this.events.onStreamFrame?.(params as StreamFrameParams);
                 break;
             default:
                 this.logger.appendLine(

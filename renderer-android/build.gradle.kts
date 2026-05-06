@@ -44,10 +44,17 @@ dependencies {
   // surface — see docs/daemon/CLASSLOADER-FORENSICS.md). `testImplementation` because it's only
   // referenced by `ClassloaderForensicsTest` and shouldn't widen the renderer's main classpath.
   testImplementation(project(":daemon:core"))
-  // Integration test for `text/strings` v2 truncation fields (TextStringsTruncationTest):
-  // exercises ComposeSemanticsDataProducer.writeArtifacts + TextStringsDataProductRegistry
-  // against real Compose composables to assert each preview triggers the expected check.
+  // ComposeSemanticsCoreFieldsTest exercises ComposeSemanticsDataProducer.writeArtifacts +
+  // ComposeSemanticsDataProductRegistry against real Compose composables to assert each
+  // preview surfaces the specific semantics field it isolates (testTag, contentDescription,
+  // role+clickable, mergeMode). TextStringsTruncationTest exercises the same producer +
+  // TextStringsDataProductRegistry against truncation fixtures to assert each preview
+  // triggers the expected text/strings v2 truncation check.
   testImplementation(project(":data-layoutinspector-connector"))
+  // I18nTranslationsFixtureTest exercises I18nTranslationsDataProducer.writeArtifacts +
+  // I18nTranslationsDataProductRegistry against a Compose Text rendered under a fixture
+  // strings.xml catalog (values/ + values-fr/) to assert the produced JSON resolves the
+  // rendered string back to its R.string.* and surfaces the supported-locale set.
   testImplementation(project(":data-strings-connector"))
 
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:

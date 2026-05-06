@@ -33,6 +33,7 @@ import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
+import ee.schimke.composeai.data.theme.ThemePayload
 import java.io.File
 import java.util.Base64
 import java.util.Collections
