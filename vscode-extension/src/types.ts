@@ -521,7 +521,7 @@ export type ExtensionToWebview =
      * scope file (active editor change to a different file) — the daemon-side
      * streams are flushed in parallel via `interactive/stop`. The panel
      * clears the LIVE badge / .live class / `interactivePreviewIds` set
-     * without sending its own `setInteractive` messages back (those would
+     * without sending its own `requestStreamStop` messages back (those would
      * race the extension's flush). See INTERACTIVE.md § 3.
      */
     | { command: "clearInteractive"; previewId?: string }
@@ -562,14 +562,6 @@ export type ExtensionToWebview =
           heldSession: boolean;
       }
     | { command: "streamStopped"; previewId: string }
-    /**
-     * Toggle the `composestream/1` opt-in at runtime — fired when the user
-     * flips `composePreview.streaming.enabled` in Settings without reloading
-     * the panel. The webview's LIVE-button handler reads the latest value
-     * before deciding whether to post `requestStreamStart` or
-     * `setInteractive`.
-     */
-    | { command: "setStreamingEnabled"; enabled: boolean }
     | { command: "setEarlyFeatures"; enabled: boolean };
 
 /** Messages from webview to extension */
@@ -681,21 +673,12 @@ export type WebviewToExtension =
      */
     | { command: "requestLaunchOnDevice"; previewId: string }
     /**
-     * Toggle interactive (live-stream) mode for [previewId]. Daemon-only —
-     * the extension routes this into a `setFocus` + `renderNow(tier='fast')`
-     * call so the focused preview is the daemon's render priority. Exit
-     * (`enabled = false`) does not issue any daemon call: the next
-     * save/focus-change publishes a fresh focus set on its own. See
-     * docs/daemon/INTERACTIVE.md § 4 for the lifecycle.
-     */
-    | { command: "setInteractive"; previewId: string; enabled: boolean }
-    /**
      * `composestream/1` — open a live frame stream for [previewId]. The
      * extension acquires a held interactive session and pumps `streamFrame`
      * notifications down to the webview, where the canvas painter consumes
-     * them with a newest-wins queue. Symmetric to `setInteractive` but
-     * routed through the binary-bytes streaming path; gated behind
-     * `composePreview.streaming.enabled`. See docs/daemon/STREAMING.md.
+     * them with a newest-wins queue. The sole live-mode entry point now
+     * that the legacy `setInteractive` `<img src=…>` swap path has been
+     * retired. See docs/daemon/STREAMING.md and docs/daemon/INTERACTIVE.md.
      */
     | { command: "requestStreamStart"; previewId: string }
     | { command: "requestStreamStop"; previewId: string }

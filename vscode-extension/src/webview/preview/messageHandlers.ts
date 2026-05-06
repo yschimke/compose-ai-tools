@@ -177,9 +177,6 @@ export function handleExtensionMessage(
             return handlePreviewMainRefChanged(ctx);
         case "setEarlyFeatures":
             return handleSetEarlyFeatures(msg, ctx);
-        case "setStreamingEnabled":
-            previewStore.setState({ streamingEnabled: !!msg.enabled });
-            return;
         case "streamStarted": {
             const card = document.getElementById(
                 "preview-" + sanitizeId(msg.previewId),

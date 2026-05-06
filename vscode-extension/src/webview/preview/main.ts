@@ -246,7 +246,6 @@ export class PreviewApp extends LitElement {
     protected firstUpdated(): void {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
-        const initialStreamingEnabled = this.dataset.streaming === "true";
         const vscode = getVsCodeApi<PersistedState>();
         const state: PersistedState = vscode.getState() ?? { filters: {} };
         // `earlyFeaturesEnabled` lives in `previewStore` so future
@@ -255,12 +254,9 @@ export class PreviewApp extends LitElement {
         // terseness; writes go straight to `previewStore.setState`.
         previewStore.setState({
             earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
-            streamingEnabled: initialStreamingEnabled,
         });
         const earlyFeatures = (): boolean =>
             previewStore.getState().earlyFeaturesEnabled;
-        const streamingEnabled = (): boolean =>
-            previewStore.getState().streamingEnabled;
         const streamingPainter = new StreamingPainter();
 
         // Element handles resolve via `@query` decorators on this element —
@@ -425,7 +421,6 @@ export class PreviewApp extends LitElement {
             recordingFormat,
             interactiveInputConfig,
             earlyFeatures,
-            streamingEnabled,
             inFocus: () => focusController.inFocus(),
             focusedCard: () => focusController.focusedCard(),
             applyInteractiveButtonState: () =>

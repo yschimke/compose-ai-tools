@@ -8,7 +8,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private extensionUri: vscode.Uri;
     private onMessage: (msg: WebviewToExtension) => void;
     private earlyFeaturesEnabled: () => boolean;
-    private streamingEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
 
     constructor(
@@ -16,12 +15,10 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         onMessage: (msg: WebviewToExtension) => void,
         earlyFeaturesEnabled: () => boolean = () => false,
         shouldRestoreVisibility: () => boolean = () => false,
-        streamingEnabled: () => boolean = () => false,
     ) {
         this.extensionUri = extensionUri;
         this.onMessage = onMessage;
         this.earlyFeaturesEnabled = earlyFeaturesEnabled;
-        this.streamingEnabled = streamingEnabled;
         this.shouldRestoreVisibility = shouldRestoreVisibility;
     }
 
@@ -54,7 +51,6 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
         const earlyFeaturesEnabled = this.earlyFeaturesEnabled();
-        const streamingEnabled = this.streamingEnabled();
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, "media", "preview.css"),
         );
@@ -81,7 +77,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
-    <preview-app data-early-features="${earlyFeaturesEnabled ? "true" : "false"}" data-streaming="${streamingEnabled ? "true" : "false"}"></preview-app>
+    <preview-app data-early-features="${earlyFeaturesEnabled ? "true" : "false"}"></preview-app>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
