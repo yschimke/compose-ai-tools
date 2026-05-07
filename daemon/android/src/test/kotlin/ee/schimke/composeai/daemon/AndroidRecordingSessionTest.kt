@@ -775,6 +775,197 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun navigationEventsRouteThroughDispatchNavigation() {
+    // Pin every wired navigation id (`navigation.deepLink` / `navigation.back` /
+    // `navigation.predictiveBack{Started,Progressed,Committed,Cancelled}`): each registry entry
+    // pre-binds its action-kind at registration time, strips the `navigation.` prefix, and
+    // forwards through `interactive.dispatchNavigation(actionKind, ...)`. Payload fields ride
+    // through unchanged.
+    val framesDir = tempFolder.newFolder("navigation-frames")
+    val encodedDir = tempFolder.newFolder("navigation-encoded")
+    val sourcePng = File(tempFolder.newFolder("navigation-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { navigationResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-navigation",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      val events =
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_DEEP_LINK_EVENT,
+            deepLinkUri = "app://route/home",
+          ),
+          RecordingScriptEvent(tMs = 0L, kind = NavigationRecordingScriptEvents.NAV_BACK_EVENT),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_PREDICTIVE_BACK_STARTED_EVENT,
+            backProgress = 0.1f,
+            backEdge = "left",
+          ),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_PREDICTIVE_BACK_PROGRESSED_EVENT,
+            backProgress = 0.5f,
+            backEdge = "right",
+          ),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_PREDICTIVE_BACK_COMMITTED_EVENT,
+          ),
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_PREDICTIVE_BACK_CANCELLED_EVENT,
+          ),
+        )
+      session.postScript(events)
+      val result = session.stop()
+
+      assertEquals(
+        "the registry must route navigation.* through dispatchNavigation, not pointer dispatch",
+        0,
+        interactive.dispatchCount,
+      )
+      assertEquals(
+        listOf(
+          RecordingDeltaSession.NavigationCall("deepLink", "app://route/home", null, null),
+          RecordingDeltaSession.NavigationCall("back", null, null, null),
+          RecordingDeltaSession.NavigationCall("predictiveBackStarted", null, 0.1f, "left"),
+          RecordingDeltaSession.NavigationCall("predictiveBackProgressed", null, 0.5f, "right"),
+          RecordingDeltaSession.NavigationCall("predictiveBackCommitted", null, null, null),
+          RecordingDeltaSession.NavigationCall("predictiveBackCancelled", null, null, null),
+        ),
+        interactive.navigationCalls,
+      )
+      assertEquals(events.size, result.scriptEvents.size)
+      result.scriptEvents.forEach { evidence ->
+        assertEquals(
+          "evidence for ${evidence.kind} must be applied",
+          ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+          evidence.status,
+        )
+      }
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun navigationDeepLinkReportsUnsupportedWhenUriIsBlank() {
+    // navigation.deepLink without a deepLinkUri is rejected up front by the handler — the agent
+    // sees a precise unsupported reason instead of a silent no-op intent dispatch.
+    val framesDir = tempFolder.newFolder("navigation-blank-frames")
+    val encodedDir = tempFolder.newFolder("navigation-blank-encoded")
+    val sourcePng = File(tempFolder.newFolder("navigation-blank-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { navigationResult = true }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-navigation-blank",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = NavigationRecordingScriptEvents.NAV_DEEP_LINK_EVENT,
+            deepLinkUri = "",
+          )
+        )
+      )
+      val result = session.stop()
+
+      assertTrue(
+        "blank deepLinkUri must short-circuit before reaching dispatchNavigation",
+        interactive.navigationCalls.isEmpty(),
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "miss diagnostic must mention the deepLinkUri requirement; got '$message'",
+        message.contains("deepLinkUri"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun navigationReportsUnsupportedWhenHostCannotDispatch() {
+    // When `dispatchNavigation` returns false (e.g. host has no held activity), the handler
+    // surfaces a specific unsupported reason naming the action kind.
+    val framesDir = tempFolder.newFolder("navigation-miss-frames")
+    val encodedDir = tempFolder.newFolder("navigation-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("navigation-miss-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive = RecordingDeltaSession(sourcePng).apply { navigationResult = false }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-navigation-miss",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(tMs = 0L, kind = NavigationRecordingScriptEvents.NAV_BACK_EVENT)
+        )
+      )
+      val result = session.stop()
+
+      assertEquals(1, interactive.navigationCalls.size)
+      assertEquals("back", interactive.navigationCalls.single().actionKind)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[0].status,
+      )
+      val message = result.scriptEvents[0].message ?: ""
+      assertTrue(
+        "miss diagnostic must mention the action kind; got '$message'",
+        message.contains("'back'"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun stateSaveRoutesThroughDispatchStateSave() {
     val framesDir = tempFolder.newFolder("state-save-frames")
     val encodedDir = tempFolder.newFolder("state-save-encoded")
@@ -1410,6 +1601,34 @@ class AndroidRecordingSessionTest {
       stateRestoreCalls += checkpointId
       val override = stateRestoreResult
       return override ?: super.dispatchStateRestore(checkpointId)
+    }
+
+    data class NavigationCall(
+      val actionKind: String,
+      val deepLinkUri: String?,
+      val backProgress: Float?,
+      val backEdge: String?,
+    )
+
+    val navigationCalls = mutableListOf<NavigationCall>()
+
+    /**
+     * When non-null, [dispatchNavigation] returns this value verbatim and records the call into
+     * [navigationCalls]. When null (the default), the inherited interface-level default
+     * (`return false`) is used so existing tests don't have to opt in.
+     */
+    var navigationResult: Boolean? = null
+
+    override fun dispatchNavigation(
+      actionKind: String,
+      deepLinkUri: String?,
+      backProgress: Float?,
+      backEdge: String?,
+    ): Boolean {
+      navigationCalls += NavigationCall(actionKind, deepLinkUri, backProgress, backEdge)
+      val override = navigationResult
+      return override
+        ?: super.dispatchNavigation(actionKind, deepLinkUri, backProgress, backEdge)
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

@@ -290,6 +290,41 @@ class InteractiveCommandTest {
   }
 
   @Test
+  fun dispatchNavigationRoundTripsThroughTheBridge() {
+    // Pin the cross-classloader contract for the new variant: only `java.*` / primitive types in
+    // the payload, round-trips through `interactiveCommands` by reference (so the host's latch /
+    // atomic refs come back out unchanged for the await pattern).
+    DaemonHostBridge.reset()
+    val slot = DaemonHostBridge.slot(0)
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    val cmd =
+      InteractiveCommand.DispatchNavigation(
+        streamId = "stream-A",
+        actionKind = "deepLink",
+        deepLinkUri = "app://route/home",
+        backProgress = null,
+        backEdge = null,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    slot.interactiveCommands.put(cmd)
+
+    val drained = slot.interactiveCommands.poll(1, TimeUnit.SECONDS)
+    assertSame("queue must round-trip the same instance, not a copy", cmd, drained)
+    val asNav = drained as InteractiveCommand.DispatchNavigation
+    assertSame(replyLatch, asNav.replyLatch)
+    assertSame(replyError, asNav.replyError)
+    assertSame(replyApplied, asNav.replyApplied)
+    assertEquals("deepLink", asNav.actionKind)
+    assertEquals("app://route/home", asNav.deepLinkUri)
+    assertNull("replyError defaults to null", asNav.replyError.get())
+    assertFalse("replyApplied defaults to false", asNav.replyApplied.get())
+  }
+
+  @Test
   fun dispatchSemanticsActionRoundTripsThroughTheBridge() {
     // Pin the cross-classloader contract for the new variant: only `java.*` types in the payload,
     // round-trips through `interactiveCommands` by reference (so the host's latch / atomic refs

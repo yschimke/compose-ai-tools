@@ -407,6 +407,17 @@ fun main(args: Array<String>) {
               dataExtensionDescriptors = UiAutomatorRecordingScriptEvents.descriptors,
             )
           )
+          // Navigation script events (`navigation.deepLink`, `navigation.back`,
+          // `navigation.predictiveBack*`). Always wired on the Android backend — the dispatch
+          // path lives in RobolectricHost.performNavigationAction and exercises the held
+          // activity's `OnBackPressedDispatcher` / `startActivity`.
+          add(
+            Extension(
+              id = NavigationRecordingScriptEvents.EXTENSION_ID,
+              displayName = "Navigation script controls",
+              dataExtensionDescriptors = NavigationRecordingScriptEvents.descriptors,
+            )
+          )
         }
         // host-wired recording-script extensions + renderer-agnostic roadmap descriptors. The
         // host's contribution flips supported flags as new handlers land in its session registry.

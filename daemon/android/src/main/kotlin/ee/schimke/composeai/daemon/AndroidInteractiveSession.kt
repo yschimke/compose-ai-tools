@@ -484,6 +484,50 @@ internal constructor(
     return replyApplied.get()
   }
 
+  /**
+   * Override of [InteractiveSession.dispatchNavigation]. Enqueues a
+   * [InteractiveCommand.DispatchNavigation] envelope; the sandbox-side loop in
+   * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to
+   * either an `Activity.startActivity` call (for `deepLink`) or an `OnBackPressedDispatcher`
+   * method (for `back` / `predictiveBack*`).
+   *
+   * Returns `true` when the named action fired; `false` when the named [actionKind] isn't
+   * recognised (caller surfaces unsupported evidence). Throws when the action body itself failed.
+   */
+  override fun dispatchNavigation(
+    actionKind: String,
+    deepLinkUri: String?,
+    backProgress: Float?,
+    backEdge: String?,
+  ): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyApplied = AtomicBoolean(false)
+    slot.interactiveCommands.put(
+      InteractiveCommand.DispatchNavigation(
+        streamId = streamId,
+        actionKind = actionKind,
+        deepLinkUri = deepLinkUri,
+        backProgress = backProgress,
+        backEdge = backEdge,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyApplied = replyApplied,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.dispatchNavigation timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (actionKind=$actionKind). " +
+          "Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyApplied.get()
+  }
+
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "AndroidInteractiveSession.render() called after close()" }
     val nowMs = System.currentTimeMillis()
