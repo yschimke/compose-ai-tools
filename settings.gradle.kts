@@ -171,6 +171,11 @@ include(":data-uiautomator-connector")
 
 project(":data-uiautomator-connector").projectDir = file("data/uiautomator/connector")
 
+include(":data-uiautomator-hierarchy-android")
+
+project(":data-uiautomator-hierarchy-android").projectDir =
+  file("data/uiautomator/hierarchy-android")
+
 include(":daemon:android")
 
 include(":daemon:desktop")
