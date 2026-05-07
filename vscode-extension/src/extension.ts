@@ -168,6 +168,12 @@ const firstSaveSeen = new Set<string>();
 let pendingSavePath: string | null = null;
 let debounceElapsed = true;
 let refreshInFlight = false;
+/** Edit→preview-update journey timers, keyed by moduleId. Started when a
+ *  save kicks off `runRefreshExclusive`, ended when either the gradle
+ *  refresh finishes posting images or the daemon emits the first
+ *  `onPreviewImageReady` for that module. Latest save overwrites any
+ *  in-flight entry so the metric tracks the most recent edit. */
+const editJourneyByModule = new Map<string, number>();
 /** Module/file scopes that already received a daemon view-open pre-render in
  *  this extension session. Keeps "show this file's previews" warm-up from
  *  re-rendering the same cards on every focus bounce. */
@@ -205,6 +211,20 @@ const SETUP_DOCS_URL =
     "https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme";
 const JDK_DOCS_URL =
     "https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints";
+
+function startEditJourney(moduleId: string): void {
+    editJourneyByModule.set(moduleId, Date.now());
+}
+
+function endEditJourney(moduleId: string): void {
+    const startedAt = editJourneyByModule.get(moduleId);
+    if (startedAt === undefined) {
+        return;
+    }
+    editJourneyByModule.delete(moduleId);
+    const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    logLine(`Update after user edit took ${seconds} seconds (${moduleId})`);
+}
 
 function earlyFeaturesEnabled(): boolean {
     return vscode.workspace
@@ -438,7 +458,14 @@ export async function activate(
     daemonScheduler = new DaemonScheduler(
         daemonGate,
         {
-            onPreviewImageReady: (_moduleId, previewId, imageBase64) => {
+            onPreviewImageReady: (moduleId, previewId, imageBase64) => {
+                // First image after a save closes the edit→update journey
+                // for this module. Live-stream frames from an interactive
+                // session also funnel through this callback, but they can
+                // only fire after the user already saw a complete render —
+                // any pending journey timer has already been cleared, so the
+                // `endEditJourney` no-ops in that path.
+                endEditJourney(moduleId);
                 if (!panel) {
                     return;
                 }
@@ -1028,6 +1055,14 @@ export async function activate(
         vscode.workspace.onDidSaveTextDocument((doc) => {
             if (!isSourceFile(doc.uri.fsPath)) {
                 return;
+            }
+            // Time the user-perceived edit→update journey from the save
+            // event itself so the figure includes any debounce wait. The
+            // closing log fires from the gradle refresh tail or the
+            // daemon's first `onPreviewImageReady` for this module.
+            const journeyModule = gradleService?.resolveModule(doc.uri.fsPath);
+            if (journeyModule) {
+                startEditJourney(journeyModule);
             }
             // The daemon-vs-Gradle decision is made inside runRefreshExclusive
             // — either path runs, never both. See `pickRefreshMode` for the
@@ -2404,11 +2439,19 @@ function maybeFirePendingRefresh(): void {
  *  `tier='full'`. Keeps every save in the cheap interactive loop. */
 async function runRefreshExclusive(filePath: string): Promise<void> {
     refreshInFlight = true;
+    // The journey timer is started by the `onDidSaveTextDocument` handler
+    // (not here) so it captures the debounce wait too. Manual refreshes
+    // that bypass save have no timer running, in which case
+    // `endEditJourney` no-ops below.
+    const journeyModule = gradleService?.resolveModule(filePath);
     try {
         const mode = pickRefreshMode(filePath);
         if (mode === "daemon") {
             const compileOk = await runDaemonCompileOnly(filePath);
             if (!compileOk) {
+                if (journeyModule) {
+                    editJourneyByModule.delete(journeyModule);
+                }
                 vscode.window.showErrorMessage(
                     "Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.",
                 );
@@ -2416,11 +2459,20 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
             }
             const result = await notifyDaemonOfSave(filePath);
             if (result === "accepted") {
+                // End-of-journey log fires from `onPreviewImageReady` when the
+                // first rendered image arrives. Until then the timer stays in
+                // `editJourneyByModule`.
                 return;
             }
             if (result === "disabled") {
                 await refresh(true, filePath, "fast");
+                if (journeyModule) {
+                    endEditJourney(journeyModule);
+                }
                 return;
+            }
+            if (journeyModule) {
+                editJourneyByModule.delete(journeyModule);
             }
             vscode.window.showErrorMessage(
                 "Compose Preview daemon is unavailable. Restart the preview daemon after fixing the daemon issue.",
@@ -2428,6 +2480,9 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
             return;
         }
         await refresh(true, filePath, "fast");
+        if (journeyModule) {
+            endEditJourney(journeyModule);
+        }
     } finally {
         refreshInFlight = false;
         maybeFirePendingRefresh();
