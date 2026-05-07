@@ -121,6 +121,25 @@ interface InteractiveSession : AutoCloseable {
   ): Boolean = false
 
   /**
+   * Typed companion to [dispatchUiAutomator] for the unsupported path (#874 item #2). Called by the
+   * recording-session handler after [dispatchUiAutomator] returns `false` — walks the same
+   * `SemanticsOwner` tree the matcher used and returns a structured
+   * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason]
+   * carrying the matched-count, the closest near-match node (text, contentDescription, testTag,
+   * role, exposed actions, bounds), and the action the agent attempted.
+   *
+   * Default returns `null` so hosts that don't ship a UIAutomator dispatch path (desktop today)
+   * cleanly degrade to the existing free-form `message` — agents iterating on selectors only see
+   * the structured field on backends that wired it up.
+   */
+  fun findUiAutomatorEvidence(
+    actionKind: String,
+    selectorJson: String,
+    useUnmergedTree: Boolean = false,
+    inputText: String? = null,
+  ): ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? = null
+
+  /**
    * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
    * state, exercising `onPause` / `onResume` / `onStop` etc. on the way. Used by `record_preview`'s
    * `lifecycle.event` script events to verify that a preview survives a pause-resume cycle or a

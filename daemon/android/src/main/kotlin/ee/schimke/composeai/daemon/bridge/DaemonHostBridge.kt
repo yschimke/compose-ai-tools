@@ -509,6 +509,30 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
+   * Companion to [DispatchUiAutomator] for the unsupported path (#874 item #2). Walks the same
+   * `SemanticsOwner` tree the matcher uses, computes the structured
+   * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason]
+   * (matched-count + closest near-match node + exposed-actions list), and hands it back through
+   * [replyReason]. Issued by the recording-session handler after `dispatchUiAutomator` returns
+   * `false` so a single bridge round-trip turns into a typed evidence shape on the wire.
+   *
+   * Read-only against the held composition — the sandbox-side arm walks but doesn't dispatch
+   * actions, so it doesn't compete with renders or other dispatch commands. Throwables from the
+   * walk ride [replyError]; the host's `findUiAutomatorEvidence` rethrows on the caller thread.
+   */
+  data class FindUiAutomatorEvidence(
+    override val streamId: String,
+    val actionKind: String,
+    val selectorJson: String,
+    val useUnmergedTree: Boolean,
+    val inputText: String?,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyReason:
+      AtomicReference<ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason?>,
+  ) : InteractiveCommand
+
+  /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
    * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
    * events to drive `onPause` / `onResume` / `onStop` on the held composition.

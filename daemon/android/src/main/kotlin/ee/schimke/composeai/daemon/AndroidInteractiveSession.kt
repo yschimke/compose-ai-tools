@@ -326,6 +326,48 @@ internal constructor(
   }
 
   /**
+   * Override of [InteractiveSession.findUiAutomatorEvidence] (#874 item #2). Enqueues a
+   * [InteractiveCommand.FindUiAutomatorEvidence] envelope through the bridge; the sandbox-side
+   * `UiAutomatorEvidence.compute(...)` walks the held composition's `SemanticsOwner`, computes
+   * the matched-count + closest near-match node, and hands back a typed
+   * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason].
+   */
+  override fun findUiAutomatorEvidence(
+    actionKind: String,
+    selectorJson: String,
+    useUnmergedTree: Boolean,
+    inputText: String?,
+  ): ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? {
+    if (closed) return null
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyReason =
+      AtomicReference<ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason?>(null)
+    slot.interactiveCommands.put(
+      InteractiveCommand.FindUiAutomatorEvidence(
+        streamId = streamId,
+        actionKind = actionKind,
+        selectorJson = selectorJson,
+        useUnmergedTree = useUnmergedTree,
+        inputText = inputText,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyReason = replyReason,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.findUiAutomatorEvidence timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId' (action=$actionKind, " +
+          "selectorJson='$selectorJson'). Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyReason.get()
+  }
+
+  /**
    * Override of [InteractiveSession.dispatchLifecycle]. Enqueues a
    * [InteractiveCommand.DispatchLifecycle] envelope through the bridge; the sandbox-side loop in
    * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to a

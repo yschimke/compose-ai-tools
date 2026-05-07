@@ -118,8 +118,16 @@ fun appliedEvidence(event: RecordingScriptEvent, message: String? = null): Recor
  * Build an [RecordingScriptEvidence] for an unsupported event. The [message] is required so the
  * agent always has a concrete reason for the unsupported status (which kind, on which backend, why
  * — e.g. "key dispatch is not implemented for desktop recording").
+ *
+ * Optional [unsupportedReason] carries a structured cause for `uia.*` dispatches (#874 item #2) —
+ * agents that decode it get the matched-count + nearest-match shape and can iterate on selectors
+ * without re-rendering. Other event kinds leave it `null`.
  */
-fun unsupportedEvidence(event: RecordingScriptEvent, message: String): RecordingScriptEvidence =
+fun unsupportedEvidence(
+  event: RecordingScriptEvent,
+  message: String,
+  unsupportedReason: ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? = null,
+): RecordingScriptEvidence =
   RecordingScriptEvidence(
     tMs = event.tMs,
     kind = event.kind,
@@ -129,4 +137,5 @@ fun unsupportedEvidence(event: RecordingScriptEvent, message: String): Recording
     lifecycleEvent = event.lifecycleEvent,
     tags = event.tags,
     message = message,
+    unsupportedReason = unsupportedReason,
   )
