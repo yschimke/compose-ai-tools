@@ -303,12 +303,12 @@ class DaemonSupervisor(
   companion object {
     /**
      * Out-of-the-box value for [replicasPerDaemon]. Picked so a typical preview grid renders
-     * concurrently without the user opting in: 4 sandboxes per daemon (1 primary + 3 replicas). The
+     * concurrently without the user opting in: 5 sandboxes per daemon (1 primary + 4 replicas). The
      * marginal cost is per-sandbox instrumented bytecode in one shared JVM, not a whole extra JVM
      * each — see SANDBOX-POOL.md Layer 3 for the memory math. Override via the MCP CLI's
      * `--replicas-per-daemon N` flag or the `composeai.mcp.replicasPerDaemon` system property.
      */
-    const val DEFAULT_REPLICAS_PER_DAEMON: Int = 3
+    const val DEFAULT_REPLICAS_PER_DAEMON: Int = 4
   }
 }
 

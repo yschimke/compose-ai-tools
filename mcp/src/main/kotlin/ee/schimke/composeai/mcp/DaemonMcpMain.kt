@@ -23,7 +23,7 @@ import kotlinx.serialization.json.JsonObject
  * the in-JVM sandbox pool size: total sandboxes per (workspace, module) = `1 + N`. SANDBOX-POOL.md
  * Layer 3 collapsed what used to be N+1 separate JVM subprocesses into a single daemon JVM hosting
  * N+1 Robolectric sandboxes, so this knob no longer multiplies the JVM-baseline cost. Default
- * [DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON] (= 3, i.e. 4 sandboxes per daemon). Set `0` to opt
+ * [DaemonSupervisor.DEFAULT_REPLICAS_PER_DAEMON] (= 4, i.e. 5 sandboxes per daemon). Set `0` to opt
  * out and run a single sandbox per daemon.
  *
  * On stdin EOF the server tears down every supervised daemon (sending `shutdown` + `exit` per
