@@ -361,6 +361,13 @@ fun main(args: Array<String>) {
               dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
             )
           )
+          add(
+            Extension(
+              id = "data/navigation",
+              displayName = "Navigation snapshot",
+              dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
+            )
+          )
           if (composeTraceEnabled) {
             add(
               Extension(
@@ -405,6 +412,17 @@ fun main(args: Array<String>) {
               id = UiAutomatorRecordingScriptEvents.EXTENSION_ID,
               displayName = "UIAutomator script actions",
               dataExtensionDescriptors = UiAutomatorRecordingScriptEvents.descriptors,
+            )
+          )
+          // Navigation script events (`navigation.deepLink`, `navigation.back`,
+          // `navigation.predictiveBack*`). Always wired on the Android backend — the dispatch
+          // path lives in RobolectricHost.performNavigationAction and exercises the held
+          // activity's `OnBackPressedDispatcher` / `startActivity`.
+          add(
+            Extension(
+              id = NavigationRecordingScriptEvents.EXTENSION_ID,
+              displayName = "Navigation script controls",
+              dataExtensionDescriptors = NavigationRecordingScriptEvents.descriptors,
             )
           )
         }

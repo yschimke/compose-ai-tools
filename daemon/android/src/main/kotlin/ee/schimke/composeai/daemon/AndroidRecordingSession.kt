@@ -308,6 +308,15 @@ class AndroidRecordingSession(
         put(LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT, lifecycleEventHandler("pause"))
         put(LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT, lifecycleEventHandler("resume"))
         put(LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT, lifecycleEventHandler("stop"))
+        // Navigation dispatch — deep-link Intent + back / predictive-back gestures. Each
+        // `navigation.<actionKind>` id pre-binds the wire-name string at registration time and
+        // routes through `interactive.dispatchNavigation(...)` → `Activity.startActivity` /
+        // `OnBackPressedDispatcher.*`. See [NavigationRecordingScriptEvents] for the descriptor
+        // + payload mapping.
+        for (id in NavigationRecordingScriptEvents.WIRED_EVENTS) {
+          val actionKind = id.removePrefix("navigation.")
+          put(id, navigationEventHandler(actionKind))
+        }
         // Preview reload — `preview.reload` forces a fresh composition via the held rule's
         // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
         put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
@@ -565,6 +574,44 @@ class AndroidRecordingSession(
           event,
           "host did not apply lifecycle transition '$target'; held composition may be missing " +
             "an ActivityScenario",
+        )
+      }
+    }
+
+  /**
+   * Shared factory for every `navigation.<actionKind>` script event. Pre-binds the wire-name
+   * string at registration time and forwards to `interactive.dispatchNavigation(actionKind, ...)`.
+   * The sandbox-side `when` in [RobolectricHost.SandboxRunner.performNavigationAction] picks the
+   * matching `Activity.startActivity` / `OnBackPressedDispatcher` method.
+   *
+   * Reports `unsupported` (with a specific reason) when `actionKind = "deepLink"` is missing the
+   * `deepLinkUri` field, when the host returned `false` (unknown kind / no held activity), or
+   * when the matched action couldn't fire. Throws (propagating into stop()) only when the action
+   * body itself fails — same shape as the lifecycle / a11y / uia paths.
+   */
+  private fun navigationEventHandler(actionKind: String): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      if (actionKind == "deepLink" && event.deepLinkUri.isNullOrBlank()) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires a non-blank 'deepLinkUri' to fire as Intent(ACTION_VIEW, …)",
+        )
+      }
+      val applied =
+        interactive.dispatchNavigation(
+          actionKind = actionKind,
+          deepLinkUri = event.deepLinkUri,
+          backProgress = event.backProgress,
+          backEdge = event.backEdge,
+        )
+      if (applied) {
+        appliedEvidence(event, "navigation '$actionKind' fired on the held activity")
+      } else {
+        unsupportedEvidence(
+          event,
+          "host did not apply navigation action '$actionKind'; held composition may be missing " +
+            "an OnBackPressedDispatcher (back / predictive-back) or PackageManager-resolvable " +
+            "intent target (deepLink)",
         )
       }
     }

@@ -2997,6 +2997,9 @@ class DaemonMcpServer(
         useUnmergedTree =
           obj["useUnmergedTree"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull(),
         inputText = obj["inputText"]?.jsonPrimitive?.contentOrNull,
+        deepLinkUri = obj["deepLinkUri"]?.jsonPrimitive?.contentOrNull,
+        backProgress = obj["backProgress"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
+        backEdge = obj["backEdge"]?.jsonPrimitive?.contentOrNull,
       )
     }
   }

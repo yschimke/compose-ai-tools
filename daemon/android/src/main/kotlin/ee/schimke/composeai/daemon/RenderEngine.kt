@@ -363,6 +363,7 @@ class RenderEngine(
                 resolvedSemanticsRoot?.let {
                   add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
                 }
+                add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
                 layoutInspectorPreviewContext?.let {
                   add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
                 }

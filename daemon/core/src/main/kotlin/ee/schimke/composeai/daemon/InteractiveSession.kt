@@ -196,6 +196,40 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchStateRestore(checkpointId: String): Boolean = false
 
   /**
+   * Navigation-driven dispatch: fire a deep-link Intent at the held activity, an instant back
+   * press, or one phase of a predictive-back gesture. Used by `record_preview`'s `navigation.*`
+   * script events to exercise the consumer's intent-filter / `NavController` routing and the
+   * predictive-back flow without a real device.
+   *
+   * Returns `true` when the named action fired, `false` when the host doesn't support navigation
+   * dispatch (DesktopHost today) or the named [actionKind] isn't recognised. Throws when the action
+   * body itself failed — same propagation shape as [dispatch] / [dispatchLifecycle].
+   *
+   * Default returns `false` so hosts without an Android `OnBackPressedDispatcher` /
+   * `ActivityScenario` cleanly surface "no navigation dispatch available" instead of blowing up the
+   * session.
+   *
+   * @param actionKind short wire name — `"deepLink"`, `"back"`, `"predictiveBackStarted"`,
+   *   `"predictiveBackProgressed"`, `"predictiveBackCommitted"`, `"predictiveBackCancelled"`. Maps
+   *   to the matching `OnBackPressedDispatcher` method (or `Activity.startActivity` for
+   *   `deepLink`). Unknown kinds yield `false`.
+   * @param deepLinkUri payload for `actionKind = "deepLink"`; routed through
+   *   `Intent(Intent.ACTION_VIEW, Uri.parse(deepLinkUri))`. Ignored for other kinds.
+   * @param backProgress payload for `predictiveBackStarted` / `predictiveBackProgressed` — the
+   *   gesture progress value (0.0–1.0). Forwarded as
+   *   [`androidx.activity.BackEventCompat.progress`]. Ignored for other kinds.
+   * @param backEdge payload for `predictiveBackStarted` / `predictiveBackProgressed` — `"left"`
+   *   (default) or `"right"`. Mapped sandbox-side to
+   *   [`androidx.activity.BackEventCompat.EDGE_LEFT`] / `EDGE_RIGHT`.
+   */
+  fun dispatchNavigation(
+    actionKind: String,
+    deepLinkUri: String? = null,
+    backProgress: Float? = null,
+    backEdge: String? = null,
+  ): Boolean = false
+
+  /**
    * Render the current composition to a PNG and return the result. The implementation runs the
    * scene through enough frames to settle (typically two `scene.render()` calls — same heuristic as
    * the one-shot path) and encodes to disk at a stable path the daemon can publish via

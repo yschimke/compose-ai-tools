@@ -72,6 +72,19 @@ object RenderDataArtifactContextKeys {
     )
 
   /**
+   * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded
+   * to extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
+   * `onBackPressedDispatcher.hasEnabledCallbacks()` (registered back callbacks). Robolectric's
+   * `ActivityScenario` boots the activity with a default `MAIN`/`LAUNCHER` Intent and no extras,
+   * so production renders typically see an empty intent — extensions handle that gracefully.
+   */
+  val HeldActivity: ExtensionContextKey<androidx.activity.ComponentActivity> =
+    ExtensionContextKey(
+      name = "render-data-artifact.heldActivity",
+      type = androidx.activity.ComponentActivity::class.java,
+    )
+
+  /**
    * Pre-built [PreviewContext] for the layout-inspector data product. Carries the
    * captured slot tables, semantics root, device dimensions, and render-mode metadata that
    * `LayoutInspectorDataProducer.writeArtifacts` consumes — assembled once by the render engine

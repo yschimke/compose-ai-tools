@@ -1233,6 +1233,26 @@ data class RecordingScriptEvent(
    * kinds.
    */
   val inputText: String? = null,
+  /**
+   * Payload for `kind = "navigation.deepLink"`: the URI to fire as `Intent(ACTION_VIEW, …)` at the
+   * held activity, exercising the consumer's intent-filter / NavController deep-link routing.
+   * Ignored for other event kinds.
+   */
+  val deepLinkUri: String? = null,
+  /**
+   * Predictive-back progress value (0.0–1.0) for `navigation.predictiveBackStarted` /
+   * `navigation.predictiveBackProgressed`. Threaded into the synthesised
+   * [`androidx.activity.BackEventCompat`] so animation observers driven by the back-progress flow
+   * see the same shape on-device gestures emit. Ignored for other event kinds.
+   */
+  val backProgress: Float? = null,
+  /**
+   * Predictive-back swipe edge for `navigation.predictiveBackStarted` /
+   * `navigation.predictiveBackProgressed` — `"left"` or `"right"`, mapped sandbox-side to
+   * [`androidx.activity.BackEventCompat.EDGE_LEFT`] / `EDGE_RIGHT`. Defaults to `"left"` when
+   * absent. Ignored for other event kinds.
+   */
+  val backEdge: String? = null,
 )
 
 @Serializable

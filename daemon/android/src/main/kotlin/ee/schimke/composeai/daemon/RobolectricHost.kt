@@ -204,6 +204,8 @@ open class RobolectricHost(
    * - `input.keyboard` (renderer-agnostic) — roadmap on every host; key dispatch isn't wired.
    * - `input.rsb` (Android-only) — rotary side-button scroll on Wear previews.
    * - `lifecycle.{pause,resume,stop}` (Android-only) — `ActivityScenario.moveToState(...)`.
+   * - `navigation.{deepLink,back,predictiveBack*}` (Android-only) — `Activity.startActivity` for
+   *   deep-link routing audits, `OnBackPressedDispatcher` for back / predictive-back gestures.
    * - `preview.reload` (Android-only today) — forces a fresh composition via the held rule's
    *   `key(...)` reload counter.
    * - `state.{recreate,save,restore}` (Android-only today) — Compose-level save/restore via the
@@ -223,6 +225,7 @@ open class RobolectricHost(
         InputKeyboardRecordingScriptEvents.descriptor,
         InputRsbRecordingScriptEvents.descriptor,
         LifecycleRecordingScriptEvents.descriptor,
+        NavigationRecordingScriptEvents.descriptor,
         PreviewReloadRecordingScriptEvents.descriptor,
         StateRecordingScriptEvents.descriptor,
       )
@@ -1190,6 +1193,7 @@ open class RobolectricHost(
               ComposeSemanticsExtension.factory,
               LayoutInspectorExtension.factory,
               I18nTranslationsExtension.factory,
+              NavigationExtension.factory,
             )
           ),
       )
@@ -1868,6 +1872,24 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.DispatchNavigation -> {
+                  try {
+                    val applied = performNavigationAction(rule, cmd)
+                    cmd.replyApplied.set(applied)
+                    if (applied) {
+                      // Same settle window the lifecycle / a11y / uia paths use — observers
+                      // hooked into the back-progress flow, recompositions triggered by a
+                      // popBackStack(), or an Activity launched by the deep-link Intent need a
+                      // clock tick to flush before subsequent renders observe the new state.
+                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      rule.waitForIdle()
+                    }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.Close -> {
                   cmd.replyLatch.countDown()
                   return
@@ -2144,6 +2166,90 @@ open class RobolectricHost(
           as androidx.test.ext.junit.rules.ActivityScenarioRule<androidx.activity.ComponentActivity>
       activityRule.scenario.moveToState(target)
       return true
+    }
+
+    /**
+     * Sandbox-side dispatch for `navigation.*` script events. `deepLink` fires
+     * `Intent(ACTION_VIEW, Uri.parse(uri))` at the held activity (intent-filter / NavController
+     * deep-link routing); `back` calls the activity's `onBackPressedDispatcher.onBackPressed()`;
+     * the four predictive-back kinds drive the matching `OnBackPressedDispatcher` dispatcher
+     * methods with a synthesised `BackEventCompat` so animation observers see the same shape an
+     * on-device gesture emits. Unknown kinds yield `false` so the caller can surface a precise
+     * unsupported reason.
+     */
+    private fun performNavigationAction(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.DispatchNavigation,
+    ): Boolean {
+      val activity = rule.activity
+      return when (cmd.actionKind) {
+        "deepLink" -> {
+          val uri = cmd.deepLinkUri ?: return false
+          if (uri.isBlank()) return false
+          val parsed = android.net.Uri.parse(uri)
+          val intent =
+            android.content.Intent(android.content.Intent.ACTION_VIEW, parsed).apply {
+              setPackage(activity.packageName)
+              addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+          rule.runOnUiThread { activity.startActivity(intent) }
+          true
+        }
+        "back" -> {
+          rule.runOnUiThread { activity.onBackPressedDispatcher.onBackPressed() }
+          true
+        }
+        "predictiveBackStarted" -> {
+          val event = synthesizeBackEvent(cmd)
+          rule.runOnUiThread { activity.onBackPressedDispatcher.dispatchOnBackStarted(event) }
+          true
+        }
+        "predictiveBackProgressed" -> {
+          val event = synthesizeBackEvent(cmd)
+          rule.runOnUiThread { activity.onBackPressedDispatcher.dispatchOnBackProgressed(event) }
+          true
+        }
+        "predictiveBackCommitted" -> {
+          // Commit phase mirrors a real predictive-back gesture's terminal step: the dispatcher
+          // doesn't expose a separate "complete" entry point — `onBackPressed()` is what callers
+          // run after the start/progress flow to commit.
+          rule.runOnUiThread { activity.onBackPressedDispatcher.onBackPressed() }
+          true
+        }
+        "predictiveBackCancelled" -> {
+          rule.runOnUiThread { activity.onBackPressedDispatcher.dispatchOnBackCancelled() }
+          true
+        }
+        else -> false
+      }
+    }
+
+    /**
+     * Build a [`androidx.activity.BackEventCompat`] for `predictiveBackStarted` /
+     * `predictiveBackProgressed`. `touchX` / `touchY` default to 0 because the on-device gesture's
+     * absolute pointer position is rarely what observers care about — `progress` and `swipeEdge`
+     * drive the animation bindings shipped via `LocalOnBackPressedDispatcherOwner`. Edge defaults
+     * to `EDGE_LEFT` (the dominant on-device shape) when the agent leaves it unset.
+     */
+    private fun synthesizeBackEvent(
+      cmd: InteractiveCommand.DispatchNavigation
+    ): androidx.activity.BackEventCompat {
+      val edge =
+        when (cmd.backEdge?.lowercase()) {
+          "right" -> androidx.activity.BackEventCompat.EDGE_RIGHT
+          else -> androidx.activity.BackEventCompat.EDGE_LEFT
+        }
+      val progress = cmd.backProgress?.coerceIn(0f, 1f) ?: 0f
+      return androidx.activity.BackEventCompat(
+        touchX = 0f,
+        touchY = 0f,
+        progress = progress,
+        swipeEdge = edge,
+      )
     }
 
     /**

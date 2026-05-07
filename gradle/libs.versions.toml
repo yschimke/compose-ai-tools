@@ -37,6 +37,13 @@ compose-bom-stable = "2026.04.01"
 compose-bom-compat = "2025.11.01"
 compose-multiplatform = "1.10.3"
 activity-compose = "1.13.0"
+# `androidx.navigation:navigation-compose` — used only by the
+# `:samples:android` NavHost preview that exercises the daemon's
+# `data/navigation` data product (Intent + back-pressed snapshot) and the
+# `navigation.*` script-event surface end-to-end. Activity-compose 1.13's
+# transitive `androidx.navigationevent` floor (see CompatRules.kt) means
+# this stays compatible with the renderer's compileOnly stack.
+navigation-compose = "2.9.7"
 wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
@@ -118,6 +125,7 @@ jetbrains-compose-foundation = { module = "org.jetbrains.compose.foundation:foun
 jetbrains-compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose-multiplatform" }
 jetbrains-compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wear-compose" }
 wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wear-compose" }
 wear-compose-ui-tooling = { module = "androidx.wear.compose:compose-ui-tooling", version.ref = "wear-compose" }

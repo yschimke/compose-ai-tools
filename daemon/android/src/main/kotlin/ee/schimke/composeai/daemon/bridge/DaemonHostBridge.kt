@@ -600,4 +600,35 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     val replyApplied: AtomicBoolean,
   ) : InteractiveCommand
+
+  /**
+   * Navigation dispatch: fire a deep-link Intent at the held activity, an instant back press, or
+   * one phase of a predictive-back gesture. Used by `record_preview`'s `navigation.*` script
+   * events (deep-link routing audits, back-stack pop verification, predictive-back animation
+   * audits).
+   *
+   * [actionKind] is a short wire name — `"deepLink"`, `"back"`, `"predictiveBackStarted"`,
+   * `"predictiveBackProgressed"`, `"predictiveBackCommitted"`, `"predictiveBackCancelled"`. The
+   * sandbox-side handler maps each to the corresponding `Activity.startActivity` /
+   * `OnBackPressedDispatcher` method. Unknown names set [replyApplied] to `false` so the caller
+   * can emit a precise unsupported reason.
+   *
+   * Strings travel as `java.lang.String` (do-not-acquire). Floats are primitives. No
+   * `BackEventCompat` / `Intent` types cross the bridge — the sandbox owns the construction
+   * internally.
+   *
+   * [deepLinkUri] is populated only for `actionKind = "deepLink"` and ignored otherwise.
+   * [backProgress] / [backEdge] populate the `BackEventCompat` for the predictive-back start /
+   * progress phases; ignored for `back` / `predictiveBackCommitted` / `predictiveBackCancelled`.
+   */
+  data class DispatchNavigation(
+    override val streamId: String,
+    val actionKind: String,
+    val deepLinkUri: String?,
+    val backProgress: Float?,
+    val backEdge: String?,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
 }
