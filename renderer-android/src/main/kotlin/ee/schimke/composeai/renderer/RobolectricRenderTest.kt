@@ -11,8 +11,10 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
@@ -584,6 +586,16 @@ abstract class RobolectricRenderTestBase(
         // Read after `captureRoboImage` to crop the PNG down to the composable's
         // actual bounds.
         var measured: IntSize? = null
+        // `@FocusedPreview` driver: outer loop bumps this state between
+        // captures; an inner `LaunchedEffect` keyed off it walks
+        // [FocusManager] to the requested tab index. Driving focus from
+        // *inside* composition (rather than via a `runOnUiThread`-posted
+        // `moveFocus` from the outer loop) is what makes the post-state
+        // emit + indication redraw land before the next capture — the
+        // outer-loop path leaves a one-frame off-by-one that no amount
+        // of `mainClock.advanceTimeBy` flushed.
+        val focusIndexState =
+            androidx.compose.runtime.mutableStateOf<Int?>(null)
         val statement = object : org.junit.runners.model.Statement() {
             override fun evaluate() {
                 rule.mainClock.autoAdvance = false
@@ -651,25 +663,19 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.firstNotNullOfOrNull {
                         it.animation?.takeIf { a -> a.showCurves }
                     }?.let { SlotTreeCapture() }
+                // `@FocusedPreview` requests focus drive on at least one
+                // capture: hand Compose a Keyboard-mode `InputModeManager`
+                // for the duration of this preview, since
+                // `Modifier.clickable`'s focusable is
+                // `Focusability.SystemDefined` and refuses focus under
+                // [InputMode.Touch] — Robolectric's permanent default.
+                // Captures without focus stay byte-identical to the prior
+                // touch-mode behaviour because nothing in those captures
+                // reads the input mode.
+                val anyFocusCapture = preview.captures.any { it.focus != null }
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
-                    // Robolectric never receives real key input, so the host
-                    // [InputModeManager] reports [InputMode.Touch]. Compose's
-                    // `Modifier.clickable` registers its focusable with
-                    // [Focusability.SystemDefined], which short-circuits in
-                    // touch mode — meaning Button-shaped components silently
-                    // refuse focus and a preview that calls
-                    // `FocusRequester.requestFocus()` produces an
-                    // unfocused-looking capture. Modules that exercise focus
-                    // visualisation set `composeai.focus.inputMode=keyboard`
-                    // on the `renderPreviews` task; the renderer then hands
-                    // Compose a Keyboard-mode manager, the same state that
-                    // holds on a real device after the user has Tabbed to
-                    // the component. Off by default to keep components that
-                    // change appearance based on input mode (e.g. Wear's
-                    // EdgeButton) byte-identical.
-                    if (System.getProperty("composeai.focus.inputMode")
-                            ?.equals("keyboard", ignoreCase = true) == true) {
+                    if (anyFocusCapture) {
                         add(LocalInputModeManager provides KeyboardInputModeManager)
                     }
                     if (scrollCaptureProvidable != null) {
@@ -694,6 +700,47 @@ abstract class RobolectricRenderTestBase(
                     !isRoundDevice(params.device)
                 rule.setContent {
                     CompositionLocalProvider(values = providedValues) {
+                        if (anyFocusCapture) {
+                            val focusManager = LocalFocusManager.current
+                            val target = focusIndexState.value
+                            // Walk forward by the *delta* from the
+                            // previously-driven index. `moveFocus(Enter)`
+                            // returns false on second and later calls
+                            // (focus already inside the owner) and
+                            // `clearFocus(force=true)` doesn't restore the
+                            // owner to a state where Enter works again,
+                            // so we Enter once and then issue per-capture
+                            // `moveFocus(Next)` deltas. Discovery sorts
+                            // indices ascending so the walk is monotonic.
+                            val lastTarget =
+                                androidx.compose.runtime.remember {
+                                    androidx.compose.runtime.mutableStateOf(-1)
+                                }
+                            androidx.compose.runtime.LaunchedEffect(target) {
+                                if (target != null) {
+                                    val from = lastTarget.value
+                                    if (from < 0) {
+                                        // `moveFocus(Enter)` lands the
+                                        // owner on an internal root that
+                                        // sits *before* the first
+                                        // focusable, so the first walk
+                                        // needs `target + 1` Next steps
+                                        // to land on button `target`.
+                                        // Subsequent walks delta from the
+                                        // tracked `lastTarget`.
+                                        focusManager.moveFocus(FocusDirection.Enter)
+                                        repeat(target + 1) {
+                                            focusManager.moveFocus(FocusDirection.Next)
+                                        }
+                                    } else if (target > from) {
+                                        repeat(target - from) {
+                                            focusManager.moveFocus(FocusDirection.Next)
+                                        }
+                                    }
+                                    lastTarget.value = target
+                                }
+                            }
+                        }
                         val previewBody: @Composable () -> Unit = {
                             val core: @Composable () -> Unit = {
                                 if (wrapWidth || wrapHeight) {
@@ -746,7 +793,16 @@ abstract class RobolectricRenderTestBase(
                         )
                 var captureIndex = 0
                 jobs.forEach { job ->
-                    val target = job.advanceTimeMillis ?: CAPTURE_ADVANCE_MS
+                    // When the job has no explicit `advanceTimeMillis`, default
+                    // to `CAPTURE_ADVANCE_MS` *or* the current virtual time —
+                    // whichever is later. Internal advances (e.g. the
+                    // `@FocusedPreview` settle window) bump `currentTime`
+                    // past `CAPTURE_ADVANCE_MS` after the first such capture;
+                    // taking the max keeps the require's monotonicity check
+                    // satisfied without forcing every consumer to thread an
+                    // explicit `advanceTimeMillis` through.
+                    val target =
+                        job.advanceTimeMillis ?: maxOf(CAPTURE_ADVANCE_MS, currentTime)
                     require(target >= currentTime) {
                         "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                             "(got $target after clock was at $currentTime)"
@@ -755,6 +811,31 @@ abstract class RobolectricRenderTestBase(
                     if (delta > 0) {
                         rule.mainClock.advanceTimeBy(delta)
                         currentTime = target
+                    }
+
+                    // `@FocusedPreview` per-capture focus walk. Discovery
+                    // sorts focus indices ascending and emits one capture
+                    // per index, so we only need to walk forward —
+                    // `moveFocus(Enter)` once, then `moveFocus(Next)` for
+                    // the per-step delta. `runOnUiThread` because focus
+                    // mutation is main-thread-only; the surrounding
+                    // composition is paused (`autoAdvance = false`) and
+                    // resumes on the next `advanceTimeBy`. After the
+                    // focus event reaches the interaction stream the
+                    // ripple's `IndicationNode` schedules an invalidation;
+                    // [FOCUS_SETTLE_MS] advances enough virtual time for
+                    // the next layout/draw pass to redraw the focus ring
+                    // before [captureRoboImage] reads back pixels.
+                    val capture = (job as? CaptureRenderJob)?.capture
+                    val focus = capture?.focus
+                    if (focus != null) {
+                        rule.runOnUiThread {
+                            focusIndexState.value = focus.tabIndex
+                            androidx.compose.runtime.snapshots.Snapshot
+                                .sendApplyNotifications()
+                        }
+                        rule.mainClock.advanceTimeBy(FOCUS_SETTLE_MS)
+                        currentTime += FOCUS_SETTLE_MS
                     }
 
                     // @ScrollingPreview(END): drive the first scrollable on the
@@ -1052,6 +1133,22 @@ abstract class RobolectricRenderTestBase(
          * `mainClock.advanceTimeBy(...)` with no translation.
          */
         private const val CAPTURE_ADVANCE_MS = 32L
+
+        /**
+         * Per-`@FocusedPreview`-capture settle window. After
+         * `FocusManager.moveFocus(...)` the FocusableNode emits
+         * `FocusInteraction.{Focus, Unfocus}` to the interaction sources
+         * on the next frame; the ripple's `IndicationNode` collects the
+         * events and runs a fade animation (Material's focus indicator
+         * uses an `Animatable<Float>` that crossfades over ~150ms). The
+         * paused-clock test environment doesn't auto-advance these
+         * animations, so we need enough virtual time to (a) emit the
+         * interactions, (b) crossfade out the previous capture's
+         * highlight, and (c) crossfade in the new one. 250ms = ~16
+         * frames at 16ms — a comfortable margin around Material's
+         * default highlight duration.
+         */
+        private const val FOCUS_SETTLE_MS = 250L
     }
 }
 

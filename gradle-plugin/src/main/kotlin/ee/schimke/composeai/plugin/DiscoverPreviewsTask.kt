@@ -95,6 +95,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // Animation-window capture — sibling annotation to @ScrollingPreview, same
     // FQN-match policy. See `AnimatedPreview.kt`.
     private const val ANIMATED_PREVIEW_FQN = "ee.schimke.composeai.preview.AnimatedPreview"
+    // Focus-state capture — sibling annotation to @ScrollingPreview /
+    // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
+    private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
     // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
     // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
     // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -482,6 +485,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val wrapperFqn = extractWrapperFqn(annotations)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
+    val focusSpecs = extractFocusSpecs(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -525,6 +529,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             wrapperFqn,
             scrollSpecs,
             animationSpec,
+            focusSpecs,
             timings,
             previewParameter,
             previewSourceFile,
@@ -546,6 +551,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             wrapperFqn,
             scrollSpecs,
             animationSpec,
+            focusSpecs,
             timings,
             previewParameter,
             previewSourceFile,
@@ -598,6 +604,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     previewId: String,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
+    focuses: List<FocusCapture>,
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
@@ -606,6 +613,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // Tile previews don't go through `mainClock` either — `TileRenderer`
     // inflates a static View and there's no animation surface to drive.
     val effectiveAnimation = if (isTile) null else animation
+    // `@FocusedPreview` only applies to Compose previews (the focus owner
+    // is a Compose construct); tile previews ignore it.
+    val effectiveFocuses = if (isTile) emptyList() else focuses
 
     // @AnimatedPreview produces its own dedicated capture, alongside any
     // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
@@ -645,42 +655,61 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val timeRows: List<Pair<Long?, String>> =
       if (effectiveTimings.isEmpty()) listOf(null to "")
       else effectiveTimings.map { ms -> ms to "_TIME_${ms}ms" }
+    // `@FocusedPreview(indices = [...])` fans out one capture per index
+    // with `_FOCUS_<index>` suffix. Single-index keeps the plain filename
+    // (matches the @ScrollingPreview single-mode pattern). Empty → one
+    // (null, "") row, same shape as scroll/time when their annotations
+    // are absent.
+    val focusRows: List<Pair<FocusCapture?, String>> =
+      when {
+        effectiveFocuses.isEmpty() -> listOf(null to "")
+        effectiveFocuses.size == 1 -> listOf(effectiveFocuses[0] to "")
+        else -> effectiveFocuses.map { it to "_FOCUS_${it.tabIndex}" }
+      }
 
-    // When ONLY @AnimatedPreview is on the function, the scroll/time
-    // cross-product would still emit one (null, null) row — i.e. a static
-    // PNG capture. Suppress that to keep `@AnimatedPreview` a clean
+    // When ONLY @AnimatedPreview is on the function, the scroll/time/focus
+    // cross-product would still emit one (null, null, null) row — i.e. a
+    // static PNG capture. Suppress that to keep `@AnimatedPreview` a clean
     // single-output annotation.
     val emitStaticCross =
-      captureScrolls.isNotEmpty() || effectiveTimings.isNotEmpty() || effectiveAnimation == null
+      captureScrolls.isNotEmpty() ||
+        effectiveTimings.isNotEmpty() ||
+        effectiveFocuses.isNotEmpty() ||
+        effectiveAnimation == null
 
     val scrollTimeCaptures: List<Capture> =
       if (!emitStaticCross) emptyList()
       else {
         scrollRows.flatMap { (scroll, scrollSuffix) ->
-          timeRows.map { (ms, timeSuffix) ->
-            val ext = "png"
-            // Cost is normalised to a static @Preview = 1.0. The mode
-            // ladder (TOP < END) reflects how much extra
-            // work each scroll variant adds on top of the baseline
-            // compose pass. `advanceTimeMillis` alone is still one
-            // pass at a specific virtual time, so it doesn't bump the
-            // per-capture cost — the wall-time of a multi-timing
-            // fan-out is in the *count*, which lives in the captures
-            // list itself.
-            val captureCost =
-              when (scroll?.mode) {
-                null -> STATIC_COST
-                ScrollMode.TOP -> SCROLL_TOP_COST
-                ScrollMode.END -> SCROLL_END_COST
-                ScrollMode.LONG -> SCROLL_LONG_COST
-                ScrollMode.GIF -> SCROLL_GIF_COST
-              }
-            Capture(
-              advanceTimeMillis = ms,
-              scroll = scroll,
-              renderOutput = "renders/${previewId}${scrollSuffix}${timeSuffix}.${ext}",
-              cost = captureCost,
-            )
+          timeRows.flatMap { (ms, timeSuffix) ->
+            focusRows.map { (focus, focusSuffix) ->
+              val ext = "png"
+              // Cost is normalised to a static @Preview = 1.0. The mode
+              // ladder (TOP < END) reflects how much extra
+              // work each scroll variant adds on top of the baseline
+              // compose pass. `advanceTimeMillis` alone is still one
+              // pass at a specific virtual time, so it doesn't bump the
+              // per-capture cost — the wall-time of a multi-timing
+              // fan-out is in the *count*, which lives in the captures
+              // list itself. Focus drive is similar: one moveFocus call
+              // per stop, fixed-time work, no extra cost bucket.
+              val captureCost =
+                when (scroll?.mode) {
+                  null -> STATIC_COST
+                  ScrollMode.TOP -> SCROLL_TOP_COST
+                  ScrollMode.END -> SCROLL_END_COST
+                  ScrollMode.LONG -> SCROLL_LONG_COST
+                  ScrollMode.GIF -> SCROLL_GIF_COST
+                }
+              Capture(
+                advanceTimeMillis = ms,
+                scroll = scroll,
+                focus = focus,
+                renderOutput =
+                  "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
+                cost = captureCost,
+              )
+            }
           }
         }
       }
@@ -812,6 +841,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     )
   }
 
+  /**
+   * Reads `@FocusedPreview(indices = [...])` off the function annotation list. Returns one
+   * [FocusCapture] per requested tab index, sorted ascending and de-duplicated. Negative or empty
+   * inputs collapse to no captures (the annotation falls back to the cross-product's null row).
+   */
+  private fun extractFocusSpecs(annotations: List<AnnotationInfo>): List<FocusCapture> {
+    val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return emptyList()
+    val raw = ann.parameterValues.getValue("indices")
+    val indices: IntArray =
+      when (raw) {
+        is IntArray -> raw
+        is Array<*> -> raw.filterIsInstance<Int>().toIntArray()
+        else -> intArrayOf()
+      }
+    return indices.filter { it >= 0 }.distinct().sorted().map { FocusCapture(tabIndex = it) }
+  }
+
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {
     val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return emptyList()
     val pv = ann.parameterValues
@@ -929,6 +975,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     wrapperClassName: String?,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
+    focuses: List<FocusCapture>,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
     previewSourceFile: String?,
@@ -938,7 +985,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val fqn = "${classInfo.name}.${method.name}"
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
-    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, timings)
+    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, focuses, timings)
     // Tile previews don't go through @Composable invocations — they return a `TilePreviewData`
     // and the renderer reflects them directly. Skipping the lazy means the bytecode walk never
     // runs for tile-only methods.

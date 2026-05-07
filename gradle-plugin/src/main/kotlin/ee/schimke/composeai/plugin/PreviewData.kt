@@ -78,6 +78,22 @@ data class AnimationCapture(
 )
 
 /**
+ * Focus capture state sourced from `@FocusedPreview`. Carried as its own field on [Capture] —
+ * orthogonal to [Capture.scroll] / [Capture.animation] — so the renderer can switch on its presence
+ * to (a) provide an `InputMode.Keyboard` `LocalInputModeManager` (Compose's `Modifier.clickable`
+ * focusable refuses focus under touch mode, which Robolectric is permanently in) and (b) walk the
+ * focus owner to [tabIndex] before capture.
+ */
+@Serializable
+data class FocusCapture(
+  /**
+   * Zero-based focus index in tab order. Capture 0 issues `moveFocus(Enter)`; later captures issue
+   * `moveFocus(Next)` to walk forward to the requested index.
+   */
+  val tabIndex: Int
+)
+
+/**
  * Cost catalogue, normalised so a static `@Preview` (single compose pass + one screenshot) is
  * `1.0`. The discovery task stamps the right value onto each [Capture]; tooling reads them back to
  * throttle interactive renders.
@@ -182,6 +198,8 @@ data class Capture(
   val scroll: ScrollCapture? = null,
   /** `null` → not an animation capture. Mutually exclusive with [scroll] in practice. */
   val animation: AnimationCapture? = null,
+  /** `null` → no focus drive. Set when the preview carries a `@FocusedPreview` annotation. */
+  val focus: FocusCapture? = null,
   /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
   val renderOutput: String = "",
   /**
