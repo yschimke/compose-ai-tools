@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.AnimatedPreview
+import ee.schimke.composeai.preview.FocusDirection
 import ee.schimke.composeai.preview.FocusedPreview
 import kotlinx.coroutines.delay
 
@@ -131,5 +132,48 @@ private fun FocusRingRowAnimated(focusedIndex: Int) {
 fun OpacityFocusPreview() {
     MaterialTheme {
         WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) { ButtonRow() }
+    }
+}
+
+/**
+ * Traversal demo: each capture shows where focus lands after applying that step's direction. The
+ * sequence walks Tab → Tab → Shift-Tab → Tab, so Save → Edit → Share → Edit → Share. Useful for
+ * asserting keyboard-nav order in PR diffs — each step is a separate PNG so reviewers see exactly
+ * which focusable each move targets.
+ */
+@Preview(
+    name = "Focus Traversal",
+    widthDp = 480,
+    heightDp = 96,
+    showBackground = true,
+)
+@FocusedPreview(
+    traverse =
+        [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous, FocusDirection.Next],
+)
+@Composable
+fun FocusTraversalPreview() {
+    MaterialTheme {
+        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+    }
+}
+
+/**
+ * Overlay demo: same fan-out as [InsetFocusRingFanOutPreview] but with `overlay = true`. Each PNG
+ * carries a labelled stroke around the focused button so review tools can see which button is
+ * "supposed to" be focused regardless of whether the indication itself rendered correctly. The
+ * pre-overlay capture is preserved alongside as `<basename>.raw.png`.
+ */
+@Preview(
+    name = "Focus Overlay",
+    widthDp = 480,
+    heightDp = 96,
+    showBackground = true,
+)
+@FocusedPreview(indices = [0, 1, 2, 3], overlay = true)
+@Composable
+fun FocusOverlayPreview() {
+    MaterialTheme {
+        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
     }
 }

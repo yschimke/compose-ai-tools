@@ -655,16 +655,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val timeRows: List<Pair<Long?, String>> =
       if (effectiveTimings.isEmpty()) listOf(null to "")
       else effectiveTimings.map { ms -> ms to "_TIME_${ms}ms" }
-    // `@FocusedPreview(indices = [...])` fans out one capture per index
-    // with `_FOCUS_<index>` suffix. Single-index keeps the plain filename
-    // (matches the @ScrollingPreview single-mode pattern). Empty → one
-    // (null, "") row, same shape as scroll/time when their annotations
-    // are absent.
+    // `@FocusedPreview` fans out one capture per index (indexed mode) or
+    // per direction step (traversal mode). Single-capture annotations
+    // keep the plain filename (matches the @ScrollingPreview single-mode
+    // pattern). Empty → one (null, "") row, same shape as scroll/time
+    // when their annotations are absent.
     val focusRows: List<Pair<FocusCapture?, String>> =
       when {
         effectiveFocuses.isEmpty() -> listOf(null to "")
         effectiveFocuses.size == 1 -> listOf(effectiveFocuses[0] to "")
-        else -> effectiveFocuses.map { it to "_FOCUS_${it.tabIndex}" }
+        else -> effectiveFocuses.map { it to "_FOCUS_${focusSuffixOf(it)}" }
       }
 
     // When ONLY @AnimatedPreview is on the function, the scroll/time/focus
@@ -842,20 +842,50 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Reads `@FocusedPreview(indices = [...])` off the function annotation list. Returns one
-   * [FocusCapture] per requested tab index, sorted ascending and de-duplicated. Negative or empty
-   * inputs collapse to no captures (the annotation falls back to the cross-product's null row).
+   * Filename suffix for a single [FocusCapture]. Traversal mode emits `step<n>_<direction>` so
+   * repeated directions (e.g. `Next, Next, Previous`) get unique paths; indexed mode emits the tab
+   * index. Empty when neither field is set (defensive — the discovery extractor doesn't emit such
+   * captures).
+   */
+  private fun focusSuffixOf(focus: FocusCapture): String =
+    when {
+      focus.direction != null && focus.step != null -> "step${focus.step}_${focus.direction.name}"
+      focus.tabIndex != null -> focus.tabIndex.toString()
+      else -> ""
+    }
+
+  /**
+   * Reads `@FocusedPreview(indices, traverse, overlay)` off the function annotation list. Returns
+   * one [FocusCapture] per capture requested — traversal mode (one per direction step) when
+   * `traverse` is non-empty, otherwise indexed mode (one per non-negative tab index, sorted
+   * ascending and de-duplicated). The boolean `overlay` flag is stamped onto every returned
+   * capture. Empty inputs collapse to no captures (the annotation falls back to the cross-product's
+   * null row).
    */
   private fun extractFocusSpecs(annotations: List<AnnotationInfo>): List<FocusCapture> {
     val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return emptyList()
-    val raw = ann.parameterValues.getValue("indices")
+    val pv = ann.parameterValues
+    val overlay = (pv.getValue("overlay") as? Boolean) ?: false
+    val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
+    if (directions.isNotEmpty()) {
+      // 1-based `step` lets the overlay label and the filename suffix
+      // disambiguate repeated directions (e.g. `Next, Next, Previous`).
+      return directions.mapIndexed { i, dir ->
+        FocusCapture(direction = dir, step = i + 1, overlay = overlay)
+      }
+    }
+    val raw = pv.getValue("indices")
     val indices: IntArray =
       when (raw) {
         is IntArray -> raw
         is Array<*> -> raw.filterIsInstance<Int>().toIntArray()
         else -> intArrayOf()
       }
-    return indices.filter { it >= 0 }.distinct().sorted().map { FocusCapture(tabIndex = it) }
+    return indices
+      .filter { it >= 0 }
+      .distinct()
+      .sorted()
+      .map { FocusCapture(tabIndex = it, overlay = overlay) }
   }
 
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {

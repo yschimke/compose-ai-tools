@@ -50,10 +50,24 @@ data class AnimationCapture(
     val showCurves: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `FocusDirection`. */
+@Serializable
+enum class FocusDirection {
+    Next,
+    Previous,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 /** Renderer-side mirror of the plugin's `FocusCapture`. */
 @Serializable
 data class FocusCapture(
-    val tabIndex: Int,
+    val tabIndex: Int? = null,
+    val direction: FocusDirection? = null,
+    val step: Int? = null,
+    val overlay: Boolean = false,
 )
 
 /**
