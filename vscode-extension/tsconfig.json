@@ -17,6 +17,7 @@
     "include": ["src/**/*"],
     "exclude": ["node_modules", "src/webview/**"],
     "files": [
+        "src/webview/preview/a11yOverlay.ts",
         "src/webview/preview/cardData.ts",
         "src/webview/preview/cardImage.ts",
         "src/webview/preview/cardMetadata.ts",
