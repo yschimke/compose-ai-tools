@@ -1,53 +1,48 @@
-// Lifecycle DOM operations for a single `<div class="preview-card">`:
-// initial build (`buildPreviewCard`), metadata refresh on a fresh
-// `setPreviews` (`updateCardMetadata`), grid-wide relative-sizing
-// (`applyRelativeSizing`), per-frame image swap (`updateImage`), and
-// daemon-attached a11y refresh (`applyA11yUpdate`).
+// Lifecycle DOM operations for a single `<preview-card>`:
+// initial build (`buildPreviewCard` + `populatePreviewCard`),
+// grid-wide relative-sizing (`applyRelativeSizing`, re-exported
+// from `./relativeSizing`), daemon-attached a11y refresh
+// (`applyA11yUpdate`), and the manifest-reseed orchestration
+// (`renderPreviews`).
+//
+// The metadata-refresh path (`updateCardMetadata`) lives in
+// `./cardMetadata.ts` and runs from `<preview-card>`'s reactive
+// `updated()` hook on a `preview` property reassignment. The
+// per-frame image paint (`updateImage`) lives in `./cardImage.ts`
+// and runs from the component's `paintCapture` method, invoked
+// by the message dispatcher after resolving the card by id.
 //
 // Lifted verbatim from `behavior.ts` so the imperative DOM operations
 // stop needing closure access to the rest of the panel. Each function
 // takes a narrow `Pick` of `CardBuilderConfig` covering only the fields
 // it touches — the shared interface is the single source of truth for
-// the card's collaborator surface, and the eventual `<preview-card>`
-// Lit component will reach for those collaborators through the same
-// shape.
+// the card's collaborator surface.
 
-import {
-    applyHierarchyOverlay,
-    buildA11yLegend,
-    buildA11yOverlay,
-    ensureHierarchyOverlay,
-} from "./a11yOverlay";
+import { buildA11yLegend, ensureHierarchyOverlay } from "./a11yOverlay";
 import {
     buildTooltip,
     buildVariantLabel,
     isAnimatedPreview,
     isWearPreview,
-    mimeFor,
     sanitizeId,
 } from "./cardData";
-import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
+import type { DiffOverlayConfig } from "./diffOverlay";
 import type { FocusInspectorController } from "./focusInspector";
 import type {
     CapturePresentation,
     FrameCarouselController,
 } from "./frameCarousel";
-import {
-    attachInteractiveInputHandlers,
-    type InteractiveInputConfig,
-} from "./interactiveInput";
+import type { InteractiveInputConfig } from "./interactiveInput";
 import type { LiveStateController } from "./liveState";
 import type { StaleBadgeController } from "./staleBadge";
 import type { PreviewGrid } from "./components/PreviewGrid";
 import type { PreviewCard } from "./components/PreviewCard";
 import type { MessageOwner } from "./components/MessageBanner";
 import {
-    bumpPreviewMapsRevision,
     clearCardA11yFindings,
     deleteCardA11yFindings,
     deleteCardA11yNodes,
     deleteCardCaptures,
-    previewStore,
     setCardA11yFindings,
     setCardA11yNodes,
     setCardCaptures,
@@ -324,263 +319,11 @@ export function populatePreviewCard(
     config.observeForViewport(card);
 }
 
-/** Subset of `CardBuilderConfig` that `updateCardMetadata` actually
- *  reaches for. Kept narrow so callers — and the eventual reactive
- *  Lit component — only have to satisfy what's used. The capture
- *  cache itself lives in `previewStore` (see `setCardCaptures`),
- *  so it isn't part of this surface. */
-export type CardUpdateConfig = Pick<
-    CardBuilderConfig,
-    "frameCarousel" | "earlyFeatures"
->;
-
-/**
- * Refresh an existing card after a `setPreviews` for an id we already
- * have in the grid. Patches the card's dataset, title text, capture cache
- * (preserving already-received `imageData` for surviving renderOutputs),
- * variant badge, and a11y legend / overlay layer.
- *
- * Caller is responsible for finding the card — `renderPreviews` walks the
- * grid once and dispatches to `updateCardMetadata` vs `buildPreviewCard`
- * based on whether the previewId existed previously.
- */
-export function updateCardMetadata(
-    card: HTMLElement,
-    p: PreviewInfo,
-    config: CardUpdateConfig,
-): void {
-    card.dataset.function = p.functionName;
-    card.dataset.group = p.params.group || "";
-    card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
-    const title = card.querySelector<HTMLButtonElement>(".card-title");
-    if (title) {
-        title.textContent =
-            p.functionName + (p.params.name ? " — " + p.params.name : "");
-        title.title = buildTooltip(p);
-    }
-    // Refresh capture labels in place. If the capture count changed
-    // (e.g. user edited @RoboComposePreviewOptions) we preserve
-    // already-received imageData for renderOutputs that carry over.
-    const newCaps = p.captures.map((c) => ({
-        renderOutput: c.renderOutput,
-        label: c.label || "",
-    }));
-    const prior = previewStore.getState().cardCaptures.get(p.id) ?? [];
-    // Match by index rather than renderOutput since filenames may
-    // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
-    // annotation). Mismatched positions just reset to null-image.
-    const mergedCaps = newCaps.map(
-        (nc, i): CapturePresentation => ({
-            label: nc.label,
-            renderOutput: nc.renderOutput || "",
-            imageData: prior[i]?.imageData ?? null,
-            errorMessage: prior[i]?.errorMessage ?? null,
-            renderError: prior[i]?.renderError ?? null,
-        }),
-    );
-    setCardCaptures(p.id, mergedCaps);
-    const curIdx = parseInt(card.dataset.currentIndex || "0", 10);
-    if (curIdx >= mergedCaps.length) {
-        card.dataset.currentIndex = String(Math.max(0, mergedCaps.length - 1));
-    }
-    if (isAnimatedPreview(p)) config.frameCarousel.updateIndicator(card);
-    const variantLabel = buildVariantLabel(p);
-    let badge = card.querySelector(".variant-badge");
-    if (variantLabel) {
-        if (!badge) {
-            badge = document.createElement("div");
-            badge.className = "variant-badge";
-            card.appendChild(badge);
-        }
-        badge.textContent = variantLabel;
-    } else if (badge) {
-        badge.remove();
-    }
-
-    // Refresh the a11y legend + overlay in place when findings
-    // change (e.g. toggling a11y on turns findings from null → list,
-    // or a fresh render updates the set). Tear down the old nodes
-    // and rebuild: simpler than reconciling row-by-row for what is
-    // a rare event.
-    const existingLegend = card.querySelector(".a11y-legend");
-    const existingOverlay = card.querySelector(".a11y-overlay");
-    if (existingLegend) existingLegend.remove();
-    if (existingOverlay) existingOverlay.innerHTML = "";
-    if (config.earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-        const container = card.querySelector(".image-container");
-        if (container && !container.querySelector(".a11y-overlay")) {
-            const overlay = document.createElement("div");
-            overlay.className = "a11y-overlay";
-            overlay.setAttribute("aria-hidden", "true");
-            container.appendChild(overlay);
-        }
-        const legend = buildA11yLegend(card, p);
-        card.appendChild(legend);
-        // Repopulate box geometry if the image is already loaded —
-        // otherwise updateImage's load handler will pick it up on
-        // the next render cycle.
-        const img = card.querySelector<HTMLImageElement>(
-            ".image-container img",
-        );
-        if (img && img.complete && img.naturalWidth > 0) {
-            buildA11yOverlay(card, p.a11yFindings, img);
-        }
-    } else if (existingOverlay) {
-        // No findings or feature off — drop any leftover overlay
-        // div so cards stay clean when the user toggles
-        // earlyFeatures off mid-session.
-        existingOverlay.remove();
-    }
-}
-
 // `applyRelativeSizing` lives in `./relativeSizing.ts` so the DOM
 // operation is testable under happy-dom without dragging cardBuilder's
 // wider transitive imports into the host tsconfig. Re-exported here for
 // the existing `behavior.ts` import paths.
 export { applyRelativeSizing } from "./relativeSizing";
-
-/** Subset `updateImage` reaches for — every per-frame paint dependency.
- *  The per-preview caches (`cardCaptures`, `cardA11yFindings`,
- *  `cardA11yNodes`) live in `previewStore` and are read directly there. */
-export type UpdateImageConfig = Pick<
-    CardBuilderConfig,
-    | "vscode"
-    | "frameCarousel"
-    | "liveState"
-    | "interactiveInputConfig"
-    | "diffOverlayConfig"
-    | "earlyFeatures"
->;
-
-/**
- * Paint a fresh capture image into the matching card. Idempotent — if the
- * currently-displayed capture index doesn't match the arriving bytes, the
- * cache is updated and the carousel indicator refreshed but no `<img>` is
- * touched (the bytes wait for prev/next).
- *
- * Side effects (when [captureIndex] matches the displayed capture):
- *  - Updates / mutates the per-capture cache entry on
- *    `previewStore`'s `cardCaptures` and bumps `mapsRevision` so
- *    subscribers selecting on the cache notice the new bytes. The
- *    bump is issued AFTER the `<img>` `src` swap so the
- *    `<preview-card>` StoreController fires with the new image
- *    state and its on-load a11y deferral attaches against the right
- *    src.
- *  - Replaces the card's `<img>` `src` (or creates one if missing).
- *  - Re-attaches the live pointer/wheel handlers via
- *    `attachInteractiveInputHandlers`.
- *  - If a diff overlay is open against `head` / `main`, re-issues the
- *    diff request so the user sees the new bytes without clicking.
- *
- * Note: the a11y overlay repaint that used to live at the tail of
- * this function now runs inside `<preview-card>`'s `mapsRevision`
- * subscription — see `PreviewCard._repaintA11yOverlaysFromCache`.
- */
-export function updateImage(
-    previewId: string,
-    captureIndex: number,
-    imageData: string,
-    config: UpdateImageConfig,
-): void {
-    const card = document.getElementById("preview-" + sanitizeId(previewId));
-    if (!card) return;
-
-    // Cache so carousel navigation can restore this capture without
-    // a fresh extension round-trip. Mutates the capture object in
-    // place — the Map identity is unchanged. The matching
-    // `bumpPreviewMapsRevision()` is deferred until after the
-    // `<img>` `src` swap below, so the `<preview-card>` StoreController
-    // fires with the new image element / src in place.
-    const caps = previewStore.getState().cardCaptures.get(previewId);
-    const capture =
-        caps && captureIndex >= 0 && captureIndex < caps.length
-            ? caps[captureIndex]
-            : null;
-    if (capture) {
-        capture.imageData = imageData;
-        capture.errorMessage = null;
-        capture.renderError = null;
-    }
-
-    // Only paint the <img> if the currently-displayed capture is the
-    // one that just arrived. Otherwise the cached bytes wait for
-    // prev/next.
-    const cur = parseInt(card.dataset.currentIndex || "0", 10);
-    if (cur !== captureIndex) {
-        if (caps) config.frameCarousel.updateIndicator(card);
-        return;
-    }
-
-    const container = card.querySelector<HTMLElement>(".image-container");
-    if (!container) return;
-    // Tear down every prior state before showing the new image.
-    // Leftover .error-message divs here are what caused the
-    // "Render pending — save the file to trigger a render" banner
-    // to stay visible forever even after a successful render.
-    container.querySelector(".skeleton")?.remove();
-    container.querySelector(".loading-overlay")?.remove();
-    container.querySelector(".error-message")?.remove();
-    card.classList.remove("has-error");
-
-    const ro = capture ? capture.renderOutput : "";
-    const newSrc = "data:" + mimeFor(ro) + ";base64," + imageData;
-
-    let img = container.querySelector("img");
-    if (!img) {
-        img = document.createElement("img");
-        img.alt = (card.dataset.function ?? "") + " preview";
-        container.appendChild(img);
-    }
-    img.src = newSrc;
-    // In live mode the new bytes are a frame, not a card reload —
-    // skip the fade-in so successive frames read as a stream rather
-    // than a sequence of independent renders. See INTERACTIVE.md § 3.
-    const isLive = config.liveState.isLive(previewId);
-    img.className = isLive ? "live-frame" : "fade-in";
-    attachInteractiveInputHandlers(card, config.interactiveInputConfig);
-
-    // Bump AFTER `img.src` is set so `<preview-card>`'s StoreController
-    // sees the new image when it re-runs `_repaintA11yOverlaysFromCache`.
-    // The component handles both the immediately-decoded path and the
-    // on-load deferral itself — see PreviewCard.
-    if (capture) bumpPreviewMapsRevision();
-
-    if (caps) config.frameCarousel.updateIndicator(card);
-
-    // If a diff overlay is open on this card and uses the live render
-    // as its left anchor (head / main / current), the bytes the
-    // overlay is showing just went stale. Re-issue so the user sees
-    // the new render without clicking — symmetric with the
-    // compose-preview/main ref watcher's auto-refresh on the right anchor.
-    const openDiff = container.querySelector<HTMLElement>(
-        ".preview-diff-overlay",
-    );
-    if (config.earlyFeatures() && openDiff) {
-        const against = openDiff.dataset.against;
-        if (against === "head" || against === "main") {
-            showDiffOverlay(
-                card,
-                against,
-                null,
-                null,
-                config.diffOverlayConfig,
-            );
-            config.vscode.postMessage({
-                command: "requestPreviewDiff",
-                previewId,
-                against,
-            });
-        }
-    }
-
-    // The a11y overlay repaint that used to run here lives in
-    // `<preview-card>` — the `mapsRevision` bump above (via the
-    // `if (capture)` branch) drives `_repaintA11yOverlaysFromCache`
-    // inside the component, which both handles the synchronous
-    // (`img.complete && naturalWidth > 0`) case and attaches a
-    // one-time `load` listener when the new bytes haven't decoded
-    // yet.
-}
 
 /** Subset `applyA11yUpdate` reaches for. The a11y caches themselves
  *  live in `previewStore` and are written via the `setCardA11y…` /
