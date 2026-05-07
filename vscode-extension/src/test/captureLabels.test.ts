@@ -89,7 +89,7 @@ describe("withDataProductCaptures", () => {
         assert.strictEqual(withDataProductCaptures(preview), preview);
     });
 
-    it("appends LONG/GIF data products as carousel captures", () => {
+    it("replaces the static base capture with LONG/GIF data products", () => {
         const longScroll = {
             mode: "LONG",
             axis: "VERTICAL",
@@ -124,20 +124,70 @@ describe("withDataProductCaptures", () => {
             ],
         });
         const merged = withDataProductCaptures(preview);
-        assert.strictEqual(merged.captures.length, 3);
+        assert.strictEqual(merged.captures.length, 2);
         assert.strictEqual(
-            merged.captures[1].renderOutput,
+            merged.captures[0].renderOutput,
             "data/scroll/long/x.png",
         );
-        assert.strictEqual(merged.captures[1].label, "scrolled end");
-        assert.strictEqual(merged.captures[1].cost, 20);
+        assert.strictEqual(merged.captures[0].label, "scrolled end");
+        assert.strictEqual(merged.captures[0].cost, 20);
         assert.strictEqual(
-            merged.captures[2].renderOutput,
+            merged.captures[1].renderOutput,
             "data/scroll/gif/x.gif",
         );
-        assert.strictEqual(merged.captures[2].label, "scroll gif");
+        assert.strictEqual(merged.captures[1].label, "scroll gif");
         assert.notStrictEqual(merged, preview);
         assert.strictEqual(preview.captures.length, 1);
+    });
+
+    it("keeps TOP and animated captures alongside LONG/GIF data products", () => {
+        const topScroll = {
+            mode: "TOP",
+            axis: "VERTICAL",
+            maxScrollPx: 0,
+            reduceMotion: false,
+            atEnd: false,
+            reachedPx: null,
+        };
+        const longScroll = { ...topScroll, mode: "LONG", atEnd: true };
+        const preview = makePreview({
+            captures: [
+                {
+                    advanceTimeMillis: null,
+                    scroll: null,
+                    renderOutput: "renders/static.png",
+                },
+                {
+                    advanceTimeMillis: 500,
+                    scroll: null,
+                    renderOutput: "renders/animated.png",
+                },
+                {
+                    advanceTimeMillis: null,
+                    scroll: topScroll,
+                    renderOutput: "renders/top.png",
+                },
+            ],
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: longScroll,
+                    output: "data/scroll/long/x.png",
+                },
+            ],
+        });
+        const merged = withDataProductCaptures(preview);
+        assert.strictEqual(merged.captures.length, 3);
+        assert.strictEqual(
+            merged.captures[0].renderOutput,
+            "renders/animated.png",
+        );
+        assert.strictEqual(merged.captures[1].renderOutput, "renders/top.png");
+        assert.strictEqual(
+            merged.captures[2].renderOutput,
+            "data/scroll/long/x.png",
+        );
     });
 
     it("makes a single-capture preview animated when a data product is added", () => {
