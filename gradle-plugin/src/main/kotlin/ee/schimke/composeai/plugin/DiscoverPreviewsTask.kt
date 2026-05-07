@@ -98,6 +98,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // Focus-state capture — sibling annotation to @ScrollingPreview /
     // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
     private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
+    private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
     // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
     // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
     // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -486,6 +487,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
+    val ambientSpec = extractAmbientSpec(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -530,6 +532,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             scrollSpecs,
             animationSpec,
             focusSpecs,
+            ambientSpec,
             timings,
             previewParameter,
             previewSourceFile,
@@ -552,6 +555,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             scrollSpecs,
             animationSpec,
             focusSpecs,
+            ambientSpec,
             timings,
             previewParameter,
             previewSourceFile,
@@ -605,6 +609,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     focuses: List<FocusCapture>,
+    ambient: AmbientCapture?,
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
@@ -616,6 +621,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // `@FocusedPreview` only applies to Compose previews (the focus owner
     // is a Compose construct); tile previews ignore it.
     val effectiveFocuses = if (isTile) emptyList() else focuses
+    // `@AmbientPreview` is Wear-Compose-only — it drives `LocalAmbientModeManager`. Tile previews
+    // render through `TileRenderer` and never enter the Compose composition where the local lives,
+    // so the override is a no-op there.
+    val effectiveAmbient = if (isTile) null else ambient
 
     // @AnimatedPreview produces its own dedicated capture, alongside any
     // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
@@ -705,6 +714,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
                 advanceTimeMillis = ms,
                 scroll = scroll,
                 focus = focus,
+                ambient = effectiveAmbient,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
                 cost = captureCost,
@@ -862,6 +872,30 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * capture. Empty inputs collapse to no captures (the annotation falls back to the cross-product's
    * null row).
    */
+  /**
+   * Reads `@AmbientPreview(state, burnInProtectionRequired, deviceHasLowBitAmbient)` off the
+   * function annotation list. Returns a single [AmbientCapture] when present, `null` otherwise.
+   * Mirrors `extractFocusSpecs` but single-shot — the annotation maps to one preview variant per
+   * function (the consumer authors a separate `@AmbientPreview` `@Preview` function for each state
+   * they want to render).
+   */
+  private fun extractAmbientSpec(annotations: List<AnnotationInfo>): AmbientCapture? {
+    val ann = annotations.firstOrNull { it.name == AMBIENT_PREVIEW_FQN } ?: return null
+    val pv = ann.parameterValues
+    val stateName =
+      (pv.getValue("state") as? AnnotationEnumValue)?.valueName ?: AmbientCaptureState.Ambient.name
+    val state =
+      runCatching { AmbientCaptureState.valueOf(stateName) }
+        .getOrDefault(AmbientCaptureState.Ambient)
+    val burnIn = (pv.getValue("burnInProtectionRequired") as? Boolean) ?: false
+    val lowBit = (pv.getValue("deviceHasLowBitAmbient") as? Boolean) ?: false
+    return AmbientCapture(
+      state = state,
+      burnInProtectionRequired = burnIn,
+      deviceHasLowBitAmbient = lowBit,
+    )
+  }
+
   private fun extractFocusSpecs(annotations: List<AnnotationInfo>): List<FocusCapture> {
     val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return emptyList()
     val pv = ann.parameterValues
@@ -1006,6 +1040,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     focuses: List<FocusCapture>,
+    ambient: AmbientCapture?,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
     previewSourceFile: String?,
@@ -1015,7 +1050,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val fqn = "${classInfo.name}.${method.name}"
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
-    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, focuses, timings)
+    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, focuses, ambient, timings)
     // Tile previews don't go through @Composable invocations — they return a `TilePreviewData`
     // and the renderer reflects them directly. Skipping the lazy means the bytecode walk never
     // runs for tile-only methods.

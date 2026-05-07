@@ -43,6 +43,14 @@ dependencies {
   // `renderNow.overrides.focus` share the same composable seam. **No hardcoded focus / keyboard
   // logic should live in this module any more — extend the connector instead.**
   implementation(project(":data-focus-connector"))
+  // Wear OS ambient-mode connector. Owns `AmbientStateController` and `AmbientOverrideExtension`
+  // (the `AroundComposable` that installs `LocalAmbientModeManager`). The renderer wraps content
+  // with the extension whenever `RenderPreviewCapture.ambient` is set — `@AmbientPreview`
+  // discovery stamps it onto every capture of an annotated function, and daemon-driven
+  // `renderNow.overrides.ambient` plans the same extension through `RobolectricHost`. Same
+  // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
+  // this module — extend the connector instead.**
+  implementation(project(":data-ambient-connector"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)

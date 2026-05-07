@@ -21,6 +21,7 @@ plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.compose.compiler)
   alias(libs.plugins.tapmoc)
 }
 

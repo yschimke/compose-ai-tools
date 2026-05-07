@@ -70,6 +70,21 @@ data class FocusCapture(
     val overlay: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `AmbientCaptureState`. */
+@Serializable
+enum class AmbientCaptureState {
+    Interactive,
+    Ambient,
+}
+
+/** Renderer-side mirror of the plugin's `AmbientCapture`. */
+@Serializable
+data class AmbientCapture(
+    val state: AmbientCaptureState = AmbientCaptureState.Ambient,
+    val burnInProtectionRequired: Boolean = false,
+    val deviceHasLowBitAmbient: Boolean = false,
+)
+
 /**
  * Heavy/fast threshold for [RenderPreviewCapture.cost]. Mirrors the plugin's
  * `HEAVY_COST_THRESHOLD` — anything strictly greater is considered "heavy"
@@ -131,6 +146,7 @@ data class RenderPreviewCapture(
     val scroll: ScrollCapture? = null,
     val animation: AnimationCapture? = null,
     val focus: FocusCapture? = null,
+    val ambient: AmbientCapture? = null,
     val renderOutput: String = "",
     /**
      * Estimated render cost normalised so a static `@Preview` is `1.0`. See
