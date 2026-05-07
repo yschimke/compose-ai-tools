@@ -29,10 +29,15 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.uiautomator.core" }
 
 dependencies {
+  // `DataProductKey` for the typed `uia/hierarchy` product key (#874). Carried in this module
+  // so the producer in `:data-uiautomator-hierarchy-android` and the connector both reference
+  // the same key; mirrors `:data-a11y-core`'s exposure of `AccessibilityDataProducts.Hierarchy`.
+  api(project(":data-render-core"))
+
   // Selector JSON wire format — needed so the matcher can travel across the daemon bridge
   // (DispatchUiAutomator envelope, see docs/daemon/INTERACTIVE-ANDROID.md) and the MCP
   // record_preview surface without forcing host code onto consumer classpaths.
-  implementation(libs.kotlinx.serialization.json)
+  api(libs.kotlinx.serialization.json)
 
   // Compose-side traversal walks `SemanticsNode` and dispatches actions through
   // `SemanticsActions` lambdas. `compileOnly` for the same reason `:renderer-android` does it
