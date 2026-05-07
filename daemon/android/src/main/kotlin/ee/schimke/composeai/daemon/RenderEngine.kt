@@ -43,6 +43,9 @@ import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
 import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
+import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
+import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyContextKeys
+import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
 import java.io.File
 import java.util.Base64
 import kotlinx.serialization.decodeFromString
@@ -439,6 +442,46 @@ class RenderEngine(
               } catch (t: Throwable) {
                 System.err.println(
                   "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}"
+                )
+              }
+            }
+
+            // #874 — `uia/hierarchy` data product. Walks the same `SemanticsOwner` `uia.*`
+            // dispatch resolves selectors against and dumps the actionable subset to
+            // `uia-hierarchy.json` so agents can inspect what's clickable / scrollable /
+            // has-text *before* dispatching. Default filter (set by the producer) keeps
+            // ~20% of nodes a real Material screen produces while preserving every viable
+            // dispatch target. Always runs on the Android backend — independent of the a11y
+            // opt-in. Wrapped in try/catch so a hierarchy failure does not strand the PNG.
+            if (dataDir != null) {
+              try {
+                trace.section("uia:hierarchy") {
+                  val rootNode = rule.onRoot(useUnmergedTree = false).fetchSemanticsNode()
+                  val uiaExtension = UiAutomatorHierarchyExtension()
+                  val uiaStore = RecordingDataProductStore()
+                  uiaExtension.process(
+                    ExtensionPostCaptureContext(
+                      extensionId = uiaExtension.id,
+                      previewId = spec.outputBaseName,
+                      renderMode = spec.renderMode,
+                      products = uiaStore.scopedFor(uiaExtension),
+                      data =
+                        ExtensionContextData.of(
+                          UiAutomatorHierarchyContextKeys.SemanticsRoot provides rootNode
+                        ),
+                    )
+                  )
+                  val payload = uiaStore.require(UiAutomatorDataProducts.Hierarchy)
+                  UiAutomatorDataProducer.writeArtifacts(
+                    rootDir = dataDir,
+                    previewId = spec.outputBaseName,
+                    payload = payload,
+                  )
+                }
+              } catch (t: Throwable) {
+                System.err.println(
+                  "RenderEngine: uia/hierarchy write failed for ${spec.outputBaseName}: " +
                     "${t.javaClass.simpleName}: ${t.message}"
                 )
               }
