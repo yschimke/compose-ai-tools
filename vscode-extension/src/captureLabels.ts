@@ -76,13 +76,25 @@ function dataProductToCapture(p: PreviewDataProduct): Capture {
 /** Returns a copy of [preview] with image-bearing data products folded into
  *  the captures list as additional carousel frames. The webview only renders
  *  `captures`; surfacing `@ScrollingPreview(LONG/GIF)` requires moving those
- *  entries across the boundary so the panel actually paints them. Order:
- *  base captures first, then data products in declaration order. */
+ *  entries across the boundary so the panel actually paints them.
+ *
+ *  When a scroll image data product is present, the base static capture
+ *  (no `advanceTimeMillis`, no `scroll`) is dropped: the LONG stitched image
+ *  starts at the top and the GIF includes the initial frame, so the static
+ *  frame is just a redundant duplicate of the scroll capture's starting
+ *  state. Animated (`advanceTimeMillis`-bearing) and scroll-mode
+ *  (`scroll != null`, e.g. `TOP`/`END`) captures are kept.
+ *
+ *  Order: surviving base captures first, then data products in declaration
+ *  order. */
 export function withDataProductCaptures(preview: PreviewInfo): PreviewInfo {
     const products = (preview.dataProducts ?? []).filter(isImageDataProduct);
     if (products.length === 0) return preview;
+    const baseCaptures = preview.captures.filter(
+        (c) => c.advanceTimeMillis != null || c.scroll != null,
+    );
     return {
         ...preview,
-        captures: [...preview.captures, ...products.map(dataProductToCapture)],
+        captures: [...baseCaptures, ...products.map(dataProductToCapture)],
     };
 }
