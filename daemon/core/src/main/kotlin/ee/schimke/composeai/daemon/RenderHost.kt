@@ -156,11 +156,22 @@ interface RenderHost {
    *   resolves the preview's class against this loader so a recompile during the session's lifetime
    *   doesn't drag stale bytecode into the held scene — the next `interactive/start` after a save
    *   gets a fresh loader.
+   * @param onSessionClosed fired exactly once after the session transitions to closed, regardless
+   *   of trigger: explicit [InteractiveSession.close], host-internal watchdog auto-close (e.g.
+   *   [AndroidInteractiveSession]'s idle-lease watchdog), or daemon shutdown. [JsonRpcServer] wires
+   *   a cleanup lambda here so a watchdog auto-close synchronously yanks the session out of
+   *   `interactiveSessions` / `interactiveTargets` / `pendingInteractiveInputs` rather than waiting
+   *   for the next render to discover it via [InteractiveSession.isClosed]. Defaults to `null` for
+   *   callers (in-process tests, fake hosts) that don't need the notification. The hook runs on
+   *   whatever thread fired the close — typically the watchdog's scheduled-executor thread for
+   *   auto-close, the JSON-RPC read thread for explicit stop, the JVM shutdown thread for
+   *   `cleanShutdown` — so implementations should be cheap and thread-safe.
    */
   fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean? = null,
+    onSessionClosed: (() -> Unit)? = null,
   ): InteractiveSession =
     throw UnsupportedOperationException(
       "interactive mode unsupported by ${this::class.simpleName ?: this::class.java.name}"

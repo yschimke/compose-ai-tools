@@ -38,6 +38,16 @@ class DesktopInteractiveSession(
   private val engine: RenderEngine,
   private val state: RenderEngine.SceneState,
   private val sandboxStats: SandboxLifecycleStats,
+  /**
+   * Fired exactly once after [close] flips `closed = true` and tears down the held scene. Mirrors
+   * [AndroidInteractiveSession.onCloseHook] so the same JsonRpcServer-side cleanup wiring works
+   * across both backends. DesktopHost has no idle-lease watchdog today (only explicit close + the
+   * D5 listener wrapper drive close), so on desktop the hook is effectively the same as
+   * `interactiveSessionListener.onSessionLifecycle(_, scene = null)` — but routing it through the
+   * same shape as Android keeps the host-shared API uniform and gives the desktop daemon a free
+   * hook point for any future async-close path.
+   */
+  private val onCloseHook: (() -> Unit)? = null,
 ) : InteractiveSession {
 
   @Volatile private var closed: Boolean = false
@@ -130,6 +140,16 @@ class DesktopInteractiveSession(
     if (closed) return
     closed = true
     engine.tearDown(state)
+    if (onCloseHook != null) {
+      try {
+        onCloseHook.invoke()
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: DesktopInteractiveSession: onCloseHook threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+        )
+      }
+    }
   }
 
   /**
