@@ -1183,6 +1183,7 @@ open class RobolectricHost(
               AmbientPreviewOverrideExtension(),
               WallpaperPreviewOverrideExtension(),
               Material3ThemePreviewOverrideExtension(),
+              FocusPreviewOverrideExtension(),
             )
           ),
         dataArtifactExtensions =

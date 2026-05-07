@@ -449,7 +449,60 @@ data class PreviewOverrides(
    * backend ignores this field.
    */
   val ambient: AmbientOverride? = null,
+  /**
+   * Optional focus / keyboard-traversal override. Drives the connector-side
+   * `FocusOverrideExtension` (see `:data-focus-connector`) so a single-frame render under the
+   * daemon can land focus on a specific tab index or apply a directional move (Tab / Shift-Tab /
+   * D-pad). Static `@Preview` rendering through the gradle plugin doesn't populate this field —
+   * `@FocusedPreview` discovery emits per-capture state that the renderer pushes into
+   * `FocusController` directly. Backends without a Compose focus owner (e.g. desktop
+   * Compose-Multiplatform) ignore this field.
+   */
+  val focus: FocusOverride? = null,
 )
+
+/**
+ * Focus / keyboard-traversal override for previews. Drives the connector-side
+ * `FocusOverrideExtension` (see `:data-focus-connector`).
+ *
+ * Two driving modes — same shape `@FocusedPreview` already produces:
+ *
+ * * **Indexed** ([tabIndex]): focus the n-th focusable in tab order. The connector issues
+ *   `moveFocus(Enter)` once on the first activation, then `moveFocus(Next)` to walk forward.
+ * * **Traversal** ([direction]): apply a single directional step. The connector issues
+ *   `moveFocus(Enter)` once before the first step, then `moveFocus(direction)` per call. [step]
+ *   carries the 1-based step index for overlay labels.
+ *
+ * Set both null to leave the focus driver inactive — the around-composable still installs keyboard
+ * input mode so `Modifier.clickable`'s focusable accepts focus if user code requests it
+ * programmatically.
+ *
+ * [overlay] toggles the post-capture stroke + label overlay drawn over the focused element's
+ * bounds. The renderer's per-capture loop reads it and calls
+ * `ee.schimke.composeai.daemon.FocusOverlay.apply` when set.
+ */
+@Serializable
+data class FocusOverride(
+  val tabIndex: Int? = null,
+  val direction: FocusDirection? = null,
+  val step: Int? = null,
+  val overlay: Boolean = false,
+)
+
+/**
+ * Mirror of Compose's `androidx.compose.ui.focus.FocusDirection`. Duplicated here because the
+ * gradle plugin's discovery task and the protocol can't take a runtime dep on `compose-ui`; the
+ * focus connector's `toCompose` adapter maps each value to the upstream constant at render time.
+ */
+@Serializable
+enum class FocusDirection {
+  Next,
+  Previous,
+  Up,
+  Down,
+  Left,
+  Right,
+}
 
 /**
  * Single-color seed for the wallpaper data extension.

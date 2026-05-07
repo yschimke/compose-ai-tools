@@ -35,6 +35,14 @@ dependencies {
   implementation(project(":data-a11y-hierarchy-android"))
   implementation(project(":data-render-core"))
   implementation(project(":data-scroll-core"))
+  // Focus / keyboard-traversal connector. Owns `KeyboardInputModeManager`, the
+  // `LaunchedEffect`-driven focus walk via `FocusOverrideExtension`, the per-capture state
+  // holder `FocusController`, and the post-capture `FocusOverlay`. The renderer's per-capture
+  // loop pushes `RenderManifest.FocusCapture` into `FocusController.set(...)` and wraps content
+  // with `FocusOverrideExtension(...)` so static `@Preview` rendering and daemon-driven
+  // `renderNow.overrides.focus` share the same composable seam. **No hardcoded focus / keyboard
+  // logic should live in this module any more — extend the connector instead.**
+  implementation(project(":data-focus-connector"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)

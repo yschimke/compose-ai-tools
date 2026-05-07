@@ -1,9 +1,12 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.FocusDirection
+import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PreviewOverrideMergeTest {
@@ -73,5 +76,37 @@ class PreviewOverrideMergeTest {
     assertEquals(UiMode.LIGHT, merged.uiMode)
     assertEquals(Orientation.LANDSCAPE, merged.orientation)
     assertEquals(true, merged.inspectionMode)
+  }
+
+  @Test
+  fun `focus override merges into the bag and clears via toExtensionOverrides`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val merged =
+      mergePreviewOverrides(
+        base,
+        PreviewOverrides(focus = FocusOverride(direction = FocusDirection.Next, step = 1)),
+      )
+
+    assertEquals(FocusOverride(direction = FocusDirection.Next, step = 1), merged.focus)
+    val extensionOverrides = merged.toExtensionOverrides()
+    assertEquals(
+      FocusOverride(direction = FocusDirection.Next, step = 1),
+      extensionOverrides?.focus,
+    )
+
+    val empty = mergePreviewOverrides(base, PreviewOverrides()).toExtensionOverrides()
+    assertNull("merged extension bag should be null when no extension fields are set", empty)
   }
 }

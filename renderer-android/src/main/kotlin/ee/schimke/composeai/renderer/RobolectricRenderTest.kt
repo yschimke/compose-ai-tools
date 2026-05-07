@@ -11,11 +11,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
-import androidx.compose.ui.focus.FocusDirection as ComposeFocusDirection
-import androidx.compose.ui.input.InputMode
-import androidx.compose.ui.input.InputModeManager
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
@@ -32,6 +27,11 @@ import com.github.takahirom.roborazzi.inspectionMode
 import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
+import ee.schimke.composeai.daemon.FocusController
+import ee.schimke.composeai.daemon.FocusOverlay
+import ee.schimke.composeai.daemon.FocusOverrideExtension
+import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.data.render.PreviewAnimationContext
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
@@ -586,23 +586,15 @@ abstract class RobolectricRenderTestBase(
         // Read after `captureRoboImage` to crop the PNG down to the composable's
         // actual bounds.
         var measured: IntSize? = null
-        // `@FocusedPreview` driver: outer loop bumps this state between
-        // captures; an inner `LaunchedEffect` keyed off it walks
-        // [FocusManager] to the requested target. Driving focus from
-        // *inside* composition (rather than via a `runOnUiThread`-posted
-        // `moveFocus` from the outer loop) is what makes the post-state
-        // emit + indication redraw land before the next capture — the
-        // outer-loop path leaves a one-frame off-by-one that no amount
-        // of `mainClock.advanceTimeBy` flushed. Carries the whole
-        // [FocusCapture] (rather than just an index) so traversal-mode
-        // captures can dispatch by direction.
-        val focusCaptureState =
-            androidx.compose.runtime.mutableStateOf<FocusCapture?>(null)
         // [android.view.View] read from inside composition so the
         // post-capture overlay can reflect into AndroidComposeView's
         // `focusOwner.getFocusRect()` to find the focused element's
         // bounds. `null` until the first composition.
         var capturedView: android.view.View? = null
+        // The focus-driver state lives on the connector's [FocusController]; the around-composable
+        // installed by [FocusOverrideExtension] reads from it via snapshot state. Reset before
+        // each render so the previous preview's tab walk doesn't leak into this one.
+        FocusController.resetForNewSession()
         val statement = object : org.junit.runners.model.Statement() {
             override fun evaluate() {
                 rule.mainClock.autoAdvance = false
@@ -670,21 +662,22 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.firstNotNullOfOrNull {
                         it.animation?.takeIf { a -> a.showCurves }
                     }?.let { SlotTreeCapture() }
-                // `@FocusedPreview` requests focus drive on at least one
-                // capture: hand Compose a Keyboard-mode `InputModeManager`
-                // for the duration of this preview, since
-                // `Modifier.clickable`'s focusable is
-                // `Focusability.SystemDefined` and refuses focus under
-                // [InputMode.Touch] — Robolectric's permanent default.
-                // Captures without focus stay byte-identical to the prior
-                // touch-mode behaviour because nothing in those captures
-                // reads the input mode.
+                // `@FocusedPreview` requests focus drive on at least one capture: the
+                // connector-side `FocusOverrideExtension.AroundComposable` installs
+                // `LocalInputModeManager provides KeyboardInputModeManager` and the
+                // `LaunchedEffect`-driven walk; the renderer just decides whether to wrap.
+                //
+                // **No more hardcoded focus / keyboard logic should live in this file.** Add new
+                // override-driven features as data extensions in `:data-focus-connector` (or peer
+                // connector modules) and either register a `DataExtension<PreviewOverrides>`
+                // planner here or wrap content with the extension's `AroundComposable` directly,
+                // matching the existing ambient / wallpaper / theme pattern. Per-feature renderer
+                // branches are a smell — see `docs/AGENTS.md` § "Architecture rules".
                 val anyFocusCapture = preview.captures.any { it.focus != null }
+                val focusExtension =
+                    if (anyFocusCapture) FocusOverrideExtension() else null
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
-                    if (anyFocusCapture) {
-                        add(LocalInputModeManager provides KeyboardInputModeManager)
-                    }
                     if (scrollCaptureProvidable != null) {
                         add(scrollCaptureProvidable provides scrollCaptureInProgress)
                     }
@@ -707,57 +700,8 @@ abstract class RobolectricRenderTestBase(
                     !isRoundDevice(params.device)
                 rule.setContent {
                     CompositionLocalProvider(values = providedValues) {
-                        if (anyFocusCapture) {
-                            val focusManager = LocalFocusManager.current
+                        if (focusExtension != null) {
                             capturedView = androidx.compose.ui.platform.LocalView.current
-                            val cap = focusCaptureState.value
-                            // Indexed mode: track the last walked tab
-                            // index so subsequent captures only issue the
-                            // delta `moveFocus(Next)` calls. Traversal
-                            // mode: track whether we've Entered the focus
-                            // owner so the first directional step lands
-                            // on a real focusable rather than no-op'ing
-                            // on an inactive root.
-                            val lastIndex =
-                                androidx.compose.runtime.remember {
-                                    androidx.compose.runtime.mutableStateOf(-1)
-                                }
-                            val entered =
-                                androidx.compose.runtime.remember {
-                                    androidx.compose.runtime.mutableStateOf(false)
-                                }
-                            androidx.compose.runtime.LaunchedEffect(cap) {
-                                if (cap != null) {
-                                    val direction = cap.direction
-                                    val tabIndex = cap.tabIndex
-                                    if (direction != null) {
-                                        if (!entered.value) {
-                                            focusManager.moveFocus(ComposeFocusDirection.Enter)
-                                            entered.value = true
-                                        }
-                                        focusManager.moveFocus(direction.toCompose())
-                                    } else if (tabIndex != null) {
-                                        // `moveFocus(Enter)` lands the
-                                        // owner on an internal root that
-                                        // sits *before* the first
-                                        // focusable, so the first walk
-                                        // needs `tabIndex + 1` Next steps
-                                        // to land on button `tabIndex`.
-                                        val from = lastIndex.value
-                                        if (from < 0) {
-                                            focusManager.moveFocus(ComposeFocusDirection.Enter)
-                                            repeat(tabIndex + 1) {
-                                                focusManager.moveFocus(ComposeFocusDirection.Next)
-                                            }
-                                        } else if (tabIndex > from) {
-                                            repeat(tabIndex - from) {
-                                                focusManager.moveFocus(ComposeFocusDirection.Next)
-                                            }
-                                        }
-                                        lastIndex.value = tabIndex
-                                    }
-                                }
-                            }
                         }
                         val previewBody: @Composable () -> Unit = {
                             val core: @Composable () -> Unit = {
@@ -779,10 +723,17 @@ abstract class RobolectricRenderTestBase(
                                 core()
                             }
                         }
-                        if (animationCurveCapture != null) {
-                            InspectablePreviewContent(animationCurveCapture, previewBody)
+                        val curveOrPlain: @Composable () -> Unit = {
+                            if (animationCurveCapture != null) {
+                                InspectablePreviewContent(animationCurveCapture, previewBody)
+                            } else {
+                                previewBody()
+                            }
+                        }
+                        if (focusExtension != null) {
+                            focusExtension.AroundComposable { curveOrPlain() }
                         } else {
-                            previewBody()
+                            curveOrPlain()
                         }
                     }
                 }
@@ -831,29 +782,25 @@ abstract class RobolectricRenderTestBase(
                         currentTime = target
                     }
 
-                    // `@FocusedPreview` per-capture focus walk. Discovery
-                    // sorts focus indices ascending and emits one capture
-                    // per index, so we only need to walk forward —
-                    // `moveFocus(Enter)` once, then `moveFocus(Next)` for
-                    // the per-step delta. `runOnUiThread` because focus
-                    // mutation is main-thread-only; the surrounding
-                    // composition is paused (`autoAdvance = false`) and
-                    // resumes on the next `advanceTimeBy`. After the
-                    // focus event reaches the interaction stream the
-                    // ripple's `IndicationNode` schedules an invalidation;
-                    // [FOCUS_SETTLE_MS] advances enough virtual time for
-                    // the next layout/draw pass to redraw the focus ring
-                    // before [captureRoboImage] reads back pixels.
+                    // `@FocusedPreview` per-capture focus walk. Discovery sorts focus indices
+                    // ascending and emits one capture per index; the around-composable installed
+                    // by [FocusOverrideExtension] consumes the controller state from inside
+                    // composition and walks `FocusManager.moveFocus(...)` in a `LaunchedEffect`
+                    // (driving focus from outside the composition leaves a one-frame
+                    // off-by-one). After the controller flips, [FocusController.SETTLE_MS]
+                    // advances enough virtual time for the focus event to reach the interaction
+                    // stream and the ripple's `IndicationNode` to schedule an invalidation
+                    // before `captureRoboImage` reads back pixels.
                     val capture = (job as? CaptureRenderJob)?.capture
                     val focus = capture?.focus
                     if (focus != null) {
                         rule.runOnUiThread {
-                            focusCaptureState.value = focus
+                            FocusController.set(focus.toFocusOverride())
                             androidx.compose.runtime.snapshots.Snapshot
                                 .sendApplyNotifications()
                         }
-                        rule.mainClock.advanceTimeBy(FOCUS_SETTLE_MS)
-                        currentTime += FOCUS_SETTLE_MS
+                        rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+                        currentTime += FocusController.SETTLE_MS
                     }
 
                     // @ScrollingPreview(END): drive the first scrollable on the
@@ -963,12 +910,12 @@ abstract class RobolectricRenderTestBase(
                         )
                     }
 
-                    // `@FocusedPreview(overlay = true)`: post-process the
-                    // captured PNG with a stroke + label drawn over the
-                    // currently-focused element. Pre-overlay capture is
+                    // `@FocusedPreview(overlay = true)`: post-process the captured PNG with a
+                    // stroke + label drawn over the currently-focused element. Implementation
+                    // lives in `:data-focus-connector`'s [FocusOverlay]; pre-overlay capture is
                     // preserved alongside as `<basename>.raw.png`.
                     if (focus?.overlay == true) {
-                        applyFocusOverlay(capturedView, outputFile, focus)
+                        FocusOverlay.apply(capturedView, outputFile, focus.toFocusOverride())
                     }
 
                     if (
@@ -1160,21 +1107,10 @@ abstract class RobolectricRenderTestBase(
          */
         private const val CAPTURE_ADVANCE_MS = 32L
 
-        /**
-         * Per-`@FocusedPreview`-capture settle window. After
-         * `FocusManager.moveFocus(...)` the FocusableNode emits
-         * `FocusInteraction.{Focus, Unfocus}` to the interaction sources
-         * on the next frame; the ripple's `IndicationNode` collects the
-         * events and runs a fade animation (Material's focus indicator
-         * uses an `Animatable<Float>` that crossfades over ~150ms). The
-         * paused-clock test environment doesn't auto-advance these
-         * animations, so we need enough virtual time to (a) emit the
-         * interactions, (b) crossfade out the previous capture's
-         * highlight, and (c) crossfade in the new one. 250ms = ~16
-         * frames at 16ms — a comfortable margin around Material's
-         * default highlight duration.
-         */
-        private const val FOCUS_SETTLE_MS = 250L
+        // The per-`@FocusedPreview`-capture settle window used to live here as
+        // `FOCUS_SETTLE_MS = 250L`. It moved to `:data-focus-connector`'s
+        // `FocusController.SETTLE_MS` so the connector's around-composable + the renderer's
+        // per-capture clock advance share a single source of truth. Don't redeclare it here.
     }
 }
 
@@ -1836,126 +1772,31 @@ private const val AUTO_DURATION_TAIL_MS = 200L
 private const val HOLD_START_ANIM_MS = 500
 private const val HOLD_END_ANIM_MS = 1000
 
-/**
- * [InputModeManager] that always reports [InputMode.Keyboard] — provided
- * via [LocalInputModeManager] so previews that call
- * `FocusRequester.requestFocus()` actually receive focus. See the call
- * site in [renderDefault]'s `providedValues` block for the full
- * rationale.
- */
-private object KeyboardInputModeManager : InputModeManager {
-    override val inputMode: InputMode = InputMode.Keyboard
+// `KeyboardInputModeManager`, `FocusDirection.toCompose`, the focus-walk `LaunchedEffect`, and
+// the `applyFocusOverlay` / `readFocusRect` reflection helpers used to live here. They moved to
+// `:data-focus-connector` so the renderer no longer carries hardcoded focus / keyboard logic —
+// see the around-composable installed via [FocusOverrideExtension] and the post-capture
+// `FocusOverlay`. Add new focus-related features inside the connector module, never inline.
 
-    override fun requestInputMode(inputMode: InputMode): Boolean = false
-}
+/** Maps the renderer-side [FocusCapture] (read from `previews.json`) onto the connector's
+ *  `protocol.FocusOverride` wire shape. Both types describe the same fields — duplicated only
+ *  because the renderer's `previews.json` schema predates the protocol module's override type. */
+private fun FocusCapture.toFocusOverride(): FocusOverride =
+    FocusOverride(
+        tabIndex = tabIndex,
+        direction = direction?.toProtocol(),
+        step = step,
+        overlay = overlay,
+    )
 
-/**
- * Converts the renderer-side [FocusDirection] enum (mirror of the plugin's, serialised through
- * `previews.json`) onto Compose's `FocusDirection` value class.
- */
-private fun FocusDirection.toCompose(): ComposeFocusDirection =
+private fun FocusDirection.toProtocol(): ProtocolFocusDirection =
     when (this) {
-        FocusDirection.Next -> ComposeFocusDirection.Next
-        FocusDirection.Previous -> ComposeFocusDirection.Previous
-        FocusDirection.Up -> ComposeFocusDirection.Up
-        FocusDirection.Down -> ComposeFocusDirection.Down
-        FocusDirection.Left -> ComposeFocusDirection.Left
-        FocusDirection.Right -> ComposeFocusDirection.Right
-    }
-
-/**
- * Post-applies a stroke + label overlay to [outputFile] showing the bounds of the currently-focused
- * element, sourced from `AndroidComposeView.focusOwner.getFocusRect()` (reflectively — the focus
- * owner isn't on the renderer's public Compose surface). Saves the pre-overlay capture as
- * `<basename>.raw.png` alongside so reviewers can A/B against the unmarked image.
- *
- * Skipped silently when the view isn't an AndroidComposeView, the focus owner has no active focus,
- * or the focus rect is empty — overlays are a review aid, not a contract.
- */
-private fun applyFocusOverlay(view: android.view.View?, outputFile: java.io.File, focus: FocusCapture) {
-    if (view == null) return
-    val rect = readFocusRect(view) ?: return
-    if (rect.width <= 0 || rect.height <= 0) return
-
-    val rawFile =
-        java.io.File(
-            outputFile.parentFile,
-            outputFile.nameWithoutExtension + ".raw." + outputFile.extension,
-        )
-    runCatching {
-        java.nio.file.Files.copy(
-            outputFile.toPath(),
-            rawFile.toPath(),
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-        )
-    }
-
-    val image = runCatching { javax.imageio.ImageIO.read(outputFile) }.getOrNull() ?: return
-    val g = image.createGraphics()
-    try {
-        g.setRenderingHint(
-            java.awt.RenderingHints.KEY_ANTIALIASING,
-            java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
-        )
-        g.setRenderingHint(
-            java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
-            java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON,
-        )
-        g.color = java.awt.Color(0xFF, 0x40, 0x40, 0xFF.toByte().toInt() and 0xFF)
-        g.stroke = java.awt.BasicStroke(3f)
-        g.drawRect(rect.x, rect.y, rect.width, rect.height)
-
-        val label = focusOverlayLabel(focus)
-        val font = java.awt.Font("SansSerif", java.awt.Font.BOLD, 16)
-        g.font = font
-        val metrics = g.fontMetrics
-        val textWidth = metrics.stringWidth(label)
-        val textHeight = metrics.height
-        val pillX = rect.x
-        val pillY = (rect.y - textHeight - 4).coerceAtLeast(0)
-        g.color = java.awt.Color(0xFF, 0x40, 0x40, 0xE0)
-        g.fillRoundRect(pillX, pillY, textWidth + 12, textHeight + 4, 8, 8)
-        g.color = java.awt.Color.WHITE
-        g.drawString(label, pillX + 6, pillY + textHeight - 4)
-    } finally {
-        g.dispose()
-    }
-    runCatching { javax.imageio.ImageIO.write(image, "png", outputFile) }
-}
-
-/**
- * Reflects into `AndroidComposeView.focusOwner.getFocusRect()` to retrieve the focused element's
- * bounds. Returns `null` when the view isn't an AndroidComposeView, the focus owner has no active
- * focus, or any reflective lookup fails. Used by [applyFocusOverlay] — failure here is silent
- * because the overlay is a review aid, not a render contract.
- */
-private fun readFocusRect(view: android.view.View): java.awt.Rectangle? {
-    return runCatching {
-        val getFocusOwner =
-            view::class.java.methods.firstOrNull { it.name == "getFocusOwner" } ?: return null
-        val owner = getFocusOwner.invoke(view) ?: return null
-        val getFocusRect =
-            owner::class.java.methods.firstOrNull { it.name == "getFocusRect" } ?: return null
-        val rect = getFocusRect.invoke(owner) ?: return null
-        val left = (rect::class.java.getMethod("getLeft").invoke(rect) as? Float) ?: return null
-        val top = (rect::class.java.getMethod("getTop").invoke(rect) as? Float) ?: return null
-        val right = (rect::class.java.getMethod("getRight").invoke(rect) as? Float) ?: return null
-        val bottom = (rect::class.java.getMethod("getBottom").invoke(rect) as? Float) ?: return null
-        // Compose's `Rect` reports `left = top = Float.POSITIVE_INFINITY` (`Rect.Zero`) when no
-        // focus is active; clamp to int silently here.
-        if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) {
-            return null
-        }
-        java.awt.Rectangle(left.toInt(), top.toInt(), (right - left).toInt(), (bottom - top).toInt())
-    }.getOrNull()
-}
-
-private fun focusOverlayLabel(focus: FocusCapture): String =
-    when {
-        focus.direction != null && focus.step != null ->
-            "step ${focus.step} • ${focus.direction.name}"
-        focus.tabIndex != null -> "index ${focus.tabIndex}"
-        else -> "focus"
+        FocusDirection.Next -> ProtocolFocusDirection.Next
+        FocusDirection.Previous -> ProtocolFocusDirection.Previous
+        FocusDirection.Up -> ProtocolFocusDirection.Up
+        FocusDirection.Down -> ProtocolFocusDirection.Down
+        FocusDirection.Left -> ProtocolFocusDirection.Left
+        FocusDirection.Right -> ProtocolFocusDirection.Right
     }
 
 /**
