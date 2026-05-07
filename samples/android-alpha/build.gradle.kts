@@ -13,6 +13,14 @@ plugins {
 // doesn't have yet — see [docs/RENDERER_COMPATIBILITY.md] for the version
 // alignment story.
 
+composePreview {
+  // `FocusedPreviewPixelTest` reads PNGs under
+  // `build/compose-previews/renders/`; opt the unit-test tasks into a
+  // `dependsOn(renderAllPreviews)` chain so `:samples:android-alpha:check`
+  // renders before asserting.
+  renderBeforeUnitTests.set(true)
+}
+
 android {
   namespace = "com.example.samplealpha"
   // compose-ui 1.12.0-alpha02 (transitively pulled by material3 1.5.0-alphaNN)
@@ -24,19 +32,6 @@ android {
 
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
-
-// Pixel-test wiring. `FocusedPreviewPixelTest` reads PNGs under
-// `build/compose-previews/renders/` produced by `renderAllPreviews`, so chain
-// the AGP unit-test tasks behind `renderAllPreviews` — same pattern as
-// `:samples:android`'s `ScrollPreviewPixelTest`. Targeting by name avoids
-// pulling the plugin's own `renderPreviews` Test task into a circular
-// `dependsOn` graph; `tasks.matching { ... }.configureEach { ... }` is the
-// Isolated-Projects-safe lazy form.
-val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
-
-tasks
-  .matching { it.name in pixelTestUnitTestTasks }
-  .configureEach { dependsOn("renderAllPreviews") }
 
 dependencies {
   testImplementation(libs.junit)

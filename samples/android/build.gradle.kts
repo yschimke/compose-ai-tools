@@ -19,6 +19,12 @@ composePreview {
   // resourcePreviews { ... } is on by default — the sample exercises the
   // Android XML resource preview pipeline (vector / animated-vector /
   // adaptive-icon) without any extra config.
+
+  // `ScrollPreviewPixelTest` reads PNGs under
+  // `build/compose-previews/renders/`; opt the unit-test tasks into a
+  // `dependsOn(renderAllPreviews)` chain so `:samples:android:check`
+  // renders before asserting.
+  renderBeforeUnitTests.set(true)
 }
 
 android {
@@ -35,24 +41,6 @@ android {
 
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
-
-// `ScrollPreviewPixelTest` reads PNGs under `build/compose-previews/renders/`
-// produced by `renderAllPreviews`. Wire the AGP unit-test tasks to depend on
-// it so `./gradlew :samples:android:check` renders the PNGs first then
-// pixel-asserts against them. Targeting the `test{Debug,Release}UnitTest`
-// tasks by name — `tasks.withType<Test>()` would also grab the plugin's own
-// `renderPreviews` Test task and create a circular dependency.
-//
-// `tasks.matching { ... }.configureEach { ... }` is the Isolated-Projects-
-// safe lazy pattern: the matching predicate is evaluated as each task is
-// registered, and the configureEach action only fires for matches. This
-// replaces the discouraged `afterEvaluate { tasks.findByName(...) }` block,
-// which forced eager configuration and isn't IP-friendly.
-val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
-
-tasks
-  .matching { it.name in pixelTestUnitTestTasks }
-  .configureEach { dependsOn("renderAllPreviews") }
 
 dependencies {
   testImplementation(libs.junit)

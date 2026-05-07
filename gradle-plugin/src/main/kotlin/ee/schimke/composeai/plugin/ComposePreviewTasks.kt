@@ -616,7 +616,36 @@ internal object ComposePreviewTasks {
         marker.writeText("validated\n")
       }
     }
+
+    // Pixel-test wiring: chain the AGP unit-test tasks behind
+    // `renderAllPreviews` so a consumer test class that reads the PNGs under
+    // `build/compose-previews/renders/` (e.g. `:samples:android-alpha`'s
+    // `FocusedPreviewPixelTest`) sees the rendered output by the time its
+    // assertions run. Opt-in via `composePreview { renderBeforeUnitTests =
+    // true }` — default off so consumers without pixel tests don't pay the
+    // `renderAllPreviews` cost on every `:check`.
+    //
+    // Targets the AGP unit-test tasks by name rather than
+    // `tasks.withType<Test>()`: the plugin's own `renderPreviews` Test task
+    // is what `renderAllPreviews` already depends on, so matching it here
+    // would create a cycle. No-op on Compose Multiplatform / Desktop modules
+    // where those task names don't exist.
+    //
+    // `tasks.matching { ... }.configureEach { ... }` is the
+    // Isolated-Projects-safe lazy form: the matching predicate fires as
+    // each task is registered, and the configureEach body only fires for
+    // matches.
+    val renderBeforeUnitTests = extension.renderBeforeUnitTests
+    project.tasks
+      .matching { it.name in PIXEL_TEST_UNIT_TEST_TASKS }
+      .configureEach {
+        if (renderBeforeUnitTests.get()) {
+          dependsOn("renderAllPreviews")
+        }
+      }
   }
+
+  private val PIXEL_TEST_UNIT_TEST_TASKS = setOf("testDebugUnitTest", "testReleaseUnitTest")
 
   internal fun missingPreviewOutputIds(
     manifest: PreviewManifest,

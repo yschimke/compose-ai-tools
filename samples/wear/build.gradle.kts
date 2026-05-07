@@ -15,6 +15,12 @@ composePreview {
       // enableAllChecks()
     }
   }
+
+  // `LongScrollPreviewPixelTest` reads PNGs from
+  // `build/compose-previews/renders/`; opt the unit-test tasks into a
+  // `dependsOn(renderAllPreviews)` chain so `:samples:wear:check` renders
+  // before asserting.
+  renderBeforeUnitTests.set(true)
 }
 
 android {
@@ -67,18 +73,3 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }
-
-// `LongScrollPreviewPixelTest` reads PNGs produced by `renderAllPreviews`.
-// Same dependency wiring as samples/android's pixel tests; targets the AGP
-// unit-test tasks by name so we don't include the plugin's own `renderPreviews`
-// Test task (which would create a circular dep).
-//
-// `tasks.matching { ... }.configureEach { ... }` is the Isolated-Projects-
-// safe lazy pattern — the predicate fires as each task is registered, so we
-// don't need the discouraged `afterEvaluate` block to wait for AGP to wire
-// the unit-test tasks.
-val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
-
-tasks
-  .matching { it.name in pixelTestUnitTestTasks }
-  .configureEach { dependsOn("renderAllPreviews") }
