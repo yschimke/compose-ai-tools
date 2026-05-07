@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 9 preview(s) across 1 module(s) · 1 error(s) · 0 warning(s) · 0 info._
+_Auto-generated from `compose-preview/a11y/pr`. 8 preview(s) across 1 module(s) · 1 error(s) · 0 warning(s) · 0 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -30,15 +30,9 @@ _No findings._
 
 _No findings._
 
-### `AmbientStatusAmbientPreview` · `wearos_large_round`
+### `AmbientStatusPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png" width="400" />
-
-_No findings._
-
-### `AmbientStatusInteractivePreview` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/AmbientPreviewsKt.AmbientStatusPreview_Ambient_body.a11y.png" width="400" />
 
 _No findings._
 

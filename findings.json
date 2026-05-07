@@ -41,22 +41,12 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
-      "cleanBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusPreview_Ambient_body.a11y.png",
+      "cleanBasename": "AmbientPreviewsKt.AmbientStatusPreview_Ambient_body.png",
       "findings": [],
-      "functionName": "AmbientStatusAmbientPreview",
+      "functionName": "AmbientStatusPreview",
       "module": "wear",
-      "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient",
-      "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
-      "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
-      "cleanBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
-      "findings": [],
-      "functionName": "AmbientStatusInteractivePreview",
-      "module": "wear",
-      "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient body \u2014 interactive",
+      "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusPreview_Ambient body",
       "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
       "variant": "wearos_large_round"
     },
