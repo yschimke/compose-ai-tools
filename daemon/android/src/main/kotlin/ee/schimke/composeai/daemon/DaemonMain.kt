@@ -361,6 +361,13 @@ fun main(args: Array<String>) {
               dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
             )
           )
+          add(
+            Extension(
+              id = "data/navigation",
+              displayName = "Navigation snapshot",
+              dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
+            )
+          )
           if (composeTraceEnabled) {
             add(
               Extension(

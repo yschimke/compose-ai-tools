@@ -1174,6 +1174,7 @@ open class RobolectricHost(
               ComposeSemanticsExtension.factory,
               LayoutInspectorExtension.factory,
               I18nTranslationsExtension.factory,
+              NavigationExtension.factory,
             )
           ),
       )
