@@ -1129,6 +1129,225 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `MCP exposes data slash navigation snapshot and dispatches navigation deepLink + back`() {
+    // End-to-end exercise of the navigation surface from an MCP-tool perspective:
+    //
+    // 1. The MCP `get_preview_data` tool surfaces the daemon's `data/navigation` data product —
+    //    an agent can read the held activity's launch Intent (action / data URI / simple-typed
+    //    extras) and the registered `OnBackPressedCallback` state for the rendered preview.
+    // 2. The MCP `record_preview` tool forwards `navigation.deepLink` (with a `deepLinkUri`
+    //    payload) and `navigation.back` script events to the daemon's `recording/script` channel,
+    //    proving the wire shape carries the new fields end-to-end (including the
+    //    `decodeRecordingEvents` extension we added in `DaemonMcpServer.kt`).
+    //
+    // The fake daemon advertises the navigation descriptor + a `data/navigation` capability so
+    // the MCP-side validators (script-kind allow-list in `validateRecordingScriptKinds`,
+    // `data/fetch` advertised-kind check) accept the request. We don't render anything — the
+    // test verifies that the MCP server forwards the agent's intent verbatim, not that the
+    // daemon dispatches it. The dispatch end is pinned by `AndroidRecordingSessionTest`.
+    val recordingsDir = tmp.newFolder("nav-recordings-out")
+    val framesDir = tmp.newFolder("nav-recording-frames")
+    writeSolidPng(framesDir.resolve("frame-00000.png"), 0xFF000000.toInt())
+    val cannedApngBytes =
+      byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02, 0x03, 0x04, 0x05)
+
+    // Reconstruct the navigation descriptor inline rather than depending on
+    // `:daemon:android` from `:mcp` — `NavigationRecordingScriptEvents` lives there because the
+    // dispatch arms are Android-only, but the descriptor is plain metadata so we can construct
+    // the equivalent advertisement with `:data-render-core` types alone.
+    val navDescriptor =
+      ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor(
+        id = ee.schimke.composeai.data.render.extensions.DataExtensionId("navigation"),
+        displayName = "Navigation script controls",
+        recordingScriptEvents =
+          listOf(
+              "navigation.deepLink",
+              "navigation.back",
+              "navigation.predictiveBackStarted",
+              "navigation.predictiveBackProgressed",
+              "navigation.predictiveBackCommitted",
+              "navigation.predictiveBackCancelled",
+            )
+            .map { id ->
+              ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor(
+                id = id,
+                displayName = id,
+                summary = "navigation script event $id",
+                supported = true,
+              )
+            },
+      )
+
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "data/navigation",
+            schemaVersion = 1,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      d.advertisedDataExtensions =
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors +
+          ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor +
+          navDescriptor
+      d.dataFetchHandler = { _, kind, _, _ ->
+        // Mirror the wire shape that `NavigationDataProducer` writes on a real Android render —
+        // a deep-link Intent (post `navigation.deepLink` dispatch) with `hasEnabledCallbacks=true`
+        // because the held screen registered a `BackHandler` (matches the NavHostHomePreview
+        // sample's profile destination).
+        if (kind != "data/navigation") FakeDaemon.DataFetchOutcome.Unknown
+        else
+          FakeDaemon.DataFetchOutcome.Ok(
+            kind = kind,
+            schemaVersion = 1,
+            payload =
+              buildJsonObject {
+                putJsonObject("intent") {
+                  put("action", "android.intent.action.VIEW")
+                  put("dataUri", "app://route/profile/42")
+                  put("packageName", "com.example.sampleandroid")
+                  putJsonArray("categories") {
+                    add(JsonPrimitive("android.intent.category.DEFAULT"))
+                  }
+                  putJsonObject("extras") {
+                    put("user_id", 42)
+                    put("show_fab", true)
+                    put("source", "deeplink")
+                  }
+                }
+                putJsonObject("onBackPressed") { put("hasEnabledCallbacks", true) }
+              },
+          )
+      }
+      d.recordingEncodedBytes = cannedApngBytes
+      d.recordingEncodeDir = recordingsDir
+      d.recordingStopResult =
+        ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+          frameCount = 1,
+          durationMs = 0L,
+          framesDir = framesDir.absolutePath,
+          frameWidthPx = 8,
+          frameHeightPx = 8,
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("nav-workspace")
+    tmp.newFolder("nav-workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo-nav")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+
+    // 1. `get_preview_data` round-trips the navigation snapshot.
+    val fetchResp =
+      client.callTool(
+        "get_preview_data",
+        buildJsonObject {
+          put("uri", uri)
+          put("kind", "data/navigation")
+          put("inline", true)
+        },
+        timeoutMs = 10_000,
+      )
+    assertWithMessage("get_preview_data should succeed for an advertised navigation kind")
+      .that(fetchResp.isError())
+      .isFalse()
+    val fetched = json.parseToJsonElement(fetchResp.firstTextContent()).jsonObject
+    val payload = fetched["payload"]!!.jsonObject
+    val intentJson = payload["intent"]!!.jsonObject
+    assertThat(intentJson["action"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("android.intent.action.VIEW")
+    assertThat(intentJson["dataUri"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("app://route/profile/42")
+    val extras = intentJson["extras"]!!.jsonObject
+    assertThat(extras["user_id"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()).isEqualTo(42)
+    assertThat(extras["show_fab"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+    assertThat(extras["source"]?.jsonPrimitive?.contentOrNull).isEqualTo("deeplink")
+    assertThat(
+        payload["onBackPressed"]!!.jsonObject["hasEnabledCallbacks"]?.jsonPrimitive?.contentOrNull
+      )
+      .isEqualTo("true")
+
+    // 2. `record_preview` forwards a navigation.deepLink + predictive-back gesture sequence.
+    val recordResp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("fps", 30)
+          put("scale", 1.0)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "navigation.deepLink")
+                put("deepLinkUri", "app://route/profile/42")
+              }
+            )
+            add(
+              buildJsonObject {
+                put("tMs", 50)
+                put("kind", "navigation.predictiveBackStarted")
+                put("backProgress", 0.0)
+                put("backEdge", "left")
+              }
+            )
+            add(
+              buildJsonObject {
+                put("tMs", 100)
+                put("kind", "navigation.predictiveBackProgressed")
+                put("backProgress", 0.5)
+                put("backEdge", "left")
+              }
+            )
+            add(
+              buildJsonObject {
+                put("tMs", 150)
+                put("kind", "navigation.back")
+              }
+            )
+          }
+        },
+        timeoutMs = 10_000,
+      )
+    assertWithMessage("record_preview should accept navigation.* events advertised by the daemon")
+      .that(recordResp.isError())
+      .isFalse()
+
+    // The daemon's `recording/script` handler captures the events it received — assert the
+    // extension fields rode through the MCP encoder unchanged.
+    val scriptCall = daemon.recordingScripts.poll(2_000, TimeUnit.MILLISECONDS)
+    assertThat(scriptCall).isNotNull()
+    assertThat(scriptCall!!.events).hasSize(4)
+
+    val deepLink = scriptCall.events[0]
+    assertThat(deepLink.kind).isEqualTo("navigation.deepLink")
+    assertThat(deepLink.deepLinkUri).isEqualTo("app://route/profile/42")
+
+    val started = scriptCall.events[1]
+    assertThat(started.kind).isEqualTo("navigation.predictiveBackStarted")
+    assertThat(started.backProgress).isEqualTo(0.0f)
+    assertThat(started.backEdge).isEqualTo("left")
+
+    val progressed = scriptCall.events[2]
+    assertThat(progressed.kind).isEqualTo("navigation.predictiveBackProgressed")
+    assertThat(progressed.backProgress).isEqualTo(0.5f)
+    assertThat(progressed.backEdge).isEqualTo("left")
+
+    val back = scriptCall.events[3]
+    assertThat(back.kind).isEqualTo("navigation.back")
+    assertThat(back.deepLinkUri).isNull()
+    assertThat(back.backProgress).isNull()
+  }
+
+  @Test
   fun `record_preview rejects unknown event kind without spawning a session`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")

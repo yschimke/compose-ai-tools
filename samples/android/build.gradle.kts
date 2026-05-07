@@ -66,6 +66,12 @@ dependencies {
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)
   implementation(libs.activity.compose)
+  // NavHost-based sample (`NavHostPreview.kt`) exercises the daemon's
+  // `data/navigation` data product (Intent + back-pressed snapshot) and the
+  // `navigation.*` script-event surface end-to-end. The library's public
+  // composables (`NavHost`, `composable`, `rememberNavController`) have been
+  // stable since 2.7.x; we pin to the latest stable in libs.versions.toml.
+  implementation(libs.navigation.compose)
   // Exercises the `Font(GoogleFont(...), provider)` path under Robolectric —
   // the shadow in `renderer-android` swaps the GMS provider lookup for a
   // local cache under `.compose-preview-history/fonts/`.
