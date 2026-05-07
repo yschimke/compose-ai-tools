@@ -37,6 +37,20 @@ interface InteractiveSession : AutoCloseable {
   val previewId: String
 
   /**
+   * `true` once the session has been closed — either by explicit [close] or by a host-internal
+   * watchdog (e.g. [AndroidInteractiveSession]'s idle-lease watchdog). After this flips, [render]
+   * throws and [dispatch] is a no-op. [JsonRpcServer.submitInteractiveRenderAsync]'s catch path
+   * checks this on render failure to distinguish "session is gone, stop the live-frame loop" from
+   * "render itself blew up, leave the session in place for the next input".
+   *
+   * Default `false` keeps in-test sessions that don't model close semantics on the pre-existing
+   * behaviour (the worker still cleans up when their `render()` throws — see the catch in
+   * `submitInteractiveRenderAsync` — but the loop won't pre-emptively stop).
+   */
+  val isClosed: Boolean
+    get() = false
+
+  /**
    * Feed one wire-level [InteractiveInputParams] (click, pointer down/up, key down/up) into the
    * held composition. Implementations translate the protocol-level kind into the host's pointer-
    * input dispatch (e.g. `ImageComposeScene.sendPointerEvent` on desktop), splitting `CLICK` into

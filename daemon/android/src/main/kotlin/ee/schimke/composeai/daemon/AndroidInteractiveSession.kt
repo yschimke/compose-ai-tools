@@ -165,7 +165,7 @@ internal constructor(
    * panel-side handler that wants to redraw the v1 fallback hint when the daemon force-closes a
    * stream out from under it.
    */
-  val isClosed: Boolean
+  override val isClosed: Boolean
     get() = closed
 
   /**

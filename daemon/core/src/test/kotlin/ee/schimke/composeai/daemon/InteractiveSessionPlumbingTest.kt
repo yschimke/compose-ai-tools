@@ -283,6 +283,65 @@ class InteractiveSessionPlumbingTest {
   }
 
   @Test(timeout = 30_000)
+  fun session_marked_closed_terminates_live_frame_loop() {
+    // Regression: when an InteractiveSession closes itself out from under JsonRpcServer (e.g.
+    // AndroidInteractiveSession's idle-lease watchdog), the live-frame loop in
+    // startInteractiveFrameLoop must observe `session.isClosed` and stop dispatching renders
+    // against the dead session. Without the fix, every frame-interval tick claims the in-flight
+    // slot, calls session.render(), catches the IllegalStateException, releases the slot, sleeps,
+    // and repeats — producing the unbounded stderr spam we saw on samples/wear (renders 573,
+    // 574, … all failing with "called after close()").
+    val tmp = Files.createTempDirectory("interactive-session-closed-loop").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = SessionAwareFakeHost(pngFile)
+
+    val (_, serverThread, clientToServerOut, received, exitLatch) =
+      bringUpServer(host, interactiveFrameIntervalMs = 25)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":10,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+    assertNotNull(startResp)
+    val session = host.lastSession()!!
+
+    // Let the live-frame loop fire a handful of renders so we know it's actually running before
+    // we mark the session closed. 25ms interval × ~150ms wall clock should clear several frames
+    // even on a loaded CI box.
+    val deadline = System.currentTimeMillis() + 1_000
+    while (session.renderCount.get() < 3 && System.currentTimeMillis() < deadline) {
+      Thread.sleep(10)
+    }
+    assertTrue(
+      "live-frame loop should have fired several renders before close (got ${session.renderCount.get()})",
+      session.renderCount.get() >= 3,
+    )
+
+    // Flip the session into the closed state — render() now throws, mirroring the
+    // AndroidInteractiveSession watchdog auto-close path.
+    session.markClosed()
+    val countAtClose = session.renderCount.get()
+
+    // Give the loop ample time to discover the closed state and terminate. A pre-fix run would
+    // continue incrementing renderCount indefinitely as it spins on the failing render.
+    Thread.sleep(500)
+
+    val countAfterClose = session.renderCount.get()
+    val tolerance = 2 // one in-flight render at the moment of mark + the loop's exit check
+    assertTrue(
+      "live-frame loop must stop firing after session.isClosed flips " +
+        "(countAtClose=$countAtClose countAfterClose=$countAfterClose)",
+      countAfterClose - countAtClose <= tolerance,
+    )
+
+    teardownServer(clientToServerOut, received, serverThread, exitLatch)
+  }
+
+  @Test(timeout = 30_000)
   fun cleanShutdown_closes_all_open_sessions() {
     val tmp = Files.createTempDirectory("interactive-session-shutdown").toFile()
     val aPng = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -482,16 +541,33 @@ private class RecordingSession(override val previewId: String, private val pngFi
 
   @Volatile private var lastClickX: Int? = null
   @Volatile private var lastClickY: Int? = null
+  @Volatile private var closedFlag: Boolean = false
 
   fun lastClick(): Pair<Int, Int>? = lastClickX?.let { x -> lastClickY?.let { y -> x to y } }
 
+  /**
+   * Flip the session into the closed state without going through [close] — models a host-internal
+   * watchdog (e.g. [AndroidInteractiveSession]'s idle-lease watchdog) that closes the session out
+   * from under the JsonRpcServer's tracking maps. Subsequent [render] calls throw the same
+   * `IllegalStateException` the production session emits, and [isClosed] flips so the live-frame
+   * loop's exit check fires.
+   */
+  fun markClosed() {
+    closedFlag = true
+  }
+
+  override val isClosed: Boolean
+    get() = closedFlag
+
   override fun dispatch(input: InteractiveInputParams) {
+    if (closedFlag) return
     dispatchCount.incrementAndGet()
     lastClickX = input.pixelX
     lastClickY = input.pixelY
   }
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
+    check(!closedFlag) { "RecordingSession.render() called after close()" }
     renderCount.incrementAndGet()
     return RenderResult(
       id = requestId,
@@ -503,6 +579,7 @@ private class RecordingSession(override val previewId: String, private val pngFi
   }
 
   override fun close() {
+    closedFlag = true
     closeCount.incrementAndGet()
   }
 }

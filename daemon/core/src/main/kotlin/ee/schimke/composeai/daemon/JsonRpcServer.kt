@@ -2294,7 +2294,8 @@ class JsonRpcServer(
             running.get() &&
               !shutdownRequested.get() &&
               interactiveTargets.containsKey(streamId) &&
-              interactiveSessions[streamId] === session
+              interactiveSessions[streamId] === session &&
+              !session.isClosed
           ) {
             requestInteractiveRender(streamId, previewId, session)
             try {
@@ -2409,22 +2410,40 @@ class JsonRpcServer(
             // inputs from the queue; without new arrivals the queue empties and the next claim
             // skips re-spawning.
             interactiveRenderInFlight.remove(streamId)
-            val pending = pendingInteractiveInputs[streamId]
-            if (
-              pending != null &&
-                pending.isNotEmpty() &&
-                interactiveRenderInFlight.putIfAbsent(streamId, true) == null
-            ) {
-              val curSession = interactiveSessions[streamId]
-              val curTarget = interactiveTargets[streamId]
-              if (curSession != null && curTarget != null) {
-                submitInteractiveRenderAsync(streamId, curTarget.previewId, curSession)
-              } else {
-                // Session was stopped while we were rendering; drop the queued inputs and clear
-                // the slot. Stale inputs against a stopped stream are dropped per the v1
-                // contract (handleInteractiveInput would also short-circuit on the next poll).
-                pendingInteractiveInputs.remove(streamId)
-                interactiveRenderInFlight.remove(streamId)
+            // Detect a session that closed itself out from under us — typically the
+            // [AndroidInteractiveSession] idle-lease watchdog firing while we were live, but also
+            // any host that decides to drop the session asynchronously. Without this branch the
+            // live-frame loop in [startInteractiveFrameLoop] keeps re-claiming the in-flight slot
+            // and dispatching renders against the dead session, each one throwing
+            // `IllegalStateException("…called after close()")`, producing the spin we hit at
+            // sample-wear (renders 573, 574, … all failing with the same message). Clearing the
+            // session reference makes the loop's `interactiveSessions[streamId] === session` /
+            // `!session.isClosed` exit checks fire on its next wake; dropping pending inputs
+            // matches the `interactive/stop` contract — stale inputs against a stopped stream
+            // are silently discarded.
+            if (session.isClosed) {
+              interactiveSessions.remove(streamId, session)
+              interactiveTargets.remove(streamId)
+              pendingInteractiveInputs.remove(streamId)
+              stopInteractiveFrameLoop(streamId)
+            } else {
+              val pending = pendingInteractiveInputs[streamId]
+              if (
+                pending != null &&
+                  pending.isNotEmpty() &&
+                  interactiveRenderInFlight.putIfAbsent(streamId, true) == null
+              ) {
+                val curSession = interactiveSessions[streamId]
+                val curTarget = interactiveTargets[streamId]
+                if (curSession != null && curTarget != null && !curSession.isClosed) {
+                  submitInteractiveRenderAsync(streamId, curTarget.previewId, curSession)
+                } else {
+                  // Session was stopped while we were rendering; drop the queued inputs and clear
+                  // the slot. Stale inputs against a stopped stream are dropped per the v1
+                  // contract (handleInteractiveInput would also short-circuit on the next poll).
+                  pendingInteractiveInputs.remove(streamId)
+                  interactiveRenderInFlight.remove(streamId)
+                }
               }
             }
           }
