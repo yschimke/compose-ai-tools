@@ -51,11 +51,11 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `InsetFocusRingAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingAnimatedPreview_Inset_Focus_Ring_moving.gif" width="150" /> |
-| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_0.png" width="150" /> |
-| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_1.png" width="150" /> |
-| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_2.png" width="150" /> |
-| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_3.png" width="150" /> |
-| `OpacityVsInsetRingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/OpacityVsInsetRingPreview_Opacity_vs_Inset_Ring.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_0.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_1.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_2.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_3.png" width="150" /> |
+| `OpacityFocusPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/OpacityFocusPreview_Opacity_Focus.png" width="150" /> |
 
 ## samples:android-daemon-bench
 

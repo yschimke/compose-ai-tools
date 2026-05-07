@@ -3,42 +3,42 @@
     "captureLabel": "",
     "functionName": "InsetFocusRingAnimatedPreview",
     "renderBasename": "InsetFocusRingAnimatedPreview_Inset_Focus_Ring_moving.gif",
-    "sha256": "b270c427b7c79527c3d8f849e92ad50e429d2ede1e88e2615f484f3c02e33aa2",
+    "sha256": "4d83868fb149210027646843789c95e1e42dae697fddb5add5b6dae4fefb97ae",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
-    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_0.png",
-    "sha256": "dbb60331ebf5c1a59e342fb80d0b5066a28844180d509a72ad96e4d8854135a5",
+    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_0.png",
+    "sha256": "c2223bc7d6ec0a9c2fb21800787ec40ed492d42dea5645f43e6635bbab41016a",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#1": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
-    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_1.png",
-    "sha256": "4ccef616f8ad40ed64721c190b39d9209cf3a466c6c074ecbedf92d92eede466",
+    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_1.png",
+    "sha256": "bf00fb5b6ab05136601bbc03a21666e11aa027e37c2c507e1b6c64f1dc2eb89b",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#2": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
-    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_2.png",
-    "sha256": "aa223ed971cf953b2809f21184b0c007845a3b9b9b2ceb5e98aeb9745b9e06e6",
+    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_2.png",
+    "sha256": "726d61b1e16ef583e3d5ff1f836a5fd05edc6217cbfee602badd5a424d675d2e",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#3": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
-    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_3.png",
-    "sha256": "3c16d0f7cfc25e8e99c62621f74c7fd19f949d4a0581ea5a00205624aa8c0e5b",
+    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_3.png",
+    "sha256": "e545d133bb4a8b0670cb49860cc871c99c3c197174b4b48288c22bb228b6f256",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.OpacityVsInsetRingPreview_Opacity vs Inset Ring": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.OpacityFocusPreview_Opacity Focus": {
     "captureLabel": "",
-    "functionName": "OpacityVsInsetRingPreview",
-    "renderBasename": "OpacityVsInsetRingPreview_Opacity_vs_Inset_Ring.png",
-    "sha256": "c59de8752b81e85c837c416de80a010115e9fac8a3dabd263bcf005f415f6bc2",
+    "functionName": "OpacityFocusPreview",
+    "renderBasename": "OpacityFocusPreview_Opacity_Focus.png",
+    "sha256": "be587ec85cc29900b70a2593d27cd34f8864cbe353f35e351d9bba8361bae7bb",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-daemon-bench/com.example.daemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
